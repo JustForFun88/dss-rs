@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = [ "crates/dss-cli", "crates/dss-core", "crates/dss-parser", "crates/dss-solver"]
