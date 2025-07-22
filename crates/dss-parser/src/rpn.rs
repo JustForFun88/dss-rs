@@ -126,23 +126,15 @@ impl RPNCalculator {
     }
 
     pub fn swap_xy(&mut self) {
-        let temp = self.stack[0];
-        self.stack[0] = self.stack[1];
-        self.stack[1] = temp;
+        self.stack.swap(0, 1);
     }
 
     pub fn roll_up(&mut self) {
-        // for i := MaxStackSize downto 2 do FStack[i] := FStack[i - 1];
-        for i in (1..MAX_STACK_SIZE).rev() {
-            self.stack[i] = self.stack[i - 1];
-        }
+        self.stack.copy_within(0..MAX_STACK_SIZE - 1, 1);
     }
 
     pub fn roll_down(&mut self) {
-        // for i := 2 to MaxStackSize do FStack[i - 1] := FStack[i];
-        for i in 1..MAX_STACK_SIZE {
-            self.stack[i - 1] = self.stack[i];
-        }
+        self.stack.copy_within(1.., 0);
     }
 }
 
