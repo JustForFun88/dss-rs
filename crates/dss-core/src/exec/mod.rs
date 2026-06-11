@@ -21,7 +21,7 @@ use crate::elements::pd::line;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::{EnumId, EnumRegistry};
-use crate::obj::props::{ClassProps, PropEngine, PropType};
+use crate::obj::props::{ClassProps, ForeignClassesView, PropEngine, PropType};
 use crate::solution::{SolveEnv, SolveMode, set_voltage_bases, solve};
 use crate::support::command_list::CommandList;
 use crate::util::{float_to_str, interpret_yes_no, parse_object_class_and_name};
@@ -423,6 +423,50 @@ impl ElemStore for ClassStore<'_> {
         self.classes[r.cls].objects[r.idx]
             .as_ckt_element_mut()
             .expect("ElemRef must point at a circuit element")
+    }
+}
+
+/// A read view of every class *except* the one being edited (the active class
+/// is the excluded middle element), the [`ForeignClassesView`] the property
+/// engine uses to resolve `ObjectRef` values mid-edit (PHASE4_PLAN §3.1).
+struct ForeignClasses<'a> {
+    /// `classes[..ci]` — global class index == slice index.
+    left: &'a [DssClass],
+    /// `classes[ci + 1..]` — global class index == `split + 1 + slice index`.
+    right: &'a [DssClass],
+    /// `ci`, the active class's global index.
+    split: usize,
+}
+
+impl<'a> ForeignClasses<'a> {
+    /// Resolve a (class name, object name) pair to its global [`ElemRef`] plus
+    /// the live object, scanning both halves. A class match with no object
+    /// match short-circuits to `None`, like `cls.Find` returning NIL.
+    fn lookup(&self, class: &str, name_l: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+        let find_in = |c: &'a DssClass, cls: usize| {
+            c.name_to_idx
+                .get(name_l)
+                .map(|&idx| (ElemRef { cls, idx }, c.objects[idx].as_ref()))
+        };
+        let left = self.left;
+        for (k, c) in left.iter().enumerate() {
+            if c.props.class_name().eq_ignore_ascii_case(class) {
+                return find_in(c, k);
+            }
+        }
+        let right = self.right;
+        for (k, c) in right.iter().enumerate() {
+            if c.props.class_name().eq_ignore_ascii_case(class) {
+                return find_in(c, self.split + 1 + k);
+            }
+        }
+        None
+    }
+}
+
+impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
+    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+        self.lookup(class, &name.to_lowercase())
     }
 }
 
@@ -877,13 +921,24 @@ impl Dss {
             errors,
             ..
         } = self;
+        // Split the registry so the active class is borrowed mutably for the
+        // edit while every *other* class is a read view for ObjectRef
+        // resolution (PHASE4_PLAN §3.1). `split_at_mut` + `split_first_mut`
+        // keep the three regions provably disjoint with no unsafe.
+        let (left, rest) = classes.split_at_mut(ci);
+        let (active_class, right) = rest.split_first_mut().expect("ci is in range");
+        let foreign = ForeignClasses {
+            left,
+            right,
+            split: ci,
+        };
         let DssClass {
             props,
             objects,
             name_to_idx,
             active,
             ..
-        } = &mut classes[ci];
+        } = active_class;
         let Some(oi) = *active else {
             errors.push("There is no active element to edit.".to_string());
             return;
@@ -928,6 +983,7 @@ impl Dss {
                         vars,
                         enums,
                         errors,
+                        foreign: Some(&foreign),
                     };
                     if let Err(e) = props.edit_property(objects[oi].as_mut(), idx, &param, &mut eng)
                     {
@@ -1796,6 +1852,88 @@ mod tests {
         }
         // Iteration count reported like the oracle's Solution.Iterations.
         assert!(ckt.solution.iteration >= 2);
+    }
+
+    /// Parse the single number a `?` scalar query returns.
+    fn query_f64(dss: &mut Dss, what: &str) -> f64 {
+        query(dss, what).parse().expect("numeric query result")
+    }
+
+    #[test]
+    fn line_fetches_sym_linecode() {
+        // Oracle (dss-python 0.15.7): linecode in mi, line length 2000 ft.
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command(
+            "New linecode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=3 c0=1 \
+             units=mi normamps=500 emergamps=700",
+        );
+        dss.command("New line.l1 bus1=a bus2=b linecode=mtx601 length=2000 units=ft");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "line.l1.linecode"), "mtx601");
+        assert_eq!(query(&mut dss, "line.l1.normamps"), "500");
+        assert_eq!(query(&mut dss, "line.l1.emergamps"), "700");
+        assert_eq!(query(&mut dss, "line.l1.units"), "ft");
+        // r1 getter divides by FUnitsConvert = ConvertLineUnits(mi, ft) = 5280.
+        assert!((query_f64(&mut dss, "line.l1.r1") - 0.1 / 5280.0).abs() < 1e-12);
+        // Unported scalar/array refs render like the oracle.
+        assert_eq!(query(&mut dss, "line.l1.geometry"), "");
+        assert_eq!(query(&mut dss, "line.l1.wires"), "[]");
+    }
+
+    #[test]
+    fn line_fetches_matrix_linecode() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command(
+            "New linecode.mx nphases=2 rmatrix=[0.1 | 0.05 0.1] \
+             xmatrix=[0.2 | 0.07 0.2] cmatrix=[3 | -1 3] units=mi",
+        );
+        dss.command("New line.l3 bus1=a.1.2 bus2=b.1.2 linecode=mx length=1 units=mi");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "line.l3.phases"), "2");
+        assert_eq!(query(&mut dss, "line.l3.rmatrix"), "[0.1 |0.05 0.1 ]");
+        // Matrix model hides the sym scalars (CONDITIONAL_VALUE).
+        assert_eq!(query(&mut dss, "line.l3.r1"), "----");
+    }
+
+    #[test]
+    fn line_linecode_then_r1_override_keeps_fetched_matrix() {
+        // Oracle: r1=0.5 overrides the scalar, but the dumped rmatrix still
+        // reflects the code's Z (recalc is deferred to CalcYPrim).
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command("New linecode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 units=mi");
+        dss.command("New line.l4 bus1=a bus2=b linecode=mtx601 r1=0.5 length=1 units=mi");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "line.l4.r1"), "0.5");
+        // Zs.re = (2*0.1 + 0.3)/3 = 0.5/3, units_convert reset to 1 by r1.
+        let rm = query(&mut dss, "line.l4.rmatrix");
+        let first: f64 = rm
+            .trim_start_matches('[')
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!((first - 0.5 / 3.0).abs() < 1e-9, "{rm}");
+    }
+
+    #[test]
+    fn line_unknown_linecode_errors_and_continues() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command("New line.l5 bus1=a bus2=b linecode=nosuch r1=0.1 length=1");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e == "Line.l5.LineCode: LineCode object \"nosuch\" not found."),
+            "{:?}",
+            dss.errors()
+        );
+        // The edit continued: r1=0.1 was applied, phases stayed default.
+        assert_eq!(query(&mut dss, "line.l5.r1"), "0.1");
+        assert_eq!(query(&mut dss, "line.l5.phases"), "3");
     }
 
     #[test]

@@ -246,7 +246,24 @@ Steps:
 
 ---
 
-### WP4.2 — ObjectRef resolution + Line→LineCode fetch [12%]
+### WP4.2 — ObjectRef resolution + Line→LineCode fetch [12%] ✅ DONE (gate-green)
+
+> Status: complete. `ForeignClassesView<'a>` trait + `PropEngine::foreign` thread
+> a read view of every class except the active one (built in `edit_active` via
+> `split_at_mut(ci)` + `split_first_mut` — zero unsafe) into `parse_into`.
+> `PropDef::object_class` distinguishes resolved refs (`object_ref_class`, e.g.
+> Line's `LineCode`) from the Phase-3 string-storage refs (`object_ref`, kept for
+> Load/VSource shapes until Phase 5). `DssObject::set_object_ref` copies the
+> resolved object's data immediately (downcast). `TLineObj.FetchLineCode` ported
+> verbatim in `line.rs::fetch_line_code`; `units=` reconverts relative to the
+> code's units; `kill_line_code_specified` drops the ref on sym/matrix/switch
+> overrides; sym scalars got `CONDITIONAL_VALUE`/`prop_conditional`. Lookup miss
+> emits the Pascal 401 message and continues with a NIL ref. Two latent Phase-3
+> Line bugs fixed (exposed by the new Line dumps): earth-model default is **DERI
+> (3)** not SIMPLECARSON; the `linecode` property's canonical name is **`LineCode`**
+> (capitalized, for the 401 text). 4 `gen_props.py` Line+LineCode scenarios added,
+> `props.json` regenerated. 2-bus `linecode=` snapshot solves bit-for-bit vs the
+> oracle. Gate: dss-core lib **97** (+4 `exec::tests::line_*`), all suites green.
 
 **Pascal:** `PDElements/Line.pas` `TLineObj.FetchLineCode` (l.492–~575) and the
 `linecode` arm of `PropertySideEffects` (l.626).

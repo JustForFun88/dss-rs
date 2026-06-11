@@ -184,6 +184,68 @@ impl LineCodeObj {
         format!("LineCode.{}", self.data.name())
     }
 
+    // Read accessors consumed by `TLineObj.FetchLineCode` (Phase 4 WP4.2).
+    pub fn base_frequency(&self) -> f64 {
+        self.base_frequency
+    }
+    pub fn sym_components_model(&self) -> bool {
+        self.sym_components_model
+    }
+    pub fn r1(&self) -> f64 {
+        self.r1
+    }
+    pub fn x1(&self) -> f64 {
+        self.x1
+    }
+    pub fn r0(&self) -> f64 {
+        self.r0
+    }
+    pub fn x0(&self) -> f64 {
+        self.x0
+    }
+    pub fn c1(&self) -> f64 {
+        self.c1
+    }
+    pub fn c0(&self) -> f64 {
+        self.c0
+    }
+    pub fn rg(&self) -> f64 {
+        self.rg
+    }
+    pub fn xg(&self) -> f64 {
+        self.xg
+    }
+    pub fn rho(&self) -> f64 {
+        self.rho
+    }
+    pub fn units(&self) -> i32 {
+        self.units
+    }
+    pub fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    pub fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+    pub fn num_amp_ratings(&self) -> i32 {
+        self.num_amp_ratings
+    }
+    pub fn amp_ratings(&self) -> &[f64] {
+        &self.amp_ratings
+    }
+    pub fn nphases(&self) -> i32 {
+        self.fnphases
+    }
+    pub fn fline_type(&self) -> i32 {
+        self.fline_type
+    }
+    pub fn z(&self) -> Option<&CMatrix> {
+        self.z.as_ref()
+    }
+    pub fn yc(&self) -> Option<&CMatrix> {
+        self.yc.as_ref()
+    }
+
     fn nphases_usize(&self) -> usize {
         self.fnphases.max(0) as usize
     }
@@ -553,6 +615,7 @@ mod tests {
                 vars: &vars,
                 enums: &enums,
                 errors: &mut errors,
+                foreign: None,
             };
             cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
         }

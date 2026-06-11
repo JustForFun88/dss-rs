@@ -7,8 +7,8 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 4 WP4.1 done** (LineCode), on branch
-`phase-4-pd-elements`.
+Last updated: 2026-06-12, **Phase 4 WP4.2 done** (ObjectRef resolution +
+Line→LineCode fetch), on branch `phase-4-pd-elements`.
 
 > **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the full
 > gate → update this file → **stop and wait for explicit user confirmation** before
@@ -24,7 +24,7 @@ Last updated: 2026-06-12, **Phase 4 WP4.1 done** (LineCode), on branch
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ done (merged to `main`, commit `2ac8691`) |
-| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅; WP4.2–4.10 next |
+| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅; WP4.3–4.10 next |
 
 **Important:** Phases 2–3 live on the `phase-2-object-model` branch (off
 `main`), per the repo rule that commits happen only on explicit request and
@@ -85,8 +85,45 @@ then update this file and wait for confirmation (PHASE4_PLAN §0.8).
 - Gate: `cargo test --workspace` — dss-core lib **93** (was 87), props_roundtrip 1,
   golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
 
-**Next:** WP4.2 (ObjectRef resolution + `TLineObj.FetchLineCode`; convert Line's
-`linecode` from `NOT_PORTED` to a real `object_ref`). See PHASE4_PLAN §3.1 / WP4.2.
+**WP4.2 — ObjectRef resolution + Line→LineCode fetch — ✅ DONE, gate-green.**
+- **Shared engine (`obj/props.rs`, `obj/base.rs`, `exec/mod.rs`):**
+  - `PropDef` gained `object_class: Option<&'static str>`. `object_ref(name)`
+    keeps the Phase 3 string-storage behavior (Load/VSource shape refs stay
+    unresolved until Phase 5); the new `object_ref_class(class, name)` resolves
+    at parse time.
+  - `ForeignClassesView<'a>` trait + `PropEngine::foreign` field: a read view of
+    every class *except* the one being edited. `edit_active` builds it via
+    `split_at_mut(ci)` + `split_first_mut` (active class = excluded middle,
+    zero unsafe) and threads it into `parse_into`. The `ObjectRef` parse arm
+    resolves `cls.find(name)`; on miss it emits the Pascal 401 message
+    (`<Full>.<Prop>: <Class> object "<name>" not found.`) and continues with a
+    NIL reference.
+  - `DssObject::set_object_ref(idx, name, resolved)`: stores the dump name +
+    `ElemRef` and lets the element copy data immediately by downcasting the
+    `&dyn DssObject` (the `FetchLineCode` pattern). Dump name read back via
+    `get_string`.
+- **Line (`elements/pd/line.rs`):** `linecode` is now
+  `object_ref_class("LineCode", "LineCode")`. New fields `line_code_units`,
+  `line_code_ref`, `line_code_name`. `fetch_line_code` ports `TLineObj.FetchLineCode`
+  verbatim (copies sym/matrix Z·Yc, Rg/Xg/rho→Kxg, units→`FUnitsConvert`,
+  norm/emerg/ratings, zeroes the supplied props' set-order marks, resizes
+  phases, recalcs or copies matrices, `NConds := Fnphases`). `units=` side
+  effect now reconverts relative to the code's units when a code is set.
+  `kill_line_code_specified` (drops the ref on sym/matrix/switch overrides).
+  Added `CONDITIONAL_VALUE` + `prop_conditional` so the sym scalars render
+  `----` under a matrix model (matches the oracle). Two bug fixes surfaced by
+  the new Line property dumps: earth-model default is **DERI (3)**, not
+  SIMPLECARSON (Pascal `DSS.DefaultEarthModel := DERI`); the `linecode`
+  property name is **`LineCode`** (capitalized, for the 401 message).
+- **Goldens:** 4 Line+LineCode scenarios added to `gen_props.py`
+  (`line_code_sym`, `line_code_then_units`, `line_code_matrix`,
+  `line_code_then_r1`); `props.json` regenerated with the pinned oracle.
+- **Numeric check (WP4.2 DoD):** a 2-bus `linecode=` snapshot solves bit-for-bit
+  like the oracle (7198.343402 / 7194.911983 V, 2 iterations).
+- Gate: dss-core lib **97** (was 93; +4 `exec::tests::line_*`), props_roundtrip 1,
+  golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
+
+**Next:** WP4.3 (XfmrCode + GrowthShape catalog objects). See PHASE4_PLAN §WP4.3.
 
 ---
 
