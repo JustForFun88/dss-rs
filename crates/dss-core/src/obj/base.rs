@@ -160,6 +160,41 @@ pub trait DssObject {
         unreachable!("set_f64_array not implemented for property {idx}")
     }
 
+    /// Element count of a function-sized array property (Pascal
+    /// `TPropertyFlag.SizeIsFunction`, `PropertyOffset3` holding a function
+    /// pointer) — e.g. an XfmrCode/Transformer `XSCArray` whose length is
+    /// `(NumWindings-1)·NumWindings/2`.
+    fn array_size(&self, idx: usize) -> usize {
+        unreachable!("array_size not implemented for property {idx}")
+    }
+
+    /// `DoubleArrayOnStructArrayProperty` read (e.g. a transformer `kVs`): the
+    /// per-winding field values, one per active struct-array entry, in raw
+    /// (unscaled) units. The engine divides by `PropDef::scale` on dump.
+    fn get_struct_f64_array(&self, idx: usize) -> Vec<f64> {
+        unreachable!("get_struct_f64_array not implemented for property {idx}")
+    }
+    /// `DoubleArrayOnStructArrayProperty` write: `values[i]` is `Some` for the
+    /// i-th struct-array entry (already scaled) or `None` for an omitted token
+    /// (Pascal keeps the previous value). The implementor also advances the
+    /// struct-array index (`ActiveWinding := count`), matching the Pascal
+    /// `positionPtr^ := intVal`.
+    fn set_struct_f64_array(&mut self, idx: usize, values: &[Option<f64>]) {
+        let _ = values;
+        unreachable!("set_struct_f64_array not implemented for property {idx}")
+    }
+    /// `MappedStringEnumArrayOnStructArrayProperty` read (e.g. `Conns`): the
+    /// per-winding enum ordinals.
+    fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
+        unreachable!("get_struct_i32_array not implemented for property {idx}")
+    }
+    /// `MappedStringEnumArrayOnStructArrayProperty` write: ordinals for the
+    /// leading struct-array entries; also advances the struct-array index.
+    fn set_struct_i32_array(&mut self, idx: usize, values: &[i32]) {
+        let _ = values;
+        unreachable!("set_struct_i32_array not implemented for property {idx}")
+    }
+
     /// `BusProperty` write: `terminal` is 1-based (`PropertyOffset`); the
     /// element lowercases and flags `BusNameRedefined` (Pascal `SetBus`).
     fn set_bus_name(&mut self, terminal: usize, value: &str) {
