@@ -23,13 +23,16 @@ pub fn to_polar(mag: f64, ang: f64) -> Polar {
     Polar { mag, ang }
 }
 
-// The truncated constants from DSSUcomplex.pas, preserved on purpose.
+// TODO(compat): truncated constants reproduced from DSSUcomplex.pas.
+// Replace with f64::consts::PI and 180/PI once the 1:1 port is complete.
 #[allow(clippy::approx_constant)]
 const TRUNCATED_PI: f64 = 3.14159265359;
 const TRUNCATED_RAD_TO_DEG: f64 = 57.29577951;
 
 /// The private `ATAN2(x, iy)` from DSSUcomplex.pas: a hand-rolled atan2 whose
 /// quadrant correction uses the truncated pi. Argument order is (re, im).
+///
+/// TODO(compat): replace with `f64::atan2` once the 1:1 port is complete.
 fn pascal_atan2(x: f64, iy: f64) -> f64 {
     if x < 0.0 && iy >= 0.0 {
         (iy / x).atan() + TRUNCATED_PI

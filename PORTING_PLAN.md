@@ -334,6 +334,28 @@ simulator; P7–P8 → full behavior parity; P9 → 1:1 including exotics.
 - **CI**: PR job = fmt + clippy + unit + fast integration; nightly = full feeder suite +
   8500-node criterion benchmark with regression alert.
 
+### 4.1 `TODO(compat)` — bug-for-bug compatibility markers
+
+Wherever the Rust code deliberately reproduces an upstream inexactness or bug from the
+Pascal/C/Python stack **only** to stay numerically identical to the oracle, the site is
+marked with a `TODO(compat):` comment stating what the quirk is and what the clean
+replacement will be. Examples already in the tree: the truncated
+`pi = 3.14159265359` / `rad→deg = 57.29577951` constants in the RPN calculator and
+`DSSUcomplex` polar helpers, the hand-rolled `ATAN2`, FPC `Round`'s integer-indefinite
+path (`inf` → 0), the single-point "standard deviation = the value itself" quirk in
+`RCDMeanAndStdDev`, `TcMatrix.Invert` leaving the matrix half-transformed on a singular
+pivot, and the unchecked zero pivot in Kron reduction.
+
+Rules:
+1. Every such site **must** carry `TODO(compat):` — they are intentionally greppable
+   (`rg "TODO\(compat\)"`); nothing else may use that tag.
+2. Each marker explains the quirk, where it came from, and the intended clean fix.
+3. They are **not** to be "fixed" during the port — the goldens pin them, and silently
+   improving precision is indistinguishable from a porting bug in the gates.
+4. **After the 1:1 port is finished** (final acceptance in §6 green), the markers are
+   swept in one dedicated cleanup pass: replace each quirk with the correct/precise
+   implementation and regenerate the affected goldens deliberately, one quirk at a time.
+
 ## 5. Risk Register
 
 | Risk | L/I | Mitigation |

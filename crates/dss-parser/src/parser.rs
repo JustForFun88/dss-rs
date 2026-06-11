@@ -45,6 +45,9 @@ impl std::error::Error for ParserError {}
 
 /// FPC `Val` for doubles. Rust's `f64::from_str` matches it on every probed
 /// case except the verbose `infinity` spelling, which is rejected here.
+///
+/// TODO(compat): the `infinity` rejection only mirrors FPC's narrower
+/// grammar; collapse to plain `f64::from_str` once the 1:1 port is complete.
 fn val_f64(s: &str) -> Option<f64> {
     let t = s.strip_prefix(['+', '-']).unwrap_or(s);
     if t.eq_ignore_ascii_case("infinity") {
@@ -84,6 +87,11 @@ fn val_i32(s: &str) -> Option<i32> {
 /// FPC `Round`: round-to-nearest-even to Int64 (x87/SSE default mode; out of
 /// range and non-finite give the "integer indefinite" `i64::MIN`), then
 /// truncated to i32 like the Pascal `Integer := Round(...)` assignment.
+///
+/// TODO(compat): the integer-indefinite path (`inf`/`nan`/overflow → wrapped
+/// `i64::MIN`, e.g. "inf" → 0) reproduces an FPC/x86 implementation artifact
+/// verified via probe_val.py; make it a proper error once the 1:1 port is
+/// complete.
 fn pascal_round_to_i32(x: f64) -> i32 {
     let r = x.round_ties_even();
     let wide = if r >= -(2f64.powi(63)) && r < 2f64.powi(63) {
