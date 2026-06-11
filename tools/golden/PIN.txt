@@ -1,0 +1,6 @@
+# Oracle pin — regenerate goldens ONLY with exactly these versions.
+# The backend (dss-python-backend) is the compiled dss_capi engine; 0.14.5 is
+# the same stable release as the Pascal source vendored in .inputs/dss_capi.
+python==3.12.4
+dss-python==0.15.7
+dss-python-backend==0.14.5

@@ -1,0 +1,8 @@
+[package]
+name = "dss-sparse"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+faer = "0.24.0"
+num-complex.workspace = true

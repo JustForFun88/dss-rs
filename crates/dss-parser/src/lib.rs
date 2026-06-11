@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use std::fmt;
-use std::str::FromStr;
+#![forbid(unsafe_code)]
 
 pub mod rpn;
 
@@ -191,7 +189,7 @@ pub mod rpn;
 // impl ParserVar {
 //     pub fn new() -> Self {
 //         let mut variables = HashMap::new();
-        
+
 //         // Add intrinsic variables
 //         variables.insert("@lastfile".to_string(), "null".to_string());
 //         variables.insert("@lastexportfile".to_string(), "null".to_string());
@@ -213,7 +211,7 @@ pub mod rpn;
 //         } else {
 //             var_value.to_string()
 //         };
-        
+
 //         self.variables.insert(var_name.to_string(), var_definition);
 //         true
 //     }
@@ -340,7 +338,7 @@ pub mod rpn;
 
 //     fn get_token(&mut self) -> String {
 //         let chars: Vec<char> = self.cmd_buffer.chars().collect();
-        
+
 //         if self.position >= chars.len() {
 //             return String::new();
 //         }
@@ -353,11 +351,11 @@ pub mod rpn;
 //             let end_quote = self.end_quote_chars.chars().nth(quote_pos).unwrap();
 //             self.position += 1;
 //             let start = self.position;
-            
+
 //             while self.position < chars.len() && chars[self.position] != end_quote {
 //                 self.position += 1;
 //             }
-            
+
 //             let token = chars[start..self.position].iter().collect();
 //             if self.position < chars.len() {
 //                 self.position += 1; // skip end quote
@@ -383,7 +381,7 @@ pub mod rpn;
 //         // Handle delimiter
 //         if self.position < chars.len() {
 //             self.last_delimiter = chars[self.position];
-            
+
 //             if self.is_comment_char(chars[self.position], next_ch) {
 //                 self.position = chars.len(); // Skip to end on comment
 //             } else {
@@ -403,10 +401,10 @@ pub mod rpn;
 //         }
 
 //         let original_token = token.clone();
-        
+
 //         // Find dot or caret position
 //         let dot_pos = token.find('.').or_else(|| token.find('^'));
-        
+
 //         let var_name = if let Some(pos) = dot_pos {
 //             &token[..pos]
 //         } else {
@@ -416,7 +414,7 @@ pub mod rpn;
 //         if let Some(ref mut vars) = self.parser_vars {
 //             if vars.lookup(var_name) {
 //                 let var_value = vars.get_value();
-                
+
 //                 if var_value.starts_with('{') && var_value.ends_with('}') {
 //                     let inner_value = &var_value[1..var_value.len()-1];
 //                     if let Some(pos) = dot_pos {
@@ -444,7 +442,7 @@ pub mod rpn;
 //         if self.position < self.cmd_buffer.len() {
 //             self.last_delimiter = ' ';
 //             self.token_buffer = self.get_token();
-            
+
 //             if self.last_delimiter == '=' {
 //                 self.parameter_buffer = self.token_buffer.clone();
 //                 self.token_buffer = self.get_token();
@@ -462,17 +460,17 @@ pub mod rpn;
 
 //     pub fn parse_as_bus_name(&mut self, param: &str) -> (String, Vec<i32>) {
 //         self.token_buffer = param.to_string();
-        
+
 //         if self.auto_increment {
 //             self.next_param();
 //         }
 
 //         let mut nodes = Vec::new();
-        
+
 //         if let Some(dot_pos) = self.token_buffer.find('.') {
 //             let bus_name = self.token_buffer[..dot_pos].trim().to_string();
 //             let node_part = &self.token_buffer[dot_pos + 1..];
-            
+
 //             for node_str in node_part.split('.') {
 //                 if let Ok(node) = node_str.parse::<i32>() {
 //                     nodes.push(node);
@@ -480,7 +478,7 @@ pub mod rpn;
 //                     nodes.push(-1); // Error indicator
 //                 }
 //             }
-            
+
 //             (bus_name, nodes)
 //         } else {
 //             (self.token_buffer.clone(), nodes)
@@ -511,8 +509,8 @@ pub mod rpn;
 
 //             // Get token
 //             let start = parse_pos;
-//             while parse_pos < chars.len() && 
-//                   !chars[parse_pos].is_whitespace() && 
+//             while parse_pos < chars.len() &&
+//                   !chars[parse_pos].is_whitespace() &&
 //                   chars[parse_pos] != self.matrix_row_terminator {
 //                 parse_pos += 1;
 //             }
@@ -522,13 +520,13 @@ pub mod rpn;
 //             }
 
 //             let token: String = chars[start..parse_pos].iter().collect();
-            
+
 //             if elements_found < expected_size {
 //                 if let Ok(value) = token.parse::<f64>() {
 //                     vector[elements_found] = value;
 //                 }
 //             }
-            
+
 //             elements_found += 1;
 
 //             if parse_pos < chars.len() && chars[parse_pos] == self.matrix_row_terminator {
@@ -548,7 +546,7 @@ pub mod rpn;
 
 //     pub fn make_integer(&mut self) -> Result<i32, ParserError> {
 //         self.convert_error = false;
-        
+
 //         if self.auto_increment {
 //             self.next_param();
 //         }
@@ -581,7 +579,7 @@ pub mod rpn;
 
 //     pub fn make_double(&mut self) -> Result<f64, ParserError> {
 //         self.convert_error = false;
-        
+
 //         if self.auto_increment {
 //             self.next_param();
 //         }
@@ -726,11 +724,11 @@ pub mod rpn;
 //     fn test_basic_parsing() {
 //         let mut parser = DSSParser::new();
 //         parser.set_cmd_string("param1=value1 param2=value2");
-        
+
 //         let param1 = parser.next_param();
 //         assert_eq!(param1, "param1");
 //         assert_eq!(parser.get_token(), "value1");
-        
+
 //         let param2 = parser.next_param();
 //         assert_eq!(param2, "param2");
 //         assert_eq!(parser.get_token(), "value2");
@@ -749,11 +747,11 @@ pub mod rpn;
 //     fn test_variable_parsing() {
 //         let mut vars = ParserVar::new();
 //         vars.add("@myvar", "42");
-        
+
 //         let mut parser = DSSParser::new();
 //         parser.set_vars(vars);
 //         parser.set_cmd_string("@myvar");
-        
+
 //         parser.next_param();
 //         let result = parser.make_integer().unwrap();
 //         assert_eq!(result, 42);
