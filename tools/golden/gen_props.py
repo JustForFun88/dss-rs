@@ -234,6 +234,49 @@ SCENARIOS = [
             "New GrowthShape.gs1 like=base",
         ],
     },
+    {
+        "name": "xfmrcode_default",
+        "target": "XfmrCode.xc1",
+        "commands": ["New XfmrCode.xc1"],
+    },
+    {
+        "name": "xfmrcode_full",
+        "target": "XfmrCode.xc1",
+        "commands": [
+            "New XfmrCode.xc1 phases=3 windings=3 "
+            "conns=(delta, wye, wye) kvs=(115, 12.47, 4.16) kvas=(5000, 5000, 5000) "
+            "xhl=8 xht=10 xlt=9 %loadloss=0.5 %noloadloss=0.2 %imag=0.1 "
+            "thermal=2 n=0.8 m=0.8 flrise=65 hsrise=15 ppm=2",
+        ],
+    },
+    {
+        "name": "xfmrcode_wdg_seq",
+        "target": "XfmrCode.xc1",
+        "commands": [
+            "New XfmrCode.xc1 windings=2 phases=1",
+            "~ wdg=1 conn=wye kv=7.2 kva=25 %r=1.2 tap=1.05 rneut=0.1 xneut=0.2 "
+            "maxtap=1.1 mintap=0.9 numtaps=32 rdcohms=0.5",
+            "~ wdg=2 conn=wye kv=0.24 kva=25 %r=1.2",
+        ],
+    },
+    {
+        "name": "xfmrcode_xscarray",
+        "target": "XfmrCode.xc1",
+        "commands": ["New XfmrCode.xc1 windings=3 xscarray=(8 10 9)"],
+    },
+    {
+        "name": "xfmrcode_ratings",
+        "target": "XfmrCode.xc1",
+        "commands": ["New XfmrCode.xc1 seasons=3 ratings=(600, 700, 800)"],
+    },
+    {
+        "name": "xfmrcode_makelike",
+        "target": "XfmrCode.xc1",
+        "commands": [
+            "New XfmrCode.base windings=2 kvs=(115, 4.16) kvas=(3000, 3000) xhl=7",
+            "New XfmrCode.xc1 like=base",
+        ],
+    },
 ]
 
 

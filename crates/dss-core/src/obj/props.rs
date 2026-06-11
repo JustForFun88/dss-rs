@@ -54,6 +54,18 @@ pub enum PropType {
     /// (resolution to live objects arrives with the classes that consume
     /// them — LoadShape, GrowthShape, Spectrum-as-reference, ...).
     ObjectRef,
+    /// `DoubleVArrayProperty` with `SizeIsFunction`: a dynamic double array
+    /// whose element count is computed by the object ([`DssObject::array_size`]),
+    /// e.g. a transformer `XSCArray` (length `(NumWindings-1)·NumWindings/2`).
+    DoubleVArray,
+    /// `DoubleArrayOnStructArrayProperty`: writes one double per struct-array
+    /// entry (e.g. a transformer `kVs` → each winding's `kVLL`). The count is
+    /// the integer property `size_prop` (`NumWindings`); omitted tokens keep the
+    /// previous value. Rendered `[v1, v2, ]`.
+    DoubleArrayOnStruct,
+    /// `MappedStringEnumArrayOnStructArrayProperty`: an enum per struct-array
+    /// entry (e.g. a transformer `Conns`). Rendered `[s1, s2, ]`.
+    EnumArrayOnStruct,
 }
 
 /// Pascal `TPropertyFlag` set, as a small bitset. Only the flags that affect
@@ -232,6 +244,28 @@ impl PropDef {
         Self {
             object_class: Some(class),
             ..Self::base(name, PropType::ObjectRef)
+        }
+    }
+    /// `DoubleVArrayProperty` whose length is computed by the object
+    /// ([`DssObject::array_size`]); e.g. a transformer `XSCArray`.
+    pub fn double_v_array(name: &'static str) -> Self {
+        Self::base(name, PropType::DoubleVArray)
+    }
+    /// `DoubleArrayOnStructArrayProperty` over `count_prop` struct entries
+    /// (the 1-based ordinal of the count integer, e.g. `Windings`).
+    pub fn double_array_on_struct(name: &'static str, count_prop: usize) -> Self {
+        Self {
+            size_prop: count_prop,
+            ..Self::base(name, PropType::DoubleArrayOnStruct)
+        }
+    }
+    /// `MappedStringEnumArrayOnStructArrayProperty` over `count_prop` struct
+    /// entries (e.g. a transformer `Conns`).
+    pub fn enum_array_on_struct(name: &'static str, enum_id: EnumId, count_prop: usize) -> Self {
+        Self {
+            enum_id: Some(enum_id),
+            size_prop: count_prop,
+            ..Self::base(name, PropType::EnumArrayOnStruct)
         }
     }
 
@@ -485,6 +519,67 @@ impl ClassProps {
                 obj.set_f64_array(idx, buf);
                 Ok(0)
             }
+            PropType::DoubleVArray => {
+                // Pascal `DoubleVArrayProperty` + `SizeIsFunction`: the object
+                // computes the element count (e.g. XSCArray = XscSize).
+                let n = obj.array_size(idx);
+                let mut buf = vec![0.0; n];
+                interpret_dbl_array(eng.parser, eng.vars, value, n, &mut buf)?;
+                if pd.flags.contains(PropFlags::NON_ZERO) && buf.contains(&0.0) {
+                    eng.errors
+                        .push(format!("{full}.{}: Elements cannot be zero.", pd.name));
+                    return Ok(0);
+                }
+                if pd.scale != 1.0 {
+                    for v in &mut buf {
+                        *v *= pd.scale;
+                    }
+                }
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
+            PropType::DoubleArrayOnStruct => {
+                // Pascal `DoubleArrayOnStructArrayProperty`: iterate exactly
+                // `count` struct entries, skipping omitted tokens (which keep
+                // the previous value), applying the scale to the rest.
+                let count = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut vals = vec![None; count];
+                for slot in vals.iter_mut() {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if !token.is_empty() {
+                        let v = eng.parser.make_double(eng.vars)? * pd.scale;
+                        *slot = Some(v);
+                    }
+                }
+                obj.set_struct_f64_array(idx, &vals);
+                Ok(0)
+            }
+            PropType::EnumArrayOnStruct => {
+                // Pascal `MappedStringEnumArrayOnStructArrayProperty`: a list of
+                // enum strings, one per struct entry.
+                let enum_id = pd.enum_id.expect("enum-array property needs an enum");
+                let count = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut ords = Vec::with_capacity(count);
+                for _ in 0..count {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if token.is_empty() {
+                        break;
+                    }
+                    let ord = eng
+                        .enums
+                        .get(enum_id)
+                        .string_to_ordinal(&token.to_lowercase())?;
+                    ords.push(ord);
+                }
+                obj.set_struct_i32_array(idx, &ords);
+                Ok(0)
+            }
         }
     }
 
@@ -535,6 +630,33 @@ impl ClassProps {
             }
             PropType::DoubleFArray => {
                 get_dss_array_f64(pd.size_prop, obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::DoubleVArray => {
+                get_dss_array_f64(obj.array_size(idx), obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::DoubleArrayOnStruct => {
+                // Pascal: `[` + `%g, ` per entry (field / scale) + `]`.
+                let vals = obj.get_struct_f64_array(idx);
+                let mut s = String::from("[");
+                for v in vals {
+                    let value = if pd.scale == 1.0 { v } else { v / pd.scale };
+                    s.push_str(&float_to_str_ex(value));
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
+            }
+            PropType::EnumArrayOnStruct => {
+                // Pascal: `[` + `OrdinalToString, ` per entry + `]`.
+                let enum_id = pd.enum_id.expect("enum-array property needs an enum");
+                let en = enums.get(enum_id);
+                let mut s = String::from("[");
+                for ord in obj.get_struct_i32_array(idx) {
+                    s.push_str(&en.ordinal_to_string(ord));
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
             }
             PropType::Bus => obj.get_bus_name(pd.size_prop),
             PropType::Complex => {

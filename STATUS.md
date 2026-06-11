@@ -7,9 +7,10 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 4 WP4.3 (GrowthShape half) done** — the
-GrowthShape catalog object; XfmrCode (the other half of WP4.3) is next. On
-branch `phase-4-pd-elements`.
+Last updated: 2026-06-12, **Phase 4 WP4.3 done (both halves)** — GrowthShape
+(earlier) + XfmrCode (this step), plus the shared `Winding` struct and the
+struct-array property-engine machinery. Next: WP4.4 (Transformer). On branch
+`phase-4-pd-elements`.
 
 > **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the full
 > gate → update this file → **stop and wait for explicit user confirmation** before
@@ -25,7 +26,7 @@ branch `phase-4-pd-elements`.
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ done (merged to `main`, commit `2ac8691`) |
-| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅; WP4.3b (XfmrCode) → 4.10 next |
+| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅, WP4.3b (XfmrCode) ✅; WP4.4 (Transformer) → 4.10 next |
 
 **Important:** Phases 2–3 live on the `phase-2-object-model` branch (off
 `main`), per the repo rule that commits happen only on explicit request and
@@ -142,10 +143,52 @@ then update this file and wait for confirmation (PHASE4_PLAN §0.8).
 - Gate: dss-core lib **103** (was 97; +6 growth_shape), props_roundtrip 1,
   golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
 
-**Next:** WP4.3b — XfmrCode catalog object. It shares the winding-property web
-with Transformer (WP4.4); per PHASE4_PLAN §WP4.3 step 1, either define the
-shared `Winding` struct now (in `elements/pd/transformer/winding.rs`) or do
-XfmrCode after WP4.4. See PHASE4_PLAN §WP4.3.
+**WP4.3b — XfmrCode — ✅ DONE, gate-green.** Took the "define the shared
+`Winding` struct now" branch of PHASE4_PLAN §WP4.3 step 1 (the struct is pure,
+fully-specified data — nothing in it depends on Transformer behavior).
+- **`src/elements/pd/winding.rs` (`Winding`)** — port of the Pascal `TWinding`
+  record (`Transformer.pas` l.162): connection/kVLL/VBase/kVA/puTap/Rpu/Rdcpu/
+  RdcOhms/Rneut/Xneut/Y_PPM/RdcSpecified + tap-changer fields, with `Winding::new`
+  (= `TWinding.Init`, the 12.47 kV / 1000 kVA wye defaults, RdcOhms=0.26435153)
+  and `compute_anti_float_adder` (`Y_PPM = -ppm/(VBase²/VABase1ph)/2`). Shared
+  verbatim by Transformer (WP4.4). 2 inline tests.
+- **`src/elements/general/xfmr_code.rs` (`TXfmrCodeObj`)** — props 1–39 + Like.
+  Per-winding scalars (`kV/kVA/Tap/%R/RNeut/XNeut/MaxTap/MinTap/RDCOhms/Conn/
+  NumTaps`) reuse the existing Double/Integer/MappedEnum prop types — the object
+  indexes `Winding[ActiveWinding]` internally (no new engine machinery). The
+  plural array forms (`Conns/kVs/kVAs/Taps/%Rs`) and `XSCArray` use the new
+  struct-array prop types (below). `PropertySideEffects` ports the winding-edit
+  state machine (`windings` realloc+re-Init + XSC grow-to-0.30; `kVA`/`kVAs`
+  default Norm/EmergHkVA to 1.1×/1.5×; `%R`/`%Rs`↔`%LoadLoss` split; `X*` set
+  NeedsRecalc; `RDCOhms` sets RdcSpecified; `Seasons` resizes Ratings).
+  `EndEdit` copies `XHL/XHT/XLT` into the leading XSC slots (≤ 3 windings).
+  `MakeLike` via `SetNumWindings` + winding copy. 7 inline tests.
+  Registered as a `DSS_OBJECT` class after GrowthShape.
+- **Shared engine additions** (reused by Transformer WP4.4):
+  - 3 new `PropType`s — `DoubleVArray` (function-sized, count from
+    `DssObject::array_size`, e.g. `XSCArray = (NumWindings-1)·NumWindings/2`),
+    `DoubleArrayOnStruct` (one double per struct entry, count = an integer prop;
+    omitted tokens keep the prior value; rendered `[v, v, ]`), and
+    `EnumArrayOnStruct` (enum per struct entry; `[s, s, ]`).
+  - `DssObject` trait grew `array_size`, `get/set_struct_f64_array`,
+    `get/set_struct_i32_array` (the struct-array setters also advance the active
+    index, Pascal `positionPtr^ := intVal`).
+- **`%`-name convention:** `pctR→%R`, `pctLoadLoss→%LoadLoss`,
+  `pctNoLoadLoss→%NoLoadLoss`, `pctIMag→%IMag`, `pctRs→%Rs` are named directly in
+  the prop table (same as Load/Spectrum).
+- **Deferrals:** `PullFromTransformer` (reverse copy, only used by Transformer's
+  `XfmrCode=`-from-transformer path) deferred to WP4.4; `CSVFile`-style file
+  inputs N/A (XfmrCode has none). `VABase`/`Y_PPM` are computed faithfully but
+  inert until Transformer consumes them.
+- **Goldens:** 6 XfmrCode scenarios added to `gen_props.py`
+  (`xfmrcode_default/_full/_wdg_seq/_xscarray/_ratings/_makelike`);
+  `props.json` regenerated with the pinned oracle (dump format matched exactly:
+  array-on-struct `[a, b, ]`, XSCArray/Ratings the standard `[ a b c]`).
+- Gate: dss-core lib **112** (was 103; +7 xfmr_code, +2 winding), props_roundtrip
+  1, golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
+
+**Next:** WP4.4 — Transformer (the heart of the phase; reuses `Winding` + the
+struct-array prop machinery). See PHASE4_PLAN §WP4.4.
 
 ---
 
