@@ -301,7 +301,19 @@ WP4.9).
 
 ---
 
-### WP4.3 — XfmrCode + GrowthShape (catalog objects) [6%]
+### WP4.3 — XfmrCode + GrowthShape (catalog objects) [6%] 🔶 GrowthShape ✅ DONE
+
+> Status: **GrowthShape half complete, gate-green.**
+> `crates/dss-core/src/elements/general/growth_shape.rs` (`TGrowthShapeObj`):
+> props 1–6 + Like; `Year` carries `APPLY_ROUND` (FPC banker's rounding — oracle
+> rounds `2002.5 → 2002`); `PropertySideEffects` reallocs Year/Multiplier on
+> `NPts`; `EndEdit → recalc_year_mult`; `get_mult`/`recalc_year_mult` ported
+> verbatim (base year and earlier return 1.0; multipliers apply to the
+> *following* years). `CSVFile`/`SngFile`/`DblFile` → `NOT_PORTED` (§5).
+> Registered as a `DSS_OBJECT` class after LineCode. 6 inline unit tests +
+> 5 `gen_props.py` scenarios; `props.json` regenerated (dump format matched the
+> oracle exactly). dss-core lib **103**, all suites green.
+> **Remaining: XfmrCode** (needs the WP4.4 `Winding` struct — see step 1).
 
 **Pascal:** `General/XfmrCode.pas` (671 lines, props 1–39 — same winding-property
 web as Transformer minus buses/bank/etc.), `General/GrowthShape.pas` (289 lines,

@@ -196,6 +196,44 @@ SCENARIOS = [
             "New Line.l1 bus1=a bus2=b linecode=mtx601 r1=0.5 length=1 units=mi",
         ],
     },
+    # --- GrowthShape (WP4.3) ---
+    {
+        "name": "growthshape_default",
+        "target": "GrowthShape.gs1",
+        "commands": ["New GrowthShape.gs1"],
+    },
+    {
+        "name": "growthshape_full",
+        "target": "GrowthShape.gs1",
+        "commands": [
+            "New GrowthShape.gs1 npts=5 "
+            "year=(1999 2000 2001 2005 2010) "
+            "mult=(1.10 1.07 1.05 1.025 1.01)",
+        ],
+    },
+    {
+        "name": "growthshape_year_rounds",
+        "target": "GrowthShape.gs1",
+        "commands": [
+            "New GrowthShape.gs1 npts=3 year=(2000.4 2001.6 2002.5) mult=(1.05 1.04 1.03)",
+        ],
+    },
+    {
+        "name": "growthshape_edit_shrink",
+        "target": "GrowthShape.gs1",
+        "commands": [
+            "New GrowthShape.gs1 npts=4 year=(2000 2001 2002 2003) mult=(1.05 1.04 1.03 1.02)",
+            "Edit GrowthShape.gs1 npts=2",
+        ],
+    },
+    {
+        "name": "growthshape_makelike",
+        "target": "GrowthShape.gs1",
+        "commands": [
+            "New GrowthShape.base npts=2 year=(2000 2010) mult=(1.05 1.02)",
+            "New GrowthShape.gs1 like=base",
+        ],
+    },
 ]
 
 
