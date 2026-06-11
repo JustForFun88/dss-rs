@@ -66,6 +66,13 @@ pub enum PropType {
     /// `MappedStringEnumArrayOnStructArrayProperty`: an enum per struct-array
     /// entry (e.g. a transformer `Conns`). Rendered `[s1, s2, ]`.
     EnumArrayOnStruct,
+    /// `BusOnStructArrayProperty` (transformer `bus`): the active struct-array
+    /// entry's bus (the active winding's terminal).
+    BusOnStruct,
+    /// `BusesOnStructArrayProperty` (transformer `buses`): one bus per struct
+    /// entry, count = the integer property `size_prop` (`NumWindings`);
+    /// rendered `[b1, b2, ]`.
+    BusesOnStruct,
 }
 
 /// Pascal `TPropertyFlag` set, as a small bitset. Only the flags that affect
@@ -266,6 +273,18 @@ impl PropDef {
             enum_id: Some(enum_id),
             size_prop: count_prop,
             ..Self::base(name, PropType::EnumArrayOnStruct)
+        }
+    }
+    /// `BusOnStructArrayProperty` (transformer `bus`): the active winding's bus.
+    pub fn bus_on_struct(name: &'static str) -> Self {
+        Self::base(name, PropType::BusOnStruct)
+    }
+    /// `BusesOnStructArrayProperty` (transformer `buses`) over `count_prop`
+    /// struct entries (the 1-based ordinal of `NumWindings`).
+    pub fn buses_on_struct(name: &'static str, count_prop: usize) -> Self {
+        Self {
+            size_prop: count_prop,
+            ..Self::base(name, PropType::BusesOnStruct)
         }
     }
 
@@ -580,6 +599,27 @@ impl ClassProps {
                 obj.set_struct_i32_array(idx, &ords);
                 Ok(0)
             }
+            PropType::BusOnStruct => {
+                obj.set_active_struct_bus(value);
+                Ok(0)
+            }
+            PropType::BusesOnStruct => {
+                // Pascal `BusesOnStructArrayProperty`: one bus token per struct
+                // entry (`NumWindings`); omitted tokens keep the prior value.
+                let count = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut vals = vec![None; count];
+                for slot in vals.iter_mut() {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if !token.is_empty() {
+                        *slot = Some(token);
+                    }
+                }
+                obj.set_struct_buses(&vals);
+                Ok(0)
+            }
         }
     }
 
@@ -659,6 +699,17 @@ impl ClassProps {
                 s
             }
             PropType::Bus => obj.get_bus_name(pd.size_prop),
+            PropType::BusOnStruct => obj.get_active_struct_bus(),
+            PropType::BusesOnStruct => {
+                // Pascal: `[` + `<bus>, ` per struct entry + `]`.
+                let mut s = String::from("[");
+                for b in obj.get_struct_buses() {
+                    s.push_str(&b);
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
+            }
             PropType::Complex => {
                 // TODO(phase4): match the oracle's exact complex rendering when
                 // property-dump goldens cover these classes.

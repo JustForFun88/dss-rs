@@ -192,6 +192,69 @@ impl XfmrCodeObj {
         obj
     }
 
+    /// Read accessors for `TTransfObj.FetchXfmrCode` (the transformer copies
+    /// the whole winding web out of a resolved `XfmrCode`).
+    pub fn fnphases(&self) -> i32 {
+        self.fnphases
+    }
+    pub fn num_windings(&self) -> i32 {
+        self.num_windings
+    }
+    pub fn windings(&self) -> &[Winding] {
+        &self.windings
+    }
+    pub fn xhl(&self) -> f64 {
+        self.xhl
+    }
+    pub fn xht(&self) -> f64 {
+        self.xht
+    }
+    pub fn xlt(&self) -> f64 {
+        self.xlt
+    }
+    pub fn xsc(&self) -> &[f64] {
+        &self.xsc
+    }
+    pub fn thermal_time_const(&self) -> f64 {
+        self.thermal_time_const
+    }
+    pub fn n_thermal(&self) -> f64 {
+        self.n_thermal
+    }
+    pub fn m_thermal(&self) -> f64 {
+        self.m_thermal
+    }
+    pub fn flrise(&self) -> f64 {
+        self.flrise
+    }
+    pub fn hsrise(&self) -> f64 {
+        self.hsrise
+    }
+    pub fn pct_load_loss(&self) -> f64 {
+        self.pct_load_loss
+    }
+    pub fn pct_no_load_loss(&self) -> f64 {
+        self.pct_no_load_loss
+    }
+    pub fn pct_imag(&self) -> f64 {
+        self.pct_imag
+    }
+    pub fn norm_max_hkva(&self) -> f64 {
+        self.norm_max_hkva
+    }
+    pub fn emerg_max_hkva(&self) -> f64 {
+        self.emerg_max_hkva
+    }
+    pub fn ppm_float_factor(&self) -> f64 {
+        self.ppm_float_factor
+    }
+    pub fn num_kva_ratings(&self) -> i32 {
+        self.num_kva_ratings
+    }
+    pub fn kva_ratings(&self) -> &[f64] {
+        &self.kva_ratings
+    }
+
     /// Active winding as a 0-based index, clamped into range.
     fn aw(&self) -> usize {
         (self.active_winding.clamp(1, self.num_windings.max(1)) - 1) as usize

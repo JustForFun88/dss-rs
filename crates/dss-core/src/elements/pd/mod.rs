@@ -5,6 +5,8 @@
 //! [`CktElement::get_currents`]: crate::elements::traits::CktElement::get_currents
 
 pub mod line;
+pub mod transformer;
 pub mod winding;
 
 pub use line::Line;
+pub use transformer::Transformer;

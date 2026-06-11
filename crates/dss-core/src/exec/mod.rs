@@ -17,7 +17,7 @@ use dss_parser::{Parser, ParserVars};
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve, xfmr_code};
 use crate::elements::pc::{load, vsource};
-use crate::elements::pd::line;
+use crate::elements::pd::{line, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::{EnumId, EnumRegistry};
@@ -536,6 +536,11 @@ impl Dss {
                 load::class_props(&enums),
                 |name| Box::new(load::Load::new(name)),
                 ElemKind::Load,
+            ),
+            DssClass::ckt_class(
+                transformer::class_props(&enums),
+                |name| Box::new(transformer::Transformer::new(name)),
+                ElemKind::Transformer,
             ),
         ];
         let class_by_name = classes
