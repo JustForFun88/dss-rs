@@ -51,6 +51,14 @@ impl DssObjData {
         self.prp_sequence.get(index).copied().unwrap_or(0) != 0
     }
 
+    /// Pascal `PrpSequence[index] := 0`: spec-set side effects clear the
+    /// "explicitly set" marks of competing properties.
+    pub fn clear_seq(&mut self, index: usize) {
+        if index < self.prp_sequence.len() {
+            self.prp_sequence[index] = 0;
+        }
+    }
+
     /// Pascal `TDSSObject.MakeLike`: the base-class part of `like=` copies the
     /// source's whole `PrpSequence` (counter slot included) onto the target,
     /// so `Save` later writes the copied properties as explicitly set. Class
@@ -89,6 +97,20 @@ pub trait DssObject {
     fn data(&self) -> &DssObjData;
     fn data_mut(&mut self) -> &mut DssObjData;
 
+    /// `&dyn Any` view for the rare flows that need a concrete downcast
+    /// (`MakeLike` between circuit elements copies matrices that the typed
+    /// accessors cannot express).
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Circuit-element view (Pascal `obj is TDSSCktElement`). `None` for
+    /// `DSS_OBJECT` classes like TCC_Curve and Spectrum.
+    fn as_ckt_element(&self) -> Option<&dyn crate::elements::traits::CktElement> {
+        None
+    }
+    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn crate::elements::traits::CktElement> {
+        None
+    }
+
     fn get_f64(&self, idx: usize) -> f64 {
         unreachable!("get_f64 not implemented for property {idx}")
     }
@@ -119,6 +141,44 @@ pub trait DssObject {
     }
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         unreachable!("set_f64_array not implemented for property {idx}")
+    }
+
+    /// `BusProperty` write: `terminal` is 1-based (`PropertyOffset`); the
+    /// element lowercases and flags `BusNameRedefined` (Pascal `SetBus`).
+    fn set_bus_name(&mut self, terminal: usize, value: &str) {
+        unreachable!("set_bus_name not implemented (terminal {terminal})")
+    }
+    fn get_bus_name(&self, terminal: usize) -> String {
+        unreachable!("get_bus_name not implemented (terminal {terminal})")
+    }
+
+    /// `ComplexProperty` / `ComplexPartsProperty`: both parse a 2-vector
+    /// `(re, im)`; the class stores it as one `Complex` field or two doubles.
+    fn get_complex(&self, idx: usize) -> (f64, f64) {
+        unreachable!("get_complex not implemented for property {idx}")
+    }
+    fn set_complex(&mut self, idx: usize, re: f64, im: f64) {
+        unreachable!("set_complex not implemented for property {idx}")
+    }
+
+    /// `ComplexPartSymMatrixProperty` write: `values` is the full `order²`
+    /// column-major matrix already scaled; `real` selects the re/im part
+    /// (Pascal writes one part with stride 2, preserving the other).
+    fn set_matrix_part(&mut self, idx: usize, values: &[f64], order: usize, real: bool) {
+        unreachable!("set_matrix_part not implemented for property {idx}")
+    }
+    /// Read one part of the matrix back, column-major, unscaled; `None` when
+    /// the matrix is not allocated.
+    fn get_matrix_part(&self, idx: usize, real: bool) -> Option<(Vec<f64>, usize)> {
+        unreachable!("get_matrix_part not implemented for property {idx}")
+    }
+
+    /// Pascal `ScaledByFunction` (`PropertyOffset2` holding a function
+    /// pointer): the per-class scale for property `idx`. The engine multiplies
+    /// parsed values by `prop_scale(idx, false)` and divides dumps by
+    /// `prop_scale(idx, true)`.
+    fn prop_scale(&self, idx: usize, getter: bool) -> f64 {
+        1.0
     }
 
     /// Pascal `PropertySideEffects`: run after property `idx` is written.

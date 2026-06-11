@@ -101,6 +101,9 @@ impl DssObject for TccCurveObj {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.data
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
     fn get_i32(&self, idx: usize) -> i32 {
         match idx {

@@ -184,12 +184,16 @@ dependencies = [
 [[package]]
 name = "dss-cli"
 version = "0.1.0"
+dependencies = [
+ "dss-core",
+]
 
 [[package]]
 name = "dss-core"
 version = "0.1.0"
 dependencies = [
  "dss-parser",
+ "dss-sparse",
  "num-complex",
  "serde",
  "serde_json",
