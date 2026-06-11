@@ -199,6 +199,10 @@ optimization — defer/skip; full rebuild is always correct.
 ## 3. Phased Roadmap
 
 Effort % = share of total port. Every phase ends with a **hard testing gate**.
+Phases 4+ each get a dedicated step-by-step execution plan (`PHASE<N>_PLAN.md` at the
+repo root, written just-in-time before the phase starts) breaking the summary below
+into small work packages with Pascal line references and per-WP definitions of done;
+when such a file exists it supersedes the summary here for execution purposes.
 
 ### Phase 0 — Tooling, oracle, faer spike, CI (~3%)
 - Save this plan as `PORTING_PLAN.md` in repo root.
@@ -253,19 +257,30 @@ Effort % = share of total port. Every phase ends with a **hard testing gate**.
   (d) all 8 load models exercised and matching.
 
 ### Phase 4 — Core PD elements + catalog objects (~10%)
+> **Detailed execution plan: [`PHASE4_PLAN.md`](PHASE4_PLAN.md)** — work packages
+> WP4.1–WP4.10 with Pascal line references, the object-reference-resolution and
+> control-element design decisions, the `define_properties!` macro spec, and the
+> controls-off variant-script gate procedure. Execute that file, not this summary.
 - Scope: `Transformer.pas`, `Capacitor.pas`, `Reactor.pas`, `LineCode.pas`,
-  `XfmrCode.pas`, full `Line.pas` LineCode path; `GrowthShape`, `Spectrum` (objects only).
+  `XfmrCode.pas`, full `Line.pas` LineCode path; `GrowthShape`, `Spectrum` (objects only);
+  RegControl/CapControl as parse-only objects (the IEEE masters create them).
   Introduce `define_properties!` macro; retrofit Phase 3 classes.
-- **Gate**: `golden_ieee13.rs`, `golden_ieee37.rs` with `controlmode=off` (oracle run the
-  same way) — voltages/powers/losses to 1e-6 rel; property-dump tests for all new classes.
+- **Gate**: `golden_feeders.rs` — IEEE13/IEEE37/IEEE123 controls-off variant scripts vs
+  new `tests/golden/phase4.json` (oracle run the same way) — voltages/powers/losses to
+  1e-6 rel, iteration counts exact; property-dump tests for all new classes.
 
 ### Phase 5 — Control loop, RegControl/CapControl, time-series modes (~10%)
+> **Detailed execution plan: [`PHASE5_PLAN.md`](PHASE5_PLAN.md)** — work packages
+> WP5.1–WP5.10 with the control-sampling borrow design (`CtrlCtx`), ControlQueue
+> semantics, the FPC-rounding tap-computation pitfall, and the gate test inventory.
+> Execute that file, not this summary.
 - Scope: `ControlQueue.pas`, `ControlElem.pas`, `RegControl.pas`, `CapControl.pas`,
   `LoadShape.pas`, `TempShape`, `PriceShape`, `XYcurve`, rest of `Solution.pas` +
   `SolutionAlgs.pas` for Snap/Daily/Yearly/DutyCycle, event log.
 - **Gate**: IEEE13 full master (regulator+caps): final tap positions **exactly** equal,
-  voltages 1e-6; IEEE123 with regulators: same; event log equality (numbers normalized);
-  a daily-mode loadshape case matches hourly voltage trajectories.
+  voltages 1e-6; IEEE123 with regulators: same — both vs the committed Phase-0 goldens;
+  event log equality (numbers normalized); a daily-mode loadshape case matches hourly
+  voltage trajectories (`tests/golden/phase5.json`).
 
 ### Phase 6 — Meters, monitors, topology, Generator; large-feeder gate (~12%)
 - Scope: `MeterElement`, `EnergyMeter.pas` (zones, registers, SAIFI/SAIDI),

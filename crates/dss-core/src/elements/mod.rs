@@ -1,4 +1,8 @@
-//! Concrete DSS element/object classes, ported under the directory layout of
-//! the Pascal `src` tree (see PORTING_PLAN.md §1).
-
+pub mod ckt;
 pub mod general;
+pub mod pc;
+pub mod pd;
+pub mod traits;
+
+pub use ckt::CktElementData;
+pub use traits::{CktElement, ElemRef, ElemStore, InjCtx, SysCtx};

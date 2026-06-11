@@ -201,6 +201,32 @@ pub struct EnumRegistry {
     pub units: EnumId,
     /// 'Earth Model' (`DSS.EarthModelEnum`).
     pub earth_model: EnumId,
+    /// 'Scan Type' (`DSS.ScanTypeEnum`).
+    pub scan_type: EnumId,
+    /// 'Sequence Type' (`DSS.SequenceEnum`).
+    pub sequence: EnumId,
+    /// 'Connection' (`DSS.ConnectionEnum`).
+    pub connection: EnumId,
+    /// 'VSource: Model' (Vsource.pas `ModelEnum`).
+    pub vsource_model: EnumId,
+    /// 'Load: Model' (Load.pas `LoadModelEnum`).
+    pub load_model: EnumId,
+    /// 'Load: Status' (Load.pas `LoadStatusEnum`).
+    pub load_status: EnumId,
+    /// 'Line Type' (`DSS.LineTypeEnum`).
+    pub line_type: EnumId,
+    /// 'Solution Mode' (`DSS.SolveModeEnum`).
+    pub solve_mode: EnumId,
+    /// 'Solution Algorithm' (`DSS.SolveAlgEnum`).
+    pub solve_alg: EnumId,
+    /// 'Control Mode' (`DSS.ControlModeEnum`).
+    pub control_mode: EnumId,
+    /// 'Random Type' (`DSS.RandomModeEnum`).
+    pub random_mode: EnumId,
+    /// 'Load Solution Model' (`DSS.DefaultLoadModelEnum`).
+    pub default_load_model: EnumId,
+    /// 'Circuit Model' (`DSS.CktModelEnum`).
+    pub ckt_model: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -210,6 +236,10 @@ pub type EnumId = usize;
 impl EnumRegistry {
     pub fn new() -> Self {
         let mut enums = Vec::new();
+        let mut push = |e: DssEnum| -> EnumId {
+            enums.push(e);
+            enums.len() - 1
+        };
 
         // Pascal TDSSContext.Create order is irrelevant here; ids are local.
         let mut earth = DssEnum::new(
@@ -221,8 +251,7 @@ impl EnumRegistry {
             &[1, 2, 3],
         );
         earth.default_value = 1;
-        let earth_model = enums.len();
-        enums.push(earth);
+        let earth_model = push(earth);
 
         let mut units = DssEnum::new(
             "Length Unit",
@@ -235,13 +264,212 @@ impl EnumRegistry {
             &[0, 1, 2, 3, 4, 5, 6, 7, 8, 4, 1],
         );
         units.default_value = 0;
-        let units_id = enums.len();
-        enums.push(units);
+        let units_id = push(units);
+
+        let scan_type = push(DssEnum::new(
+            "Scan Type",
+            true,
+            1,
+            1,
+            &["None", "Zero", "Positive"],
+            &[-1, 0, 1],
+        ));
+
+        let sequence = push(DssEnum::new(
+            "Sequence Type",
+            true,
+            1,
+            1,
+            &["Negative", "Zero", "Positive"],
+            &[-1, 0, 1],
+        ));
+
+        let connection = push(DssEnum::new(
+            "Connection",
+            true,
+            1,
+            2,
+            &["wye", "delta", "y", "ln", "ll"],
+            &[0, 1, 0, 0, 1],
+        ));
+
+        let vsource_model = push(DssEnum::new(
+            "VSource: Model",
+            true,
+            1,
+            1,
+            &["Thevenin", "Ideal"],
+            &[0, 1],
+        ));
+
+        let load_model = push(DssEnum::new(
+            "Load: Model",
+            true,
+            0,
+            0,
+            &[
+                "Constant PQ",
+                "Constant Z",
+                "Motor (constant P, quadratic Q)",
+                "CVR (linear P, quadratic Q)",
+                "Constant I",
+                "Constant P, fixed Q",
+                "Constant P, fixed X",
+                "ZIPV",
+            ],
+            &[1, 2, 3, 4, 5, 6, 7, 8],
+        ));
+
+        let mut status = DssEnum::new(
+            "Load: Status",
+            true,
+            1,
+            1,
+            &["Variable", "Fixed", "Exempt"],
+            &[0, 1, 2],
+        );
+        status.default_value = 0;
+        let load_status = push(status);
+
+        let mut ltype = DssEnum::new(
+            "Line Type",
+            true,
+            2,
+            4,
+            &[
+                "oh",
+                "ug",
+                "ug_ts",
+                "ug_cn",
+                "swt_ldbrk",
+                "swt_fuse",
+                "swt_sect",
+                "swt_rec",
+                "swt_disc",
+                "swt_brk",
+                "swt_elbow",
+                "busbar",
+            ],
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        );
+        ltype.default_value = 1;
+        let line_type = push(ltype);
+
+        let mut smode = DssEnum::new(
+            "Solution Mode",
+            true,
+            2,
+            9,
+            &[
+                "Snap",
+                "Daily",
+                "Yearly",
+                "M1",
+                "LD1",
+                "PeakDay",
+                "DutyCycle",
+                "Direct",
+                "MF",
+                "FaultStudy",
+                "M2",
+                "M3",
+                "LD2",
+                "AutoAdd",
+                "Dynamic",
+                "Harmonic",
+                "Time",
+                "HarmonicT",
+                "Snapshot",
+                "Dynamics",
+                "Harmonics",
+                "S",
+                "Y",
+                "H",
+                "T",
+                "F",
+            ],
+            &[
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 0, 14, 15, 0, 2, 15,
+                16, 9,
+            ],
+        );
+        smode.default_value = 0;
+        smode.use_first_found = true; // "Harm" is ambiguous in test files
+        smode.try_exact_first = true;
+        let solve_mode = push(smode);
+
+        let mut alg = DssEnum::new(
+            "Solution Algorithm",
+            true,
+            2,
+            2,
+            &["Normal", "Newton"],
+            &[0, 1],
+        );
+        alg.default_value = 0;
+        let solve_alg = push(alg);
+
+        let mut cmode = DssEnum::new(
+            "Control Mode",
+            true,
+            1,
+            1,
+            &["Off", "Static", "Event", "Time", "MultiRate"],
+            &[-1, 0, 1, 2, 3],
+        );
+        cmode.default_value = 0;
+        let control_mode = push(cmode);
+
+        let mut rmode = DssEnum::new(
+            "Random Type",
+            true,
+            1,
+            1,
+            &["None", "Gaussian", "Uniform", "LogNormal"],
+            &[0, 1, 2, 3],
+        );
+        rmode.default_value = 0;
+        let random_mode = push(rmode);
+
+        let mut dlm = DssEnum::new(
+            "Load Solution Model",
+            true,
+            1,
+            1,
+            &["PowerFlow", "Admittance"],
+            &[1, 2],
+        );
+        dlm.default_value = 2;
+        let default_load_model = push(dlm);
+
+        let mut cm = DssEnum::new(
+            "Circuit Model",
+            true,
+            1,
+            1,
+            &["Multiphase", "Positive"],
+            &[0, 1],
+        );
+        cm.default_value = 0;
+        let ckt_model = push(cm);
 
         Self {
             enums,
             units: units_id,
             earth_model,
+            scan_type,
+            sequence,
+            connection,
+            vsource_model,
+            load_model,
+            load_status,
+            line_type,
+            solve_mode,
+            solve_alg,
+            control_mode,
+            random_mode,
+            default_load_model,
+            ckt_model,
         }
     }
 

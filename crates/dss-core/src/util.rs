@@ -2,6 +2,45 @@
 //! on demand (only what the engine paths implemented so far actually use).
 
 use dss_parser::{Parser, ParserError, ParserVars};
+use num_complex::Complex64;
+
+// --- Constants from DSSGlobals.pas ---
+
+/// Pascal `EPSILON` — "default tiny floating point".
+pub const EPSILON: f64 = 1.0e-12;
+/// Pascal `EPSILON2` — "default for real number mismatch testing".
+pub const EPSILON2: f64 = 1.0e-3;
+/// Pascal `SQRT3` (computed `Sqrt(3.0)` at startup, full precision).
+pub fn sqrt3() -> f64 {
+    3.0_f64.sqrt()
+}
+/// Pascal `InvSQRT3x1000` = `1000/Sqrt(3)` (computed at startup).
+pub fn inv_sqrt3_x1000() -> f64 {
+    1000.0 / 3.0_f64.sqrt()
+}
+/// TODO(compat): Pascal `CALPHA = (-0.5, -0.866025)` — a deliberately
+/// low-precision −120° phasor (DSSGlobals.pas even carries a TODO about it).
+/// Used by the Vsource asymmetric-matrix path; replace with the exact value
+/// in the post-port cleanup pass, regenerating affected goldens.
+pub const CALPHA: Complex64 = Complex64::new(-0.5, -0.866025);
+/// Pascal `CDOUBLEONE` (DSSUcomplex.pas).
+pub const CDOUBLEONE: Complex64 = Complex64::new(1.0, 1.0);
+
+/// Pascal `QuadSolver` (Utilities.pas): the most positive root of
+/// `a·x² + b·x + c`, 0.0 by default (incl. `a = b = 0`); `a = 0` solves the
+/// linear case. A negative discriminant produces NaN exactly like the
+/// unchecked Pascal `sqrt`.
+pub fn quad_solver(a: f64, b: f64, c: f64) -> f64 {
+    if a == 0.0 {
+        if b != 0.0 { -c / b } else { 0.0 }
+    } else {
+        let mid_term = (b * b - 4.0 * a * c).sqrt();
+        let a2 = 2.0 * a;
+        let ans1 = (-b + mid_term) / a2;
+        let ans2 = (-b - mid_term) / a2;
+        if ans1 > ans2 { ans1 } else { ans2 }
+    }
+}
 
 /// Pascal `StrYOrN`.
 pub fn str_y_or_n(b: bool) -> &'static str {

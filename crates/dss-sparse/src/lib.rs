@@ -135,10 +135,111 @@ impl SparseSet {
         Ok(self.matrix.as_ref().map_or(0, |m| m.compute_nnz()))
     }
 
+    /// Number of nonzero entries in the factored matrix (KLUSolve `GetSparseNNZ`).
+    /// Returns 0 if not yet factored.
+    pub fn sparse_nnz(&self) -> usize {
+        if let (Some(_), Some(m)) = (&self.factors, &self.matrix) {
+            m.compute_nnz()
+        } else {
+            0
+        }
+    }
+
     /// First singular column from the last failed factorization
     /// (KLUSolve `GetSingularCol`).
     pub fn singular_col(&self) -> Option<usize> {
         self.singular_col
+    }
+
+    /// Get a single element from the assembled matrix (KLUSolve `GetMatrixElement`).
+    pub fn get_element(&mut self, row: usize, col: usize) -> Result<Complex64, SparseError> {
+        self.assemble()?;
+        let m = self.matrix.as_ref().expect("assembled above");
+        let row_idx = m.row_idx_of_col_raw(col);
+        let vals = m.val_of_col(col);
+        for (k, &r) in row_idx.iter().enumerate() {
+            if r == row {
+                return Ok(vals[k]);
+            }
+        }
+        Ok(Complex64::ZERO)
+    }
+
+    /// Reciprocal condition number estimate, 0 if singular
+    /// (KLUSolve `GetRCond`).
+    pub fn rcond(&mut self) -> Result<f64, SparseError> {
+        self.factor()?;
+        let b = vec![Complex64::new(1.0, 0.0); self.n];
+        let nrm_b: f64 = (b.iter().map(|v| v.norm_sqr()).sum::<f64>()).sqrt();
+        let mut y = vec![Complex64::ZERO; self.n];
+        self.solve_one(&b, &mut y)?;
+        let nrm_y: f64 = (y.iter().map(|v| v.norm_sqr()).sum::<f64>()).sqrt();
+        if nrm_b == 0.0 {
+            Ok(1.0)
+        } else if nrm_y == 0.0 {
+            Ok(0.0)
+        } else {
+            Ok(nrm_b / nrm_y)
+        }
+    }
+
+    /// Solve without factoring (must already be factored).
+    fn solve_one(&self, b: &[Complex64], x: &mut [Complex64]) -> Result<(), SparseError> {
+        x.copy_from_slice(b);
+        let rhs = MatMut::from_column_major_slice_mut(x, self.n, 1);
+        self.factors
+            .as_ref()
+            .ok_or_else(|| SparseError::Internal("not factored".into()))?
+            .solve_in_place(rhs);
+        Ok(())
+    }
+
+    /// Find connected components (islands) in the matrix graph via union-find
+    /// on the sparsity pattern (KLUSolve `FindIslands`).
+    /// Returns a component ID per node (0-based).
+    pub fn find_islands(&mut self) -> Result<Vec<usize>, SparseError> {
+        self.assemble()?;
+        let m = self.matrix.as_ref().expect("assembled above");
+        let mut parent: Vec<usize> = (0..self.n).collect();
+        let mut rank = vec![0usize; self.n];
+
+        fn find(parent: &mut [usize], x: usize) -> usize {
+            if parent[x] != x {
+                parent[x] = find(parent, parent[x]);
+            }
+            parent[x]
+        }
+
+        fn union(parent: &mut [usize], rank: &mut [usize], x: usize, y: usize) {
+            let rx = find(parent, x);
+            let ry = find(parent, y);
+            if rx != ry {
+                match rank[rx].cmp(&rank[ry]) {
+                    std::cmp::Ordering::Less => parent[rx] = ry,
+                    std::cmp::Ordering::Greater => parent[ry] = rx,
+                    std::cmp::Ordering::Equal => {
+                        parent[ry] = rx;
+                        rank[rx] += 1;
+                    }
+                }
+            }
+        }
+
+        for j in 0..m.ncols() {
+            let row_idx = m.row_idx_of_col_raw(j);
+            for &r in row_idx {
+                let i = r;
+                if i < self.n && j < self.n {
+                    union(&mut parent, &mut rank, i, j);
+                }
+            }
+        }
+
+        let mut components: Vec<usize> = (0..self.n).collect();
+        for (i, c) in components.iter_mut().enumerate() {
+            *c = find(&mut parent, i);
+        }
+        Ok(components)
     }
 
     fn assemble(&mut self) -> Result<(), SparseError> {

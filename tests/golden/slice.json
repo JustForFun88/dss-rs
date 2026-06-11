@@ -1,0 +1,632 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "scenarios": [
+  {
+   "name": "twobus",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=1",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.341454995381,
+    -3600.8364163617466,
+    -3597.505037930979,
+    7191.88903220911,
+    -3606.4429589322017,
+    -3585.4460725709687
+   ],
+   "v_im": [
+    -1.9233710171311362,
+    -6232.984879226359,
+    6234.908251459916,
+    -12.122556778300776,
+    -6222.2973242977305,
+    6234.419882286199
+   ]
+  },
+  {
+   "name": "twobus_model2",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=2",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.344047127599,
+    -3600.8341783882756,
+    -3597.5098680366677,
+    7191.905370415078,
+    -3606.428852987841,
+    -3585.47651672133
+   ],
+   "v_im": [
+    -1.9192902597253205,
+    -6232.989164457412,
+    6234.908455933562,
+    -12.096835769119558,
+    -6222.324334103742,
+    6234.421171083047
+   ]
+  },
+  {
+   "name": "twobus_model3",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=3",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.3429195900035,
+    -3600.8374653596634,
+    -3597.505453527684,
+    7191.898263547271,
+    -3606.4495707647343,
+    -3585.4486920765953
+   ],
+   "v_im": [
+    -1.923736711490463,
+    -6232.985964755329,
+    6234.909702683242,
+    -12.124861749311664,
+    -6222.304166385578,
+    6234.429029345069
+   ]
+  },
+  {
+   "name": "twobus_model4",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=4",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.343483922692,
+    -3600.8358202458576,
+    -3597.5076629741775,
+    7191.90182053538,
+    -3606.439201614303,
+    -3585.4626182151483
+   ],
+   "v_im": [
+    -1.9215112800645466,
+    -6232.987566197487,
+    6234.909078693974,
+    -12.110834857678332,
+    -6222.314260273461,
+    6234.425096341319
+   ]
+  },
+  {
+   "name": "twobus_model4_powf",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=4 CVRwatts=0.8 CVRvars=2.5",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.343735989779,
+    -3600.83641081275,
+    -3597.5073244743717,
+    7191.9034093139535,
+    -3606.442923956714,
+    -3585.4604846513125
+   ],
+   "v_im": [
+    -1.9220476769728436,
+    -6232.987516295532,
+    6234.909565188929,
+    -12.114215766725485,
+    -6222.313945741542,
+    6234.42816271845
+   ]
+  },
+  {
+   "name": "twobus_model5",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=5",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.342753130703,
+    -3600.835295595478,
+    -3597.50745683257,
+    7191.897214354344,
+    -3606.4358947436244,
+    -3585.461318904792
+   ],
+   "v_im": [
+    -1.9213273889393045,
+    -6232.9870252586215,
+    6234.908353863986,
+    -12.109675792186453,
+    -6222.310850736414,
+    6234.420527738779
+   ]
+  },
+  {
+   "name": "twobus_model6",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 kvar=200 model=6",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.331700425721,
+    -3600.8294298927954,
+    -3597.5022698302705,
+    7191.8275491681325,
+    -3606.398923227292,
+    -3585.428625234923
+   ],
+   "v_im": [
+    -1.9209355410920983,
+    -6232.977649259249,
+    6234.898586016765,
+    -12.107205976395674,
+    -6222.251753823312,
+    6234.358961009849
+   ]
+  },
+  {
+   "name": "twobus_model7",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 kvar=200 model=7",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.333197661127,
+    -3600.8305022634836,
+    -3597.5026946949893,
+    7191.836986241125,
+    -3606.405682378369,
+    -3585.4313031568404
+   ],
+   "v_im": [
+    -1.9213093788358688,
+    -6232.978758984277,
+    6234.900069579536,
+    -12.109562275146088,
+    -6222.2587484188825,
+    6234.36831190418
+   ]
+  },
+  {
+   "name": "twobus_model8",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=8 zipv=[0.4 0.4 0.2 0.5 0.3 0.2 0.6]",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.343084962871,
+    -3600.835124698302,
+    -3597.507959561914,
+    7191.899305892071,
+    -3606.434817578898,
+    -3585.4644876072502
+   ],
+   "v_im": [
+    -1.9209384704864327,
+    -6232.987507092935,
+    6234.908446779846,
+    -12.107224439625522,
+    -6222.313887737502,
+    6234.421113387305
+   ]
+  },
+  {
+   "name": "twobus_delta",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95 model=1 conn=delta",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7198.341454995185,
+    -3600.836416361728,
+    -3597.5050379309505,
+    7191.889032207036,
+    -3606.4429589329106,
+    -3585.4460725716176
+   ],
+   "v_im": [
+    -1.9233710170090699,
+    -6232.984879226373,
+    6234.908251460156,
+    -12.122556776062709,
+    -6222.297324296352,
+    6234.419882289189
+   ]
+  },
+  {
+   "name": "twobus_heavy",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=5 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=8000 pf=0.90 model=1",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7176.554312663841,
+    -3607.9782032677904,
+    -3568.5761086933967,
+    6566.569492201565,
+    -3825.348912153098,
+    -2741.220579299951
+   ],
+   "v_im": [
+    -22.748808695051792,
+    -6203.703941651234,
+    6226.452751558512,
+    -625.9217837648628,
+    -5373.855103775597,
+    5999.776888333713
+   ]
+  },
+  {
+   "name": "twobus_heavy_model5",
+   "tol": 1e-09,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.twobus basekv=12.47 pu=1.0 phases=3 bus1=sourcebus mvasc3=2000 mvasc1=2100",
+    "new line.l1 bus1=sourcebus bus2=loadbus length=5 units=km r1=0.1 x1=0.4 r0=0.3 x0=1.2 c1=3.4 c0=1.6",
+    "new load.ld1 bus1=loadbus phases=3 kv=12.47 kw=8000 pf=0.90 model=5",
+    "Set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+   ],
+   "converged": true,
+   "iterations": 2,
+   "node_order": [
+    "SOURCEBUS.1",
+    "SOURCEBUS.2",
+    "SOURCEBUS.3",
+    "LOADBUS.1",
+    "LOADBUS.2",
+    "LOADBUS.3"
+   ],
+   "v_re": [
+    7177.655347535672,
+    -3607.7441140490305,
+    -3569.9112327839407,
+    6596.864452968058,
+    -3818.90794765575,
+    -2777.9565045605614
+   ],
+   "v_im": [
+    -21.84282296837501,
+    -6205.110458684105,
+    6226.953282864854,
+    -600.9935948332966,
+    -5412.555403868232,
+    6013.548999508953
+   ]
+  },
+  {
+   "name": "ieee13_flat",
+   "tol": 1e-06,
+   "commands": [
+    "clear",
+    "Set DefaultBaseFrequency=60",
+    "new circuit.ieee13flat basekv=4.16 pu=1.0001 phases=3 bus1=650 Angle=30 MVAsc3=20000 MVASC1=21000",
+    "New Line.650632 Phases=3 Bus1=650.1.2.3 Bus2=632.1.2.3 rmatrix=(0.3465 | 0.1560 0.3375 | 0.1580 0.1535 0.3414) xmatrix=(1.0179 | 0.5017 1.0478 | 0.4236 0.3849 1.0348) cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8) Length=0.3787878787878788 units=mi",
+    "New Line.632670 Phases=3 Bus1=632.1.2.3 Bus2=670.1.2.3 rmatrix=(0.3465 | 0.1560 0.3375 | 0.1580 0.1535 0.3414) xmatrix=(1.0179 | 0.5017 1.0478 | 0.4236 0.3849 1.0348) cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8) Length=0.12632575757575756 units=mi",
+    "New Line.670671 Phases=3 Bus1=670.1.2.3 Bus2=671.1.2.3 rmatrix=(0.3465 | 0.1560 0.3375 | 0.1580 0.1535 0.3414) xmatrix=(1.0179 | 0.5017 1.0478 | 0.4236 0.3849 1.0348) cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8) Length=0.2524621212121212 units=mi",
+    "New Line.671680 Phases=3 Bus1=671.1.2.3 Bus2=680.1.2.3 rmatrix=(0.3465 | 0.1560 0.3375 | 0.1580 0.1535 0.3414) xmatrix=(1.0179 | 0.5017 1.0478 | 0.4236 0.3849 1.0348) cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8) Length=0.1893939393939394 units=mi",
+    "New Line.632633 Phases=3 Bus1=632.1.2.3 Bus2=633.1.2.3 rmatrix=(0.7526 | 0.1580 0.7475 | 0.1560 0.1535 0.7436) xmatrix=(1.1814 | 0.4236 1.1983 | 0.5017 0.3849 1.2112) cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8) Length=0.0946969696969697 units=mi",
+    "New Line.632645 Phases=2 Bus1=632.3.2 Bus2=645.3.2 rmatrix=(1.3238 | 0.2066 1.3294) xmatrix=(1.3569 | 0.4591 1.3471) cmatrix=(2.8 | -0.6 2.8) Length=0.0946969696969697 units=mi",
+    "New Line.645646 Phases=2 Bus1=645.3.2 Bus2=646.3.2 rmatrix=(1.3238 | 0.2066 1.3294) xmatrix=(1.3569 | 0.4591 1.3471) cmatrix=(2.8 | -0.6 2.8) Length=0.056818181818181816 units=mi",
+    "New Line.692675 Phases=3 Bus1=692.1.2.3 Bus2=675.1.2.3 rmatrix=[0.791721 | 0.318476 0.781649 | 0.28345 0.318476 0.791721] xmatrix=[0.438352 | 0.0276838 0.396697 | -0.0184204 0.0276838 0.438352] cmatrix=[383.948 | 0 383.948 | 0 0 383.948] Length=0.0946969696969697 units=mi",
+    "New Line.671684 Phases=2 Bus1=671.1.3 Bus2=684.1.3 rmatrix=(1.3238 | 0.2066 1.3294) xmatrix=(1.3569 | 0.4591 1.3471) cmatrix=(2.8 | -0.6 2.8) Length=0.056818181818181816 units=mi",
+    "New Line.684611 Phases=1 Bus1=684.3 Bus2=611.3 rmatrix=(1.3292) xmatrix=(1.3475) cmatrix=(3.4) Length=0.056818181818181816 units=mi",
+    "New Line.684652 Phases=1 Bus1=684.1 Bus2=652.1 rmatrix=(1.3425) xmatrix=(0.5124) cmatrix=[236] Length=0.15151515151515152 units=mi",
+    "New Line.671692 Phases=3 Bus1=671 Bus2=692 Switch=y r1=1e-4 r0=1e-4 x1=0.000 x0=0.000 c1=0.000 c0=0.000",
+    "New Load.671 Bus1=671.1.2.3 Phases=3 Conn=Delta Model=1 kV=4.16 kW=1155 kvar=660",
+    "New Load.633a Bus1=633.1 Phases=1 Conn=Wye Model=1 kV=2.4 kW=160 kvar=110",
+    "New Load.633b Bus1=633.2 Phases=1 Conn=Wye Model=1 kV=2.4 kW=120 kvar=90",
+    "New Load.633c Bus1=633.3 Phases=1 Conn=Wye Model=1 kV=2.4 kW=120 kvar=90",
+    "New Load.645 Bus1=645.2 Phases=1 Conn=Wye Model=1 kV=2.4 kW=170 kvar=125",
+    "New Load.646 Bus1=646.2.3 Phases=1 Conn=Delta Model=2 kV=4.16 kW=230 kvar=132",
+    "New Load.692 Bus1=692.3.1 Phases=1 Conn=Delta Model=5 kV=4.16 kW=170 kvar=151",
+    "New Load.675a Bus1=675.1 Phases=1 Conn=Wye Model=1 kV=2.4 kW=485 kvar=190",
+    "New Load.675b Bus1=675.2 Phases=1 Conn=Wye Model=1 kV=2.4 kW=68 kvar=60",
+    "New Load.675c Bus1=675.3 Phases=1 Conn=Wye Model=1 kV=2.4 kW=290 kvar=212",
+    "New Load.611 Bus1=611.3 Phases=1 Conn=Wye Model=5 kV=2.4 kW=170 kvar=80",
+    "New Load.652 Bus1=652.1 Phases=1 Conn=Wye Model=2 kV=2.4 kW=128 kvar=86",
+    "New Load.670a Bus1=670.1 Phases=1 Conn=Wye Model=1 kV=2.4 kW=17 kvar=10",
+    "New Load.670b Bus1=670.2 Phases=1 Conn=Wye Model=1 kV=2.4 kW=66 kvar=38",
+    "New Load.670c Bus1=670.3 Phases=1 Conn=Wye Model=1 kV=2.4 kW=117 kvar=68",
+    "Set Voltagebases=[4.16]",
+    "calcv",
+    "Solve"
+   ],
+   "converged": true,
+   "iterations": 3,
+   "node_order": [
+    "650.1",
+    "650.2",
+    "650.3",
+    "632.1",
+    "632.2",
+    "632.3",
+    "670.1",
+    "670.2",
+    "670.3",
+    "671.1",
+    "671.2",
+    "671.3",
+    "680.1",
+    "680.2",
+    "680.3",
+    "633.1",
+    "633.2",
+    "633.3",
+    "645.3",
+    "645.2",
+    "646.3",
+    "646.2",
+    "692.1",
+    "692.2",
+    "692.3",
+    "675.1",
+    "675.2",
+    "675.3",
+    "684.1",
+    "684.3",
+    "611.3",
+    "652.1"
+   ],
+   "v_re": [
+    2080.0325259669203,
+    -0.2885707668012752,
+    -2079.6771641564037,
+    2028.4024301496245,
+    -72.98160804633692,
+    -1908.5672220203721,
+    2018.8926990134537,
+    -81.38324064521932,
+    -1859.0507873090442,
+    1997.0946103076863,
+    -97.92976582950435,
+    -1773.240550599368,
+    1997.0946414697944,
+    -97.92977202527757,
+    -1773.2405702072576,
+    2023.0189668737055,
+    -74.95260076325161,
+    -1902.9898351451693,
+    -1905.678637339608,
+    -79.79844681587676,
+    -1902.7533103019443,
+    -82.68917901172318,
+    1997.0945849629518,
+    -97.92976317792512,
+    -1773.2405418874241,
+    1983.165894352431,
+    -101.63160348252617,
+    -1768.908248662387,
+    1994.0927716356343,
+    -1766.6060602087364,
+    -1759.0507592648878,
+    1981.646768696157
+   ],
+   "v_im": [
+    1200.5271809721937,
+    -2401.7223350720647,
+    1201.1017858402668,
+    1056.4142356390041,
+    -2358.2164911296604,
+    1192.9066232939501,
+    1010.2580359566034,
+    -2357.9709120708444,
+    1188.7022660754835,
+    916.1459636509031,
+    -2363.843179502451,
+    1176.0118832296412,
+    916.1459626408429,
+    -2363.8432131517397,
+    1176.0119085845226,
+    1050.2664183961788,
+    -2353.4376588329087,
+    1189.6469651372486,
+    1190.0862502427865,
+    -2335.4881657101646,
+    1186.1026957938202,
+    -2331.4867882059725,
+    916.1459661960031,
+    -2363.8431767419675,
+    1176.0118658874126,
+    903.4164986468468,
+    -2365.7018764735035,
+    1168.8650443658428,
+    912.6554023806322,
+    1172.8086726400754,
+    1171.000236183468,
+    910.0839125865263
+   ]
+  }
+ ]
+}

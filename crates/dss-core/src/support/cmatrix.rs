@@ -127,6 +127,19 @@ impl CMatrix {
         &self.values
     }
 
+    /// Row-major copy (`out[i*n + j] = (i, j)`), the layout
+    /// [`dss_sparse::SparseSet::add_primitive_matrix`] consumes.
+    pub fn to_row_major(&self) -> Vec<Complex64> {
+        let n = self.n;
+        let mut out = Vec::with_capacity(n * n);
+        for i in 0..n {
+            for j in 0..n {
+                out.push(self.values[j * n + i]);
+            }
+        }
+        out
+    }
+
     pub fn values_mut(&mut self) -> &mut [Complex64] {
         &mut self.values
     }

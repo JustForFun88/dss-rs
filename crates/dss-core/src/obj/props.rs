@@ -31,6 +31,28 @@ pub enum PropType {
     DoubleArray,
     MappedStringEnum,
     MappedIntEnum,
+    /// `BusProperty`: the value is a bus spec for terminal `size_prop`
+    /// (1-based), written via [`DssObject::set_bus_name`].
+    Bus,
+    /// `ComplexProperty` (one `Complex` field) and `ComplexPartsProperty`
+    /// (two double fields): both parse a `(re, im)` 2-vector and go through
+    /// [`DssObject::set_complex`].
+    Complex,
+    /// `DoubleFArrayProperty`: fixed-size double array; the element count is
+    /// `size_prop` itself (Pascal stored it in `PropertyOffset2`).
+    DoubleFArray,
+    /// `ComplexPartSymMatrixProperty`, real part (e.g. `rmatrix`): a
+    /// lower-triangle symmetric matrix of order `obj.get_i32(size_prop)`.
+    SymMatrixReal,
+    /// `ComplexPartSymMatrixProperty`, imaginary part (e.g. `xmatrix`).
+    SymMatrixImag,
+    /// `EnabledProperty`: boolean through `set_bool`; the element's accessor
+    /// performs the Pascal `Set_Enabled` side effects.
+    Enabled,
+    /// `DSSObjectReferenceProperty`: stored as the referenced object's name
+    /// (resolution to live objects arrives with the classes that consume
+    /// them — LoadShape, GrowthShape, Spectrum-as-reference, ...).
+    ObjectRef,
 }
 
 /// Pascal `TPropertyFlag` set, as a small bitset. Only the flags that affect
@@ -53,6 +75,13 @@ impl PropFlags {
     pub const APPLY_ROUND: Self = Self(1 << 6);
     pub const VALUE_OFFSET: Self = Self(1 << 7);
     pub const TRANSFORM_LOWERCASE: Self = Self(1 << 8);
+    /// Pascal `ScaledByFunction`: the scale comes from
+    /// [`DssObject::prop_scale`] instead of `PropDef::scale`.
+    pub const SCALED_BY_FUNCTION: Self = Self(1 << 9);
+    /// Not a Pascal flag: marks properties whose backing machinery is not
+    /// ported yet (e.g. Line's `linecode`/`geometry`). Setting one is a hard
+    /// error so a script silently producing wrong numbers is impossible.
+    pub const NOT_PORTED: Self = Self(1 << 10);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);
@@ -146,6 +175,43 @@ impl PropDef {
             ..Self::base(name, PropType::MappedIntEnum)
         }
     }
+    /// `BusProperty` for `terminal` (1-based, Pascal `PropertyOffset`).
+    pub fn bus(name: &'static str, terminal: usize) -> Self {
+        Self {
+            size_prop: terminal,
+            ..Self::base(name, PropType::Bus)
+        }
+    }
+    pub fn complex(name: &'static str) -> Self {
+        Self::base(name, PropType::Complex)
+    }
+    /// `DoubleFArrayProperty` with a fixed element `count`.
+    pub fn double_f_array(name: &'static str, count: usize) -> Self {
+        Self {
+            size_prop: count,
+            ..Self::base(name, PropType::DoubleFArray)
+        }
+    }
+    /// Symmetric-matrix part; `order_prop` is the 1-based index of the
+    /// integer property holding the matrix order (`phases`).
+    pub fn sym_matrix_real(name: &'static str, order_prop: usize) -> Self {
+        Self {
+            size_prop: order_prop,
+            ..Self::base(name, PropType::SymMatrixReal)
+        }
+    }
+    pub fn sym_matrix_imag(name: &'static str, order_prop: usize) -> Self {
+        Self {
+            size_prop: order_prop,
+            ..Self::base(name, PropType::SymMatrixImag)
+        }
+    }
+    pub fn enabled(name: &'static str) -> Self {
+        Self::base(name, PropType::Enabled)
+    }
+    pub fn object_ref(name: &'static str) -> Self {
+        Self::base(name, PropType::ObjectRef)
+    }
 
     pub fn flags(mut self, flags: PropFlags) -> Self {
         self.flags = flags;
@@ -236,10 +302,69 @@ impl ClassProps {
     ) -> Result<i32, ParserError> {
         let pd = &self.props[idx];
         let full = format!("{}.{}", self.class_name, obj.data().name());
+        if pd.flags.contains(PropFlags::NOT_PORTED) {
+            return Err(ParserError::new(format!(
+                "{full}.{}: this property is not ported yet (Phase 3 slice)",
+                pd.name
+            )));
+        }
         match pd.ptype {
             PropType::Double => {
                 let v = get_double(eng, value)?;
-                set_obj_double(pd, obj, idx, v, eng, &full);
+                let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
+                    obj.prop_scale(idx, false)
+                } else {
+                    pd.scale
+                };
+                set_obj_double(pd, obj, idx, v, scale, eng, &full);
+                Ok(0)
+            }
+            PropType::Bus => {
+                obj.set_bus_name(pd.size_prop, value);
+                Ok(0)
+            }
+            PropType::Complex => {
+                // Pascal ComplexProperty/ComplexPartsProperty: parse the value
+                // as a 2-vector (re, im) through the scratch parser.
+                let mut buf = [0.0; 2];
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(&format!("[{value}]"));
+                eng.parser.next_param(eng.vars);
+                eng.parser.parse_as_vector(eng.vars, &mut buf, false)?;
+                obj.set_complex(idx, buf[0], buf[1]);
+                Ok(0)
+            }
+            PropType::DoubleFArray => {
+                let n = pd.size_prop;
+                let mut buf = vec![0.0; n];
+                interpret_dbl_array(eng.parser, eng.vars, value, n, &mut buf)?;
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
+            PropType::SymMatrixReal | PropType::SymMatrixImag => {
+                let order = obj.get_i32(pd.size_prop).max(0) as usize;
+                let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
+                    obj.prop_scale(idx, false)
+                } else {
+                    pd.scale
+                };
+                let mut buf = vec![0.0; order * order];
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(&format!("[{value}]"));
+                eng.parser.next_param(eng.vars);
+                eng.parser
+                    .parse_as_sym_matrix(eng.vars, &mut buf, order, 1, scale)?;
+                obj.set_matrix_part(idx, &buf, order, pd.ptype == PropType::SymMatrixReal);
+                Ok(0)
+            }
+            PropType::Enabled => {
+                let v = crate::util::interpret_yes_no(value);
+                let prev = obj.get_bool(idx) as i32;
+                obj.set_bool(idx, v);
+                Ok(prev)
+            }
+            PropType::ObjectRef => {
+                obj.set_string(idx, value.to_lowercase());
                 Ok(0)
             }
             PropType::Integer => {
@@ -340,10 +465,17 @@ impl ClassProps {
     pub fn get_value(&self, obj: &dyn DssObject, idx: usize, enums: &EnumRegistry) -> String {
         let pd = &self.props[idx];
         match pd.ptype {
-            PropType::Double => float_to_str_ex(get_obj_double(pd, obj, idx)),
+            PropType::Double => {
+                let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
+                    obj.prop_scale(idx, true)
+                } else {
+                    pd.scale
+                };
+                float_to_str_ex(get_obj_double(pd, obj, idx, scale))
+            }
             PropType::Integer => obj.get_i32(idx).to_string(),
-            PropType::Boolean => str_y_or_n(obj.get_bool(idx)).to_string(),
-            PropType::String => obj.get_string(idx),
+            PropType::Boolean | PropType::Enabled => str_y_or_n(obj.get_bool(idx)).to_string(),
+            PropType::String | PropType::ObjectRef => obj.get_string(idx),
             PropType::MakeLike => String::new(), // Pascal: always ''
             PropType::MappedStringEnum | PropType::MappedIntEnum => {
                 let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
@@ -352,6 +484,43 @@ impl ClassProps {
             PropType::DoubleArray => {
                 let n = obj.get_i32(pd.size_prop).max(0) as usize;
                 get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::DoubleFArray => {
+                get_dss_array_f64(pd.size_prop, obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::Bus => obj.get_bus_name(pd.size_prop),
+            PropType::Complex => {
+                // TODO(phase4): match the oracle's exact complex rendering when
+                // property-dump goldens cover these classes.
+                let (re, im) = obj.get_complex(idx);
+                format!("[{}, {}]", float_to_str_ex(re), float_to_str_ex(im))
+            }
+            PropType::SymMatrixReal | PropType::SymMatrixImag => {
+                // TODO(phase4): match the oracle's exact matrix rendering when
+                // property-dump goldens cover the matrix-specified lines.
+                let real = pd.ptype == PropType::SymMatrixReal;
+                let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
+                    obj.prop_scale(idx, true)
+                } else {
+                    pd.scale
+                };
+                match obj.get_matrix_part(idx, real) {
+                    None => String::new(),
+                    Some((vals, order)) => {
+                        let mut s = String::from("[");
+                        for i in 0..order {
+                            if i > 0 {
+                                s.push_str(" |");
+                            }
+                            for j in 0..=i {
+                                s.push(' ');
+                                s.push_str(&float_to_str_ex(vals[j * order + i] / scale));
+                            }
+                        }
+                        s.push(']');
+                        s
+                    }
+                }
             }
         }
     }
@@ -399,6 +568,7 @@ fn set_obj_double(
     obj: &mut dyn DssObject,
     idx: usize,
     mut value: f64,
+    scale: f64,
     eng: &mut PropEngine,
     full: &str,
 ) {
@@ -441,7 +611,7 @@ fn set_obj_double(
         return;
     }
 
-    value *= pd.scale;
+    value *= scale;
     if value == 0.0 && pd.trap_zero != 0.0 {
         value = pd.trap_zero;
     }
@@ -453,12 +623,12 @@ fn set_obj_double(
 
 /// Pascal `GetObjDouble`: divide by scale on the way out (and invert under
 /// `InverseValue`), the mirror of [`set_obj_double`].
-fn get_obj_double(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> f64 {
+fn get_obj_double(pd: &PropDef, obj: &dyn DssObject, idx: usize, scale: f64) -> f64 {
     let raw = obj.get_f64(idx);
     if pd.flags.contains(PropFlags::INVERSE_VALUE) {
-        1.0 / (raw / pd.scale)
+        1.0 / (raw / scale)
     } else {
-        raw / pd.scale
+        raw / scale
     }
 }
 

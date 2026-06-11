@@ -123,6 +123,11 @@ fn props_roundtrip_matches_oracle() {
 
     for sc in &golden.scenarios {
         let mut dss = Dss::new();
+        // gen_props.py runs this preamble before every scenario (the `?`
+        // query is circuit-gated in ProcessCommand, so the oracle needed a
+        // circuit too).
+        dss.command("clear");
+        dss.command("new circuit.propsprobe");
         for cmd in &sc.commands {
             dss.command(cmd);
         }
