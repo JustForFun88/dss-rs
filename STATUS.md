@@ -7,8 +7,9 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 4 WP4.2 done** (ObjectRef resolution +
-Line→LineCode fetch), on branch `phase-4-pd-elements`.
+Last updated: 2026-06-12, **Phase 4 WP4.3 (GrowthShape half) done** — the
+GrowthShape catalog object; XfmrCode (the other half of WP4.3) is next. On
+branch `phase-4-pd-elements`.
 
 > **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the full
 > gate → update this file → **stop and wait for explicit user confirmation** before
@@ -24,7 +25,7 @@ Line→LineCode fetch), on branch `phase-4-pd-elements`.
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ done (merged to `main`, commit `2ac8691`) |
-| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅; WP4.3–4.10 next |
+| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅; WP4.3b (XfmrCode) → 4.10 next |
 
 **Important:** Phases 2–3 live on the `phase-2-object-model` branch (off
 `main`), per the repo rule that commits happen only on explicit request and
@@ -123,7 +124,28 @@ then update this file and wait for confirmation (PHASE4_PLAN §0.8).
 - Gate: dss-core lib **97** (was 93; +4 `exec::tests::line_*`), props_roundtrip 1,
   golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
 
-**Next:** WP4.3 (XfmrCode + GrowthShape catalog objects). See PHASE4_PLAN §WP4.3.
+**WP4.3a — GrowthShape — ✅ DONE, gate-green.** Files:
+- `src/elements/general/growth_shape.rs` (`TGrowthShapeObj`): props 1–6 + Like
+  (`NPts, Year, Mult, CSVFile, SngFile, DblFile`). `Year` uses `APPLY_ROUND`
+  (FPC banker's rounding, verified: oracle rounds `2002.5 → 2002`).
+  `PropertySideEffects` reallocs Year/Multiplier on `NPts`; `EndEdit` →
+  `recalc_year_mult`; `get_mult` (cumulative year multiplier, consumed by the
+  Phase-5 yearly mode) and `recalc_year_mult` ported verbatim from Pascal
+  (note: base year and earlier return 1.0 — multipliers apply to *following*
+  years). `MakeLike` copies npts/year/multiplier. 6 inline unit tests.
+  Registered in `exec/mod.rs` as a `DSS_OBJECT` class after LineCode.
+- **Deferrals:** `CSVFile`/`SngFile`/`DblFile` are `NOT_PORTED` (file input —
+  PHASE4_PLAN §5; the gate feeders never use them; hard parse error on set).
+- **Goldens:** 5 GrowthShape scenarios added to `gen_props.py`
+  (`growthshape_default/_full/_year_rounds/_edit_shrink/_makelike`);
+  `props.json` regenerated with the pinned oracle. `props_roundtrip` green.
+- Gate: dss-core lib **103** (was 97; +6 growth_shape), props_roundtrip 1,
+  golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
+
+**Next:** WP4.3b — XfmrCode catalog object. It shares the winding-property web
+with Transformer (WP4.4); per PHASE4_PLAN §WP4.3 step 1, either define the
+shared `Winding` struct now (in `elements/pd/transformer/winding.rs`) or do
+XfmrCode after WP4.4. See PHASE4_PLAN §WP4.3.
 
 ---
 

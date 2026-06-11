@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
-use crate::elements::general::{line_code, spectrum, tcc_curve};
+use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve};
 use crate::elements::pc::{load, vsource};
 use crate::elements::pd::line;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
@@ -515,6 +515,9 @@ impl Dss {
             }),
             DssClass::dss_object(line_code::class_props(&enums), |name| {
                 Box::new(line_code::LineCodeObj::new(name))
+            }),
+            DssClass::dss_object(growth_shape::class_props(), |name| {
+                Box::new(growth_shape::GrowthShapeObj::new(name))
             }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),
