@@ -25,6 +25,11 @@
 6. Commit only on explicit user request, never on `main` directly.
 7. If a WP turns out to need something from a later WP, reorder locally but keep the
    tree compiling; do not start two WPs in parallel.
+8. **Stop-and-confirm cadence (MANDATORY).** After finishing each small step (a WP,
+   or a self-contained sub-step within a WP), run the full gate, **update
+   `STATUS.md`** to record the new frontier, then **stop and wait for the user's
+   explicit confirmation before starting the next step.** Never chain multiple steps
+   without confirmation.
 
 ## 1. Entry state (what already exists — do not rebuild)
 
@@ -186,7 +191,18 @@ Execute in order. Estimated relative weight in brackets.
 
 ---
 
-### WP4.1 — LineCode catalog object [10%]
+### WP4.1 — LineCode catalog object [10%] ✅ DONE (gate-green)
+
+> Status: complete. `crates/dss-core/src/elements/general/line_code.rs` ported and
+> registered; 6 inline unit tests + 8 `gen_props.py` LineCode scenarios
+> (`props.json` regenerated). Shared engine additions made here:
+> `PropFlags::CONDITIONAL_VALUE` + `DssObject::prop_conditional` (sym scalars render
+> `----` under a matrix model); sym-matrix getter format fixed to
+> `[v |v v |...]`; a deferred-error buffer on `DssObjData`
+> (`push_error`/`take_errors`, drained in `edit_active`) so `side_effects`/`EndEdit`
+> can emit `DoSimpleMsg` (used by `Kron` on a 1-phase code). `TODO(compat)`:
+> LineCode `Repair` defaults to 0 (oracle getter), not the Pascal ctor's 3.
+
 
 **Pascal:** `General/LineCode.pas` (618 lines). Props `TLineCodeProp` 1–27:
 `NPhases, R1, X1, R0, X0, C1, C0, Units, RMatrix, XMatrix, CMatrix, BaseFreq,

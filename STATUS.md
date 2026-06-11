@@ -7,7 +7,12 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-11, end of **Phase 3** (★ vertical slice).
+Last updated: 2026-06-12, **Phase 4 WP4.1 done** (LineCode), on branch
+`phase-4-pd-elements`.
+
+> **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the full
+> gate → update this file → **stop and wait for explicit user confirmation** before
+> the next step. Do not chain WPs.
 
 ---
 
@@ -18,8 +23,8 @@ Last updated: 2026-06-11, end of **Phase 3** (★ vertical slice).
 | 0 | Tooling, oracle, faer spike, CI, Phase-0 goldens | ✅ done (committed) |
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
-| **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ **done — uncommitted on branch `phase-2-object-model`** |
-| 4 | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | ⬜ next |
+| **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ done (merged to `main`, commit `2ac8691`) |
+| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅; WP4.2–4.10 next |
 
 **Important:** Phases 2–3 live on the `phase-2-object-model` branch (off
 `main`), per the repo rule that commits happen only on explicit request and
@@ -51,6 +56,37 @@ cargo test --workspace      # dss-core lib 87, golden_slice 2, golden_smoke 3,
 
 The CLI works end to end: `cargo run -p dss-cli -- script.dss` compiles the
 script and prints per-node |V| / angle.
+
+---
+
+## 1b. Phase 4 frontier (branch `phase-4-pd-elements`)
+
+Execution plan: **`PHASE4_PLAN.md`** (WP4.1–WP4.10). Cadence: one small step,
+then update this file and wait for confirmation (PHASE4_PLAN §0.8).
+
+**WP4.1 — LineCode — ✅ DONE, gate-green.** Files:
+- `src/elements/general/line_code.rs` (`TLineCodeObj`): props 1–27 + Like;
+  `CalcMatricesFromZ1Z0` (no 1-phase special case), `Set_NumPhases`,
+  `DoKronReduction`, `PropertySideEffects`, `EndEdit`, `MakeLike`; 6 inline tests.
+  Registered in `exec/mod.rs` as a `DSS_OBJECT` class after Spectrum.
+- **Shared engine additions** (reused by later WPs):
+  - `PropFlags::CONDITIONAL_VALUE` + `DssObject::prop_conditional` — sym scalars
+    (R1/X1/R0/X0/C1/C0/B1/B0) render `----` once a matrix model is active.
+  - Sym-matrix getter format corrected to the oracle's `[v |v v |...]` (no leading
+    space, trailing space per element, `|` between rows) in `props.rs::get_value`.
+  - Deferred-error buffer on `DssObjData` (`push_error`/`take_errors`), drained in
+    `exec::edit_active` after `end_edit` — lets `side_effects`/`EndEdit` emit
+    `DoSimpleMsg` (e.g. `Kron` on a 1-phase code → error 103, no-op).
+- **Goldens:** 8 LineCode scenarios added to `gen_props.py`; `props.json`
+  regenerated with the pinned oracle. `props_roundtrip` green.
+- **`TODO(compat)`:** LineCode `Repair` defaults to `0` (matches the oracle's `?`
+  getter) although the Pascal ctor sets `HrsToRepair := 3`; the field is
+  deprecated/unused (never propagated to lines).
+- Gate: `cargo test --workspace` — dss-core lib **93** (was 87), props_roundtrip 1,
+  golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
+
+**Next:** WP4.2 (ObjectRef resolution + `TLineObj.FetchLineCode`; convert Line's
+`linecode` from `NOT_PORTED` to a real `object_ref`). See PHASE4_PLAN §3.1 / WP4.2.
 
 ---
 
