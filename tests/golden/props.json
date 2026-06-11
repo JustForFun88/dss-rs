@@ -1481,6 +1481,217 @@
     "Enabled": "Yes",
     "Like": ""
    }
+  },
+  {
+   "name": "cap_default",
+   "commands": [
+    "New Capacitor.c1"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "c1_1",
+    "Bus2": "c1_1.0.0.0",
+    "Phases": "3",
+    "kvar": "[ 1200]",
+    "kV": "12.47",
+    "Conn": "wye",
+    "CMatrix": "(0 |0 0 |0 0 0 )",
+    "Cuf": "[ 20.4699706679377]",
+    "R": "[ 0]",
+    "XL": "[ 0]",
+    "Harm": "[ 0]",
+    "NumSteps": "1",
+    "States": "[ 1]",
+    "NormAmps": "75.0046059412345",
+    "EmergAmps": "100.006141254979",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cap_kvar",
+   "commands": [
+    "New Capacitor.c1 bus1=b1 phases=3 kvar=600 kv=4.16"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "3",
+    "kvar": "[ 600]",
+    "kV": "4.16",
+    "Conn": "wye",
+    "CMatrix": "(0 |0 0 |0 0 0 )",
+    "Cuf": "[ 91.9673071675616]",
+    "R": "[ 0]",
+    "XL": "[ 0]",
+    "Harm": "[ 0]",
+    "NumSteps": "1",
+    "States": "[ 1]",
+    "NormAmps": "112.416759145095",
+    "EmergAmps": "149.889012193461",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cap_cuf",
+   "commands": [
+    "New Capacitor.c1 bus1=b1 phases=1 cuf=10 kv=2.4"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "1",
+    "kvar": "[ 1200]",
+    "kV": "2.4",
+    "Conn": "wye",
+    "CMatrix": "(0 )",
+    "Cuf": "[ 10]",
+    "R": "[ 0]",
+    "XL": "[ 0]",
+    "Harm": "[ 0]",
+    "NumSteps": "1",
+    "States": "[ 1]",
+    "NormAmps": "0.0000122145122371571",
+    "EmergAmps": "0.0000162860163162095",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cap_cmatrix",
+   "commands": [
+    "New Capacitor.c1 bus1=b1 phases=3 cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8)"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "3",
+    "kvar": "[ 1200]",
+    "kV": "12.47",
+    "Conn": "wye",
+    "CMatrix": "(0 |0 0 |0 0 0 )",
+    "Cuf": "[ 20.4699706679377]",
+    "R": "[ 0]",
+    "XL": "[ 0]",
+    "Harm": "[ 0]",
+    "NumSteps": "1",
+    "States": "[ 1]",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cap_numsteps",
+   "commands": [
+    "New Capacitor.c1 bus1=b1 phases=3 kvar=600 kv=4.16 numsteps=3 states=(1 1 0)"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "3",
+    "kvar": "[ 200 200 200]",
+    "kV": "4.16",
+    "Conn": "wye",
+    "CMatrix": "(0 |0 0 |0 0 0 )",
+    "Cuf": "[ 30.6557690558539 30.6557690558539 30.6557690558539]",
+    "R": "[ 0 0 0]",
+    "XL": "[ 0 0 0]",
+    "Harm": "[ 0 0 0]",
+    "NumSteps": "3",
+    "States": "[ 1 1 0]",
+    "NormAmps": "112.416759145095",
+    "EmergAmps": "149.889012193461",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cap_series_xl",
+   "commands": [
+    "New Capacitor.c1 bus1=b1 bus2=b2 phases=3 kvar=600 kv=4.16 r=0.1 xl=1.0"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b2",
+    "Phases": "3",
+    "kvar": "[ 600]",
+    "kV": "4.16",
+    "Conn": "wye",
+    "CMatrix": "(0 |0 0 |0 0 0 )",
+    "Cuf": "[ 91.9673071675616]",
+    "R": "[ 0.1]",
+    "XL": "[ 1]",
+    "Harm": "[ 0]",
+    "NumSteps": "1",
+    "States": "[ 1]",
+    "NormAmps": "112.416759145095",
+    "EmergAmps": "149.889012193461",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cap_makelike",
+   "commands": [
+    "New Capacitor.base bus1=b1 phases=3 kvar=300 kv=4.16",
+    "New Capacitor.c1 like=base"
+   ],
+   "target": "Capacitor.c1",
+   "properties": {
+    "Bus1": "c1_1",
+    "Bus2": "c1_1.0.0.0",
+    "Phases": "3",
+    "kvar": "[ 300]",
+    "kV": "4.16",
+    "Conn": "wye",
+    "CMatrix": "(0 |0 0 |0 0 0 )",
+    "Cuf": "[ 45.9836535837808]",
+    "R": "[ 0]",
+    "XL": "[ 0]",
+    "Harm": "[ 0]",
+    "NumSteps": "1",
+    "States": "[ 1]",
+    "NormAmps": "56.2083795725477",
+    "EmergAmps": "74.9445060967303",
+    "FaultRate": "0.0005",
+    "pctPerm": "100",
+    "Repair": "3",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
   }
  ]
 }

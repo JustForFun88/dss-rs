@@ -159,6 +159,15 @@ pub trait DssObject {
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         unreachable!("set_f64_array not implemented for property {idx}")
     }
+    /// `IntegerArrayProperty` read (e.g. a capacitor `States`); `None` mirrors a
+    /// NIL Pascal array pointer (dumps as an empty string).
+    fn get_i32_array(&self, idx: usize) -> Option<&[i32]> {
+        unreachable!("get_i32_array not implemented for property {idx}")
+    }
+    fn set_i32_array(&mut self, idx: usize, value: Vec<i32>) {
+        let _ = value;
+        unreachable!("set_i32_array not implemented for property {idx}")
+    }
 
     /// Element count of a function-sized array property (Pascal
     /// `TPropertyFlag.SizeIsFunction`, `PropertyOffset3` holding a function
