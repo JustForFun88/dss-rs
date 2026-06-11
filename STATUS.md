@@ -7,11 +7,12 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 4 WP4.5 done** — Capacitor (`TCapacitorObj`):
-two-terminal shunt/series bank with the three spec types (kvar / Cuf / CMatrix),
-per-step arrays (`NumSteps`/`States`), the `MakeYprimWork`/`CalcYPrim` numeric
-core (YPrim matches the oracle for 1φ and 3φ kvar banks), Bus2 grounded-default,
-series-filter R+XL. Next: WP4.6 (Reactor). On branch `phase-4-pd-elements`.
+Last updated: 2026-06-12, **Phase 4 WP4.6 done** — Reactor (`TReactorObj`):
+two-terminal shunt/series reactor with all four spec types (kvar / R+jX / R&X
+matrices / Z1Z2Z0 symmetrical components), `Parallel` R∥X, `Rp`, `LmH`, Bus2
+grounded-default. `CalcYPrim` matches the oracle for the kvar, Z1Z2Z0, and
+RMatrix/XMatrix paths. Next: WP4.7 (ControlElem + RegControl/CapControl
+parse-only). On branch `phase-4-pd-elements`.
 
 > **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the full
 > gate → update this file → **stop and wait for explicit user confirmation** before
@@ -27,7 +28,7 @@ series-filter R+XL. Next: WP4.6 (Reactor). On branch `phase-4-pd-elements`.
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ done (merged to `main`, commit `2ac8691`) |
-| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅, WP4.3b (XfmrCode) ✅, WP4.4 (Transformer) ✅, WP4.5 (Capacitor) ✅; WP4.6 (Reactor) → 4.10 next |
+| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅, WP4.3b (XfmrCode) ✅, WP4.4 (Transformer) ✅, WP4.5 (Capacitor) ✅, WP4.6 (Reactor) ✅; WP4.7 → 4.10 next |
 
 **Important:** Phases 2–3 live on the `phase-2-object-model` branch (off
 `main`), per the repo rule that commits happen only on explicit request and
@@ -42,7 +43,7 @@ never directly on the default branch. Phase 3 is **not yet committed**.
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 87, golden_slice 2, golden_smoke 3,
+cargo test --workspace      # dss-core lib 125, golden_slice 2, golden_smoke 3,
                             # props_roundtrip 1, dss-parser 62+1, dss-sparse 5
 ```
 
@@ -282,7 +283,43 @@ fully-specified data — nothing in it depends on Transformer behavior).
 - Gate: dss-core lib **121** (was 116; +5 capacitor), props_roundtrip 1,
   golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
 
-**Next:** WP4.6 — Reactor. See PHASE4_PLAN §WP4.6.
+**WP4.6 — Reactor — ✅ DONE, gate-green.** Files:
+- `src/elements/pd/reactor.rs` (`TReactorObj`): props 1–19 + PD/CktElement tails
+  + Like. Two-terminal model (Capacitor/Fault connection rules), four `SpecType`s
+  (1=kvar+kV, 2=R+jX [also `Z`/`LmH`], 3=R/X matrices, 4=Z1Z2Z0 sym components).
+  Ported verbatim: `PropertySideEffects` (Bus1→default Bus2 = grounded-zero node +
+  clear Bus2 set-mark; Bus2→shunt/series via `StripExtension`; Conn→nterms/nconds;
+  Phases→nconds/yorder; kvar/Rmatrix/Xmatrix/X/Z/LmH→SpecType; Z1→SpecType 4 +
+  Z2/Z0 default-to-Z1; Rp→`RpSpecified`; LmH→`Z.im = L·2π·f`), `RecalcElementData`
+  (kvar→`Z.im`/`L` + default amps; R+jX→`L`; `Gp` from `Rp`; parallel-matrix
+  `Gmatrix`/`Bmatrix` via `etk_invert`), `CalcYPrim` (GIC <0.5 Hz R-only path;
+  wye `:=`/delta `AddElement` for spec 1/2; series-matrix invert-and-stamp for
+  spec 3; parallel-matrix G+jB stamp; Z1Z2Z0 build-Z-invert-stamp for spec 4;
+  shunt diagonal mirror with the 1φ-grounding-reactor exception), `MakeLike`.
+  4 inline tests: default shape + **YPrim vs oracle for 3φ kvar (−j0.00321542),
+  3φ Z1Z2Z0, and 3φ RMatrix/XMatrix series**.
+  Registered as `ElemKind::Reactor` after Capacitor.
+- **Reused (no new shared machinery):** `PropType::Complex` (Z1/Z2/Z0/Z),
+  `DoubleSymMatrix` (RMatrix/XMatrix — same always-garbage oracle getter as
+  Capacitor's CMatrix, see below), `object_ref`+`NOT_PORTED` (RCurve/LCurve →
+  XYcurve, Phase 5 WP5.1), `etk_invert` (parallel-matrix inverse). Confirmed the
+  shared `Complex` getter renders `[%g, %g]` exactly (updated its stale
+  `TODO(phase4)` note to "verified"). `circuit.rs`: `ElemKind::Reactor` +
+  `reactors` list (PD + own).
+- **Same oracle bug as Capacitor:** `RMatrix`/`XMatrix` use the broken
+  `DoubleSymMatrixProperty` getter (always denormal garbage), so all 10 Reactor
+  scenarios `zero_garbage` both; the matrix→YPrim path is covered by the unit
+  test instead. `TODO(compat)` for the truncated `CALPHA = (-0.5, -0.866025)`
+  literal (DSSGlobals.pas:74) used in the Z1Z2Z0 off-diagonals.
+- **Goldens:** 10 Reactor scenarios in `gen_props.py` (default, kvar, rx, z, lmh,
+  z1z2z0, matrix, parallel, rp, makelike); `props.json` regenerated.
+  `props_roundtrip` green.
+- `MakePosSequence`/`GetLosses`-Rp-branch not ported (Phase 5+, control/reporting).
+- Gate: dss-core lib **125** (was 121; +4 reactor), props_roundtrip 1,
+  golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
+
+**Next:** WP4.7 — ControlElem base + RegControl/CapControl (parse-only). See
+PHASE4_PLAN §WP4.7.
 
 ---
 

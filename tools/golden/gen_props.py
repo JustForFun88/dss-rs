@@ -398,6 +398,81 @@ SCENARIOS = [
         ],
         "zero_garbage": ["CMatrix"],
     },
+    # --- Reactor (WP4.6) ---
+    # NOTE: like Capacitor.CMatrix, the oracle's `DoubleSymMatrixProperty` getter
+    # for `Reactor.RMatrix`/`XMatrix` reads uninitialized memory (denormal garbage
+    # regardless of what is stored — the same dss_capi bug), so both are
+    # canonicalized to zeros via `zero_garbage` in every Reactor scenario; only
+    # the matrix skeleton is pinned and the Rust getter emits the same zeros.
+    {
+        "name": "reactor_default",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_kvar",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1 bus1=b1 phases=3 kvar=500 kv=12.47"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_rx",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1 bus1=b1 bus2=b2 phases=3 R=1.0 X=5.0"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_z",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1 bus1=b1 phases=3 Z=(1, 5)"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_lmh",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1 bus1=b1 phases=1 R=0.5 LmH=10"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_z1z2z0",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1 bus1=b1 phases=3 Z1=(1, 5) Z2=(1, 5) Z0=(2, 8)"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_matrix",
+        "target": "Reactor.r1",
+        "commands": [
+            "New Reactor.r1 bus1=b1 bus2=b2 phases=3 "
+            "RMatrix=(1 | 0.2 1 | 0.2 0.2 1) XMatrix=(5 | 1 5 | 1 1 5)",
+        ],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_parallel",
+        "target": "Reactor.r1",
+        "commands": [
+            "New Reactor.r1 bus1=b1 phases=3 parallel=yes "
+            "RMatrix=(1 | 0.2 1 | 0.2 0.2 1) XMatrix=(5 | 1 5 | 1 1 5)",
+        ],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_rp",
+        "target": "Reactor.r1",
+        "commands": ["New Reactor.r1 bus1=b1 phases=3 kvar=500 kv=12.47 Rp=10000"],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    {
+        "name": "reactor_makelike",
+        "target": "Reactor.r1",
+        "commands": [
+            "New Reactor.base bus1=b1 phases=3 kvar=300 kv=12.47",
+            "New Reactor.r1 like=base",
+        ],
+        "zero_garbage": ["RMatrix", "XMatrix"],
+    },
 ]
 
 
