@@ -96,6 +96,70 @@ SCENARIOS = [
             "New Spectrum.s1 like=base",
         ],
     },
+    {
+        "name": "linecode_default",
+        "target": "LineCode.lc1",
+        "commands": ["New LineCode.lc1"],
+    },
+    {
+        "name": "linecode_sym",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.lc1 nphases=3 r1=0.1 x1=0.3 r0=0.2 x0=0.6 "
+            "c1=3.0 c0=1.5 normamps=500 emergamps=700 units=kft linetype=ug",
+        ],
+    },
+    {
+        "name": "linecode_sym_b",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.lc1 nphases=1 r1=0.05 x1=0.1 b1=2.0 b0=1.0 units=mi",
+        ],
+    },
+    {
+        "name": "linecode_matrix",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.lc1 nphases=3 "
+            "rmatrix=(0.09 | 0.04 0.09 | 0.04 0.04 0.09) "
+            "xmatrix=(0.2 | 0.09 0.2 | 0.09 0.09 0.2) "
+            "cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8)",
+        ],
+    },
+    {
+        "name": "linecode_code_then_units",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.lc1 nphases=2 rmatrix=(0.1 | 0.05 0.1) "
+            "xmatrix=(0.2 | 0.07 0.2) cmatrix=(3 | -1 3) units=mi",
+        ],
+    },
+    {
+        "name": "linecode_kron",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.lc1 nphases=4 "
+            "rmatrix=(0.1 | 0.04 0.1 | 0.04 0.04 0.1 | 0.04 0.04 0.04 0.1) "
+            "xmatrix=(0.2 | 0.09 0.2 | 0.09 0.09 0.2 | 0.09 0.09 0.09 0.2) "
+            "cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8 | -0.6 -0.6 -0.6 2.8) "
+            "kron=y",
+        ],
+    },
+    {
+        "name": "linecode_seasons",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.lc1 nphases=3 seasons=3 ratings=(400 500 600)",
+        ],
+    },
+    {
+        "name": "linecode_makelike",
+        "target": "LineCode.lc1",
+        "commands": [
+            "New LineCode.base nphases=2 r1=0.2 x1=0.4 r0=0.3 x0=0.7 c1=2.5 c0=1.2",
+            "New LineCode.lc1 like=base",
+        ],
+    },
 ]
 
 

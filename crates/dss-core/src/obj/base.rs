@@ -18,6 +18,11 @@ pub struct DssObjData {
     /// Pascal `PrpSequence`: `[0]` is the counter, `[i]` is the order in
     /// which property `i` was last set (0 = never set).
     prp_sequence: Vec<u32>,
+    /// Deferred `DoSimpleMsg`/`DoErrorMsg` messages emitted by
+    /// `side_effects`/`end_edit` (which run without direct access to the
+    /// engine error sink). The executive drains these right after the edit
+    /// loop, so the message ordering within a command is preserved.
+    deferred_errors: Vec<String>,
 }
 
 impl DssObjData {
@@ -25,7 +30,19 @@ impl DssObjData {
         Self {
             name: name.into(),
             prp_sequence: vec![0; num_props + 1],
+            deferred_errors: Vec::new(),
         }
+    }
+
+    /// Queue a `DoSimpleMsg`-style message from inside a property hook; the
+    /// executive collects it after the active edit finishes.
+    pub fn push_error(&mut self, msg: impl Into<String>) {
+        self.deferred_errors.push(msg.into());
+    }
+
+    /// Drain the queued messages (Pascal would have already logged them).
+    pub fn take_errors(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.deferred_errors)
     }
 
     pub fn name(&self) -> &str {
@@ -179,6 +196,16 @@ pub trait DssObject {
     /// `prop_scale(idx, true)`.
     fn prop_scale(&self, idx: usize, getter: bool) -> f64 {
         1.0
+    }
+
+    /// Pascal `TPropertyFlag.ConditionalValue` (`PropertyOffset3` holding a
+    /// `LongBool`): whether property `idx`'s value should be displayed. When a
+    /// `CONDITIONAL_VALUE` property returns `false` here, the getter renders
+    /// the Pascal placeholder `----` instead of the stored value (e.g. a
+    /// LineCode's `R1` once a matrix model has replaced the sym-component one).
+    fn prop_conditional(&self, idx: usize) -> bool {
+        let _ = idx;
+        true
     }
 
     /// Pascal `PropertySideEffects`: run after property `idx` is written.

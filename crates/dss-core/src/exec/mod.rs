@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
-use crate::elements::general::{spectrum, tcc_curve};
+use crate::elements::general::{line_code, spectrum, tcc_curve};
 use crate::elements::pc::{load, vsource};
 use crate::elements::pd::line;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
@@ -468,6 +468,9 @@ impl Dss {
             }),
             DssClass::dss_object(spectrum::class_props(), |name| {
                 Box::new(spectrum::SpectrumObj::new(name))
+            }),
+            DssClass::dss_object(line_code::class_props(&enums), |name| {
+                Box::new(line_code::LineCodeObj::new(name))
             }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),
@@ -938,6 +941,11 @@ impl Dss {
         }
 
         objects[oi].end_edit();
+
+        // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
+        // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
+        let deferred = objects[oi].data_mut().take_errors();
+        errors.extend(deferred);
 
         // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
         // circuit globals immediately; `Set_YprimInvalid` raises

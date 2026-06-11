@@ -82,6 +82,10 @@ impl PropFlags {
     /// ported yet (e.g. Line's `linecode`/`geometry`). Setting one is a hard
     /// error so a script silently producing wrong numbers is impossible.
     pub const NOT_PORTED: Self = Self(1 << 10);
+    /// Pascal `ConditionalValue`: the getter shows `----` instead of the stored
+    /// value when [`DssObject::prop_conditional`] returns false (display-only;
+    /// parsing is unaffected).
+    pub const CONDITIONAL_VALUE: Self = Self(1 << 11);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);
@@ -464,6 +468,9 @@ impl ClassProps {
     /// `?` query and `DumpProperties` emit.
     pub fn get_value(&self, obj: &dyn DssObject, idx: usize, enums: &EnumRegistry) -> String {
         let pd = &self.props[idx];
+        if pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx) {
+            return "----".to_string();
+        }
         match pd.ptype {
             PropType::Double => {
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
@@ -496,8 +503,10 @@ impl ClassProps {
                 format!("[{}, {}]", float_to_str_ex(re), float_to_str_ex(im))
             }
             PropType::SymMatrixReal | PropType::SymMatrixImag => {
-                // TODO(phase4): match the oracle's exact matrix rendering when
-                // property-dump goldens cover the matrix-specified lines.
+                // Pascal `GetObjPropertyValue` for `ComplexPartSymMatrixProperty`:
+                // lower triangle, every element followed by a space, rows split
+                // by `|`, no space after the opening bracket — e.g.
+                // `[0.098 |0.040 0.098 |0.040 0.040 0.098 ]`.
                 let real = pd.ptype == PropType::SymMatrixReal;
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
                     obj.prop_scale(idx, true)
@@ -510,11 +519,11 @@ impl ClassProps {
                         let mut s = String::from("[");
                         for i in 0..order {
                             if i > 0 {
-                                s.push_str(" |");
+                                s.push('|');
                             }
                             for j in 0..=i {
-                                s.push(' ');
                                 s.push_str(&float_to_str_ex(vals[j * order + i] / scale));
+                                s.push(' ');
                             }
                         }
                         s.push(']');
