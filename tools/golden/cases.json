@@ -1,0 +1,33 @@
+{
+  "comment": "Each case: compile <dir>/<master> relative to .inputs/electricdss-tst, then run 'post' commands. 'props' controls the full per-element property dump (the property-system oracle).",
+  "cases": [
+    {
+      "name": "ieee13",
+      "dir": "Version8/Distrib/IEEETestCases/13Bus",
+      "master": "IEEE13Nodeckt.dss",
+      "post": [],
+      "props": true
+    },
+    {
+      "name": "ieee34mod1",
+      "dir": "Version8/Distrib/IEEETestCases/34Bus",
+      "master": "ieee34Mod1.dss",
+      "post": ["solve"],
+      "props": true
+    },
+    {
+      "name": "ieee37",
+      "dir": "Version8/Distrib/IEEETestCases/37Bus",
+      "master": "ieee37.dss",
+      "post": [],
+      "props": true
+    },
+    {
+      "name": "ieee123",
+      "dir": "Version8/Distrib/IEEETestCases/123Bus",
+      "master": "IEEE123Master.dss",
+      "post": ["solve"],
+      "props": true
+    }
+  ]
+}

@@ -43,22 +43,22 @@ impl RPNCalculator {
     }
 
     pub fn add(&mut self) {
-        self.stack[1] = self.stack[0] + self.stack[1];
+        self.stack[1] += self.stack[0];
         self.roll_down();
     }
 
     pub fn subtract(&mut self) {
-        self.stack[1] = self.stack[1] - self.stack[0];
+        self.stack[1] -= self.stack[0];
         self.roll_down();
     }
 
     pub fn multiply(&mut self) {
-        self.stack[1] = self.stack[1] * self.stack[0];
+        self.stack[1] *= self.stack[0];
         self.roll_down();
     }
 
     pub fn divide(&mut self) {
-        self.stack[1] = self.stack[1] / self.stack[0];
+        self.stack[1] /= self.stack[0];
         self.roll_down();
     }
 

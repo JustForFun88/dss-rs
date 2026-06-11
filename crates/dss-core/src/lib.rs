@@ -1,14 +1,4 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+#![forbid(unsafe_code)]
+//! The DSS engine: circuit model, solution algorithms, elements, and the
+//! command executive. Rust port of the Pascal engine in `.inputs/dss_capi`
+//! (see PORTING_PLAN.md at the repository root).
