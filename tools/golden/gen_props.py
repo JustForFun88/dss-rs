@@ -277,6 +277,65 @@ SCENARIOS = [
             "New XfmrCode.xc1 like=base",
         ],
     },
+    # --- Transformer (WP4.4) ---
+    {
+        "name": "transformer_default",
+        "target": "Transformer.t1",
+        "commands": ["New Transformer.t1"],
+    },
+    {
+        "name": "transformer_sub",
+        "target": "Transformer.sub",
+        "commands": [
+            "New Transformer.sub phases=3 windings=2 buses=(SourceBus, 650) "
+            "conns=(delta, wye) kvs=(115, 4.16) kvas=(5000, 5000) xhl=8 %r=0.5",
+        ],
+    },
+    {
+        "name": "transformer_wdg_seq",
+        "target": "Transformer.t2",
+        "commands": [
+            "New Transformer.t2 phases=1 windings=2",
+            "~ wdg=1 bus=a.1 conn=wye kv=7.2 kva=25 tap=1.0 %r=0.6 "
+            "rneut=0.1 xneut=0.2 maxtap=1.1 mintap=0.9 numtaps=32",
+            "~ wdg=2 bus=b.1 conn=wye kv=0.24 kva=25",
+        ],
+    },
+    {
+        "name": "transformer_3wdg",
+        "target": "Transformer.t3",
+        "commands": [
+            "New Transformer.t3 phases=3 windings=3 "
+            "buses=(p, s, t) conns=(delta, wye, wye) kvs=(115, 12.47, 4.16) "
+            "kvas=(5000, 5000, 5000) xhl=8 xht=10 xlt=9 %loadloss=0.5",
+        ],
+    },
+    {
+        "name": "transformer_xscarray",
+        "target": "Transformer.t4",
+        "commands": [
+            "New Transformer.t4 phases=3 windings=3 buses=(a, b, c) "
+            "kvs=(115, 12.47, 4.16) kvas=(5000, 5000, 5000) xscarray=(8 10 9)",
+        ],
+    },
+    {
+        "name": "transformer_xfmrcode",
+        "target": "Transformer.t5",
+        "commands": [
+            "New XfmrCode.xc windings=2 kvs=(115, 4.16) kvas=(3000, 3000) "
+            "xhl=7 conns=(delta, wye)",
+            "New Transformer.t5 buses=(p, s) xfmrcode=xc",
+        ],
+    },
+    {
+        "name": "transformer_makelike",
+        "target": "Transformer.t6",
+        "commands": [
+            "New Transformer.base phases=3 windings=2 buses=(p, s) "
+            "conns=(delta, wye) kvs=(115, 4.16) kvas=(3000, 3000) xhl=7 %r=0.4",
+            "New Transformer.t6 like=base buses=(p2, s2)",
+        ],
+    },
 ]
 
 

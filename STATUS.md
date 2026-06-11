@@ -7,10 +7,10 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 4 WP4.3 done (both halves)** — GrowthShape
-(earlier) + XfmrCode (this step), plus the shared `Winding` struct and the
-struct-array property-engine machinery. Next: WP4.4 (Transformer). On branch
-`phase-4-pd-elements`.
+Last updated: 2026-06-12, **Phase 4 WP4.4 done** — Transformer (`TTransfObj`):
+full property web, the `CalcY_Terminal`/`CalcYPrim` numeric core (YPrim matches
+the oracle), per-winding bus/struct-array machinery, `XfmrCode=` fetch, taps.
+Next: WP4.5 (Capacitor). On branch `phase-4-pd-elements`.
 
 > **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the full
 > gate → update this file → **stop and wait for explicit user confirmation** before
@@ -26,7 +26,7 @@ struct-array property-engine machinery. Next: WP4.4 (Transformer). On branch
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | **3** | **★ Vertical slice: parse → circuit → Y matrix → solve → voltages** | ✅ done (merged to `main`, commit `2ac8691`) |
-| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅, WP4.3b (XfmrCode) ✅; WP4.4 (Transformer) → 4.10 next |
+| **4** | Transformer/Capacitor/Reactor/LineCode + `define_properties!` | 🔶 **in progress** — WP4.1 (LineCode) ✅, WP4.2 (ObjectRef/FetchLineCode) ✅, WP4.3a (GrowthShape) ✅, WP4.3b (XfmrCode) ✅, WP4.4 (Transformer) ✅; WP4.5 (Capacitor) → 4.10 next |
 
 **Important:** Phases 2–3 live on the `phase-2-object-model` branch (off
 `main`), per the repo rule that commits happen only on explicit request and
@@ -187,8 +187,53 @@ fully-specified data — nothing in it depends on Transformer behavior).
 - Gate: dss-core lib **112** (was 103; +7 xfmr_code, +2 winding), props_roundtrip
   1, golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
 
-**Next:** WP4.4 — Transformer (the heart of the phase; reuses `Winding` + the
-struct-array prop machinery). See PHASE4_PLAN §WP4.4.
+**WP4.4 — Transformer — ✅ DONE, gate-green.** The 30% centerpiece. Files:
+- `src/elements/pd/transformer.rs` (`TTransfObj`): props 1–49 + PD/CktElement
+  tails + Like. `nterms = NumWindings`, `nconds = nphases + 1` (per-winding
+  brought-out neutral). Ported verbatim: `SetNumWindings` (realloc windings/XSC/
+  terminals/ZB/Y_1Volt/Y_Term matrices), `PropertySideEffects` (winding-edit
+  state machine: `kVA`/`kVAs` default Norm/EmergHkVA 1.1×/1.5×; `%R`/`%Rs`↔
+  `%LoadLoss` split; `XHL/XHT/XLT/X12/X13/X23` set `XHLChanged` + clear
+  XSCArray/XfmrCode set-marks; `XSCArray` clears the reactance set-marks),
+  `RecalcElementData` (DeltaDirection, SetTermRef, tap increments, XSC←XHL,
+  per-winding VBase with the 1-/2-/3-φ branch, **Rdc recomputed on the
+  transformer VABase** not the winding's, anti-float adders, NormAmps/EmergAmps/
+  AmpRatings via the wye/delta VFactor), `SetTermRef` (winding↔terminal
+  conductor map incl. the delta `RotatePhases` rotation), `CalcY_Terminal`
+  (ZB short-circuit matrix → invert → `Y_1Volt = AT·ZB⁻¹·A` → magnetizing branch
+  on winding 2 → `Y_Term = AT·Y_1Volt·A` voltage-ratio incidence → anti-float
+  adders), `CalcYPrim` (`BuildYPrimComponent` stamps `Y_Term`/`Y_Term_NL` via
+  TermRef nphases times; `AddNeutralToY` rneut/xneut grounding + open-neutral
+  1e6/Y_PPM; then open-conductor `do_yprim_calcs`), `MakeLike`, `FetchXfmrCode`,
+  `Get/Set_PresentTap` (public for Phase-5 RegControl), `GetAllWindingCurrents`/
+  `GetWindingCurrentsResult` (the `WdgCurrents` RO dump). 4 inline tests:
+  SetTermRef for wye-wye and wye-delta, **YPrim of a 1φ 2-wdg transformer vs the
+  oracle (1e-4)**, tap clamp.
+  Registered as `ElemKind::Transformer` after Load.
+- **Shared engine additions** (reused by Capacitor/Reactor later):
+  - `circuit.rs`: `ElemKind::Transformer` + `transformers` list (PD list + own).
+  - `props.rs`: two new `PropType`s — `BusOnStruct` (transformer `bus`, the
+    active winding's terminal) and `BusesOnStruct` (`buses`, `[b1, b2, ]`),
+    with `PropDef::bus_on_struct`/`buses_on_struct`.
+  - `base.rs`: `DssObject::{set_active_struct_bus, get_active_struct_bus,
+    set_struct_buses, get_struct_buses}`.
+  - `dss_enum.rs`: `core_type` (`Core Type`, default shell=0; non-sequential
+    ordinals `0,1,3,4,5,9`) and `lead_lag` (`Phase Sequence` reused for
+    `LeadLag`, lag=0/lead=1) enums.
+  - `xfmr_code.rs`: public read accessors for `FetchXfmrCode`.
+- **Deferrals:** GIC path (`frequency < 0.51`, `GICBuildYTerminal`) — Phase 7,
+  unreachable at 60 Hz (`Y_Terminal_FreqMult` stays 1.0). `GetLosses` load/no-load
+  split, `MakePosSequence`, `SaveWrite` — not needed by the Phase-4 gate (totals
+  use the base `losses`); port when a gate requires them.
+- **Goldens:** 7 Transformer scenarios in `gen_props.py` (default, sub, wdg-seq,
+  3-winding, xscarray, xfmrcode-fetch, makelike); `props.json` regenerated with
+  the pinned oracle. `props_roundtrip` green (dump format matched exactly incl.
+  `Buses`/`Conns` `[a, b, ]`, `WdgCurrents` `mag, (ang), `, the recomputed
+  RDCOhms/NormAmps/EmergAmps).
+- Gate: dss-core lib **116** (was 112; +4 transformer), props_roundtrip 1,
+  golden_slice 2, golden_smoke 3, dss-parser 62+1, dss-sparse 5. All green.
+
+**Next:** WP4.5 — Capacitor. See PHASE4_PLAN §WP4.5.
 
 ---
 

@@ -227,6 +227,10 @@ pub struct EnumRegistry {
     pub default_load_model: EnumId,
     /// 'Circuit Model' (`DSS.CktModelEnum`).
     pub ckt_model: EnumId,
+    /// 'Core Type' (`DSS.CoreTypeEnum`).
+    pub core_type: EnumId,
+    /// 'Phase Sequence' reused for transformer LeadLag (`DSS.LeadLagEnum`).
+    pub lead_lag: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -453,6 +457,34 @@ impl EnumRegistry {
         cm.default_value = 0;
         let ckt_model = push(cm);
 
+        let mut core = DssEnum::new(
+            "Core Type",
+            false,
+            1,
+            1,
+            &[
+                "shell",
+                "1-phase",
+                "3-leg",
+                "4-leg",
+                "5-leg",
+                "core-1-phase",
+            ],
+            &[0, 1, 3, 4, 5, 9],
+        );
+        core.default_value = 0;
+        let core_type = push(core);
+
+        // Pascal 'Phase Sequence' enum reused for transformer LeadLag.
+        let lead_lag = push(DssEnum::new(
+            "Phase Sequence",
+            true,
+            1,
+            1,
+            &["Lag", "Lead", "ANSI", "Euro"],
+            &[0, 1, 0, 1],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -470,6 +502,8 @@ impl EnumRegistry {
             random_mode,
             default_load_model,
             ckt_model,
+            core_type,
+            lead_lag,
         }
     }
 

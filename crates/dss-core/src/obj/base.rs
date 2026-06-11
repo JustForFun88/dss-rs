@@ -204,6 +204,28 @@ pub trait DssObject {
         unreachable!("get_bus_name not implemented (terminal {terminal})")
     }
 
+    /// `BusOnStructArrayProperty` write (Pascal transformer `bus`): set the
+    /// active struct-array entry's bus (the active winding's terminal).
+    fn set_active_struct_bus(&mut self, value: &str) {
+        let _ = value;
+        unreachable!("set_active_struct_bus not implemented")
+    }
+    /// Read the active struct-array entry's bus.
+    fn get_active_struct_bus(&self) -> String {
+        unreachable!("get_active_struct_bus not implemented")
+    }
+    /// `BusesOnStructArrayProperty` write (Pascal transformer `buses`): set
+    /// each struct-array entry's bus (`None` keeps the previous value) and
+    /// advance the active index to the count.
+    fn set_struct_buses(&mut self, values: &[Option<String>]) {
+        let _ = values;
+        unreachable!("set_struct_buses not implemented")
+    }
+    /// All struct-array entries' buses, one per active entry.
+    fn get_struct_buses(&self) -> Vec<String> {
+        unreachable!("get_struct_buses not implemented")
+    }
+
     /// `DSSObjectReferenceProperty` write for a *resolved* reference (a
     /// `PropDef::object_ref_class`): `name` is the referenced object's name for
     /// dumps (Pascal `otherObj.Name`, `""` when unresolved), and `resolved`

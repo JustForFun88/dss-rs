@@ -26,6 +26,7 @@ pub enum ElemKind {
     Source,
     Line,
     Load,
+    Transformer,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -51,6 +52,7 @@ pub struct Circuit {
     pub sources: Vec<ElemRef>,
     pub lines: Vec<ElemRef>,
     pub loads: Vec<ElemRef>,
+    pub transformers: Vec<ElemRef>,
 
     pub solution: Solution,
 
@@ -101,6 +103,7 @@ impl Circuit {
             sources: Vec::new(),
             lines: Vec::new(),
             loads: Vec::new(),
+            transformers: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
             is_solved: false,
@@ -145,6 +148,10 @@ impl Circuit {
             ElemKind::Load => {
                 self.pc_elements.push(r);
                 self.loads.push(r);
+            }
+            ElemKind::Transformer => {
+                self.pd_elements.push(r);
+                self.transformers.push(r);
             }
         }
         elem.cd_mut().handle = self.ckt_elements.len();
