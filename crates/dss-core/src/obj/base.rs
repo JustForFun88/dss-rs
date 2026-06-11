@@ -1,0 +1,168 @@
+//! Base per-object data and the object trait, the Rust replacement for
+//! Pascal `TDSSObject` (DSSObject.pas). Pascal reaches into object fields by
+//! raw pointer offset; we can't, so the generic property engine in
+//! [`crate::obj::props`] drives a small typed accessor trait
+//! ([`DssObject`]) that each class implements with `match idx` arms — the
+//! 1:1 stand-in for `SetObjDouble`/`GetObjInteger`/... pointer pokes.
+
+/// Shared object state every DSS object carries (`TDSSObject` fields that
+/// matter to the port so far): its name and the property set-order tracker.
+///
+/// Properties are addressed 1-based, exactly as in Pascal, so `prp_sequence`
+/// has `num_props + 1` slots and slot 0 is the monotonic counter
+/// (`PrpSequence[0]`).
+#[derive(Debug, Clone)]
+pub struct DssObjData {
+    /// Lowercased local name (`TNamedObject.LocalName`).
+    name: String,
+    /// Pascal `PrpSequence`: `[0]` is the counter, `[i]` is the order in
+    /// which property `i` was last set (0 = never set).
+    prp_sequence: Vec<u32>,
+}
+
+impl DssObjData {
+    pub fn new(name: impl Into<String>, num_props: usize) -> Self {
+        Self {
+            name: name.into(),
+            prp_sequence: vec![0; num_props + 1],
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Pascal `Set_Name`. Names are stored lowercased by the object
+    /// constructors (`Name := AnsiLowerCase(...)`); callers pass the
+    /// already-normalized form.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Pascal `SetAsNextSeq`: record that property `index` was just set, so
+    /// `Save` can later replay edits in the order they happened.
+    pub fn set_as_next_seq(&mut self, index: usize) {
+        self.prp_sequence[0] += 1;
+        self.prp_sequence[index] = self.prp_sequence[0];
+    }
+
+    /// Whether property `index` was explicitly set (Pascal `PrpSpecified`).
+    pub fn prp_specified(&self, index: usize) -> bool {
+        self.prp_sequence.get(index).copied().unwrap_or(0) != 0
+    }
+
+    /// Pascal `TDSSObject.MakeLike`: the base-class part of `like=` copies the
+    /// source's whole `PrpSequence` (counter slot included) onto the target,
+    /// so `Save` later writes the copied properties as explicitly set. Class
+    /// `make_like` impls call this first, mirroring `inherited MakeLike`.
+    pub fn copy_prp_sequence_from(&mut self, other: &DssObjData) {
+        self.prp_sequence.clone_from(&other.prp_sequence);
+    }
+
+    /// Pascal `GetNextPropertySet`: the property index whose set-order is the
+    /// smallest one still greater than that of `after` (pass `None` to start).
+    /// Returns `None` when there are no more — drives `SaveWrite` ordering.
+    pub fn next_property_set(&self, after: Option<usize>) -> Option<usize> {
+        let threshold = match after {
+            Some(i) => self.prp_sequence.get(i).copied().unwrap_or(0),
+            None => 0,
+        };
+        let mut smallest = u32::MAX;
+        let mut result = None;
+        for (i, &seq) in self.prp_sequence.iter().enumerate().skip(1) {
+            if seq != 0 && seq > threshold && seq < smallest {
+                smallest = seq;
+                result = Some(i);
+            }
+        }
+        result
+    }
+}
+
+/// The typed field accessors the property engine calls, keyed by the 1-based
+/// property index. Each concrete class implements only the kinds it actually
+/// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
+/// rather than silent data corruption (this mirrors the Pascal base
+/// `CustomSetRaw` "base ... reached" guard).
+#[allow(unused_variables)]
+pub trait DssObject {
+    fn data(&self) -> &DssObjData;
+    fn data_mut(&mut self) -> &mut DssObjData;
+
+    fn get_f64(&self, idx: usize) -> f64 {
+        unreachable!("get_f64 not implemented for property {idx}")
+    }
+    fn set_f64(&mut self, idx: usize, value: f64) {
+        unreachable!("set_f64 not implemented for property {idx}")
+    }
+    fn get_i32(&self, idx: usize) -> i32 {
+        unreachable!("get_i32 not implemented for property {idx}")
+    }
+    fn set_i32(&mut self, idx: usize, value: i32) {
+        unreachable!("set_i32 not implemented for property {idx}")
+    }
+    fn get_bool(&self, idx: usize) -> bool {
+        unreachable!("get_bool not implemented for property {idx}")
+    }
+    fn set_bool(&mut self, idx: usize, value: bool) {
+        unreachable!("set_bool not implemented for property {idx}")
+    }
+    fn get_string(&self, idx: usize) -> String {
+        unreachable!("get_string not implemented for property {idx}")
+    }
+    fn set_string(&mut self, idx: usize, value: String) {
+        unreachable!("set_string not implemented for property {idx}")
+    }
+    /// `None` mirrors a NIL Pascal array pointer (dumps as an empty string).
+    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+        unreachable!("get_f64_array not implemented for property {idx}")
+    }
+    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+        unreachable!("set_f64_array not implemented for property {idx}")
+    }
+
+    /// Pascal `PropertySideEffects`: run after property `idx` is written.
+    /// `prev_int` is the integer value the property held beforehand (only
+    /// meaningful for integer/boolean/enum properties; 0 otherwise).
+    fn side_effects(&mut self, idx: usize, prev_int: i32) {
+        let _ = (idx, prev_int);
+    }
+
+    /// Pascal per-class `EndEdit`: recompute derived state once an edit block
+    /// finishes (e.g. `ReCalcYearMult`, `SetMultArray`). No-op by default.
+    fn end_edit(&mut self) {}
+
+    /// Pascal `TDSSObject.MakeLike`: copy `other`'s field state onto `self`
+    /// (the name is *not* copied). Default is a no-op; classes override it.
+    /// `other` is the same concrete class as `self`, so the implementation can
+    /// read it through the typed accessors.
+    fn make_like(&mut self, other: &dyn DssObject) {
+        let _ = other;
+    }
+
+    /// Clone this object behind the trait object, so the executive can copy a
+    /// `MakeLike` source out of its arena without aliasing the target.
+    fn clone_box(&self) -> Box<dyn DssObject>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_as_next_seq_tracks_order() {
+        let mut d = DssObjData::new("t", 4);
+        assert!(!d.prp_specified(2));
+        d.set_as_next_seq(3);
+        d.set_as_next_seq(1);
+        d.set_as_next_seq(3); // re-setting bumps it to the latest order
+        assert!(d.prp_specified(3));
+        assert!(d.prp_specified(1));
+        assert!(!d.prp_specified(2));
+        // SaveWrite walk: order is 1 (seq 2) then 3 (seq 3); 3's first set
+        // (seq 1) is superseded.
+        assert_eq!(d.next_property_set(None), Some(1));
+        assert_eq!(d.next_property_set(Some(1)), Some(3));
+        assert_eq!(d.next_property_set(Some(3)), None);
+    }
+}

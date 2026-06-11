@@ -1,0 +1,519 @@
+//! The generic property engine: a once-ported replacement for Pascal's
+//! `DSSObjectHelper.ParseObjPropertyValue` / `GetObjPropertyValue` plus the
+//! `SetObjDouble`/`SetObjInteger`/`SetObjString` flag-handling setters.
+//!
+//! Pascal addresses object fields by pointer offset and a parallel set of
+//! `PropertyType[]`/`PropertyFlags[]`/`PropertyOffset*[]` arrays. Here a class
+//! is described by a [`ClassProps`] table of [`PropDef`] rows, and the engine
+//! drives the typed accessors of the [`DssObject`] trait. Property indices are
+//! 1-based throughout, matching the Pascal `TProp` ordinals.
+//!
+//! Scope note (Phase 2): the property *types* and *flags* implemented here are
+//! the ones the ported classes actually use. The remaining `TPropertyType`
+//! variants (struct-array, matrix, complex, object-reference, string-list, ...)
+//! and the JSON paths are added as the classes that need them are ported.
+
+use crate::obj::base::DssObject;
+use crate::obj::dss_enum::{EnumId, EnumRegistry};
+use crate::support::command_list::CommandList;
+use crate::util::{float_to_str_ex, get_dss_array_f64, interpret_dbl_array, str_y_or_n};
+use dss_parser::{Parser, ParserError, ParserVars, val_f64, val_i32};
+
+/// Pascal `TPropertyType` (subset). Discriminants are not significant here —
+/// only the variant identity matters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PropType {
+    Double,
+    Integer,
+    Boolean,
+    String,
+    MakeLike,
+    DoubleArray,
+    MappedStringEnum,
+    MappedIntEnum,
+}
+
+/// Pascal `TPropertyFlag` set, as a small bitset. Only the flags that affect
+/// the script parse/get/text-dump path carry behavior; the rest
+/// (`SuppressJSON`, `Redundant`, `RequiredInSpecSet`, `IsFilename`,
+/// `GlobalCount`, ...) are recorded for fidelity but are inert in Phase 2 — they
+/// only matter to the JSON/alt-order machinery, which is not ported yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PropFlags(u64);
+
+impl PropFlags {
+    pub const NONE: Self = Self(0);
+    // Behavioral (checked by the setters):
+    pub const NON_NEGATIVE: Self = Self(1 << 0);
+    pub const NON_ZERO: Self = Self(1 << 1);
+    pub const NON_POSITIVE: Self = Self(1 << 2);
+    pub const GREATER_THAN_ONE: Self = Self(1 << 3);
+    pub const IGNORE_INVALID: Self = Self(1 << 4);
+    pub const INVERSE_VALUE: Self = Self(1 << 5);
+    pub const APPLY_ROUND: Self = Self(1 << 6);
+    pub const VALUE_OFFSET: Self = Self(1 << 7);
+    pub const TRANSFORM_LOWERCASE: Self = Self(1 << 8);
+    // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
+    pub const SUPPRESS_JSON: Self = Self(1 << 32);
+    pub const REDUNDANT: Self = Self(1 << 33);
+    pub const REQUIRED_IN_SPEC_SET: Self = Self(1 << 34);
+    pub const IS_FILENAME: Self = Self(1 << 35);
+    pub const GLOBAL_COUNT: Self = Self(1 << 36);
+
+    pub fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+
+impl std::ops::BitOr for PropFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitOrAssign for PropFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+/// One property's metadata — the Rust form of a `DSSClass.pas` `DefineProperties`
+/// row (`PropertyType`/`PropertyFlags`/`PropertyScale`/`PropertyOffset2`/...).
+#[derive(Debug, Clone)]
+pub struct PropDef {
+    pub name: &'static str,
+    pub ptype: PropType,
+    pub flags: PropFlags,
+    /// Pascal `PropertyScale` (default 1.0).
+    pub scale: f64,
+    /// Pascal `PropertyTrapZero`: substitute this for a parsed 0 (default 0.0,
+    /// meaning "no trap").
+    pub trap_zero: f64,
+    /// Pascal `PropertyValueOffset` (added to integers under `VALUE_OFFSET`).
+    pub value_offset: f64,
+    /// `PropertyOffset2` for mapped enums: which enum drives the mapping.
+    pub enum_id: Option<EnumId>,
+    /// `PropertyOffset2` for `DoubleArray`: the 1-based index of the integer
+    /// property that holds the element count (e.g. `npts`).
+    pub size_prop: usize,
+}
+
+impl PropDef {
+    fn base(name: &'static str, ptype: PropType) -> Self {
+        Self {
+            name,
+            ptype,
+            flags: PropFlags::NONE,
+            scale: 1.0,
+            trap_zero: 0.0,
+            value_offset: 0.0,
+            enum_id: None,
+            size_prop: 0,
+        }
+    }
+
+    pub fn double(name: &'static str) -> Self {
+        Self::base(name, PropType::Double)
+    }
+    pub fn integer(name: &'static str) -> Self {
+        Self::base(name, PropType::Integer)
+    }
+    pub fn boolean(name: &'static str) -> Self {
+        Self::base(name, PropType::Boolean)
+    }
+    pub fn string(name: &'static str) -> Self {
+        Self::base(name, PropType::String)
+    }
+    pub fn make_like(name: &'static str) -> Self {
+        Self::base(name, PropType::MakeLike)
+    }
+    pub fn double_array(name: &'static str, size_prop: usize) -> Self {
+        Self {
+            size_prop,
+            ..Self::base(name, PropType::DoubleArray)
+        }
+    }
+    pub fn mapped_string_enum(name: &'static str, enum_id: EnumId) -> Self {
+        Self {
+            enum_id: Some(enum_id),
+            ..Self::base(name, PropType::MappedStringEnum)
+        }
+    }
+    pub fn mapped_int_enum(name: &'static str, enum_id: EnumId) -> Self {
+        Self {
+            enum_id: Some(enum_id),
+            ..Self::base(name, PropType::MappedIntEnum)
+        }
+    }
+
+    pub fn flags(mut self, flags: PropFlags) -> Self {
+        self.flags = flags;
+        self
+    }
+    pub fn scale(mut self, scale: f64) -> Self {
+        self.scale = scale;
+        self
+    }
+    pub fn trap_zero(mut self, trap_zero: f64) -> Self {
+        self.trap_zero = trap_zero;
+        self
+    }
+    pub fn value_offset(mut self, value_offset: f64) -> Self {
+        self.value_offset = value_offset;
+        self
+    }
+}
+
+/// A class's property table plus its abbreviation-matching command list — the
+/// Rust stand-in for the per-`TDSSClass` `PropertyType[]`/`CommandList` state.
+///
+/// Properties are 1-based; slot 0 is an unused placeholder so `props[idx]`
+/// lines up with the Pascal ordinals. The common `Like` (`MakeLikeProperty`) is
+/// appended automatically, mirroring `inherited DefineProperties`.
+#[derive(Debug)]
+pub struct ClassProps {
+    class_name: &'static str,
+    props: Vec<PropDef>,
+    command_list: CommandList,
+}
+
+impl ClassProps {
+    /// Build from the class-specific property rows (1-based order, excluding
+    /// `Like`). `abbrev` mirrors `CommandList.Abbrev` — `GrowthShape` is the one
+    /// class that disables it.
+    pub fn new(class_name: &'static str, mut defs: Vec<PropDef>, abbrev: bool) -> Self {
+        defs.push(PropDef::make_like("Like"));
+        let names: Vec<String> = defs.iter().map(|d| d.name.to_string()).collect();
+        let mut command_list = CommandList::new(names);
+        command_list.abbrev_allowed = abbrev;
+
+        let mut props = Vec::with_capacity(defs.len() + 1);
+        props.push(PropDef::base("", PropType::Integer)); // slot 0, never addressed
+        props.extend(defs);
+
+        Self {
+            class_name,
+            props,
+            command_list,
+        }
+    }
+
+    pub fn class_name(&self) -> &'static str {
+        self.class_name
+    }
+
+    pub fn num_properties(&self) -> usize {
+        self.props.len() - 1
+    }
+
+    pub fn prop(&self, idx: usize) -> &PropDef {
+        &self.props[idx]
+    }
+
+    pub fn property_name(&self, idx: usize) -> &'static str {
+        self.props[idx].name
+    }
+
+    /// Pascal `PropertyIndex`/`CommandList.GetCommand`: resolve a (possibly
+    /// abbreviated) property name to its 1-based index.
+    pub fn property_index(&self, name: &str) -> Option<usize> {
+        self.command_list.get_command(name).map(|i| i + 1)
+    }
+
+    /// Parse `value` into property `idx` and write it through the typed
+    /// accessors (Pascal `ParseObjPropertyValue` + `SetObj*`). Returns the
+    /// property's previous integer value, which side effects may consult.
+    /// Range/sign check failures are recorded in `eng.errors` and leave the
+    /// property unchanged, matching `DoSimpleMsg`-and-continue; only a genuine
+    /// number-conversion failure is returned as `Err`.
+    pub fn parse_into(
+        &self,
+        obj: &mut dyn DssObject,
+        idx: usize,
+        value: &str,
+        eng: &mut PropEngine,
+    ) -> Result<i32, ParserError> {
+        let pd = &self.props[idx];
+        let full = format!("{}.{}", self.class_name, obj.data().name());
+        match pd.ptype {
+            PropType::Double => {
+                let v = get_double(eng, value)?;
+                set_obj_double(pd, obj, idx, v, eng, &full);
+                Ok(0)
+            }
+            PropType::Integer => {
+                let v = get_integer(eng, value)?;
+                Ok(set_obj_integer(pd, obj, idx, v, eng, &full))
+            }
+            PropType::Boolean => {
+                let v = crate::util::interpret_yes_no(value);
+                let prev = obj.get_bool(idx) as i32;
+                obj.set_bool(idx, v);
+                Ok(prev)
+            }
+            PropType::MappedStringEnum | PropType::MappedIntEnum => {
+                let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
+                let ord = if pd.ptype == PropType::MappedStringEnum {
+                    eng.enums
+                        .get(enum_id)
+                        .string_to_ordinal(&value.to_lowercase())?
+                } else {
+                    let v = get_integer(eng, value)?;
+                    if !eng.enums.get(enum_id).is_ordinal_valid(v) {
+                        eng.errors.push(format!(
+                            "{full}.{}: \"{value}\" is not a valid value.",
+                            pd.name
+                        ));
+                        return Ok(obj.get_i32(idx));
+                    }
+                    v
+                };
+                Ok(set_obj_integer(pd, obj, idx, ord, eng, &full))
+            }
+            PropType::String => {
+                let v = if pd.flags.contains(PropFlags::TRANSFORM_LOWERCASE) {
+                    value.to_lowercase()
+                } else {
+                    value.to_string()
+                };
+                obj.set_string(idx, v);
+                Ok(0)
+            }
+            PropType::MakeLike => {
+                // `like=` copies another object's state; that needs the class
+                // collection, so the executive intercepts it before reaching
+                // here (Phase 2).
+                Err(ParserError::new(
+                    "MakeLike must be handled by the executive, not the property engine",
+                ))
+            }
+            PropType::DoubleArray => {
+                let max = obj.get_i32(pd.size_prop).max(0) as usize;
+                let mut buf = vec![0.0; max];
+                interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;
+                if pd.flags.contains(PropFlags::APPLY_ROUND) {
+                    // TODO(compat): FPC `Round` is ties-to-even with an
+                    // integer-indefinite path for out-of-Int64 magnitudes; for
+                    // array rounding (years, point counts) the magnitudes are
+                    // always in range, so plain ties-to-even suffices. The clean
+                    // fix wipes this with the other compat shims.
+                    for v in &mut buf {
+                        *v = v.round_ties_even();
+                    }
+                }
+                if pd.flags.contains(PropFlags::NON_ZERO) && buf.contains(&0.0) {
+                    eng.errors
+                        .push(format!("{full}.{}: Elements cannot be zero.", pd.name));
+                    return Ok(0);
+                }
+                if pd.scale != 1.0 {
+                    for v in &mut buf {
+                        *v *= pd.scale;
+                    }
+                }
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
+        }
+    }
+
+    /// One iteration of the Pascal `Edit` loop body: parse + write, record the
+    /// set order (`SetAsNextSeq`), then run `PropertySideEffects`. A
+    /// number-conversion failure aborts before any of the bookkeeping, exactly
+    /// as the Pascal exception would unwind past `SetAsNextSeq`.
+    pub fn edit_property(
+        &self,
+        obj: &mut dyn DssObject,
+        idx: usize,
+        value: &str,
+        eng: &mut PropEngine,
+    ) -> Result<(), ParserError> {
+        let prev_int = self.parse_into(obj, idx, value, eng)?;
+        obj.data_mut().set_as_next_seq(idx);
+        obj.side_effects(idx, prev_int);
+        Ok(())
+    }
+
+    /// Pascal `GetObjPropertyValue`: render property `idx` as the string the
+    /// `?` query and `DumpProperties` emit.
+    pub fn get_value(&self, obj: &dyn DssObject, idx: usize, enums: &EnumRegistry) -> String {
+        let pd = &self.props[idx];
+        match pd.ptype {
+            PropType::Double => float_to_str_ex(get_obj_double(pd, obj, idx)),
+            PropType::Integer => obj.get_i32(idx).to_string(),
+            PropType::Boolean => str_y_or_n(obj.get_bool(idx)).to_string(),
+            PropType::String => obj.get_string(idx),
+            PropType::MakeLike => String::new(), // Pascal: always ''
+            PropType::MappedStringEnum | PropType::MappedIntEnum => {
+                let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
+                enums.get(enum_id).ordinal_to_string(obj.get_i32(idx))
+            }
+            PropType::DoubleArray => {
+                let n = obj.get_i32(pd.size_prop).max(0) as usize;
+                get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)
+            }
+        }
+    }
+}
+
+/// Shared scratch state the engine threads through, the equivalent of Pascal's
+/// context-owned `PropParser`/`AuxParser`, the enum registry, and the
+/// `DoSimpleMsg` sink. `parser` must be a dedicated scratch parser, not the one
+/// driving the outer `Edit` loop.
+pub struct PropEngine<'a> {
+    pub parser: &'a mut Parser,
+    pub vars: &'a ParserVars,
+    pub enums: &'a EnumRegistry,
+    pub errors: &'a mut Vec<String>,
+}
+
+/// Pascal `ParseObjPropertyValue.GetDouble`: try FPC `Val` first, falling back
+/// to the parser (so RPN expressions like `"2 3 *"` work) by wrapping in `()`.
+fn get_double(eng: &mut PropEngine, value: &str) -> Result<f64, ParserError> {
+    if let Some(v) = val_f64(value) {
+        return Ok(v);
+    }
+    eng.parser.set_auto_increment(false);
+    eng.parser.set_cmd_string(&format!("({value})"));
+    eng.parser.next_param(eng.vars);
+    eng.parser.make_double(eng.vars)
+}
+
+/// Pascal `ParseObjPropertyValue.GetInteger`.
+fn get_integer(eng: &mut PropEngine, value: &str) -> Result<i32, ParserError> {
+    if let Some(v) = val_i32(value) {
+        return Ok(v);
+    }
+    eng.parser.set_auto_increment(false);
+    eng.parser.set_cmd_string(&format!("({value})"));
+    eng.parser.next_param(eng.vars);
+    eng.parser.make_integer(eng.vars)
+}
+
+/// Pascal `SetObjDouble`: apply scale and the range/sign checks, the zero trap,
+/// and `InverseValue`, then write. A failed check records a message and leaves
+/// the field untouched (the field keeps its previous value).
+fn set_obj_double(
+    pd: &PropDef,
+    obj: &mut dyn DssObject,
+    idx: usize,
+    mut value: f64,
+    eng: &mut PropEngine,
+    full: &str,
+) {
+    let f = pd.flags;
+    let ignore = f.contains(PropFlags::IGNORE_INVALID);
+    if f.contains(PropFlags::GREATER_THAN_ONE) && value <= 1.0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) must be greater than one.",
+                pd.name
+            ));
+        }
+        return;
+    }
+    if f.contains(PropFlags::NON_ZERO) && value == 0.0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) cannot be zero.",
+                pd.name
+            ));
+        }
+        return;
+    }
+    if f.contains(PropFlags::NON_NEGATIVE) && value < 0.0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) cannot be negative.",
+                pd.name
+            ));
+        }
+        return;
+    }
+    if f.contains(PropFlags::NON_POSITIVE) && value > 0.0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) cannot be positive.",
+                pd.name
+            ));
+        }
+        return;
+    }
+
+    value *= pd.scale;
+    if value == 0.0 && pd.trap_zero != 0.0 {
+        value = pd.trap_zero;
+    }
+    if value != 0.0 && f.contains(PropFlags::INVERSE_VALUE) {
+        value = 1.0 / value;
+    }
+    obj.set_f64(idx, value);
+}
+
+/// Pascal `GetObjDouble`: divide by scale on the way out (and invert under
+/// `InverseValue`), the mirror of [`set_obj_double`].
+fn get_obj_double(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> f64 {
+    let raw = obj.get_f64(idx);
+    if pd.flags.contains(PropFlags::INVERSE_VALUE) {
+        1.0 / (raw / pd.scale)
+    } else {
+        raw / pd.scale
+    }
+}
+
+/// Pascal `SetObjInteger`: the range/sign checks plus `ValueOffset`, returning
+/// the previous value (captured before the write) for side effects.
+fn set_obj_integer(
+    pd: &PropDef,
+    obj: &mut dyn DssObject,
+    idx: usize,
+    mut value: i32,
+    eng: &mut PropEngine,
+    full: &str,
+) -> i32 {
+    let f = pd.flags;
+    let ignore = f.contains(PropFlags::IGNORE_INVALID);
+    let prev = obj.get_i32(idx);
+    if f.contains(PropFlags::GREATER_THAN_ONE) && value <= 1 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) must be greater than one.",
+                pd.name
+            ));
+        }
+        return prev;
+    }
+    if f.contains(PropFlags::NON_ZERO) && value == 0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) cannot be zero.",
+                pd.name
+            ));
+        }
+        return prev;
+    }
+    if f.contains(PropFlags::NON_NEGATIVE) && value < 0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) cannot be negative.",
+                pd.name
+            ));
+        }
+        return prev;
+    }
+    if f.contains(PropFlags::NON_POSITIVE) && value > 0 {
+        if !ignore {
+            eng.errors.push(format!(
+                "{full}.{}: Value ({value}) cannot be positive.",
+                pd.name
+            ));
+        }
+        return prev;
+    }
+    if f.contains(PropFlags::VALUE_OFFSET) {
+        value += pd.value_offset.round_ties_even() as i32;
+    }
+    obj.set_i32(idx, value);
+    prev
+}

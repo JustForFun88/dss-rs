@@ -189,6 +189,7 @@ version = "0.1.0"
 name = "dss-core"
 version = "0.1.0"
 dependencies = [
+ "dss-parser",
  "num-complex",
  "serde",
  "serde_json",
