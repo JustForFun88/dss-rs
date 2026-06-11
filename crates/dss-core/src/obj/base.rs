@@ -169,6 +169,25 @@ pub trait DssObject {
         unreachable!("get_bus_name not implemented (terminal {terminal})")
     }
 
+    /// `DSSObjectReferenceProperty` write for a *resolved* reference (a
+    /// `PropDef::object_ref_class`): `name` is the referenced object's name for
+    /// dumps (Pascal `otherObj.Name`, `""` when unresolved), and `resolved`
+    /// carries its stable [`ElemRef`] plus a read view of the object so the
+    /// element can copy data immediately (Pascal `FetchLineCode` etc.). The
+    /// dump value is read back through [`DssObject::get_string`].
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(
+            crate::elements::traits::ElemRef,
+            &dyn crate::obj::base::DssObject,
+        )>,
+    ) {
+        let _ = (idx, name, resolved);
+        unreachable!("set_object_ref not implemented for property {idx}")
+    }
+
     /// `ComplexProperty` / `ComplexPartsProperty`: both parse a 2-vector
     /// `(re, im)`; the class stores it as one `Complex` field or two doubles.
     fn get_complex(&self, idx: usize) -> (f64, f64) {

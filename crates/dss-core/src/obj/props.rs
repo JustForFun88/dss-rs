@@ -13,6 +13,7 @@
 //! variants (struct-array, matrix, complex, object-reference, string-list, ...)
 //! and the JSON paths are added as the classes that need them are ported.
 
+use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::{EnumId, EnumRegistry};
 use crate::support::command_list::CommandList;
@@ -130,6 +131,12 @@ pub struct PropDef {
     /// `PropertyOffset2` for `DoubleArray`: the 1-based index of the integer
     /// property that holds the element count (e.g. `npts`).
     pub size_prop: usize,
+    /// `PropertyOffset2` for `ObjectRef`: the name of the class the reference
+    /// resolves against (Pascal `cls.Name`). `None` keeps the Phase 3
+    /// behavior — the value is stored verbatim as a lowercased name string with
+    /// no live resolution (still the case for Load/VSource shape references
+    /// until Phase 5 wires them).
+    pub object_class: Option<&'static str>,
 }
 
 impl PropDef {
@@ -143,6 +150,7 @@ impl PropDef {
             value_offset: 0.0,
             enum_id: None,
             size_prop: 0,
+            object_class: None,
         }
     }
 
@@ -213,8 +221,18 @@ impl PropDef {
     pub fn enabled(name: &'static str) -> Self {
         Self::base(name, PropType::Enabled)
     }
+    /// `DSSObjectReferenceProperty` stored as a name string only (Phase 3
+    /// behavior — no live resolution). Used by Load/VSource shape refs.
     pub fn object_ref(name: &'static str) -> Self {
         Self::base(name, PropType::ObjectRef)
+    }
+    /// `DSSObjectReferenceProperty` resolved at parse time against class
+    /// `class` (Pascal `PropertyOffset2 = @TheClass`), e.g. Line's `linecode`.
+    pub fn object_ref_class(class: &'static str, name: &'static str) -> Self {
+        Self {
+            object_class: Some(class),
+            ..Self::base(name, PropType::ObjectRef)
+        }
     }
 
     pub fn flags(mut self, flags: PropFlags) -> Self {
@@ -368,7 +386,30 @@ impl ClassProps {
                 Ok(prev)
             }
             PropType::ObjectRef => {
-                obj.set_string(idx, value.to_lowercase());
+                match pd.object_class {
+                    None => {
+                        // Phase 3 behavior: store the lowercased name only.
+                        obj.set_string(idx, value.to_lowercase());
+                    }
+                    Some(class) => {
+                        // Pascal `ParseObjPropertyValue` for
+                        // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
+                        // (case-insensitive). On failure DoSimpleMsg 401 and the
+                        // reference is left NIL, but the edit continues.
+                        let resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        if resolved.is_none() && !value.is_empty() {
+                            eng.errors.push(format!(
+                                "{full}.{}: {class} object \"{value}\" not found.",
+                                pd.name
+                            ));
+                        }
+                        // The dump renders the resolved object's name (NIL → "").
+                        let name = resolved
+                            .map(|(_, o)| o.data().name().to_string())
+                            .unwrap_or_default();
+                        obj.set_object_ref(idx, name, resolved);
+                    }
+                }
                 Ok(0)
             }
             PropType::Integer => {
@@ -544,6 +585,22 @@ pub struct PropEngine<'a> {
     pub vars: &'a ParserVars,
     pub enums: &'a EnumRegistry,
     pub errors: &'a mut Vec<String>,
+    /// Read view of every class except the one being edited, alive for the
+    /// duration of an edit so `ObjectRef` properties can resolve immediately
+    /// (Pascal resolves `cls.Find` mid-`Edit`; see [`ForeignClassesView`]).
+    /// `None` outside the executive's edit loop (unit tests, etc.).
+    pub foreign: Option<&'a dyn ForeignClassesView<'a>>,
+}
+
+/// A read view of the other registered classes, the abstraction `parse_into`
+/// uses to resolve an `ObjectRef` to a live object (Pascal `cls.Find`). The
+/// executive implements it over the class registry minus the active class; the
+/// returned `ElemRef` is stable (nothing is deleted except whole-circuit
+/// `Clear`, PORTING_PLAN §2.1).
+pub trait ForeignClassesView<'a> {
+    /// Case-insensitive lookup of `name` in class `class`. `None` when the
+    /// class or the object is unknown.
+    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)>;
 }
 
 /// Pascal `ParseObjPropertyValue.GetDouble`: try FPC `Val` first, falling back

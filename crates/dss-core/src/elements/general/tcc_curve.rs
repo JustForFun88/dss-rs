@@ -195,6 +195,7 @@ mod tests {
                 vars: &vars,
                 enums: &enums,
                 errors: &mut errors,
+                foreign: None,
             };
             cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
         }
@@ -287,6 +288,7 @@ mod tests {
                 vars: &vars,
                 enums: &enums,
                 errors: &mut errors,
+                foreign: None,
             };
             cls.edit_property(&mut obj, idx, v, &mut eng).unwrap();
         }

@@ -160,6 +160,42 @@ SCENARIOS = [
             "New LineCode.lc1 like=base",
         ],
     },
+    # --- Line + LineCode fetch (WP4.2) ---
+    {
+        "name": "line_code_sym",
+        "target": "Line.l1",
+        "commands": [
+            "New LineCode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 "
+            "c1=3 c0=1 units=mi normamps=500 emergamps=700",
+            "New Line.l1 bus1=a bus2=b linecode=mtx601 length=2000 units=ft",
+        ],
+    },
+    {
+        "name": "line_code_then_units",
+        "target": "Line.l1",
+        "commands": [
+            "New LineCode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 "
+            "c1=3 c0=1 units=mi",
+            "New Line.l1 bus1=a bus2=b linecode=mtx601 units=ft length=2000",
+        ],
+    },
+    {
+        "name": "line_code_matrix",
+        "target": "Line.l1",
+        "commands": [
+            "New LineCode.mx nphases=2 rmatrix=(0.1 | 0.05 0.1) "
+            "xmatrix=(0.2 | 0.07 0.2) cmatrix=(3 | -1 3) units=mi",
+            "New Line.l1 bus1=a.1.2 bus2=b.1.2 linecode=mx length=1 units=mi",
+        ],
+    },
+    {
+        "name": "line_code_then_r1",
+        "target": "Line.l1",
+        "commands": [
+            "New LineCode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 units=mi",
+            "New Line.l1 bus1=a bus2=b linecode=mtx601 r1=0.5 length=1 units=mi",
+        ],
+    },
 ]
 
 

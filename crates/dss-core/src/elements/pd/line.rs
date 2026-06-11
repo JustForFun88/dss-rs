@@ -8,7 +8,8 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::{CktElement, SysCtx};
+use crate::elements::general::line_code::LineCodeObj;
+use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -70,15 +71,17 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::bus("bus1", 1),
         PropDef::bus("bus2", 2),
-        PropDef::object_ref("linecode").flags(PropFlags::NOT_PORTED),
+        PropDef::object_ref_class("LineCode", "LineCode"),
         PropDef::double("length"),
         PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("r1").flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::double("x1").flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::double("r0").flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::double("x0").flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::double("C1").flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::double("C0").flags(PropFlags::SCALED_BY_FUNCTION),
+        // The sym-component scalars are shown only while the sym model is
+        // active (`PropertyOffset3 = @SymComponentsModel`, ConditionalValue).
+        PropDef::double("r1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
+        PropDef::double("x1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
+        PropDef::double("r0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
+        PropDef::double("x0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
+        PropDef::double("C1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
+        PropDef::double("C0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
         PropDef::sym_matrix_real("rmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
         PropDef::sym_matrix_imag("xmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
         PropDef::sym_matrix_imag("cmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
@@ -93,8 +96,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("EarthModel", enums.earth_model),
         PropDef::object_ref("cncables").flags(PropFlags::NOT_PORTED),
         PropDef::object_ref("tscables").flags(PropFlags::NOT_PORTED),
-        PropDef::double("B1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT),
-        PropDef::double("B0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT),
+        PropDef::double("B1").flags(
+            PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
+        ),
+        PropDef::double("B0").flags(
+            PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
+        ),
         PropDef::integer("Seasons"),
         PropDef::double_array("Ratings", SEASONS),
         PropDef::mapped_string_enum("LineType", enums.line_type),
@@ -127,8 +134,15 @@ pub struct Line {
     pub len: f64,
     pub length_units: LineUnits,
     pub user_length_units: LineUnits,
+    /// `FLineCodeUnits`: the units the active LineCode declared, captured at
+    /// `FetchLineCode`; drives the `units=` relative reconversion.
+    pub line_code_units: LineUnits,
     /// `FUnitsConvert`.
     pub units_convert: f64,
+    /// `LineCodeObj` reference (the resolved code's stable [`ElemRef`]) and its
+    /// name for dumps; `None`/empty before any `linecode=`.
+    pub line_code_ref: Option<ElemRef>,
+    pub line_code_name: String,
     pub is_switch: bool,
     pub sym_components_model: bool,
     pub sym_components_changed: bool,
@@ -176,7 +190,10 @@ impl Line {
             len: 1.0, // 1 kFt
             length_units: LineUnits::None,
             user_length_units: LineUnits::None,
+            line_code_units: LineUnits::None,
             units_convert: 1.0,
+            line_code_ref: None,
+            line_code_name: String::new(),
             is_switch: false,
             sym_components_model: true,
             sym_components_changed: false,
@@ -185,7 +202,7 @@ impl Line {
             xg,
             kxg: xg / (658.5 * (rho / base_freq).sqrt()).ln(),
             rho,
-            earth_model: 1, // DefaultEarthModel = SIMPLECARSON
+            earth_model: 3, // DSS.DefaultEarthModel = DERI
             line_type: 1,   // OH line
             z: None,
             yc: None,
@@ -249,11 +266,93 @@ impl Line {
         // values in ohms per unit length
     }
 
+    /// Pascal `TLineObj.KillLineCodeSpecified`: drop the LineCode reference and
+    /// clear its set-order mark, so a later sym/matrix override stops the dump
+    /// from reporting the (now superseded) code.
+    fn kill_line_code_specified(&mut self) {
+        self.line_code_ref = None;
+        self.line_code_name = String::new();
+        self.cd.obj.clear_seq(prop::LINECODE);
+    }
+
     /// Pascal `ResetLengthUnits`.
     fn reset_length_units(&mut self) {
         self.units_convert = 1.0;
         self.length_units = LineUnits::None;
         self.user_length_units = LineUnits::None;
+    }
+
+    /// Pascal `TLineObj.FetchLineCode`: copy the resolved LineCode's impedance
+    /// data onto this line. Called from the `linecode=` property side effect
+    /// (here, directly when the reference resolves). Faithful to the
+    /// non-`DSS_EXTENSIONS_COMPAT` path: the copied properties' set-order marks
+    /// are cleared so dumps reflect the code, not the line.
+    fn fetch_line_code(&mut self, code: &LineCodeObj) {
+        use prop::*;
+
+        // Frequency compensation takes place in CalcYPrim.
+        self.cd.base_frequency = code.base_frequency();
+
+        // Copy impedances, but do not recalc here for the matrix model: the
+        // symmetrical-component z's may not match what is in the matrix.
+        if code.sym_components_model() {
+            self.r1 = code.r1();
+            self.x1 = code.x1();
+            self.r0 = code.r0();
+            self.x0 = code.x0();
+            self.c1 = code.c1();
+            self.c0 = code.c0();
+            self.sym_components_model = true;
+        } else {
+            self.sym_components_model = false;
+        }
+
+        // Earth-return impedances used to compensate for frequency.
+        self.rg = code.rg();
+        self.xg = code.xg();
+        self.rho = code.rho();
+        self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
+
+        self.line_code_units = LineUnits::from_code(code.units());
+        self.units_convert = convert_line_units(self.line_code_units, self.length_units);
+
+        self.norm_amps = code.norm_amps();
+        self.emerg_amps = code.emerg_amps();
+        self.num_amp_ratings = code.num_amp_ratings();
+        self.amp_ratings = code.amp_ratings().to_vec();
+
+        // FaultRate/PctPerm/HrsToRepair deliberately NOT copied (Pascal
+        // commented out 2014 — they vary section to section).
+
+        // Zero the set-order marks of everything the code now supplies, so
+        // `Save`/`?` reflect the linecode (non-NoPropertyTracking branch).
+        for p in [
+            GEOMETRY, SPACING, R1, X1, R0, X0, C1, C0, B1, B0, SEASONS, RATINGS, NORMAMPS,
+            EMERGAMPS,
+        ] {
+            self.cd.obj.clear_seq(p);
+        }
+
+        if self.cd.nphases as i32 != code.nphases() {
+            self.cd.nphases = code.nphases().max(0) as usize;
+        }
+
+        if !self.sym_components_model {
+            // Copy matrices (Z, Yc) verbatim.
+            self.z = code.z().cloned();
+            self.yc = code.yc().cloned();
+        } else {
+            // Compute matrices from the copied sym components. Pascal reads
+            // ActiveCircuit.PositiveSequence; at parse time we use the
+            // multiphase default, exactly as the `phases=` side effect does.
+            self.recalc(false);
+        }
+
+        // NConds := Fnphases; forces reallocation of terminal info + Yorder.
+        let n = self.cd.nphases;
+        self.cd.set_nconds(n);
+
+        self.line_type = code.fline_type();
     }
 }
 
@@ -503,6 +602,43 @@ impl DssObject for Line {
         self.cd.get_bus(terminal).to_string()
     }
 
+    /// `linecode=`: store the resolved code's name + ElemRef and run
+    /// `FetchLineCode` immediately (Pascal stores the pointer then
+    /// `PropertySideEffects` calls `FetchLineCode`; here the resolved view is
+    /// only available at parse time, so we fetch here).
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(ElemRef, &dyn DssObject)>,
+    ) {
+        match idx {
+            prop::LINECODE => {
+                self.line_code_name = name;
+                self.line_code_ref = resolved.map(|(r, _)| r);
+                if let Some((_, obj)) = resolved
+                    && let Some(code) = obj.as_any().downcast_ref::<LineCodeObj>()
+                {
+                    self.fetch_line_code(code);
+                }
+            }
+            _ => unreachable!("Line has no resolved object-ref property {idx}"),
+        }
+    }
+
+    fn get_string(&self, idx: usize) -> String {
+        use prop::*;
+        match idx {
+            LINECODE => self.line_code_name.clone(),
+            // Unported scalar refs render as the oracle's empty value.
+            GEOMETRY | SPACING => String::new(),
+            // wires/cncables/tscables are array refs in Pascal; their empty
+            // dump is `[]` (NOT_PORTED — they only need to round-trip empty).
+            WIRES | CNCABLES | TSCABLES => "[]".to_string(),
+            _ => unreachable!("Line has no string property {idx}"),
+        }
+    }
+
     fn set_matrix_part(&mut self, idx: usize, values: &[f64], order: usize, real: bool) {
         use prop::*;
         let target = match idx {
@@ -592,15 +728,32 @@ impl DssObject for Line {
         }
     }
 
+    /// Pascal `ConditionalValue` (`@SymComponentsModel`): the sym scalars are
+    /// hidden (`----`) once a matrix model is in force.
+    fn prop_conditional(&self, idx: usize) -> bool {
+        use prop::*;
+        match idx {
+            R1 | X1 | R0 | X0 | C1 | C0 | B1 | B0 => self.sym_components_model,
+            _ => true,
+        }
+    }
+
     /// Pascal `TLineObj.PropertySideEffects`.
     fn side_effects(&mut self, idx: usize, prev_int: i32) {
         use prop::*;
         match idx {
             C1 | C0 | CMATRIX | B1 | B0 => self.cap_specified = true,
             UNITS => {
-                // Update the units conversion factor (no line code yet).
-                self.units_convert *=
-                    convert_line_units(LineUnits::from_code(prev_int), self.length_units);
+                // Update the units conversion factor. With a LineCode in play
+                // the factor is recomputed relative to the code's units;
+                // otherwise it is adjusted relative to the previous units.
+                if self.line_code_ref.is_some() {
+                    self.units_convert =
+                        convert_line_units(self.line_code_units, self.length_units);
+                } else {
+                    self.units_convert *=
+                        convert_line_units(LineUnits::from_code(prev_int), self.length_units);
+                }
                 self.user_length_units = self.length_units;
                 self.cd.yprim_invalid = true;
             }
@@ -628,11 +781,13 @@ impl DssObject for Line {
                 }
             }
             R1 | X1 | R0 | X0 | C1 | C0 | B1 | B0 => {
+                self.kill_line_code_specified();
                 self.reset_length_units();
                 self.sym_components_changed = true;
                 self.sym_components_model = true;
             }
             RMATRIX | XMATRIX | CMATRIX => {
+                self.kill_line_code_specified();
                 self.sym_components_model = false;
                 for p in [R1, X1, R0, X0, C1, C0, B1, B0] {
                     self.cd.obj.clear_seq(p);
@@ -643,6 +798,7 @@ impl DssObject for Line {
                 if self.is_switch {
                     self.sym_components_changed = true;
                     self.cd.yprim_invalid = true;
+                    self.kill_line_code_specified();
                     self.r1 = 1.0;
                     self.x1 = 1.0;
                     self.r0 = 1.0;
@@ -719,7 +875,10 @@ impl DssObject for Line {
         self.len = other.len;
         self.length_units = other.length_units;
         self.user_length_units = other.user_length_units;
+        self.line_code_units = other.line_code_units;
         self.units_convert = other.units_convert;
+        self.line_code_ref = other.line_code_ref;
+        self.line_code_name = other.line_code_name.clone();
         self.is_switch = other.is_switch;
         self.sym_components_model = other.sym_components_model;
         self.sym_components_changed = other.sym_components_changed;
