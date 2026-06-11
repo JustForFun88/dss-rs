@@ -26,8 +26,13 @@ pub struct ParserError {
 }
 
 impl ParserError {
-    fn new(message: String) -> Self {
-        Self { message }
+    /// Build an error carrying a message. Public because the engine crate
+    /// reuses this type wherever the Pascal original raised an exception that
+    /// `ProcessCommand` would catch (`EParserProblem` and plain `Exception`).
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
     }
 
     pub fn message(&self) -> &str {
@@ -48,7 +53,7 @@ impl std::error::Error for ParserError {}
 ///
 /// TODO(compat): the `infinity` rejection only mirrors FPC's narrower
 /// grammar; collapse to plain `f64::from_str` once the 1:1 port is complete.
-fn val_f64(s: &str) -> Option<f64> {
+pub fn val_f64(s: &str) -> Option<f64> {
     let t = s.strip_prefix(['+', '-']).unwrap_or(s);
     if t.eq_ignore_ascii_case("infinity") {
         return None;
@@ -59,7 +64,7 @@ fn val_f64(s: &str) -> Option<f64> {
 /// FPC `Val` for integers: optional sign, then `$`/`0x`/`0X` hex, `%` binary,
 /// `&` octal, or decimal. Out-of-range values fail (range check), letting the
 /// caller fall back to float conversion.
-fn val_i32(s: &str) -> Option<i32> {
+pub fn val_i32(s: &str) -> Option<i32> {
     let (neg, rest) = match s.as_bytes().first()? {
         b'+' => (false, &s[1..]),
         b'-' => (true, &s[1..]),
@@ -388,23 +393,33 @@ impl Parser {
         result
     }
 
-    /// Substitute an `@variable` token in place (Pascal `CheckForVar`).
-    /// The variable name runs to the first `.` — or `^`, which takes
-    /// precedence; the suffix from that character on is kept. A brace-wrapped
-    /// value (a definition that itself used variables) forces RPN
-    /// interpretation by flagging the token as quoted. Returns whether the
-    /// token changed.
+    /// Substitute an `@variable` token in place (the parser's own use of
+    /// Pascal `CheckForVar`, operating on the current token buffer).
     fn check_for_var(&mut self, vars: &ParserVars) -> bool {
-        if self.token_buffer.len() <= 1 || !self.token_buffer.starts_with(VARIABLE_DELIMITER) {
+        let mut token = std::mem::take(&mut self.token_buffer);
+        let changed = self.check_for_var_in(vars, &mut token);
+        self.token_buffer = token;
+        changed
+    }
+
+    /// Substitute an `@variable` in a caller-provided token (the public
+    /// Pascal `CheckforVar(var TokenBuffer_)`, used e.g. when resolving
+    /// object names). The variable name runs to the first `.` — or `^`,
+    /// which takes precedence; the suffix from that character on is kept.
+    /// A brace-wrapped value (a definition that itself used variables)
+    /// forces RPN interpretation by flagging the parser's quoted state.
+    /// Returns whether the token changed.
+    pub fn check_for_var_in(&mut self, vars: &ParserVars, token: &mut String) -> bool {
+        if token.len() <= 1 || !token.starts_with(VARIABLE_DELIMITER) {
             return false;
         }
-        let dot_pos = self.token_buffer.find('.');
-        let carat_pos = self.token_buffer.find('^');
+        let dot_pos = token.find('.');
+        let carat_pos = token.find('^');
         let cut = carat_pos.or(dot_pos); // carat takes precedence
 
         let var_name = match cut {
-            Some(p) => &self.token_buffer[..p],
-            None => self.token_buffer.as_str(),
+            Some(p) => &token[..p],
+            None => token.as_str(),
         };
         let Some(value) = vars.get(var_name) else {
             return false;
@@ -419,14 +434,14 @@ impl Parser {
         let force_rpn = value.starts_with('{');
 
         let new_token = match cut {
-            Some(p) => format!("{replacement}{}", &self.token_buffer[p..]),
+            Some(p) => format!("{replacement}{}", &token[p..]),
             None => replacement,
         };
         if force_rpn {
             self.is_quoted_string = true; // force the RPN parser to handle it
         }
-        let changed = new_token != self.token_buffer;
-        self.token_buffer = new_token;
+        let changed = new_token != *token;
+        *token = new_token;
         changed
     }
 
