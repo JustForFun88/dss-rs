@@ -1,0 +1,668 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "cases": [
+  {
+   "name": "name_value_pairs",
+   "cmd": "param1=value1 param2=value2",
+   "records": [
+    {
+     "param": "param1",
+     "token": "value1"
+    },
+    {
+     "param": "param2",
+     "token": "value2"
+    },
+    {
+     "param": "",
+     "token": ""
+    }
+   ]
+  },
+  {
+   "name": "positional_tokens",
+   "cmd": "New Line.L1 Bus1 Bus2",
+   "records": [
+    {
+     "param": "",
+     "token": "New"
+    },
+    {
+     "param": "",
+     "token": "Line.L1"
+    },
+    {
+     "param": "",
+     "token": "Bus1"
+    },
+    {
+     "param": "",
+     "token": "Bus2"
+    },
+    {
+     "param": "",
+     "token": ""
+    }
+   ]
+  },
+  {
+   "name": "equals_with_spaces",
+   "cmd": "kv = 12.47 pf  =  0.95",
+   "records": [
+    {
+     "param": "kv",
+     "token": "12.47"
+    },
+    {
+     "dbl": 12.47
+    },
+    {
+     "param": "pf",
+     "token": "0.95"
+    },
+    {
+     "dbl": 0.95
+    }
+   ]
+  },
+  {
+   "name": "commas",
+   "cmd": "a,b, c ,d",
+   "records": [
+    {
+     "param": "",
+     "token": "a"
+    },
+    {
+     "param": "",
+     "token": "b"
+    },
+    {
+     "param": "",
+     "token": "c"
+    },
+    {
+     "param": "",
+     "token": "d"
+    }
+   ]
+  },
+  {
+   "name": "quote_pairs",
+   "cmd": "p=(alpha beta) d=\"gamma delta\" s='ep si' b=[ze ta] c={e ta}",
+   "records": [
+    {
+     "param": "p",
+     "token": "alpha beta"
+    },
+    {
+     "param": "d",
+     "token": "gamma delta"
+    },
+    {
+     "param": "s",
+     "token": "ep si"
+    },
+    {
+     "param": "b",
+     "token": "ze ta"
+    },
+    {
+     "param": "c",
+     "token": "e ta"
+    }
+   ]
+  },
+  {
+   "name": "bang_comment",
+   "cmd": "kw=5 ! rest is comment kv=12",
+   "records": [
+    {
+     "param": "kw",
+     "token": "5"
+    },
+    {
+     "dbl": 5.0
+    },
+    {
+     "param": "",
+     "token": ""
+    }
+   ]
+  },
+  {
+   "name": "slash_comment",
+   "cmd": "conn=delta // trailing",
+   "records": [
+    {
+     "param": "conn",
+     "token": "delta"
+    },
+    {
+     "param": "",
+     "token": ""
+    }
+   ]
+  },
+  {
+   "name": "slash_in_token",
+   "cmd": "file=dir/sub/name.dss",
+   "records": [
+    {
+     "param": "file",
+     "token": "dir/sub/name.dss"
+    }
+   ]
+  },
+  {
+   "name": "val_float_forms",
+   "cmd": "a=.5 b=5. c=1e3 d=+5 e=-0.25 f=1.5e-3 g=007 h=-.5 i=1e+3 j=1.e3",
+   "records": [
+    {
+     "param": "a",
+     "token": ".5"
+    },
+    {
+     "dbl": 0.5
+    },
+    {
+     "param": "b",
+     "token": "5."
+    },
+    {
+     "dbl": 5.0
+    },
+    {
+     "param": "c",
+     "token": "1e3"
+    },
+    {
+     "dbl": 1000.0
+    },
+    {
+     "param": "d",
+     "token": "+5"
+    },
+    {
+     "dbl": 5.0
+    },
+    {
+     "param": "e",
+     "token": "-0.25"
+    },
+    {
+     "dbl": -0.25
+    },
+    {
+     "param": "f",
+     "token": "1.5e-3"
+    },
+    {
+     "dbl": 0.0015
+    },
+    {
+     "param": "g",
+     "token": "007"
+    },
+    {
+     "dbl": 7.0
+    },
+    {
+     "param": "h",
+     "token": "-.5"
+    },
+    {
+     "dbl": -0.5
+    },
+    {
+     "param": "i",
+     "token": "1e+3"
+    },
+    {
+     "dbl": 1000.0
+    },
+    {
+     "param": "j",
+     "token": "1.e3"
+    },
+    {
+     "dbl": 1000.0
+    }
+   ]
+  },
+  {
+   "name": "val_int_forms",
+   "cmd": "a=$FF b=0xFF c=%101 d=&777 e=2.5 f=1.5 g=.5 h=-.5 i=1e3 j=+42",
+   "records": [
+    {
+     "param": "a",
+     "token": "$FF"
+    },
+    {
+     "int": 255
+    },
+    {
+     "param": "b",
+     "token": "0xFF"
+    },
+    {
+     "int": 255
+    },
+    {
+     "param": "c",
+     "token": "%101"
+    },
+    {
+     "int": 5
+    },
+    {
+     "param": "d",
+     "token": "&777"
+    },
+    {
+     "int": 511
+    },
+    {
+     "param": "e",
+     "token": "2.5"
+    },
+    {
+     "int": 2
+    },
+    {
+     "param": "f",
+     "token": "1.5"
+    },
+    {
+     "int": 2
+    },
+    {
+     "param": "g",
+     "token": ".5"
+    },
+    {
+     "int": 0
+    },
+    {
+     "param": "h",
+     "token": "-.5"
+    },
+    {
+     "int": 0
+    },
+    {
+     "param": "i",
+     "token": "1e3"
+    },
+    {
+     "int": 1000
+    },
+    {
+     "param": "j",
+     "token": "+42"
+    },
+    {
+     "int": 42
+    }
+   ]
+  },
+  {
+   "name": "rpn_expressions",
+   "cmd": "a=(1 2 +) b=(2 3 *) c=(2 10 ^) d=(9 sqrt) e=(30 sin) f=(10 exp ln) g=(42.5)",
+   "records": [
+    {
+     "param": "a",
+     "token": "1 2 +"
+    },
+    {
+     "dbl": 3.0
+    },
+    {
+     "param": "b",
+     "token": "2 3 *"
+    },
+    {
+     "dbl": 6.0
+    },
+    {
+     "param": "c",
+     "token": "2 10 ^"
+    },
+    {
+     "dbl": 1024.0
+    },
+    {
+     "param": "d",
+     "token": "9 sqrt"
+    },
+    {
+     "dbl": 3.0
+    },
+    {
+     "param": "e",
+     "token": "30 sin"
+    },
+    {
+     "dbl": 0.5000000000000299
+    },
+    {
+     "param": "f",
+     "token": "10 exp ln"
+    },
+    {
+     "dbl": 10.0
+    },
+    {
+     "param": "g",
+     "token": "42.5"
+    },
+    {
+     "dbl": 42.5
+    }
+   ]
+  },
+  {
+   "name": "rpn_register_persists",
+   "cmd": "a=(10) b=(2 +)",
+   "records": [
+    {
+     "param": "a",
+     "token": "10"
+    },
+    {
+     "dbl": 10.0
+    },
+    {
+     "param": "b",
+     "token": "2 +"
+    },
+    {
+     "dbl": 12.0
+    }
+   ]
+  },
+  {
+   "name": "vector_brackets",
+   "cmd": "kvs=[1.0 2.5 3.5]",
+   "records": [
+    {
+     "param": "kvs",
+     "token": "1.0 2.5 3.5"
+    },
+    {
+     "size": 3,
+     "vector": [
+      1.0,
+      2.5,
+      3.5
+     ]
+    }
+   ]
+  },
+  {
+   "name": "vector_exact_size",
+   "cmd": "v=[1 2 3 4 5]",
+   "records": [
+    {
+     "param": "v",
+     "token": "1 2 3 4 5"
+    },
+    {
+     "size": 5,
+     "vector": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "vector_commas",
+   "cmd": "v=(1.4, 2.5, 3.6)",
+   "records": [
+    {
+     "param": "v",
+     "token": "1.4, 2.5, 3.6"
+    },
+    {
+     "size": 3,
+     "vector": [
+      1.4,
+      2.5,
+      3.6
+     ]
+    }
+   ]
+  },
+  {
+   "name": "matrix_rows_via_vector",
+   "cmd": "m=[1 2 | 3 4]",
+   "records": [
+    {
+     "param": "m",
+     "token": "1 2 | 3 4"
+    },
+    {
+     "size": 2,
+     "vector": [
+      1.0,
+      2.0
+     ]
+    },
+    {
+     "size": 2,
+     "vector": [
+      3.0,
+      4.0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "symmatrix_rows_via_vector",
+   "cmd": "r=[0.791721 |0.318476 0.781649 |0.28345 0.318476 0.791721]",
+   "records": [
+    {
+     "param": "r",
+     "token": "0.791721 |0.318476 0.781649 |0.28345 0.318476 0.791721"
+    },
+    {
+     "size": 3,
+     "vector": [
+      0.791721
+     ]
+    },
+    {
+     "size": 3,
+     "vector": [
+      0.318476,
+      0.781649
+     ]
+    },
+    {
+     "size": 3,
+     "vector": [
+      0.28345,
+      0.318476,
+      0.791721
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ragged_rows_via_vector",
+   "cmd": "z=[2 | -1 3]",
+   "records": [
+    {
+     "param": "z",
+     "token": "2 | -1 3"
+    },
+    {
+     "size": 2,
+     "vector": [
+      2.0
+     ]
+    },
+    {
+     "size": 2,
+     "vector": [
+      -1.0,
+      3.0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "empty_value",
+   "cmd": "x= y=2",
+   "records": [
+    {
+     "param": "x",
+     "token": "y"
+    },
+    {
+     "param": "",
+     "token": "2"
+    }
+   ]
+  },
+  {
+   "name": "double_equals",
+   "cmd": "a==b",
+   "records": [
+    {
+     "param": "a",
+     "token": ""
+    },
+    {
+     "param": "",
+     "token": "b"
+    }
+   ]
+  },
+  {
+   "name": "leading_equals",
+   "cmd": "=5",
+   "records": [
+    {
+     "param": "",
+     "token": "5"
+    }
+   ]
+  },
+  {
+   "name": "tabs_as_whitespace",
+   "cmd": "a\tb\tc=3",
+   "records": [
+    {
+     "param": "",
+     "token": "a"
+    },
+    {
+     "param": "",
+     "token": "b"
+    },
+    {
+     "param": "c",
+     "token": "3"
+    },
+    {
+     "int": 3
+    }
+   ]
+  },
+  {
+   "name": "unterminated_quote",
+   "cmd": "x=(1 2",
+   "records": [
+    {
+     "param": "x",
+     "token": "1 2"
+    }
+   ]
+  },
+  {
+   "name": "empty_command",
+   "cmd": "",
+   "records": [
+    {
+     "param": "",
+     "token": ""
+    }
+   ]
+  },
+  {
+   "name": "only_spaces",
+   "cmd": "   ",
+   "records": [
+    {
+     "param": "",
+     "token": ""
+    }
+   ]
+  },
+  {
+   "name": "dotted_names",
+   "cmd": "New Load.L1.extra bus1=alpha.1.2.3",
+   "records": [
+    {
+     "param": "",
+     "token": "New"
+    },
+    {
+     "param": "",
+     "token": "Load.L1.extra"
+    },
+    {
+     "param": "bus1",
+     "token": "alpha.1.2.3"
+    }
+   ]
+  },
+  {
+   "name": "mixed_real_command",
+   "cmd": "New Line.650632 Phases=3 Bus1=RG60.1.2.3 Bus2=632.1.2.3 LineCode=mtx601 Length=2000 units=ft",
+   "records": [
+    {
+     "param": "",
+     "token": "New"
+    },
+    {
+     "param": "",
+     "token": "Line.650632"
+    },
+    {
+     "param": "Phases",
+     "token": "3"
+    },
+    {
+     "param": "Bus1",
+     "token": "RG60.1.2.3"
+    },
+    {
+     "param": "Bus2",
+     "token": "632.1.2.3"
+    },
+    {
+     "param": "LineCode",
+     "token": "mtx601"
+    },
+    {
+     "param": "Length",
+     "token": "2000"
+    },
+    {
+     "param": "units",
+     "token": "ft"
+    }
+   ]
+  }
+ ]
+}

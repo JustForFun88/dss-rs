@@ -1,0 +1,8 @@
+//! Shared math and utility modules, ports of the Pascal `src/Shared` units.
+
+pub mod cmatrix;
+pub mod complexutil;
+pub mod dynamics;
+pub mod hashlist;
+pub mod line_units;
+pub mod mathutil;
