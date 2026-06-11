@@ -800,8 +800,9 @@ impl ClassProps {
                 s
             }
             PropType::Complex => {
-                // TODO(phase4): match the oracle's exact complex rendering when
-                // property-dump goldens cover these classes.
+                // Pascal `GetObjPropertyValue` for `ComplexProperty`:
+                // `Format('[%g, %g]', [c.re, c.im])` (verified against the oracle
+                // by the Reactor `Z`/`Z1`/`Z2`/`Z0` props goldens).
                 let (re, im) = obj.get_complex(idx);
                 format!("[{}, {}]", float_to_str_ex(re), float_to_str_ex(im))
             }

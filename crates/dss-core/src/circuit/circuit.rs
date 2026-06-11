@@ -28,6 +28,7 @@ pub enum ElemKind {
     Load,
     Transformer,
     Capacitor,
+    Reactor,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -55,6 +56,7 @@ pub struct Circuit {
     pub loads: Vec<ElemRef>,
     pub transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
+    pub reactors: Vec<ElemRef>,
 
     pub solution: Solution,
 
@@ -107,6 +109,7 @@ impl Circuit {
             loads: Vec::new(),
             transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
+            reactors: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
             is_solved: false,
@@ -159,6 +162,10 @@ impl Circuit {
             ElemKind::Capacitor => {
                 self.pd_elements.push(r);
                 self.shunt_capacitors.push(r);
+            }
+            ElemKind::Reactor => {
+                self.pd_elements.push(r);
+                self.reactors.push(r);
             }
         }
         elem.cd_mut().handle = self.ckt_elements.len();
