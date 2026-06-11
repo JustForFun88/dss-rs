@@ -58,6 +58,9 @@ impl SymComp {
     /// Upstream-compatible variant (`SetAMatrix_official` + `Invert`), used
     /// when the engine compat flag asks for official OpenDSS numerics.
     pub fn official() -> Self {
+        // TODO(compat): truncated sin(60°) constant and the numerically
+        // inverted Ap2s reproduce official OpenDSS rounding; drop this whole
+        // variant in favor of `precise` once the 1:1 port is complete.
         let a = c(-0.5, 0.866025403);
         let aa = c(-0.5, -0.866025403);
         let mut as2p = CMatrix::new(3);
@@ -216,8 +219,9 @@ pub fn quasi_log_normal(mean: f64, rand: impl FnMut() -> f64) -> f64 {
 }
 
 /// Sample mean and standard deviation (Pascal `RCDMeanAndStdDev`).
-/// For a single point both results equal that point, like the original.
 pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
+    // TODO(compat): for a single point the Pascal code returns the point
+    // itself as the "standard deviation" (not 0); reproduced bug-for-bug.
     if data.len() == 1 {
         return (data[0], data[0]);
     }
@@ -232,6 +236,8 @@ pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev(y: &[f64], x: &[f64]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
+    // TODO(compat): single-point "standard deviation" equals the point
+    // itself, like the Pascal original (see mean_and_std_dev).
     if n == 1 {
         return (y[0], y[0]);
     }

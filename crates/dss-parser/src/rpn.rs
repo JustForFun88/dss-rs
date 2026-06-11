@@ -8,11 +8,12 @@ pub struct RPNCalculator {
 }
 
 impl RPNCalculator {
-    // The Pascal original (RPN.pas) uses a truncated pi for the degree
-    // conversions — NOT the full-precision constant. Results differ in the
+    // TODO(compat): truncated pi reproduced from the Pascal original
+    // (RPN.pas) — NOT the full-precision constant. Results differ in the
     // last ~3 digits (e.g. "30 sin" gives 0.5000000000000299) and the golden
     // parser tests pin that behavior. EnterPi, by contrast, pushes FPC's
-    // full-precision `pi` builtin.
+    // full-precision `pi` builtin. Replace with f64::consts::PI (and update
+    // the goldens) once the 1:1 port is complete.
     #[allow(clippy::approx_constant)]
     const DEG_TO_RAD: f64 = 3.14159265359 / 180.0;
     #[allow(clippy::approx_constant)]

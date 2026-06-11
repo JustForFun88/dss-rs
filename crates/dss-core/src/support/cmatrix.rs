@@ -184,8 +184,11 @@ impl CMatrix {
 
     /// In-place inversion, the exact algorithm of `TcMatrix.Invert`:
     /// Gauss-Jordan with pivots chosen by largest-magnitude unused diagonal,
-    /// no row exchanges. On a singular pivot the matrix is left partially
-    /// transformed, exactly like the Pascal code.
+    /// no row exchanges.
+    ///
+    /// TODO(compat): on a singular pivot the matrix is left partially
+    /// transformed, exactly like the Pascal code (callers only check the
+    /// error). Restore-or-zero on failure once the 1:1 port is complete.
     pub fn invert(&mut self) -> Result<(), SingularMatrix> {
         let l = self.n;
         let a = &mut self.values;
@@ -243,8 +246,11 @@ impl CMatrix {
 
     /// Kron reduction: eliminate row/column `elim` (0-based) and return the
     /// reduced matrix; `None` when the order is 1 or `elim` is out of range
-    /// (Pascal returned `NIL`). Like the Pascal code, a zero pivot is not
-    /// checked and produces non-finite entries.
+    /// (Pascal returned `NIL`).
+    ///
+    /// TODO(compat): like the Pascal code, a zero pivot is not checked and
+    /// produces non-finite entries; make it an error once the 1:1 port is
+    /// complete.
     pub fn kron(&self, elim: usize) -> Option<CMatrix> {
         if self.n <= 1 || elim >= self.n {
             return None;
