@@ -26,6 +26,10 @@ pub enum ElemKind {
     Source,
     Line,
     Load,
+    Transformer,
+    Capacitor,
+    Reactor,
+    Control,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -51,6 +55,11 @@ pub struct Circuit {
     pub sources: Vec<ElemRef>,
     pub lines: Vec<ElemRef>,
     pub loads: Vec<ElemRef>,
+    pub transformers: Vec<ElemRef>,
+    pub shunt_capacitors: Vec<ElemRef>,
+    pub reactors: Vec<ElemRef>,
+    /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
+    pub controls: Vec<ElemRef>,
 
     pub solution: Solution,
 
@@ -101,6 +110,10 @@ impl Circuit {
             sources: Vec::new(),
             lines: Vec::new(),
             loads: Vec::new(),
+            transformers: Vec::new(),
+            shunt_capacitors: Vec::new(),
+            reactors: Vec::new(),
+            controls: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
             is_solved: false,
@@ -146,6 +159,21 @@ impl Circuit {
                 self.pc_elements.push(r);
                 self.loads.push(r);
             }
+            ElemKind::Transformer => {
+                self.pd_elements.push(r);
+                self.transformers.push(r);
+            }
+            ElemKind::Capacitor => {
+                self.pd_elements.push(r);
+                self.shunt_capacitors.push(r);
+            }
+            ElemKind::Reactor => {
+                self.pd_elements.push(r);
+                self.reactors.push(r);
+            }
+            // Control elements join only the device list + their own list
+            // (Pascal AddCktElement: not PD/PC, no Yprim).
+            ElemKind::Control => self.controls.push(r),
         }
         elem.cd_mut().handle = self.ckt_elements.len();
     }
@@ -342,7 +370,7 @@ impl Circuit {
     }
 
     /// Total circuit losses (Pascal `Get_Losses`): sum over enabled PD
-    /// elements.
+    /// elements, ignoring shunt elements (shunt capacitors/reactors).
     pub fn losses(
         &mut self,
         store: &mut dyn ElemStore,
@@ -352,7 +380,7 @@ impl Circuit {
         let node_v = self.solution.node_v.clone();
         for &r in &self.pd_elements {
             let elem = store.ckt_elem_mut(r);
-            if elem.cd().enabled {
+            if elem.cd().enabled && !elem.is_shunt() {
                 total += elem.losses(sys, &node_v);
             }
         }

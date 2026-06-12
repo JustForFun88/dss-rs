@@ -18,6 +18,11 @@ pub struct DssObjData {
     /// Pascal `PrpSequence`: `[0]` is the counter, `[i]` is the order in
     /// which property `i` was last set (0 = never set).
     prp_sequence: Vec<u32>,
+    /// Deferred `DoSimpleMsg`/`DoErrorMsg` messages emitted by
+    /// `side_effects`/`end_edit` (which run without direct access to the
+    /// engine error sink). The executive drains these right after the edit
+    /// loop, so the message ordering within a command is preserved.
+    deferred_errors: Vec<String>,
 }
 
 impl DssObjData {
@@ -25,7 +30,19 @@ impl DssObjData {
         Self {
             name: name.into(),
             prp_sequence: vec![0; num_props + 1],
+            deferred_errors: Vec::new(),
         }
+    }
+
+    /// Queue a `DoSimpleMsg`-style message from inside a property hook; the
+    /// executive collects it after the active edit finishes.
+    pub fn push_error(&mut self, msg: impl Into<String>) {
+        self.deferred_errors.push(msg.into());
+    }
+
+    /// Drain the queued messages (Pascal would have already logged them).
+    pub fn take_errors(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.deferred_errors)
     }
 
     pub fn name(&self) -> &str {
@@ -87,6 +104,34 @@ impl DssObjData {
     }
 }
 
+/// A deferred cross-element write queued by a property setter that needs
+/// *mutable* access to a different object. Pascal pokes the target through a
+/// live pointer mid-parse (e.g. RegControl `TapNum` → `tr.PresentTap[w] :=`);
+/// here the property engine only holds a read view of foreign classes, so the
+/// setter queues the write and the executive applies it right after the edit.
+/// Nothing reads the target between the two points, so the timing shift is
+/// unobservable.
+#[derive(Debug, Clone)]
+pub enum RefAction {
+    /// RegControl `TapNum`: set 1-based winding `winding`'s `PresentTap` (pu)
+    /// on the target transformer (Pascal `Set_TapNum`). The target clamps to
+    /// the winding's Min/MaxTap exactly like `Set_PresentTap`.
+    SetTransformerTap {
+        target: crate::elements::traits::ElemRef,
+        winding: usize,
+        tap: f64,
+    },
+}
+
+impl RefAction {
+    /// The object the action must be applied to.
+    pub fn target(&self) -> crate::elements::traits::ElemRef {
+        match self {
+            RefAction::SetTransformerTap { target, .. } => *target,
+        }
+    }
+}
+
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
@@ -142,6 +187,50 @@ pub trait DssObject {
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         unreachable!("set_f64_array not implemented for property {idx}")
     }
+    /// `IntegerArrayProperty` read (e.g. a capacitor `States`); `None` mirrors a
+    /// NIL Pascal array pointer (dumps as an empty string).
+    fn get_i32_array(&self, idx: usize) -> Option<&[i32]> {
+        unreachable!("get_i32_array not implemented for property {idx}")
+    }
+    fn set_i32_array(&mut self, idx: usize, value: Vec<i32>) {
+        let _ = value;
+        unreachable!("set_i32_array not implemented for property {idx}")
+    }
+
+    /// Element count of a function-sized array property (Pascal
+    /// `TPropertyFlag.SizeIsFunction`, `PropertyOffset3` holding a function
+    /// pointer) — e.g. an XfmrCode/Transformer `XSCArray` whose length is
+    /// `(NumWindings-1)·NumWindings/2`.
+    fn array_size(&self, idx: usize) -> usize {
+        unreachable!("array_size not implemented for property {idx}")
+    }
+
+    /// `DoubleArrayOnStructArrayProperty` read (e.g. a transformer `kVs`): the
+    /// per-winding field values, one per active struct-array entry, in raw
+    /// (unscaled) units. The engine divides by `PropDef::scale` on dump.
+    fn get_struct_f64_array(&self, idx: usize) -> Vec<f64> {
+        unreachable!("get_struct_f64_array not implemented for property {idx}")
+    }
+    /// `DoubleArrayOnStructArrayProperty` write: `values[i]` is `Some` for the
+    /// i-th struct-array entry (already scaled) or `None` for an omitted token
+    /// (Pascal keeps the previous value). The implementor also advances the
+    /// struct-array index (`ActiveWinding := count`), matching the Pascal
+    /// `positionPtr^ := intVal`.
+    fn set_struct_f64_array(&mut self, idx: usize, values: &[Option<f64>]) {
+        let _ = values;
+        unreachable!("set_struct_f64_array not implemented for property {idx}")
+    }
+    /// `MappedStringEnumArrayOnStructArrayProperty` read (e.g. `Conns`): the
+    /// per-winding enum ordinals.
+    fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
+        unreachable!("get_struct_i32_array not implemented for property {idx}")
+    }
+    /// `MappedStringEnumArrayOnStructArrayProperty` write: ordinals for the
+    /// leading struct-array entries; also advances the struct-array index.
+    fn set_struct_i32_array(&mut self, idx: usize, values: &[i32]) {
+        let _ = values;
+        unreachable!("set_struct_i32_array not implemented for property {idx}")
+    }
 
     /// `BusProperty` write: `terminal` is 1-based (`PropertyOffset`); the
     /// element lowercases and flags `BusNameRedefined` (Pascal `SetBus`).
@@ -150,6 +239,47 @@ pub trait DssObject {
     }
     fn get_bus_name(&self, terminal: usize) -> String {
         unreachable!("get_bus_name not implemented (terminal {terminal})")
+    }
+
+    /// `BusOnStructArrayProperty` write (Pascal transformer `bus`): set the
+    /// active struct-array entry's bus (the active winding's terminal).
+    fn set_active_struct_bus(&mut self, value: &str) {
+        let _ = value;
+        unreachable!("set_active_struct_bus not implemented")
+    }
+    /// Read the active struct-array entry's bus.
+    fn get_active_struct_bus(&self) -> String {
+        unreachable!("get_active_struct_bus not implemented")
+    }
+    /// `BusesOnStructArrayProperty` write (Pascal transformer `buses`): set
+    /// each struct-array entry's bus (`None` keeps the previous value) and
+    /// advance the active index to the count.
+    fn set_struct_buses(&mut self, values: &[Option<String>]) {
+        let _ = values;
+        unreachable!("set_struct_buses not implemented")
+    }
+    /// All struct-array entries' buses, one per active entry.
+    fn get_struct_buses(&self) -> Vec<String> {
+        unreachable!("get_struct_buses not implemented")
+    }
+
+    /// `DSSObjectReferenceProperty` write for a *resolved* reference (a
+    /// `PropDef::object_ref_class`): `name` is the referenced object's name for
+    /// dumps (Pascal `otherObj.Name`, `""` when unresolved), and `resolved`
+    /// carries its stable [`ElemRef`] plus a read view of the object so the
+    /// element can copy data immediately (Pascal `FetchLineCode` etc.). The
+    /// dump value is read back through [`DssObject::get_string`].
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(
+            crate::elements::traits::ElemRef,
+            &dyn crate::obj::base::DssObject,
+        )>,
+    ) {
+        let _ = (idx, name, resolved);
+        unreachable!("set_object_ref not implemented for property {idx}")
     }
 
     /// `ComplexProperty` / `ComplexPartsProperty`: both parse a 2-vector
@@ -181,6 +311,16 @@ pub trait DssObject {
         1.0
     }
 
+    /// Pascal `TPropertyFlag.ConditionalValue` (`PropertyOffset3` holding a
+    /// `LongBool`): whether property `idx`'s value should be displayed. When a
+    /// `CONDITIONAL_VALUE` property returns `false` here, the getter renders
+    /// the Pascal placeholder `----` instead of the stored value (e.g. a
+    /// LineCode's `R1` once a matrix model has replaced the sym-component one).
+    fn prop_conditional(&self, idx: usize) -> bool {
+        let _ = idx;
+        true
+    }
+
     /// Pascal `PropertySideEffects`: run after property `idx` is written.
     /// `prev_int` is the integer value the property held beforehand (only
     /// meaningful for integer/boolean/enum properties; 0 otherwise).
@@ -191,6 +331,18 @@ pub trait DssObject {
     /// Pascal per-class `EndEdit`: recompute derived state once an edit block
     /// finishes (e.g. `ReCalcYearMult`, `SetMultArray`). No-op by default.
     fn end_edit(&mut self) {}
+
+    /// Drain the [`RefAction`]s queued during the last edit (see `RefAction`).
+    /// The executive applies them right after `end_edit`.
+    fn take_ref_actions(&mut self) -> Vec<RefAction> {
+        Vec::new()
+    }
+
+    /// Apply a [`RefAction`] addressed to this object (the target side of the
+    /// deferred write). Default: ignore.
+    fn apply_ref_action(&mut self, action: &RefAction) {
+        let _ = action;
+    }
 
     /// Pascal `TDSSObject.MakeLike`: copy `other`'s field state onto `self`
     /// (the name is *not* copied). Default is a no-op; classes override it.

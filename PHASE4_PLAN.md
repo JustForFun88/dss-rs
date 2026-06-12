@@ -25,6 +25,11 @@
 6. Commit only on explicit user request, never on `main` directly.
 7. If a WP turns out to need something from a later WP, reorder locally but keep the
    tree compiling; do not start two WPs in parallel.
+8. **Stop-and-confirm cadence (MANDATORY).** After finishing each small step (a WP,
+   or a self-contained sub-step within a WP), run the full gate, **update
+   `STATUS.md`** to record the new frontier, then **stop and wait for the user's
+   explicit confirmation before starting the next step.** Never chain multiple steps
+   without confirmation.
 
 ## 1. Entry state (what already exists — do not rebuild)
 
@@ -186,7 +191,18 @@ Execute in order. Estimated relative weight in brackets.
 
 ---
 
-### WP4.1 — LineCode catalog object [10%]
+### WP4.1 — LineCode catalog object [10%] ✅ DONE (gate-green)
+
+> Status: complete. `crates/dss-core/src/elements/general/line_code.rs` ported and
+> registered; 6 inline unit tests + 8 `gen_props.py` LineCode scenarios
+> (`props.json` regenerated). Shared engine additions made here:
+> `PropFlags::CONDITIONAL_VALUE` + `DssObject::prop_conditional` (sym scalars render
+> `----` under a matrix model); sym-matrix getter format fixed to
+> `[v |v v |...]`; a deferred-error buffer on `DssObjData`
+> (`push_error`/`take_errors`, drained in `edit_active`) so `side_effects`/`EndEdit`
+> can emit `DoSimpleMsg` (used by `Kron` on a 1-phase code). `TODO(compat)`:
+> LineCode `Repair` defaults to 0 (oracle getter), not the Pascal ctor's 3.
+
 
 **Pascal:** `General/LineCode.pas` (618 lines). Props `TLineCodeProp` 1–27:
 `NPhases, R1, X1, R0, X0, C1, C0, Units, RMatrix, XMatrix, CMatrix, BaseFreq,
@@ -230,7 +246,24 @@ Steps:
 
 ---
 
-### WP4.2 — ObjectRef resolution + Line→LineCode fetch [12%]
+### WP4.2 — ObjectRef resolution + Line→LineCode fetch [12%] ✅ DONE (gate-green)
+
+> Status: complete. `ForeignClassesView<'a>` trait + `PropEngine::foreign` thread
+> a read view of every class except the active one (built in `edit_active` via
+> `split_at_mut(ci)` + `split_first_mut` — zero unsafe) into `parse_into`.
+> `PropDef::object_class` distinguishes resolved refs (`object_ref_class`, e.g.
+> Line's `LineCode`) from the Phase-3 string-storage refs (`object_ref`, kept for
+> Load/VSource shapes until Phase 5). `DssObject::set_object_ref` copies the
+> resolved object's data immediately (downcast). `TLineObj.FetchLineCode` ported
+> verbatim in `line.rs::fetch_line_code`; `units=` reconverts relative to the
+> code's units; `kill_line_code_specified` drops the ref on sym/matrix/switch
+> overrides; sym scalars got `CONDITIONAL_VALUE`/`prop_conditional`. Lookup miss
+> emits the Pascal 401 message and continues with a NIL ref. Two latent Phase-3
+> Line bugs fixed (exposed by the new Line dumps): earth-model default is **DERI
+> (3)** not SIMPLECARSON; the `linecode` property's canonical name is **`LineCode`**
+> (capitalized, for the 401 text). 4 `gen_props.py` Line+LineCode scenarios added,
+> `props.json` regenerated. 2-bus `linecode=` snapshot solves bit-for-bit vs the
+> oracle. Gate: dss-core lib **97** (+4 `exec::tests::line_*`), all suites green.
 
 **Pascal:** `PDElements/Line.pas` `TLineObj.FetchLineCode` (l.492–~575) and the
 `linecode` arm of `PropertySideEffects` (l.626).
@@ -268,7 +301,19 @@ WP4.9).
 
 ---
 
-### WP4.3 — XfmrCode + GrowthShape (catalog objects) [6%]
+### WP4.3 — XfmrCode + GrowthShape (catalog objects) [6%] 🔶 GrowthShape ✅ DONE
+
+> Status: **GrowthShape half complete, gate-green.**
+> `crates/dss-core/src/elements/general/growth_shape.rs` (`TGrowthShapeObj`):
+> props 1–6 + Like; `Year` carries `APPLY_ROUND` (FPC banker's rounding — oracle
+> rounds `2002.5 → 2002`); `PropertySideEffects` reallocs Year/Multiplier on
+> `NPts`; `EndEdit → recalc_year_mult`; `get_mult`/`recalc_year_mult` ported
+> verbatim (base year and earlier return 1.0; multipliers apply to the
+> *following* years). `CSVFile`/`SngFile`/`DblFile` → `NOT_PORTED` (§5).
+> Registered as a `DSS_OBJECT` class after LineCode. 6 inline unit tests +
+> 5 `gen_props.py` scenarios; `props.json` regenerated (dump format matched the
+> oracle exactly). dss-core lib **103**, all suites green.
+> **Remaining: XfmrCode** (needs the WP4.4 `Winding` struct — see step 1).
 
 **Pascal:** `General/XfmrCode.pas` (671 lines, props 1–39 — same winding-property
 web as Transformer minus buses/bank/etc.), `General/GrowthShape.pas` (289 lines,

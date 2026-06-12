@@ -4,6 +4,13 @@
 //!
 //! [`CktElement::get_currents`]: crate::elements::traits::CktElement::get_currents
 
+pub mod capacitor;
 pub mod line;
+pub mod reactor;
+pub mod transformer;
+pub mod winding;
 
+pub use capacitor::Capacitor;
 pub use line::Line;
+pub use reactor::Reactor;
+pub use transformer::Transformer;

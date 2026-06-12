@@ -6,6 +6,11 @@
 > only on request). **Prerequisite: Phase 4 complete and gate-green** — this phase
 > consumes the Transformer tap machinery, Capacitor steps, ControlElem base and
 > the ObjectRef resolution mechanism (PHASE4_PLAN §3.1) without re-explaining them.
+>
+> **Stop-and-confirm cadence (MANDATORY, same as PHASE4_PLAN §0.8):** after each
+> small step (a WP or self-contained sub-step), run the full gate, **update
+> `STATUS.md`**, then **stop and wait for the user's explicit confirmation** before
+> starting the next step. Never chain multiple steps without confirmation.
 
 ## 1. Phase target and gate
 
