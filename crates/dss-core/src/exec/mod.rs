@@ -1778,6 +1778,16 @@ impl Dss {
         let total = ckt.losses(&mut store, &sys);
         (total.re, total.im)
     }
+
+    /// `DSS.ActiveCircuit.Solution.EventLog`: the accumulated event-log lines
+    /// (empty when no circuit exists). The control loop (WP5.7) and the
+    /// controls' `AppendToEventLog` (WP5.5/5.6) populate it.
+    pub fn event_log(&self) -> &[String] {
+        match &self.circuit {
+            Some(ckt) => ckt.solution.event_log.entries(),
+            None => &[],
+        }
+    }
 }
 
 impl Default for Dss {

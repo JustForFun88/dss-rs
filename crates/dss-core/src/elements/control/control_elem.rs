@@ -10,8 +10,50 @@
 //! behavioral `Sample`/`DoPendingAction` machinery and the control queue arrive
 //! in Phase 5 (PHASE4_PLAN §5).
 
+use num_complex::Complex64;
+
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::{ElemRef, SysCtx};
+use crate::solution::{ControlQueue, EventLog};
+
+/// Action codes shared across controls (`Controls/ControlElem.pas`
+/// `EControlAction`). RegControl uses its own `ACTION_TAPCHANGE`/`ACTION_REVERSE`
+/// ordinals; CapControl drives steps through `CTRL_OPEN`/`CTRL_CLOSE`.
+pub const CTRL_NONE: i32 = 0;
+pub const CTRL_OPEN: i32 = 1;
+pub const CTRL_CLOSE: i32 = 2;
+
+/// Scalar/queue/event context handed to a control's `Sample` and
+/// `DoPendingAction` (PHASE5_PLAN §2.1) — the disjoint-borrow stand-in for the
+/// Pascal `ActiveCircuit.Solution.*` / `ActiveCircuit.ControlQueue` /
+/// `DSS.EventStrings` global reach. The *controlled/monitored* circuit elements
+/// are passed to each control's method separately (their concrete types differ
+/// per control), so this context carries only the shared state.
+pub struct CtrlCtx<'a> {
+    /// `Solution.NodeV` (slot 0 = ground).
+    pub node_v: &'a [Complex64],
+    /// Snapshot of the circuit/solution scalars.
+    pub sys: &'a SysCtx,
+    /// `ckt.ControlQueue`.
+    pub queue: &'a mut ControlQueue,
+    /// `DSS.EventStrings`.
+    pub events: &'a mut EventLog,
+    /// `DoSimpleMsg` sink.
+    pub errors: &'a mut Vec<String>,
+    /// Raised when an action invalidates Y (tap change / capacitor step); the
+    /// control loop copies it into `Solution.SystemYChanged`.
+    pub system_y_changed: &'a mut bool,
+    /// `Solution.ControlMode` (CTRLSTATIC / EVENTDRIVEN / TIMEDRIVEN / MULTIRATE).
+    pub control_mode: i32,
+    /// `Solution.DynaVars.intHour` / `.t` / `.dblHour`.
+    pub int_hour: i32,
+    pub t: f64,
+    pub dbl_hour: f64,
+    /// `Solution.ControlIteration` (event-log field).
+    pub control_iter: i32,
+    /// This control's own [`ElemRef`] (Pascal passes `Self` to `ControlQueue.Push`).
+    pub self_ref: ElemRef,
+}
 
 /// `TControlElem` shared state (the base-class fields every control carries).
 /// Embeds [`CktElementData`] exactly as `TControlElem` extends

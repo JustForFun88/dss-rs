@@ -15,6 +15,8 @@ use dss_sparse::SparseSet;
 
 use crate::circuit::Circuit;
 use crate::elements::traits::{ElemStore, InjCtx, SysCtx};
+use crate::solution::control_queue::ControlQueue;
+use crate::solution::event_log::EventLog;
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 use crate::util::sqrt3;
 
@@ -83,8 +85,11 @@ pub const NORMALSOLVE: i32 = 0;
 pub const NEWTONSOLVE: i32 = 1;
 
 /// Control modes (DSSGlobals.pas).
-pub const CTRLSTATIC: i32 = 0;
 pub const CONTROLSOFF: i32 = -1;
+pub const CTRLSTATIC: i32 = 0;
+pub const EVENTDRIVEN: i32 = 1;
+pub const TIMEDRIVEN: i32 = 2;
+pub const MULTIRATE: i32 = 3;
 
 /// Which sparse set is active (`hY = hYsystem | hYseries`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +166,12 @@ pub struct Solution {
     pub error_saved: Vec<f64>,
     pub node_vbase: Vec<f64>,
     pub harmonic_list: Vec<f64>,
+
+    /// `ckt.ControlQueue` — pending control actions (WP5.4). Driven by the
+    /// control loop (WP5.7) once RegControl/CapControl `Sample` arms it.
+    pub control_queue: ControlQueue,
+    /// `DSS.EventStrings`, surfaced as `Solution.EventLog` to dss-python.
+    pub event_log: EventLog,
 }
 
 impl Solution {
@@ -214,6 +225,8 @@ impl Solution {
             error_saved: vec![0.0],
             node_vbase: vec![0.0],
             harmonic_list: vec![1.0, 5.0, 7.0, 11.0, 13.0],
+            control_queue: ControlQueue::new(),
+            event_log: EventLog::new(),
         }
     }
 
