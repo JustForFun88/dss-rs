@@ -2107,6 +2107,34 @@ mod tests {
     }
 
     #[test]
+    fn load_and_vsource_resolve_shape_refs() {
+        // WP5.3: the shape refs became resolved `object_ref_class` props. The
+        // ObjectRef getter renders the resolved object's name, and an unset
+        // `yearly` is seeded from `daily` (Pascal `YearlyShapeObj := DailyShapeObj`).
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New loadshape.d1 npts=2 interval=1 mult=(0.4 0.8)");
+        dss.command("New growthshape.g1 npts=2 year=(1 2) mult=(1.02 1.05)");
+        dss.command("New load.la bus1=src phases=3 kv=12.47 kw=100 pf=1 daily=d1 growth=g1");
+        dss.command("New vsource.v2 bus1=src basekv=12.47 daily=d1");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "load.la.daily"), "d1");
+        assert_eq!(query(&mut dss, "load.la.yearly"), "d1"); // seeded from daily
+        assert_eq!(query(&mut dss, "load.la.growth"), "g1");
+        assert_eq!(query(&mut dss, "vsource.v2.daily"), "d1");
+        assert_eq!(query(&mut dss, "vsource.v2.yearly"), "d1");
+
+        // A missing shape is the Pascal 401 ("object not found") and leaves the
+        // reference empty — the edit continues.
+        dss.command("New load.lb bus1=src daily=nope");
+        assert!(
+            dss.errors().iter().any(|e| e.contains("not found")),
+            "expected a not-found error, got {:?}",
+            dss.errors()
+        );
+    }
+
+    #[test]
     fn line_fetches_matrix_linecode() {
         let mut dss = Dss::new();
         dss.command("New circuit.p");

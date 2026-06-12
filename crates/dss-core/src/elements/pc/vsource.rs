@@ -7,10 +7,12 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::{CktElement, InjCtx, SysCtx};
+use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::solution::SolveMode;
 use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::pdeg_to_complex;
 use crate::util::{CALPHA, EPSILON, EPSILON2, quad_solver, sqrt3};
@@ -85,9 +87,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::complex("puZ0"),
         PropDef::complex("puZ2"),
         PropDef::double("baseMVA"),
-        PropDef::object_ref("Yearly"),
-        PropDef::object_ref("Daily"),
-        PropDef::object_ref("Duty"),
+        PropDef::object_ref_class("LoadShape", "Yearly"),
+        PropDef::object_ref_class("LoadShape", "Daily"),
+        PropDef::object_ref_class("LoadShape", "Duty"),
         PropDef::mapped_string_enum("Model", enums.vsource_model),
         PropDef::complex("puZideal"),
         // PCClass tail:
@@ -144,11 +146,24 @@ pub struct VSource {
     pub per_unit: f64,
     pub angle: f64,
     pub src_frequency: f64,
-    /// Loadshape references by name (consumed in Phase 5).
+    /// Loadshape references by name (for the dump).
     pub yearly_shape: String,
     pub daily_shape: String,
     pub duty_shape: String,
     pub spectrum: String,
+    /// Resolved shape objects (Pascal `YearlyShapeObj` etc.), snapshot-cloned
+    /// at parse time like [`super::load::Load`]; `GetVterminalForSource` drives
+    /// `GetMultAtHour` on the owned copy in a time-series mode.
+    pub yearly_shape_obj: Option<LoadShapeObj>,
+    pub daily_shape_obj: Option<LoadShapeObj>,
+    pub duty_shape_obj: Option<LoadShapeObj>,
+    pub yearly_shape_ref: Option<ElemRef>,
+    pub daily_shape_ref: Option<ElemRef>,
+    pub duty_shape_ref: Option<ElemRef>,
+    /// Pascal `ShapeFactor`/`ShapeIsActual` from the active shape (per-unit or
+    /// actual); `(1, 0)` outside a loadshape mode.
+    pub shape_factor: Complex64,
+    pub shape_is_actual: bool,
 }
 
 impl VSource {
@@ -203,6 +218,14 @@ impl VSource {
             daily_shape: String::new(),
             duty_shape: String::new(),
             spectrum: "defaultvsource".to_string(),
+            yearly_shape_obj: None,
+            daily_shape_obj: None,
+            duty_shape_obj: None,
+            yearly_shape_ref: None,
+            daily_shape_ref: None,
+            duty_shape_ref: None,
+            shape_factor: Complex64::new(1.0, 0.0),
+            shape_is_actual: false,
         };
         // Property tracking defaults (NoPropertyTracking is off by default).
         vs.cd.obj.set_as_next_seq(prop::MVASC3);
@@ -361,11 +384,65 @@ impl VSource {
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
-    /// Pascal `GetVterminalForSource` (snapshot/non-harmonic path; loadshape
-    /// modes arrive in Phase 5).
+    /// Pascal `CalcDailyMult`: `ShapeFactor`/`ShapeIsActual` from the daily
+    /// shape; the default `(PerUnit, 0)` reproduces the normal magnitude.
+    fn calc_daily_mult(&mut self, hr: f64) {
+        if let Some(s) = self.daily_shape_obj.as_mut() {
+            self.shape_factor = s.get_mult_at_hour(hr);
+            self.shape_is_actual = s.use_actual();
+        } else {
+            self.shape_factor = Complex64::new(self.per_unit, 0.0);
+        }
+    }
+
+    /// Pascal `CalcDutyMult`: falls back to the daily shape when no duty shape.
+    fn calc_duty_mult(&mut self, hr: f64) {
+        if let Some(s) = self.duty_shape_obj.as_mut() {
+            self.shape_factor = s.get_mult_at_hour(hr);
+            self.shape_is_actual = s.use_actual();
+        } else {
+            self.calc_daily_mult(hr);
+        }
+    }
+
+    /// Pascal `CalcYearlyMult` (the yearly curve is assumed hourly).
+    fn calc_yearly_mult(&mut self, hr: f64) {
+        if let Some(s) = self.yearly_shape_obj.as_mut() {
+            self.shape_factor = s.get_mult_at_hour(hr);
+            self.shape_is_actual = s.use_actual();
+        } else {
+            self.shape_factor = Complex64::new(self.per_unit, 0.0);
+        }
+    }
+
+    /// Pascal `GetVterminalForSource` (snapshot/non-harmonic path; the
+    /// loadshape-driven time-series magnitude is applied in daily/yearly/duty
+    /// modes).
     fn get_vterminal_for_source(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
-        self.vmag = get_vmag(self.kv_base, self.per_unit, nphases);
+        self.shape_is_actual = false;
+
+        // Modify magnitude based on a LOADSHAPE if assigned (loadshape modes).
+        let loadshape_mode = matches!(
+            sys.mode,
+            SolveMode::Daily | SolveMode::Yearly | SolveMode::DutyCycle
+        );
+        match sys.mode {
+            SolveMode::Daily => self.calc_daily_mult(sys.dbl_hour),
+            SolveMode::Yearly => self.calc_yearly_mult(sys.dbl_hour),
+            SolveMode::DutyCycle => self.calc_duty_mult(sys.dbl_hour),
+            _ => {}
+        }
+
+        self.vmag = if loadshape_mode {
+            if self.shape_is_actual {
+                1000.0 * self.shape_factor.re // actual L-N voltage across source
+            } else {
+                get_vmag(self.kv_base, self.shape_factor.re, nphases)
+            }
+        } else {
+            get_vmag(self.kv_base, self.per_unit, nphases)
+        };
 
         if (sys.frequency - self.src_frequency).abs() > EPSILON2 {
             self.vmag = 0.0; // Solution Frequency and Source Frequency don't match!
@@ -624,6 +701,40 @@ impl DssObject for VSource {
         self.cd.get_bus(terminal).to_string()
     }
 
+    /// Resolve a shape reference (`yearly`/`daily`/`duty` → `LoadShape`): store
+    /// the name (for the dump), the `ElemRef`, and a snapshot clone the
+    /// time-series `GetVterminalForSource` drives — same pattern as
+    /// [`super::load::Load`].
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(ElemRef, &dyn DssObject)>,
+    ) {
+        use prop::*;
+        let elem_ref = resolved.map(|(r, _)| r);
+        let load_shape =
+            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        match idx {
+            YEARLY => {
+                self.yearly_shape = name;
+                self.yearly_shape_ref = elem_ref;
+                self.yearly_shape_obj = load_shape();
+            }
+            DAILY => {
+                self.daily_shape = name;
+                self.daily_shape_ref = elem_ref;
+                self.daily_shape_obj = load_shape();
+            }
+            DUTY => {
+                self.duty_shape = name;
+                self.duty_shape_ref = elem_ref;
+                self.duty_shape_obj = load_shape();
+            }
+            _ => unreachable!("Vsource has no resolved object-ref property {idx}"),
+        }
+    }
+
     fn get_complex(&self, idx: usize) -> (f64, f64) {
         use prop::*;
         match idx {
@@ -708,7 +819,11 @@ impl DssObject for VSource {
             }
             PUZ0 => self.pu_z0_specified = true,
             PUZ2 => self.pu_z2_specified = true,
-            DAILY if self.yearly_shape.is_empty() => {
+            // If the yearly shape is not yet defined, make it the daily one
+            // (Pascal `YearlyShapeObj := DailyShapeObj`).
+            DAILY if self.yearly_shape_obj.is_none() => {
+                self.yearly_shape_obj = self.daily_shape_obj.clone();
+                self.yearly_shape_ref = self.daily_shape_ref;
                 self.yearly_shape = self.daily_shape.clone();
             }
             _ => {}
@@ -810,10 +925,89 @@ impl DssObject for VSource {
         self.yearly_shape = other.yearly_shape.clone();
         self.daily_shape = other.daily_shape.clone();
         self.duty_shape = other.duty_shape.clone();
+        // Pascal copies the resolved shape pointers (Daily/Duty/Yearly).
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.shape_is_actual = other.shape_is_actual;
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::elements::general::load_shape;
+    use crate::elements::pc::load::default_recalc_ctx;
+    use crate::obj::dss_enum::EnumRegistry;
+    use crate::obj::props::PropEngine;
+    use dss_parser::{Parser, ParserVars};
+
+    fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
+        let enums = EnumRegistry::new();
+        let cls = load_shape::class_props(&enums);
+        let mut obj = LoadShapeObj::new("d");
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        for (name, value) in edits {
+            let idx = cls.property_index(name).expect("known property");
+            let mut eng = PropEngine {
+                parser: &mut parser,
+                vars: &vars,
+                enums: &enums,
+                errors: &mut errors,
+                foreign: None,
+            };
+            cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+        }
+        obj.end_edit();
+        assert!(errors.is_empty(), "{errors:?}");
+        obj
+    }
+
+    fn mode_ctx(mode: SolveMode, dbl_hour: f64) -> SysCtx {
+        SysCtx {
+            mode,
+            dbl_hour,
+            ..default_recalc_ctx()
+        }
+    }
+
+    #[test]
+    fn daily_mode_loadshape_scales_source_magnitude() {
+        // In a loadshape mode the source magnitude is scaled by ShapeFactor.re;
+        // mult 0.5 (per-unit shape) halves the normal Vmag.
+        let shape = build_shape(&[("npts", "2"), ("interval", "1"), ("mult", "0.5 1.0")]);
+        let mut vs = VSource::new("v");
+        vs.daily_shape_obj = Some(shape);
+
+        vs.get_vterminal_for_source(&mode_ctx(SolveMode::Snapshot, 1.0));
+        let vmag_snap = vs.vmag;
+        vs.get_vterminal_for_source(&mode_ctx(SolveMode::Daily, 1.0)); // mult 0.5
+        assert!(
+            (vs.vmag - 0.5 * vmag_snap).abs() < 1e-6,
+            "daily {} vs half-snapshot {}",
+            vs.vmag,
+            0.5 * vmag_snap
+        );
+    }
+
+    #[test]
+    fn duty_mode_falls_back_to_daily_shape() {
+        let shape = build_shape(&[("npts", "2"), ("interval", "1"), ("mult", "0.5 1.0")]);
+        let mut vs = VSource::new("v");
+        vs.daily_shape_obj = Some(shape);
+        vs.get_vterminal_for_source(&mode_ctx(SolveMode::Snapshot, 1.0));
+        let vmag_snap = vs.vmag;
+        vs.get_vterminal_for_source(&mode_ctx(SolveMode::DutyCycle, 1.0));
+        assert!((vs.vmag - 0.5 * vmag_snap).abs() < 1e-6);
     }
 }
