@@ -1267,6 +1267,316 @@
    }
   },
   {
+   "name": "tshape_default",
+   "commands": [
+    "New TShape.t"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Temp": "",
+    "Hour": "",
+    "Mean": "0",
+    "StdDev": "0",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_fixed",
+   "commands": [
+    "New TShape.t npts=4 interval=1 temp=(20 30 50 80)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Temp": "[ 20 30 50 80]",
+    "Hour": "",
+    "Mean": "45",
+    "StdDev": "26.4575131106459",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_sinterval",
+   "commands": [
+    "New TShape.t npts=4 sinterval=900 temp=(1 2 4 8)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Temp": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_minterval",
+   "commands": [
+    "New TShape.t npts=4 minterval=15 temp=(1 2 4 8)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Temp": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_hour_interval0",
+   "commands": [
+    "New TShape.t npts=3 interval=0 hour=(1 2 4) temp=(1 2 4)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Temp": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "0",
+    "MInterval": "0",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_hour_no_interval",
+   "commands": [
+    "New TShape.t npts=3 hour=(1 2 4) temp=(1 2 4)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "1",
+    "Temp": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.33333333333333",
+    "StdDev": "1.52752523165195",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_mean_stddev",
+   "commands": [
+    "New TShape.t npts=4 interval=1 temp=(20 30 50 80) mean=5 stddev=2"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Temp": "[ 20 30 50 80]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_makelike",
+   "commands": [
+    "New TShape.base npts=3 interval=2 temp=(11 22 33)",
+    "New TShape.t like=base"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Temp": "[ 11 22 33]",
+    "Hour": "",
+    "Mean": "22",
+    "StdDev": "11",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_default",
+   "commands": [
+    "New PriceShape.d"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Price": "",
+    "Hour": "",
+    "Mean": "0",
+    "StdDev": "0",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_fixed",
+   "commands": [
+    "New PriceShape.d npts=4 interval=1 price=(2 4 6 8)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Price": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2.58198889747161",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_sinterval",
+   "commands": [
+    "New PriceShape.d npts=4 sinterval=900 price=(1 2 4 8)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Price": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_hour",
+   "commands": [
+    "New PriceShape.d npts=3 hour=(1 2 4) price=(1 2 4)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Price": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "0",
+    "MInterval": "0",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_mean_stddev",
+   "commands": [
+    "New PriceShape.d npts=4 interval=1 price=(2 4 6 8) mean=5 stddev=2"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Price": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_makelike",
+   "commands": [
+    "New PriceShape.base npts=3 interval=2 price=(11 22 33)",
+    "New PriceShape.d like=base"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Price": "[ 11 22 33]",
+    "Hour": "",
+    "Mean": "22",
+    "StdDev": "11",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
    "name": "xfmrcode_default",
    "commands": [
     "New XfmrCode.xc1"
