@@ -7,16 +7,20 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-13, **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green** —
-Phase 4 merged to `main` (`5f27a25`); on branch `phase-5-controls-timeseries`.
-The **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
+Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
+(`10d3550`); on branch `phase-6-meters-topology`. Execution plan:
+**`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/Generator,
+8500-node gate). Done so far: **WP6.1 (topology foundations)** — see §1d.
+
+Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
+the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
 (controls ACTIVE) compile, solve and match the Phase-0 goldens** — iteration
 counts exact (ieee13: 11), final taps / RegControl tap numbers / capacitor
 states, node voltages and per-element powers/currents at 1e-6 rel, and every
 element's full property dump (numeric skeleton). **The ieee34mod1 stretch goal
-also passes.** The new `phase5.json` command-replay gate (daily/duty/event-log/
+also passes.** The `phase5.json` command-replay gate (daily/duty/event-log/
 capcontrol scenarios) matches the oracle — the 24-hour tap-change trajectory is
-event-log-identical. See §1c. Next: Phase 6 (write `PHASE6_PLAN.md` first).
+event-log-identical. See §1c.
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -44,13 +48,14 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ **done** — WP5.1–WP5.10, gate-green, uncommitted past WP5.6; `PHASE5_PLAN.md` |
+| **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1 done; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 212, golden_feeders 1,
+cargo test --workspace      # dss-core lib 219, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -642,6 +647,46 @@ Phase 3" executive messages reworded; full gate green.
 
 ---
 
+## 1d. Phase 6 record (branch `phase-6-meters-topology`)
+
+Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
+
+**WP6.1 — Topology foundations — ✅ done, gate-green.** Files:
+- `src/circuit/ckt_tree.rs` (new): `CktTree`/`TreeNode`/`ZoneEndsList` as an
+  index arena (Pascal pointers → `ElemRef`/node indices), traversal ported
+  verbatim — `Add` (root: parent link but *not* in the parent's child list),
+  `AddNewChild`, `AddNewObject`, `PushAllChildren`+`GoForward` (LIFO stack:
+  **the last-added child is visited first**, and children added mid-sweep are
+  picked up via `ChildAdded` — observable as the meter `SequenceList` order),
+  `GoBackward`/`First`/`StartHere`/`Level`, the stateful
+  `Get_ToBusReference` cursor semantics (single entry always returned;
+  multi-entry iterates → `None` → resets). 6 inline tests hand-traced from
+  the Pascal. Plus `BuildActiveBusAdjacencyLists` (`build_active_bus_adjacency_lists`):
+  enabled non-shunt PD branches bucketed at **every** terminal bus (only if
+  `AllTerminalsClosed` = ≥1 closed conductor among the first nphases per
+  terminal); PC elements **and shunt capacitors/reactors** on the terminal-1
+  PC list. Verified: VSource is `NON_PCPD_ELEM` — in *neither* list (that is
+  why Pascal's zone build has the special `GetSourcesConnectedToBus` sweep);
+  exec test `bus_adjacency_lists_bucket_elements` pins all of this.
+- `elements/ckt.rs`: `ElemFlags` bitset (element-level subset of Pascal
+  `TDSSObjectFlag` — Checked/Flag/HasEnergyMeter/HasSensorObj/IsIsolated/
+  HasControl/IsMonitored/HasOCPDevice/HasAutoOCPDevice; the property-engine
+  flags are handled by other mechanisms) + the meter-zone fields on
+  `CktElementData` (`from_terminal` (init 1, Pascal TPDElement ctor),
+  `to_terminal`, `parent_pd`, `meter_obj`, `sensor_obj`,
+  `branch_num_customers`, `branch_total_customers`) — on the shared base
+  because Pascal puts `MeterObj`/`SensorObj` on TPCElement too.
+- `circuit/bus.rs`: the 7 reliability accumulators (`BusFltRate`,
+  `Bus_Num_Interrupt`, `BusCustInterrupts`, `BusCustDurations`,
+  `BusTotalNumCustomers`, `BusTotalMiles`, `BusSectionID`) +
+  `zero_reliability_accums` (`BusSectionID := -1`).
+- `GetIsolatedSubArea`/`GetSourcesConnectedToBus`/`FindAllChildBranches`
+  (CktTree.pas l.471-676) deliberately not ported yet: the WP6.4 meter zone
+  build has its own loop; port them with `Circuit.GetTopology` when a
+  consumer lands. dss-core lib tests 212 → 219.
+
+---
+
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
 
 ### Circuit model (`src/circuit/`)
@@ -820,26 +865,18 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Next session — Phase 6
+## 7. Current frontier — Phase 6
 
-Phase 5 is complete. Per PORTING_PLAN, Phase 6 covers Monitors/EnergyMeters
-(the `sample_all` hooks left at the SolveDaily/Yearly/Duty call sites),
-LineGeometry/WireData/CNData/TSData (un-`NOT_PORTED` Line `geometry=` etc.),
-and the remaining PC elements (Generator, ...). **Write `PHASE6_PLAN.md`
-first**, mirroring the PHASE4/PHASE5 plan structure.
+Executing `PHASE6_PLAN.md` on branch `phase-6-meters-topology`.
+Done: WP6.1 (topology foundations). Next: WP6.2 (Generator), WP6.3
+(MeterElement + Monitor), WP6.4/6.5 (EnergyMeter zones + registers),
+WP6.6 (reliability), WP6.7 (Sensor), WP6.8 (GenDispatcher + skeletons),
+WP6.9 (goldens + 8500-node gate), WP6.10 (exit).
 
 Enabling facts from Phase 5: the control loop dispatches through
 `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut` (the pattern
 any new control/metering element reuses); the event log carries all
 `LogThisEvent` call sites; time-series modes drive `interval_hrs` and the
-`sample_the_meters` flag exactly as the meters will need.
-
----
-
-## 8. Outstanding action
-
-Phase 5 (WP5.7–WP5.10) is **complete and gate-green but uncommitted** on
-`phase-5-controls-timeseries` (WP5.1–WP5.6 are committed). Actions:
-1. Commit WP5.7–5.10 on this branch.
-2. Review + merge `phase-5-controls-timeseries` to `main`.
-3. Start Phase 6 (§7).
+`sample_the_meters` flag exactly as the meters will need (the no-op hook
+stubs sit at `solution.rs` `sample_all_monitors_and_meters` /
+`end_of_time_step_cleanup`).
