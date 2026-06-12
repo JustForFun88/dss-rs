@@ -119,6 +119,49 @@ pub trait CktElement {
         false
     }
 
+    /// Pascal `TDSSCktElement.GetTermVoltages(iTerm, VBuffer)`: the node voltages
+    /// at terminal `iterm` (1-based) into `vbuffer` (0-based, length ≥ nconds);
+    /// zeros if the terminal number is out of range. Used by the controls to
+    /// sense a monitored element's terminal voltages.
+    fn get_term_voltages(&self, iterm: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]) {
+        let cd = self.cd();
+        let ncond = cd.nconds;
+        if iterm < 1 || iterm > cd.nterms || cd.node_ref.is_empty() {
+            for v in vbuffer.iter_mut().take(ncond) {
+                *v = Complex64::ZERO;
+            }
+            return;
+        }
+        let k = (iterm - 1) * ncond;
+        for i in 0..ncond {
+            vbuffer[i] = node_v[cd.node_ref[k + i]];
+        }
+    }
+
+    /// Pascal `TDSSCktElement.Get_Power(idxTerm)`: total complex power (W, var)
+    /// into terminal `idx_term` (1-based), summed over its conductors (zero refs
+    /// skipped), ×3 under positive sequence.
+    fn terminal_power(&mut self, sys: &SysCtx, node_v: &[Complex64], idx_term: usize) -> Complex64 {
+        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+            return Complex64::ZERO;
+        }
+        self.compute_iterminal(sys, node_v);
+        let cd = self.cd();
+        let nconds = cd.nconds;
+        let k = (idx_term - 1) * nconds;
+        let mut result = Complex64::ZERO;
+        for i in 0..nconds {
+            let n = cd.node_ref[k + i];
+            if n > 0 {
+                result += node_v[n] * cd.iterminal[k + i].conj();
+            }
+        }
+        if sys.positive_sequence {
+            result *= 3.0;
+        }
+        result
+    }
+
     /// `Get_Losses`: sum of `NodeV[ref] · conj(Iterminal)` over all
     /// conductors (zero refs skipped), ×3 under positive sequence.
     fn losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Complex64 {
