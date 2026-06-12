@@ -289,6 +289,81 @@ SCENARIOS = [
             "New XYcurve.c1 like=base",
         ],
     },
+    # --- LoadShape (WP5.2a, in-memory core) ---
+    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are NOT_PORTED here; the
+    # CSVFile scenario arrives in WP5.2b. Mean/StdDev on the empty default raise
+    # (61107) in the oracle, so they are skipped for that one scenario only.
+    {
+        "name": "loadshape_default",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d"],
+        "skip_props": ["Mean", "StdDev"],
+    },
+    {
+        "name": "loadshape_fixed",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 interval=1 mult=(1 2 4 8)"],
+    },
+    {
+        "name": "loadshape_abbrev",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d np=3 int=1 pmult=(0.5 0.9 1.0)"],
+    },
+    {
+        "name": "loadshape_pq",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.d npts=4 interval=1 mult=(1 2 4 8) qmult=(.5 .6 .7 .8)",
+        ],
+    },
+    {
+        "name": "loadshape_sinterval",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 sinterval=900 mult=(1 2 4 8)"],
+    },
+    {
+        "name": "loadshape_minterval_useactual",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 minterval=15 mult=(1 2 4 8) useactual=yes"],
+    },
+    {
+        "name": "loadshape_hour_array",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=3 interval=0 hour=(1 2 4) mult=(1 2 4)"],
+    },
+    {
+        "name": "loadshape_normalize",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) action=normalize"],
+    },
+    {
+        "name": "loadshape_normalize_pbase",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) pbase=10 action=normalize",
+        ],
+    },
+    {
+        "name": "loadshape_interp_edge",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.d npts=5 interval=1 mult=(0.2 0.4 1.0 0.7 0.3) interpolation=edge",
+        ],
+    },
+    {
+        "name": "loadshape_mean_stddev",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) mean=5 stddev=2"],
+    },
+    {
+        "name": "loadshape_makelike",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.base npts=3 interval=2 mult=(1 2 3) qmult=(4 5 6) "
+            "pbase=7 useactual=yes",
+            "New LoadShape.d like=base",
+        ],
+    },
     {
         "name": "xfmrcode_default",
         "target": "XfmrCode.xc1",
@@ -683,8 +758,15 @@ def run_scenario(d, scenario: dict) -> dict:
     # rewritten to 0, so only the structural skeleton is pinned. The Rust engine
     # emits the same zero matrix (a deterministic repro of the broken getter).
     zero_garbage = {e.lower() for e in scenario.get("zero_garbage", [])}
+    # Properties whose oracle getter is a hard error for this scenario's state
+    # (e.g. LoadShape Mean/StdDev on an empty shape raise 61107) are not pinned;
+    # the Rust engine simply never queries them. The covering scenarios still
+    # pin them in their non-empty states.
+    skip_props = {e.lower() for e in scenario.get("skip_props", [])}
     props = {}
     for name in names:
+        if name.lower() in skip_props:
+            continue
         d.Text.Command = f"? {target}.{name}"
         value = d.Text.Result
         if name.lower() in zero_garbage:

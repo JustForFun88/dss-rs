@@ -16,7 +16,9 @@ use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::control::{cap_control, reg_control};
-use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve, xfmr_code, xy_curve};
+use crate::elements::general::{
+    growth_shape, line_code, load_shape, spectrum, tcc_curve, xfmr_code, xy_curve,
+};
 use crate::elements::pc::{load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
@@ -546,6 +548,9 @@ impl Dss {
             DssClass::dss_object(xy_curve::class_props(&enums), |name| {
                 Box::new(xy_curve::XyCurveObj::new(name))
             }),
+            DssClass::dss_object(load_shape::class_props(&enums), |name| {
+                Box::new(load_shape::LoadShapeObj::new(name))
+            }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),
                 |name| Box::new(vsource::VSource::new(name)),
@@ -974,6 +979,7 @@ impl Dss {
             vars,
             enums,
             errors,
+            current_dir,
             ..
         } = self;
         // Split the registry so the active class is borrowed mutably for the
@@ -1049,6 +1055,21 @@ impl Dss {
 
             param_name = parser.next_param(vars);
             param = parser.make_string(vars);
+        }
+
+        // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
+        // hook, which has the DSS context; our hook cannot reach the filesystem
+        // or the current directory, so it queues the request and we resolve it
+        // here — before `end_edit`, so derived state like `SetMaxPandQ` sees the
+        // loaded data). Paths resolve relative to `current_dir`, like Redirect.
+        let file_loads = objects[oi].take_file_loads();
+        for fl in &file_loads {
+            let path = current_dir.join(&fl.filename);
+            match std::fs::read_to_string(&path) {
+                Ok(content) => objects[oi].apply_file_load(fl, &content, errors),
+                // Pascal error 613.
+                Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+            }
         }
 
         objects[oi].end_edit();

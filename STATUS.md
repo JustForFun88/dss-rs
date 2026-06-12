@@ -8,8 +8,9 @@
 > frontier.
 
 Last updated: 2026-06-12, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
-(`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve) done,
-gate-green** (see §1c). Next: WP5.2 (LoadShape).
+(`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve),
+WP5.2a (LoadShape core) and WP5.2b (LoadShape `CSVFile`) done, gate-green**
+(see §1c). Next: WP5.2c (TempShape/PriceShape).
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -37,13 +38,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve) done; `PHASE5_PLAN.md` |
+| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2a/b (LoadShape + CSVFile) done; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 132, golden_feeders 1, golden_slice 2,
+cargo test --workspace      # dss-core lib 156, golden_feeders 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1, dss-parser 62+1,
                             # dss-sparse 5
 ```
@@ -263,6 +264,59 @@ Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
 - Reactor `RCurve`/`LCurve` stay `NOT_PORTED` (only consumed by the harmonic
   `CalcYPrim`, Phase 7); the module note was updated to say so.
 
+**WP5.2a — LoadShape (in-memory core) — ✅ done, gate-green.** Files:
+- `src/elements/general/load_shape.rs` (`TLoadShapeObj`): props 1–22 via
+  `define_properties!`; fixed/variable-interval data (`p_mult`/`q_mult`/`hour`
+  as `Option<Vec<f64>>` = Pascal `Assigned` semantics, empty parse = NIL),
+  `GetMultAtHour` (even-interval wraparound with FPC-`Round` `TODO(compat)`;
+  hour-array hunt-cache interpolation incl. `Avg`/`Edge`; `Set_Result_im`),
+  `Normalize` (`BaseP`/`BaseQ` vs peak), `SetMaxPandQ` (peak P + coincident Q),
+  lazy `Mean`/`StdDev` (recomputed unless set; `RCDMeanAndStdDev` even-interval
+  / `CurveMeanAndStdDev` over `hour`), `SInterval`/`MInterval` scale-aliases of
+  `Interval`, `MakeLike`. 13 inline tests. Single arrays (`sP`/`sH`/`sQ`) + MMF
+  not ported; **`CSVFile`/`SngFile`/`DblFile`/`PQCSVFile` `NOT_PORTED`** here
+  (CSVFile → WP5.2b once the executive can resolve the path).
+- **Shared engine additions:**
+  - `PropType::Action` (Pascal `StringEnumActionProperty`): the parsed value
+    maps to an enum ordinal and immediately runs `DssObject::do_action`
+    (default no-op); the getter is always `""`. `PropDef::action(name, enum)`.
+  - `define_properties!` gained an **`enums <ident>` clause** so builder
+    expressions can reference the registry (`enums.load_shape_action`) under
+    the caller's hygiene — the no-enums form is unchanged (xy/tcc/spectrum).
+  - `EnumRegistry`: `load_shape_action` (Normalize/DblSave/SngSave→0/1/2) and
+    `load_shape_interp` (Avg/Edge→0/1).
+- **Oracle facts:** `Action` getter is `""`; reading `Mean`/`StdDev` on an
+  *empty* shape **raises 61107** (no data) — `gen_props.py` gained a
+  `skip_props` hook to omit them for the `loadshape_default` scenario only.
+  `QMax` (when not set) = Q at the index where |P| peaks (not max Q).
+  `SetMaxPandQ` overrides `pmax=` when data is present.
+- **Goldens:** 12 LoadShape scenarios in `gen_props.py` (default, fixed,
+  abbrev, p+q, s/m-interval, hour-array, normalize ×2, interp=edge,
+  explicit mean/stddev, makelike); `props.json` regenerated (pure insertions);
+  `props_roundtrip` green. dss-core lib tests 138 → 151.
+
+**WP5.2b — LoadShape `CSVFile` — ✅ done, gate-green.** Files:
+- `load_shape.rs`: `CSVFile` un-`NOT_PORTED`; `read_csv_file` = Pascal
+  `ReadCSVFile` (double, non-MMF): one row per point via the comma/whitespace
+  aux parser, fixed-interval = one `mult`, variable (`Interval=0`) =
+  `hour, mult`; reads ≤ `NumPoints` rows and shrinks `NumPoints` to the count
+  read. `side_effects(CSVFile)` queues the read; `take_file_loads`/
+  `apply_file_load` do it. 5 new tests incl. a full executive round-trip
+  (temp CSV resolved via `current_dir`, oracle-transcribed values) and the 613
+  missing-file path. (`SngFile`/`DblFile`/`PQCSVFile` stay `NOT_PORTED`.)
+- **Shared engine addition — deferred file loads (`FileLoad`):** a property
+  setter that names a data file can't reach the filesystem/current dir, so it
+  queues a `FileLoad { prop, filename }` (parallel to `RefAction`); the
+  executive drains it **before `end_edit`**, resolves the path relative to
+  `current_dir` (like Redirect), reads the text, and calls
+  `DssObject::apply_file_load` so the object parses it. `edit_active` binds
+  `current_dir` and runs the loop; a missing file is Pascal error 613.
+- **No props golden for CSVFile:** the command embeds a file path that resolves
+  against the cwd, which differs between the oracle (repo root) and the Rust
+  test (crate root) — a portable shared command string isn't possible, so the
+  full path is validated by the executive integration test instead (values
+  transcribed from the pinned oracle). dss-core lib tests 151 → 156.
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -393,9 +447,15 @@ getter.
 `NOT_PORTED` (hard parse error; every site points at its phase):
 - Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` — Phase 6
   (LineGeometry/WireData).
-- Reactor `RCurve`/`LCurve` — Phase 5 (XYcurve).
+- Reactor `RCurve`/`LCurve` — Phase 5 (XYcurve) — XYcurve is now ported; the
+  fetch is still `NOT_PORTED` (only the harmonic `CalcYPrim` consumes it, Phase 7).
 - CapControl `ControlSignal` — Phase 5 (LoadShape); `UserModel`/`UserData` —
   never (no DLL loading in safe Rust).
+- LoadShape `CSVFile` — **ported (WP5.2b)** via the deferred-`FileLoad` path.
+  `SngFile`/`DblFile`/`PQCSVFile` (binary/2-col input) stay `NOT_PORTED` until a
+  gate needs them. Single-precision arrays + `MemoryMapping` (MMF) and
+  `Action=DblSave`/`SngSave` (binary output) — not ported (no corpus case).
+  TempShape/PriceShape — WP5.2c.
 - GrowthShape `CSVFile`/`SngFile`/`DblFile` — file-input machinery, when a
   gate needs it.
 
