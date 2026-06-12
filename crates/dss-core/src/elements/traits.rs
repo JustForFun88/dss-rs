@@ -112,6 +112,13 @@ pub trait CktElement {
         }
     }
 
+    /// Pascal `TPDElement.IsShunt`: true for shunt-connected capacitors and
+    /// reactors (`Circuit.Get_Losses` ignores shunt PD elements). The base
+    /// class default is false.
+    fn is_shunt(&self) -> bool {
+        false
+    }
+
     /// `Get_Losses`: sum of `NodeV[ref] · conj(Iterminal)` over all
     /// conductors (zero refs skipped), ×3 under positive sequence.
     fn losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Complex64 {

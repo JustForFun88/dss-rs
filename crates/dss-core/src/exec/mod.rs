@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
+use crate::elements::control::{cap_control, reg_control};
 use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve, xfmr_code};
 use crate::elements::pc::{load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
@@ -468,6 +469,26 @@ impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
     fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
         self.lookup(class, &name.to_lowercase())
     }
+
+    /// Pascal `GetCktElementIndex`: resolve a full `Class.Name` reference (the
+    /// `PropertyOffset2 = 0` object-ref case, e.g. CapControl `element=`). The
+    /// returned `String` is the canonical `FullName` for dumps.
+    fn find_full(&self, full_name: &str) -> Option<(ElemRef, &'a dyn DssObject, String)> {
+        let dot = full_name.find('.')?;
+        let (class, name) = (&full_name[..dot], &full_name[dot + 1..]);
+        // Reuse the per-class lookup, then rebuild the canonical FullName.
+        let (r, obj) = self.lookup(class, &name.to_lowercase())?;
+        let cls = if r.cls < self.split {
+            &self.left[r.cls]
+        } else {
+            &self.right[r.cls - self.split - 1]
+        };
+        Some((
+            r,
+            obj,
+            format!("{}.{}", cls.props.class_name(), obj.data().name()),
+        ))
+    }
 }
 
 /// The DSS engine context (`TDSSContext`).
@@ -507,10 +528,10 @@ impl Dss {
 
         // Class registry. More classes are registered here as they are ported.
         let classes = vec![
-            DssClass::dss_object(tcc_curve::class_props(), |name| {
+            DssClass::dss_object(tcc_curve::class_props(&enums), |name| {
                 Box::new(tcc_curve::TccCurveObj::new(name))
             }),
-            DssClass::dss_object(spectrum::class_props(), |name| {
+            DssClass::dss_object(spectrum::class_props(&enums), |name| {
                 Box::new(spectrum::SpectrumObj::new(name))
             }),
             DssClass::dss_object(line_code::class_props(&enums), |name| {
@@ -551,6 +572,16 @@ impl Dss {
                 reactor::class_props(&enums),
                 |name| Box::new(reactor::Reactor::new(name)),
                 ElemKind::Reactor,
+            ),
+            DssClass::ckt_class(
+                reg_control::class_props(&enums),
+                |name| Box::new(reg_control::RegControl::new(name)),
+                ElemKind::Control,
+            ),
+            DssClass::ckt_class(
+                cap_control::class_props(&enums),
+                |name| Box::new(cap_control::CapControl::new(name)),
+                ElemKind::Control,
             ),
         ];
         let class_by_name = classes
@@ -1024,6 +1055,13 @@ impl Dss {
         let deferred = objects[oi].data_mut().take_errors();
         errors.extend(deferred);
 
+        // Deferred cross-element writes (Pascal pokes the target through a
+        // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
+        // PresentTap; nothing reads the target in between, so applying after
+        // the edit is equivalent). Collected before the flag propagation so
+        // the active-class borrows can end before `classes` is re-borrowed.
+        let ref_actions = objects[oi].take_ref_actions();
+
         // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
         // circuit globals immediately; `Set_YprimInvalid` raises
         // `SystemYChanged` for enabled elements).
@@ -1037,6 +1075,26 @@ impl Dss {
             }
             if cd.yprim_invalid && cd.enabled {
                 ckt.solution.system_y_changed = true;
+            }
+        }
+
+        for action in &ref_actions {
+            let target = action.target();
+            let tgt = &mut classes[target.cls].objects[target.idx];
+            tgt.apply_ref_action(action);
+            // Propagate the target's flags too (a tap change invalidates the
+            // transformer's Yprim exactly like a direct `Tap=` edit).
+            if let Some(ckt) = circuit.as_mut()
+                && let Some(elem) = tgt.as_ckt_element_mut()
+            {
+                let cd = elem.cd_mut();
+                if cd.signal_bus_name_redefined {
+                    cd.signal_bus_name_redefined = false;
+                    ckt.set_bus_name_redefined(true);
+                }
+                if cd.yprim_invalid && cd.enabled {
+                    ckt.solution.system_y_changed = true;
+                }
             }
         }
     }
@@ -1576,6 +1634,121 @@ impl Dss {
     }
 }
 
+/// Per-element snapshot for the golden feeder gate: mirrors dss-python's
+/// `CktElement.Powers`/`Currents` over the oracle's `First/Next` iteration
+/// (= creation) order.
+#[derive(Debug, Clone)]
+pub struct ElementSnapshot {
+    /// `FullName` (`Class.name`).
+    pub name: String,
+    /// kW/kvar interleaved per conductor and terminal (CAPI
+    /// `Alt_CE_Get_Powers`: `GetPhasePower · 0.001`).
+    pub powers: Vec<f64>,
+    /// Amps, re/im interleaved per conductor and terminal (`Iterminal`).
+    pub currents: Vec<f64>,
+}
+
+impl Dss {
+    /// Snapshot every circuit element's terminal powers and currents in
+    /// creation order (the oracle's `First/Next` order). Pascal
+    /// `TDSSCktElement.GetPhasePower` / `ComputeIterminal`.
+    pub fn snapshot_elements(&mut self) -> Vec<ElementSnapshot> {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref().expect("snapshot needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let positive_seq = ckt.positive_sequence;
+        let mut out = Vec::with_capacity(ckt.ckt_elements.len());
+        for &r in &ckt.ckt_elements {
+            let class_name = classes[r.cls].props.class_name();
+            let obj = &mut classes[r.cls].objects[r.idx];
+            let name = format!("{}.{}", class_name, obj.data().name());
+            let elem = obj
+                .as_ckt_element_mut()
+                .expect("ckt_elements refs are circuit elements");
+            let yorder = elem.cd().yorder;
+            let mut currents = vec![0.0; 2 * yorder];
+            let mut powers = vec![0.0; 2 * yorder];
+            if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
+                elem.compute_iterminal(&sys, &node_v);
+                let cd = elem.cd();
+                for k in 0..yorder {
+                    let i = cd.iterminal[k];
+                    currents[2 * k] = i.re;
+                    currents[2 * k + 1] = i.im;
+                    let n = cd.node_ref[k];
+                    if n > 0 {
+                        let mut s = node_v[n] * i.conj();
+                        if positive_seq {
+                            s *= 3.0;
+                        }
+                        powers[2 * k] = s.re * 0.001;
+                        powers[2 * k + 1] = s.im * 0.001;
+                    }
+                }
+            }
+            out.push(ElementSnapshot {
+                name,
+                powers,
+                currents,
+            });
+        }
+        out
+    }
+
+    /// CAPI `Circuit_Get_TotalPower`: the sum of every source's terminal-1
+    /// power, in kW/kvar (negative of the power delivered to the circuit).
+    pub fn total_power(&mut self) -> (f64, f64) {
+        use num_complex::Complex64;
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref().expect("total_power needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let positive_seq = ckt.positive_sequence;
+        let mut total = Complex64::ZERO;
+        for &r in &ckt.sources {
+            let elem = classes[r.cls].objects[r.idx]
+                .as_ckt_element_mut()
+                .expect("sources are circuit elements");
+            if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
+                continue;
+            }
+            elem.compute_iterminal(&sys, &node_v);
+            let cd = elem.cd();
+            // Pascal Get_Power(1): sum over terminal-1 conductors.
+            let mut s = Complex64::ZERO;
+            for i in 0..cd.nconds {
+                let n = cd.node_ref[i];
+                if n > 0 {
+                    s += node_v[n] * cd.iterminal[i].conj();
+                }
+            }
+            if positive_seq {
+                s *= 3.0;
+            }
+            total += s;
+        }
+        (total.re * 0.001, total.im * 0.001)
+    }
+
+    /// CAPI `Circuit_Get_Losses`: total circuit losses in W/var (sum over
+    /// enabled PD elements).
+    pub fn losses(&mut self) -> (f64, f64) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_mut().expect("losses needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let mut store = ClassStore { classes };
+        let total = ckt.losses(&mut store, &sys);
+        (total.re, total.im)
+    }
+}
+
 impl Default for Dss {
     fn default() -> Self {
         Self::new()
@@ -1955,6 +2128,47 @@ mod tests {
         // The edit continued: r1=0.1 was applied, phases stayed default.
         assert_eq!(query(&mut dss, "line.l5.r1"), "0.1");
         assert_eq!(query(&mut dss, "line.l5.phases"), "3");
+    }
+
+    /// WP4.7 step 6 (the "silent killer" check): control elements attach to
+    /// existing buses, so adding a RegControl must not change `YNodeOrder`,
+    /// and the Y build must skip their `yprim: None` (no stamping, solvable).
+    #[test]
+    fn reg_control_does_not_change_node_order() {
+        let build = |with_control: bool| -> (Vec<String>, bool, i32) {
+            let mut dss = Dss::new();
+            dss.command("New circuit.ctl basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+            dss.command(
+                "New transformer.t1 phases=3 windings=2 buses=(sourcebus, b2) \
+                 conns=(delta wye) kvs=(12.47 4.16) kvas=(5000 5000) xhl=8",
+            );
+            if with_control {
+                dss.command(
+                    "New regcontrol.r1 transformer=t1 winding=2 vreg=122 band=2 ptratio=20",
+                );
+            }
+            dss.command("New load.l1 bus1=b2 phases=3 kv=4.16 kw=300 pf=0.95");
+            dss.command("Set voltagebases=[12.47, 4.16]");
+            dss.command("CalcVoltageBases");
+            dss.command("Solve");
+            assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+            let ckt = dss.circuit().unwrap();
+            if with_control {
+                assert_eq!(ckt.controls.len(), 1);
+                // The control sits on the transformer's winding-2 bus.
+                let r = ckt.controls[0];
+                let elem = dss.classes[r.cls].objects[r.idx].as_ckt_element().unwrap();
+                assert_eq!(elem.cd().get_bus(1), "b2");
+                assert!(elem.cd().yprim.is_none());
+            }
+            let names = (1..=ckt.num_nodes).map(|i| ckt.node_name(i)).collect();
+            (names, ckt.is_solved, ckt.solution.iteration)
+        };
+        let (with, solved_w, iter_w) = build(true);
+        let (without, solved_wo, iter_wo) = build(false);
+        assert!(solved_w && solved_wo);
+        assert_eq!(with, without, "RegControl changed the node order");
+        assert_eq!(iter_w, iter_wo, "RegControl changed the iteration count");
     }
 
     #[test]

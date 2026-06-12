@@ -231,6 +231,12 @@ pub struct EnumRegistry {
     pub core_type: EnumId,
     /// 'Phase Sequence' reused for transformer LeadLag (`DSS.LeadLagEnum`).
     pub lead_lag: EnumId,
+    /// 'RegControl: Phase Selection' (RegControl.pas `PhaseEnum`).
+    pub reg_control_phase: EnumId,
+    /// 'Monitored Phase' (`DSS.MonPhaseEnum`, CapControl PT/CT phase).
+    pub mon_phase: EnumId,
+    /// 'CapControl: Type' (CapControl.pas `TypeEnum`).
+    pub cap_control_type: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -485,6 +491,47 @@ impl EnumRegistry {
             &[0, 1, 0, 1],
         ));
 
+        // RegControl.pas: PhaseEnum (hybrid — falls back to a phase number).
+        let mut rcp = DssEnum::new(
+            "RegControl: Phase Selection",
+            true,
+            2,
+            2,
+            &["min", "max"],
+            &[-3, -2],
+        );
+        rcp.hybrid = true;
+        let reg_control_phase = push(rcp);
+
+        // DSSClass.pas:1184 MonPhaseEnum (hybrid — falls back to a phase no.).
+        let mut monph = DssEnum::new(
+            "Monitored Phase",
+            true,
+            1,
+            2,
+            &["min", "max", "avg"],
+            &[-3, -2, -1],
+        );
+        monph.hybrid = true;
+        let mon_phase = push(monph);
+
+        // CapControl.pas:244 TypeEnum ('UserControl' is commented out upstream).
+        let cap_control_type = push(DssEnum::new(
+            "CapControl: Type",
+            true,
+            1,
+            1,
+            &[
+                "Current",
+                "Voltage",
+                "kvar",
+                "Time",
+                "PowerFactor",
+                "Follow",
+            ],
+            &[0, 1, 2, 3, 4, 5],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -504,6 +551,9 @@ impl EnumRegistry {
             ckt_model,
             core_type,
             lead_lag,
+            reg_control_phase,
+            mon_phase,
+            cap_control_type,
         }
     }
 

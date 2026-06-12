@@ -104,6 +104,34 @@ impl DssObjData {
     }
 }
 
+/// A deferred cross-element write queued by a property setter that needs
+/// *mutable* access to a different object. Pascal pokes the target through a
+/// live pointer mid-parse (e.g. RegControl `TapNum` → `tr.PresentTap[w] :=`);
+/// here the property engine only holds a read view of foreign classes, so the
+/// setter queues the write and the executive applies it right after the edit.
+/// Nothing reads the target between the two points, so the timing shift is
+/// unobservable.
+#[derive(Debug, Clone)]
+pub enum RefAction {
+    /// RegControl `TapNum`: set 1-based winding `winding`'s `PresentTap` (pu)
+    /// on the target transformer (Pascal `Set_TapNum`). The target clamps to
+    /// the winding's Min/MaxTap exactly like `Set_PresentTap`.
+    SetTransformerTap {
+        target: crate::elements::traits::ElemRef,
+        winding: usize,
+        tap: f64,
+    },
+}
+
+impl RefAction {
+    /// The object the action must be applied to.
+    pub fn target(&self) -> crate::elements::traits::ElemRef {
+        match self {
+            RefAction::SetTransformerTap { target, .. } => *target,
+        }
+    }
+}
+
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
@@ -303,6 +331,18 @@ pub trait DssObject {
     /// Pascal per-class `EndEdit`: recompute derived state once an edit block
     /// finishes (e.g. `ReCalcYearMult`, `SetMultArray`). No-op by default.
     fn end_edit(&mut self) {}
+
+    /// Drain the [`RefAction`]s queued during the last edit (see `RefAction`).
+    /// The executive applies them right after `end_edit`.
+    fn take_ref_actions(&mut self) -> Vec<RefAction> {
+        Vec::new()
+    }
+
+    /// Apply a [`RefAction`] addressed to this object (the target side of the
+    /// deferred write). Default: ignore.
+    fn apply_ref_action(&mut self, action: &RefAction) {
+        let _ = action;
+    }
 
     /// Pascal `TDSSObject.MakeLike`: copy `other`'s field state onto `self`
     /// (the name is *not* copied). Default is a no-op; classes override it.

@@ -7,35 +7,27 @@
 //! `Angle=4`, `CSVFile=5`; the base class appends `Like=6`.
 
 use crate::obj::base::{DssObjData, DssObject};
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{PropDef, PropFlags, define_properties};
 
-/// 1-based property ordinals (Pascal `TSpectrumProp`).
-pub const NUM_HARM: usize = 1;
-pub const HARMONIC: usize = 2;
-pub const PCT_MAG: usize = 3;
-pub const ANGLE: usize = 4;
-pub const CSV_FILE: usize = 5;
-
-/// Build the `Spectrum` property table.
-pub fn class_props() -> ClassProps {
-    ClassProps::new(
-        "Spectrum",
-        vec![
-            PropDef::integer("NumHarm").flags(PropFlags::SUPPRESS_JSON),
-            PropDef::double_array("Harmonic", NUM_HARM).flags(PropFlags::REQUIRED_IN_SPEC_SET),
-            // %Mag is stored per-unit; the parser multiplies by 0.01 and the
-            // getter divides by it (Pascal `PropertyScale := 0.01`).
-            PropDef::double_array("%Mag", NUM_HARM)
-                .scale(0.01)
-                .flags(PropFlags::REQUIRED_IN_SPEC_SET),
-            PropDef::double_array("Angle", NUM_HARM).flags(PropFlags::REQUIRED_IN_SPEC_SET),
-            PropDef::string("CSVFile").flags(
-                PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
-            ),
-        ],
-        true,
-    )
+// Pascal `TSpectrumProp` ordinals + the property table. `%Mag` is stored
+// per-unit: the parser multiplies by 0.01 and the getter divides by it
+// (Pascal `PropertyScale := 0.01`).
+define_properties! {
+    class "Spectrum", abbrev true;
+    1 NUM_HARM => PropDef::integer("NumHarm").flags(PropFlags::SUPPRESS_JSON);
+    2 HARMONIC => PropDef::double_array("Harmonic", NUM_HARM)
+        .flags(PropFlags::REQUIRED_IN_SPEC_SET);
+    3 PCT_MAG  => PropDef::double_array("%Mag", NUM_HARM)
+        .scale(0.01)
+        .flags(PropFlags::REQUIRED_IN_SPEC_SET);
+    4 ANGLE    => PropDef::double_array("Angle", NUM_HARM)
+        .flags(PropFlags::REQUIRED_IN_SPEC_SET);
+    5 CSV_FILE => PropDef::string("CSVFile").flags(
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+    );
 }
+
+use prop::{ANGLE, CSV_FILE, HARMONIC, NUM_HARM, PCT_MAG};
 
 /// A `Spectrum` instance (`TSpectrumObj`).
 #[derive(Debug, Clone)]
@@ -52,12 +44,10 @@ pub struct SpectrumObj {
     // harmonics phase; nothing in the property dump depends on it.
 }
 
-const NUM_PROPS: usize = 6;
-
 impl SpectrumObj {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), NUM_PROPS),
+            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
             num_harm: 0,
             harm_array: None,
             pu_mag_array: None,
@@ -192,7 +182,7 @@ mod tests {
     use dss_parser::{Parser, ParserVars};
 
     fn edit_and_dump(edits: &[(&str, &str)]) -> Vec<(String, String)> {
-        let cls = class_props();
+        let cls = class_props(&EnumRegistry::new());
         let mut obj = SpectrumObj::new("s");
         let mut parser = Parser::new();
         let vars = ParserVars::new();
