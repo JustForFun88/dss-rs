@@ -69,6 +69,12 @@ pub enum PropType {
     /// whose element count is computed by the object ([`DssObject::array_size`]),
     /// e.g. a transformer `XSCArray` (length `(NumWindings-1)·NumWindings/2`).
     DoubleVArray,
+    /// `DoubleDArrayProperty` with `WriteByFunction`/`SizeIsFunction`: an
+    /// interleaved `(x, y)` point list (e.g. an XYcurve `Points`). The write
+    /// reads however many doubles are present and routes them through
+    /// [`DssObject::set_points`]; the read interleaves the X/Y arrays via
+    /// [`DssObject::get_points`].
+    DoublePoints,
     /// `DoubleArrayOnStructArrayProperty`: writes one double per struct-array
     /// entry (e.g. a transformer `kVs` → each winding's `kVLL`). The count is
     /// the integer property `size_prop` (`NumWindings`); omitted tokens keep the
@@ -296,6 +302,11 @@ impl PropDef {
     /// ([`DssObject::array_size`]); e.g. a transformer `XSCArray`.
     pub fn double_v_array(name: &'static str) -> Self {
         Self::base(name, PropType::DoubleVArray)
+    }
+    /// `DoubleDArrayProperty` (interleaved `(x, y)` point list), e.g. an
+    /// XYcurve `Points`.
+    pub fn double_points(name: &'static str) -> Self {
+        Self::base(name, PropType::DoublePoints)
     }
     /// `DoubleArrayOnStructArrayProperty` over `count_prop` struct entries
     /// (the 1-based ordinal of the count integer, e.g. `Windings`).
@@ -643,6 +654,13 @@ impl ClassProps {
                 obj.set_f64_array(idx, buf);
                 Ok(0)
             }
+            PropType::DoublePoints => {
+                // Pascal `SetPoints`: read every double present (the count is
+                // not bounded by a size property), then split into (x, y) pairs.
+                let buf = crate::util::interpret_dbl_array_dynamic(eng.parser, eng.vars, value)?;
+                obj.set_points(buf);
+                Ok(0)
+            }
             PropType::DoubleArrayOnStruct => {
                 // Pascal `DoubleArrayOnStructArrayProperty`: iterate exactly
                 // `count` struct entries, skipping omitted tokens (which keep
@@ -794,6 +812,12 @@ impl ClassProps {
             }
             PropType::DoubleVArray => {
                 get_dss_array_f64(obj.array_size(idx), obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::DoublePoints => {
+                // Pascal `GetPoints`: interleaved `[x0 y0 x1 y1 ...]`, length
+                // `2·NumPoints`.
+                let pts = obj.get_points();
+                get_dss_array_f64(pts.len(), Some(&pts), 1.0)
             }
             PropType::DoubleArrayOnStruct => {
                 // Pascal: `[` + `%g, ` per entry (field / scale) + `]`.

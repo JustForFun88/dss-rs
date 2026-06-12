@@ -198,6 +198,39 @@ pub fn interpret_dbl_array(
     Ok(max_values)
 }
 
+/// Read every double present in `s`, with no upper bound — the Pascal
+/// `DoubleDArrayProperty` parse path (e.g. an XYcurve `Points`), where the
+/// element count is whatever the script supplies. Tokens are read until the
+/// parser is exhausted (an empty current token). File-backed forms are rejected
+/// like [`interpret_dbl_array`].
+pub fn interpret_dbl_array_dynamic(
+    parser: &mut Parser,
+    vars: &ParserVars,
+    s: &str,
+) -> Result<Vec<f64>, ParserError> {
+    parser.set_auto_increment(false);
+    parser.set_cmd_string(s);
+    let parm_name = parser.next_param(vars);
+    if parm_name.eq_ignore_ascii_case("file")
+        || (!parm_name.is_empty()
+            && (compare_text_shortest_eq(&parm_name, "dblfile")
+                || compare_text_shortest_eq(&parm_name, "sngfile")))
+    {
+        return Err(ParserError::new(format!(
+            "file-backed numeric arrays (\"{parm_name}=\") are not supported yet"
+        )));
+    }
+
+    let mut out = Vec::new();
+    // The current token is loaded; read it, advance, stop on the first empty
+    // (exhausted) token.
+    while !parser.make_string(vars).is_empty() {
+        out.push(parser.make_double(vars)?);
+        parser.next_param(vars);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
