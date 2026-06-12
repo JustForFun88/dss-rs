@@ -9,9 +9,9 @@
 
 Last updated: 2026-06-12, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
 (`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve),
-WP5.2a (LoadShape core), WP5.2b (LoadShape `CSVFile`) and WP5.2c
-(TempShape/PriceShape) done, gate-green** (see §1c). WP5.2 is complete. Next:
-WP5.3 (wire shapes into Load/VSource/Circuit defaults).
+WP5.2a/b/c (LoadShape + CSVFile + TempShape/PriceShape) and WP5.3 (shapes wired
+into Load/VSource) done, gate-green** (see §1c). Next: WP5.4 (ControlQueue +
+event log).
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -39,13 +39,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape) done; `PHASE5_PLAN.md` |
+| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes → Load/VSource) done; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 173, golden_feeders 1, golden_slice 2,
+cargo test --workspace      # dss-core lib 181, golden_feeders 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1, dss-parser 62+1,
                             # dss-sparse 5
 ```
@@ -355,6 +355,43 @@ Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
 - **Goldens:** 8 TShape + 6 PriceShape scenarios in `gen_props.py`;
   `props.json` regenerated (pure insertions, +310 lines); `props_roundtrip`
   green. dss-core lib tests 156 → 173.
+
+**WP5.3 — shapes wired into Load + VSource — ✅ done, gate-green.** Files:
+- `pc/load.rs`: the five shape refs (`yearly`/`daily`/`duty`/`CVRcurve` →
+  `LoadShape`, `growth` → `GrowthShape`) became resolved `object_ref_class`
+  props. Each is **snapshot-cloned** into the Load at `set_object_ref` time
+  (`*_shape_obj: Option<LoadShapeObj/GrowthShapeObj>` + the resolved `ElemRef`),
+  exactly like `FetchLineCode` (§3.4): the solve path only carries scalar
+  `SysCtx`, so the owned clone is what `SetNominalLoad` drives through
+  `GetMultAtHour`. Ported `CalcDailyMult`/`CalcDutyMult` (daily fallback)/
+  `CalcYearlyMult`/`CalcCVRMult` setting `shape_factor`/`shape_is_actual`;
+  `GrowthFactor` now reads `GrowthShapeObj.GetMult(Year)`; `SetkWkvar` +
+  the `UseActual` shape side effects (`yearly`/`daily`/`duty` set kW/kvar to the
+  shape's peak demand; `daily` seeds an unset `yearly`); the full `SetNominalLoad`
+  mode dispatch (SNAPSHOT/HARMONIC unchanged; DAILY/YEARLY/DUTYCYCLE now consult
+  the shape; CVR loads add `CalcCVRMult` in YEARLY). `MakeLike` copies the
+  resolved shapes. 5 inline tests probed against the oracle.
+- `pc/vsource.rs`: same conversion for `yearly`/`daily`/`duty` (LoadShape only),
+  `CalcDailyMult`/`Duty`/`Yearly`, and the loadshape-mode magnitude in
+  `GetVterminalForSource` (`Vmag = kVBase·ShapeFactor.re·…`, or `1000·re` when
+  `UseActual`). 2 inline tests.
+- **Shared engine:** none — reuses Phase 4's `object_ref_class`/`set_object_ref`
+  resolution and the `SolveMode` enum. `LoadShapeObj` gained `use_actual()`/
+  `max_p()`/`max_q()` accessors.
+- **Oracle facts (probed, then pinned in the unit tests):** in DAILY/YEARLY/DUTY
+  the per-conductor power is `kW·mult·1000/Nphases` (Q scales the same when no
+  QMult); a `UseActual` daily shape sets the load to `(MaxP, coincident MaxQ)`
+  and the ObjectRef getter renders `YearlyShapeObj.Name` (so `daily=d1` with no
+  `yearly` makes `Get yearly` return `d1`). No new goldens: the existing feeders
+  reference no shapes (snapshot paths stay byte-identical), and a daily-mode
+  `solve` can't run until the WP5.8 dispatcher lands — `SetNominalLoad` is
+  validated directly with a `SolveMode::Daily` `SysCtx`.
+- **Snapshot-clone limitation:** a later `edit loadshape.x` is not seen by loads
+  that already resolved it (Pascal keeps a live pointer). Documented; no corpus
+  case re-edits a referenced shape. The circuit's built-in `default` LoadShape +
+  `DefaultDailyShapeObj`/`DefaultYearlyShapeObj` and the global `DefaultHourMult`
+  path are **deferred to WP5.8** (only `SolveDaily` consumes them).
+  dss-core lib tests 173 → 181 (+7 element + 1 executive resolution).
 
 ---
 

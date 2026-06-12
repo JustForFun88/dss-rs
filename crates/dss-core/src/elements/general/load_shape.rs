@@ -153,6 +153,21 @@ impl LoadShapeObj {
         self.num_points.max(0) as usize
     }
 
+    /// Pascal `UseActual`: the multipliers are absolute (kW/kvar), not per-unit.
+    /// Consumers (Load/VSource `CalcDailyMult`) read this to set `ShapeIsActual`.
+    pub fn use_actual(&self) -> bool {
+        self.use_actual
+    }
+
+    /// Pascal `MaxP` / `MaxQ`: the peak active power and its coincident reactive
+    /// power, set by `SetMaxPandQ` (used by the `UseActual` `SetkWkvar` path).
+    pub fn max_p(&self) -> f64 {
+        self.max_p
+    }
+    pub fn max_q(&self) -> f64 {
+        self.max_q
+    }
+
     /// `Set_Result_im` from `GetMultAtHour`: the imaginary part when no Q
     /// multipliers are defined (0 in actual mode, else mirror the real part).
     fn result_im(&self, real_part: f64) -> f64 {
