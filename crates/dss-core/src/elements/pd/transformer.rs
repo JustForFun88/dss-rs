@@ -19,7 +19,7 @@ use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
-use crate::util::{EPSILON, float_to_str, inv_sqrt3_x1000, sqrt3};
+use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
 /// 1-based property ordinals (Pascal `TTransfProp` + class tails).
 pub mod prop {
@@ -340,9 +340,12 @@ impl Transformer {
 
     /// Pascal `Set_PresentTap` (1-based winding): clamp to the winding's
     /// Min/MaxTap and, only on a change, invalidate YPrim and recompute.
-    pub fn set_present_tap(&mut self, i: usize, value: f64) {
+    /// Returns whether YPrim was invalidated (Pascal `Set_YprimInvalid`'s
+    /// `SystemYChanged := True` trigger fires on the same condition, gated by
+    /// `Enabled`) — the RegControl driver uses this to raise `system_y_changed`.
+    pub fn set_present_tap(&mut self, i: usize, value: f64) -> bool {
         if i < 1 || i > self.num_windings.max(0) as usize {
-            return;
+            return false;
         }
         let w = &self.windings[i - 1];
         let v = value.clamp(w.min_tap, w.max_tap);
@@ -350,7 +353,99 @@ impl Transformer {
             self.windings[i - 1].putap = v;
             self.cd.yprim_invalid = true;
             self.recalc();
+            self.cd.enabled
+        } else {
+            false
         }
+    }
+
+    /// Pascal `Get_WdgConnection(i)`: the 1-based winding's connection code
+    /// (0 = wye, 1 = delta). Used by RegControl's regulated-bus path.
+    pub fn wdg_connection(&self, i: usize) -> i32 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].connection
+        } else {
+            0
+        }
+    }
+
+    /// Pascal `Get_BaseVoltage(i)`: the 1-based winding's `VBase`, falling back
+    /// to winding 1 when out of range.
+    pub fn base_voltage(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].vbase
+        } else {
+            self.windings[0].vbase
+        }
+    }
+
+    /// Pascal `RotatePhases` exposed for the RegControl delta/regulated-bus path
+    /// (returns a 1-based phase index).
+    pub fn rotate_phases_1based(&self, iphs: usize) -> usize {
+        self.rotate_phases(iphs)
+    }
+
+    /// Pascal `TTransfObj.GetWindingVoltages(iWind, VBuffer)` — the voltages
+    /// across the `iWind` winding's phases. `vbuffer` is 0-based, length
+    /// `nphases`; `node_v` is the global voltage vector. Ported from the
+    /// 1-based Pascal (`VBuffer[i]`, `Vterminal[i + k]`) to 0-based indices.
+    pub fn get_winding_voltages(
+        &mut self,
+        iwind: usize,
+        node_v: &[Complex64],
+        vbuffer: &mut [Complex64],
+    ) {
+        let nphases = self.cd.nphases;
+        if !self.cd.enabled || self.cd.node_ref.is_empty() || node_v.is_empty() {
+            return;
+        }
+        if iwind < 1 || iwind > self.num_windings.max(0) as usize {
+            for v in vbuffer.iter_mut().take(self.cd.nconds) {
+                *v = Complex64::ZERO;
+            }
+            return;
+        }
+        self.cd.compute_vterminal(node_v);
+        let vt = &self.cd.vterminal;
+        let nconds = self.cd.nconds;
+        let k = (iwind - 1) * nconds; // offset for winding (0-based)
+        let neut = nphases + k; // Pascal NeutTerm = Fnphases + k + 1 (1-based)
+        let conn = self.windings[iwind - 1].connection;
+        for i in 0..nphases {
+            match conn {
+                0 => vbuffer[i] = vt[i + k] - vt[neut], // Wye
+                1 => {
+                    // Delta: next phase in sequence (rotate_phases is 1-based).
+                    let ii = self.rotate_phases(i + 1) - 1;
+                    vbuffer[i] = vt[i + k] - vt[ii + k];
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Pascal `Power[idxTerm].re` (watts) into terminal `term` — used by
+    /// RegControl's reverse-power direction check. Sums `NodeV · conj(Iterminal)`
+    /// over the terminal's conductors (zero refs skipped), ×3 under positive
+    /// sequence.
+    pub fn power_into(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> Complex64 {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return Complex64::ZERO;
+        }
+        self.compute_iterminal(sys, node_v);
+        let nconds = self.cd.nconds;
+        let k = (term - 1) * nconds;
+        let mut result = Complex64::ZERO;
+        for i in 0..nconds {
+            let n = self.cd.node_ref[k + i];
+            if n > 0 {
+                result += node_v[n] * self.cd.iterminal[k + i].conj();
+            }
+        }
+        if sys.positive_sequence {
+            result *= 3.0;
+        }
+        result
     }
 
     /// Pascal `TTransfObj.SetNumWindings`.
@@ -795,9 +890,10 @@ impl Transformer {
                 } else {
                     c.arg().to_degrees()
                 };
-                out.push_str(&float_to_str(mag));
+                // Pascal: Format('%.7g, (%.5g), ', [Cabs, Cdang]).
+                out.push_str(&crate::util::fmt_g(mag, 7));
                 out.push_str(", (");
-                out.push_str(&float_to_str(ang));
+                out.push_str(&crate::util::fmt_g(ang, 5));
                 out.push_str("), ");
                 k += 1; // skip the other end of the winding
             }
@@ -907,6 +1003,83 @@ impl CktElement for Transformer {
     }
 }
 
+/// The controlled-transformer surface RegControl's `Sample`/`DoPendingAction`
+/// read and mutate (Pascal `TControlledTransformerObj` methods). It is a trait
+/// so the regulator decision logic can be unit-tested against a lightweight mock
+/// without a fully node-wired transformer; [`Transformer`] is the production
+/// implementor. All winding/terminal indices are 1-based (as in Pascal); the
+/// voltage/current buffers are 0-based, length `nphases`/`yorder`.
+pub trait ControlledTransformer {
+    fn name(&self) -> &str;
+    fn n_phases(&self) -> usize;
+    fn n_conds(&self) -> usize;
+    fn y_order(&self) -> usize;
+    fn wdg_connection(&self, term: usize) -> i32;
+    /// `RotatePhases` (1-based in, 1-based out).
+    fn rotate_phases(&self, iphs: usize) -> usize;
+    fn base_voltage(&self, term: usize) -> f64;
+    fn present_tap(&self, w: usize) -> f64;
+    fn min_tap(&self, w: usize) -> f64;
+    fn max_tap(&self, w: usize) -> f64;
+    fn tap_increment(&self, w: usize) -> f64;
+    /// Apply a tap; returns whether Y must be rebuilt (Pascal `SystemYChanged`).
+    fn set_present_tap(&mut self, w: usize, value: f64) -> bool;
+    /// `Power[term].re` in watts.
+    fn power_into_re(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> f64;
+    /// `GetWindingVoltages(term, VBuffer)`.
+    fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]);
+    /// `ControlledElement.GetCurrents(CBuffer)`.
+    fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]);
+}
+
+impl ControlledTransformer for Transformer {
+    fn name(&self) -> &str {
+        self.cd.obj.name()
+    }
+    fn n_phases(&self) -> usize {
+        self.cd.nphases
+    }
+    fn n_conds(&self) -> usize {
+        self.cd.nconds
+    }
+    fn y_order(&self) -> usize {
+        self.cd.yorder
+    }
+    fn wdg_connection(&self, term: usize) -> i32 {
+        Transformer::wdg_connection(self, term)
+    }
+    fn rotate_phases(&self, iphs: usize) -> usize {
+        self.rotate_phases_1based(iphs)
+    }
+    fn base_voltage(&self, term: usize) -> f64 {
+        Transformer::base_voltage(self, term)
+    }
+    fn present_tap(&self, w: usize) -> f64 {
+        Transformer::present_tap(self, w)
+    }
+    fn min_tap(&self, w: usize) -> f64 {
+        self.winding_tap_data(w).2
+    }
+    fn max_tap(&self, w: usize) -> f64 {
+        self.winding_tap_data(w).1
+    }
+    fn tap_increment(&self, w: usize) -> f64 {
+        self.winding_tap_data(w).3
+    }
+    fn set_present_tap(&mut self, w: usize, value: f64) -> bool {
+        Transformer::set_present_tap(self, w, value)
+    }
+    fn power_into_re(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> f64 {
+        self.power_into(term, node_v, sys).re
+    }
+    fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]) {
+        self.get_winding_voltages(term, node_v, vbuffer);
+    }
+    fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]) {
+        self.get_currents(sys, node_v, cbuffer);
+    }
+}
+
 impl DssObject for Transformer {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -915,6 +1088,9 @@ impl DssObject for Transformer {
         &mut self.cd.obj
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {

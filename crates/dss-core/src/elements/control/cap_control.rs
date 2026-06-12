@@ -10,7 +10,10 @@
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
+use crate::elements::control::control_elem::{
+    CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, ControlElemData, CtrlCtx, RefSnapshot,
+};
+use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
@@ -18,13 +21,19 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
 /// `ECapControlType` ordinals.
 mod ctrl_type {
-    pub const _CURRENT: i32 = 0;
-    pub const _VOLTAGE: i32 = 1;
-    pub const _KVAR: i32 = 2;
+    pub const CURRENT: i32 = 0;
+    pub const VOLTAGE: i32 = 1;
+    pub const KVAR: i32 = 2;
     pub const TIME: i32 = 3;
     pub const PF: i32 = 4;
     pub const FOLLOW: i32 = 5;
 }
+
+/// `CapControl.pas` monitored-phase pseudo-phases (the `mon_phase` hybrid enum's
+/// avg/max/min, mirrored in `RegControl`).
+const AVGPHASES: i32 = -1;
+const MAXPHASE: i32 = -2;
+const MINPHASE: i32 = -3;
 
 /// 1-based property ordinals (Pascal `TCapControlProp` + class tails).
 pub mod prop {
@@ -130,9 +139,21 @@ pub struct CapControl {
     vmax: f64,
     vmin: f64,
     fpct_minkvar: f64,
-    // Phase-5 runtime state (kept so `Reset` is faithful; the full
-    // `TCapControlVars` switching state arrives with Sample in Phase 5):
+    // Runtime switching state (`TCapControlVars`), driven by `Sample`/
+    // `DoPendingAction` (wired into the control loop in WP5.7):
+    /// `FPendingChange` (CTRL_NONE/OPEN/CLOSE).
+    pending_change: i32,
+    /// `ShouldSwitch`: an action is pending.
     should_switch: bool,
+    /// `Armed`: a queue action is outstanding (deleted on disarm).
+    armed: bool,
+    /// `PresentState`/`InitialState` (CTRL_OPEN/CTRL_CLOSE).
+    present_state: i32,
+    initial_state: i32,
+    /// `VoverrideEvent`.
+    voverride_event: bool,
+    /// `ControlActionHandle` (the queue handle to delete when disarming).
+    control_action_handle: i32,
 }
 
 impl CapControl {
@@ -151,7 +172,7 @@ impl CapControl {
             monitored_full_name: String::new(),
             ctrl_snap: None,
             mon_snap: None,
-            control_type: ctrl_type::_CURRENT,
+            control_type: ctrl_type::CURRENT,
             fct_phase: 1,
             fpt_phase: 1,
             pt_ratio: 60.0,
@@ -170,17 +191,549 @@ impl CapControl {
             vmax: 126.0,
             vmin: 115.0,
             fpct_minkvar: 50.0,
+            pending_change: CTRL_NONE,
             should_switch: false,
+            armed: false,
+            present_state: CTRL_CLOSE,
+            initial_state: CTRL_CLOSE,
+            voverride_event: false,
+            control_action_handle: 0,
         }
     }
 
-    /// Pascal `TCapControlObj.Reset` (the `Reset` action property), local
-    /// state only: the `ControlledElement.Closed[0] := InitialState` write is
-    /// Phase 5 (capacitor terminals never move during the parse-only phase, so
-    /// present state == initial state == closed throughout).
+    /// Pascal `TCapControlObj.Reset` (the `Reset` action property). The
+    /// `ControlledElement.Closed[0] := InitialState` restore needs the
+    /// controlled capacitor, which the property setter cannot reach; it is
+    /// applied by the control-loop reset path ([`Self::reset_with`]) — here we
+    /// restore the control's own switching state.
     fn reset(&mut self) {
+        self.set_pending_change(CTRL_NONE);
         self.should_switch = false;
+        self.armed = false;
         self.last_open_time = -self.dead_time;
+        self.present_state = self.initial_state;
+    }
+
+    /// The full Pascal `Reset` (the `DoResetControls` path): restore the
+    /// control state *and* drive the bank back to `InitialState`. Returns
+    /// whether the bank's switch state changed (the caller raises
+    /// `SystemYChanged`, Pascal's `Set_ConductorClosed` side effect).
+    pub(crate) fn reset_with(&mut self, cap: &mut dyn ControlledCapacitor) -> bool {
+        let was_closed = cap.is_closed();
+        let want_closed = match self.initial_state {
+            CTRL_OPEN => Some(false),
+            CTRL_CLOSE => Some(true),
+            _ => None,
+        };
+        if let Some(want) = want_closed {
+            cap.set_closed(want);
+        }
+        self.reset();
+        want_closed.is_some_and(|want| want != was_closed)
+    }
+
+    /// Pascal `Set_PendingChange` (also mirrors to `DblTraceParameter`).
+    fn set_pending_change(&mut self, value: i32) {
+        self.pending_change = value;
+        self.ccd.dbl_trace_param = value as f64;
+    }
+
+    /// Pascal `TSolutionObj.TimeOfDay(useEpsilon = true)`: normalize the
+    /// simulation time to a 0:00⁺…24:00 time-of-day, wrapping past 24 h.
+    fn time_of_day_eps(int_hour: i32, t: f64) -> f64 {
+        let h = int_hour;
+        let hour_of_day = if h > 24 { h - ((h - 1) / 24) * 24 } else { h };
+        let result = hour_of_day as f64 + t / 3600.0;
+        if result - 24.0 > crate::util::EPSILON {
+            result - 24.0
+        } else {
+            result
+        }
+    }
+
+    /// Pascal `GetControlCurrent`: the control current from `cbuffer` (the
+    /// monitored element's terminal currents) per `FCTphase`, divided by the CT
+    /// ratio. `cond_offset` is the 0-based start of the monitored terminal's
+    /// conductors.
+    fn get_control_current(&self, cbuffer: &[Complex64], cond_offset: usize) -> f64 {
+        let nph = self.ccd.cd.nphases; // Fnphases
+        match self.fct_phase {
+            AVGPHASES => {
+                let mut c = 0.0;
+                for i in 0..nph {
+                    c += cbuffer[cond_offset + i].norm();
+                }
+                c / nph as f64 / self.ct_ratio
+            }
+            MAXPHASE => {
+                let mut c = 0.0_f64;
+                for i in 0..nph {
+                    c = c.max(cbuffer[cond_offset + i].norm());
+                }
+                c / self.ct_ratio
+            }
+            MINPHASE => {
+                let mut c = 1.0e50_f64;
+                for i in 0..nph {
+                    c = c.min(cbuffer[cond_offset + i].norm());
+                }
+                c / self.ct_ratio
+            }
+            // Just one phase (the monitored phase) — note: Pascal uses no
+            // CondOffset on this default branch.
+            _ => cbuffer[(self.fct_phase as usize) - 1].norm() / self.ct_ratio,
+        }
+    }
+
+    /// Pascal `GetControlVoltage`: the control voltage from `cbuffer` (the
+    /// monitored element's terminal voltages) per `FPTphase`, divided by the PT
+    /// ratio. The specific-phase branch uses the controlled capacitor's
+    /// connection (delta ⇒ line-line difference).
+    fn get_control_voltage(&self, cbuffer: &[Complex64], mon_nphases: usize, cap_conn: i32) -> f64 {
+        match self.fpt_phase {
+            AVGPHASES => {
+                let mut v = 0.0;
+                for vb in cbuffer.iter().take(mon_nphases) {
+                    v += vb.norm();
+                }
+                v / mon_nphases as f64 / self.pt_ratio
+            }
+            MAXPHASE => {
+                let mut v = 0.0_f64;
+                for vb in cbuffer.iter().take(mon_nphases) {
+                    v = v.max(vb.norm());
+                }
+                v / self.pt_ratio
+            }
+            MINPHASE => {
+                let mut v = 1.0e50_f64;
+                for vb in cbuffer.iter().take(mon_nphases) {
+                    v = v.min(vb.norm());
+                }
+                v / self.pt_ratio
+            }
+            // Just one phase; L-L if the capacitor is delta-connected.
+            _ => {
+                let p = self.fpt_phase as usize; // 1-based
+                if cap_conn == 1 {
+                    // NextDeltaPhase uses the control's own Fnphases.
+                    let mut next = p + 1;
+                    if next > self.ccd.cd.nphases {
+                        next = 1;
+                    }
+                    (cbuffer[p - 1] - cbuffer[next - 1]).norm() / self.pt_ratio
+                } else {
+                    cbuffer[p - 1].norm() / self.pt_ratio
+                }
+            }
+        }
+    }
+
+    /// Pascal `TCapControlObj.Sample` — sense the monitored quantity for the
+    /// control type, decide whether the bank should switch, and arm/disarm the
+    /// control queue. `cap` is the controlled capacitor; `mon` the monitored
+    /// element (they differ except for Time/Follow control, where `mon` is the
+    /// capacitor and is not read). Ported top-to-bottom.
+    pub(crate) fn sample(
+        &mut self,
+        cap: &mut dyn ControlledCapacitor,
+        mon: &mut dyn CktElement,
+        ctx: &mut CtrlCtx,
+    ) {
+        // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
+        self.present_state = if cap.is_closed() {
+            CTRL_CLOSE
+        } else {
+            CTRL_OPEN
+        };
+        self.should_switch = false;
+
+        let now = ctx.t + ctx.int_hour as f64 * 3600.0;
+        let element_terminal = self.ccd.element_terminal as usize;
+        let mon_nconds = mon.cd().nconds;
+        let mon_nphases = mon.cd().nphases;
+        let cond_offset = (element_terminal - 1) * mon_nconds;
+        let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
+
+        // First, voltage override (skipped for VOLTAGECONTROL).
+        if self.voverride && self.control_type != ctrl_type::VOLTAGE {
+            // VoverrideBusSpecified is always reverted at parse (the bus list
+            // does not yet exist — PHASE4 §WP4.7), so the GetBusVoltages variant
+            // is unreachable here; sense the monitored terminal instead.
+            mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
+            let vtest = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
+
+            // Faithful to Pascal's `case PresentState of CTRL_x: if … then`;
+            // a match guard would obscure the ported `case`/`if` structure.
+            #[allow(clippy::collapsible_match)]
+            match self.present_state {
+                CTRL_OPEN => {
+                    if vtest < self.vmin {
+                        self.set_pending_change(CTRL_CLOSE);
+                        self.should_switch = true;
+                        self.voverride_event = true;
+                        if self.ccd.show_event_log {
+                            ctx.events.append(
+                                &cap.full_name(),
+                                &format!(
+                                    "Low Voltage Override: {} V",
+                                    crate::util::fmt_g(vtest, 8)
+                                ),
+                                ctx.int_hour,
+                                ctx.t,
+                                ctx.control_iter,
+                            );
+                        }
+                    }
+                }
+                CTRL_CLOSE => {
+                    if vtest > self.vmax {
+                        self.set_pending_change(CTRL_OPEN);
+                        self.should_switch = true;
+                        self.voverride_event = true;
+                        if self.ccd.show_event_log {
+                            ctx.events.append(
+                                &cap.full_name(),
+                                &format!(
+                                    "High Voltage Override: {} V",
+                                    crate::util::fmt_g(vtest, 8)
+                                ),
+                                ctx.int_hour,
+                                ctx.t,
+                                ctx.control_iter,
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !self.should_switch {
+            match self.control_type {
+                ctrl_type::CURRENT => {
+                    mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
+                    let curr_test = self.get_control_current(&cbuffer, cond_offset);
+                    match self.present_state {
+                        CTRL_OPEN => {
+                            if curr_test > self.on_value {
+                                self.set_pending_change(CTRL_CLOSE);
+                                self.should_switch = true;
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        CTRL_CLOSE => {
+                            if curr_test < self.off_value {
+                                self.set_pending_change(CTRL_OPEN);
+                                self.should_switch = true;
+                            } else if cap.available_steps() > 0 {
+                                if curr_test > self.on_value {
+                                    self.set_pending_change(CTRL_CLOSE);
+                                    self.should_switch = true;
+                                }
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                ctrl_type::VOLTAGE => {
+                    mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
+                    let vtest = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
+                    match self.present_state {
+                        CTRL_OPEN => {
+                            if vtest < self.on_value {
+                                self.set_pending_change(CTRL_CLOSE);
+                                self.should_switch = true;
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        CTRL_CLOSE => {
+                            self.set_pending_change(CTRL_NONE);
+                            if vtest > self.off_value {
+                                self.set_pending_change(CTRL_OPEN);
+                                self.should_switch = true;
+                            } else if cap.available_steps() > 0 && vtest < self.on_value {
+                                self.set_pending_change(CTRL_CLOSE);
+                                self.should_switch = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                ctrl_type::KVAR => {
+                    let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
+                    let q = s.im * 0.001; // kvar
+                    match self.present_state {
+                        CTRL_OPEN => {
+                            if q > self.on_value {
+                                self.set_pending_change(CTRL_CLOSE);
+                                self.should_switch = true;
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        CTRL_CLOSE => {
+                            if q < self.off_value {
+                                self.set_pending_change(CTRL_OPEN);
+                                self.should_switch = true;
+                            } else if cap.available_steps() > 0 {
+                                if q > self.on_value {
+                                    self.set_pending_change(CTRL_CLOSE);
+                                    self.should_switch = true;
+                                }
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                ctrl_type::TIME => {
+                    let normalized_time = Self::time_of_day_eps(ctx.int_hour, ctx.t);
+                    self.sample_time_control(normalized_time, cap.available_steps());
+                }
+                ctrl_type::PF => {
+                    let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
+                    let pf = pf_1to2(s);
+                    match self.present_state {
+                        CTRL_OPEN => {
+                            // Make sure we don't go too far leading.
+                            if pf < self.pfon_value
+                                && s.im * 0.001 > cap.total_kvar() * self.fpct_minkvar * 0.01
+                            {
+                                self.set_pending_change(CTRL_CLOSE);
+                                self.should_switch = true;
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        CTRL_CLOSE => {
+                            if pf > self.pfoff_value {
+                                self.set_pending_change(CTRL_OPEN);
+                                self.should_switch = true;
+                            } else if cap.available_steps() > 0 {
+                                if pf < self.pfon_value
+                                    && s.im * 0.001
+                                        > cap.total_kvar() / cap.num_steps() as f64 * 0.5
+                                {
+                                    self.set_pending_change(CTRL_CLOSE);
+                                    self.should_switch = true;
+                                }
+                            } else {
+                                self.set_pending_change(CTRL_NONE);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                ctrl_type::FOLLOW => {
+                    // FOLLOWCONTROL needs ControlSignal (LoadShape), which is
+                    // NOT_PORTED (PHASE4 §WP4.7); Pascal aborts the solution when
+                    // it is unset, which is always the case here.
+                    ctx.errors.push(format!(
+                        "CapControl.{}: Type is set to \"Follow\", but no \"ControlSignal\" was provided. Aborting solution.",
+                        self.ccd.cd.obj.name()
+                    ));
+                }
+                _ => {}
+            }
+        }
+
+        // Arm / disarm the control queue.
+        if self.should_switch && !self.armed {
+            let time_delay = if self.pending_change == CTRL_CLOSE {
+                if (now - self.last_open_time) < self.dead_time {
+                    // Delay the close until the dead time has elapsed.
+                    self.on_delay
+                        .max((self.dead_time + self.on_delay) - (now - self.last_open_time))
+                } else {
+                    self.on_delay
+                }
+            } else {
+                self.off_delay
+            };
+            self.ccd.time_delay = time_delay;
+            self.control_action_handle = ctx.queue.push_delay(
+                ctx.int_hour,
+                ctx.t,
+                time_delay,
+                self.pending_change,
+                0,
+                ctx.self_ref,
+            );
+            self.armed = true;
+            if self.ccd.show_event_log {
+                ctx.events.append(
+                    &cap.full_name(),
+                    &format!(
+                        "**Armed**, Delay= {} sec",
+                        crate::util::fmt_g(time_delay, 5)
+                    ),
+                    ctx.int_hour,
+                    ctx.t,
+                    ctx.control_iter,
+                );
+            }
+        }
+
+        if self.armed && self.pending_change == CTRL_NONE {
+            ctx.queue.delete(self.control_action_handle);
+            self.armed = false;
+            if self.ccd.show_event_log {
+                ctx.events.append(
+                    &cap.full_name(),
+                    "**Reset**",
+                    ctx.int_hour,
+                    ctx.t,
+                    ctx.control_iter,
+                );
+            }
+        }
+    }
+
+    /// Pascal `Sample`'s `TIMECONTROL` branch (factored out for readability):
+    /// compare the time-of-day against the on/off window.
+    fn sample_time_control(&mut self, normalized_time: f64, available_steps: i32) {
+        match self.present_state {
+            CTRL_OPEN => {
+                let close = if self.off_value > self.on_value {
+                    normalized_time >= self.on_value && normalized_time < self.off_value
+                } else {
+                    // OFF time is next day.
+                    normalized_time >= self.on_value && normalized_time < 24.0
+                };
+                if close {
+                    self.set_pending_change(CTRL_CLOSE);
+                    self.should_switch = true;
+                } else {
+                    self.set_pending_change(CTRL_NONE);
+                }
+            }
+            CTRL_CLOSE => {
+                if self.off_value > self.on_value {
+                    if normalized_time >= self.off_value || normalized_time < self.on_value {
+                        self.set_pending_change(CTRL_OPEN);
+                        self.should_switch = true;
+                    } else if available_steps > 0
+                        && normalized_time >= self.on_value
+                        && normalized_time < self.off_value
+                    {
+                        self.set_pending_change(CTRL_CLOSE);
+                        self.should_switch = true;
+                    }
+                    // (no else-reset branch in the OFF>ON close path)
+                } else {
+                    // OFF time is next day.
+                    if normalized_time >= self.off_value && normalized_time < self.on_value {
+                        self.set_pending_change(CTRL_OPEN);
+                        self.should_switch = true;
+                    } else if available_steps > 0
+                        && normalized_time >= self.on_value
+                        && normalized_time < 24.0
+                    {
+                        self.set_pending_change(CTRL_CLOSE);
+                        self.should_switch = true;
+                    } else {
+                        self.set_pending_change(CTRL_NONE);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Pascal `TCapControlObj.DoPendingAction` — switch the controlled bank when
+    /// the queued action's time arrives (open/close or step up/down), then
+    /// disarm. Marks `system_y_changed` whenever the bank's admittance changes.
+    pub(crate) fn do_pending_action(
+        &mut self,
+        cap: &mut dyn ControlledCapacitor,
+        ctx: &mut CtrlCtx,
+    ) {
+        // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
+        match self.pending_change {
+            CTRL_OPEN => {
+                if cap.num_steps() == 1 {
+                    if self.present_state == CTRL_CLOSE {
+                        cap.set_closed(false); // open all phases
+                        cap.subtract_step();
+                        *ctx.system_y_changed = true;
+                        if self.ccd.show_event_log {
+                            ctx.events.append(
+                                &cap.full_name(),
+                                "**Opened**",
+                                ctx.int_hour,
+                                ctx.t,
+                                ctx.control_iter,
+                            );
+                        }
+                        self.present_state = CTRL_OPEN;
+                        self.last_open_time = ctx.t + 3600.0 * ctx.int_hour as f64;
+                    }
+                } else if self.present_state == CTRL_CLOSE {
+                    // Multi-step: step down (do this only if at least one closed).
+                    if !cap.subtract_step() {
+                        self.present_state = CTRL_OPEN;
+                        cap.set_closed(false); // open all phases
+                        if self.ccd.show_event_log {
+                            ctx.events.append(
+                                &cap.full_name(),
+                                "**Opened**",
+                                ctx.int_hour,
+                                ctx.t,
+                                ctx.control_iter,
+                            );
+                        }
+                    } else if self.ccd.show_event_log {
+                        ctx.events.append(
+                            &cap.full_name(),
+                            "**Step Down**",
+                            ctx.int_hour,
+                            ctx.t,
+                            ctx.control_iter,
+                        );
+                    }
+                    *ctx.system_y_changed = true;
+                }
+            }
+            CTRL_CLOSE => {
+                if self.present_state == CTRL_OPEN {
+                    cap.set_closed(true); // close all phases
+                    if self.ccd.show_event_log {
+                        ctx.events.append(
+                            &cap.full_name(),
+                            "**Closed**",
+                            ctx.int_hour,
+                            ctx.t,
+                            ctx.control_iter,
+                        );
+                    }
+                    self.present_state = CTRL_CLOSE;
+                    cap.add_step();
+                    *ctx.system_y_changed = true;
+                } else if cap.add_step() {
+                    *ctx.system_y_changed = true;
+                    if self.ccd.show_event_log {
+                        ctx.events.append(
+                            &cap.full_name(),
+                            "**Step Up**",
+                            ctx.int_hour,
+                            ctx.t,
+                            ctx.control_iter,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        self.voverride_event = false;
+        self.should_switch = false;
+        self.armed = false;
     }
 
     /// Pascal `TCapControlObj.RecalcElementData` (parse-time subset).
@@ -284,6 +837,9 @@ impl DssObject for CapControl {
         &mut self.ccd.cd.obj
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {
@@ -553,6 +1109,8 @@ impl DssObject for CapControl {
         self.pt_ratio = other.pt_ratio;
         self.ct_ratio = other.ct_ratio;
         self.control_type = other.control_type;
+        self.present_state = other.present_state;
+        self.should_switch = other.should_switch;
         self.on_value = other.on_value;
         self.off_value = other.off_value;
         self.pfon_value = other.pfon_value;
@@ -569,6 +1127,18 @@ impl DssObject for CapControl {
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
     }
+}
+
+/// Pascal `Sample`'s local `PF1to2`: power factor mapped onto `0..2` with the
+/// leading range `1..2` (`im < 0` ⇒ `2 − PF`); unity when the apparent power is
+/// zero.
+fn pf_1to2(s: Complex64) -> f64 {
+    let sabs = s.norm();
+    let mut result = if sabs != 0.0 { s.re.abs() / sabs } else { 1.0 };
+    if s.im < 0.0 {
+        result = 2.0 - result;
+    }
+    result
 }
 
 #[cfg(test)]
@@ -631,5 +1201,347 @@ mod tests {
         assert!((cc.pfoff_value - 1.01).abs() < 1e-12);
         assert_eq!(cc.on_value, 0.97);
         assert_eq!(cc.off_value, -0.99);
+    }
+
+    // --- Sample / DoPendingAction (WP5.6) ---
+
+    use crate::elements::ckt::CktElementData;
+    use crate::solution::{ControlQueue, EventLog, SolveMode};
+
+    fn test_sys() -> SysCtx {
+        SysCtx {
+            frequency: 60.0,
+            fundamental: 60.0,
+            is_harmonic_model: false,
+            is_dynamic_model: false,
+            load_model: 1,
+            mode: SolveMode::Snapshot,
+            load_multiplier: 1.0,
+            default_growth_factor: 1.0,
+            year: 0,
+            dbl_hour: 0.0,
+            solution_count: 0,
+            loads_need_updating: false,
+            neglect_load_y: false,
+            long_line_correction: false,
+            positive_sequence: false,
+        }
+    }
+
+    /// A controlled capacitor stub: holds the bank's step/closed state and the
+    /// scalars CapControl reads, with the Pascal `AddStep`/`SubtractStep`
+    /// semantics.
+    struct MockCap {
+        name: String,
+        num_steps: i32,
+        last_step: i32,
+        total_kvar: f64,
+        conn: i32,
+        closed: bool,
+    }
+    impl MockCap {
+        fn one_step(closed: bool) -> Self {
+            Self {
+                name: "cc".into(),
+                num_steps: 1,
+                last_step: if closed { 1 } else { 0 },
+                total_kvar: 600.0,
+                conn: 0,
+                closed,
+            }
+        }
+    }
+    impl ControlledCapacitor for MockCap {
+        fn full_name(&self) -> String {
+            format!("Capacitor.{}", self.name)
+        }
+        fn num_steps(&self) -> i32 {
+            self.num_steps
+        }
+        fn available_steps(&self) -> i32 {
+            self.num_steps - self.last_step
+        }
+        fn total_kvar(&self) -> f64 {
+            self.total_kvar
+        }
+        fn connection(&self) -> i32 {
+            self.conn
+        }
+        fn is_closed(&self) -> bool {
+            self.closed
+        }
+        fn set_closed(&mut self, value: bool) {
+            self.closed = value;
+        }
+        fn add_step(&mut self) -> bool {
+            if self.last_step == self.num_steps {
+                false
+            } else {
+                self.last_step += 1;
+                true
+            }
+        }
+        fn subtract_step(&mut self) -> bool {
+            if self.last_step == 0 {
+                false
+            } else {
+                self.last_step -= 1;
+                self.last_step != 0
+            }
+        }
+    }
+
+    /// A monitored element stub returning canned measurements, so the CapControl
+    /// decision logic is testable without a node-wired circuit.
+    struct MockMon {
+        cd: CktElementData,
+        power: Complex64,
+        currents: Vec<Complex64>,
+        voltages: Vec<Complex64>,
+    }
+    impl MockMon {
+        fn new(nphases: usize) -> Self {
+            let mut cd = CktElementData::new("mon", 1);
+            cd.nphases = nphases;
+            cd.nconds = nphases;
+            cd.set_nterms(1);
+            cd.yorder = nphases;
+            Self {
+                cd,
+                power: Complex64::ZERO,
+                currents: Vec::new(),
+                voltages: Vec::new(),
+            }
+        }
+    }
+    impl CktElement for MockMon {
+        fn cd(&self) -> &CktElementData {
+            &self.cd
+        }
+        fn cd_mut(&mut self) -> &mut CktElementData {
+            &mut self.cd
+        }
+        fn recalc_element_data(&mut self, _sys: &SysCtx) {}
+        fn calc_yprim(&mut self, _sys: &SysCtx) {}
+        fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
+            for (i, c) in curr.iter_mut().enumerate() {
+                *c = self.currents.get(i).copied().unwrap_or(Complex64::ZERO);
+            }
+        }
+        fn terminal_power(
+            &mut self,
+            _sys: &SysCtx,
+            _node_v: &[Complex64],
+            _idx_term: usize,
+        ) -> Complex64 {
+            self.power
+        }
+        fn get_term_voltages(
+            &self,
+            _iterm: usize,
+            _node_v: &[Complex64],
+            vbuffer: &mut [Complex64],
+        ) {
+            for (i, v) in vbuffer.iter_mut().enumerate() {
+                *v = self.voltages.get(i).copied().unwrap_or(Complex64::ZERO);
+            }
+        }
+    }
+
+    struct Scratch {
+        queue: ControlQueue,
+        events: EventLog,
+        errors: Vec<String>,
+        y_changed: bool,
+        sys: SysCtx,
+    }
+    impl Scratch {
+        fn new() -> Self {
+            Self {
+                queue: ControlQueue::new(),
+                events: EventLog::new(),
+                errors: Vec::new(),
+                y_changed: false,
+                sys: test_sys(),
+            }
+        }
+        fn ctx(&mut self, control_mode: i32, int_hour: i32, t: f64) -> CtrlCtx<'_> {
+            CtrlCtx {
+                node_v: &[],
+                sys: &self.sys,
+                queue: &mut self.queue,
+                events: &mut self.events,
+                errors: &mut self.errors,
+                system_y_changed: &mut self.y_changed,
+                control_mode,
+                int_hour,
+                t,
+                dbl_hour: int_hour as f64 + t / 3600.0,
+                control_iter: 1,
+                self_ref: ElemRef { cls: 0, idx: 0 },
+            }
+        }
+    }
+
+    #[test]
+    fn kvar_open_arms_close_above_onsetting() {
+        let mut cc = CapControl::new("cc");
+        cc.control_type = ctrl_type::KVAR;
+        cc.on_value = 150.0;
+        cc.off_value = -225.0;
+        let mut cap = MockCap::one_step(false); // bank open → PresentState OPEN
+        let mut mon = MockMon::new(3);
+        mon.power = Complex64::new(0.0, 200_000.0); // 200 kvar inductive
+        let mut sc = Scratch::new();
+        cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+        assert_eq!(cc.pending_change, CTRL_CLOSE);
+        assert!(cc.should_switch);
+        assert!(cc.armed);
+        assert_eq!(sc.queue.queue_size(), 1);
+        // pending CLOSE; dead time already elapsed → ONDelay.
+        assert_eq!(cc.ccd.time_delay, 15.0);
+    }
+
+    #[test]
+    fn kvar_closed_arms_open_below_offsetting() {
+        let mut cc = CapControl::new("cc");
+        cc.control_type = ctrl_type::KVAR;
+        cc.on_value = 150.0;
+        cc.off_value = -225.0;
+        let mut cap = MockCap::one_step(true); // bank closed → PresentState CLOSE
+        let mut mon = MockMon::new(3);
+        mon.power = Complex64::new(0.0, -300_000.0); // -300 kvar (too leading)
+        let mut sc = Scratch::new();
+        cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+        assert_eq!(cc.pending_change, CTRL_OPEN);
+        assert!(cc.armed);
+        assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
+    }
+
+    #[test]
+    fn kvar_in_band_does_not_switch() {
+        let mut cc = CapControl::new("cc");
+        cc.control_type = ctrl_type::KVAR;
+        cc.on_value = 150.0;
+        cc.off_value = -225.0;
+        let mut cap = MockCap::one_step(true);
+        let mut mon = MockMon::new(3);
+        mon.power = Complex64::new(0.0, -50_000.0); // -50 kvar: between off and on
+        let mut sc = Scratch::new();
+        cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+        assert_eq!(cc.pending_change, CTRL_NONE);
+        assert!(!cc.armed);
+        assert!(sc.queue.is_empty());
+    }
+
+    #[test]
+    fn do_pending_open_single_step_opens_bank() {
+        let mut cc = CapControl::new("cc");
+        cc.present_state = CTRL_CLOSE;
+        cc.set_pending_change(CTRL_OPEN);
+        cc.armed = true;
+        let mut cap = MockCap::one_step(true);
+        let mut sc = Scratch::new();
+        cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+        assert!(!cap.closed);
+        assert_eq!(cap.last_step, 0);
+        assert_eq!(cc.present_state, CTRL_OPEN);
+        assert!(sc.y_changed);
+        assert!(!cc.armed);
+    }
+
+    #[test]
+    fn do_pending_close_single_step_closes_bank() {
+        let mut cc = CapControl::new("cc");
+        cc.present_state = CTRL_OPEN;
+        cc.set_pending_change(CTRL_CLOSE);
+        cc.armed = true;
+        let mut cap = MockCap::one_step(false);
+        let mut sc = Scratch::new();
+        cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+        assert!(cap.closed);
+        assert_eq!(cap.last_step, 1);
+        assert_eq!(cc.present_state, CTRL_CLOSE);
+        assert!(sc.y_changed);
+    }
+
+    #[test]
+    fn do_pending_open_multistep_steps_down() {
+        let mut cc = CapControl::new("cc");
+        cc.present_state = CTRL_CLOSE;
+        cc.set_pending_change(CTRL_OPEN);
+        let mut cap = MockCap {
+            name: "cc".into(),
+            num_steps: 4,
+            last_step: 4,
+            total_kvar: 1200.0,
+            conn: 0,
+            closed: true,
+        };
+        let mut sc = Scratch::new();
+        cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+        // One step down: still partly closed, bank stays Closed.
+        assert_eq!(cap.last_step, 3);
+        assert!(cap.closed);
+        assert_eq!(cc.present_state, CTRL_CLOSE);
+        assert!(sc.y_changed);
+    }
+
+    #[test]
+    fn time_control_closes_inside_window() {
+        let mut cc = CapControl::new("cc");
+        cc.control_type = ctrl_type::TIME;
+        cc.on_value = 6.0;
+        cc.off_value = 21.0;
+        let mut cap = MockCap::one_step(false); // open at start
+        let mut mon = MockMon::new(3);
+        let mut sc = Scratch::new();
+        // 12:00 is inside [6, 21) → close.
+        cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 12, 0.0));
+        assert_eq!(cc.pending_change, CTRL_CLOSE);
+        assert!(cc.armed);
+    }
+
+    #[test]
+    fn pf_control_closes_when_leading_room_remains() {
+        let mut cc = CapControl::new("cc");
+        cc.control_type = ctrl_type::PF;
+        cc.pfon_value = 0.95;
+        cc.fpct_minkvar = 50.0;
+        let mut cap = MockCap::one_step(false); // open
+        cap.total_kvar = 50.0;
+        let mut mon = MockMon::new(3);
+        // 100 kW + 50 kvar → PF1to2 = 0.894 < 0.95; 50 kvar > 50·50·0.01 = 25.
+        mon.power = Complex64::new(100_000.0, 50_000.0);
+        let mut sc = Scratch::new();
+        cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+        assert_eq!(cc.pending_change, CTRL_CLOSE);
+        assert!(cc.armed);
+    }
+
+    #[test]
+    fn event_log_records_close_when_enabled() {
+        let mut cc = CapControl::new("cc");
+        cc.ccd.show_event_log = true;
+        cc.present_state = CTRL_OPEN;
+        cc.set_pending_change(CTRL_CLOSE);
+        let mut cap = MockCap::one_step(false);
+        let mut sc = Scratch::new();
+        cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+        assert_eq!(sc.events.len(), 1);
+        let line = &sc.events.entries()[0];
+        assert!(line.contains("Element=Capacitor.cc"));
+        assert!(line.contains("**CLOSED**"));
+    }
+
+    #[test]
+    fn pf_1to2_maps_leading_above_one() {
+        // Lagging (im>0): PF in [0,1]. Leading (im<0): PF in [1,2].
+        assert!((pf_1to2(Complex64::new(100.0, 0.0)) - 1.0).abs() < 1e-12);
+        assert!((pf_1to2(Complex64::ZERO) - 1.0).abs() < 1e-12);
+        let lag = pf_1to2(Complex64::new(80.0, 60.0)); // 0.8 lagging
+        assert!((lag - 0.8).abs() < 1e-12);
+        let lead = pf_1to2(Complex64::new(80.0, -60.0)); // 0.8 leading → 1.2
+        assert!((lead - 1.2).abs() < 1e-12);
     }
 }
