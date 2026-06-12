@@ -10,9 +10,10 @@
 Last updated: 2026-06-13, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
 (`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve),
 WP5.2a/b/c (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes wired
-into Load/VSource), WP5.4 (ControlQueue + event log) and WP5.5 (RegControl
-behavior — `Sample`/`DoPendingAction`) done, gate-green** (see §1c). Next:
-WP5.6 (CapControl behavior).
+into Load/VSource), WP5.4 (ControlQueue + event log), WP5.5 (RegControl
+behavior) and WP5.6 (CapControl behavior — `Sample`/`DoPendingAction`) done,
+gate-green** (see §1c). Next: WP5.7 (control loop +
+`Sample_DoControlActions` in the solution).
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -40,13 +41,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes → Load/VSource), WP5.4 (ControlQueue + event log), WP5.5 (RegControl behavior) done; `PHASE5_PLAN.md` |
+| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes → Load/VSource), WP5.4 (ControlQueue + event log), WP5.5 (RegControl behavior), WP5.6 (CapControl behavior) done; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 197, golden_feeders 1, golden_slice 2,
+cargo test --workspace      # dss-core lib 207, golden_feeders 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1, dss-parser 62+1,
                             # dss-sparse 5
 ```
@@ -470,6 +471,48 @@ Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
   (DebugTrace flag stored, no file); `MakePosSequence`. dss-core lib tests
   190 → 197 (+7 RegControl behavior).
 
+**WP5.6 — CapControl behavior — ✅ done, gate-green.** Files:
+- `cap_control.rs`: ported `Sample` (PresentState from the bank's `Closed[0]`;
+  the voltage-override block; the `ControlType` dispatch —
+  Current/Voltage/kvar/Time/PF; the `Delay`/`DelayOff`/`DeadTime` arm-on-queue
+  + the `Armed && PendingChange=None` disarm/delete) and `DoPendingAction`
+  (open/close all phases + AddStep/SubtractStep, multi-step step-up/down, event
+  log), plus `GetControlCurrent`/`GetControlVoltage` (the `mon_phase`
+  avg/max/min → −1/−2/−3 selection, delta L-L on the controlled cap's
+  connection), `Set_PendingChange`, the `pf_1to2` PF mapping, and
+  `TimeOfDay(useEpsilon)` for time control. New runtime fields
+  (`pending_change`, `present_state`/`initial_state`, `armed`,
+  `voverride_event`, `control_action_handle`). `sample`/`do_pending_action` are
+  `pub(crate)` + `#[allow(dead_code)]` (wired by the control loop in WP5.7). 10
+  inline tests against mock cap + mock monitored element (kvar arm-close/
+  arm-open/in-band, single-step open/close, multi-step step-down, time-window
+  close, PF leading-room close, event-log line, `pf_1to2`).
+- **Shared engine:**
+  - **`ControlledCapacitor` trait** (`capacitor.rs`, mirroring
+    `ControlledTransformer`): `num_steps`/`available_steps`/`total_kvar`/
+    `connection`/`is_closed`/`set_closed`/`add_step`/`subtract_step`/
+    `full_name`, with `Capacitor` the production implementor. New private
+    Capacitor methods `add_step`/`subtract_step` (Pascal verbatim — `set_states`
+    invalidates Y on change), `available_steps`, and terminal-1 conductor
+    open/close (`Closed[0]` get/set → `cd.yprim_invalid`).
+  - Two **default `CktElement` methods** for the *generic* monitored element:
+    `get_term_voltages` (Pascal `TDSSCktElement.GetTermVoltages`) and
+    `terminal_power` (Pascal `Get_Power(idxTerm)`).
+- **Design note — Sample's two trait objects:** `sample(cap: &mut dyn
+  ControlledCapacitor, mon: &mut dyn CktElement, ctx)`. For Current/Voltage/
+  kvar/PF the monitored element ≠ the capacitor; for Time control `mon` is the
+  capacitor and is **not** read. WP5.7 must obtain both from the foreign view
+  (the same-`ElemRef`/double-`&mut` case only arises for Time control, where
+  `mon` is unused — pass a scratch).
+- **Deferred:** `VOverrideBus` voltage path (`GetBusVoltages` from a named bus
+  needs solve-time bus resolution; `VoverrideBusSpecified` is always reverted at
+  parse, so the branch is unreachable — sense the monitored terminal instead);
+  `FOLLOWCONTROL` (ControlSignal/LoadShape is `NOT_PORTED` — Pascal aborts the
+  solution when unset, which is always the case here, so `Sample` records that
+  error); `USERCONTROL` (no DLLs); `Reset`'s `Closed[0]` restore (needs the
+  cap — control-loop reset path, WP5.7); `MakePosSequence`. dss-core lib tests
+  197 → 207 (+10 CapControl behavior).
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -602,8 +645,10 @@ getter.
   (LineGeometry/WireData).
 - Reactor `RCurve`/`LCurve` — Phase 5 (XYcurve) — XYcurve is now ported; the
   fetch is still `NOT_PORTED` (only the harmonic `CalcYPrim` consumes it, Phase 7).
-- CapControl `ControlSignal` — Phase 5 (LoadShape); `UserModel`/`UserData` —
-  never (no DLL loading in safe Rust).
+- CapControl `ControlSignal` — Phase 5 (LoadShape); still `NOT_PORTED` (the
+  `Follow` control type that consumes it has no corpus case — WP5.6's `Sample`
+  records the Pascal abort error if reached); `UserModel`/`UserData` — never
+  (no DLL loading in safe Rust).
 - LoadShape `CSVFile` — **ported (WP5.2b)** via the deferred-`FileLoad` path.
   `SngFile`/`DblFile`/`PQCSVFile` (binary/2-col input) stay `NOT_PORTED` until a
   gate needs them. Single-precision arrays + `MemoryMapping` (MMF) and
@@ -615,8 +660,9 @@ getter.
   gate needs it.
 
 Other deferrals: Transformer GIC path (<0.51 Hz) + harmonics interplay
-(Phase 7); RegControl/CapControl `Sample`/`DoPendingAction` + control queue
-(Phase 5 — unreachable under `controlmode=off`); RegControl debug-trace file
+(Phase 7); RegControl/CapControl `Sample`/`DoPendingAction` **ported (WP5.5/
+WP5.6)** but not yet wired into the solve (the control loop is WP5.7 — they are
+`pub(crate)` + `#[allow(dead_code)]` until then); RegControl debug-trace file
 (Phase 5); `MakePosSequence` everywhere (Phase 5+); `BusCoords` command
 (Phase 5 ports it for the unmodified masters; stripped from the Phase 4
 variants); Newton algorithm, harmonics/dynamics/yearly/duty solve modes
