@@ -9,8 +9,9 @@
 
 Last updated: 2026-06-12, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
 (`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve),
-WP5.2a (LoadShape core) and WP5.2b (LoadShape `CSVFile`) done, gate-green**
-(see §1c). Next: WP5.2c (TempShape/PriceShape).
+WP5.2a (LoadShape core), WP5.2b (LoadShape `CSVFile`) and WP5.2c
+(TempShape/PriceShape) done, gate-green** (see §1c). WP5.2 is complete. Next:
+WP5.3 (wire shapes into Load/VSource/Circuit defaults).
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -38,13 +39,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2a/b (LoadShape + CSVFile) done; `PHASE5_PLAN.md` |
+| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape) done; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 156, golden_feeders 1, golden_slice 2,
+cargo test --workspace      # dss-core lib 173, golden_feeders 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1, dss-parser 62+1,
                             # dss-sparse 5
 ```
@@ -317,6 +318,44 @@ Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
   full path is validated by the executive integration test instead (values
   transcribed from the pinned oracle). dss-core lib tests 151 → 156.
 
+**WP5.2c — TempShape (`TShape`) + PriceShape — ✅ done, gate-green.** Files:
+- `scalar_shape.rs` (`ScalarShapeCore`): the data + the three byte-identical
+  algorithms shared by both classes — `get_value_at_hour` (Pascal
+  `GetTemperature`/`GetPrice`), the lazy `mean`/`std_dev` (`CalcMeanandStdDev`),
+  and `read_csv_file` (`DoCSVFile`). These are the **legacy 1-based** Pascal
+  lookups (init `LastValueAccessed := 1`, loop `for i := LastValueAccessed + 1`,
+  fall-through returns the **last** point) — deliberately *not* derived from
+  LoadShape's modernized 0-based `GetMultAtHour` (which falls through to the
+  second-to-last point). Same FPC-`Round` `TODO(compat)` on the even-interval
+  index.
+- `temp_shape.rs` (`TShapeObj`, class **`TShape`**) and `price_shape.rs`
+  (`PriceShapeObj`): the per-class property tables (props 1–12: `NPts, Interval,
+  Temp|Price, Hour, Mean, StdDev, CSVFile, SngFile, DblFile, SInterval,
+  MInterval, Action`) and the differing `PropertySideEffects`. Thin `DssObject`
+  impls delegating to the core. 10 + 7 inline tests.
+- **Oracle facts / class differences (probed, then pinned):**
+  - Empty-shape `Mean`/`StdDev` return **0** with no error (unlike LoadShape's
+    61107 — `CalcMeanandStdDev` sets the calculated flag even at `npts=0`), so
+    no `skip_props` is needed.
+  - **TempShape has no `Hour→Interval:=0` coupling**: giving `Hour` without an
+    explicit `interval=0` leaves it a fixed-interval curve (golden
+    `tshape_hour_no_interval` pins `Interval=1`, `Mean=2.333…`). **PriceShape
+    auto-zeroes** `Interval` on `Hour` (golden `priceshape_hour` →
+    `Interval=0`, trapezoid `Mean=2.5`), and drops the hour array when a
+    positive `Interval` is set.
+  - PriceShape's `Interval`/`SInterval`/`MInterval` are **not** `NonNegative`
+    (TempShape's are); both classes' `Action` is only `DblSave`/`SngSave`
+    (binary output) → `do_action` records a `NOT_PORTED` message (no
+    `Normalize`).
+  - `CSVFile` reuses the WP5.2b deferred-`FileLoad` path verbatim;
+    `SngFile`/`DblFile` (binary input) stay `NOT_PORTED`.
+- **Shared engine:** two enums added to `EnumRegistry`
+  (`t_shape_action`/`price_shape_action`, both `DblSave/SngSave`); both classes
+  registered in the executive.
+- **Goldens:** 8 TShape + 6 PriceShape scenarios in `gen_props.py`;
+  `props.json` regenerated (pure insertions, +310 lines); `props_roundtrip`
+  green. dss-core lib tests 156 → 173.
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -455,7 +494,9 @@ getter.
   `SngFile`/`DblFile`/`PQCSVFile` (binary/2-col input) stay `NOT_PORTED` until a
   gate needs them. Single-precision arrays + `MemoryMapping` (MMF) and
   `Action=DblSave`/`SngSave` (binary output) — not ported (no corpus case).
-  TempShape/PriceShape — WP5.2c.
+- TempShape (`TShape`)/PriceShape `CSVFile` — **ported (WP5.2c)** via the same
+  deferred-`FileLoad` path. `SngFile`/`DblFile` (binary input) and
+  `Action=DblSave`/`SngSave` (binary output) stay `NOT_PORTED`.
 - GrowthShape `CSVFile`/`SngFile`/`DblFile` — file-input machinery, when a
   gate needs it.
 

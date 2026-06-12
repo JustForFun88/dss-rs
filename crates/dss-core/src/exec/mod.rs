@@ -17,7 +17,8 @@ use dss_parser::{Parser, ParserVars};
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::control::{cap_control, reg_control};
 use crate::elements::general::{
-    growth_shape, line_code, load_shape, spectrum, tcc_curve, xfmr_code, xy_curve,
+    growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
+    xy_curve,
 };
 use crate::elements::pc::{load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
@@ -550,6 +551,12 @@ impl Dss {
             }),
             DssClass::dss_object(load_shape::class_props(&enums), |name| {
                 Box::new(load_shape::LoadShapeObj::new(name))
+            }),
+            DssClass::dss_object(temp_shape::class_props(&enums), |name| {
+                Box::new(temp_shape::TShapeObj::new(name))
+            }),
+            DssClass::dss_object(price_shape::class_props(&enums), |name| {
+                Box::new(price_shape::PriceShapeObj::new(name))
             }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),

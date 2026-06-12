@@ -241,6 +241,10 @@ pub struct EnumRegistry {
     pub load_shape_action: EnumId,
     /// 'LoadShape: Interpolation' (LoadShape.pas `InterpEnum`).
     pub load_shape_interp: EnumId,
+    /// 'TShape: Action' (TempShape.pas `ActionEnum`).
+    pub t_shape_action: EnumId,
+    /// 'PriceShape: Action' (PriceShape.pas `ActionEnum`).
+    pub price_shape_action: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -557,6 +561,26 @@ impl EnumRegistry {
             &[0, 1],
         ));
 
+        // TempShape.pas / PriceShape.pas: ActionEnum (DblSave/SngSave). Both
+        // actions write binary files and are NOT_PORTED; the enum still parses
+        // the names so a bad action raises like the original. No Normalize.
+        let t_shape_action = push(DssEnum::new(
+            "TShape: Action",
+            true,
+            1,
+            1,
+            &["DblSave", "SngSave"],
+            &[0, 1],
+        ));
+        let price_shape_action = push(DssEnum::new(
+            "PriceShape: Action",
+            true,
+            1,
+            1,
+            &["DblSave", "SngSave"],
+            &[0, 1],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -581,6 +605,8 @@ impl EnumRegistry {
             cap_control_type,
             load_shape_action,
             load_shape_interp,
+            t_shape_action,
+            price_shape_action,
         }
     }
 

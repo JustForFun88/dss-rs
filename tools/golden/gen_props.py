@@ -364,6 +364,89 @@ SCENARIOS = [
             "New LoadShape.d like=base",
         ],
     },
+    # --- TShape / TempShape (WP5.2c). Legacy scalar shape; CSVFile is exercised
+    # by the executive integration test, not here. Empty Mean/StdDev return 0
+    # (no error, unlike LoadShape), so no skip_props is needed.
+    {
+        "name": "tshape_default",
+        "target": "TShape.t",
+        "commands": ["New TShape.t"],
+    },
+    {
+        "name": "tshape_fixed",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 interval=1 temp=(20 30 50 80)"],
+    },
+    {
+        "name": "tshape_sinterval",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 sinterval=900 temp=(1 2 4 8)"],
+    },
+    {
+        "name": "tshape_minterval",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 minterval=15 temp=(1 2 4 8)"],
+    },
+    {
+        "name": "tshape_hour_interval0",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=3 interval=0 hour=(1 2 4) temp=(1 2 4)"],
+    },
+    # Distinguishing case: TempShape (unlike PriceShape) does NOT auto-zero
+    # Interval when Hour is given, so this stays a fixed-interval curve.
+    {
+        "name": "tshape_hour_no_interval",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=3 hour=(1 2 4) temp=(1 2 4)"],
+    },
+    {
+        "name": "tshape_mean_stddev",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 interval=1 temp=(20 30 50 80) mean=5 stddev=2"],
+    },
+    {
+        "name": "tshape_makelike",
+        "target": "TShape.t",
+        "commands": [
+            "New TShape.base npts=3 interval=2 temp=(11 22 33)",
+            "New TShape.t like=base",
+        ],
+    },
+    # --- PriceShape (WP5.2c). Same skeleton; Hour auto-zeroes Interval.
+    {
+        "name": "priceshape_default",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d"],
+    },
+    {
+        "name": "priceshape_fixed",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=4 interval=1 price=(2 4 6 8)"],
+    },
+    {
+        "name": "priceshape_sinterval",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=4 sinterval=900 price=(1 2 4 8)"],
+    },
+    # Hour given without interval=0: PriceShape auto-sets a variable interval.
+    {
+        "name": "priceshape_hour",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=3 hour=(1 2 4) price=(1 2 4)"],
+    },
+    {
+        "name": "priceshape_mean_stddev",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=4 interval=1 price=(2 4 6 8) mean=5 stddev=2"],
+    },
+    {
+        "name": "priceshape_makelike",
+        "target": "PriceShape.d",
+        "commands": [
+            "New PriceShape.base npts=3 interval=2 price=(11 22 33)",
+            "New PriceShape.d like=base",
+        ],
+    },
     {
         "name": "xfmrcode_default",
         "target": "XfmrCode.xc1",
