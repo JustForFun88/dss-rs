@@ -16,7 +16,7 @@ use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::control::{cap_control, reg_control};
-use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve, xfmr_code};
+use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve, xfmr_code, xy_curve};
 use crate::elements::pc::{load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
@@ -542,6 +542,9 @@ impl Dss {
             }),
             DssClass::dss_object(xfmr_code::class_props(&enums), |name| {
                 Box::new(xfmr_code::XfmrCodeObj::new(name))
+            }),
+            DssClass::dss_object(xy_curve::class_props(&enums), |name| {
+                Box::new(xy_curve::XyCurveObj::new(name))
             }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),

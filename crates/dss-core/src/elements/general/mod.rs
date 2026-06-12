@@ -7,3 +7,4 @@ pub mod line_code;
 pub mod spectrum;
 pub mod tcc_curve;
 pub mod xfmr_code;
+pub mod xy_curve;

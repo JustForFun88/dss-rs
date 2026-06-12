@@ -197,6 +197,19 @@ pub trait DssObject {
         unreachable!("set_i32_array not implemented for property {idx}")
     }
 
+    /// `DoubleDArrayProperty` read (e.g. an XYcurve `Points`): the interleaved
+    /// `[x0, y0, x1, y1, ...]` pairs, freshly built (no stable backing slice, so
+    /// this returns by value unlike [`DssObject::get_f64_array`]).
+    fn get_points(&self) -> Vec<f64> {
+        unreachable!("get_points not implemented")
+    }
+    /// `DoubleDArrayProperty` write: the interleaved `[x0, y0, ...]` pairs; the
+    /// implementor splits them into its X/Y arrays and resets the point count.
+    fn set_points(&mut self, value: Vec<f64>) {
+        let _ = value;
+        unreachable!("set_points not implemented")
+    }
+
     /// Element count of a function-sized array property (Pascal
     /// `TPropertyFlag.SizeIsFunction`, `PropertyOffset3` holding a function
     /// pointer) — e.g. an XfmrCode/Transformer `XSCArray` whose length is

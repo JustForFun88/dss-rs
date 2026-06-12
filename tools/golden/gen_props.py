@@ -238,6 +238,57 @@ SCENARIOS = [
             "New GrowthShape.gs1 like=base",
         ],
     },
+    # --- XYcurve (WP5.1) ---
+    # NOTE: `points=` triggers an access violation in the pinned oracle (a
+    # dss_capi `DoubleDArrayProperty` bug), so the arrays are driven through
+    # `xarray`/`yarray`; the `Points` getter is still validated by readback.
+    {
+        "name": "xycurve_default",
+        "target": "XYcurve.c1",
+        "commands": ["New XYcurve.c1"],
+    },
+    {
+        "name": "xycurve_arrays",
+        "target": "XYcurve.c1",
+        "commands": ["New XYcurve.c1 npts=4 yarray=(10 20 30 40) xarray=(1 2 3 4)"],
+    },
+    {
+        "name": "xycurve_abbrev",
+        "target": "XYcurve.c1",
+        "commands": ["New XYcurve.c1 np=3 yarr=(0 5 10) xarr=(0 1 2)"],
+    },
+    {
+        "name": "xycurve_shift_scale",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.c1 npts=3 xarray=(0 1 2) yarray=(0 10 20) "
+            "xscale=2 yscale=3 xshift=1 yshift=5",
+        ],
+    },
+    {
+        "name": "xycurve_x_accessor",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+            "Edit XYcurve.c1 x=2.5",
+        ],
+    },
+    {
+        "name": "xycurve_shrink_npts",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+            "Edit XYcurve.c1 npts=2",
+        ],
+    },
+    {
+        "name": "xycurve_makelike",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.base npts=3 xarray=(0 1 2) yarray=(5 7 9)",
+            "New XYcurve.c1 like=base",
+        ],
+    },
     {
         "name": "xfmrcode_default",
         "target": "XfmrCode.xc1",

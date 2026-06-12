@@ -7,7 +7,11 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
+Last updated: 2026-06-12, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
+(`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve) done,
+gate-green** (see §1c). Next: WP5.2 (LoadShape).
+
+Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
 (LineCode/XfmrCode/GrowthShape), the Line→LineCode fetch path, parse-only
 RegControl/CapControl, the `define_properties!` macro (bounded scope), and the
@@ -33,7 +37,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| 5 | LoadShape/XYcurve/controls behavior, control queue, time modes | ⏭ next — `PHASE5_PLAN.md` |
+| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve) done; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
@@ -227,6 +231,37 @@ diagonal mirror with the 1φ-grounding-reactor exception. Same
 
 **WP4.10 — phase exit — ✅ this update.** `TODO(compat)`/`NOT_PORTED` sweeps
 clean (every deferral points at its phase, see §5); full gate green.
+
+---
+
+## 1c. Phase 5 record (branch `phase-5-controls-timeseries`)
+
+Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
+
+**WP5.1 — XYcurve — ✅ done, gate-green.** Files:
+- `src/elements/general/xy_curve.rs` (`TXYcurveObj`): props 1–13 via
+  `define_properties!`; parallel `XValues`/`YValues` arrays; `GetYValue`
+  (hunt-cache linear interp + end-extrapolation, ported verbatim 0-based),
+  `GetXValue` (axes-swapped, no cache), the `X`/`Y` scalar accessors with the
+  `FX/FY` + shift/scale synch (`Set_X`→`GetYValue`, `Set_Y`→`GetXValue`),
+  `SetPoints`/`GetPoints`, `PropertySideEffects` (npts realloc, `Xarray`/`Yarray`
+  → first-point `X`/`Y` sync, `LastValueAccessed` reset over props 2–7),
+  `MakeLike`. 6 inline tests. `CSVFile`/`SngFile`/`DblFile` `NOT_PORTED`.
+- **Shared engine additions:** `PropType::DoublePoints` (interleaved `(x,y)`
+  list) + `PropDef::double_points`, routed through new
+  `DssObject::get_points`/`set_points`; `util::interpret_dbl_array_dynamic`
+  (read all doubles, count unbounded — the `DoubleDArrayProperty` parse path).
+- **Oracle bug (traced):** `points=` (write) raises an **access violation** in
+  the pinned oracle (a dss_capi `DoubleDArrayProperty` bug, both `(...)` and
+  `[...]` forms). Goldens therefore drive the arrays via `XArray`/`YArray` and
+  validate the `Points` *getter* by readback; the `SetPoints` path is ported
+  faithfully and covered by a Rust-only unit test. The `Points` getter's NIL
+  fallback is `[ 0 0]` (a single `(0,0)` point), reproduced exactly.
+- **Goldens:** 7 XYcurve scenarios in `gen_props.py` (default, arrays, abbrev,
+  shift+scale, x-accessor edit, npts-shrink, makelike); `props.json` regenerated
+  (pure insertions); `props_roundtrip` green. dss-core lib tests 132 → 138.
+- Reactor `RCurve`/`LCurve` stay `NOT_PORTED` (only consumed by the harmonic
+  `CalcYPrim`, Phase 7); the module note was updated to say so.
 
 ---
 

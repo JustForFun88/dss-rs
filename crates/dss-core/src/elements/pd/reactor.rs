@@ -10,9 +10,12 @@
 //!   3. `RMatrix`/`XMatrix` ohms (optionally in parallel).
 //!   4. symmetrical components `Z1`, `Z2`, `Z0` (`Z2`/`Z0` default to `Z1`).
 //!
-//! `RCurve`/`LCurve` reference an `XYcurve` (a Phase 5 class, PHASE5_PLAN WP5.1)
-//! and are flagged `NOT_PORTED`; the frequency-dependent `R(f)`/`L(f)` scaling
-//! in `CalcYPrim` therefore always uses the unity-curve path.
+//! `RCurve`/`LCurve` reference an `XYcurve` (ported in PHASE5_PLAN WP5.1) but
+//! stay flagged `NOT_PORTED`: their only consumer is the frequency-dependent
+//! `R(f)`/`L(f)` scaling in the *harmonic* `CalcYPrim`, which is Phase 7. Until
+//! then `CalcYPrim` always uses the unity-curve path, so resolving the
+//! reference would be dead state with no observable behavior — wire it together
+//! with the harmonic scaling.
 
 use num_complex::Complex64;
 
@@ -79,7 +82,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::complex("Z2"),
         PropDef::complex("Z0"),
         PropDef::complex("Z").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        // RCurve/LCurve reference XYcurve (Phase 5, PHASE5_PLAN WP5.1).
+        // RCurve/LCurve reference XYcurve (ported WP5.1) but are consumed only
+        // by the harmonic CalcYPrim (Phase 7); see the module note.
         PropDef::object_ref("RCurve").flags(PropFlags::NOT_PORTED),
         PropDef::object_ref("LCurve").flags(PropFlags::NOT_PORTED),
         PropDef::double("LmH")
