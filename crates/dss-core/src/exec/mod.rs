@@ -15,13 +15,14 @@ use std::path::PathBuf;
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
-use crate::elements::general::{spectrum, tcc_curve};
+use crate::elements::control::{cap_control, reg_control};
+use crate::elements::general::{growth_shape, line_code, spectrum, tcc_curve, xfmr_code};
 use crate::elements::pc::{load, vsource};
-use crate::elements::pd::line;
+use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::{EnumId, EnumRegistry};
-use crate::obj::props::{ClassProps, PropEngine, PropType};
+use crate::obj::props::{ClassProps, ForeignClassesView, PropEngine, PropType};
 use crate::solution::{SolveEnv, SolveMode, set_voltage_bases, solve};
 use crate::support::command_list::CommandList;
 use crate::util::{float_to_str, interpret_yes_no, parse_object_class_and_name};
@@ -426,6 +427,70 @@ impl ElemStore for ClassStore<'_> {
     }
 }
 
+/// A read view of every class *except* the one being edited (the active class
+/// is the excluded middle element), the [`ForeignClassesView`] the property
+/// engine uses to resolve `ObjectRef` values mid-edit (PHASE4_PLAN §3.1).
+struct ForeignClasses<'a> {
+    /// `classes[..ci]` — global class index == slice index.
+    left: &'a [DssClass],
+    /// `classes[ci + 1..]` — global class index == `split + 1 + slice index`.
+    right: &'a [DssClass],
+    /// `ci`, the active class's global index.
+    split: usize,
+}
+
+impl<'a> ForeignClasses<'a> {
+    /// Resolve a (class name, object name) pair to its global [`ElemRef`] plus
+    /// the live object, scanning both halves. A class match with no object
+    /// match short-circuits to `None`, like `cls.Find` returning NIL.
+    fn lookup(&self, class: &str, name_l: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+        let find_in = |c: &'a DssClass, cls: usize| {
+            c.name_to_idx
+                .get(name_l)
+                .map(|&idx| (ElemRef { cls, idx }, c.objects[idx].as_ref()))
+        };
+        let left = self.left;
+        for (k, c) in left.iter().enumerate() {
+            if c.props.class_name().eq_ignore_ascii_case(class) {
+                return find_in(c, k);
+            }
+        }
+        let right = self.right;
+        for (k, c) in right.iter().enumerate() {
+            if c.props.class_name().eq_ignore_ascii_case(class) {
+                return find_in(c, self.split + 1 + k);
+            }
+        }
+        None
+    }
+}
+
+impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
+    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+        self.lookup(class, &name.to_lowercase())
+    }
+
+    /// Pascal `GetCktElementIndex`: resolve a full `Class.Name` reference (the
+    /// `PropertyOffset2 = 0` object-ref case, e.g. CapControl `element=`). The
+    /// returned `String` is the canonical `FullName` for dumps.
+    fn find_full(&self, full_name: &str) -> Option<(ElemRef, &'a dyn DssObject, String)> {
+        let dot = full_name.find('.')?;
+        let (class, name) = (&full_name[..dot], &full_name[dot + 1..]);
+        // Reuse the per-class lookup, then rebuild the canonical FullName.
+        let (r, obj) = self.lookup(class, &name.to_lowercase())?;
+        let cls = if r.cls < self.split {
+            &self.left[r.cls]
+        } else {
+            &self.right[r.cls - self.split - 1]
+        };
+        Some((
+            r,
+            obj,
+            format!("{}.{}", cls.props.class_name(), obj.data().name()),
+        ))
+    }
+}
+
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
     classes: Vec<DssClass>,
@@ -463,11 +528,20 @@ impl Dss {
 
         // Class registry. More classes are registered here as they are ported.
         let classes = vec![
-            DssClass::dss_object(tcc_curve::class_props(), |name| {
+            DssClass::dss_object(tcc_curve::class_props(&enums), |name| {
                 Box::new(tcc_curve::TccCurveObj::new(name))
             }),
-            DssClass::dss_object(spectrum::class_props(), |name| {
+            DssClass::dss_object(spectrum::class_props(&enums), |name| {
                 Box::new(spectrum::SpectrumObj::new(name))
+            }),
+            DssClass::dss_object(line_code::class_props(&enums), |name| {
+                Box::new(line_code::LineCodeObj::new(name))
+            }),
+            DssClass::dss_object(growth_shape::class_props(), |name| {
+                Box::new(growth_shape::GrowthShapeObj::new(name))
+            }),
+            DssClass::dss_object(xfmr_code::class_props(&enums), |name| {
+                Box::new(xfmr_code::XfmrCodeObj::new(name))
             }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),
@@ -483,6 +557,31 @@ impl Dss {
                 load::class_props(&enums),
                 |name| Box::new(load::Load::new(name)),
                 ElemKind::Load,
+            ),
+            DssClass::ckt_class(
+                transformer::class_props(&enums),
+                |name| Box::new(transformer::Transformer::new(name)),
+                ElemKind::Transformer,
+            ),
+            DssClass::ckt_class(
+                capacitor::class_props(&enums),
+                |name| Box::new(capacitor::Capacitor::new(name)),
+                ElemKind::Capacitor,
+            ),
+            DssClass::ckt_class(
+                reactor::class_props(&enums),
+                |name| Box::new(reactor::Reactor::new(name)),
+                ElemKind::Reactor,
+            ),
+            DssClass::ckt_class(
+                reg_control::class_props(&enums),
+                |name| Box::new(reg_control::RegControl::new(name)),
+                ElemKind::Control,
+            ),
+            DssClass::ckt_class(
+                cap_control::class_props(&enums),
+                |name| Box::new(cap_control::CapControl::new(name)),
+                ElemKind::Control,
             ),
         ];
         let class_by_name = classes
@@ -874,13 +973,24 @@ impl Dss {
             errors,
             ..
         } = self;
+        // Split the registry so the active class is borrowed mutably for the
+        // edit while every *other* class is a read view for ObjectRef
+        // resolution (PHASE4_PLAN §3.1). `split_at_mut` + `split_first_mut`
+        // keep the three regions provably disjoint with no unsafe.
+        let (left, rest) = classes.split_at_mut(ci);
+        let (active_class, right) = rest.split_first_mut().expect("ci is in range");
+        let foreign = ForeignClasses {
+            left,
+            right,
+            split: ci,
+        };
         let DssClass {
             props,
             objects,
             name_to_idx,
             active,
             ..
-        } = &mut classes[ci];
+        } = active_class;
         let Some(oi) = *active else {
             errors.push("There is no active element to edit.".to_string());
             return;
@@ -925,6 +1035,7 @@ impl Dss {
                         vars,
                         enums,
                         errors,
+                        foreign: Some(&foreign),
                     };
                     if let Err(e) = props.edit_property(objects[oi].as_mut(), idx, &param, &mut eng)
                     {
@@ -939,6 +1050,18 @@ impl Dss {
 
         objects[oi].end_edit();
 
+        // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
+        // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
+        let deferred = objects[oi].data_mut().take_errors();
+        errors.extend(deferred);
+
+        // Deferred cross-element writes (Pascal pokes the target through a
+        // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
+        // PresentTap; nothing reads the target in between, so applying after
+        // the edit is equivalent). Collected before the flag propagation so
+        // the active-class borrows can end before `classes` is re-borrowed.
+        let ref_actions = objects[oi].take_ref_actions();
+
         // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
         // circuit globals immediately; `Set_YprimInvalid` raises
         // `SystemYChanged` for enabled elements).
@@ -952,6 +1075,26 @@ impl Dss {
             }
             if cd.yprim_invalid && cd.enabled {
                 ckt.solution.system_y_changed = true;
+            }
+        }
+
+        for action in &ref_actions {
+            let target = action.target();
+            let tgt = &mut classes[target.cls].objects[target.idx];
+            tgt.apply_ref_action(action);
+            // Propagate the target's flags too (a tap change invalidates the
+            // transformer's Yprim exactly like a direct `Tap=` edit).
+            if let Some(ckt) = circuit.as_mut()
+                && let Some(elem) = tgt.as_ckt_element_mut()
+            {
+                let cd = elem.cd_mut();
+                if cd.signal_bus_name_redefined {
+                    cd.signal_bus_name_redefined = false;
+                    ckt.set_bus_name_redefined(true);
+                }
+                if cd.yprim_invalid && cd.enabled {
+                    ckt.solution.system_y_changed = true;
+                }
             }
         }
     }
@@ -1491,6 +1634,121 @@ impl Dss {
     }
 }
 
+/// Per-element snapshot for the golden feeder gate: mirrors dss-python's
+/// `CktElement.Powers`/`Currents` over the oracle's `First/Next` iteration
+/// (= creation) order.
+#[derive(Debug, Clone)]
+pub struct ElementSnapshot {
+    /// `FullName` (`Class.name`).
+    pub name: String,
+    /// kW/kvar interleaved per conductor and terminal (CAPI
+    /// `Alt_CE_Get_Powers`: `GetPhasePower · 0.001`).
+    pub powers: Vec<f64>,
+    /// Amps, re/im interleaved per conductor and terminal (`Iterminal`).
+    pub currents: Vec<f64>,
+}
+
+impl Dss {
+    /// Snapshot every circuit element's terminal powers and currents in
+    /// creation order (the oracle's `First/Next` order). Pascal
+    /// `TDSSCktElement.GetPhasePower` / `ComputeIterminal`.
+    pub fn snapshot_elements(&mut self) -> Vec<ElementSnapshot> {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref().expect("snapshot needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let positive_seq = ckt.positive_sequence;
+        let mut out = Vec::with_capacity(ckt.ckt_elements.len());
+        for &r in &ckt.ckt_elements {
+            let class_name = classes[r.cls].props.class_name();
+            let obj = &mut classes[r.cls].objects[r.idx];
+            let name = format!("{}.{}", class_name, obj.data().name());
+            let elem = obj
+                .as_ckt_element_mut()
+                .expect("ckt_elements refs are circuit elements");
+            let yorder = elem.cd().yorder;
+            let mut currents = vec![0.0; 2 * yorder];
+            let mut powers = vec![0.0; 2 * yorder];
+            if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
+                elem.compute_iterminal(&sys, &node_v);
+                let cd = elem.cd();
+                for k in 0..yorder {
+                    let i = cd.iterminal[k];
+                    currents[2 * k] = i.re;
+                    currents[2 * k + 1] = i.im;
+                    let n = cd.node_ref[k];
+                    if n > 0 {
+                        let mut s = node_v[n] * i.conj();
+                        if positive_seq {
+                            s *= 3.0;
+                        }
+                        powers[2 * k] = s.re * 0.001;
+                        powers[2 * k + 1] = s.im * 0.001;
+                    }
+                }
+            }
+            out.push(ElementSnapshot {
+                name,
+                powers,
+                currents,
+            });
+        }
+        out
+    }
+
+    /// CAPI `Circuit_Get_TotalPower`: the sum of every source's terminal-1
+    /// power, in kW/kvar (negative of the power delivered to the circuit).
+    pub fn total_power(&mut self) -> (f64, f64) {
+        use num_complex::Complex64;
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref().expect("total_power needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let positive_seq = ckt.positive_sequence;
+        let mut total = Complex64::ZERO;
+        for &r in &ckt.sources {
+            let elem = classes[r.cls].objects[r.idx]
+                .as_ckt_element_mut()
+                .expect("sources are circuit elements");
+            if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
+                continue;
+            }
+            elem.compute_iterminal(&sys, &node_v);
+            let cd = elem.cd();
+            // Pascal Get_Power(1): sum over terminal-1 conductors.
+            let mut s = Complex64::ZERO;
+            for i in 0..cd.nconds {
+                let n = cd.node_ref[i];
+                if n > 0 {
+                    s += node_v[n] * cd.iterminal[i].conj();
+                }
+            }
+            if positive_seq {
+                s *= 3.0;
+            }
+            total += s;
+        }
+        (total.re * 0.001, total.im * 0.001)
+    }
+
+    /// CAPI `Circuit_Get_Losses`: total circuit losses in W/var (sum over
+    /// enabled PD elements).
+    pub fn losses(&mut self) -> (f64, f64) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_mut().expect("losses needs a circuit");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let mut store = ClassStore { classes };
+        let total = ckt.losses(&mut store, &sys);
+        (total.re, total.im)
+    }
+}
+
 impl Default for Dss {
     fn default() -> Self {
         Self::new()
@@ -1788,6 +2046,129 @@ mod tests {
         }
         // Iteration count reported like the oracle's Solution.Iterations.
         assert!(ckt.solution.iteration >= 2);
+    }
+
+    /// Parse the single number a `?` scalar query returns.
+    fn query_f64(dss: &mut Dss, what: &str) -> f64 {
+        query(dss, what).parse().expect("numeric query result")
+    }
+
+    #[test]
+    fn line_fetches_sym_linecode() {
+        // Oracle (dss-python 0.15.7): linecode in mi, line length 2000 ft.
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command(
+            "New linecode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=3 c0=1 \
+             units=mi normamps=500 emergamps=700",
+        );
+        dss.command("New line.l1 bus1=a bus2=b linecode=mtx601 length=2000 units=ft");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "line.l1.linecode"), "mtx601");
+        assert_eq!(query(&mut dss, "line.l1.normamps"), "500");
+        assert_eq!(query(&mut dss, "line.l1.emergamps"), "700");
+        assert_eq!(query(&mut dss, "line.l1.units"), "ft");
+        // r1 getter divides by FUnitsConvert = ConvertLineUnits(mi, ft) = 5280.
+        assert!((query_f64(&mut dss, "line.l1.r1") - 0.1 / 5280.0).abs() < 1e-12);
+        // Unported scalar/array refs render like the oracle.
+        assert_eq!(query(&mut dss, "line.l1.geometry"), "");
+        assert_eq!(query(&mut dss, "line.l1.wires"), "[]");
+    }
+
+    #[test]
+    fn line_fetches_matrix_linecode() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command(
+            "New linecode.mx nphases=2 rmatrix=[0.1 | 0.05 0.1] \
+             xmatrix=[0.2 | 0.07 0.2] cmatrix=[3 | -1 3] units=mi",
+        );
+        dss.command("New line.l3 bus1=a.1.2 bus2=b.1.2 linecode=mx length=1 units=mi");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "line.l3.phases"), "2");
+        assert_eq!(query(&mut dss, "line.l3.rmatrix"), "[0.1 |0.05 0.1 ]");
+        // Matrix model hides the sym scalars (CONDITIONAL_VALUE).
+        assert_eq!(query(&mut dss, "line.l3.r1"), "----");
+    }
+
+    #[test]
+    fn line_linecode_then_r1_override_keeps_fetched_matrix() {
+        // Oracle: r1=0.5 overrides the scalar, but the dumped rmatrix still
+        // reflects the code's Z (recalc is deferred to CalcYPrim).
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command("New linecode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 units=mi");
+        dss.command("New line.l4 bus1=a bus2=b linecode=mtx601 r1=0.5 length=1 units=mi");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(query(&mut dss, "line.l4.r1"), "0.5");
+        // Zs.re = (2*0.1 + 0.3)/3 = 0.5/3, units_convert reset to 1 by r1.
+        let rm = query(&mut dss, "line.l4.rmatrix");
+        let first: f64 = rm
+            .trim_start_matches('[')
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!((first - 0.5 / 3.0).abs() < 1e-9, "{rm}");
+    }
+
+    #[test]
+    fn line_unknown_linecode_errors_and_continues() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command("New line.l5 bus1=a bus2=b linecode=nosuch r1=0.1 length=1");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e == "Line.l5.LineCode: LineCode object \"nosuch\" not found."),
+            "{:?}",
+            dss.errors()
+        );
+        // The edit continued: r1=0.1 was applied, phases stayed default.
+        assert_eq!(query(&mut dss, "line.l5.r1"), "0.1");
+        assert_eq!(query(&mut dss, "line.l5.phases"), "3");
+    }
+
+    /// WP4.7 step 6 (the "silent killer" check): control elements attach to
+    /// existing buses, so adding a RegControl must not change `YNodeOrder`,
+    /// and the Y build must skip their `yprim: None` (no stamping, solvable).
+    #[test]
+    fn reg_control_does_not_change_node_order() {
+        let build = |with_control: bool| -> (Vec<String>, bool, i32) {
+            let mut dss = Dss::new();
+            dss.command("New circuit.ctl basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+            dss.command(
+                "New transformer.t1 phases=3 windings=2 buses=(sourcebus, b2) \
+                 conns=(delta wye) kvs=(12.47 4.16) kvas=(5000 5000) xhl=8",
+            );
+            if with_control {
+                dss.command(
+                    "New regcontrol.r1 transformer=t1 winding=2 vreg=122 band=2 ptratio=20",
+                );
+            }
+            dss.command("New load.l1 bus1=b2 phases=3 kv=4.16 kw=300 pf=0.95");
+            dss.command("Set voltagebases=[12.47, 4.16]");
+            dss.command("CalcVoltageBases");
+            dss.command("Solve");
+            assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+            let ckt = dss.circuit().unwrap();
+            if with_control {
+                assert_eq!(ckt.controls.len(), 1);
+                // The control sits on the transformer's winding-2 bus.
+                let r = ckt.controls[0];
+                let elem = dss.classes[r.cls].objects[r.idx].as_ckt_element().unwrap();
+                assert_eq!(elem.cd().get_bus(1), "b2");
+                assert!(elem.cd().yprim.is_none());
+            }
+            let names = (1..=ckt.num_nodes).map(|i| ckt.node_name(i)).collect();
+            (names, ckt.is_solved, ckt.solution.iteration)
+        };
+        let (with, solved_w, iter_w) = build(true);
+        let (without, solved_wo, iter_wo) = build(false);
+        assert!(solved_w && solved_wo);
+        assert_eq!(with, without, "RegControl changed the node order");
+        assert_eq!(iter_w, iter_wo, "RegControl changed the iteration count");
     }
 
     #[test]

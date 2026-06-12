@@ -1,0 +1,12 @@
+//! Control elements (`Controls/` in the Pascal tree): circuit elements that
+//! build no Yprim and act on other elements. Phase 4 ports the parse-time
+//! surface; the control *behavior* (Sample/DoPendingAction + control queue) is
+//! Phase 5.
+
+pub mod cap_control;
+pub mod control_elem;
+pub mod reg_control;
+
+pub use cap_control::CapControl;
+pub use control_elem::{ControlElemData, RefSnapshot};
+pub use reg_control::RegControl;

@@ -1,4 +1,5 @@
 pub mod ckt;
+pub mod control;
 pub mod general;
 pub mod pc;
 pub mod pd;

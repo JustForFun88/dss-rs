@@ -13,10 +13,13 @@
 //! variants (struct-array, matrix, complex, object-reference, string-list, ...)
 //! and the JSON paths are added as the classes that need them are ported.
 
+use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::{EnumId, EnumRegistry};
 use crate::support::command_list::CommandList;
-use crate::util::{float_to_str_ex, get_dss_array_f64, interpret_dbl_array, str_y_or_n};
+use crate::util::{
+    float_to_str_ex, get_dss_array_f64, get_dss_array_i32, interpret_dbl_array, str_y_or_n,
+};
 use dss_parser::{Parser, ParserError, ParserVars, val_f64, val_i32};
 
 /// Pascal `TPropertyType` (subset). Discriminants are not significant here —
@@ -29,6 +32,15 @@ pub enum PropType {
     String,
     MakeLike,
     DoubleArray,
+    /// `IntegerArrayProperty`: dynamic integer array whose length is the integer
+    /// property `size_prop` (e.g. a capacitor `States` over `NumSteps`).
+    /// Rendered `[ i1 i2 ...]`.
+    IntegerArray,
+    /// `DoubleSymMatrixProperty`: a real-valued lower-triangle symmetric matrix
+    /// of order `obj.get_i32(size_prop)`, stored as a flat `order²` double array
+    /// (e.g. a capacitor `CMatrix`). Distinct from `SymMatrixReal` (the real
+    /// *part* of a complex matrix): renders with `(...)` brackets, not `[...]`.
+    DoubleSymMatrix,
     MappedStringEnum,
     MappedIntEnum,
     /// `BusProperty`: the value is a bus spec for terminal `size_prop`
@@ -53,6 +65,25 @@ pub enum PropType {
     /// (resolution to live objects arrives with the classes that consume
     /// them — LoadShape, GrowthShape, Spectrum-as-reference, ...).
     ObjectRef,
+    /// `DoubleVArrayProperty` with `SizeIsFunction`: a dynamic double array
+    /// whose element count is computed by the object ([`DssObject::array_size`]),
+    /// e.g. a transformer `XSCArray` (length `(NumWindings-1)·NumWindings/2`).
+    DoubleVArray,
+    /// `DoubleArrayOnStructArrayProperty`: writes one double per struct-array
+    /// entry (e.g. a transformer `kVs` → each winding's `kVLL`). The count is
+    /// the integer property `size_prop` (`NumWindings`); omitted tokens keep the
+    /// previous value. Rendered `[v1, v2, ]`.
+    DoubleArrayOnStruct,
+    /// `MappedStringEnumArrayOnStructArrayProperty`: an enum per struct-array
+    /// entry (e.g. a transformer `Conns`). Rendered `[s1, s2, ]`.
+    EnumArrayOnStruct,
+    /// `BusOnStructArrayProperty` (transformer `bus`): the active struct-array
+    /// entry's bus (the active winding's terminal).
+    BusOnStruct,
+    /// `BusesOnStructArrayProperty` (transformer `buses`): one bus per struct
+    /// entry, count = the integer property `size_prop` (`NumWindings`);
+    /// rendered `[b1, b2, ]`.
+    BusesOnStruct,
 }
 
 /// Pascal `TPropertyFlag` set, as a small bitset. Only the flags that affect
@@ -82,6 +113,10 @@ impl PropFlags {
     /// ported yet (e.g. Line's `linecode`/`geometry`). Setting one is a hard
     /// error so a script silently producing wrong numbers is impossible.
     pub const NOT_PORTED: Self = Self(1 << 10);
+    /// Pascal `ConditionalValue`: the getter shows `----` instead of the stored
+    /// value when [`DssObject::prop_conditional`] returns false (display-only;
+    /// parsing is unaffected).
+    pub const CONDITIONAL_VALUE: Self = Self(1 << 11);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);
@@ -126,6 +161,15 @@ pub struct PropDef {
     /// `PropertyOffset2` for `DoubleArray`: the 1-based index of the integer
     /// property that holds the element count (e.g. `npts`).
     pub size_prop: usize,
+    /// `PropertyOffset2` for `ObjectRef`: the name of the class the reference
+    /// resolves against (Pascal `cls.Name`). `None` keeps the Phase 3
+    /// behavior — the value is stored verbatim as a lowercased name string with
+    /// no live resolution (still the case for Load/VSource shape references
+    /// until Phase 5 wires them). `Some("")` is the Pascal `PropertyOffset2 = 0`
+    /// case (e.g. CapControl `element`): the value carries a full
+    /// `Class.Name` and resolves against *any* circuit class
+    /// (`GetCktElementIndex`).
+    pub object_class: Option<&'static str>,
 }
 
 impl PropDef {
@@ -139,6 +183,7 @@ impl PropDef {
             value_offset: 0.0,
             enum_id: None,
             size_prop: 0,
+            object_class: None,
         }
     }
 
@@ -161,6 +206,22 @@ impl PropDef {
         Self {
             size_prop,
             ..Self::base(name, PropType::DoubleArray)
+        }
+    }
+    /// `IntegerArrayProperty` whose length is the integer property `size_prop`
+    /// (e.g. a capacitor `States` over `NumSteps`).
+    pub fn int_array(name: &'static str, size_prop: usize) -> Self {
+        Self {
+            size_prop,
+            ..Self::base(name, PropType::IntegerArray)
+        }
+    }
+    /// `DoubleSymMatrixProperty` of order `obj.get_i32(order_prop)` (e.g. a
+    /// capacitor `CMatrix` over `phases`), stored as a flat `order²` array.
+    pub fn double_sym_matrix(name: &'static str, order_prop: usize) -> Self {
+        Self {
+            size_prop: order_prop,
+            ..Self::base(name, PropType::DoubleSymMatrix)
         }
     }
     pub fn mapped_string_enum(name: &'static str, enum_id: EnumId) -> Self {
@@ -209,8 +270,61 @@ impl PropDef {
     pub fn enabled(name: &'static str) -> Self {
         Self::base(name, PropType::Enabled)
     }
+    /// `DSSObjectReferenceProperty` stored as a name string only (Phase 3
+    /// behavior — no live resolution). Used by Load/VSource shape refs.
     pub fn object_ref(name: &'static str) -> Self {
         Self::base(name, PropType::ObjectRef)
+    }
+    /// `DSSObjectReferenceProperty` resolved at parse time against class
+    /// `class` (Pascal `PropertyOffset2 = @TheClass`), e.g. Line's `linecode`.
+    pub fn object_ref_class(class: &'static str, name: &'static str) -> Self {
+        Self {
+            object_class: Some(class),
+            ..Self::base(name, PropType::ObjectRef)
+        }
+    }
+    /// `DSSObjectReferenceProperty` with `PropertyOffset2 = 0` (no fixed
+    /// class): the value is a full `Class.Name` resolved against any circuit
+    /// class, e.g. CapControl's `element`. Dumps render the `FullName`.
+    pub fn object_ref_any(name: &'static str) -> Self {
+        Self {
+            object_class: Some(""),
+            ..Self::base(name, PropType::ObjectRef)
+        }
+    }
+    /// `DoubleVArrayProperty` whose length is computed by the object
+    /// ([`DssObject::array_size`]); e.g. a transformer `XSCArray`.
+    pub fn double_v_array(name: &'static str) -> Self {
+        Self::base(name, PropType::DoubleVArray)
+    }
+    /// `DoubleArrayOnStructArrayProperty` over `count_prop` struct entries
+    /// (the 1-based ordinal of the count integer, e.g. `Windings`).
+    pub fn double_array_on_struct(name: &'static str, count_prop: usize) -> Self {
+        Self {
+            size_prop: count_prop,
+            ..Self::base(name, PropType::DoubleArrayOnStruct)
+        }
+    }
+    /// `MappedStringEnumArrayOnStructArrayProperty` over `count_prop` struct
+    /// entries (e.g. a transformer `Conns`).
+    pub fn enum_array_on_struct(name: &'static str, enum_id: EnumId, count_prop: usize) -> Self {
+        Self {
+            enum_id: Some(enum_id),
+            size_prop: count_prop,
+            ..Self::base(name, PropType::EnumArrayOnStruct)
+        }
+    }
+    /// `BusOnStructArrayProperty` (transformer `bus`): the active winding's bus.
+    pub fn bus_on_struct(name: &'static str) -> Self {
+        Self::base(name, PropType::BusOnStruct)
+    }
+    /// `BusesOnStructArrayProperty` (transformer `buses`) over `count_prop`
+    /// struct entries (the 1-based ordinal of `NumWindings`).
+    pub fn buses_on_struct(name: &'static str, count_prop: usize) -> Self {
+        Self {
+            size_prop: count_prop,
+            ..Self::base(name, PropType::BusesOnStruct)
+        }
     }
 
     pub fn flags(mut self, flags: PropFlags) -> Self {
@@ -364,7 +478,50 @@ impl ClassProps {
                 Ok(prev)
             }
             PropType::ObjectRef => {
-                obj.set_string(idx, value.to_lowercase());
+                match pd.object_class {
+                    None => {
+                        // Phase 3 behavior: store the lowercased name only.
+                        obj.set_string(idx, value.to_lowercase());
+                    }
+                    Some("") => {
+                        // Pascal `DSSObjectReferenceProperty` with
+                        // `PropertyOffset2 = 0`: the value is a full
+                        // `Class.Name` resolved against any circuit class
+                        // (`GetCktElementIndex`). On failure: DoSimpleMsg 402,
+                        // NIL reference, edit continues.
+                        let resolved = eng.foreign.and_then(|f| f.find_full(value));
+                        if resolved.is_none() && !value.is_empty() {
+                            eng.errors.push(format!(
+                                "{full}.{}: CktElement \"{value}\" not found.",
+                                pd.name
+                            ));
+                        }
+                        // Dumps render the resolved object's FullName (NIL → "").
+                        let name = resolved
+                            .as_ref()
+                            .map(|(_, _, full_name)| full_name.clone())
+                            .unwrap_or_default();
+                        obj.set_object_ref(idx, name, resolved.map(|(r, o, _)| (r, o)));
+                    }
+                    Some(class) => {
+                        // Pascal `ParseObjPropertyValue` for
+                        // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
+                        // (case-insensitive). On failure DoSimpleMsg 401 and the
+                        // reference is left NIL, but the edit continues.
+                        let resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        if resolved.is_none() && !value.is_empty() {
+                            eng.errors.push(format!(
+                                "{full}.{}: {class} object \"{value}\" not found.",
+                                pd.name
+                            ));
+                        }
+                        // The dump renders the resolved object's name (NIL → "").
+                        let name = resolved
+                            .map(|(_, o)| o.data().name().to_string())
+                            .unwrap_or_default();
+                        obj.set_object_ref(idx, name, resolved);
+                    }
+                }
                 Ok(0)
             }
             PropType::Integer => {
@@ -440,6 +597,115 @@ impl ClassProps {
                 obj.set_f64_array(idx, buf);
                 Ok(0)
             }
+            PropType::IntegerArray => {
+                // Pascal `IntegerArrayProperty` + `InterpretIntArray`: read up
+                // to `size_prop` integers; omitted/short tokens yield 0.
+                let max = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut buf = vec![0; max];
+                for slot in buf.iter_mut() {
+                    eng.parser.next_param(eng.vars);
+                    *slot = eng.parser.make_integer(eng.vars)?;
+                }
+                obj.set_i32_array(idx, buf);
+                Ok(0)
+            }
+            PropType::DoubleSymMatrix => {
+                // Pascal `DoubleSymMatrixProperty`: a real lower-triangle sym
+                // matrix of order `get_i32(size_prop)`, stored flat (`order²`).
+                let order = obj.get_i32(pd.size_prop).max(0) as usize;
+                let mut buf = vec![0.0; order * order];
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(&format!("[{value}]"));
+                eng.parser.next_param(eng.vars);
+                eng.parser
+                    .parse_as_sym_matrix(eng.vars, &mut buf, order, 1, pd.scale)?;
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
+            PropType::DoubleVArray => {
+                // Pascal `DoubleVArrayProperty` + `SizeIsFunction`: the object
+                // computes the element count (e.g. XSCArray = XscSize).
+                let n = obj.array_size(idx);
+                let mut buf = vec![0.0; n];
+                interpret_dbl_array(eng.parser, eng.vars, value, n, &mut buf)?;
+                if pd.flags.contains(PropFlags::NON_ZERO) && buf.contains(&0.0) {
+                    eng.errors
+                        .push(format!("{full}.{}: Elements cannot be zero.", pd.name));
+                    return Ok(0);
+                }
+                if pd.scale != 1.0 {
+                    for v in &mut buf {
+                        *v *= pd.scale;
+                    }
+                }
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
+            PropType::DoubleArrayOnStruct => {
+                // Pascal `DoubleArrayOnStructArrayProperty`: iterate exactly
+                // `count` struct entries, skipping omitted tokens (which keep
+                // the previous value), applying the scale to the rest.
+                let count = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut vals = vec![None; count];
+                for slot in vals.iter_mut() {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if !token.is_empty() {
+                        let v = eng.parser.make_double(eng.vars)? * pd.scale;
+                        *slot = Some(v);
+                    }
+                }
+                obj.set_struct_f64_array(idx, &vals);
+                Ok(0)
+            }
+            PropType::EnumArrayOnStruct => {
+                // Pascal `MappedStringEnumArrayOnStructArrayProperty`: a list of
+                // enum strings, one per struct entry.
+                let enum_id = pd.enum_id.expect("enum-array property needs an enum");
+                let count = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut ords = Vec::with_capacity(count);
+                for _ in 0..count {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if token.is_empty() {
+                        break;
+                    }
+                    let ord = eng
+                        .enums
+                        .get(enum_id)
+                        .string_to_ordinal(&token.to_lowercase())?;
+                    ords.push(ord);
+                }
+                obj.set_struct_i32_array(idx, &ords);
+                Ok(0)
+            }
+            PropType::BusOnStruct => {
+                obj.set_active_struct_bus(value);
+                Ok(0)
+            }
+            PropType::BusesOnStruct => {
+                // Pascal `BusesOnStructArrayProperty`: one bus token per struct
+                // entry (`NumWindings`); omitted tokens keep the prior value.
+                let count = obj.get_i32(pd.size_prop).max(0) as usize;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut vals = vec![None; count];
+                for slot in vals.iter_mut() {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if !token.is_empty() {
+                        *slot = Some(token);
+                    }
+                }
+                obj.set_struct_buses(&vals);
+                Ok(0)
+            }
         }
     }
 
@@ -464,6 +730,9 @@ impl ClassProps {
     /// `?` query and `DumpProperties` emit.
     pub fn get_value(&self, obj: &dyn DssObject, idx: usize, enums: &EnumRegistry) -> String {
         let pd = &self.props[idx];
+        if pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx) {
+            return "----".to_string();
+        }
         match pd.ptype {
             PropType::Double => {
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
@@ -485,19 +754,95 @@ impl ClassProps {
                 let n = obj.get_i32(pd.size_prop).max(0) as usize;
                 get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)
             }
+            PropType::IntegerArray => {
+                let n = obj.get_i32(pd.size_prop).max(0) as usize;
+                get_dss_array_i32(n, obj.get_i32_array(idx))
+            }
+            PropType::DoubleSymMatrix => {
+                // Pascal `GetObjPropertyValue` for `DoubleSymMatrixProperty`:
+                // lower triangle, each element trailed by a space, rows split by
+                // `|`, parenthesised — `(r |r r |r r r )`.
+                //
+                // TODO(compat): the oracle's `DoubleSymMatrixProperty` getter —
+                // whose only user in scope is `Capacitor.CMatrix` — reads
+                // uninitialized memory and returns denormal garbage (~0)
+                // regardless of the stored matrix (a dss_capi bug). We emit a
+                // zero matrix of the declared order to reproduce it
+                // deterministically; the goldens zero the captured garbage to
+                // match. The clean fix renders the stored `get_f64_array(idx)`
+                // values (the `_vals` binding) divided by `pd.scale`.
+                let order = obj.get_i32(pd.size_prop).max(0) as usize;
+                let _vals = obj.get_f64_array(idx);
+                if order == 0 {
+                    return String::new();
+                }
+                let mut s = String::from("(");
+                for i in 0..order {
+                    if i > 0 {
+                        s.push('|');
+                    }
+                    for _ in 0..=i {
+                        s.push_str(&float_to_str_ex(0.0));
+                        s.push(' ');
+                    }
+                }
+                s.push(')');
+                s
+            }
             PropType::DoubleFArray => {
                 get_dss_array_f64(pd.size_prop, obj.get_f64_array(idx), pd.scale)
             }
+            PropType::DoubleVArray => {
+                get_dss_array_f64(obj.array_size(idx), obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::DoubleArrayOnStruct => {
+                // Pascal: `[` + `%g, ` per entry (field / scale) + `]`.
+                let vals = obj.get_struct_f64_array(idx);
+                let mut s = String::from("[");
+                for v in vals {
+                    let value = if pd.scale == 1.0 { v } else { v / pd.scale };
+                    s.push_str(&float_to_str_ex(value));
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
+            }
+            PropType::EnumArrayOnStruct => {
+                // Pascal: `[` + `OrdinalToString, ` per entry + `]`.
+                let enum_id = pd.enum_id.expect("enum-array property needs an enum");
+                let en = enums.get(enum_id);
+                let mut s = String::from("[");
+                for ord in obj.get_struct_i32_array(idx) {
+                    s.push_str(&en.ordinal_to_string(ord));
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
+            }
             PropType::Bus => obj.get_bus_name(pd.size_prop),
+            PropType::BusOnStruct => obj.get_active_struct_bus(),
+            PropType::BusesOnStruct => {
+                // Pascal: `[` + `<bus>, ` per struct entry + `]`.
+                let mut s = String::from("[");
+                for b in obj.get_struct_buses() {
+                    s.push_str(&b);
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
+            }
             PropType::Complex => {
-                // TODO(phase4): match the oracle's exact complex rendering when
-                // property-dump goldens cover these classes.
+                // Pascal `GetObjPropertyValue` for `ComplexProperty`:
+                // `Format('[%g, %g]', [c.re, c.im])` (verified against the oracle
+                // by the Reactor `Z`/`Z1`/`Z2`/`Z0` props goldens).
                 let (re, im) = obj.get_complex(idx);
                 format!("[{}, {}]", float_to_str_ex(re), float_to_str_ex(im))
             }
             PropType::SymMatrixReal | PropType::SymMatrixImag => {
-                // TODO(phase4): match the oracle's exact matrix rendering when
-                // property-dump goldens cover the matrix-specified lines.
+                // Pascal `GetObjPropertyValue` for `ComplexPartSymMatrixProperty`:
+                // lower triangle, every element followed by a space, rows split
+                // by `|`, no space after the opening bracket — e.g.
+                // `[0.098 |0.040 0.098 |0.040 0.040 0.098 ]`.
                 let real = pd.ptype == PropType::SymMatrixReal;
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
                     obj.prop_scale(idx, true)
@@ -510,11 +855,11 @@ impl ClassProps {
                         let mut s = String::from("[");
                         for i in 0..order {
                             if i > 0 {
-                                s.push_str(" |");
+                                s.push('|');
                             }
                             for j in 0..=i {
-                                s.push(' ');
                                 s.push_str(&float_to_str_ex(vals[j * order + i] / scale));
+                                s.push(' ');
                             }
                         }
                         s.push(']');
@@ -526,6 +871,54 @@ impl ClassProps {
     }
 }
 
+/// Declarative per-class property table (PHASE4_PLAN §3.4, bounded outcome):
+/// generates the 1-based ordinal consts (`pub mod prop`, with `NUM_PROPS`
+/// including the auto-appended `Like`) and the `class_props()` builder from a
+/// single listing, so the ordinals and the table can never drift apart.
+///
+/// Each row is `ordinal CONST => <PropDef builder expression>;` — the
+/// expression form keeps the full builder API (scale/flags/`enums.<id>`/...)
+/// available without macro ceremony. The `DssObject` accessor arms stay
+/// hand-written: in every ported class the non-trivial arms (spec-type side
+/// effects, clamping, redundant aliases) dominate, so a field-mapping macro
+/// would need an escape hatch per arm and was abandoned per the §3.4 fallback
+/// rule (see STATUS.md).
+///
+/// ```ignore
+/// define_properties! {
+///     class "TCC_Curve", abbrev true;
+///     1 NPTS    => PropDef::integer("NPts").flags(PropFlags::SUPPRESS_JSON);
+///     2 C_ARRAY => PropDef::double_array("C_Array", NPTS);
+///     3 T_ARRAY => PropDef::double_array("T_Array", NPTS);
+/// }
+/// ```
+macro_rules! define_properties {
+    (
+        class $class:literal, abbrev $abbrev:literal;
+        $( $ord:literal $name:ident => $def:expr; )+
+    ) => {
+        /// 1-based property ordinals (generated by `define_properties!`).
+        pub mod prop {
+            $( pub const $name: usize = $ord; )+
+            /// Property count including the auto-appended `Like`.
+            pub const NUM_PROPS: usize = [$($ord),+].len() + 1;
+        }
+
+        /// Class property table (generated by `define_properties!`).
+        pub fn class_props(
+            enums: &$crate::obj::dss_enum::EnumRegistry,
+        ) -> $crate::obj::props::ClassProps {
+            #[allow(unused_imports)]
+            use prop::*;
+            let _ = enums; // classes without mapped enums ignore the registry
+            let defs = vec![ $( $def ),+ ];
+            debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
+            $crate::obj::props::ClassProps::new($class, defs, $abbrev)
+        }
+    };
+}
+pub(crate) use define_properties;
+
 /// Shared scratch state the engine threads through, the equivalent of Pascal's
 /// context-owned `PropParser`/`AuxParser`, the enum registry, and the
 /// `DoSimpleMsg` sink. `parser` must be a dedicated scratch parser, not the one
@@ -535,6 +928,31 @@ pub struct PropEngine<'a> {
     pub vars: &'a ParserVars,
     pub enums: &'a EnumRegistry,
     pub errors: &'a mut Vec<String>,
+    /// Read view of every class except the one being edited, alive for the
+    /// duration of an edit so `ObjectRef` properties can resolve immediately
+    /// (Pascal resolves `cls.Find` mid-`Edit`; see [`ForeignClassesView`]).
+    /// `None` outside the executive's edit loop (unit tests, etc.).
+    pub foreign: Option<&'a dyn ForeignClassesView<'a>>,
+}
+
+/// A read view of the other registered classes, the abstraction `parse_into`
+/// uses to resolve an `ObjectRef` to a live object (Pascal `cls.Find`). The
+/// executive implements it over the class registry minus the active class; the
+/// returned `ElemRef` is stable (nothing is deleted except whole-circuit
+/// `Clear`, PORTING_PLAN §2.1).
+pub trait ForeignClassesView<'a> {
+    /// Case-insensitive lookup of `name` in class `class`. `None` when the
+    /// class or the object is unknown.
+    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)>;
+
+    /// Case-insensitive lookup of a full `Class.Name` reference (Pascal
+    /// `GetCktElementIndex`). The returned `String` is the canonical
+    /// `FullName` (`Class.name`) used by dumps. `None` when the value has no
+    /// class prefix or nothing matches.
+    fn find_full(&self, full_name: &str) -> Option<(ElemRef, &'a dyn DssObject, String)> {
+        let _ = full_name;
+        None
+    }
 }
 
 /// Pascal `ParseObjPropertyValue.GetDouble`: try FPC `Val` first, falling back
