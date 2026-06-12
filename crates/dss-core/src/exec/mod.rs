@@ -2681,6 +2681,50 @@ mod tests {
         assert_eq!(iter_w, iter_wo, "RegControl changed the iteration count");
     }
 
+    /// WP6.1: `BuildActiveBusAdjacencyLists` (CktTree.pas l.678) — non-shunt
+    /// PD branches are listed at *every* terminal's bus; PC elements and
+    /// shunt capacitors land on the terminal-1 PC list; sources (NON_PCPD)
+    /// appear in neither.
+    #[test]
+    fn bus_adjacency_lists_bucket_elements() {
+        use crate::circuit::ckt_tree::build_active_bus_adjacency_lists;
+
+        let mut dss = Dss::new();
+        dss.command("New circuit.adj basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+        dss.command(
+            "New line.l1 bus1=sourcebus bus2=b2 length=1 units=km \
+             r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=0 c0=0",
+        );
+        dss.command("New capacitor.cap1 bus1=b2 kv=12.47 kvar=300");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let Dss {
+            classes, circuit, ..
+        } = &mut dss;
+        let ckt = circuit.as_ref().unwrap();
+        let store = ClassStore { classes };
+        let adj = build_active_bus_adjacency_lists(ckt, &store);
+
+        let sb = ckt.bus_list.find("sourcebus").unwrap();
+        let b2 = ckt.bus_list.find("b2").unwrap();
+        let names = |refs: &[ElemRef]| -> Vec<String> {
+            refs.iter()
+                .map(|&r| store.ckt_elem(r).cd().obj.name().to_string())
+                .collect()
+        };
+
+        // The line (non-shunt PD) shows up at both of its terminal buses.
+        assert_eq!(names(&adj.pd[sb]), vec!["l1"]);
+        assert_eq!(names(&adj.pd[b2]), vec!["l1"]);
+        // PC list at b2: the load plus the shunt capacitor (PD element on
+        // the PC list, in pc_elements-then-pd_elements build order), and
+        // no source anywhere.
+        assert_eq!(names(&adj.pc[b2]), vec!["ld1", "cap1"]);
+        assert!(adj.pc[sb].is_empty(), "sources are NON_PCPD");
+    }
+
     #[test]
     fn get_returns_set_values() {
         let mut dss = Dss::new();

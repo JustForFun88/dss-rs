@@ -28,6 +28,23 @@ pub struct Bus {
     pub bus_checked: bool,
     pub keep: bool,
     pub dist_from_meter: f64,
+
+    // --- Reliability accumulators (Bus.pas l.48-55), driven by the
+    // --- EnergyMeter reliability sweep (`CalcReliabilityIndices`).
+    /// `BusFltRate`: accumulated failure rate downstream, faults/yr.
+    pub bus_flt_rate: f64,
+    /// `Bus_Num_Interrupt`: interruptions at this bus per year.
+    pub bus_num_interrupt: f64,
+    /// `BusCustInterrupts`: accumulated customer interruptions.
+    pub bus_cust_interrupts: f64,
+    /// `BusCustDurations`: accumulated customer outage durations.
+    pub bus_cust_durations: f64,
+    /// `BusTotalNumCustomers`: customers served from this bus.
+    pub bus_total_num_customers: i32,
+    /// `BusTotalMiles`: line miles downstream from this bus.
+    pub bus_total_miles: f64,
+    /// `BusSectionID`: feeder section this bus belongs to (−1 = not set).
+    pub bus_section_id: i32,
 }
 
 impl Bus {
@@ -46,7 +63,26 @@ impl Bus {
             bus_checked: false,
             keep: false,
             dist_from_meter: 0.0,
+            // FPC zero-initializes the class fields the ctor doesn't touch.
+            bus_flt_rate: 0.0,
+            bus_num_interrupt: 0.0,
+            bus_cust_interrupts: 0.0,
+            bus_cust_durations: 0.0,
+            bus_total_num_customers: 0,
+            bus_total_miles: 0.0,
+            bus_section_id: 0,
         }
+    }
+
+    /// Pascal `TDSSBus.ZeroReliabilityAccums`.
+    pub fn zero_reliability_accums(&mut self) {
+        self.bus_cust_interrupts = 0.0;
+        self.bus_flt_rate = 0.0;
+        self.bus_total_num_customers = 0;
+        self.bus_total_miles = 0.0;
+        self.bus_cust_durations = 0.0;
+        self.bus_num_interrupt = 0.0;
+        self.bus_section_id = -1; // signify not set
     }
 
     pub fn num_nodes_this_bus(&self) -> usize {
