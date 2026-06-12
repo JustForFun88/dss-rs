@@ -7,11 +7,12 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-12, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
+Last updated: 2026-06-13, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
 (`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve),
-WP5.2a/b/c (LoadShape + CSVFile + TempShape/PriceShape) and WP5.3 (shapes wired
-into Load/VSource) done, gate-green** (see §1c). Next: WP5.4 (ControlQueue +
-event log).
+WP5.2a/b/c (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes wired
+into Load/VSource), WP5.4 (ControlQueue + event log) and WP5.5 (RegControl
+behavior — `Sample`/`DoPendingAction`) done, gate-green** (see §1c). Next:
+WP5.6 (CapControl behavior).
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -39,13 +40,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes → Load/VSource) done; `PHASE5_PLAN.md` |
+| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes → Load/VSource), WP5.4 (ControlQueue + event log), WP5.5 (RegControl behavior) done; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 181, golden_feeders 1, golden_slice 2,
+cargo test --workspace      # dss-core lib 197, golden_feeders 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1, dss-parser 62+1,
                             # dss-sparse 5
 ```
@@ -392,6 +393,82 @@ Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
   `DefaultDailyShapeObj`/`DefaultYearlyShapeObj` and the global `DefaultHourMult`
   path are **deferred to WP5.8** (only `SolveDaily` consumes them).
   dss-core lib tests 173 → 181 (+7 element + 1 executive resolution).
+
+**WP5.4 — ControlQueue + event log — ✅ done, gate-green.** Files:
+- `src/solution/control_queue.rs` (`TControlQueue`): `TimeRec`
+  (`hour`/`sec` + `to_time`), private `ActionRecord`, and `ControlQueue`
+  (ordered `Vec`, `ctrl_handle` serial). Ported verbatim: `push` (Sec>3600
+  hour-normalization + insert-before-first-`>=`-time, so a later equal-time
+  push lands *ahead* of an earlier one — tie-break is observable), `push_delay`
+  (the `Delay` overload), private `pop` (linear scan for earliest time `<= t`),
+  `delete` by handle, `clear`/`is_empty`/`queue_size`, and the three
+  pure-queue dispatchers `do_all_actions`/`do_nearest_actions`/`do_actions`.
+  Dispatch routes through the **`ControlActioner` trait** (`do_pending_action(
+  control: ElemRef, code, proxy, &mut ControlQueue)`): because `pop` returns
+  owned (`Copy`) record data, the queue hands *itself* to the actioner, so an
+  action may push/delete further records mid-sweep (RegControl EVENTDRIVEN
+  re-arm). 7 inline tests (handle/time ordering, equal-time tie-break,
+  Sec>3600, delete-by-handle, nearest-bucket-only, mid-sweep re-arm,
+  do_all+clear) hand-traced from the Pascal — no oracle exposes the queue.
+- `src/solution/event_log.rs` (`EventLog` = `DSS.EventStrings`): the two
+  producers ported with exact `Format` strings — `log_this_event` (Pascal
+  `TDSSContext.LogThisEvent`, `Hour=…, Sec=%-.8g, Iteration=…, ControlIter=…,
+  Event=…`) and `append` (`TDSSObject.AppendToEventLog`, `Hour=…, Sec=%-.5g,
+  ControlIter=…, Element=…, Action=…` with `AnsiUpperCase(action)`). 2 inline
+  tests. The gate normalizes numbers out, so the `%g` time fields are faithful
+  but not load-bearing.
+- **Shared engine:** `Solution` grew `control_queue: ControlQueue` and
+  `event_log: EventLog` (constructed in `new`; driven by WP5.5/5.7);
+  `Dss::event_log()` surfaces the lines (oracle reads `Solution.EventLog`).
+  `util::fmt_g(v, sig)` = C `%.*g` (sci for exp `<-4`/`>=sig`, trailing-zero
+  strip) for the event-log time fields.
+- **Deferred to WP5.7/5.8:** `do_multi_rate` (Pascal `DoMultiRate` needs
+  `Pop_Time`/keepIn plus mid-sweep `SolveCircuit`/`SampleControlDevices` and
+  DynaVars `Recalc/Restore_Time_Step` — none exist until the control loop +
+  DynaVars land); the queue's `DebugTrace`/`WriteTraceRecord` file (RegControl
+  debug-trace, WP5.5+); `WriteQueue`/`QueueItem` (Show, Phase 8); the
+  `EventLogDefault` global (default `False` already matches controls'
+  `show_event_log` default — wire when a gate flips it). dss-core lib tests
+  181 → 190 (+7 control_queue + 2 event_log).
+
+**WP5.5 — RegControl behavior — ✅ done, gate-green.** Files:
+- `reg_control.rs`: ported `Sample` (top-to-bottom: maxtapchange-0 early exit,
+  the reverse/cogen power-direction block incl. `ReverseNeutral`, the
+  regulated-bus vs `GetWindingVoltages` control-voltage paths, `GetControlVoltage`
+  PTphase selection, the Vlimit local-bus check, R+jX / Beckwith `LDC_Z` line-drop
+  compensation, the band test with the InReverse tap-divide, the
+  `Round(BoostNeeded/Increment)·Increment` pending-tap + winding/reverse
+  direction flip, and the arm/disarm queue push/delete) and `DoPendingAction`
+  (CTRLSTATIC `AtLeastOneTap`; EVENT/TIME/MULTIRATE `OneInDirectionOf` + re-push;
+  `ACTION_REVERSE` mode toggle), plus `AtLeastOneTap`/`OneInDirectionOf`/
+  `ComputeTimeDelay`/`GetControlVoltage`/`set_PendingTapChange`/`VLimitActive`.
+  New runtime fields (`last_change`, `control_action_handle`, `rev_handle`/
+  `rev_back_handle`, `in_reverse_mode`/`reverse_pending`/`in_cogen_mode`,
+  `controlled_phase`). The pending-tap `Round` uses `round_ties_even`
+  (`TODO(compat)` FPC banker's rounding — **the single most tap-sensitive line**).
+  `sample`/`do_pending_action` are `pub(crate)` + `#[allow(dead_code)]` (wired by
+  the control loop in WP5.7). 7 inline tests against a mock transformer
+  (out-of-band-high arms a downward tap, in-band disarm, CTRLSTATIC ≥1-tap apply
+  + `system_y_changed`, EVENTDRIVEN one-tap + re-push, event-log line,
+  inverse-time delay, maxtapchange=0 exit).
+- **Shared engine:** the controls' shared `CtrlCtx` (PHASE5_PLAN §2.1 disjoint
+  borrow: `node_v`/`sys`/`queue`/`events`/`errors`/`system_y_changed` + the
+  `int_hour`/`t`/`dbl_hour`/`control_iter` scalars + `control_mode` + `self_ref`)
+  and the `CTRL_NONE`/`OPEN`/`CLOSE` action codes live in `control_elem.rs`.
+  Transformer gained the **`ControlledTransformer` trait** (`Sample`/`DoPending`'s
+  read/mutate surface — `winding_voltages` = `GetWindingVoltages`, `power_into_re`
+  = `Power[t].re`, `terminal_currents` = `GetCurrents`, tap getters/`set_present_tap`,
+  `wdg_connection`/`base_voltage`/`rotate_phases`) so the regulator logic is
+  unit-testable against a mock; `set_present_tap` now returns "Y must rebuild"
+  (Pascal `Set_YprimInvalid`'s `SystemYChanged` trigger, gated by `Enabled`).
+  Control-mode ordinals `EVENTDRIVEN`/`TIMEDRIVEN`/`MULTIRATE` added to
+  `solution`. **Indexing note:** the control's voltage/current buffers and
+  `controlled_phase` are 0-based in the port (Pascal `VBuffer`/`CBuffer`/
+  `ControlledPhase` are 1-based); the LDC pickup index is
+  `nconds·(term−1) + controlled_phase`.
+- **Deferred:** `RegWriteTraceRecord`/`RegWriteDebugRecord` debug-trace file
+  (DebugTrace flag stored, no file); `MakePosSequence`. dss-core lib tests
+  190 → 197 (+7 RegControl behavior).
 
 ---
 

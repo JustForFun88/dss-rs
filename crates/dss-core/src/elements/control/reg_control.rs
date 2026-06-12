@@ -1,9 +1,11 @@
 //! Port of `Controls/RegControl.pas` — `TRegControlObj`, the voltage-regulator
-//! control attached to a Transformer winding. **Phase 4 ports the parse-time
-//! surface only** (properties, reference resolution, `RecalcElementData`'s
-//! bus/phase setup, `TapNum`, `MakeLike`); the `Sample`/`DoPendingAction`
-//! tap-changing machinery is Phase 5 (PHASE4_PLAN §WP4.7) and is recorded as an
-//! engine error if ever invoked.
+//! control attached to a Transformer winding. Phase 4 ported the parse-time
+//! surface (properties, reference resolution, `RecalcElementData`'s bus/phase
+//! setup, `TapNum`, `MakeLike`); **WP5.5 adds the behavior** — `Sample` (sense
+//! the regulated voltage, compute the pending tap change, arm the control
+//! queue) and `DoPendingAction` (apply the tap, per control mode), plus the
+//! `AtLeastOneTap`/`OneInDirectionOf`/`ComputeTimeDelay`/`GetControlVoltage`
+//! helpers.
 //!
 //! A RegControl is a `TControlElem`: a circuit element with **no Yprim** and
 //! zero terminal currents, whose single terminal is attached to the controlled
@@ -12,12 +14,22 @@
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
-use crate::elements::pd::transformer::Transformer;
+use crate::elements::control::control_elem::{ControlElemData, CtrlCtx, RefSnapshot};
+use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::solution::{CTRLSTATIC, EVENTDRIVEN, MULTIRATE, TIMEDRIVEN};
+use crate::util::EPSILON;
+
+/// `RegControl.pas` action codes (distinct from the `EControlAction` enum).
+const ACTION_TAPCHANGE: i32 = 0;
+const ACTION_REVERSE: i32 = 1;
+
+/// `RegControl.pas` PTphase pseudo-phases (the hybrid enum's `max`/`min`).
+const MAXPHASE: i32 = -2;
+const MINPHASE: i32 = -3;
 
 /// 1-based property ordinals (Pascal `TRegControlProp` + class tails).
 pub mod prop {
@@ -158,9 +170,19 @@ pub struct RegControl {
     kw_rev_power_threshold: f64,
     reverse_neutral: bool,
     cogen_enabled: bool,
-    // Phase-5 runtime state (kept so `Reset` is faithful):
+    // Runtime control state (Pascal `TRegControlObj` mutable fields):
     pending_tap_change: f64,
     armed: bool,
+    last_change: i32,
+    control_action_handle: i32,
+    rev_handle: i32,
+    rev_back_handle: i32,
+    in_reverse_mode: bool,
+    reverse_pending: bool,
+    in_cogen_mode: bool,
+    /// `ControlledPhase`, stored **0-based** (Pascal is 1-based) — set by
+    /// `GetControlVoltage`, consumed by the LDC current pickup.
+    controlled_phase: usize,
 }
 
 impl RegControl {
@@ -210,6 +232,14 @@ impl RegControl {
             cogen_enabled: false,
             pending_tap_change: 0.0,
             armed: false,
+            last_change: 0,
+            control_action_handle: 0,
+            rev_handle: 0,
+            rev_back_handle: 0,
+            in_reverse_mode: false,
+            reverse_pending: false,
+            in_cogen_mode: false,
+            controlled_phase: 0,
         }
     }
 
@@ -319,8 +349,416 @@ impl RegControl {
                 }
             };
             self.ccd.cd.set_bus(1, &bus);
-            // VBuffer/CBuffer (regulator voltage/current sampling buffers) are
-            // allocated here in Pascal — Phase 5 (Sample machinery).
+            // Pascal also (re)allocates the VBuffer/CBuffer sampling buffers
+            // here; `sample` allocates them as locals instead.
+        }
+    }
+
+    /// Pascal `set_PendingTapChange`: store the pending change and mirror it to
+    /// the debug-trace scratch.
+    fn set_pending_tap_change(&mut self, value: f64) {
+        self.pending_tap_change = value;
+        self.ccd.dbl_trace_param = value;
+    }
+
+    /// Pascal `VLimitActive`.
+    fn vlimit_active(&self) -> bool {
+        self.vlimit > 0.0
+    }
+
+    /// Pascal `ComputeTimeDelay`: fixed `Delay`, or the inverse-time form
+    /// (`Delay / min(10, 2·|Vreg − Vavg|/Band)`).
+    fn compute_time_delay(&self, vavg: f64) -> f64 {
+        if self.inverse_time {
+            self.ccd.time_delay / 10.0_f64.min(2.0 * (self.vreg - vavg).abs() / self.bandwidth)
+        } else {
+            self.ccd.time_delay
+        }
+    }
+
+    /// Pascal `AtLeastOneTap` (STATIC mode): change 70 % of the way but at least
+    /// one tap, capped at `TapLimitPerChange`; records `LastChange`.
+    fn at_least_one_tap(&mut self, proposed_change: f64, increment: f64) -> f64 {
+        let mut num_taps = (0.7 * proposed_change.abs() / increment).trunc() as i32;
+        if num_taps == 0 {
+            num_taps = 1;
+        }
+        if num_taps > self.tap_limit_per_change {
+            num_taps = self.tap_limit_per_change;
+        }
+        self.last_change = num_taps;
+        if proposed_change > 0.0 {
+            num_taps as f64 * increment
+        } else {
+            self.last_change = -num_taps;
+            -(num_taps as f64) * increment
+        }
+    }
+
+    /// Pascal `OneInDirectionOf`: one tap toward the pending change, decrementing
+    /// `FPendingTapChange` directly (no debug-trace mirror, as in Pascal) and
+    /// zeroing it once within 0.9 increments.
+    fn one_in_direction_of(&mut self, increment: f64) -> f64 {
+        self.last_change = 0;
+        let result = if self.pending_tap_change > 0.0 {
+            self.last_change = 1;
+            self.pending_tap_change -= increment;
+            increment
+        } else {
+            self.last_change = -1;
+            self.pending_tap_change += increment;
+            -increment
+        };
+        if self.pending_tap_change.abs() < 0.9 * increment {
+            self.pending_tap_change = 0.0;
+        }
+        result
+    }
+
+    /// Pascal `GetControlVoltage`: pick the regulated phase per `PTphase`
+    /// (specific / `max` / `min`) and divide by the PT ratio. `vbuffer` and the
+    /// stored `controlled_phase` are 0-based (Pascal is 1-based).
+    fn get_control_voltage(
+        &mut self,
+        vbuffer: &[Complex64],
+        nphs: usize,
+        pt_ratio: f64,
+    ) -> Complex64 {
+        match self.fpt_phase {
+            MAXPHASE => {
+                let mut cp = 0;
+                let mut v = vbuffer[0].norm();
+                for (i, val) in vbuffer.iter().enumerate().take(nphs).skip(1) {
+                    if val.norm() > v {
+                        v = val.norm();
+                        cp = i;
+                    }
+                }
+                self.controlled_phase = cp;
+                vbuffer[cp] / pt_ratio
+            }
+            MINPHASE => {
+                let mut cp = 0;
+                let mut v = vbuffer[0].norm();
+                for (i, val) in vbuffer.iter().enumerate().take(nphs).skip(1) {
+                    if val.norm() < v {
+                        v = val.norm();
+                        cp = i;
+                    }
+                }
+                self.controlled_phase = cp;
+                vbuffer[cp] / pt_ratio
+            }
+            // Specific phase (most controls): FPTphase is a 1-based phase.
+            _ => {
+                let cp = (self.fpt_phase - 1).max(0) as usize;
+                self.controlled_phase = cp;
+                vbuffer[cp] / pt_ratio
+            }
+        }
+    }
+
+    /// Pascal `TRegControlObj.Sample` — sense the regulated voltage, optionally
+    /// flip reverse/cogen mode, and (if out of band) compute `PendingTapChange`
+    /// and arm an `ACTION_TAPCHANGE` on the control queue. Ported top-to-bottom.
+    #[allow(dead_code)] // wired into the control loop in WP5.7
+    pub(crate) fn sample(&mut self, tr: &mut dyn ControlledTransformer, ctx: &mut CtrlCtx) {
+        if self.tap_limit_per_change == 0 {
+            self.set_pending_tap_change(0.0);
+            return;
+        }
+
+        // Always looking forward in cogen mode.
+        let looking_forward = (!self.in_reverse_mode) || self.in_cogen_mode;
+        let element_terminal = self.ccd.element_terminal as usize;
+        let tap_winding = self.tap_winding as usize;
+        let nphases = self.ccd.cd.nphases;
+
+        // 1) Reverse / cogen power-direction handling (not for regulated bus).
+        if !self.using_regulated_bus && (self.is_reversible || self.cogen_enabled) {
+            if looking_forward && !self.in_cogen_mode {
+                let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
+                if !self.reverse_pending && fwd_power < -self.rev_power_threshold {
+                    self.reverse_pending = true;
+                    self.rev_handle = ctx.queue.push_delay(
+                        ctx.int_hour,
+                        ctx.t,
+                        self.rev_delay,
+                        ACTION_REVERSE,
+                        0,
+                        ctx.self_ref,
+                    );
+                }
+                if self.reverse_pending && fwd_power >= -self.rev_power_threshold {
+                    self.reverse_pending = false; // Reset it if power goes back
+                    if self.rev_handle > 0 {
+                        ctx.queue.delete(self.rev_handle);
+                        self.rev_handle = 0;
+                    }
+                }
+            } else {
+                // Looking the reverse direction or in cogen mode.
+                let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
+                if !self.reverse_pending && fwd_power > self.rev_power_threshold {
+                    self.reverse_pending = true;
+                    self.rev_back_handle = ctx.queue.push_delay(
+                        ctx.int_hour,
+                        ctx.t,
+                        self.rev_delay,
+                        ACTION_REVERSE,
+                        0,
+                        ctx.self_ref,
+                    );
+                }
+                if self.reverse_pending && fwd_power <= self.rev_power_threshold {
+                    self.reverse_pending = false;
+                    if self.rev_back_handle > 0 {
+                        ctx.queue.delete(self.rev_back_handle);
+                        self.rev_back_handle = 0;
+                    }
+                }
+                // Reverse-neutral special case: drive the tap to neutral (1.0).
+                if self.reverse_neutral {
+                    if !self.armed {
+                        self.set_pending_tap_change(0.0);
+                        let present = tr.present_tap(tap_winding);
+                        if (present - 1.0).abs() > EPSILON {
+                            let increment = tr.tap_increment(tap_winding);
+                            // TODO(compat): FPC banker's `Round`.
+                            let ptc = ((1.0 - present) / increment).round_ties_even() * increment;
+                            self.set_pending_tap_change(ptc);
+                            if self.pending_tap_change != 0.0 && !self.armed {
+                                ctx.queue.push_delay(
+                                    ctx.int_hour,
+                                    ctx.t,
+                                    self.tap_delay,
+                                    ACTION_TAPCHANGE,
+                                    0,
+                                    ctx.self_ref,
+                                );
+                                self.armed = true;
+                            }
+                        }
+                    }
+                    return; // Done in any case if reverse-neutral specified.
+                }
+            }
+        }
+
+        // 2) Control voltage.
+        let mut vbuffer = vec![Complex64::ZERO; nphases];
+        let mut vcontrol = if self.using_regulated_bus {
+            let conn = tr.wdg_connection(element_terminal);
+            self.ccd.cd.compute_vterminal(ctx.node_v); // voltage at the regulated bus
+            for (i, vb) in vbuffer.iter_mut().enumerate().take(nphases) {
+                match conn {
+                    0 => *vb = self.ccd.cd.vterminal[i], // Wye
+                    1 => {
+                        // Delta: next phase in sequence.
+                        let ii = tr.rotate_phases(i + 1) - 1;
+                        *vb = self.ccd.cd.vterminal[i] - self.ccd.cd.vterminal[ii];
+                    }
+                    _ => ctx.errors.push(format!(
+                        "{}: Series connection used in \"Transformer.{}\" has not been implemented or tested!",
+                        self.ccd.cd.obj.name(),
+                        tr.name()
+                    )),
+                }
+            }
+            self.get_control_voltage(&vbuffer, nphases, self.remote_pt_ratio)
+        } else {
+            tr.winding_voltages(element_terminal, ctx.node_v, &mut vbuffer);
+            self.get_control_voltage(&vbuffer, nphases, self.pt_ratio)
+        };
+
+        // 3) Vlimit local-bus voltage.
+        let vlimit_active = self.vlimit_active();
+        let vlocalbus = if vlimit_active {
+            if self.using_regulated_bus {
+                tr.winding_voltages(element_terminal, ctx.node_v, &mut vbuffer);
+                (vbuffer[0] / self.pt_ratio).norm()
+            } else {
+                vcontrol.norm()
+            }
+        } else {
+            0.0
+        };
+
+        // 4) Line-drop compensation.
+        if !self.using_regulated_bus && self.ldc_active {
+            let nconds = tr.n_conds();
+            let mut cbuffer = vec![Complex64::ZERO; tr.y_order()];
+            tr.terminal_currents(ctx.node_v, ctx.sys, &mut cbuffer);
+            let ildc =
+                cbuffer[nconds * (element_terminal - 1) + self.controlled_phase] / self.ct_rating;
+            if self.ldc_z == 0.0 {
+                // Standard R + jX LDC; ILDC is INTO the terminal → Vterm − (R+jX)·I.
+                let vldc = if self.in_reverse_mode || self.in_cogen_mode {
+                    Complex64::new(self.rev_r, self.rev_x) * ildc
+                } else {
+                    Complex64::new(self.r, self.x) * ildc
+                };
+                vcontrol += vldc;
+            } else {
+                // Beckwith LDC_Z mode: magnitudes only.
+                let z = if self.in_reverse_mode || self.in_cogen_mode {
+                    self.rev_ldc_z
+                } else {
+                    self.ldc_z
+                };
+                vcontrol = Complex64::new(vcontrol.norm() - ildc.norm() * z, 0.0);
+            }
+        }
+
+        let mut vactual = vcontrol.norm(); // assumes looking forward; adjusted below
+
+        // 5) Out-of-band test.
+        let (vreg_test, band_test) = if self.in_reverse_mode {
+            vactual /= tr.present_tap(tap_winding);
+            (self.rev_vreg, self.rev_bandwidth)
+        } else if self.in_cogen_mode {
+            (self.rev_vreg, self.rev_bandwidth)
+        } else {
+            (self.vreg, self.bandwidth)
+        };
+        let mut tap_change_needed = (vreg_test - vactual).abs() > band_test / 2.0;
+        if vlimit_active && vlocalbus > self.vlimit {
+            tap_change_needed = true;
+        }
+
+        if tap_change_needed {
+            let mut vboost = vreg_test - vactual;
+            if vlimit_active && vlocalbus > self.vlimit {
+                vboost = self.vlimit - vlocalbus;
+            }
+            // Per-unit winding boost needed.
+            let boost_needed = vboost * self.pt_ratio / tr.base_voltage(element_terminal);
+            let increment = tr.tap_increment(tap_winding);
+            // TODO(compat): FPC banker's `Round` — this single line decides
+            // tap-position equality; `round_ties_even` reproduces it.
+            let mut ptc = (boost_needed / increment).round_ties_even() * increment;
+            // A tap on another winding or in REVERSE moves the opposite way.
+            if (self.tap_winding != self.ccd.element_terminal) || self.in_reverse_mode {
+                ptc = -ptc;
+            }
+            self.set_pending_tap_change(ptc);
+
+            if self.pending_tap_change != 0.0 && !self.armed {
+                let present = tr.present_tap(tap_winding);
+                // Only arm if a tap change is actually possible in that direction.
+                let possible = if self.pending_tap_change > 0.0 {
+                    present < tr.max_tap(tap_winding)
+                } else {
+                    present > tr.min_tap(tap_winding)
+                };
+                if possible {
+                    let delay = self.compute_time_delay(vactual);
+                    self.control_action_handle = ctx.queue.push_delay(
+                        ctx.int_hour,
+                        ctx.t,
+                        delay,
+                        ACTION_TAPCHANGE,
+                        0,
+                        ctx.self_ref,
+                    );
+                    self.armed = true; // Armed to change taps
+                }
+            }
+        } else {
+            // Back in band: reset.
+            self.set_pending_tap_change(0.0);
+            if self.armed {
+                ctx.queue.delete(self.control_action_handle);
+                self.armed = false;
+                self.control_action_handle = 0;
+            }
+        }
+    }
+
+    /// Pascal `TRegControlObj.DoPendingAction` — apply the armed action when its
+    /// queue time arrives. `ACTION_TAPCHANGE` applies the pending tap (per
+    /// control mode); `ACTION_REVERSE` toggles reverse/cogen mode.
+    #[allow(dead_code)] // wired into the control loop in WP5.7
+    pub(crate) fn do_pending_action(
+        &mut self,
+        code: i32,
+        tr: &mut dyn ControlledTransformer,
+        ctx: &mut CtrlCtx,
+    ) {
+        match code {
+            ACTION_TAPCHANGE => {
+                if self.pending_tap_change == 0.0 {
+                    // Control has reset since the action was queued.
+                    self.armed = false;
+                    return;
+                }
+                let tap_winding = self.tap_winding as usize;
+                let increment = tr.tap_increment(tap_winding);
+                if ctx.control_mode == CTRLSTATIC {
+                    let change = self.at_least_one_tap(self.pending_tap_change, increment);
+                    let new_tap = tr.present_tap(tap_winding) + change;
+                    if tr.set_present_tap(tap_winding, new_tap) {
+                        *ctx.system_y_changed = true;
+                    }
+                    if self.ccd.show_event_log {
+                        ctx.events.append(
+                            &format!("Regulator.{}", tr.name()),
+                            &format!(
+                                " Changed {} taps to {}.",
+                                self.last_change,
+                                crate::util::fmt_g(tr.present_tap(tap_winding), 6)
+                            ),
+                            ctx.int_hour,
+                            ctx.t,
+                            ctx.control_iter,
+                        );
+                    }
+                    self.set_pending_tap_change(0.0); // program re-determines need
+                    self.armed = false;
+                } else if matches!(ctx.control_mode, EVENTDRIVEN | TIMEDRIVEN | MULTIRATE) {
+                    let change = self.one_in_direction_of(increment);
+                    let new_tap = tr.present_tap(tap_winding) + change;
+                    if tr.set_present_tap(tap_winding, new_tap) {
+                        *ctx.system_y_changed = true;
+                    }
+                    if self.ccd.show_event_log {
+                        ctx.events.append(
+                            &format!("Regulator.{}", tr.name()),
+                            &format!(
+                                " Changed {} tap to {}.",
+                                self.last_change,
+                                crate::util::fmt_g(tr.present_tap(tap_winding), 6)
+                            ),
+                            ctx.int_hour,
+                            ctx.t,
+                            ctx.control_iter,
+                        );
+                    }
+                    if self.pending_tap_change != 0.0 {
+                        ctx.queue.push_delay(
+                            ctx.int_hour,
+                            ctx.t,
+                            self.tap_delay,
+                            ACTION_TAPCHANGE,
+                            0,
+                            ctx.self_ref,
+                        );
+                    } else {
+                        self.armed = false;
+                    }
+                }
+            }
+            // Toggle reverse mode or cogen mode flag (only if still pending).
+            ACTION_REVERSE if self.reverse_pending => {
+                if self.cogen_enabled {
+                    // Cogen mode takes precedence if present.
+                    self.in_cogen_mode = !self.in_cogen_mode;
+                } else {
+                    self.in_reverse_mode = !self.in_reverse_mode;
+                }
+                self.reverse_pending = false;
+            }
+            _ => {}
         }
     }
 }
@@ -710,5 +1148,256 @@ mod tests {
         let errs = rc.ccd.cd.obj.take_errors();
         assert_eq!(errs.len(), 1);
         assert!(errs[0].contains("Transformer Element is not set"));
+    }
+
+    // --- Sample / DoPendingAction (WP5.5) ---
+
+    use crate::elements::pd::transformer::ControlledTransformer;
+    use crate::solution::{CTRLSTATIC, ControlQueue, EventLog};
+
+    /// A lightweight `ControlledTransformer` returning canned winding voltages
+    /// and per-winding tap data, so the regulator decision logic is testable
+    /// without a node-wired transformer.
+    struct MockTransformer {
+        name: String,
+        nphases: usize,
+        nconds: usize,
+        yorder: usize,
+        present: Vec<f64>,
+        maxt: Vec<f64>,
+        mint: Vec<f64>,
+        inc: Vec<f64>,
+        base_v: Vec<f64>,
+        conn: Vec<i32>,
+        wv: Vec<Complex64>,
+    }
+
+    impl MockTransformer {
+        /// A 2-winding wye regulator with the canonical 32-tap range and a
+        /// single regulated phase voltage `vph` (volts, secondary base).
+        fn wye_2wdg(vph: f64) -> Self {
+            Self {
+                name: "reg1".into(),
+                nphases: 1,
+                nconds: 2,
+                yorder: 4,
+                present: vec![1.0, 1.0],
+                maxt: vec![1.1, 1.1],
+                mint: vec![0.9, 0.9],
+                inc: vec![0.00625, 0.00625],
+                base_v: vec![100.0, 100.0],
+                conn: vec![0, 0],
+                wv: vec![Complex64::new(vph, 0.0)],
+            }
+        }
+    }
+
+    impl ControlledTransformer for MockTransformer {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn n_phases(&self) -> usize {
+            self.nphases
+        }
+        fn n_conds(&self) -> usize {
+            self.nconds
+        }
+        fn y_order(&self) -> usize {
+            self.yorder
+        }
+        fn wdg_connection(&self, term: usize) -> i32 {
+            self.conn[term - 1]
+        }
+        fn rotate_phases(&self, iphs: usize) -> usize {
+            iphs
+        }
+        fn base_voltage(&self, term: usize) -> f64 {
+            self.base_v[term - 1]
+        }
+        fn present_tap(&self, w: usize) -> f64 {
+            self.present[w - 1]
+        }
+        fn min_tap(&self, w: usize) -> f64 {
+            self.mint[w - 1]
+        }
+        fn max_tap(&self, w: usize) -> f64 {
+            self.maxt[w - 1]
+        }
+        fn tap_increment(&self, w: usize) -> f64 {
+            self.inc[w - 1]
+        }
+        fn set_present_tap(&mut self, w: usize, value: f64) -> bool {
+            let v = value.clamp(self.mint[w - 1], self.maxt[w - 1]);
+            if v != self.present[w - 1] {
+                self.present[w - 1] = v;
+                true
+            } else {
+                false
+            }
+        }
+        fn power_into_re(&mut self, _term: usize, _node_v: &[Complex64], _sys: &SysCtx) -> f64 {
+            0.0
+        }
+        fn winding_voltages(
+            &mut self,
+            _term: usize,
+            _node_v: &[Complex64],
+            vbuffer: &mut [Complex64],
+        ) {
+            for (i, v) in vbuffer.iter_mut().take(self.nphases).enumerate() {
+                *v = self.wv[i];
+            }
+        }
+        fn terminal_currents(
+            &mut self,
+            _node_v: &[Complex64],
+            _sys: &SysCtx,
+            cbuffer: &mut [Complex64],
+        ) {
+            cbuffer.fill(Complex64::ZERO);
+        }
+    }
+
+    /// Build a `CtrlCtx` over freshly-owned queue/event/error/flag scratch.
+    struct Scratch {
+        queue: ControlQueue,
+        events: EventLog,
+        errors: Vec<String>,
+        y_changed: bool,
+        sys: SysCtx,
+    }
+    impl Scratch {
+        fn new() -> Self {
+            Self {
+                queue: ControlQueue::new(),
+                events: EventLog::new(),
+                errors: Vec::new(),
+                y_changed: false,
+                sys: test_sys(),
+            }
+        }
+        fn ctx(&mut self, control_mode: i32) -> CtrlCtx<'_> {
+            CtrlCtx {
+                node_v: &[],
+                sys: &self.sys,
+                queue: &mut self.queue,
+                events: &mut self.events,
+                errors: &mut self.errors,
+                system_y_changed: &mut self.y_changed,
+                control_mode,
+                int_hour: 0,
+                t: 0.0,
+                dbl_hour: 0.0,
+                control_iter: 1,
+                self_ref: ElemRef { cls: 0, idx: 0 },
+            }
+        }
+    }
+
+    #[test]
+    fn sample_out_of_band_high_arms_a_downward_tap() {
+        // Vactual 125 V vs Vreg 120 ± 1.5 → out of band high → boost negative.
+        let mut rc = RegControl::new("r1");
+        rc.pt_ratio = 1.0;
+        rc.ccd.cd.nphases = 1; // regulator senses one phase
+        let mut tr = MockTransformer::wye_2wdg(125.0);
+        let mut sc = Scratch::new();
+        rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+
+        // boost_needed = (120-125)*1/100 = -0.05; /0.00625 = -8 → -0.05 pu.
+        assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
+        assert!(rc.armed);
+        assert_eq!(sc.queue.queue_size(), 1); // armed ACTION_TAPCHANGE
+    }
+
+    #[test]
+    fn sample_in_band_disarms_and_clears() {
+        let mut rc = RegControl::new("r1");
+        rc.pt_ratio = 1.0;
+        rc.ccd.cd.nphases = 1;
+        // Pre-arm the control as if a prior sample queued a change.
+        rc.armed = true;
+        rc.control_action_handle = 999;
+        let mut tr = MockTransformer::wye_2wdg(120.5); // within ±1.5 of 120
+        let mut sc = Scratch::new();
+        rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+        assert_eq!(rc.pending_tap_change, 0.0);
+        assert!(!rc.armed);
+    }
+
+    #[test]
+    fn ctrlstatic_action_applies_at_least_one_tap_and_marks_y() {
+        let mut rc = RegControl::new("r1");
+        rc.pt_ratio = 1.0;
+        rc.ccd.cd.nphases = 1;
+        let mut tr = MockTransformer::wye_2wdg(125.0);
+        let mut sc = Scratch::new();
+        rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+        assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
+
+        // CTRLSTATIC moves 70% of the pending change, at least one tap:
+        // trunc(0.7*0.05/0.00625) = trunc(5.6) = 5 taps down → −0.03125.
+        rc.do_pending_action(ACTION_TAPCHANGE, &mut tr, &mut sc.ctx(CTRLSTATIC));
+        assert_eq!(rc.last_change, -5);
+        assert!((tr.present_tap(1) - 0.96875).abs() < 1e-12);
+        assert!(sc.y_changed);
+        assert_eq!(rc.pending_tap_change, 0.0);
+        assert!(!rc.armed);
+    }
+
+    #[test]
+    fn eventdriven_action_moves_one_tap_and_repushes() {
+        let mut rc = RegControl::new("r1");
+        rc.pt_ratio = 1.0;
+        rc.ccd.cd.nphases = 1;
+        let mut tr = MockTransformer::wye_2wdg(125.0);
+        let mut sc = Scratch::new();
+        // Pretend two taps are pending downward.
+        rc.set_pending_tap_change(-2.0 * 0.00625);
+        rc.do_pending_action(ACTION_TAPCHANGE, &mut tr, &mut sc.ctx(EVENTDRIVEN));
+        assert_eq!(rc.last_change, -1); // one tap toward the change
+        assert!((tr.present_tap(1) - (1.0 - 0.00625)).abs() < 1e-12);
+        assert!((rc.pending_tap_change - (-0.00625)).abs() < 1e-12); // remainder
+        assert_eq!(sc.queue.queue_size(), 1); // re-pushed for the next tap
+    }
+
+    #[test]
+    fn event_log_records_tap_change_when_enabled() {
+        let mut rc = RegControl::new("r1");
+        rc.pt_ratio = 1.0;
+        rc.ccd.cd.nphases = 1;
+        rc.ccd.show_event_log = true;
+        rc.set_pending_tap_change(-0.05);
+        let mut tr = MockTransformer::wye_2wdg(125.0);
+        let mut sc = Scratch::new();
+        rc.do_pending_action(ACTION_TAPCHANGE, &mut tr, &mut sc.ctx(CTRLSTATIC));
+        assert_eq!(sc.events.len(), 1);
+        let line = &sc.events.entries()[0];
+        assert!(line.contains("Element=Regulator.reg1"));
+        assert!(line.contains("CHANGED -5 TAPS TO"));
+    }
+
+    #[test]
+    fn compute_time_delay_fixed_vs_inverse() {
+        let mut rc = RegControl::new("r1");
+        rc.ccd.time_delay = 15.0;
+        assert_eq!(rc.compute_time_delay(118.0), 15.0); // fixed by default
+        rc.inverse_time = true;
+        rc.vreg = 120.0;
+        rc.bandwidth = 3.0;
+        // 2*|120-118|/3 = 1.333 < 10 → 15 / 1.333 = 11.25.
+        assert!((rc.compute_time_delay(118.0) - 11.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn maxtapchange_zero_zeroes_pending_and_exits() {
+        let mut rc = RegControl::new("r1");
+        rc.tap_limit_per_change = 0;
+        rc.set_pending_tap_change(0.5);
+        let mut tr = MockTransformer::wye_2wdg(150.0);
+        let mut sc = Scratch::new();
+        rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+        assert_eq!(rc.pending_tap_change, 0.0);
+        assert!(sc.queue.is_empty());
     }
 }

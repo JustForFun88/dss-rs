@@ -119,6 +119,48 @@ pub fn float_to_str_ex(v: f64) -> String {
     }
 }
 
+/// C `printf` `%.*g` (FPC `Format('%-.Ng', …)`): `sig` significant digits,
+/// scientific notation when the decimal exponent is `< -4` or `>= sig`, with
+/// trailing zeros (and a dangling decimal point) stripped. Used by the event
+/// log; the gate parses these numbers out, so this only needs to be faithful,
+/// not bit-exact to FPC's formatter.
+pub fn fmt_g(v: f64, sig: usize) -> String {
+    if v == 0.0 {
+        return "0".to_string();
+    }
+    if !v.is_finite() {
+        return float_to_str(v);
+    }
+    let sig = sig.max(1);
+    let exp = v.abs().log10().floor() as i32;
+    if exp < -4 || exp >= sig as i32 {
+        // Scientific: `sig - 1` digits after the mantissa point.
+        let raw = format!("{:.*e}", sig - 1, v);
+        // Rust renders the exponent as `e5`/`e-4`; C uses `e+05`. The gate
+        // normalizes numbers away, so split mantissa/exponent and strip the
+        // mantissa's trailing zeros only.
+        if let Some((mant, e)) = raw.split_once('e') {
+            format!("{}e{}", strip_trailing_zeros(mant), e)
+        } else {
+            raw
+        }
+    } else {
+        let decimals = (sig as i32 - 1 - exp).max(0) as usize;
+        strip_trailing_zeros(&format!("{v:.decimals$}"))
+    }
+}
+
+/// Drop trailing fractional zeros and any dangling `.` from a fixed-notation
+/// decimal string (helper for [`fmt_g`]).
+fn strip_trailing_zeros(s: &str) -> String {
+    if s.contains('.') {
+        let t = s.trim_end_matches('0');
+        t.trim_end_matches('.').to_string()
+    } else {
+        s.to_string()
+    }
+}
+
 /// Pascal `GetDSSArray` for doubles: `''` for a NIL array, otherwise
 /// `[ v1 v2 ...]` with each value divided by `scale`.
 pub fn get_dss_array_f64(n: usize, dbls: Option<&[f64]>, scale: f64) -> String {
