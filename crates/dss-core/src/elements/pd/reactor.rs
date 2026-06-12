@@ -314,6 +314,11 @@ impl CktElement for Reactor {
         self.recalc();
     }
 
+    /// Pascal `TPDElement.IsShunt` (set by the Bus1/Bus2 side effects).
+    fn is_shunt(&self) -> bool {
+        self.is_shunt
+    }
+
     /// Pascal `TReactorObj.CalcYPrim`: stamp the reactor admittance by spec type
     /// into the shunt (or series) primitive, then mirror tiny diagonals into the
     /// other matrix so `CalcVoltages` never sees an all-zero row.

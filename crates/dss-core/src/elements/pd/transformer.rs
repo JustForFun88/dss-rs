@@ -322,6 +322,22 @@ impl Transformer {
         }
     }
 
+    /// Number of windings (`= NumberOfWindings = Nterms`). Used by RegControl.
+    pub fn num_windings(&self) -> i32 {
+        self.num_windings
+    }
+
+    /// `(PresentTap, MaxTap, MinTap, TapIncrement)` for 1-based winding `i`
+    /// (zeros out of range). RegControl's `TapNum` get/set work off this.
+    pub fn winding_tap_data(&self, i: usize) -> (f64, f64, f64, f64) {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            let w = &self.windings[i - 1];
+            (w.putap, w.max_tap, w.min_tap, w.tap_increment)
+        } else {
+            (0.0, 0.0, 0.0, 0.0)
+        }
+    }
+
     /// Pascal `Set_PresentTap` (1-based winding): clamp to the winding's
     /// Min/MaxTap and, only on a change, invalidate YPrim and recompute.
     pub fn set_present_tap(&mut self, i: usize, value: f64) {
@@ -1312,6 +1328,16 @@ impl DssObject for Transformer {
 
         self.num_amp_ratings = o.num_amp_ratings;
         self.kva_ratings.clone_from(&o.kva_ratings);
+    }
+
+    /// Target side of RegControl's deferred `TapNum` write (Pascal
+    /// `Set_TapNum` pokes `tr.PresentTap[w]` directly).
+    fn apply_ref_action(&mut self, action: &crate::obj::base::RefAction) {
+        match action {
+            crate::obj::base::RefAction::SetTransformerTap { winding, tap, .. } => {
+                self.set_present_tap(*winding, *tap);
+            }
+        }
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

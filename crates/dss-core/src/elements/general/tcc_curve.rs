@@ -7,29 +7,19 @@
 //! `Like=4`. The point arrays are sized by `NPts` (`PropertyOffset2`).
 
 use crate::obj::base::{DssObjData, DssObject};
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{PropDef, PropFlags, define_properties};
 
-/// 1-based property ordinals (Pascal `TTCC_CurveProp`).
-pub const NPTS: usize = 1;
-pub const C_ARRAY: usize = 2;
-pub const T_ARRAY: usize = 3;
-
-/// Build the `TCC_Curve` property table. Abbreviation matching stays on (only
-/// `GrowthShape` disables it).
-pub fn class_props() -> ClassProps {
-    ClassProps::new(
-        "TCC_Curve",
-        vec![
-            // NPts: integer point count; SuppressJSON in the original (inert in
-            // the text-dump path).
-            PropDef::integer("NPts").flags(PropFlags::SUPPRESS_JSON),
-            // C_Array / T_Array: point values, sized by NPts.
-            PropDef::double_array("C_Array", NPTS),
-            PropDef::double_array("T_Array", NPTS),
-        ],
-        true,
-    )
+// Pascal `TTCC_CurveProp` ordinals + the property table. Abbreviation matching
+// stays on (only `GrowthShape` disables it). `NPts` is SuppressJSON in the
+// original (inert in the text-dump path); the point arrays are sized by it.
+define_properties! {
+    class "TCC_Curve", abbrev true;
+    1 NPTS    => PropDef::integer("NPts").flags(PropFlags::SUPPRESS_JSON);
+    2 C_ARRAY => PropDef::double_array("C_Array", NPTS);
+    3 T_ARRAY => PropDef::double_array("T_Array", NPTS);
 }
+
+use prop::{C_ARRAY, NPTS, T_ARRAY};
 
 /// A `TCC_Curve` instance (`TTCC_CurveObj`).
 #[derive(Debug, Clone)]
@@ -47,14 +37,10 @@ pub struct TccCurveObj {
     log_t: Option<Vec<f64>>,
 }
 
-/// Number of properties this class exposes (`NPts`, `C_Array`, `T_Array`,
-/// `Like`).
-const NUM_PROPS: usize = 4;
-
 impl TccCurveObj {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), NUM_PROPS),
+            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
             npts: 0,
             c_values: None,
             t_values: None,
@@ -181,7 +167,7 @@ mod tests {
     /// Drive a sequence of `name=value` edits through the engine the way the
     /// executive's `Edit` loop will, then return the all-properties dump.
     fn edit_and_dump(edits: &[(&str, &str)]) -> Vec<(String, String)> {
-        let cls = class_props();
+        let cls = class_props(&EnumRegistry::new());
         let mut obj = TccCurveObj::new("test");
         let mut parser = Parser::new();
         let vars = ParserVars::new();
@@ -275,7 +261,7 @@ mod tests {
     fn log_points_track_c_array() {
         // CalcLogPoints side effect: log_c[i] = ln(c[i]).
         edit_and_dump(&[("npts", "2"), ("C_array", "1 100")]);
-        let cls = class_props();
+        let cls = class_props(&EnumRegistry::new());
         let mut obj = TccCurveObj::new("t");
         let mut parser = Parser::new();
         let vars = ParserVars::new();

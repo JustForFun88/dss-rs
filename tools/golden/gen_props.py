@@ -473,6 +473,129 @@ SCENARIOS = [
         ],
         "zero_garbage": ["RMatrix", "XMatrix"],
     },
+    # --- RegControl / CapControl (WP4.7, parse-only) ---
+    # Every scenario defines the referenced transformer/capacitor/line first;
+    # a RegControl without `transformer=` (or a CapControl without
+    # `capacitor=`) raises in the oracle (errors 124 / 303), and the replay
+    # asserts an error-free run.
+    {
+        "name": "regcontrol_basic",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=3 windings=2 buses=(sourcebus, b650) "
+            "conns=(delta wye) kvs=(115 4.16) kvas=(5000 5000) xhl=8",
+            "New RegControl.reg1 transformer=t1 winding=2 vreg=122 band=2 "
+            "ptratio=20 ctprim=700 R=3 X=9",
+        ],
+    },
+    {
+        "name": "regcontrol_full",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=1 windings=2 buses=(650.1, rg60.1) "
+            "kvs=(2.4 2.4) kvas=(1666 1666) xhl=0.01",
+            "New RegControl.reg1 transformer=t1 winding=2 vreg=122 band=2 "
+            "ptratio=20 ctprim=700 R=-0.201 X=3.348 delay=45 reversible=yes "
+            "revvreg=118 revband=4 revR=1.5 revX=2.5 tapdelay=3 maxtapchange=8 "
+            "inversetime=yes vlimit=126 revThreshold=150 revDelay=90 "
+            "revNeutral=yes EventLog=yes RemotePTRatio=25 LDC_Z=1.2 rev_Z=0.8 "
+            "Cogen=yes",
+        ],
+    },
+    {
+        "name": "regcontrol_ptphase_max",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=3 windings=2 buses=(sourcebus, b650) "
+            "kvs=(115 4.16) kvas=(5000 5000) xhl=8",
+            "New RegControl.reg1 transformer=t1 winding=1 PTphase=max bus=b650",
+        ],
+    },
+    {
+        "name": "regcontrol_tapnum",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=1 windings=2 buses=(650.1, rg60.1) "
+            "kvs=(2.4 2.4) kvas=(1666 1666) xhl=0.01",
+            "New RegControl.reg1 transformer=t1 winding=2 tapnum=5",
+        ],
+    },
+    {
+        "name": "regcontrol_makelike",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=1 windings=2 buses=(650.1, rg60.1) "
+            "kvs=(2.4 2.4) kvas=(1666 1666) xhl=0.01",
+            "New Transformer.t2 like=t1 buses=(650.2, rg60.2)",
+            "New RegControl.base transformer=t1 winding=2 vreg=124 band=2 "
+            "ptratio=20 ctprim=300 R=0.6 X=1.3",
+            "New RegControl.reg1 like=base transformer=t2 R=1.4 X=2.6",
+        ],
+    },
+    {
+        "name": "capcontrol_current",
+        "target": "CapControl.cc1",
+        "commands": [
+            "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
+            "New Line.l1 bus1=b632 bus2=b633 phases=3 r1=0.1 x1=0.2 c1=3 length=1",
+            "New CapControl.cc1 element=Line.l1 terminal=1 capacitor=cap1 "
+            "ctratio=80 onsetting=250 offsetting=150 delay=20 delayoff=25 "
+            "deadtime=120",
+        ],
+    },
+    {
+        "name": "capcontrol_kvar_voltoverride",
+        "target": "CapControl.cc1",
+        "commands": [
+            "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
+            "New Line.l1 bus1=b632 bus2=b633 phases=3 r1=0.1 x1=0.2 c1=3 length=1",
+            "New CapControl.cc1 element=Line.l1 terminal=2 capacitor=cap1 "
+            "type=kvar onsetting=150 offsetting=-50 voltoverride=yes vmax=128 "
+            "vmin=112 ptratio=34.67 pctMinkvar=60 EventLog=yes",
+        ],
+    },
+    {
+        "name": "capcontrol_voltage_phases",
+        "target": "CapControl.cc1",
+        "commands": [
+            "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
+            "New Line.l1 bus1=b632 bus2=b633 phases=3 r1=0.1 x1=0.2 c1=3 length=1",
+            "New CapControl.cc1 element=Line.l1 terminal=1 capacitor=cap1 "
+            "type=voltage onsetting=118 offsetting=126 ptratio=34.67 "
+            "PTPhase=max CTPhase=2",
+        ],
+    },
+    {
+        "name": "capcontrol_time_forces_terminal",
+        "target": "CapControl.cc1",
+        "commands": [
+            "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
+            "New CapControl.cc1 capacitor=cap1 type=time terminal=2 "
+            "onsetting=10 offsetting=14",
+        ],
+    },
+    {
+        "name": "capcontrol_pf",
+        "target": "CapControl.cc1",
+        "commands": [
+            "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
+            "New Line.l1 bus1=b632 bus2=b633 phases=3 r1=0.1 x1=0.2 c1=3 length=1",
+            "New CapControl.cc1 element=Line.l1 terminal=1 capacitor=cap1 "
+            "type=pf onsetting=0.97 offsetting=-0.99",
+        ],
+    },
+    {
+        "name": "capcontrol_makelike",
+        "target": "CapControl.cc1",
+        "commands": [
+            "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
+            "New Capacitor.cap2 bus1=b633 phases=3 kvar=300 kv=4.16",
+            "New Line.l1 bus1=b632 bus2=b633 phases=3 r1=0.1 x1=0.2 c1=3 length=1",
+            "New CapControl.base element=Line.l1 terminal=1 capacitor=cap1 "
+            "type=kvar onsetting=150 offsetting=-50 ptratio=34.67",
+            "New CapControl.cc1 like=base capacitor=cap2",
+        ],
+    },
 ]
 
 
