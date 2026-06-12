@@ -720,6 +720,863 @@
    }
   },
   {
+   "name": "xycurve_default",
+   "commands": [
+    "New XYcurve.c1"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "0",
+    "Points": "[ 0 0]",
+    "YArray": "",
+    "XArray": "",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "0",
+    "Y": "0",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_arrays",
+   "commands": [
+    "New XYcurve.c1 npts=4 yarray=(10 20 30 40) xarray=(1 2 3 4)"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "4",
+    "Points": "[ 1 10 2 20 3 30 4 40]",
+    "YArray": "[ 10 20 30 40]",
+    "XArray": "[ 1 2 3 4]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "1",
+    "Y": "10",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_abbrev",
+   "commands": [
+    "New XYcurve.c1 np=3 yarr=(0 5 10) xarr=(0 1 2)"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "3",
+    "Points": "[ 0 0 1 5 2 10]",
+    "YArray": "[ 0 5 10]",
+    "XArray": "[ 0 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "0",
+    "Y": "0",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_shift_scale",
+   "commands": [
+    "New XYcurve.c1 npts=3 xarray=(0 1 2) yarray=(0 10 20) xscale=2 yscale=3 xshift=1 yshift=5"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "3",
+    "Points": "[ 0 0 1 10 2 20]",
+    "YArray": "[ 0 10 20]",
+    "XArray": "[ 0 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "1",
+    "Y": "5",
+    "XShift": "1",
+    "YShift": "5",
+    "XScale": "2",
+    "YScale": "3",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_x_accessor",
+   "commands": [
+    "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+    "Edit XYcurve.c1 x=2.5"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "4",
+    "Points": "[ 1 10 2 20 3 30 4 40]",
+    "YArray": "[ 10 20 30 40]",
+    "XArray": "[ 1 2 3 4]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "2.5",
+    "Y": "25",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_shrink_npts",
+   "commands": [
+    "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+    "Edit XYcurve.c1 npts=2"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "2",
+    "Points": "[ 1 10 2 20]",
+    "YArray": "[ 10 20]",
+    "XArray": "[ 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "1",
+    "Y": "10",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_makelike",
+   "commands": [
+    "New XYcurve.base npts=3 xarray=(0 1 2) yarray=(5 7 9)",
+    "New XYcurve.c1 like=base"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "3",
+    "Points": "[ 0 5 1 7 2 9]",
+    "YArray": "[ 5 7 9]",
+    "XArray": "[ 0 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "0",
+    "Y": "0",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_default",
+   "commands": [
+    "New LoadShape.d"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Mult": "",
+    "Hour": "",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_fixed",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(1 2 4 8)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_abbrev",
+   "commands": [
+    "New LoadShape.d np=3 int=1 pmult=(0.5 0.9 1.0)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "1",
+    "Mult": "[ 0.5 0.9 1]",
+    "Hour": "",
+    "Mean": "0.8",
+    "StdDev": "0.264575131106459",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 0.5 0.9 1]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_pq",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(1 2 4 8) qmult=(.5 .6 .7 .8)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "[ 0.5 0.6 0.7 0.8]",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0.8",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_sinterval",
+   "commands": [
+    "New LoadShape.d npts=4 sinterval=900 mult=(1 2 4 8)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "900",
+    "MInterval": "15",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_minterval_useactual",
+   "commands": [
+    "New LoadShape.d npts=4 minterval=15 mult=(1 2 4 8) useactual=yes"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "Yes",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "900",
+    "MInterval": "15",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_hour_array",
+   "commands": [
+    "New LoadShape.d npts=3 interval=0 hour=(1 2 4) mult=(1 2 4)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Mult": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "4",
+    "QMax": "0",
+    "SInterval": "0",
+    "MInterval": "0",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_normalize",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) action=normalize"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 0.25 0.5 0.75 1]",
+    "Hour": "",
+    "Mean": "0.625",
+    "StdDev": "0.322748612183951",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 0.25 0.5 0.75 1]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_normalize_pbase",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) pbase=10 action=normalize"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 0.2 0.4 0.6 0.8]",
+    "Hour": "",
+    "Mean": "0.5",
+    "StdDev": "0.258198889747161",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "0.8",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "10",
+    "QBase": "0",
+    "PMult": "[ 0.2 0.4 0.6 0.8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_interp_edge",
+   "commands": [
+    "New LoadShape.d npts=5 interval=1 mult=(0.2 0.4 1.0 0.7 0.3) interpolation=edge"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "5",
+    "Interval": "1",
+    "Mult": "[ 0.2 0.4 1 0.7 0.3]",
+    "Hour": "",
+    "Mean": "0.52",
+    "StdDev": "0.327108544675922",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 0.2 0.4 1 0.7 0.3]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Edge",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_mean_stddev",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) mean=5 stddev=2"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 2 4 6 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_makelike",
+   "commands": [
+    "New LoadShape.base npts=3 interval=2 mult=(1 2 3) qmult=(4 5 6) pbase=7 useactual=yes",
+    "New LoadShape.d like=base"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Mult": "[ 1 2 3]",
+    "Hour": "",
+    "Mean": "2",
+    "StdDev": "1",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "[ 4 5 6]",
+    "UseActual": "Yes",
+    "PMax": "3",
+    "QMax": "6",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "PBase": "7",
+    "QBase": "0",
+    "PMult": "[ 1 2 3]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_default",
+   "commands": [
+    "New TShape.t"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Temp": "",
+    "Hour": "",
+    "Mean": "0",
+    "StdDev": "0",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_fixed",
+   "commands": [
+    "New TShape.t npts=4 interval=1 temp=(20 30 50 80)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Temp": "[ 20 30 50 80]",
+    "Hour": "",
+    "Mean": "45",
+    "StdDev": "26.4575131106459",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_sinterval",
+   "commands": [
+    "New TShape.t npts=4 sinterval=900 temp=(1 2 4 8)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Temp": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_minterval",
+   "commands": [
+    "New TShape.t npts=4 minterval=15 temp=(1 2 4 8)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Temp": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_hour_interval0",
+   "commands": [
+    "New TShape.t npts=3 interval=0 hour=(1 2 4) temp=(1 2 4)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Temp": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "0",
+    "MInterval": "0",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_hour_no_interval",
+   "commands": [
+    "New TShape.t npts=3 hour=(1 2 4) temp=(1 2 4)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "1",
+    "Temp": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.33333333333333",
+    "StdDev": "1.52752523165195",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_mean_stddev",
+   "commands": [
+    "New TShape.t npts=4 interval=1 temp=(20 30 50 80) mean=5 stddev=2"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Temp": "[ 20 30 50 80]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_makelike",
+   "commands": [
+    "New TShape.base npts=3 interval=2 temp=(11 22 33)",
+    "New TShape.t like=base"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Temp": "[ 11 22 33]",
+    "Hour": "",
+    "Mean": "22",
+    "StdDev": "11",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_default",
+   "commands": [
+    "New PriceShape.d"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Price": "",
+    "Hour": "",
+    "Mean": "0",
+    "StdDev": "0",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_fixed",
+   "commands": [
+    "New PriceShape.d npts=4 interval=1 price=(2 4 6 8)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Price": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2.58198889747161",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_sinterval",
+   "commands": [
+    "New PriceShape.d npts=4 sinterval=900 price=(1 2 4 8)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Price": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_hour",
+   "commands": [
+    "New PriceShape.d npts=3 hour=(1 2 4) price=(1 2 4)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Price": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "0",
+    "MInterval": "0",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_mean_stddev",
+   "commands": [
+    "New PriceShape.d npts=4 interval=1 price=(2 4 6 8) mean=5 stddev=2"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Price": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_makelike",
+   "commands": [
+    "New PriceShape.base npts=3 interval=2 price=(11 22 33)",
+    "New PriceShape.d like=base"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Price": "[ 11 22 33]",
+    "Hour": "",
+    "Mean": "22",
+    "StdDev": "11",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
    "name": "xfmrcode_default",
    "commands": [
     "New XfmrCode.xc1"

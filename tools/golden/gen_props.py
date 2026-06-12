@@ -238,6 +238,215 @@ SCENARIOS = [
             "New GrowthShape.gs1 like=base",
         ],
     },
+    # --- XYcurve (WP5.1) ---
+    # NOTE: `points=` triggers an access violation in the pinned oracle (a
+    # dss_capi `DoubleDArrayProperty` bug), so the arrays are driven through
+    # `xarray`/`yarray`; the `Points` getter is still validated by readback.
+    {
+        "name": "xycurve_default",
+        "target": "XYcurve.c1",
+        "commands": ["New XYcurve.c1"],
+    },
+    {
+        "name": "xycurve_arrays",
+        "target": "XYcurve.c1",
+        "commands": ["New XYcurve.c1 npts=4 yarray=(10 20 30 40) xarray=(1 2 3 4)"],
+    },
+    {
+        "name": "xycurve_abbrev",
+        "target": "XYcurve.c1",
+        "commands": ["New XYcurve.c1 np=3 yarr=(0 5 10) xarr=(0 1 2)"],
+    },
+    {
+        "name": "xycurve_shift_scale",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.c1 npts=3 xarray=(0 1 2) yarray=(0 10 20) "
+            "xscale=2 yscale=3 xshift=1 yshift=5",
+        ],
+    },
+    {
+        "name": "xycurve_x_accessor",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+            "Edit XYcurve.c1 x=2.5",
+        ],
+    },
+    {
+        "name": "xycurve_shrink_npts",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+            "Edit XYcurve.c1 npts=2",
+        ],
+    },
+    {
+        "name": "xycurve_makelike",
+        "target": "XYcurve.c1",
+        "commands": [
+            "New XYcurve.base npts=3 xarray=(0 1 2) yarray=(5 7 9)",
+            "New XYcurve.c1 like=base",
+        ],
+    },
+    # --- LoadShape (WP5.2a, in-memory core) ---
+    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are NOT_PORTED here; the
+    # CSVFile scenario arrives in WP5.2b. Mean/StdDev on the empty default raise
+    # (61107) in the oracle, so they are skipped for that one scenario only.
+    {
+        "name": "loadshape_default",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d"],
+        "skip_props": ["Mean", "StdDev"],
+    },
+    {
+        "name": "loadshape_fixed",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 interval=1 mult=(1 2 4 8)"],
+    },
+    {
+        "name": "loadshape_abbrev",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d np=3 int=1 pmult=(0.5 0.9 1.0)"],
+    },
+    {
+        "name": "loadshape_pq",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.d npts=4 interval=1 mult=(1 2 4 8) qmult=(.5 .6 .7 .8)",
+        ],
+    },
+    {
+        "name": "loadshape_sinterval",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 sinterval=900 mult=(1 2 4 8)"],
+    },
+    {
+        "name": "loadshape_minterval_useactual",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 minterval=15 mult=(1 2 4 8) useactual=yes"],
+    },
+    {
+        "name": "loadshape_hour_array",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=3 interval=0 hour=(1 2 4) mult=(1 2 4)"],
+    },
+    {
+        "name": "loadshape_normalize",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) action=normalize"],
+    },
+    {
+        "name": "loadshape_normalize_pbase",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) pbase=10 action=normalize",
+        ],
+    },
+    {
+        "name": "loadshape_interp_edge",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.d npts=5 interval=1 mult=(0.2 0.4 1.0 0.7 0.3) interpolation=edge",
+        ],
+    },
+    {
+        "name": "loadshape_mean_stddev",
+        "target": "LoadShape.d",
+        "commands": ["New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) mean=5 stddev=2"],
+    },
+    {
+        "name": "loadshape_makelike",
+        "target": "LoadShape.d",
+        "commands": [
+            "New LoadShape.base npts=3 interval=2 mult=(1 2 3) qmult=(4 5 6) "
+            "pbase=7 useactual=yes",
+            "New LoadShape.d like=base",
+        ],
+    },
+    # --- TShape / TempShape (WP5.2c). Legacy scalar shape; CSVFile is exercised
+    # by the executive integration test, not here. Empty Mean/StdDev return 0
+    # (no error, unlike LoadShape), so no skip_props is needed.
+    {
+        "name": "tshape_default",
+        "target": "TShape.t",
+        "commands": ["New TShape.t"],
+    },
+    {
+        "name": "tshape_fixed",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 interval=1 temp=(20 30 50 80)"],
+    },
+    {
+        "name": "tshape_sinterval",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 sinterval=900 temp=(1 2 4 8)"],
+    },
+    {
+        "name": "tshape_minterval",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 minterval=15 temp=(1 2 4 8)"],
+    },
+    {
+        "name": "tshape_hour_interval0",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=3 interval=0 hour=(1 2 4) temp=(1 2 4)"],
+    },
+    # Distinguishing case: TempShape (unlike PriceShape) does NOT auto-zero
+    # Interval when Hour is given, so this stays a fixed-interval curve.
+    {
+        "name": "tshape_hour_no_interval",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=3 hour=(1 2 4) temp=(1 2 4)"],
+    },
+    {
+        "name": "tshape_mean_stddev",
+        "target": "TShape.t",
+        "commands": ["New TShape.t npts=4 interval=1 temp=(20 30 50 80) mean=5 stddev=2"],
+    },
+    {
+        "name": "tshape_makelike",
+        "target": "TShape.t",
+        "commands": [
+            "New TShape.base npts=3 interval=2 temp=(11 22 33)",
+            "New TShape.t like=base",
+        ],
+    },
+    # --- PriceShape (WP5.2c). Same skeleton; Hour auto-zeroes Interval.
+    {
+        "name": "priceshape_default",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d"],
+    },
+    {
+        "name": "priceshape_fixed",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=4 interval=1 price=(2 4 6 8)"],
+    },
+    {
+        "name": "priceshape_sinterval",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=4 sinterval=900 price=(1 2 4 8)"],
+    },
+    # Hour given without interval=0: PriceShape auto-sets a variable interval.
+    {
+        "name": "priceshape_hour",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=3 hour=(1 2 4) price=(1 2 4)"],
+    },
+    {
+        "name": "priceshape_mean_stddev",
+        "target": "PriceShape.d",
+        "commands": ["New PriceShape.d npts=4 interval=1 price=(2 4 6 8) mean=5 stddev=2"],
+    },
+    {
+        "name": "priceshape_makelike",
+        "target": "PriceShape.d",
+        "commands": [
+            "New PriceShape.base npts=3 interval=2 price=(11 22 33)",
+            "New PriceShape.d like=base",
+        ],
+    },
     {
         "name": "xfmrcode_default",
         "target": "XfmrCode.xc1",
@@ -632,8 +841,15 @@ def run_scenario(d, scenario: dict) -> dict:
     # rewritten to 0, so only the structural skeleton is pinned. The Rust engine
     # emits the same zero matrix (a deterministic repro of the broken getter).
     zero_garbage = {e.lower() for e in scenario.get("zero_garbage", [])}
+    # Properties whose oracle getter is a hard error for this scenario's state
+    # (e.g. LoadShape Mean/StdDev on an empty shape raise 61107) are not pinned;
+    # the Rust engine simply never queries them. The covering scenarios still
+    # pin them in their non-empty states.
+    skip_props = {e.lower() for e in scenario.get("skip_props", [])}
     props = {}
     for name in names:
+        if name.lower() in skip_props:
+            continue
         d.Text.Command = f"? {target}.{name}"
         value = d.Text.Result
         if name.lower() in zero_garbage:

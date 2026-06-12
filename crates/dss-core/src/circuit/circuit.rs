@@ -66,6 +66,9 @@ pub struct Circuit {
     pub fundamental: f64,
     pub is_solved: bool,
     pub bus_name_redefined: bool,
+    /// `Control_BusNameRedefined`: raised with `bus_name_redefined`, cleared by
+    /// the control loop at the end of `Sample_DoControlActions`.
+    pub control_bus_name_redefined: bool,
     pub solution_was_attempted: bool,
 
     pub load_multiplier: f64,
@@ -79,6 +82,23 @@ pub struct Circuit {
     pub zones_locked: bool,
     pub meter_zones_computed: bool,
     pub log_events: bool,
+    /// `TrapezoidalIntegration` (meter integration rule; reset by `Set mode=`).
+    pub trapezoidal_integration: bool,
+
+    /// `DefaultHourMult`: the circuit-wide multiplier SolveDaily/Yearly derive
+    /// from the default shape each step (consumed by generator dispatch, which
+    /// is Phase 6+; kept faithfully nonetheless).
+    pub default_hour_mult: Complex64,
+    /// `PriceSignal` ($/MWh) and the `PriceCurveObj` that drives it in the
+    /// time-series modes (`Set pricecurve=`). The shape is snapshot-cloned at
+    /// `Set` time exactly like the Load/VSource shape refs (STATUS §1c WP5.3).
+    pub price_signal: f64,
+    pub price_curve_obj: Option<crate::elements::general::price_shape::PriceShapeObj>,
+    /// `DefaultDailyShapeObj`/`DefaultYearlyShapeObj`: both resolve to the
+    /// built-in `loadshape.default` at circuit creation; `Set defaultdaily=` /
+    /// `Set defaultyearly=` replace them (again by snapshot clone).
+    pub default_daily_shape_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
+    pub default_yearly_shape_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
 
     pub normal_min_volts: f64,
     pub normal_max_volts: f64,
@@ -121,6 +141,7 @@ impl Circuit {
             // build to create the bus/node lists (SystemYChanged starts true
             // in the Solution ctor, matching the setter's side effect).
             bus_name_redefined: true,
+            control_bus_name_redefined: true,
             solution_was_attempted: false,
             load_multiplier: 1.0,
             gen_multiplier: 1.0,
@@ -133,6 +154,14 @@ impl Circuit {
             zones_locked: false,
             meter_zones_computed: false,
             log_events: false,
+            trapezoidal_integration: false,
+            // FPC zero-initializes the field; the first time-series step
+            // overwrites it from the default shape.
+            default_hour_mult: Complex64::ZERO,
+            price_signal: 25.0, // $25/MWH
+            price_curve_obj: None,
+            default_daily_shape_obj: None,
+            default_yearly_shape_obj: None,
             normal_min_volts: 0.95,
             normal_max_volts: 1.05,
             emerg_min_volts: 0.90,
@@ -350,11 +379,13 @@ impl Circuit {
     }
 
     /// Pascal `Set_BusNameRedefined`: raising the flag also forces a Y
-    /// rebuild on the next solution.
+    /// rebuild on the next solution and tells the controls the bus list
+    /// changed (`Control_BusNameRedefined`).
     pub fn set_bus_name_redefined(&mut self, value: bool) {
         self.bus_name_redefined = value;
         if value {
             self.solution.system_y_changed = true;
+            self.control_bus_name_redefined = true;
         }
     }
 

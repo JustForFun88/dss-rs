@@ -237,6 +237,14 @@ pub struct EnumRegistry {
     pub mon_phase: EnumId,
     /// 'CapControl: Type' (CapControl.pas `TypeEnum`).
     pub cap_control_type: EnumId,
+    /// 'LoadShape: Action' (LoadShape.pas `ActionEnum`).
+    pub load_shape_action: EnumId,
+    /// 'LoadShape: Interpolation' (LoadShape.pas `InterpEnum`).
+    pub load_shape_interp: EnumId,
+    /// 'TShape: Action' (TempShape.pas `ActionEnum`).
+    pub t_shape_action: EnumId,
+    /// 'PriceShape: Action' (PriceShape.pas `ActionEnum`).
+    pub price_shape_action: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -532,6 +540,47 @@ impl EnumRegistry {
             &[0, 1, 2, 3, 4, 5],
         ));
 
+        // LoadShape.pas: ActionEnum (sequential, 1 char). No default — an
+        // unknown action raises, like the original.
+        let load_shape_action = push(DssEnum::new(
+            "LoadShape: Action",
+            true,
+            1,
+            1,
+            &["Normalize", "DblSave", "SngSave"],
+            &[0, 1, 2],
+        ));
+
+        // LoadShape.pas: InterpEnum (Avg/Edge). No default — unknown raises.
+        let load_shape_interp = push(DssEnum::new(
+            "LoadShape: Interpolation",
+            true,
+            1,
+            1,
+            &["Avg", "Edge"],
+            &[0, 1],
+        ));
+
+        // TempShape.pas / PriceShape.pas: ActionEnum (DblSave/SngSave). Both
+        // actions write binary files and are NOT_PORTED; the enum still parses
+        // the names so a bad action raises like the original. No Normalize.
+        let t_shape_action = push(DssEnum::new(
+            "TShape: Action",
+            true,
+            1,
+            1,
+            &["DblSave", "SngSave"],
+            &[0, 1],
+        ));
+        let price_shape_action = push(DssEnum::new(
+            "PriceShape: Action",
+            true,
+            1,
+            1,
+            &["DblSave", "SngSave"],
+            &[0, 1],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -554,6 +603,10 @@ impl EnumRegistry {
             reg_control_phase,
             mon_phase,
             cap_control_type,
+            load_shape_action,
+            load_shape_interp,
+            t_shape_action,
+            price_shape_action,
         }
     }
 

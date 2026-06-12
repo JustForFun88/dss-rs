@@ -43,6 +43,10 @@ pub enum PropType {
     DoubleSymMatrix,
     MappedStringEnum,
     MappedIntEnum,
+    /// `StringEnumActionProperty`: the parsed value maps to an enum ordinal and
+    /// immediately triggers an action ([`DssObject::do_action`]) — e.g. a
+    /// LoadShape `Action=normalize`. Stores nothing; the getter is always empty.
+    Action,
     /// `BusProperty`: the value is a bus spec for terminal `size_prop`
     /// (1-based), written via [`DssObject::set_bus_name`].
     Bus,
@@ -69,6 +73,12 @@ pub enum PropType {
     /// whose element count is computed by the object ([`DssObject::array_size`]),
     /// e.g. a transformer `XSCArray` (length `(NumWindings-1)·NumWindings/2`).
     DoubleVArray,
+    /// `DoubleDArrayProperty` with `WriteByFunction`/`SizeIsFunction`: an
+    /// interleaved `(x, y)` point list (e.g. an XYcurve `Points`). The write
+    /// reads however many doubles are present and routes them through
+    /// [`DssObject::set_points`]; the read interleaves the X/Y arrays via
+    /// [`DssObject::get_points`].
+    DoublePoints,
     /// `DoubleArrayOnStructArrayProperty`: writes one double per struct-array
     /// entry (e.g. a transformer `kVs` → each winding's `kVLL`). The count is
     /// the integer property `size_prop` (`NumWindings`); omitted tokens keep the
@@ -236,6 +246,14 @@ impl PropDef {
             ..Self::base(name, PropType::MappedIntEnum)
         }
     }
+    /// `StringEnumActionProperty`: `enum_id` maps the value to an action ordinal
+    /// dispatched through [`DssObject::do_action`] (e.g. a LoadShape `Action`).
+    pub fn action(name: &'static str, enum_id: EnumId) -> Self {
+        Self {
+            enum_id: Some(enum_id),
+            ..Self::base(name, PropType::Action)
+        }
+    }
     /// `BusProperty` for `terminal` (1-based, Pascal `PropertyOffset`).
     pub fn bus(name: &'static str, terminal: usize) -> Self {
         Self {
@@ -296,6 +314,11 @@ impl PropDef {
     /// ([`DssObject::array_size`]); e.g. a transformer `XSCArray`.
     pub fn double_v_array(name: &'static str) -> Self {
         Self::base(name, PropType::DoubleVArray)
+    }
+    /// `DoubleDArrayProperty` (interleaved `(x, y)` point list), e.g. an
+    /// XYcurve `Points`.
+    pub fn double_points(name: &'static str) -> Self {
+        Self::base(name, PropType::DoublePoints)
     }
     /// `DoubleArrayOnStructArrayProperty` over `count_prop` struct entries
     /// (the 1-based ordinal of the count integer, e.g. `Windings`).
@@ -553,6 +576,17 @@ impl ClassProps {
                 };
                 Ok(set_obj_integer(pd, obj, idx, ord, eng, &full))
             }
+            PropType::Action => {
+                // Pascal `StringEnumActionProperty`: map the value to an action
+                // ordinal, then run it immediately (no field is stored).
+                let enum_id = pd.enum_id.expect("action property needs an enum");
+                let ord = eng
+                    .enums
+                    .get(enum_id)
+                    .string_to_ordinal(&value.to_lowercase())?;
+                obj.do_action(ord, eng.errors);
+                Ok(0)
+            }
             PropType::String => {
                 let v = if pd.flags.contains(PropFlags::TRANSFORM_LOWERCASE) {
                     value.to_lowercase()
@@ -641,6 +675,13 @@ impl ClassProps {
                     }
                 }
                 obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
+            PropType::DoublePoints => {
+                // Pascal `SetPoints`: read every double present (the count is
+                // not bounded by a size property), then split into (x, y) pairs.
+                let buf = crate::util::interpret_dbl_array_dynamic(eng.parser, eng.vars, value)?;
+                obj.set_points(buf);
                 Ok(0)
             }
             PropType::DoubleArrayOnStruct => {
@@ -745,11 +786,15 @@ impl ClassProps {
             PropType::Integer => obj.get_i32(idx).to_string(),
             PropType::Boolean | PropType::Enabled => str_y_or_n(obj.get_bool(idx)).to_string(),
             PropType::String | PropType::ObjectRef => obj.get_string(idx),
-            PropType::MakeLike => String::new(), // Pascal: always ''
-            PropType::MappedStringEnum | PropType::MappedIntEnum => {
+            PropType::MakeLike | PropType::Action => String::new(), // Pascal: always ''
+            PropType::MappedStringEnum => {
                 let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
                 enums.get(enum_id).ordinal_to_string(obj.get_i32(idx))
             }
+            // Pascal `GetPropertyValue` renders MappedIntEnumProperty with
+            // `IntToStr` (the ordinal), unlike the string-enum name above
+            // (`DSSObjectHelper.pas` l.2241).
+            PropType::MappedIntEnum => obj.get_i32(idx).to_string(),
             PropType::DoubleArray => {
                 let n = obj.get_i32(pd.size_prop).max(0) as usize;
                 get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)
@@ -794,6 +839,12 @@ impl ClassProps {
             }
             PropType::DoubleVArray => {
                 get_dss_array_f64(obj.array_size(idx), obj.get_f64_array(idx), pd.scale)
+            }
+            PropType::DoublePoints => {
+                // Pascal `GetPoints`: interleaved `[x0 y0 x1 y1 ...]`, length
+                // `2·NumPoints`.
+                let pts = obj.get_points();
+                get_dss_array_f64(pts.len(), Some(&pts), 1.0)
             }
             PropType::DoubleArrayOnStruct => {
                 // Pascal: `[` + `%g, ` per entry (field / scale) + `]`.
@@ -893,6 +944,9 @@ impl ClassProps {
 /// }
 /// ```
 macro_rules! define_properties {
+    // No-enums form: the property builders never touch the enum registry. The
+    // generated parameter keeps macro hygiene, so the builders cannot reference
+    // it (they don't need to).
     (
         class $class:literal, abbrev $abbrev:literal;
         $( $ord:literal $name:ident => $def:expr; )+
@@ -911,6 +965,33 @@ macro_rules! define_properties {
             #[allow(unused_imports)]
             use prop::*;
             let _ = enums; // classes without mapped enums ignore the registry
+            let defs = vec![ $( $def ),+ ];
+            debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
+            $crate::obj::props::ClassProps::new($class, defs, $abbrev)
+        }
+    };
+
+    // Enums form: the caller names the registry binding (`enums <ident>`) so the
+    // property builder expressions can reference it (`enums.load_shape_action`)
+    // under the caller's hygiene context.
+    (
+        class $class:literal, abbrev $abbrev:literal, enums $enums:ident;
+        $( $ord:literal $name:ident => $def:expr; )+
+    ) => {
+        /// 1-based property ordinals (generated by `define_properties!`).
+        pub mod prop {
+            $( pub const $name: usize = $ord; )+
+            /// Property count including the auto-appended `Like`.
+            pub const NUM_PROPS: usize = [$($ord),+].len() + 1;
+        }
+
+        /// Class property table (generated by `define_properties!`).
+        pub fn class_props(
+            $enums: &$crate::obj::dss_enum::EnumRegistry,
+        ) -> $crate::obj::props::ClassProps {
+            #[allow(unused_imports)]
+            use prop::*;
+            let _ = &$enums; // some builders reference it, some don't
             let defs = vec![ $( $def ),+ ];
             debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
             $crate::obj::props::ClassProps::new($class, defs, $abbrev)

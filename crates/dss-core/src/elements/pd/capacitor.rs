@@ -286,6 +286,64 @@ impl Capacitor {
         self.flast_step_in_service = value;
     }
 
+    /// Pascal `set_States(Idx, Value)` (1-based `idx`): set step `idx` on/off,
+    /// invalidating `YPrim` only when the state actually changes (the non-
+    /// incremental-Y path).
+    fn set_states(&mut self, idx: usize, value: i32) {
+        if self.fstates[idx - 1] != value {
+            self.fstates[idx - 1] = value;
+            self.cd.yprim_invalid = true;
+        }
+    }
+
+    /// Pascal `TCapacitorObj.AddStep`: energize the next step (starting from the
+    /// last step in service); `false` if all steps are already in.
+    fn add_step(&mut self) -> bool {
+        if self.flast_step_in_service == self.fnumsteps {
+            false
+        } else {
+            self.flast_step_in_service += 1;
+            self.set_states(self.flast_step_in_service as usize, 1);
+            true
+        }
+    }
+
+    /// Pascal `TCapacitorObj.SubtractStep`: de-energize the highest step; returns
+    /// `false` once the bank is fully open (signals "bank OPEN").
+    fn subtract_step(&mut self) -> bool {
+        if self.flast_step_in_service == 0 {
+            false
+        } else {
+            self.set_states(self.flast_step_in_service as usize, 0);
+            self.flast_step_in_service -= 1;
+            self.flast_step_in_service != 0
+        }
+    }
+
+    /// Pascal `TCapacitorObj.AvailableSteps`.
+    fn available_steps(&self) -> i32 {
+        self.fnumsteps - self.flast_step_in_service
+    }
+
+    /// Pascal `Closed[0]` getter on terminal 1 (`TDSSCktElement.Get_ConductorClosed(0)`):
+    /// true iff every phase conductor of terminal 1 is closed.
+    fn terminal1_closed(&self) -> bool {
+        let t = &self.cd.terminals[0];
+        (0..self.cd.nphases).all(|i| t.conductors_closed[i])
+    }
+
+    /// Pascal `Closed[0] := value` on terminal 1
+    /// (`TDSSCktElement.Set_ConductorClosed(0, value)`): open/close all phase
+    /// conductors of terminal 1 and invalidate `YPrim`.
+    fn set_terminal1_closed(&mut self, value: bool) {
+        let nph = self.cd.nphases;
+        let t = &mut self.cd.terminals[0];
+        for i in 0..nph {
+            t.conductors_closed[i] = value;
+        }
+        self.cd.yprim_invalid = true;
+    }
+
     /// Pascal `RecalcElementData`: derive `FC`/`FTotalkvar` from the spec, run
     /// the optional harmonic-filter recomputation, and (unless overridden) the
     /// default Norm/Emerg current ratings.
@@ -510,6 +568,62 @@ impl CktElement for Capacitor {
     }
 }
 
+/// The controlled-capacitor surface CapControl's `Sample`/`DoPendingAction`
+/// read and mutate (Pascal `TCapacitorObj` switching methods). A trait so the
+/// CapControl switching logic is unit-testable against a lightweight mock;
+/// [`Capacitor`] is the production implementor. Step indices are 1-based as in
+/// Pascal.
+pub trait ControlledCapacitor {
+    /// `ControlledElement.FullName` for the event log (`Capacitor.<name>`).
+    fn full_name(&self) -> String;
+    /// `NumSteps`.
+    fn num_steps(&self) -> i32;
+    /// `AvailableSteps` (`NumSteps − LastStepInService`).
+    fn available_steps(&self) -> i32;
+    /// `Totalkvar` of the bank.
+    fn total_kvar(&self) -> f64;
+    /// `Connection` (0 = wye, 1 = delta) — selects the L-L voltage for control.
+    fn connection(&self) -> i32;
+    /// `Closed[0]`: every phase of terminal 1 closed.
+    fn is_closed(&self) -> bool;
+    /// `Closed[0] := value`: open/close all phases of terminal 1 (invalidates Y).
+    fn set_closed(&mut self, value: bool);
+    /// `AddStep`: energize the next step; `false` if all steps already in.
+    fn add_step(&mut self) -> bool;
+    /// `SubtractStep`: de-energize the highest step; `false` once fully open.
+    fn subtract_step(&mut self) -> bool;
+}
+
+impl ControlledCapacitor for Capacitor {
+    fn full_name(&self) -> String {
+        format!("Capacitor.{}", self.cd.obj.name())
+    }
+    fn num_steps(&self) -> i32 {
+        self.fnumsteps
+    }
+    fn available_steps(&self) -> i32 {
+        Capacitor::available_steps(self)
+    }
+    fn total_kvar(&self) -> f64 {
+        self.ftotalkvar
+    }
+    fn connection(&self) -> i32 {
+        self.connection
+    }
+    fn is_closed(&self) -> bool {
+        self.terminal1_closed()
+    }
+    fn set_closed(&mut self, value: bool) {
+        self.set_terminal1_closed(value);
+    }
+    fn add_step(&mut self) -> bool {
+        Capacitor::add_step(self)
+    }
+    fn subtract_step(&mut self) -> bool {
+        Capacitor::subtract_step(self)
+    }
+}
+
 impl DssObject for Capacitor {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -518,6 +632,9 @@ impl DssObject for Capacitor {
         &mut self.cd.obj
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {

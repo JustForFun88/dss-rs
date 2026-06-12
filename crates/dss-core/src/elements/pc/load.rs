@@ -9,7 +9,9 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::{CktElement, InjCtx, SysCtx};
+use crate::elements::general::growth_shape::GrowthShapeObj;
+use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -119,10 +121,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kW"),
         PropDef::double("pf"),
         PropDef::mapped_int_enum("model", enums.load_model),
-        PropDef::object_ref("yearly"),
-        PropDef::object_ref("daily"),
-        PropDef::object_ref("duty"),
-        PropDef::object_ref("growth"),
+        PropDef::object_ref_class("LoadShape", "yearly"),
+        PropDef::object_ref_class("LoadShape", "daily"),
+        PropDef::object_ref_class("LoadShape", "duty"),
+        PropDef::object_ref_class("GrowthShape", "growth"),
         PropDef::mapped_string_enum("conn", enums.connection),
         PropDef::double("kvar"),
         PropDef::double("Rneut"),
@@ -143,7 +145,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kwh"),
         PropDef::double("kwhdays"),
         PropDef::double("Cfactor"),
-        PropDef::object_ref("CVRcurve"),
+        PropDef::object_ref_class("LoadShape", "CVRcurve"),
         PropDef::integer("NumCust"),
         PropDef::double_f_array("ZIPV", 7),
         PropDef::double("%SeriesRL").scale(0.01),
@@ -240,6 +242,27 @@ pub struct Load {
     pub growth_shape: String,
     pub cvr_shape: String,
     pub spectrum: String,
+
+    /// Resolved shape objects (Pascal `YearlyShapeObj` etc.). Like
+    /// `FetchLineCode`, the referenced object is snapshot-cloned at parse time
+    /// (PHASE4_PLAN §3.4): `set_nominal_load` then drives `GetMultAtHour` on the
+    /// owned copy, since the solve path only carries scalar `SysCtx`. Each
+    /// `_ref` is the resolved object's stable [`ElemRef`] (kept for parity with
+    /// the §3.1 reference pattern; the clone is self-sufficient for the lookup).
+    pub yearly_shape_obj: Option<LoadShapeObj>,
+    pub daily_shape_obj: Option<LoadShapeObj>,
+    pub duty_shape_obj: Option<LoadShapeObj>,
+    pub cvr_shape_obj: Option<LoadShapeObj>,
+    pub growth_shape_obj: Option<GrowthShapeObj>,
+    pub yearly_shape_ref: Option<ElemRef>,
+    pub daily_shape_ref: Option<ElemRef>,
+    pub duty_shape_ref: Option<ElemRef>,
+    pub cvr_shape_ref: Option<ElemRef>,
+    pub growth_shape_ref: Option<ElemRef>,
+
+    /// Pascal `ShapeFactor`: the (P, Q) multiplier from the active shape in a
+    /// time-series mode; `(1, 1)` otherwise. Recomputed each `SetNominalLoad`.
+    pub shape_factor: Complex64,
 }
 
 /// Pascal `SetNcondsForConnection`.
@@ -337,26 +360,106 @@ impl Load {
             growth_shape: String::new(),
             cvr_shape: String::new(),
             spectrum: "defaultload".to_string(),
+            yearly_shape_obj: None,
+            daily_shape_obj: None,
+            duty_shape_obj: None,
+            cvr_shape_obj: None,
+            growth_shape_obj: None,
+            yearly_shape_ref: None,
+            daily_shape_ref: None,
+            duty_shape_ref: None,
+            cvr_shape_ref: None,
+            growth_shape_ref: None,
+            shape_factor: CDOUBLEONE,
         };
         load.cd.inj_current = vec![Complex64::ZERO; load.cd.yorder];
         load.recalc(&default_recalc_ctx());
         load
     }
 
-    /// Pascal `GrowthFactor` (no growth shapes yet: year 0 → 1.0, else the
-    /// circuit default growth factor).
+    /// Pascal `GrowthFactor`: year 0 → 1.0 (use base values); otherwise the
+    /// `GrowthShape`'s `GetMult(Year)` when one is assigned, else the circuit
+    /// default growth factor. (Pascal never updates `LastYear` here, so a fresh
+    /// `Year <> LastYear` always re-reads the curve — ported verbatim.)
     fn growth_factor(&mut self, year: i32, default_growth_factor: f64) -> f64 {
         if year == 0 {
             self.last_growth_factor = 1.0;
-        } else if self.growth_shape.is_empty() {
+        } else if let Some(gs) = self.growth_shape_obj.as_mut() {
+            if year != self.last_year {
+                self.last_growth_factor = gs.get_mult(year);
+            }
+        } else {
             self.last_growth_factor = default_growth_factor;
         }
         self.last_growth_factor
     }
 
+    /// Pascal `CalcDailyMult`: set `ShapeFactor`/`ShapeIsActual` from the daily
+    /// shape (default `(1, 1)` when none).
+    fn calc_daily_mult(&mut self, hr: f64) {
+        if let Some(s) = self.daily_shape_obj.as_mut() {
+            self.shape_factor = s.get_mult_at_hour(hr);
+            self.shape_is_actual = s.use_actual();
+        } else {
+            self.shape_factor = CDOUBLEONE;
+        }
+    }
+
+    /// Pascal `CalcDutyMult`: falls back to the daily shape when no duty shape.
+    fn calc_duty_mult(&mut self, hr: f64) {
+        if let Some(s) = self.duty_shape_obj.as_mut() {
+            self.shape_factor = s.get_mult_at_hour(hr);
+            self.shape_is_actual = s.use_actual();
+        } else {
+            self.calc_daily_mult(hr);
+        }
+    }
+
+    /// Pascal `CalcYearlyMult` (the yearly curve is assumed hourly).
+    fn calc_yearly_mult(&mut self, hr: f64) {
+        if let Some(s) = self.yearly_shape_obj.as_mut() {
+            self.shape_factor = s.get_mult_at_hour(hr);
+            self.shape_is_actual = s.use_actual();
+        } else {
+            self.shape_factor = CDOUBLEONE;
+        }
+    }
+
+    /// Pascal `CalcCVRMult` (used in yearly simulations of model-4 CVR loads):
+    /// the CVR shape supplies time-varying watt/var factors. Leaves them
+    /// unchanged when no CVR shape is assigned.
+    fn calc_cvr_mult(&mut self, hr: f64) {
+        if let Some(s) = self.cvr_shape_obj.as_mut() {
+            let f = s.get_mult_at_hour(hr);
+            self.cvr_watt_factor = f.re;
+            self.cvr_var_factor = f.im;
+        }
+    }
+
+    /// Pascal `SetkWkvar`: set the base kW/kvar directly (used by the
+    /// `UseActual` shape side effects), with the property-sequence bookkeeping
+    /// and `LoadSpecType` selection that the text path performs.
+    fn set_kw_kvar(&mut self, p_kw: f64, q_kvar: f64) {
+        use prop::*;
+        self.kw_base = p_kw;
+        self.kvar_base = q_kvar;
+        self.cd.obj.clear_seq(KVA);
+        self.cd.obj.clear_seq(KWH);
+        self.cd.obj.clear_seq(XFKVA);
+        if self.pf_specified {
+            self.cd.obj.set_as_next_seq(PF);
+            self.cd.obj.clear_seq(KVAR);
+            self.load_spec_type = LoadSpec::KwPf;
+        } else {
+            self.cd.obj.set_as_next_seq(KVAR);
+            self.cd.obj.clear_seq(PF);
+            self.load_spec_type = LoadSpec::KwKvar;
+        }
+    }
+
     /// Pascal `SetNominalLoad`.
     pub fn set_nominal_load(&mut self, sys: &SysCtx) {
-        let mut shape_factor = CDOUBLEONE;
+        self.shape_factor = CDOUBLEONE;
         self.shape_is_actual = false;
 
         let factor = if self.status == 1 {
@@ -373,16 +476,42 @@ impl Load {
                             * self.growth_factor(sys.year, sys.default_growth_factor)
                     }
                 }
-                // Loadshape-driven modes arrive in Phase 5; until then every
-                // other mode uses the default branch (growth only).
-                _ => {
-                    shape_factor = CDOUBLEONE;
-                    self.growth_factor(sys.year, sys.default_growth_factor)
+                SolveMode::Daily => {
+                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    self.calc_daily_mult(sys.dbl_hour);
+                    f
                 }
+                SolveMode::Yearly => {
+                    let f = sys.load_multiplier
+                        * self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_yearly_mult(sys.dbl_hour);
+                    if self.load_model == LoadModel::Cvr {
+                        self.calc_cvr_mult(sys.dbl_hour);
+                    }
+                    f
+                }
+                SolveMode::DutyCycle => {
+                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    self.calc_duty_mult(sys.dbl_hour);
+                    f
+                }
+                // The remaining modes (MonteCarlo*/LoadDuration*/PeakDay/
+                // GeneralTime/Dynamic/AutoAdd/...) are not reachable yet — the
+                // solve dispatcher only runs the modes above — so they default
+                // to growth-only with a unit ShapeFactor, matching the Pascal
+                // trailing `else`. Wired in later phases as the modes land.
+                _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };
 
         let nphases = self.cd.nphases as f64;
+        let shape_factor = self.shape_factor;
         if self.shape_is_actual {
             self.w_nominal = 1000.0 * shape_factor.re / nphases;
             self.var_nominal = 0.0;
@@ -945,6 +1074,9 @@ impl DssObject for Load {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {
         Some(self)
     }
@@ -1110,6 +1242,52 @@ impl DssObject for Load {
         self.cd.get_bus(terminal).to_string()
     }
 
+    /// Resolve a shape reference: store the resolved object's name (for the
+    /// dump), its `ElemRef`, and a snapshot clone of the object that
+    /// `SetNominalLoad` drives through `GetMultAtHour` (Pascal stores the live
+    /// pointer; see the `*_shape_obj` field doc). `daily`/`yearly`/`duty`/
+    /// `CVRcurve` resolve to `LoadShape`, `growth` to `GrowthShape`.
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(ElemRef, &dyn DssObject)>,
+    ) {
+        use prop::*;
+        let elem_ref = resolved.map(|(r, _)| r);
+        let load_shape =
+            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        match idx {
+            YEARLY => {
+                self.yearly_shape = name;
+                self.yearly_shape_ref = elem_ref;
+                self.yearly_shape_obj = load_shape();
+            }
+            DAILY => {
+                self.daily_shape = name;
+                self.daily_shape_ref = elem_ref;
+                self.daily_shape_obj = load_shape();
+            }
+            DUTY => {
+                self.duty_shape = name;
+                self.duty_shape_ref = elem_ref;
+                self.duty_shape_obj = load_shape();
+            }
+            CVRCURVE => {
+                self.cvr_shape = name;
+                self.cvr_shape_ref = elem_ref;
+                self.cvr_shape_obj = load_shape();
+            }
+            GROWTH => {
+                self.growth_shape = name;
+                self.growth_shape_ref = elem_ref;
+                self.growth_shape_obj = resolved
+                    .and_then(|(_, o)| o.as_any().downcast_ref::<GrowthShapeObj>().cloned());
+            }
+            _ => unreachable!("Load has no resolved object-ref property {idx}"),
+        }
+    }
+
     /// Pascal `TLoadObj.PropertySideEffects` (text-parser path: every edit
     /// invalidates Yprim through `EndEdit`).
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
@@ -1168,9 +1346,46 @@ impl DssObject for Load {
                 self.compute_allocated_load();
                 self.has_been_allocated = true;
             }
+            // Shape side effects (Pascal): a `UseActual` shape sets kW/kvar to
+            // its peak demand, and `daily` seeds an unset `yearly`.
+            YEARLY => {
+                let actual = self
+                    .yearly_shape_obj
+                    .as_ref()
+                    .filter(|s| s.use_actual())
+                    .map(|s| (s.max_p(), s.max_q()));
+                if let Some((mp, mq)) = actual {
+                    self.kw_ref = self.kw_base;
+                    self.kvar_ref = self.kvar_base;
+                    self.set_kw_kvar(mp, mq);
+                }
+            }
             DAILY => {
-                if self.yearly_shape.is_empty() {
+                let actual = self
+                    .daily_shape_obj
+                    .as_ref()
+                    .filter(|s| s.use_actual())
+                    .map(|s| (s.max_p(), s.max_q()));
+                if let Some((mp, mq)) = actual {
+                    self.set_kw_kvar(mp, mq);
+                }
+                // If the yearly shape is not yet defined, make it the daily one
+                // (Pascal `YearlyShapeObj := DailyShapeObj`; the ObjectRef getter
+                // then renders the daily name, so mirror it for the dump too).
+                if self.yearly_shape_obj.is_none() {
+                    self.yearly_shape_obj = self.daily_shape_obj.clone();
+                    self.yearly_shape_ref = self.daily_shape_ref;
                     self.yearly_shape = self.daily_shape.clone();
+                }
+            }
+            DUTY => {
+                let actual = self
+                    .duty_shape_obj
+                    .as_ref()
+                    .filter(|s| s.use_actual())
+                    .map(|s| (s.max_p(), s.max_q()));
+                if let Some((mp, mq)) = actual {
+                    self.set_kw_kvar(mp, mq);
                 }
             }
             KWH => {
@@ -1269,6 +1484,18 @@ impl DssObject for Load {
         self.duty_shape = other.duty_shape.clone();
         self.yearly_shape = other.yearly_shape.clone();
         self.growth_shape = other.growth_shape.clone();
+        // Pascal copies the resolved shape pointers (CVR/Daily/Duty/Yearly/
+        // Growth); here that is the snapshot clone + its ElemRef.
+        self.cvr_shape_obj = other.cvr_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.growth_shape_obj = other.growth_shape_obj.clone();
+        self.cvr_shape_ref = other.cvr_shape_ref;
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.growth_shape_ref = other.growth_shape_ref;
         self.load_class = other.load_class;
         self.num_customers = other.num_customers;
         self.load_model = other.load_model;
@@ -1328,5 +1555,176 @@ impl Load {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::elements::general::load_shape;
+    use crate::obj::dss_enum::EnumRegistry;
+    use crate::obj::props::PropEngine;
+    use dss_parser::{Parser, ParserVars};
+
+    /// Build a populated `LoadShapeObj` through its real property engine (same
+    /// harness as `load_shape`'s own tests).
+    fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
+        let enums = EnumRegistry::new();
+        let cls = load_shape::class_props(&enums);
+        let mut obj = LoadShapeObj::new("d");
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        for (name, value) in edits {
+            let idx = cls.property_index(name).expect("known property");
+            let mut eng = PropEngine {
+                parser: &mut parser,
+                vars: &vars,
+                enums: &enums,
+                errors: &mut errors,
+                foreign: None,
+            };
+            cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+        }
+        obj.end_edit();
+        assert!(errors.is_empty(), "{errors:?}");
+        obj
+    }
+
+    fn mode_ctx(mode: SolveMode, dbl_hour: f64) -> SysCtx {
+        SysCtx {
+            mode,
+            dbl_hour,
+            ..default_recalc_ctx()
+        }
+    }
+
+    /// A 100 kW / pf 0.9 three-phase load (the probed oracle scenario).
+    fn load_100kw_pf09() -> Load {
+        let mut load = Load::new("lb");
+        load.kw_base = 100.0;
+        load.pf_nominal = 0.9;
+        load.pf_specified = true;
+        load.load_spec_type = LoadSpec::KwPf;
+        load.recalc(&default_recalc_ctx()); // derives kvar_base from kW/pf
+        load
+    }
+
+    #[test]
+    fn daily_mode_shape_factor_scales_nominal() {
+        // Oracle (dss-python 0.15.7): kw=100 pf=0.9 3-phase, daily shape
+        // mult=(0.2 0.6 1.0 0.5) interval=1, mode=daily — per-conductor power
+        //   hr 1 → 0.2: P=6.666667 kW, Q=3.228814 kvar
+        //   hr 3 → 1.0: P=33.333333,   Q=16.144070
+        let shape = build_shape(&[
+            ("npts", "4"),
+            ("interval", "1"),
+            ("mult", "0.2 0.6 1.0 0.5"),
+        ]);
+        let mut load = load_100kw_pf09();
+        load.daily_shape_obj = Some(shape);
+
+        load.set_nominal_load(&mode_ctx(SolveMode::Daily, 1.0));
+        assert!(
+            (load.w_nominal - 6666.6667).abs() < 1e-2,
+            "w {}",
+            load.w_nominal
+        );
+        assert!(
+            (load.var_nominal - 3228.814).abs() < 1e-2,
+            "var {}",
+            load.var_nominal
+        );
+
+        load.set_nominal_load(&mode_ctx(SolveMode::Daily, 3.0));
+        assert!(
+            (load.w_nominal - 33333.333).abs() < 1e-2,
+            "w {}",
+            load.w_nominal
+        );
+        assert!(
+            (load.var_nominal - 16144.070).abs() < 1e-2,
+            "var {}",
+            load.var_nominal
+        );
+    }
+
+    #[test]
+    fn yearly_mode_matches_daily_shape_lookup() {
+        // Oracle: identical to the daily case when the same curve is `yearly`.
+        let shape = build_shape(&[
+            ("npts", "4"),
+            ("interval", "1"),
+            ("mult", "0.2 0.6 1.0 0.5"),
+        ]);
+        let mut load = load_100kw_pf09();
+        load.yearly_shape_obj = Some(shape);
+        load.set_nominal_load(&mode_ctx(SolveMode::Yearly, 2.0)); // mult 0.6
+        assert!(
+            (load.w_nominal - 20000.0).abs() < 1e-2,
+            "w {}",
+            load.w_nominal
+        );
+    }
+
+    #[test]
+    fn duty_mode_falls_back_to_daily_shape() {
+        // No duty shape → CalcDutyMult defers to the daily shape.
+        let shape = build_shape(&[
+            ("npts", "4"),
+            ("interval", "1"),
+            ("mult", "0.2 0.6 1.0 0.5"),
+        ]);
+        let mut load = load_100kw_pf09();
+        load.daily_shape_obj = Some(shape);
+        load.set_nominal_load(&mode_ctx(SolveMode::DutyCycle, 4.0)); // mult 0.5
+        assert!(
+            (load.w_nominal - 16666.667).abs() < 1e-2,
+            "w {}",
+            load.w_nominal
+        );
+    }
+
+    #[test]
+    fn snapshot_mode_ignores_shape() {
+        // ShapeFactor stays (1,1) in snapshot mode even with a daily shape.
+        let shape = build_shape(&[
+            ("npts", "4"),
+            ("interval", "1"),
+            ("mult", "0.2 0.6 1.0 0.5"),
+        ]);
+        let mut load = load_100kw_pf09();
+        load.daily_shape_obj = Some(shape);
+        load.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 1.0));
+        assert!(
+            (load.w_nominal - 33333.333).abs() < 1e-2,
+            "w {}",
+            load.w_nominal
+        );
+    }
+
+    #[test]
+    fn use_actual_daily_sets_kw_kvar_and_seeds_yearly() {
+        // Oracle: a UseActual daily shape sets kW/kvar to (MaxP, coincident MaxQ)
+        // = (80, 20); the unset yearly shape is seeded with the daily one.
+        let shape = build_shape(&[
+            ("npts", "3"),
+            ("interval", "1"),
+            ("mult", "50 80 30"),
+            ("qmult", "10 20 5"),
+            ("useactual", "yes"),
+        ]);
+        let mut load = Load::new("lc");
+        load.pf_specified = false;
+        load.daily_shape_obj = Some(shape);
+        load.side_effects(prop::DAILY, 0);
+        assert!((load.kw_base - 80.0).abs() < 1e-9, "kw {}", load.kw_base);
+        assert!(
+            (load.kvar_base - 20.0).abs() < 1e-9,
+            "kvar {}",
+            load.kvar_base
+        );
+        assert_eq!(load.load_spec_type, LoadSpec::KwKvar);
+        assert!(load.yearly_shape_obj.is_some(), "yearly seeded from daily");
     }
 }
