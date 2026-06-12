@@ -125,6 +125,79 @@ impl Default for Tolerances {
     }
 }
 
+/// Split a value string into its non-numeric "skeleton" (each number replaced
+/// by `#`) and the list of numbers it contains — the property-dump comparator
+/// (PORTING_PLAN.md §4: numbers with tolerance, structure exactly).
+pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
+    let mut skeleton = String::new();
+    let mut nums = Vec::new();
+    let mut i = 0;
+    while i < s.len() {
+        if let Some((value, len)) = scan_number(&s[i..]) {
+            nums.push(value);
+            skeleton.push('#');
+            i += len;
+        } else {
+            // values are ASCII; advance one byte
+            skeleton.push(s.as_bytes()[i] as char);
+            i += 1;
+        }
+    }
+    (skeleton, nums)
+}
+
+/// Longest numeric prefix of `s` that parses as `f64` (and contains a digit).
+fn scan_number(s: &str) -> Option<(f64, usize)> {
+    let bytes = s.as_bytes();
+    let first = bytes[0];
+    if !(first.is_ascii_digit() || first == b'.' || first == b'+' || first == b'-') {
+        return None;
+    }
+    let mut end = 0;
+    while end < bytes.len() {
+        let c = bytes[end];
+        if c.is_ascii_digit() || matches!(c, b'.' | b'+' | b'-' | b'e' | b'E') {
+            end += 1;
+        } else {
+            break;
+        }
+    }
+    while end > 0 {
+        let cand = &s[..end];
+        if cand.bytes().any(|b| b.is_ascii_digit())
+            && let Ok(v) = cand.parse::<f64>()
+        {
+            return Some((v, end));
+        }
+        end -= 1;
+    }
+    None
+}
+
+/// Assert two value strings match: identical skeletons, numbers within
+/// `rel`/`abs` tolerance.
+pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+    let (askel, anums) = numeric_skeleton(actual);
+    let (eskel, enums) = numeric_skeleton(expected);
+    assert_eq!(
+        askel, eskel,
+        "{ctx}: structure differs (actual {actual:?} vs expected {expected:?})"
+    );
+    assert_eq!(
+        anums.len(),
+        enums.len(),
+        "{ctx}: number count differs (actual {actual:?} vs expected {expected:?})"
+    );
+    for (i, (a, e)) in anums.iter().zip(&enums).enumerate() {
+        let allowed = abs + rel * e.abs();
+        assert!(
+            (a - e).abs() <= allowed,
+            "{ctx}: number {i} differs: actual {a} vs expected {e} \
+             (from {actual:?} vs {expected:?})"
+        );
+    }
+}
+
 /// Compare two interleaved re/im arrays element-wise: passes when
 /// `|actual − expected| ≤ abs_floor + rel · |expected|` per complex entry.
 /// Panics with the first offending index and values.

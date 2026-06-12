@@ -165,6 +165,11 @@ pub trait DssObject {
     /// accessors cannot express).
     fn as_any(&self) -> &dyn std::any::Any;
 
+    /// Mutable downcast view — the control loop's bridge from an [`ElemRef`]
+    /// to the concrete control/controlled types (PHASE5_PLAN §2.1: RegControl
+    /// → Transformer, CapControl → Capacitor + monitored element).
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+
     /// Circuit-element view (Pascal `obj is TDSSCktElement`). `None` for
     /// `DSS_OBJECT` classes like TCC_Curve and Spectrum.
     fn as_ckt_element(&self) -> Option<&dyn crate::elements::traits::CktElement> {

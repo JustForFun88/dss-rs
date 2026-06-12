@@ -243,10 +243,20 @@ impl RegControl {
         }
     }
 
-    /// Pascal `TRegControlObj.Reset` (the `Reset` action property).
-    fn reset(&mut self) {
+    /// Pascal `TRegControlObj.Reset` (the `Reset` action property and the
+    /// `DoResetControls` path).
+    pub(crate) fn reset(&mut self) {
         self.pending_tap_change = 0.0;
         self.armed = false;
+    }
+
+    /// Keep the parse-time tap snapshot in sync with the live transformer so
+    /// the `TapNum` getter / property dump reads what Pascal's live pointer
+    /// would after a control action moved the tap.
+    fn sync_tap_snap(&mut self, w: usize, tap: f64) {
+        if w >= 1 && w <= self.tap_snap.len() {
+            self.tap_snap[w - 1].0 = tap;
+        }
     }
 
     /// Pascal `Get_TapNum`: integer tap position relative to the mid-tap,
@@ -461,7 +471,6 @@ impl RegControl {
     /// Pascal `TRegControlObj.Sample` — sense the regulated voltage, optionally
     /// flip reverse/cogen mode, and (if out of band) compute `PendingTapChange`
     /// and arm an `ACTION_TAPCHANGE` on the control queue. Ported top-to-bottom.
-    #[allow(dead_code)] // wired into the control loop in WP5.7
     pub(crate) fn sample(&mut self, tr: &mut dyn ControlledTransformer, ctx: &mut CtrlCtx) {
         if self.tap_limit_per_change == 0 {
             self.set_pending_tap_change(0.0);
@@ -678,7 +687,6 @@ impl RegControl {
     /// Pascal `TRegControlObj.DoPendingAction` — apply the armed action when its
     /// queue time arrives. `ACTION_TAPCHANGE` applies the pending tap (per
     /// control mode); `ACTION_REVERSE` toggles reverse/cogen mode.
-    #[allow(dead_code)] // wired into the control loop in WP5.7
     pub(crate) fn do_pending_action(
         &mut self,
         code: i32,
@@ -700,6 +708,7 @@ impl RegControl {
                     if tr.set_present_tap(tap_winding, new_tap) {
                         *ctx.system_y_changed = true;
                     }
+                    self.sync_tap_snap(tap_winding, tr.present_tap(tap_winding));
                     if self.ccd.show_event_log {
                         ctx.events.append(
                             &format!("Regulator.{}", tr.name()),
@@ -721,6 +730,7 @@ impl RegControl {
                     if tr.set_present_tap(tap_winding, new_tap) {
                         *ctx.system_y_changed = true;
                     }
+                    self.sync_tap_snap(tap_winding, tr.present_tap(tap_winding));
                     if self.ccd.show_event_log {
                         ctx.events.append(
                             &format!("Regulator.{}", tr.name()),
@@ -793,6 +803,9 @@ impl DssObject for RegControl {
         &mut self.ccd.cd.obj
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {

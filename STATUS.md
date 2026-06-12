@@ -7,13 +7,16 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-13, **Phase 5 IN PROGRESS** — Phase 4 merged to `main`
-(`5f27a25`); on branch `phase-5-controls-timeseries`. **WP5.1 (XYcurve),
-WP5.2a/b/c (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes wired
-into Load/VSource), WP5.4 (ControlQueue + event log), WP5.5 (RegControl
-behavior) and WP5.6 (CapControl behavior — `Sample`/`DoPendingAction`) done,
-gate-green** (see §1c). Next: WP5.7 (control loop +
-`Sample_DoControlActions` in the solution).
+Last updated: 2026-06-13, **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green** —
+Phase 4 merged to `main` (`5f27a25`); on branch `phase-5-controls-timeseries`.
+The **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
+(controls ACTIVE) compile, solve and match the Phase-0 goldens** — iteration
+counts exact (ieee13: 11), final taps / RegControl tap numbers / capacitor
+states, node voltages and per-element powers/currents at 1e-6 rel, and every
+element's full property dump (numeric skeleton). **The ieee34mod1 stretch goal
+also passes.** The new `phase5.json` command-replay gate (daily/duty/event-log/
+capcontrol scenarios) matches the oracle — the 24-hour tap-change trajectory is
+event-log-identical. See §1c. Next: Phase 6 (write `PHASE6_PLAN.md` first).
 
 Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
 elements (Transformer/Capacitor/Reactor), catalog objects
@@ -41,16 +44,43 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
-| **5** | LoadShape/XYcurve/controls behavior, control queue, time modes | 🔄 **in progress** — WP5.1 (XYcurve), WP5.2 (LoadShape + CSVFile + TempShape/PriceShape), WP5.3 (shapes → Load/VSource), WP5.4 (ControlQueue + event log), WP5.5 (RegControl behavior), WP5.6 (CapControl behavior) done; `PHASE5_PLAN.md` |
+| **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ **done** — WP5.1–WP5.10, gate-green, uncommitted past WP5.6; `PHASE5_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 207, golden_feeders 1, golden_slice 2,
-                            # golden_smoke 3, props_roundtrip 1, dss-parser 62+1,
-                            # dss-sparse 5
+cargo test --workspace      # dss-core lib 212, golden_feeders 1,
+                            # golden_feeders_controls 4, golden_phase5 1,
+                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
+                            # dss-parser 62+1, dss-sparse 5
 ```
+
+### Phase 5 gate — green
+- `golden_feeders_controls.rs`: the **unmodified** IEEE13/IEEE37/IEEE123
+  masters (controls active; IEEE123 issues the `post: ["solve"]` from
+  `cases.json`) match the committed Phase-0 goldens
+  `tests/golden/{ieee13,ieee37,ieee123}.json`: converged + total iterations
+  **exact** (ieee13: 11), `YNodeOrder` exact, RegControl `tap_number` and
+  capacitor `states` **exact**, final transformer taps at 1e-12 rel (not
+  bitwise: the engines' ~1e-9 sparse-solver voltage differences can shift a
+  banker's-rounding boundary and repartition the *same net* tap movement into
+  a different step sequence, leaving the float accumulation an ulp apart —
+  the integer tap_number is the exact discrete check), node voltages /
+  element powers / currents at 1e-6 rel, total power + losses at 1e-6, and
+  **every element's full property dump** via the numeric-skeleton comparator.
+  **`ieee34mod1` (stretch) passes too** — no `#[ignore]` needed.
+- `golden_phase5.rs` vs `tests/golden/phase5.json` (`tools/golden/gen_phase5.py`,
+  command-replay like slice.json): `daily_ieee13` (24 hourly steps, every load
+  on a 24-pt shape, regcontrol event logs on), `duty_2bus` (12×300 s steps,
+  TIMEDRIVEN), `eventlog_ieee13` (`Set Log=yes`), `capcontrol_micro` (kvar
+  control opens Cap1). Per-step `dblHour` exact; **the event logs match the
+  oracle line-for-line** (normalized), pinning every tap change/cap switch of
+  the trajectories; final taps/tap numbers/states exact. Per-step iteration
+  counts: exact on step 1, ±1 afterwards; voltages 1e-5 rel until the first
+  iteration-count divergence, then 2e-4 (the 1e-4 convergence tolerance makes
+  tolerance-terminated iterates path-dependent at that level — documented in
+  the test).
 
 ### Phase 4 gate (`crates/dss-core/tests/golden_feeders.rs`) — green
 The three committed **controls-off variants** (`tests/golden/phase4/
@@ -513,6 +543,103 @@ Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
   cap — control-loop reset path, WP5.7); `MakePosSequence`. dss-core lib tests
   197 → 207 (+10 CapControl behavior).
 
+**WP5.7 — control loop + `Sample_DoControlActions` — ✅ done, gate-green.**
+- `src/solution/controls.rs` (new): `sample_do_control_actions` /
+  `sample_control_devices` / `do_control_actions` (`Solution.pas` l.1941–2008),
+  `reset_all_controls` (`Utilities.DoResetControls`) and the verbatim
+  `do_multi_rate` (`ControlQueue.DoMultiRate` incl. `Recalc/Restore_Time_Step`
+  and the `Temp_Int`/`Temp_dbl` scratch choreography; it solves the circuit and
+  re-samples mid-sweep, so it lives at the solution level, not on the queue).
+  All four control modes dispatch (CTRLSTATIC nearest-ignoring-time /
+  EVENTDRIVEN advancing `intHour`/`t` / TIMEDRIVEN `do_actions` / MULTIRATE).
+- **The dispatch core** (`dispatch_control`): resolves the control's `ElemRef`s
+  against the registry and splits the mutable borrows per PHASE5_PLAN §2.1 —
+  `ElemStore` grew `obj`/`pair_mut`/`triple_mut` (implemented in the
+  executive's `ClassStore` via `get_disjoint_mut` at the class and object
+  levels), `DssObject` grew **`as_any_mut`** (all 17 classes). RegControl
+  pairs with its Transformer; CapControl triples with capacitor + monitored
+  element; for Time/Follow control (monitored == controlled) the monitored
+  role gets a *clone* of the capacitor (read-only role; covers the
+  voverride-with-time branch the WP5.6 "scratch" note missed). The control
+  queue is `std::mem::take`n out of the solution per sweep, so actions can
+  push/delete further records mid-sweep exactly like Pascal.
+- `check_controls` (real): converged → log "Control Iteration N" (gated
+  `ckt.LogEvents`) → sample/act → Y rebuild keeping voltages;
+  `solve_snap` gained the exact 485 warning ("Warning Max Control Iterations
+  Exceeded.\nTip: …") + `solution_abort` and the "Solution Done" log.
+  **All Pascal `LogThisEvent` call sites ported** (probed: the oracle's
+  `Set Log=yes` log includes them): "Solution Iteration N" / "Solve Sparse Set
+  DoNormalSolution ..." (DoNormalSolution), "Initializing Solution"
+  (DoPFLOWsolution), "Solve Sparse Set ZeroLoadSnapshot ...", and Ymatrix's
+  "Recalc All/Invalid Yprims" / "Building Whole/Series Y Matrix" /
+  "Reallocating Solution Arrays".
+- RegControl `do_pending_action` now **syncs `tap_snap`** after applying a tap
+  (Pascal's `Get_TapNum` reads the live transformer; our snapshot must track
+  the control-action mutation path or the `TapNum` getter/dump goes stale).
+  CapControl gained `reset_with(cap)` (the full Pascal `Reset` incl. the
+  `Closed[0] := InitialState` restore). `Set mode=` now runs
+  `reset_all_controls` (the Pascal `Set_Mode` tail).
+- **External-command abort reset:** CAPI `Text_Set_Command` clears
+  `SolutionAbort` per command from outside; `Dss::command` now does the same
+  when not inside a Redirect (nested redirects also keep `in_redirect` via
+  save/restore now). Probed: after a 485 abort the oracle's next `solve` runs
+  (and exceeds again) rather than reporting "Solution aborted.".
+- **Oracle-pinned unit tests** (exec): 2-bus regulator drives to tap 1.01875
+  in 6 total iterations; `maxcontroliter=2` + `maxtapchange=1` stops at 4
+  iterations, tap 1.00625, 485 warning, abort + external reset.
+
+**WP5.8 — time-series modes + time options + BusCoords — ✅ done, gate-green.**
+- `Solution` grew the live DynaVars fields `int_hour`/`t`/`h` (+ existing
+  `dbl_hour`), `update_dbl_hour`, `increment_time` (exact modulo roll).
+  `set_mode` is now the **full Pascal `Set_Mode`** (free fn over the circuit):
+  clock reset, `OK_for_Dynamics`/`OK_for_Harmonics` guards (486/487 on
+  unsolved; the machine-state init behind a successful dynamics/harmonics
+  entry is Phase 7), default-control/load-model reverts, and the per-mode
+  defaults block (PEAKDAY/DAILY h=3600 n=24; YEARLY n=8760; DUTYCYCLE h=1 +
+  TIMEDRIVEN; HARMONIC CONTROLSOFF+ADMITTANCE; LD1/LD2 trapezoidal; ...).
+- `solve()` dispatches DAILY/YEARLY/DUTYCYCLE/PEAKDAY → `solve_daily`/
+  `solve_yearly`/`solve_duty`/`solve_peak_day` (SolutionAlgs.pas verbatim:
+  IncrementTime → `DefaultHourMult` from the circuit's default shape →
+  PriceShape signal → SolveSnap → monitor/meter `sample_all` hooks (no-op
+  stubs, Phase 6) → `EndOfTimeStepCleanup` (empty body, call sites kept)).
+- **Default DSS items**: `Dss::new` (and `Clear`) now runs the verbatim
+  `CreateDefaultDSSItems` command list (loadshape.default, growthshape.default,
+  spectrum.default/…, TCC_Curve.A/D/TLink/…); `New circuit.` resolves
+  `DefaultDailyShapeObj`/`DefaultYearlyShapeObj` to `loadshape.default`
+  (snapshot-cloned, same staleness as the WP5.3 shape refs). Circuit grew
+  `default_hour_mult` (FPC zero-init reproduced), `price_signal` (25.0),
+  `price_curve_obj`, `trapezoidal_integration`, `control_bus_name_redefined`
+  (raised by `set_bus_name_redefined`, cleared by the control loop).
+- **Set/Get options**: `hour`/`sec`/`stepsize` (+ alias `h`, `interpretTimeStepSize`
+  with the exact h/m/s suffix rules)/`time` (2-vector, FPC-Round hour,
+  `[ %d, %-g ] !... %-g (hours)` Get format)/`number`/`defaultdaily`/
+  `defaultyearly`/`pricesignal`/`pricecurve`. All round-trips oracle-pinned in
+  a unit test.
+- **`BusCoords` command** (`DoBusCoordsCmd`): aux-parser `bus, x, y` rows,
+  file resolved against `current_dir`, unknown buses silently skipped,
+  read errors abort the file (275-style message). Coordinates survive
+  `reprocess_bus_defs` (Phase 3 restore path). The unmodified masters need it.
+- **Property-dump fix found by the gate:** Pascal `GetPropertyValue` renders
+  `MappedIntEnumProperty` as the **ordinal** (`IntToStr`) — only string enums
+  dump the name (`DSSObjectHelper.pas` l.2241). Load `Model` now dumps "5",
+  not "Constant I". Also Transformer `WdgCurrents` now uses the exact
+  `%.7g, (%.5g), ` Pascal format. dss-core lib tests 207 → 212.
+
+**WP5.9 — goldens + gate tests — ✅ done (the phase gate).** See "Phase 5
+gate" in §1 above. Generator facts:
+- There is **no `LogEvents` Set option** — the option is `Log` (TExecOption 66,
+  `ckt.LogEvents`); PHASE5_PLAN's `Set LogEvents=yes` spelling raises 130 in
+  the oracle. Scenarios use `set log=yes`.
+- The phase5 scenarios inline the IEEE13 master (controls active) with the
+  `IEEELineCodes.DSS` redirect dropped — the master only uses its inline
+  mtx601..607 codes, and command-replay goldens must be self-contained.
+- `capcontrol_micro` probe: `type=kvar onsetting=500 offsetting=300` on
+  `line.692675` opens Cap1 (the plan's 150/−225 suggestion never toggles).
+
+**WP5.10 — phase exit — ✅ this update.** Marker sweeps clean (every
+`TODO(compat)`/`NOT_PORTED` site points at its phase); stale "not ported in
+Phase 3" executive messages reworded; full gate green.
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -660,14 +787,14 @@ getter.
   gate needs it.
 
 Other deferrals: Transformer GIC path (<0.51 Hz) + harmonics interplay
-(Phase 7); RegControl/CapControl `Sample`/`DoPendingAction` **ported (WP5.5/
-WP5.6)** but not yet wired into the solve (the control loop is WP5.7 — they are
-`pub(crate)` + `#[allow(dead_code)]` until then); RegControl debug-trace file
-(Phase 5); `MakePosSequence` everywhere (Phase 5+); `BusCoords` command
-(Phase 5 ports it for the unmodified masters; stripped from the Phase 4
-variants); Newton algorithm, harmonics/dynamics/yearly/duty solve modes
-(later phases); `Show`/`Export`/`Dump`/`Select`/... executive verbs record
-"not ported".
+(Phase 7); RegControl/CapControl `Sample`/`DoPendingAction` **wired into the
+control loop (WP5.7)**; RegControl/ControlQueue debug-trace files (flag
+stored, no file — port with Monitors, Phase 6+); `MakePosSequence` everywhere
+(Phase 6+); `BusCoords` **ported (WP5.8)**; Monitors/EnergyMeters
+`sample_all`/`EndOfTimeStepCleanup` are no-op hook stubs at the SolveDaily/
+Yearly/Duty call sites (Phase 6); Newton algorithm, harmonics/dynamics/
+faultstudy/Monte-Carlo/load-duration/`SolveGeneralTime` solve modes (Phase 7);
+`Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported".
 
 ---
 
@@ -693,28 +820,26 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Next session — Phase 5
+## 7. Next session — Phase 6
 
-Start from **`PHASE5_PLAN.md`**. Phase 5 scope (PORTING_PLAN): LoadShape /
-XYcurve / TShape / PriceShape catalog objects, the control *behavior*
-(`Sample`/`DoPendingAction`, the control queue, RegControl/CapControl
-actions), time-series solution modes (daily/yearly wiring of DynaVars), and
-the gate compiles the **unmodified** IEEE masters (controls active — needs
-`BusCoords` and the control loop).
+Phase 5 is complete. Per PORTING_PLAN, Phase 6 covers Monitors/EnergyMeters
+(the `sample_all` hooks left at the SolveDaily/Yearly/Duty call sites),
+LineGeometry/WireData/CNData/TSData (un-`NOT_PORTED` Line `geometry=` etc.),
+and the remaining PC elements (Generator, ...). **Write `PHASE6_PLAN.md`
+first**, mirroring the PHASE4/PHASE5 plan structure.
 
-Enabling facts from Phase 4: controls already parse, resolve and sit on the
-right buses; `Get/Set_PresentTap` + `winding_tap_data` are public on
-Transformer; the control loop skeleton in `solve_snap` already counts control
-iterations; `RefAction` gives controls a sanctioned mutation path outside the
-edit loop (the Phase 5 control queue will instead act through `ElemStore`
-during the solve, where mutable access is direct).
+Enabling facts from Phase 5: the control loop dispatches through
+`ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut` (the pattern
+any new control/metering element reuses); the event log carries all
+`LogThisEvent` call sites; time-series modes drive `interval_hrs` and the
+`sample_the_meters` flag exactly as the meters will need.
 
 ---
 
 ## 8. Outstanding action
 
-Phase 4 (WP4.7–4.10) is **complete and gate-green but uncommitted** on
-`phase-4-pd-elements` (WP4.1–4.6 are committed). Actions:
-1. Commit WP4.7–4.10 on this branch — only on explicit request.
-2. Review + merge `phase-4-pd-elements` to `main`.
-3. Start Phase 5 (§7).
+Phase 5 (WP5.7–WP5.10) is **complete and gate-green but uncommitted** on
+`phase-5-controls-timeseries` (WP5.1–WP5.6 are committed). Actions:
+1. Commit WP5.7–5.10 on this branch.
+2. Review + merge `phase-5-controls-timeseries` to `main`.
+3. Start Phase 6 (§7).

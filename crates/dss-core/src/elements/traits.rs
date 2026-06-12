@@ -22,6 +22,36 @@ pub struct ElemRef {
 pub trait ElemStore {
     fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement;
     fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement;
+
+    /// Read view of any registered object (control dispatch peeks at a
+    /// control's references before splitting the mutable borrows).
+    fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
+
+    /// Two distinct objects borrowed mutably at once — the Rust stand-in for
+    /// Pascal's live cross-object pointers during `Sample`/`DoPendingAction`
+    /// (PHASE5_PLAN §2.1: the control plus its controlled element). Panics if
+    /// `a == b`.
+    fn pair_mut(
+        &mut self,
+        a: ElemRef,
+        b: ElemRef,
+    ) -> (
+        &mut dyn crate::obj::base::DssObject,
+        &mut dyn crate::obj::base::DssObject,
+    );
+
+    /// Three pairwise-distinct objects borrowed mutably at once (CapControl:
+    /// control + capacitor + monitored element). Panics on any aliasing.
+    fn triple_mut(
+        &mut self,
+        a: ElemRef,
+        b: ElemRef,
+        c: ElemRef,
+    ) -> (
+        &mut dyn crate::obj::base::DssObject,
+        &mut dyn crate::obj::base::DssObject,
+        &mut dyn crate::obj::base::DssObject,
+    );
 }
 
 /// Scalar state the elements read from the circuit/solution during
