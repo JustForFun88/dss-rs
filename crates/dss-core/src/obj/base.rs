@@ -132,6 +132,24 @@ impl RefAction {
     }
 }
 
+/// A deferred file load queued by a property setter that names a data file
+/// (e.g. a LoadShape `CSVFile`). The setter cannot reach the filesystem or the
+/// script's current directory, so it records the request; the executive
+/// resolves the path (relative to `current_dir`, like `Redirect`), reads the
+/// file, and hands the contents back via [`DssObject::apply_file_load`]. The
+/// object then parses the text with its own format rules. Nothing reads the
+/// object's data between the property set and the load, so the deferral is
+/// unobservable (the load still completes before `EndEdit`).
+#[derive(Debug, Clone)]
+pub struct FileLoad {
+    /// The 1-based property index that requested the load, so the object knows
+    /// which data to populate (e.g. LoadShape distinguishes `CSVFile` from
+    /// `PQCSVFile`).
+    pub prop: usize,
+    /// The filename exactly as written in the script (unresolved).
+    pub filename: String,
+}
+
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
@@ -341,6 +359,14 @@ pub trait DssObject {
         let _ = (idx, prev_int);
     }
 
+    /// Pascal `StringEnumActionProperty`: run the action whose enum ordinal is
+    /// `ordinal` (e.g. a LoadShape `Action=normalize` → `Normalize`). The action
+    /// runs immediately during the property parse; `errors` collects any
+    /// `DoSimpleMsg` (e.g. an unported save action). No-op by default.
+    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+        let _ = (ordinal, errors);
+    }
+
     /// Pascal per-class `EndEdit`: recompute derived state once an edit block
     /// finishes (e.g. `ReCalcYearMult`, `SetMultArray`). No-op by default.
     fn end_edit(&mut self) {}
@@ -349,6 +375,20 @@ pub trait DssObject {
     /// The executive applies them right after `end_edit`.
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         Vec::new()
+    }
+
+    /// Drain the [`FileLoad`]s queued during the last edit (see [`FileLoad`]).
+    /// The executive resolves each path and calls [`DssObject::apply_file_load`]
+    /// *before* `end_edit`, so derived state (e.g. `SetMaxPandQ`) sees the data.
+    fn take_file_loads(&mut self) -> Vec<FileLoad> {
+        Vec::new()
+    }
+
+    /// Apply a resolved file's full contents to this object (the data side of a
+    /// queued [`FileLoad`]). The object parses `content` per its own format.
+    /// Default: ignore.
+    fn apply_file_load(&mut self, load: &FileLoad, content: &str, errors: &mut Vec<String>) {
+        let _ = (load, content, errors);
     }
 
     /// Apply a [`RefAction`] addressed to this object (the target side of the
