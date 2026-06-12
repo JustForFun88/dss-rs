@@ -19,7 +19,7 @@ use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
-use crate::util::{EPSILON, float_to_str, inv_sqrt3_x1000, sqrt3};
+use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
 /// 1-based property ordinals (Pascal `TTransfProp` + class tails).
 pub mod prop {
@@ -890,9 +890,10 @@ impl Transformer {
                 } else {
                     c.arg().to_degrees()
                 };
-                out.push_str(&float_to_str(mag));
+                // Pascal: Format('%.7g, (%.5g), ', [Cabs, Cdang]).
+                out.push_str(&crate::util::fmt_g(mag, 7));
                 out.push_str(", (");
-                out.push_str(&float_to_str(ang));
+                out.push_str(&crate::util::fmt_g(ang, 5));
                 out.push_str("), ");
                 k += 1; // skip the other end of the winding
             }
@@ -1087,6 +1088,9 @@ impl DssObject for Transformer {
         &mut self.cd.obj
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {

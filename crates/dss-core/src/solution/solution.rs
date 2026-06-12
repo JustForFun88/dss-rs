@@ -1,8 +1,11 @@
-//! Port of `Common/Solution.pas` (`TSolutionObj`), Phase 3 subset: the
-//! snapshot power-flow path (`Solve` → `SolveSnap` → `SolveCircuit` →
-//! `DoPFLOWsolution` → `DoNormalSolution`), `Converged`, the injection
-//! machinery, `SolveSystem`, `SolveZeroLoadSnapShot`, `SetVoltageBases`,
-//! and `SolveDirect`.
+//! Port of `Common/Solution.pas` (`TSolutionObj`): the snapshot power-flow
+//! path (`Solve` → `SolveSnap` → `SolveCircuit` → `DoPFLOWsolution` →
+//! `DoNormalSolution`), `Converged`, the injection machinery, `SolveSystem`,
+//! `SolveZeroLoadSnapShot`, `SetVoltageBases`, `SolveDirect`; plus, since
+//! Phase 5, the full `Set_Mode`, the DynaVars clock (`IncrementTime`), the
+//! live `CheckControls` (control loop in [`crate::solution::controls`]) and
+//! the `SolutionAlgs.pas` time-series modes (`SolveDaily`/`SolveYearly`/
+//! `SolveDuty`/`SolvePeakDay`).
 //!
 //! Pascal reaches elements through `ActiveCircuit` pointer lists; here the
 //! free functions take the [`Circuit`] plus a [`SolveEnv`] carrying the
@@ -144,6 +147,12 @@ pub struct Solution {
     pub max_error: f64,
     pub solution_count: i32,
     pub year: i32,
+    /// `DynaVars.intHour` / `.t` (seconds into the hour) / `.h` (step size in
+    /// seconds) / `.dblHour` — the Phase 1 `TDynamicsRec` fields the solution
+    /// actually drives (PHASE5_PLAN §WP5.8).
+    pub int_hour: i32,
+    pub t: f64,
+    pub h: f64,
     pub dbl_hour: f64,
     pub interval_hrs: f64,
     pub number_of_times: i32,
@@ -209,6 +218,9 @@ impl Solution {
             max_error: 0.0,
             solution_count: 0,
             year: 0,
+            int_hour: 0,
+            t: 0.0,
+            h: 0.001, // default for dynasolve
             dbl_hour: 0.0,
             interval_hrs: 1.0,
             number_of_times: 100,
@@ -230,22 +242,19 @@ impl Solution {
         }
     }
 
-    /// Pascal `Set_Mode`: reset times, revert control/load models, reset
-    /// per-mode defaults. Phase 3 keeps the Snapshot/Direct paths.
-    pub fn set_mode(&mut self, value: SolveMode) {
-        self.dbl_hour = 0.0;
-        self.mode = value;
-        self.control_mode = self.default_control_mode;
-        self.load_model = self.default_load_model;
-        self.is_dynamic_model = false;
-        self.is_harmonic_model = false;
-        self.solution_initialized = false;
-        self.preserve_node_voltages = false;
-        self.sample_the_meters = false;
-        if value == SolveMode::Snapshot {
-            self.interval_hrs = 1.0;
-            self.number_of_times = 1;
+    /// Pascal `Update_dblHour`: `dblHour = intHour + t/3600`.
+    pub fn update_dbl_hour(&mut self) {
+        self.dbl_hour = self.int_hour as f64 + self.t / 3600.0;
+    }
+
+    /// Pascal `IncrementTime`: `t += h`, rolling whole hours into `intHour`.
+    pub fn increment_time(&mut self) {
+        self.t += self.h;
+        while self.t >= 3600.0 {
+            self.int_hour += 1;
+            self.t -= 3600.0;
         }
+        self.update_dbl_hour();
     }
 
     /// Pascal `Set_Frequency`.
@@ -323,6 +332,155 @@ impl Solution {
     }
 }
 
+/// Pascal `TSolutionObj.Set_Mode` (`Solution.pas` l.2010): reset the clock,
+/// revert control/load models, apply per-mode defaults. Returns whether the
+/// mode was actually changed (the `OK_for_Dynamics`/`OK_for_Harmonics` guards
+/// can refuse). The caller (the executive) runs `DoResetControls` afterwards —
+/// monitor/meter resets are Phase 6 no-ops and there are no faults yet.
+pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -> bool {
+    let sol = &mut ckt.solution;
+    sol.int_hour = 0;
+    sol.t = 0.0;
+    sol.update_dbl_hour();
+    ckt.trapezoidal_integration = false;
+
+    // Pascal `OK_for_Dynamics` / `OK_for_Harmonics`: entering a dynamics or
+    // harmonics mode requires a solved circuit (errors 486/487). The
+    // machine-state initialization behind a *successful* entry
+    // (`calcInitialMachineStates` / `InitializeForHarmonics`) is Phase 7; the
+    // mode is still set, and `Solve` then reports the mode as not ported.
+    let value_is_dynamic = matches!(
+        value,
+        SolveMode::MonteFault | SolveMode::Dynamic | SolveMode::FaultStudy
+    );
+    let value_is_harmonic = matches!(value, SolveMode::Harmonic | SolveMode::HarmonicT);
+    if !ckt.solution.is_dynamic_model && value_is_dynamic && !ckt.is_solved {
+        errors.push(
+            "Circuit must be solved in a non-dynamic mode before entering Dynamics or Fault study modes!\nIf you attempted to solve, then the solution has not yet converged.".to_string(),
+        );
+        return false;
+    }
+    if !ckt.solution.is_harmonic_model
+        && value_is_harmonic
+        && !(ckt.is_solved && ckt.solution.frequency == ckt.fundamental)
+    {
+        errors.push(
+            "Circuit must be solved in a fundamental frequency power flow or direct mode before entering Harmonics mode!".to_string(),
+        );
+        return false;
+    }
+    if ckt.solution.is_harmonic_model && !value_is_harmonic {
+        // Leaving harmonics mode: reset to fundamental. (`InvalidateAllPCElements`
+        // is covered by the frequency change forcing a Y rebuild.)
+        let fundamental = ckt.fundamental;
+        ckt.solution.set_frequency(fundamental);
+    }
+
+    let sol = &mut ckt.solution;
+    sol.mode = value;
+    sol.control_mode = sol.default_control_mode; // Revert to default mode
+    sol.load_model = sol.default_load_model;
+    sol.is_dynamic_model = false;
+    sol.is_harmonic_model = false;
+    sol.solution_initialized = false; // reinitialize solution when mode set (except dynamics)
+    sol.preserve_node_voltages = false;
+    sol.sample_the_meters = false;
+
+    // Reset defaults for solution modes.
+    match value {
+        SolveMode::PeakDay | SolveMode::Daily => {
+            sol.h = 3600.0;
+            sol.number_of_times = 24;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::Snapshot => {
+            sol.interval_hrs = 1.0;
+            sol.number_of_times = 1;
+        }
+        SolveMode::Yearly => {
+            sol.interval_hrs = 1.0;
+            sol.h = 3600.0;
+            sol.number_of_times = 8760;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::DutyCycle => {
+            sol.h = 1.0;
+            sol.control_mode = TIMEDRIVEN;
+        }
+        SolveMode::Dynamic => {
+            sol.h = 0.001;
+            sol.control_mode = TIMEDRIVEN;
+            sol.is_dynamic_model = true;
+            sol.preserve_node_voltages = true;
+        }
+        SolveMode::Time => {
+            // GENERALTIME
+            sol.interval_hrs = 1.0;
+            sol.h = 3600.0;
+            sol.number_of_times = 1; // just one time step per Solve call expected
+        }
+        SolveMode::Monte1 => {
+            sol.interval_hrs = 1.0;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::Monte2 => {
+            sol.h = 3600.0;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::Monte3 => {
+            sol.interval_hrs = 1.0;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::MonteFault | SolveMode::FaultStudy => {
+            sol.is_dynamic_model = true;
+        }
+        SolveMode::LD1 => {
+            sol.h = 3600.0;
+            ckt.trapezoidal_integration = true;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::LD2 => {
+            sol.int_hour = 1;
+            ckt.trapezoidal_integration = true;
+            sol.sample_the_meters = true;
+        }
+        SolveMode::AutoAdd => {
+            sol.interval_hrs = 1.0;
+            // AutoAddObj.ModeChanged — AutoAdd is not ported (later phase).
+        }
+        SolveMode::Harmonic => {
+            sol.control_mode = CONTROLSOFF;
+            sol.is_harmonic_model = true;
+            sol.load_model = ADMITTANCE;
+            sol.preserve_node_voltages = true;
+        }
+        SolveMode::HarmonicT => {
+            sol.interval_hrs = 1.0;
+            sol.h = 3600.0;
+            sol.number_of_times = 1;
+            sol.control_mode = CONTROLSOFF;
+            sol.is_harmonic_model = true;
+            sol.load_model = ADMITTANCE;
+            sol.preserve_node_voltages = true;
+        }
+        SolveMode::Direct => {}
+    }
+    true
+}
+
+/// `DSS.LogThisEvent(name)` with the solution's clock/iteration fields (the
+/// callers gate on `ckt.LogEvents` themselves, like the Pascal call sites).
+fn log_event(ckt: &mut Circuit, name: &str) {
+    let sol = &mut ckt.solution;
+    sol.event_log.log_this_event(
+        name,
+        sol.int_hour,
+        sol.t,
+        sol.iteration,
+        sol.control_iteration,
+    );
+}
+
 /// Snapshot of circuit/solution scalars for the elements (built fresh
 /// whenever flags may have changed).
 pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
@@ -385,6 +543,13 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     loop {
         ckt.solution.iteration += 1;
 
+        if ckt.log_events {
+            log_event(
+                ckt,
+                &format!("Solution Iteration {}", ckt.solution.iteration),
+            );
+        }
+
         ckt.solution.zero_inj_curr();
         get_source_inj_currents(ckt, env);
         get_pc_inj_curr(ckt, env);
@@ -395,6 +560,9 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
         // UseAuxCurrents/AddInAuxCurrents: AutoAdd only, not in Phase 3.
 
+        if ckt.log_events {
+            log_event(ckt, "Solve Sparse Set DoNormalSolution ...");
+        }
         ckt.solution.solve_system()?;
         ckt.solution.loads_need_updating = false;
 
@@ -432,6 +600,9 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
         return Err("Series Y matrix not built yet in SolveZeroLoadSnapshot.".to_string());
     }
     ckt.solution.active_y = ActiveY::Series;
+    if ckt.log_events {
+        log_event(ckt, "Solve Sparse Set ZeroLoadSnapshot ...");
+    }
     let result = ckt.solution.solve_system();
 
     // Reset the main system Y as the solution matrix.
@@ -450,6 +621,9 @@ fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     if !ckt.solution.solution_initialized {
+        if ckt.log_events {
+            log_event(ckt, "Initializing Solution");
+        }
         // "8-14-06 This should give a better answer than zero load snapshot"
         solve_y_direct(ckt, env)?;
         // SetGeneratordQdV: no Model-3 generators in Phase 3 → no extra work.
@@ -457,7 +631,7 @@ fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     match ckt.solution.algorithm {
-        NEWTONSOLVE => Err("Newton solution not ported in Phase 3".to_string()),
+        NEWTONSOLVE => Err("Newton solution not ported (later phase)".to_string()),
         _ => do_normal_solution(ckt, env),
     }?;
 
@@ -467,7 +641,7 @@ fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `SolveCircuit`.
-fn solve_circuit(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn solve_circuit(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     if ckt.solution.load_model == ADMITTANCE {
         solve_direct(ckt, env)
     } else {
@@ -478,25 +652,30 @@ fn solve_circuit(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 }
 
-/// Pascal `Sample_DoControlActions` + `CheckControls` for a circuit without
-/// control elements: an empty control queue means actions are done.
+/// Pascal `CheckControls` (`Solution.pas` l.1132): when converged, log the
+/// control iteration (gated by `LogEvents`), sample the controls and run the
+/// queued actions; then rebuild Y if anything invalidated it (voltages kept).
 fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    let sol = &mut ckt.solution;
-    if sol.control_iteration < sol.max_control_iterations {
-        if sol.converged_flag {
-            if sol.control_mode == CONTROLSOFF {
-                sol.control_actions_done = true;
-            } else {
-                // SampleControlDevices + DoControlActions over an empty
-                // control list / queue (Phase 5 ports the real thing).
-                sol.control_actions_done = true;
+    if ckt.solution.control_iteration < ckt.solution.max_control_iterations {
+        if ckt.solution.converged_flag {
+            if ckt.log_events {
+                let sol = &mut ckt.solution;
+                sol.event_log.log_this_event(
+                    &format!("Control Iteration {}", sol.control_iteration),
+                    sol.int_hour,
+                    sol.t,
+                    sol.iteration,
+                    sol.control_iteration,
+                );
             }
+            crate::solution::controls::sample_do_control_actions(ckt, env)?;
+            // Check_Fault_Status: no Fault elements until Phase 7 — no-op.
         } else {
-            sol.control_actions_done = true; // Stop if failure to converge
+            ckt.solution.control_actions_done = true; // Stop if failure to converge
         }
     }
     if ckt.solution.system_y_changed {
-        build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
+        build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?; // V stays same
     }
     Ok(())
 }
@@ -527,12 +706,118 @@ fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     if !ckt.solution.control_actions_done
         && ckt.solution.control_iteration >= ckt.solution.max_control_iterations
     {
-        env.errors
-            .push("Warning Max Control Iterations Exceeded.".to_string());
-        ckt.solution.solution_abort = true;
+        env.errors.push(
+            "Warning Max Control Iterations Exceeded.\nTip: Show Eventlog to debug control settings."
+                .to_string(),
+        );
+        ckt.solution.solution_abort = true; // stop this message in dynamic power flow modes
+    }
+
+    if ckt.log_events {
+        let sol = &mut ckt.solution;
+        sol.event_log.log_this_event(
+            "Solution Done",
+            sol.int_hour,
+            sol.t,
+            sol.iteration,
+            sol.control_iteration,
+        );
     }
 
     ckt.solution.iteration = total_iterations; // "so that it reports a more interesting number"
+    Ok(())
+}
+
+/// Pascal `EndOfTimeStepCleanup` (`SolutionAlgs.pas` l.86): storage,
+/// InvControl and ExpControl updates plus mode-5 monitor sampling — all
+/// Phase 6+ classes, so the body is empty; the call sites in the time-series
+/// loops are kept so Phase 6 only fills this in.
+fn end_of_time_step_cleanup(_ckt: &mut Circuit, _env: &mut SolveEnv) {}
+
+/// Monitor/EnergyMeter `SampleAll` hook (Phase 6). `sample_meters` is
+/// `Solution.SampleTheMeters` at the call site.
+fn sample_all_monitors_and_meters(_ckt: &mut Circuit, _env: &mut SolveEnv, _sample_meters: bool) {}
+
+/// Pascal `SolveDaily` (`SolutionAlgs.pas` l.160): step `number_of_times`
+/// times through the daily shapes. Demand-interval files are EnergyMeter
+/// machinery (Phase 6).
+fn solve_daily(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    ckt.solution.interval_hrs = ckt.solution.h / 3600.0; // needed for energy meters
+    for _ in 1..=ckt.solution.number_of_times {
+        if ckt.solution.solution_abort {
+            continue;
+        }
+        ckt.solution.increment_time();
+        let dbl_hour = ckt.solution.dbl_hour;
+        match ckt.default_daily_shape_obj.as_mut() {
+            Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
+            None => return Err("Default daily load shape not found.".to_string()),
+        }
+        if let Some(curve) = ckt.price_curve_obj.as_mut() {
+            ckt.price_signal = curve.get_price(dbl_hour);
+        }
+        solve_snap(ckt, env)?;
+        let sample_meters = ckt.solution.sample_the_meters;
+        sample_all_monitors_and_meters(ckt, env, sample_meters);
+        end_of_time_step_cleanup(ckt, env);
+    }
+    Ok(())
+}
+
+/// Pascal `SolvePeakDay` (l.204): like daily, but restarts the clock at zero
+/// (the global load multiplier is ignored by virtue of the PEAKDAY mode
+/// dispatch inside `SetNominalLoad`).
+fn solve_peak_day(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    ckt.solution.t = 0.0;
+    ckt.solution.int_hour = 0;
+    ckt.solution.dbl_hour = 0.0;
+    solve_daily(ckt, env)
+}
+
+/// Pascal `SolveYearly` (l.112): like daily over the yearly default shape
+/// (loads additionally apply `DefaultGrowthFactor` via `SetNominalLoad`).
+fn solve_yearly(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
+    for _ in 1..=ckt.solution.number_of_times {
+        if ckt.solution.solution_abort {
+            continue;
+        }
+        ckt.solution.increment_time();
+        let dbl_hour = ckt.solution.dbl_hour;
+        match ckt.default_yearly_shape_obj.as_mut() {
+            Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
+            None => return Err("Default yearly load shape not found.".to_string()),
+        }
+        if let Some(curve) = ckt.price_curve_obj.as_mut() {
+            ckt.price_signal = curve.get_price(dbl_hour);
+        }
+        solve_snap(ckt, env)?;
+        let sample_meters = ckt.solution.sample_the_meters;
+        sample_all_monitors_and_meters(ckt, env, sample_meters);
+        end_of_time_step_cleanup(ckt, env);
+    }
+    Ok(())
+}
+
+/// Pascal `SolveDuty` (l.249): same loop as daily; the price signal is
+/// assumed constant for duty-cycle calcs.
+fn solve_duty(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
+    for _ in 1..=ckt.solution.number_of_times {
+        if ckt.solution.solution_abort {
+            continue;
+        }
+        ckt.solution.increment_time();
+        let dbl_hour = ckt.solution.dbl_hour;
+        match ckt.default_daily_shape_obj.as_mut() {
+            Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
+            None => return Err("Default daily load shape not found.".to_string()),
+        }
+        solve_snap(ckt, env)?;
+        let sample_meters = ckt.solution.sample_the_meters;
+        sample_all_monitors_and_meters(ckt, env, sample_meters);
+        end_of_time_step_cleanup(ckt, env);
+    }
     Ok(())
 }
 
@@ -583,10 +868,14 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 
     let result = match ckt.solution.mode {
         SolveMode::Snapshot => solve_snap(ckt, env),
+        SolveMode::Yearly => solve_yearly(ckt, env),
+        SolveMode::Daily => solve_daily(ckt, env),
+        SolveMode::DutyCycle => solve_duty(ckt, env),
+        SolveMode::PeakDay => solve_peak_day(ckt, env),
         SolveMode::Direct => solve_direct(ckt, env),
         _ => {
             env.errors
-                .push("Unknown solution mode.".to_string() + " (not ported in Phase 3)");
+                .push("Unknown solution mode.".to_string() + " (not ported in Phase 5)");
             Ok(())
         }
     };

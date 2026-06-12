@@ -634,6 +634,9 @@ impl DssObject for Capacitor {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {
         Some(self)
     }

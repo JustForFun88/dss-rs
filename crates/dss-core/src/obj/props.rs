@@ -787,10 +787,14 @@ impl ClassProps {
             PropType::Boolean | PropType::Enabled => str_y_or_n(obj.get_bool(idx)).to_string(),
             PropType::String | PropType::ObjectRef => obj.get_string(idx),
             PropType::MakeLike | PropType::Action => String::new(), // Pascal: always ''
-            PropType::MappedStringEnum | PropType::MappedIntEnum => {
+            PropType::MappedStringEnum => {
                 let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
                 enums.get(enum_id).ordinal_to_string(obj.get_i32(idx))
             }
+            // Pascal `GetPropertyValue` renders MappedIntEnumProperty with
+            // `IntToStr` (the ordinal), unlike the string-enum name above
+            // (`DSSObjectHelper.pas` l.2241).
+            PropType::MappedIntEnum => obj.get_i32(idx).to_string(),
             PropType::DoubleArray => {
                 let n = obj.get_i32(pd.size_prop).max(0) as usize;
                 get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)

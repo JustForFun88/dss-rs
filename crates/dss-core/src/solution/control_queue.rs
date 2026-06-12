@@ -48,12 +48,13 @@ struct ActionRecord {
 /// The record data returned by a pop — Pascal's `var Code, ProxyHdl, Hdl` out
 /// params plus the popped control element.
 #[derive(Debug, Clone, Copy)]
-struct PoppedAction {
-    control: ElemRef,
-    code: i32,
-    proxy: i32,
-    #[allow(dead_code)] // handle is only consumed by the debug-trace path (WP5.5+)
-    handle: i32,
+pub(crate) struct PoppedAction {
+    pub(crate) control: ElemRef,
+    pub(crate) code: i32,
+    #[allow(dead_code)] // RegControl/CapControl ignore the proxy handle
+    pub(crate) proxy: i32,
+    #[allow(dead_code)] // handle is only consumed by the debug-trace path
+    pub(crate) handle: i32,
 }
 
 /// The callback the control queue invokes to run a popped action — the
@@ -170,6 +171,35 @@ impl ControlQueue {
         {
             self.action_list.remove(i);
         }
+    }
+
+    /// Pascal `Pop_Time(ActionTime, …, var ATime, keepIn)`: like `pop`, but
+    /// also returns the record's absolute action time, and with
+    /// `keep_in = true` leaves the record in the queue (the `DoMultiRate`
+    /// peek). Returns `(record, action_time_seconds)`.
+    pub(crate) fn pop_time(
+        &mut self,
+        action_time: TimeRec,
+        keep_in: bool,
+    ) -> Option<(PoppedAction, f64)> {
+        let t = action_time.to_time();
+        let i = self
+            .action_list
+            .iter()
+            .position(|a| a.action_time.to_time() <= t)?;
+        let rec = self.action_list[i];
+        if !keep_in {
+            self.action_list.remove(i);
+        }
+        Some((
+            PoppedAction {
+                control: rec.control,
+                code: rec.action_code,
+                proxy: rec.proxy_handle,
+                handle: rec.action_handle,
+            },
+            rec.action_time.to_time(),
+        ))
     }
 
     /// Pascal `Pop(ActionTime, …)`: remove and return the earliest-listed

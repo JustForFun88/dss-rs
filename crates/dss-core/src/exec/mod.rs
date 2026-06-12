@@ -186,6 +186,7 @@ mod cmd {
     pub const FILEEDIT: usize = 35;
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
+    pub const BUSCOORDS: usize = 58;
     pub const ALIGN_FILE: usize = 63;
     pub const DI_PLOT: usize = 69;
     pub const COMPARE_CASES: usize = 70;
@@ -325,13 +326,19 @@ const EXEC_OPTIONS: &[&str] = &[
 
 /// `TExecOption` ordinals the executive implements.
 mod opt {
+    pub const HOUR: usize = 3;
+    pub const SEC: usize = 4;
     pub const YEAR: usize = 5;
     pub const FREQUENCY: usize = 6;
+    pub const STEPSIZE: usize = 7;
     pub const MODE: usize = 8;
     pub const RANDOM: usize = 9;
     pub const NUMBER: usize = 10;
+    pub const TIME: usize = 11;
     pub const TOLERANCE: usize = 16;
     pub const MAXITERATIONS: usize = 17;
+    /// `h` is an alias of `stepsize` (Pascal `7, 18:`).
+    pub const H: usize = 18;
     pub const LOADMODEL: usize = 19;
     pub const LOADMULT: usize = 20;
     pub const NORMVMINPU: usize = 21;
@@ -344,7 +351,11 @@ mod opt {
     pub const VOLTAGE_BASES: usize = 39;
     pub const ALGORITHM: usize = 40;
     pub const CONTROL_MODE: usize = 43;
+    pub const DEFAULT_DAILY: usize = 46;
+    pub const DEFAULT_YEARLY: usize = 47;
     pub const CKT_MODEL: usize = 49;
+    pub const PRICE_SIGNAL: usize = 50;
+    pub const PRICE_CURVE: usize = 51;
     pub const BASE_FREQUENCY: usize = 53;
     pub const MAX_CONTROL_ITER: usize = 55;
     pub const CASE_NAME: usize = 63;
@@ -427,6 +438,88 @@ impl ElemStore for ClassStore<'_> {
         self.classes[r.cls].objects[r.idx]
             .as_ckt_element_mut()
             .expect("ElemRef must point at a circuit element")
+    }
+
+    fn obj(&self, r: ElemRef) -> &dyn DssObject {
+        self.classes[r.cls].objects[r.idx].as_ref()
+    }
+
+    fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
+        assert_ne!((a.cls, a.idx), (b.cls, b.idx), "pair_mut: aliasing refs");
+        if a.cls == b.cls {
+            let objs = &mut self.classes[a.cls].objects;
+            let [oa, ob] = objs
+                .get_disjoint_mut([a.idx, b.idx])
+                .expect("pair_mut: object index out of range");
+            (oa.as_mut(), ob.as_mut())
+        } else {
+            let [ca, cb] = self
+                .classes
+                .get_disjoint_mut([a.cls, b.cls])
+                .expect("pair_mut: class index out of range");
+            (ca.objects[a.idx].as_mut(), cb.objects[b.idx].as_mut())
+        }
+    }
+
+    fn triple_mut(
+        &mut self,
+        a: ElemRef,
+        b: ElemRef,
+        c: ElemRef,
+    ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
+        let key = |r: ElemRef| (r.cls, r.idx);
+        assert!(
+            key(a) != key(b) && key(a) != key(c) && key(b) != key(c),
+            "triple_mut: aliasing refs"
+        );
+        // Split per distinct class first, then per object inside a shared class.
+        if a.cls == b.cls && b.cls == c.cls {
+            let objs = &mut self.classes[a.cls].objects;
+            let [oa, ob, oc] = objs
+                .get_disjoint_mut([a.idx, b.idx, c.idx])
+                .expect("triple_mut: object index out of range");
+            (oa.as_mut(), ob.as_mut(), oc.as_mut())
+        } else if a.cls == b.cls {
+            let [cab, cc] = self
+                .classes
+                .get_disjoint_mut([a.cls, c.cls])
+                .expect("triple_mut: class index out of range");
+            let [oa, ob] = cab
+                .objects
+                .get_disjoint_mut([a.idx, b.idx])
+                .expect("triple_mut: object index out of range");
+            (oa.as_mut(), ob.as_mut(), cc.objects[c.idx].as_mut())
+        } else if a.cls == c.cls {
+            let [cac, cb] = self
+                .classes
+                .get_disjoint_mut([a.cls, b.cls])
+                .expect("triple_mut: class index out of range");
+            let [oa, oc] = cac
+                .objects
+                .get_disjoint_mut([a.idx, c.idx])
+                .expect("triple_mut: object index out of range");
+            (oa.as_mut(), cb.objects[b.idx].as_mut(), oc.as_mut())
+        } else if b.cls == c.cls {
+            let [ca, cbc] = self
+                .classes
+                .get_disjoint_mut([a.cls, b.cls])
+                .expect("triple_mut: class index out of range");
+            let [ob, oc] = cbc
+                .objects
+                .get_disjoint_mut([b.idx, c.idx])
+                .expect("triple_mut: object index out of range");
+            (ca.objects[a.idx].as_mut(), ob.as_mut(), oc.as_mut())
+        } else {
+            let [ca, cb, cc] = self
+                .classes
+                .get_disjoint_mut([a.cls, b.cls, c.cls])
+                .expect("triple_mut: class index out of range");
+            (
+                ca.objects[a.idx].as_mut(),
+                cb.objects[b.idx].as_mut(),
+                cc.objects[c.idx].as_mut(),
+            )
+        }
     }
 }
 
@@ -605,7 +698,7 @@ impl Dss {
             .map(|(i, c)| (c.props.class_name().to_lowercase(), i))
             .collect();
 
-        Self {
+        let mut dss = Self {
             classes,
             class_by_name,
             commands,
@@ -622,7 +715,46 @@ impl Dss {
             current_dir: std::env::current_dir().unwrap_or_default(),
             in_redirect: false,
             redirect_abort: false,
+        };
+        dss.create_default_dss_items();
+        dss
+    }
+
+    /// Pascal `TExecutive.CreateDefaultDSSItems`: the default loadshapes,
+    /// growthshapes, spectra and TCC curves every context starts with (created
+    /// at context creation and again after `Clear`). The command strings are
+    /// verbatim from `Executive.pas`.
+    fn create_default_dss_items(&mut self) {
+        const DEFAULT_ITEMS: &[&str] = &[
+            // this load shape used for generator dispatching, etc. Loads may refer to it, also.
+            "new loadshape.default npts=24 1.0 mult=(.677 .6256 .6087 .5833 .58028 .6025 .657 .7477 .832 .88 .94 .989 .985 .98 .9898 .999 1 .958 .936 .913 .876 .876 .828 .756)",
+            "new growthshape.default 2 year=\"1 20\" mult=(1.025 1.025)", // 20 years at 2.5%
+            "new spectrum.default 7  Harmonic=(1 3 5 7 9 11 13)  %mag=(100 33 20 14 11 9 7) Angle=(0 0 0 0 0 0 0)",
+            "new spectrum.defaultload 7  Harmonic=(1 3 5 7 9 11 13)  %mag=(100 1.5 20 14 1 9 7) Angle=(0 180 180 180 180 180 180)",
+            "new spectrum.defaultgen 7  Harmonic=(1 3 5 7 9 11 13)  %mag=(100 5 3 1.5 1 .7 .5) Angle=(0 0 0 0 0 0 0)",
+            "new spectrum.defaultvsource 1  Harmonic=(1 )  %mag=(100 ) Angle=(0 ) ",
+            "new spectrum.linear 1  Harmonic=(1 )  %mag=(100 ) Angle=(0 ) ",
+            "new spectrum.pwm6 13  Harmonic=(1 3 5 7 9 11 13 15 17 19 21 23 25) %mag=(100 4.4 76.5 62.7 2.9 24.8 12.7 0.5 7.1 8.4 0.9 4.4 3.3) Angle=(-103 -5 28 -180 -33 -59 79 36 -253 -124 3 -30 86)",
+            "new spectrum.dc6 10  Harmonic=(1 3 5 7 9 11 13 15 17 19)  %mag=(100 1.2 33.6 1.6 0.4 8.7  1.2  0.3  4.5 1.3) Angle=(-75 28 156 29 -91 49 54 148 -57 -46)",
+            "New TCC_Curve.A 5 c_array=(1, 2.5, 4.5, 8.0, 14.)  t_array=(0.15 0.07 .05 .045 .045) ",
+            "New TCC_Curve.D 5 c_array=(1, 2.5, 4.5, 8.0, 14.)  t_array=(6 0.7 .2 .06 .02)",
+            "New TCC_Curve.TLink 7 c_array=(2 2.1 3 4 6 22 50)  t_array=(300 100 10.1 4.0 1.4 0.1  0.02)",
+            "New TCC_Curve.KLink 6 c_array=(2 2.2 3 4 6 30)    t_array=(300 20 4 1.3 0.41 0.02)",
+            "New \"TCC_Curve.uv1547\" npts=2 C_array=(0.5, 0.9, ) T_array=(0.166, 2, )",
+            "New \"TCC_Curve.ov1547\" npts=2 C_array=(1.1, 1.2, ) T_array=(2, 0.166, )",
+            "New \"TCC_Curve.mod_inv\" npts=15 C_array=(1.1, 1.3, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, ) T_array=(27.1053, 9.9029, 6.439, 3.8032, 2.4322, 1.9458, 1.6883, 1.5255, 1.4117, 1.3267, 1.2604, 1.2068, 0.9481, 0.7468, 0.6478, )",
+            "New \"TCC_Curve.very_inv\" npts=15 C_array=(1.1, 1.3, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, ) T_array=(93.872, 28.9113, 16.179, 7.0277, 2.9423, 1.7983, 1.3081, 1.0513, 0.8995, 0.8023, 0.7361, 0.6891, 0.5401, 0.4988, 0.493, )",
+            "New \"TCC_Curve.ext_inv\" npts=15 C_array=(1.1, 1.3, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, ) T_array=(134.4074, 40.9913, 22.6817, 9.5217, 3.6467, 2.0017, 1.2967, 0.9274, 0.7092, 0.5693, 0.4742, 0.4065, 0.1924, 0.133, 0.1245, )",
+            "New \"TCC_Curve.definite\" npts=3 C_array=(1, 1.001, 100, ) T_array=(300, 1, 1, )",
+        ];
+        for cmd in DEFAULT_ITEMS {
+            self.command(cmd);
         }
+        debug_assert!(
+            self.errors.is_empty(),
+            "default DSS items must parse cleanly: {:?}",
+            self.errors
+        );
     }
 
     /// Accumulated error messages (`DoSimpleMsg` log).
@@ -648,6 +780,15 @@ impl Dss {
     /// in [`Dss::errors`] (record-and-continue); query results land in
     /// [`Dss::result`].
     pub fn command(&mut self, cmd_line: &str) {
+        if !self.in_redirect {
+            // CAPI `Text_Set_Command`: "Reset for commands entered from
+            // outside" — a previous abort doesn't poison the next external
+            // command, while a Redirect/Compile still aborts the rest of its
+            // file (`do_redirect` checks the live flag between lines).
+            if let Some(ckt) = self.circuit.as_mut() {
+                ckt.solution.solution_abort = false;
+            }
+        }
         self.last_result.clear(); // DSS.GlobalResult := ''
         self.parser.set_auto_increment(false);
         self.parser.set_cmd_string(cmd_line);
@@ -749,6 +890,7 @@ impl Dss {
             cmd::CALC_VOLTAGE_BASES => self.do_calc_voltage_bases(),
             cmd::BUILD_Y => self.do_build_y(),
             cmd::GET => self.do_get_cmd(),
+            cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_initialized = false;
@@ -761,7 +903,7 @@ impl Dss {
     fn not_ported_command(&mut self, pointer: usize) {
         let name = EXEC_COMMANDS.get(pointer - 1).copied().unwrap_or("?");
         self.errors
-            .push(format!("Command \"{name}\" is not ported in Phase 3."));
+            .push(format!("Command \"{name}\" is not ported yet."));
     }
 
     /// Pascal `GetObjClassAndName`: read the `class.name` token (optionally
@@ -831,7 +973,12 @@ impl Dss {
             );
             return;
         }
-        self.circuit = Some(Circuit::new(name, self.default_base_freq));
+        let mut ckt = Circuit::new(name, self.default_base_freq);
+        // Pascal `TDSSCircuit.Create`: both default shape refs resolve to the
+        // built-in `loadshape.default` (created with the default DSS items).
+        ckt.default_daily_shape_obj = find_load_shape(&self.classes, "default");
+        ckt.default_yearly_shape_obj = find_load_shape(&self.classes, "default");
+        self.circuit = Some(ckt);
         let s = self.parser.remainder().to_string();
         self.command(&format!("New object=vsource.source Bus1=SourceBus {s}"));
     }
@@ -930,6 +1077,8 @@ impl Dss {
         self.active_class = None;
         self.circuit = None;
         self.errors.clear();
+        // Pascal `DoClearCmd` → `ClearAll` → recreate the default items.
+        self.create_default_dss_items();
     }
 
     /// Pascal `DoQueryCmd`: `? class.obj.prop` → store the property value in
@@ -1139,9 +1288,11 @@ impl Dss {
         }
         {
             let Dss {
+                classes,
                 circuit,
                 option_list,
                 parser,
+                aux_parser,
                 vars,
                 enums,
                 errors,
@@ -1167,6 +1318,33 @@ impl Dss {
                     0 => errors.push(format!(
                         "Unknown parameter \"{param_name}\" for Set Command"
                     )),
+                    opt::HOUR => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            ckt.solution.int_hour = v;
+                        }
+                    }
+                    opt::SEC => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.solution.t = v;
+                        }
+                    }
+                    opt::STEPSIZE | opt::H => {
+                        ckt.solution.h = interpret_time_step_size(&param, ckt.solution.h, errors);
+                        ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
+                    }
+                    opt::TIME => {
+                        // Pascal `Set_Time`: parse `[hour, sec]` as a 2-vector.
+                        let mut buf = vec![0.0; 2];
+                        match parser.parse_as_vector(vars, &mut buf, false) {
+                            Ok(_) => {
+                                // TODO(compat): FPC banker's `Round` on the hour.
+                                ckt.solution.int_hour = buf[0].round_ties_even() as i32;
+                                ckt.solution.t = buf[1];
+                                ckt.solution.update_dbl_hour();
+                            }
+                            Err(e) => errors.push(e.message().to_string()),
+                        }
+                    }
                     opt::YEAR => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.year = v;
@@ -1180,8 +1358,24 @@ impl Dss {
                         }
                     }
                     opt::MODE => {
-                        if let Some(v) = enum_ord(enums, enums.solve_mode, &param, errors) {
-                            ckt.solution.set_mode(SolveMode::from_ordinal(v));
+                        if let Some(v) = enum_ord(enums, enums.solve_mode, &param, errors)
+                            && crate::solution::set_mode(ckt, SolveMode::from_ordinal(v), errors)
+                        {
+                            // Pascal `Set_Mode` tail: monitor/meter resets are
+                            // Phase 6 no-ops, there are no Fault elements yet
+                            // (Phase 7), and `DoResetControls` runs here.
+                            let mut store = ClassStore { classes };
+                            let mut env = SolveEnv {
+                                store: &mut store,
+                                parser: aux_parser,
+                                vars,
+                                errors,
+                            };
+                            if let Err(e) =
+                                crate::solution::controls::reset_all_controls(ckt, &mut env)
+                            {
+                                env.errors.push(format!("Error resetting controls: {e}"));
+                            }
                         }
                     }
                     opt::RANDOM => {
@@ -1268,9 +1462,32 @@ impl Dss {
                             ckt.solution.default_control_mode = v;
                         }
                     }
+                    opt::DEFAULT_DAILY => {
+                        // Pascal: only replace when the shape is found.
+                        if let Some(shape) = find_load_shape(classes, &param) {
+                            ckt.default_daily_shape_obj = Some(shape);
+                        }
+                    }
+                    opt::DEFAULT_YEARLY => {
+                        if let Some(shape) = find_load_shape(classes, &param) {
+                            ckt.default_yearly_shape_obj = Some(shape);
+                        }
+                    }
                     opt::CKT_MODEL => {
                         if let Some(v) = enum_ord(enums, enums.ckt_model, &param, errors) {
                             ckt.positive_sequence = v != 0;
+                        }
+                    }
+                    opt::PRICE_SIGNAL => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.price_signal = v;
+                        }
+                    }
+                    opt::PRICE_CURVE => {
+                        // Pascal assigns Find()'s result (NIL on miss) first.
+                        ckt.price_curve_obj = find_price_shape(classes, &param);
+                        if ckt.price_curve_obj.is_none() {
+                            errors.push(format!("Priceshape.{param} not found."));
                         }
                     }
                     opt::BASE_FREQUENCY => {
@@ -1301,7 +1518,7 @@ impl Dss {
                     }
                     _ => {
                         let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
-                        errors.push(format!("Set option \"{name}\" is not ported in Phase 3."));
+                        errors.push(format!("Set option \"{name}\" is not ported yet."));
                     }
                 }
 
@@ -1389,6 +1606,18 @@ impl Dss {
                 0 => errors.push(format!(
                     "Unknown parameter \"{param_name}\" for Get Command"
                 )),
+                opt::HOUR => append_result(&mut result, &ckt.solution.int_hour.to_string()),
+                opt::SEC => append_result(&mut result, &float_to_str(ckt.solution.t)),
+                opt::STEPSIZE | opt::H => append_result(&mut result, &float_to_str(ckt.solution.h)),
+                opt::TIME => append_result(
+                    &mut result,
+                    &format!(
+                        "[ {}, {} ] !... {} (hours)",
+                        ckt.solution.int_hour,
+                        float_to_str(ckt.solution.t),
+                        float_to_str(ckt.solution.dbl_hour)
+                    ),
+                ),
                 opt::YEAR => append_result(&mut result, &ckt.solution.year.to_string()),
                 opt::FREQUENCY => append_result(&mut result, &float_to_str(ckt.solution.frequency)),
                 opt::MODE => append_result(
@@ -1450,11 +1679,33 @@ impl Dss {
                         .get(enums.control_mode)
                         .ordinal_to_string(ckt.solution.control_mode),
                 ),
+                opt::DEFAULT_DAILY => append_result(
+                    &mut result,
+                    &ckt.default_daily_shape_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
+                ),
+                opt::DEFAULT_YEARLY => append_result(
+                    &mut result,
+                    &ckt.default_yearly_shape_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
+                ),
                 opt::CKT_MODEL => append_result(
                     &mut result,
                     &enums
                         .get(enums.ckt_model)
                         .ordinal_to_string(ckt.positive_sequence as i32),
+                ),
+                opt::PRICE_SIGNAL => append_result(&mut result, &float_to_str(ckt.price_signal)),
+                opt::PRICE_CURVE => append_result(
+                    &mut result,
+                    &ckt.price_curve_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
                 ),
                 opt::BASE_FREQUENCY => append_result(&mut result, &float_to_str(ckt.fundamental)),
                 opt::MAX_CONTROL_ITER => append_result(
@@ -1472,7 +1723,7 @@ impl Dss {
                 }
                 _ => {
                     let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
-                    errors.push(format!("Get option \"{name}\" is not ported in Phase 3."));
+                    errors.push(format!("Get option \"{name}\" is not ported yet."));
                 }
             }
         }
@@ -1576,6 +1827,63 @@ impl Dss {
         }
     }
 
+    /// Pascal `DoBusCoordsCmd` (`ExecHelper.pas` l.2955): read a `bus, x, y`
+    /// file (one bus per line, aux-parser delimiters) and set the coordinates
+    /// on buses that exist; buses not in the circuit are silently ignored.
+    /// `swap_xy` is the `LatLongCoords` variant (unported command).
+    fn do_bus_coords_cmd(&mut self, swap_xy: bool) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars);
+        let path = self.current_dir.join(&param);
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                self.errors.push(format!(
+                    "Bus Coordinate file \"{param}\" could not be read: {e}"
+                ));
+                return;
+            }
+        };
+        let Dss {
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        for (lineno, line) in content.lines().enumerate() {
+            aux_parser.set_cmd_string(line);
+            aux_parser.next_param(vars);
+            let bus_name = aux_parser.make_string(vars);
+            let Some(ib) = ckt.bus_list.find(&bus_name) else {
+                continue; // just ignore a bus that's not in the circuit
+            };
+            // Pascal reads both coordinates with DblValue; a malformed number
+            // raises and aborts the whole file with error 275.
+            aux_parser.next_param(vars);
+            let first = aux_parser.make_double(vars);
+            aux_parser.next_param(vars);
+            let second = aux_parser.make_double(vars);
+            let (Ok(first), Ok(second)) = (first, second) else {
+                errors.push(format!(
+                    "Bus Coordinate file: Error Reading Line {}",
+                    lineno + 1
+                ));
+                return;
+            };
+            let bus = &mut ckt.buses[ib];
+            if swap_xy {
+                bus.y = first;
+                bus.x = second;
+            } else {
+                bus.x = first;
+                bus.y = second;
+            }
+            bus.coord_defined = true;
+        }
+    }
+
     /// Pascal `DoRedirect` (`Redirect`/`Compile`): run a script file line by
     /// line, handling `/* ... */` block comments exactly like the original
     /// (`/*` only recognized at the start of a line; `*/` anywhere in one).
@@ -1622,6 +1930,7 @@ impl Dss {
         }
 
         self.redirect_abort = false;
+        let save_in_redirect = self.in_redirect; // nested Redirects stay "inside"
         self.in_redirect = true;
 
         let mut in_block_comment = false;
@@ -1652,7 +1961,7 @@ impl Dss {
             }
         }
 
-        self.in_redirect = false;
+        self.in_redirect = save_in_redirect;
         let path_str = path.to_string_lossy().to_string();
         self.vars.add("@lastfile", &path_str);
         if is_compile {
@@ -1672,6 +1981,10 @@ impl Dss {
 pub struct ElementSnapshot {
     /// `FullName` (`Class.name`).
     pub name: String,
+    /// `Enabled`.
+    pub enabled: bool,
+    /// `BusNames`: the stored bus spec per terminal (`GetBus(i)`).
+    pub bus_names: Vec<String>,
     /// kW/kvar interleaved per conductor and terminal (CAPI
     /// `Alt_CE_Get_Powers`: `GetPhasePower · 0.001`).
     pub powers: Vec<f64>,
@@ -1720,13 +2033,82 @@ impl Dss {
                     }
                 }
             }
+            let cd = elem.cd();
+            let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
             out.push(ElementSnapshot {
                 name,
+                enabled: cd.enabled,
+                bus_names,
                 powers,
                 currents,
             });
         }
         out
+    }
+
+    /// Per-transformer winding taps in creation order, keyed by name —
+    /// mirrors the oracle's `Transformers` loop (`tr.Wdg = i; tr.Tap`).
+    pub fn transformer_taps(&self) -> Vec<(String, Vec<f64>)> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.transformers.len());
+        for &r in &ckt.transformers {
+            let obj = &self.classes[r.cls].objects[r.idx];
+            let tr = obj
+                .as_any()
+                .downcast_ref::<transformer::Transformer>()
+                .expect("transformers list holds Transformers");
+            let n = tr.num_windings() as usize;
+            let taps = (1..=n).map(|w| tr.present_tap(w)).collect();
+            out.push((obj.data().name().to_string(), taps));
+        }
+        out
+    }
+
+    /// Per-RegControl `TapNumber` in creation order (the oracle's
+    /// `RegControls` API).
+    pub fn regcontrol_tap_numbers(&self) -> Vec<(String, i32)> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for &r in &ckt.controls {
+            let obj = &self.classes[r.cls].objects[r.idx];
+            if obj
+                .as_any()
+                .downcast_ref::<reg_control::RegControl>()
+                .is_some()
+            {
+                out.push((
+                    obj.data().name().to_string(),
+                    obj.get_i32(reg_control::prop::TAPNUM),
+                ));
+            }
+        }
+        out
+    }
+
+    /// Per-capacitor `States` array in creation order (the oracle's
+    /// `Capacitors` API — every Capacitor object, not just the shunt list).
+    pub fn capacitor_states(&self) -> Vec<(String, Vec<i32>)> {
+        let Some(cls) = self
+            .classes
+            .iter()
+            .find(|c| c.props.class_name().eq_ignore_ascii_case("Capacitor"))
+        else {
+            return Vec::new();
+        };
+        cls.objects
+            .iter()
+            .map(|obj| {
+                let states = obj
+                    .get_i32_array(capacitor::prop::STATES)
+                    .map(|s| s.to_vec())
+                    .unwrap_or_default();
+                (obj.data().name().to_string(), states)
+            })
+            .collect()
     }
 
     /// CAPI `Circuit_Get_TotalPower`: the sum of every source's terminal-1
@@ -1794,6 +2176,61 @@ impl Default for Dss {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Pascal `interpretTimeStepSize` (`ExecOptions.pas` l.315): plain number =
+/// seconds; otherwise a single-char `h`/`m`/`s` suffix. On error the step size
+/// is left unchanged.
+fn interpret_time_step_size(s: &str, current_h: f64, errors: &mut Vec<String>) -> f64 {
+    if let Ok(v) = s.parse::<f64>() {
+        return v; // only a number was specified, so must be seconds
+    }
+    // Error occurred, so must have a units specifier (the last character).
+    let Some(ch) = s.chars().last() else {
+        errors.push(format!("Error in specification of StepSize: {s}"));
+        return current_h;
+    };
+    let s2 = &s[..s.len() - ch.len_utf8()];
+    let Ok(v) = s2.parse::<f64>() else {
+        errors.push(format!("Error in specification of StepSize: {s}"));
+        return current_h;
+    };
+    match ch {
+        'h' => v * 3600.0,
+        'm' => v * 60.0,
+        's' => v,
+        _ => {
+            errors.push(format!(
+                "Error in specification of StepSize: \"{s}\". Units can only be h, m, or s (single char only)"
+            ));
+            current_h
+        }
+    }
+}
+
+/// `DSS.LoadShapeClass.Find(name)`, snapshot-cloned for the circuit defaults
+/// (same staleness semantics as the Load/VSource shape refs — STATUS §1c).
+fn find_load_shape(classes: &[DssClass], name: &str) -> Option<load_shape::LoadShapeObj> {
+    let cls = classes
+        .iter()
+        .find(|c| c.props.class_name().eq_ignore_ascii_case("LoadShape"))?;
+    let &idx = cls.name_to_idx.get(&name.to_lowercase())?;
+    cls.objects[idx]
+        .as_any()
+        .downcast_ref::<load_shape::LoadShapeObj>()
+        .cloned()
+}
+
+/// `DSS.PriceShapeClass.Find(name)`, snapshot-cloned (`Set pricecurve=`).
+fn find_price_shape(classes: &[DssClass], name: &str) -> Option<price_shape::PriceShapeObj> {
+    let cls = classes
+        .iter()
+        .find(|c| c.props.class_name().eq_ignore_ascii_case("PriceShape"))?;
+    let &idx = cls.name_to_idx.get(&name.to_lowercase())?;
+    cls.objects[idx]
+        .as_any()
+        .downcast_ref::<price_shape::PriceShapeObj>()
+        .cloned()
 }
 
 /// Pascal `Parser.DblValue` on the current token, record-and-continue.
@@ -2219,6 +2656,10 @@ mod tests {
             dss.command("New load.l1 bus1=b2 phases=3 kv=4.16 kw=300 pf=0.95");
             dss.command("Set voltagebases=[12.47, 4.16]");
             dss.command("CalcVoltageBases");
+            // Controls off: this test isolates the *structural* invariants
+            // (node order, no Yprim stamping). With controls active the
+            // RegControl legitimately adds control iterations (WP5.7).
+            dss.command("Set controlmode=off");
             dss.command("Solve");
             assert!(dss.errors().is_empty(), "{:?}", dss.errors());
             let ckt = dss.circuit().unwrap();
@@ -2248,5 +2689,167 @@ mod tests {
         assert!(dss.errors().is_empty(), "{:?}", dss.errors());
         dss.command("Get mode tolerance maxiterations");
         assert_eq!(dss.result(), "Daily, 0.001, 25");
+    }
+
+    /// Build the 2-bus regulator micro-circuit the WP5.7 oracle probes used.
+    fn reg_two_bus(dss: &mut Dss, reg_props: &str) {
+        dss.command("New circuit.ctl basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+        dss.command(
+            "New transformer.t1 phases=3 windings=2 buses=(sourcebus, b2) \
+             conns=(delta wye) kvs=(12.47 4.16) kvas=(5000 5000) xhl=8",
+        );
+        dss.command(&format!("New regcontrol.r1 transformer=t1 {reg_props}"));
+        dss.command("New load.l1 bus1=b2 phases=3 kv=4.16 kw=300 pf=0.95");
+        dss.command("Set voltagebases=[12.47, 4.16]");
+        dss.command("CalcVoltageBases");
+    }
+
+    /// WP5.7: the live control loop drives the regulator to the oracle's tap.
+    /// Oracle probe (pinned dss-python): iterations=6, winding-2 tap=1.01875.
+    #[test]
+    fn control_loop_regulates_two_bus_to_oracle_tap() {
+        let mut dss = Dss::new();
+        reg_two_bus(&mut dss, "winding=2 vreg=122 band=0.0001 ptratio=20");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let ckt = dss.circuit().unwrap();
+        assert!(ckt.is_solved);
+        assert_eq!(ckt.solution.iteration, 6);
+        let taps = dss.transformer_taps();
+        assert_eq!(taps[0].0, "t1");
+        assert!(
+            (taps[0].1[1] - 1.01875).abs() < 1e-12,
+            "winding-2 tap = {}",
+            taps[0].1[1]
+        );
+    }
+
+    /// WP5.7 step 5: a control that cannot settle within `maxcontroliter`
+    /// stops with the 485 warning and aborts the solution. Oracle probe:
+    /// `maxcontroliter=2` + `maxtapchange=1` → iterations=4, tap=1.00625,
+    /// error 485; the next *external* command resets the abort flag
+    /// (CAPI `Text_Set_Command`).
+    #[test]
+    fn max_control_iterations_exceeded_warns_and_aborts() {
+        let mut dss = Dss::new();
+        reg_two_bus(
+            &mut dss,
+            "winding=2 vreg=122 band=2 ptratio=20 maxtapchange=1",
+        );
+        dss.command("Set maxcontroliter=2");
+        dss.command("Solve");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.starts_with("Warning Max Control Iterations Exceeded.")),
+            "{:?}",
+            dss.errors()
+        );
+        let ckt = dss.circuit().unwrap();
+        assert_eq!(ckt.solution.iteration, 4);
+        assert!(ckt.solution.solution_abort);
+        let taps = dss.transformer_taps();
+        assert!(
+            (taps[0].1[1] - 1.00625).abs() < 1e-12,
+            "winding-2 tap = {}",
+            taps[0].1[1]
+        );
+        // External commands reset the abort (the oracle solves again and
+        // exceeds again rather than reporting "Solution aborted.").
+        dss.command("Get hour");
+        assert!(!dss.circuit().unwrap().solution.solution_abort);
+    }
+
+    /// WP5.8 step 6: time-option round trips, all values transcribed from the
+    /// pinned oracle.
+    #[test]
+    fn time_options_round_trip_matches_oracle() {
+        let query = |dss: &mut Dss, what: &str| -> String {
+            dss.command(&format!("get {what}"));
+            dss.result().to_string()
+        };
+        let mut dss = Dss::new();
+        dss.command("new circuit.t2");
+        dss.command("set stepsize=15m");
+        assert_eq!(query(&mut dss, "stepsize"), "900");
+        dss.command("set hour=5");
+        assert_eq!(query(&mut dss, "hour"), "5");
+        dss.command("set sec=120.5");
+        assert_eq!(query(&mut dss, "sec"), "120.5");
+        dss.command("set time=(2, 1800)");
+        assert_eq!(query(&mut dss, "time"), "[ 2, 1800 ] !... 2.5 (hours)");
+        assert_eq!(query(&mut dss, "hour"), "2");
+        assert_eq!(query(&mut dss, "sec"), "1800");
+        dss.command("set mode=daily");
+        assert_eq!(query(&mut dss, "number"), "24");
+        assert_eq!(query(&mut dss, "stepsize"), "3600");
+        // DUTYCYCLE forces TIMEDRIVEN control mode and h = 1 s.
+        dss.command("set mode=duty");
+        assert_eq!(query(&mut dss, "controlmode"), "Time");
+        assert_eq!(query(&mut dss, "stepsize"), "1");
+        // Circuit defaults resolve to the built-in `loadshape.default`.
+        assert_eq!(query(&mut dss, "defaultdaily"), "default");
+        assert_eq!(query(&mut dss, "defaultyearly"), "default");
+        assert_eq!(query(&mut dss, "pricesignal"), "25");
+        assert_eq!(query(&mut dss, "pricecurve"), "");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    }
+
+    /// WP5.8: a daily-mode solve steps the clock through `number` steps.
+    #[test]
+    fn daily_mode_advances_the_clock_and_solves() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.d1 basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+        dss.command("New loadshape.two npts=2 interval=1 mult=(0.5 1.0)");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.2 length=1");
+        dss.command("New load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95 daily=two");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Set mode=daily stepsize=1h number=2");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let ckt = dss.circuit().unwrap();
+        assert!(ckt.is_solved);
+        // IncrementTime runs before each step: after 2 steps dblHour = 2.0
+        // (oracle probe: dblHour 2.0, Hour 2, Seconds 0.0).
+        assert_eq!(ckt.solution.int_hour, 2);
+        assert_eq!(ckt.solution.dbl_hour, 2.0);
+        assert_eq!(ckt.solution.t, 0.0);
+        // The built-in default daily shape drove DefaultHourMult (the value
+        // itself is the WP5.2 oracle-pinned GetMultAtHour).
+        let expected = ckt
+            .default_daily_shape_obj
+            .clone()
+            .expect("default shape resolved")
+            .get_mult_at_hour(2.0);
+        assert_eq!(ckt.default_hour_mult, expected);
+    }
+
+    /// WP5.8 step 5: `BusCoords` reads `bus, x, y` rows, skipping unknown
+    /// buses silently; coordinates survive on existing buses.
+    #[test]
+    fn bus_coords_sets_coordinates_on_existing_buses() {
+        let dir = std::env::temp_dir().join("dss_rs_buscoords_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("coords.csv");
+        std::fs::write(&file, "sourcebus, 10.5, -3\nnosuchbus, 1, 2\nb2 7 8\n").unwrap();
+
+        let mut dss = Dss::new();
+        dss.command("New circuit.bc basekv=12.47 pu=1.0 phases=3");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.2 length=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases"); // builds the bus list
+        dss.command(&format!(
+            "BusCoords \"{}\"",
+            file.to_string_lossy().replace('\\', "/")
+        ));
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let ckt = dss.circuit().unwrap();
+        let sb = ckt.bus_list.find("sourcebus").unwrap();
+        assert!(ckt.buses[sb].coord_defined);
+        assert_eq!((ckt.buses[sb].x, ckt.buses[sb].y), (10.5, -3.0));
+        let b2 = ckt.bus_list.find("b2").unwrap();
+        assert_eq!((ckt.buses[b2].x, ckt.buses[b2].y), (7.0, 8.0));
+        std::fs::remove_file(&file).ok();
     }
 }

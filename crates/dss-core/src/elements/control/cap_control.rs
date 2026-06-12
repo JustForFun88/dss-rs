@@ -204,14 +204,32 @@ impl CapControl {
     /// Pascal `TCapControlObj.Reset` (the `Reset` action property). The
     /// `ControlledElement.Closed[0] := InitialState` restore needs the
     /// controlled capacitor, which the property setter cannot reach; it is
-    /// applied by the control-loop reset path (WP5.7) — here we restore the
-    /// control's own switching state.
+    /// applied by the control-loop reset path ([`Self::reset_with`]) — here we
+    /// restore the control's own switching state.
     fn reset(&mut self) {
         self.set_pending_change(CTRL_NONE);
         self.should_switch = false;
         self.armed = false;
         self.last_open_time = -self.dead_time;
         self.present_state = self.initial_state;
+    }
+
+    /// The full Pascal `Reset` (the `DoResetControls` path): restore the
+    /// control state *and* drive the bank back to `InitialState`. Returns
+    /// whether the bank's switch state changed (the caller raises
+    /// `SystemYChanged`, Pascal's `Set_ConductorClosed` side effect).
+    pub(crate) fn reset_with(&mut self, cap: &mut dyn ControlledCapacitor) -> bool {
+        let was_closed = cap.is_closed();
+        let want_closed = match self.initial_state {
+            CTRL_OPEN => Some(false),
+            CTRL_CLOSE => Some(true),
+            _ => None,
+        };
+        if let Some(want) = want_closed {
+            cap.set_closed(want);
+        }
+        self.reset();
+        want_closed.is_some_and(|want| want != was_closed)
     }
 
     /// Pascal `Set_PendingChange` (also mirrors to `DblTraceParameter`).
@@ -316,7 +334,6 @@ impl CapControl {
     /// control queue. `cap` is the controlled capacitor; `mon` the monitored
     /// element (they differ except for Time/Follow control, where `mon` is the
     /// capacitor and is not read). Ported top-to-bottom.
-    #[allow(dead_code)] // wired into the control loop in WP5.7
     pub(crate) fn sample(
         &mut self,
         cap: &mut dyn ControlledCapacitor,
@@ -632,7 +649,6 @@ impl CapControl {
     /// Pascal `TCapControlObj.DoPendingAction` — switch the controlled bank when
     /// the queued action's time arrives (open/close or step up/down), then
     /// disarm. Marks `system_y_changed` whenever the bank's admittance changes.
-    #[allow(dead_code)] // wired into the control loop in WP5.7
     pub(crate) fn do_pending_action(
         &mut self,
         cap: &mut dyn ControlledCapacitor,
@@ -821,6 +837,9 @@ impl DssObject for CapControl {
         &mut self.ccd.cd.obj
     }
     fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
     fn as_ckt_element(&self) -> Option<&dyn CktElement> {
