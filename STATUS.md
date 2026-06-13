@@ -13,8 +13,9 @@ Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
 8500-node gate). Done so far: **WP6.1 (topology foundations), WP6.2
 (Generator), WP6.3 (MeterElement + Monitor), WP6.4 (EnergyMeter + zone
 build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6 (reliability:
-fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation), WP6.8 part 1–3/4
-(GenDispatcher + StorageController & AutoAdd skeletons)** — see §1d.
+fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation), WP6.8
+(GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs basic)** —
+see §1d.
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -53,13 +54,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.7 + WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons) done; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.8 done (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs basic); WP6.9 (8500-node gate) next; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 311, golden_feeders 1,
+cargo test --workspace      # dss-core lib 315, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_slice 2,
@@ -1186,7 +1187,33 @@ fixes from an audit against `StorageController.pas`:
   "not ported yet" error; no existing golden exercised them). Net dss-core lib
   307 → **311**.
 
-Remaining WP6.8 part (ReduceAlgs basic) not started.
+**WP6.8 (part 4/4) — ReduceAlgs basic — ✅ done, gate-green.** Per PHASE6_PLAN
+§3 step 5 the WP is scoped to the option/command **surface**; the zone
+reduction is `NOT_PORTED` because every strategy (`DoReduceDefault` &
+siblings in `ReduceAlgs.pas`) hinges on the unported 210-line
+`TLineObj.MergeWith` series/parallel line merge. Files:
+- `circuit/circuit.rs`: `ReductionStrategy` enum (`Default`/`ShortLines`/
+  `MergeParallel`/`BreakLoop`/`Dangling`/`Switches`/`Laterals`; Pascal
+  `TReductionStrategy`, `rsTapEnds` removed upstream) + circuit fields
+  `reduction_strategy`/`reduction_strategy_string` (""), `reduction_zmag`
+  (0.02), `reduce_laterals_keep_load` (true).
+- `exec/mod.rs`: wired `Set`/`Get` for ReduceOption(59), KeepLoad(112),
+  Zmag(113). `set_reduce_strategy` ports `DoSetReduceStrategy` (first-char
+  dispatch; `S` → Switch via `CompareTextShortest(S,'SWITCH')`, else
+  ShortLines; unknown → error "Unknown Reduction Strategy" + falls back to
+  rsDefault). `do_reduce_cmd` ports the `Reduce` command's energy-meter
+  precondition (error 1890, exact message) and then logs a NOT_PORTED
+  deferral for the reduction itself (no silent no-op). `MarkCapandReactorBuses`
+  / `ReduceZone` / `Interpolate` (l.2298) deferred with the merge.
+- **+4 unit tests** (option defaults+round-trip incl. the empty-ReduceOption
+  `Get` elision; first-char strategy dispatch incl. the `S` ambiguity + unknown
+  fallback; Reduce no-meter 1890; Reduce-with-meter deferral). No golden
+  regeneration (the wired options/command were previously the "not ported"
+  error; no existing golden exercised them). Net dss-core lib 311 → **315**.
+
+WP6.8 complete (4/4). Next: WP6.9 (goldens + 8500-node gate). Note for WP6.9:
+the `Interpolate` command (Run_8500Node calls it after solve) is unported, so
+drop it from any 8500 replay or port it then.
 
 ---
 

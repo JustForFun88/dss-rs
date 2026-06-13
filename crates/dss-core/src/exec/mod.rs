@@ -200,6 +200,7 @@ mod cmd {
     pub const CD: usize = 72;
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
+    pub const REDUCE: usize = 61;
     pub const RELCALC: usize = 100;
     pub const VAR: usize = 101;
     pub const CLEAR_ALL: usize = 119;
@@ -382,6 +383,9 @@ mod opt {
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
     pub const NEGLECT_LOAD_Y: usize = 95;
     pub const MIN_ITERATIONS: usize = 110;
+    pub const REDUCE_OPTION: usize = 59;
+    pub const KEEP_LOAD: usize = 112;
+    pub const ZMAG: usize = 113;
 }
 
 /// A class constructor: build a fresh, all-default object of the class.
@@ -979,6 +983,7 @@ impl Dss {
             cmd::RESET => self.do_reset_cmd(),
             cmd::ALLOCATE_LOADS => self.do_allocate_loads_cmd(),
             cmd::RELCALC => self.do_relcalc_cmd(),
+            cmd::REDUCE => self.do_reduce_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
@@ -1582,6 +1587,15 @@ impl Dss {
                         &mut ckt.auto_add_bus_list,
                         errors,
                     ),
+                    // Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049). The
+                    // strategy is stored; the reduction itself is NOT_PORTED.
+                    opt::REDUCE_OPTION => set_reduce_strategy(ckt, &param, errors),
+                    opt::KEEP_LOAD => ckt.reduce_laterals_keep_load = interpret_yes_no(&param),
+                    opt::ZMAG => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.reduction_zmag = v;
+                        }
+                    }
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];
@@ -1865,6 +1879,9 @@ impl Dss {
                         append_result(&mut result, name);
                     }
                 }
+                opt::REDUCE_OPTION => append_result(&mut result, &ckt.reduction_strategy_string),
+                opt::KEEP_LOAD => append_result(&mut result, yes_no(ckt.reduce_laterals_keep_load)),
+                opt::ZMAG => append_result(&mut result, &float_to_str(ckt.reduction_zmag)),
                 opt::CONTROL_MODE => append_result(
                     &mut result,
                     &enums
@@ -2137,6 +2154,42 @@ impl Dss {
             assume_restoration,
         );
         errors.extend(errs);
+    }
+
+    /// Pascal `DoReduceCmd` (ExecHelper.pas l.1614): the `Reduce` command. The
+    /// energy-meter precondition (error 1890) is reproduced faithfully; the
+    /// reduction itself — `MarkCapandReactorBuses` + `EnergyMeter.ReduceZone`
+    /// dispatching `ReduceAlgs.pas` (`DoReduceDefault`/`DoReduceShortLines`/…)
+    /// → `TLineObj.MergeWith` — is NOT_PORTED (the 210-line line merge is
+    /// unported), so the strategy is parsed/stored but no zone is reduced.
+    /// Deferred to a later phase.
+    fn do_reduce_cmd(&mut self) {
+        // Consume the meter-name / 'All' argument (unused until the reduction
+        // is ported).
+        self.parser.next_param(&self.vars);
+        let _param = self.parser.make_string(&self.vars);
+
+        let no_meters = self
+            .circuit
+            .as_ref()
+            .expect("gated in command()")
+            .energy_meters
+            .is_empty();
+        if no_meters {
+            // Pascal error 1890.
+            self.errors.push(
+                "An energy meter is required to use this feature. Please check \
+                 https://sourceforge.net/p/electricdss/code/HEAD/tree/trunk/Version8/Doc/Circuit%20Reduction%20for%20Version8.docx \
+                 for examples."
+                    .to_string(),
+            );
+            return;
+        }
+        self.errors.push(
+            "Reduce: circuit reduction is not ported yet (the zone line-merge \
+             requires Line.MergeWith — deferred to a later phase)."
+                .to_string(),
+        );
     }
 
     /// Pascal `DoSetVoltageBases` (the `CalcVoltageBases` command).
@@ -2903,6 +2956,39 @@ fn do_auto_add_bus_list(
             param = aux_parser.make_string(vars);
         }
     }
+}
+
+/// Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049): parse the
+/// `Set ReduceOption=` value into a [`crate::circuit::ReductionStrategy`]. The
+/// first character (case-insensitive) selects the mode; an `S` is
+/// disambiguated Switch-vs-Shortlines by `CompareTextShortest(S, 'SWITCH')`.
+/// The strategy is only stored — the reduction (`ReduceAlgs.pas`) is
+/// `NOT_PORTED`.
+fn set_reduce_strategy(ckt: &mut Circuit, s: &str, errors: &mut Vec<String>) {
+    use crate::circuit::ReductionStrategy as Rs;
+    ckt.reduction_strategy_string = s.to_string();
+    ckt.reduction_strategy = Rs::Default;
+    let Some(first) = s.bytes().next() else {
+        return; // No option given
+    };
+    ckt.reduction_strategy = match first.to_ascii_uppercase() {
+        b'B' => Rs::BreakLoop,
+        b'D' => Rs::Default,
+        b'E' => Rs::Dangling, // Ends
+        b'L' => Rs::Laterals,
+        b'M' => Rs::MergeParallel,
+        b'S' => {
+            if crate::util::compare_text_shortest_eq(s, "SWITCH") {
+                Rs::Switches
+            } else {
+                Rs::ShortLines
+            }
+        }
+        _ => {
+            errors.push(format!("Unknown Reduction Strategy: \"{s}\"."));
+            return; // leaves rsDefault, matching Pascal
+        }
+    };
 }
 
 /// Pascal `AppendGlobalResult`: comma-separated accumulation.
@@ -3741,6 +3827,100 @@ mod tests {
                 .iter()
                 .any(|e| e.contains("Unknown solution mode")),
             "expected AutoAdd solve to remain deferred, got {:?}",
+            dss.errors()
+        );
+    }
+
+    /// `Set ReduceOption/Zmag/KeepLoad=` defaults + round-trip through `Get`.
+    /// (ReduceOption's default string is empty, so `Get` elides it — exactly
+    /// like Pascal `AppendGlobalResult` on a zero-length string.)
+    #[test]
+    fn reduce_options_defaults_and_round_trip() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Get zmag keepload");
+        assert_eq!(dss.result(), "0.02, Yes");
+        dss.command("Get reduceoption");
+        assert_eq!(dss.result(), "");
+
+        dss.command("Set reduceoption=shortlines zmag=0.05 keepload=no");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        {
+            let ckt = dss.circuit().unwrap();
+            assert_eq!(
+                ckt.reduction_strategy,
+                crate::circuit::ReductionStrategy::ShortLines
+            );
+            assert_eq!(ckt.reduction_strategy_string, "shortlines");
+            assert_eq!(ckt.reduction_zmag, 0.05);
+            assert!(!ckt.reduce_laterals_keep_load);
+        }
+        dss.command("Get reduceoption zmag keepload");
+        assert_eq!(dss.result(), "shortlines, 0.05, No");
+    }
+
+    /// `DoSetReduceStrategy` dispatches on the first character; `S` resolves to
+    /// Switch via `CompareTextShortest(S,'SWITCH')`, else ShortLines.
+    #[test]
+    fn reduce_strategy_first_char_dispatch() {
+        use crate::circuit::ReductionStrategy as Rs;
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        let cases = [
+            ("break", Rs::BreakLoop),
+            ("default", Rs::Default),
+            ("ends", Rs::Dangling),
+            ("laterals", Rs::Laterals),
+            ("merge", Rs::MergeParallel),
+            ("switch", Rs::Switches),
+            ("shortlines", Rs::ShortLines),
+            ("s", Rs::Switches), // CompareTextShortest("s","SWITCH")=0 -> Switch
+        ];
+        for (opt, want) in cases {
+            dss.command(&format!("Set reduceoption={opt}"));
+            assert_eq!(dss.circuit().unwrap().reduction_strategy, want, "opt={opt}");
+        }
+        // Unknown strategy: error logged, strategy falls back to Default.
+        dss.command("Set reduceoption=zzz");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Unknown Reduction Strategy")),
+            "{:?}",
+            dss.errors()
+        );
+        assert_eq!(dss.circuit().unwrap().reduction_strategy, Rs::Default);
+    }
+
+    /// `Reduce` with no energy meters reproduces Pascal error 1890.
+    #[test]
+    fn reduce_command_requires_energy_meter() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("reduce");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("energy meter is required")),
+            "{:?}",
+            dss.errors()
+        );
+    }
+
+    /// `Reduce` with a meter present passes the precondition but the zone
+    /// reduction (`Line.MergeWith`) is NOT_PORTED — the documented deferral.
+    #[test]
+    fn reduce_command_with_meter_deferred() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("reduce");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("reduction is not ported")),
+            "{:?}",
             dss.errors()
         );
     }
