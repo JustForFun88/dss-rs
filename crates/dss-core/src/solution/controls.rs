@@ -22,6 +22,7 @@ use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::reg_control::RegControl;
+use crate::elements::control::storage_controller::StorageController;
 use crate::elements::pc::generator::Generator;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
@@ -353,6 +354,10 @@ enum ControlKind {
         monitored: Option<ElemRef>,
         element_terminal: usize,
     },
+    /// StorageController is a Phase-6 skeleton: with no Storage element the fleet
+    /// is always empty, so `Sample`/`DoPendingAction`/`Reset` are inert no-ops
+    /// (PHASE6_PLAN §2.6). Carries no refs — there is nothing to dispatch.
+    StorageSkeleton,
 }
 
 /// The dispatch core: split the borrows, downcast, and invoke `Sample` /
@@ -396,6 +401,11 @@ fn dispatch_control(
                     element_terminal: gd.ccd.element_terminal.max(1) as usize,
                 },
                 format!("GenDispatcher.{}", gd.ccd.cd.obj.name()),
+            )
+        } else if let Some(sc) = obj.as_any().downcast_ref::<StorageController>() {
+            (
+                ControlKind::StorageSkeleton,
+                format!("StorageController.{}", sc.ccd.cd.obj.name()),
             )
         } else {
             return Err(format!(
@@ -461,6 +471,11 @@ fn dispatch_control(
         return Ok(());
     }
 
+    // StorageController skeleton: empty fleet → nothing to sample/act/reset.
+    if let ControlKind::StorageSkeleton = kind {
+        return Ok(());
+    }
+
     // Build the shared control context from disjoint Solution fields.
     let Solution {
         node_v,
@@ -491,6 +506,7 @@ fn dispatch_control(
     match kind {
         // Handled (and returned) above, before the CtrlCtx was built.
         ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
+        ControlKind::StorageSkeleton => unreachable!("StorageController handled above"),
         ControlKind::Reg { controlled } => {
             let Some(target) = controlled else {
                 return Err(abort(ctx.errors, &full_name, "Transformer element not set"));

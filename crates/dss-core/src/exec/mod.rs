@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
-use crate::elements::control::{cap_control, gen_dispatcher, reg_control};
+use crate::elements::control::{cap_control, gen_dispatcher, reg_control, storage_controller};
 use crate::elements::general::{
     growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
     xy_curve,
@@ -740,6 +740,13 @@ impl Dss {
             DssClass::ckt_class(
                 gen_dispatcher::class_props(&enums),
                 |name| Box::new(gen_dispatcher::GenDispatcher::new(name)),
+                ElemKind::Control,
+            ),
+            // StorageController follows GenDispatcher (Pascal DSSClassDefs.pas:237;
+            // the Storage element at :234 is Phase 7, so it is skipped here).
+            DssClass::ckt_class(
+                storage_controller::class_props(&enums),
+                |name| Box::new(storage_controller::StorageController::new(name)),
                 ElemKind::Control,
             ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
@@ -3686,6 +3693,31 @@ mod tests {
             let (kw, _) = dss.generator_kw_kvar(g).unwrap();
             assert!((kw - 1.0).abs() < 1e-6, "{g} kW = {kw}");
         }
+    }
+
+    /// WP6.8 StorageController skeleton: a circuit carrying a StorageController
+    /// (whose fleet is always empty in Phase 6) must still solve — the control
+    /// sweep treats it as an inert no-op. The only logged error is the faithful
+    /// 37201 ("No unassigned Storage Elements found") emitted at parse-time
+    /// RecalcElementData, exactly as the oracle reports on a Storage-less circuit.
+    #[test]
+    fn storagecontroller_skeleton_solves_as_noop() {
+        let mut dss = Dss::new();
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 kw=3000 pf=0.95");
+        dss.command("new storagecontroller.sc1 element=line.l1 terminal=1");
+        // The 37201 is logged during the New command; everything after solves.
+        let errs: Vec<String> = dss.errors().to_vec();
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].contains("No unassigned Storage Elements found"));
+
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        // No *new* errors from the control loop; the circuit converged.
+        assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
+        assert!(dss.circuit().unwrap().solution.converged_flag);
     }
 
     /// WP5.8 step 6: time-option round trips, all values transcribed from the

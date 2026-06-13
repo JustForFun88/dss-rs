@@ -25,6 +25,13 @@ struct Scenario {
     target: String,
     /// Property name → oracle value string.
     properties: BTreeMap<String, String>,
+    /// Some objects log a non-fatal error during their own RecalcElementData
+    /// even when fully specified (e.g. a StorageController on a circuit with no
+    /// Storage element always logs 37201 — faithfully reproduced). Those
+    /// scenarios still pin the property dump; the error itself is covered by a
+    /// dedicated unit test, so skip the "no engine errors" assertion here.
+    #[serde(default)]
+    allow_errors: bool,
 }
 
 fn load_golden() -> PropsGolden {
@@ -132,7 +139,7 @@ fn props_roundtrip_matches_oracle() {
             dss.command(cmd);
         }
         assert!(
-            dss.errors().is_empty(),
+            sc.allow_errors || dss.errors().is_empty(),
             "scenario {}: unexpected engine errors: {:?}",
             sc.name,
             dss.errors()

@@ -254,6 +254,10 @@ pub struct EnumRegistry {
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,
+    /// 'StorageController: Discharge Mode' (StorageController.pas `DischargeModeEnum`).
+    pub storage_ctrl_discharge_mode: EnumId,
+    /// 'StorageController: Charge Mode' (StorageController.pas `ChargeModeEnum`).
+    pub storage_ctrl_charge_mode: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -660,6 +664,35 @@ impl EnumRegistry {
             &[0, 1, 2, 3, 4, 5],
         ));
 
+        // StorageController.pas TStorageController.Create: DischargeModeEnum /
+        // ChargeModeEnum (non-sequential ordinals; the Pascal `False` flag).
+        // MODEFOLLOW=1 MODELOADSHAPE=2 MODESUPPORT=3 MODETIME=4 MODEPEAKSHAVE=5
+        // MODESCHEDULE=6 MODEPEAKSHAVELOW=7 CURRENTPEAKSHAVE=8 CURRENTPEAKSHAVELOW=9.
+        let storage_ctrl_discharge_mode = push(DssEnum::new(
+            "StorageController: Discharge Mode",
+            false,
+            1,
+            2,
+            &[
+                "Peakshave",
+                "Follow",
+                "Support",
+                "Loadshape",
+                "Time",
+                "Schedule",
+                "I-Peakshave",
+            ],
+            &[5, 1, 3, 2, 4, 6, 8],
+        ));
+        let storage_ctrl_charge_mode = push(DssEnum::new(
+            "StorageController: Charge Mode",
+            false,
+            1,
+            1,
+            &["Loadshape", "Time", "PeakshaveLow", "I-PeakshaveLow"],
+            &[2, 4, 7, 9],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -691,6 +724,8 @@ impl EnumRegistry {
             gen_model,
             monitor_action,
             energy_meter_action,
+            storage_ctrl_discharge_mode,
+            storage_ctrl_charge_mode,
         }
     }
 
