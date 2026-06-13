@@ -839,6 +839,59 @@ SCENARIOS = [
         ],
     },
     {
+        # --- StorageController (WP6.8 skeleton) ---
+        # The Storage element is Phase 7, so a StorageController on a circuit
+        # with no Storage always logs error 37201 at RecalcElementData (the Rust
+        # port reproduces this); `allow_errors` captures the dump past it.
+        "name": "storagecontroller_default",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.sc1 element=Line.l1",
+        ],
+    },
+    {
+        "name": "storagecontroller_full",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.sc1 element=Line.l1 terminal=1 kWTarget=5000 %kWBand=5 "
+            "kWTargetLow=2500 %kWBandLow=4 modedischarge=support modecharge=peakshavelow "
+            "monphase=avg TimeDischargeTrigger=10 TimeChargeTrigger=3 %RatekW=30 "
+            "%RateCharge=25 %Reserve=20 EventLog=yes InhibitTime=8 TUp=0.5 TFlat=1.5 "
+            "TDn=0.4 kWThreshold=4000 DispFactor=0.8 ResetLevel=0.7 Seasons=2 "
+            "SeasonTargets=[5000, 4500] SeasonTargetsLow=[2500, 2200]",
+        ],
+    },
+    {
+        # ElementList + Weights round-trip (the named entries never resolve to a
+        # Storage element — 14403 — but the name list / weights still dump).
+        "name": "storagecontroller_elementlist",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.sc1 element=Line.l1 elementlist=[sa, sb] weights=[2, 3]",
+        ],
+    },
+    {
+        # MakeLike copies essentially every dispatch setting (unlike
+        # GenDispatcher); the derived object only overrides Element.
+        "name": "storagecontroller_makelike",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.base element=Line.l1 terminal=1 kWTarget=5000 %kWBand=5 "
+            "modedischarge=follow %Reserve=20 Seasons=2 SeasonTargets=[5000, 4500] "
+            "SeasonTargetsLow=[2500, 2200]",
+            "New StorageController.sc1 like=base element=Line.l2",
+        ],
+    },
+    {
         "name": "generator_default",
         "target": "Generator.g1",
         "commands": ["New Generator.g1 bus1=genbus"],
@@ -1047,10 +1100,23 @@ def check_pin() -> str:
 
 
 def run_scenario(d, scenario: dict) -> dict:
+    # Some objects log a non-fatal error during their own RecalcElementData even
+    # when fully specified — e.g. a StorageController on a circuit with no
+    # Storage element always reports 37201 ("No unassigned Storage Elements
+    # found"), exactly as the Rust port does. `allow_errors` lets those
+    # scenarios capture the property dump past the logged error (EarlyAbort off).
+    allow = scenario.get("allow_errors", False)
     d.Text.Command = "clear"
     d.Text.Command = "new circuit.propsprobe"
+    d.Error.EarlyAbort = not allow
     for cmd in scenario["commands"]:
-        d.Text.Command = cmd
+        if allow:
+            try:
+                d.Text.Command = cmd
+            except Exception:  # noqa: BLE001 - the logged error is expected
+                pass
+        else:
+            d.Text.Command = cmd
 
     target = scenario["target"]
     # Activate the target object (the `?` query sets it active) and read names.
@@ -1077,12 +1143,15 @@ def run_scenario(d, scenario: dict) -> dict:
             value = _NUM_RE.sub("0", value)
         props[name] = value
 
-    return {
+    out = {
         "name": scenario["name"],
         "commands": scenario["commands"],
         "target": target,
         "properties": props,
     }
+    if scenario.get("allow_errors"):
+        out["allow_errors"] = True
+    return out
 
 
 def main() -> None:
