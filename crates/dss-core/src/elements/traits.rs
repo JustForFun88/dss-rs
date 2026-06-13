@@ -229,4 +229,105 @@ pub trait CktElement {
         }
         result
     }
+
+    /// `NormAmps` rating (PD elements override; 0 = no rating, like Pascal's
+    /// base where `Get_ExcesskVANorm` short-circuits to 0).
+    fn norm_amps(&self) -> f64 {
+        0.0
+    }
+
+    /// `EmergAmps` rating (PD elements override).
+    fn emerg_amps(&self) -> f64 {
+        0.0
+    }
+
+    /// Pascal `TDSSCktElement.MaxTerminalOneIMag` (CktElement.pas l.552): the
+    /// max phase-current magnitude on terminal 1. Forces `Iterminal`.
+    fn max_terminal_one_imag(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+            return 0.0;
+        }
+        self.compute_iterminal(sys, node_v);
+        let cd = self.cd();
+        let mut max_sq = 0.0_f64;
+        for i in 0..cd.nphases {
+            let c = cd.iterminal[i];
+            max_sq = max_sq.max(c.re * c.re + c.im * c.im);
+        }
+        max_sq.sqrt()
+    }
+
+    /// Pascal `TPDElement.Get_ExcessKVANorm` (PDElement.pas l.230): excess kVA
+    /// over the normal rating into `idx_term` (1-based), in kVA. Side effect:
+    /// sets `overload_een` to the per-unit overload factor.
+    fn excess_kva_norm(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        idx_term: usize,
+    ) -> Complex64 {
+        let norm_amps = self.norm_amps();
+        if norm_amps == 0.0 || !self.cd().enabled {
+            self.cd_mut().overload_een = 0.0;
+            return Complex64::ZERO;
+        }
+        let kva = self.terminal_power(sys, node_v, idx_term) * 0.001; // forces Iterminal
+        let imax = self.max_terminal_one_imag(sys, node_v);
+        let factor = imax / norm_amps - 1.0;
+        if factor > 0.0 {
+            self.cd_mut().overload_een = factor;
+            kva * (1.0 - 1.0 / (factor + 1.0))
+        } else {
+            self.cd_mut().overload_een = 0.0;
+            Complex64::ZERO
+        }
+    }
+
+    /// Pascal `TPDElement.Get_ExcessKVAEmerg` (PDElement.pas l.257). Side
+    /// effect: sets `overload_ue`.
+    fn excess_kva_emerg(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        idx_term: usize,
+    ) -> Complex64 {
+        let emerg_amps = self.emerg_amps();
+        if emerg_amps == 0.0 || !self.cd().enabled {
+            self.cd_mut().overload_ue = 0.0;
+            return Complex64::ZERO;
+        }
+        let kva = self.terminal_power(sys, node_v, idx_term) * 0.001;
+        let imax = self.max_terminal_one_imag(sys, node_v);
+        let factor = imax / emerg_amps - 1.0;
+        if factor > 0.0 {
+            self.cd_mut().overload_ue = factor;
+            kva * (1.0 - 1.0 / (factor + 1.0))
+        } else {
+            self.cd_mut().overload_ue = 0.0;
+            Complex64::ZERO
+        }
+    }
+
+    /// Pascal `TDSSCktElement.GetLosses` (CktElement.pas l.441): total, load and
+    /// no-load losses (W, var). Base default returns `(total, total, 0)`;
+    /// Transformer/Reactor override to split the no-load component.
+    fn get_losses_split(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        let total = self.losses(sys, node_v);
+        (total, total, Complex64::ZERO)
+    }
+
+    /// Pascal `TDSSCktElement.GetSeqLosses` (base l.1092): sequence-mode losses.
+    /// Base returns zeros; Line overrides for 3-phase branches.
+    fn get_seq_losses(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        let _ = (sys, node_v);
+        (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO)
+    }
 }

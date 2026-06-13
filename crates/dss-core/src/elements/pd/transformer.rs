@@ -963,6 +963,39 @@ impl CktElement for Transformer {
         self.recalc();
     }
 
+    fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
+    /// Pascal `TTransfObj.GetLosses` (Transformer.pas l.1635): no-load losses
+    /// are the power into `Yprim_Shunt` from each terminal; load losses are the
+    /// remainder of the total.
+    fn get_losses_split(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO);
+        }
+        let total = self.losses(sys, node_v); // side effect: computes Iterminal
+        let yorder = self.cd.yorder;
+        self.cd.compute_vterminal(node_v);
+        let mut no_load = Complex64::ZERO;
+        if let Some(yshunt) = &self.cd.yprim_shunt {
+            let mut temp = vec![Complex64::ZERO; yorder];
+            yshunt.mv_mult(&mut temp, &self.cd.vterminal);
+            for (v, t) in self.cd.vterminal.iter().zip(temp.iter()).take(yorder) {
+                no_load += v * t.conj();
+            }
+        }
+        let load = total - no_load;
+        (total, load, no_load)
+    }
+
     /// Pascal `TTransfObj.CalcYPrim`: stamp `Y_Term`/`Y_Term_NL` into the
     /// series/shunt YPrim via `TermRef`, add neutral branches, then apply the
     /// open-conductor corrections.

@@ -69,6 +69,45 @@ pub mod prop {
     pub const NUM_PROPS: usize = 27; // incl. Like
 }
 
+/// 1-based register ordinals (`EMRegister`, EnergyMeter.pas l.120). Indexing
+/// into [`EnergyMeter::registers`] subtracts 1.
+pub mod reg {
+    pub const KWH: usize = 1;
+    pub const KVARH: usize = 2;
+    pub const MAX_KW: usize = 3;
+    pub const MAX_KVA: usize = 4;
+    pub const ZONE_KWH: usize = 5;
+    pub const ZONE_KVARH: usize = 6;
+    pub const ZONE_MAX_KW: usize = 7;
+    pub const ZONE_MAX_KVA: usize = 8;
+    pub const OVERLOAD_KWH_NORM: usize = 9;
+    pub const OVERLOAD_KWH_EMERG: usize = 10;
+    pub const LOAD_EEN: usize = 11;
+    pub const LOAD_UE: usize = 12;
+    pub const ZONE_LOSSES_KWH: usize = 13;
+    pub const ZONE_LOSSES_KVARH: usize = 14;
+    pub const LOSSES_MAX_KW: usize = 15;
+    pub const LOSSES_MAX_KVAR: usize = 16;
+    pub const LOAD_LOSSES_KWH: usize = 17;
+    pub const LOAD_LOSSES_KVARH: usize = 18;
+    pub const NO_LOAD_LOSSES_KWH: usize = 19;
+    pub const NO_LOAD_LOSSES_KVARH: usize = 20;
+    pub const MAX_LOAD_LOSSES: usize = 21;
+    pub const MAX_NO_LOAD_LOSSES: usize = 22;
+    pub const LINE_LOSSES_KWH: usize = 23;
+    pub const TRANSFORMER_LOSSES_KWH: usize = 24;
+    pub const LINE_MODE_LINE_LOSS: usize = 25;
+    pub const ZERO_MODE_LINE_LOSS: usize = 26;
+    pub const THREE_PHASE_LINE_LOSS: usize = 27;
+    pub const ONE_PHASE_LINE_LOSS: usize = 28;
+    pub const GEN_KWH: usize = 29;
+    pub const GEN_KVARH: usize = 30;
+    pub const GEN_MAX_KW: usize = 31;
+    pub const GEN_MAX_KVA: usize = 32;
+    /// `EMRegister.VBaseStart` — anchor (0 added → first vbase reg is +1).
+    pub const VBASE_START: usize = 32;
+}
+
 /// `TEnergyMeter.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
@@ -413,6 +452,105 @@ impl EnergyMeter {
 
     pub(crate) fn defined_zone_list(&self) -> &[String] {
         &self.defined_zone_list
+    }
+
+    /// Register values (1-based ordinals → 0-based slots). For the test API.
+    pub fn registers(&self) -> &[f64] {
+        &self.registers
+    }
+
+    pub fn has_been_sampled(&self) -> bool {
+        !self.first_sample_after_reset
+    }
+
+    /// Pascal `CheckBranchList`: `TakeSample` exits early when the zone was
+    /// never built. Returns the sweep state (config snapshot + the registers
+    /// and branch tree moved out for the walk) or `None`.
+    pub(crate) fn begin_take_sample(
+        &mut self,
+        trapezoidal: bool,
+    ) -> Option<(CktTree, SampleState)> {
+        let tree = self.branch_list.take()?;
+        let state = SampleState {
+            local_only: self.local_only,
+            zone_is_radial: self.zone_is_radial,
+            excess_flag: self.excess_flag,
+            voltage_ue_only: self.voltage_ue_only,
+            f_losses: self.f_losses,
+            f_line_losses: self.f_line_losses,
+            f_xfmr_losses: self.f_xfmr_losses,
+            f_seq_losses: self.f_seq_losses,
+            f_3phase_losses: self.f_3phase_losses,
+            f_vbase_losses: self.f_vbase_losses,
+            max_zone_kva_norm: self.max_zone_kva_norm,
+            max_zone_kva_emerg: self.max_zone_kva_emerg,
+            metered_element: self.med.metered_element,
+            metered_terminal: self.med.metered_terminal.max(0) as usize,
+            registers: std::mem::take(&mut self.registers),
+            derivatives: std::mem::take(&mut self.derivatives),
+            first_sample_after_reset: self.first_sample_after_reset,
+            trapezoidal,
+        };
+        Some((tree, state))
+    }
+
+    /// Restore the branch tree and write back the accumulated registers.
+    pub(crate) fn end_take_sample(&mut self, tree: CktTree, state: SampleState) {
+        self.branch_list = Some(tree);
+        self.registers = state.registers;
+        self.derivatives = state.derivatives;
+        self.first_sample_after_reset = state.first_sample_after_reset;
+    }
+}
+
+/// Mutable sweep state for `TakeSample`: the config snapshot plus the register
+/// accumulators moved out of the meter for the duration of the zone walk
+/// (the meter object itself is borrowed by the element store during the walk).
+pub(crate) struct SampleState {
+    pub local_only: bool,
+    pub zone_is_radial: bool,
+    pub excess_flag: bool,
+    pub voltage_ue_only: bool,
+    pub f_losses: bool,
+    pub f_line_losses: bool,
+    pub f_xfmr_losses: bool,
+    pub f_seq_losses: bool,
+    pub f_3phase_losses: bool,
+    pub f_vbase_losses: bool,
+    pub max_zone_kva_norm: f64,
+    pub max_zone_kva_emerg: f64,
+    pub metered_element: Option<ElemRef>,
+    pub metered_terminal: usize,
+    pub registers: Vec<f64>,
+    pub derivatives: Vec<f64>,
+    pub first_sample_after_reset: bool,
+    pub trapezoidal: bool,
+}
+
+impl SampleState {
+    /// Pascal `TEnergyMeterObj.Integrate` (l.1271): trapezoidal rule when the
+    /// circuit flag is set (skipped on the first sample after reset), else plain
+    /// Euler. `reg` is the 1-based ordinal. Always records the derivative.
+    pub(crate) fn integrate(&mut self, reg: usize, deriv: f64, interval: f64) {
+        let i = reg - 1;
+        if self.trapezoidal {
+            if !self.first_sample_after_reset {
+                self.registers[i] += 0.5 * interval * (deriv + self.derivatives[i]);
+            }
+        } else {
+            self.registers[i] += interval * deriv;
+        }
+        self.derivatives[i] = deriv;
+    }
+
+    /// Pascal `TEnergyMeterObj.SetDragHandRegister` (l.2858): keep the running
+    /// maximum.
+    pub(crate) fn set_drag(&mut self, reg: usize, value: f64) {
+        let i = reg - 1;
+        if value > self.registers[i] {
+            self.registers[i] = value;
+            self.derivatives[i] = value;
+        }
     }
 }
 
