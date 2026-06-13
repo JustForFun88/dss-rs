@@ -14,6 +14,22 @@
 //! reach an arbitrary number of generators. That plumbing is abstracted behind
 //! [`GenDispatchEnv`]; the control-loop implements it over the class registry
 //! (`solution/controls.rs`), and the unit tests against a mock.
+//!
+//! **Deliberately not ported** (consistent with the rest of the controls):
+//! - `TGenDispatcherObj.MakePosSequence` — positive-sequence reduction isn't
+//!   supported yet, and the upstream body dereferences the always-NIL
+//!   `ControlledElement`, so a faithful port would only reproduce a crash.
+//! - the `Element` property's Pascal `Required` flag — not enforced anywhere in
+//!   the port yet (same deferral as RegControl/CapControl/Reactor).
+//!
+//! **One deliberate divergence from Pascal:** when a named generator fails to
+//! resolve (missing or disabled), `FGenPointerList.Count < FListSize` and the
+//! Pascal `Sample` loop (`for i := 1 to FListSize`) walks past the resolved
+//! entries into a NIL `Gen.kWBase` dereference — an upstream crash. This port
+//! iterates the resolved subset instead, so it cannot crash; for the generators
+//! that *do* resolve the dispatch is numerically identical (same sequential
+//! weights, same `TotalWeight` summed over the full `FListSize`). Not pinned by
+//! any golden. See `sample_skips_unresolved_gens_without_crash`.
 
 use num_complex::Complex64;
 
@@ -44,7 +60,9 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
         // Pascal `PropertyOffset2 = 0` + WriteByFunction(SetMonitoredElement) +
-        // Required: any circuit element by full name.
+        // Required: any circuit element by full name. (The Pascal `Required`
+        // flag is inert here — not enforced in the port yet, same as the other
+        // controls; a missing Element still surfaces via RecalcElementData 372.)
         PropDef::object_ref_any("Element"),
         PropDef::integer("Terminal"),
         PropDef::double("kWLimit"),
@@ -623,6 +641,79 @@ mod tests {
         let mut env = MockEnv::new(Complex64::new(0.0, 0.0), &[("g1", 1000.0, 0.0)]);
         assert!(gd.sample(&mut env));
         assert_eq!(env.kw[0], 1.0);
+    }
+
+    #[test]
+    fn sample_redispatches_kvar_overage() {
+        // Monitored 800 kvar vs kvarLimit 500 (half-band 50): QDiff = +300, split
+        // evenly across two gens (weight 1 each, total 2) → +150 each. The kW
+        // limit is set so PDiff stays inside the band (kW branch must not fire).
+        let mut gd = dispatcher_with_list(&["g1", "g2"], &[1.0, 1.0]);
+        gd.f_kw_limit = 0.0; // monitored kW = 0 → PDiff = 0, in band
+        gd.f_kvar_limit = 500.0;
+        gd.half_kw_band = 50.0;
+        let mut env = MockEnv::new(
+            Complex64::new(0.0, 800_000.0),
+            &[("g1", 0.0, 200.0), ("g2", 0.0, 200.0)],
+        );
+        let changed = gd.sample(&mut env);
+        assert!(changed);
+        // kvar redispatched, kW untouched (PDiff in band).
+        assert!((env.kvar[0] - 350.0).abs() < 1e-9);
+        assert!((env.kvar[1] - 350.0).abs() < 1e-9);
+        assert_eq!(env.kw[0], 0.0);
+        assert_eq!(env.kw[1], 0.0);
+    }
+
+    #[test]
+    fn sample_respects_weights_for_kvar() {
+        // QDiff = +400 over weights [3, 1] (total 4): +300 / +100.
+        let mut gd = dispatcher_with_list(&["g1", "g2"], &[3.0, 1.0]);
+        gd.f_kw_limit = 0.0;
+        gd.f_kvar_limit = 500.0;
+        gd.half_kw_band = 50.0;
+        let mut env = MockEnv::new(
+            Complex64::new(0.0, 900_000.0),
+            &[("g1", 0.0, 200.0), ("g2", 0.0, 200.0)],
+        );
+        assert!(gd.sample(&mut env));
+        assert!((env.kvar[0] - 500.0).abs() < 1e-9);
+        assert!((env.kvar[1] - 300.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sample_floors_kvar_at_zero() {
+        // A large negative QDiff would drive the base negative; Max(0.0, …) floors it.
+        let mut gd = dispatcher_with_list(&["g1"], &[1.0]);
+        gd.f_kw_limit = 0.0;
+        gd.f_kvar_limit = 5000.0;
+        gd.half_kw_band = 50.0;
+        let mut env = MockEnv::new(Complex64::new(0.0, 0.0), &[("g1", 0.0, 200.0)]);
+        assert!(gd.sample(&mut env));
+        assert_eq!(env.kvar[0], 0.0);
+    }
+
+    #[test]
+    fn sample_skips_unresolved_gens_without_crash() {
+        // A named list with a generator that doesn't resolve: Pascal walks off
+        // the end of FGenPointerList into a NIL deref; this port iterates the
+        // resolved subset. FListSize/TotalWeight still reflect the full list, so
+        // the resolved gens dispatch with sequential weights over total 3.
+        let mut gd = dispatcher_with_list(&["g1", "missing", "g2"], &[1.0, 1.0, 1.0]);
+        gd.f_kw_limit = 2000.0;
+        gd.half_kw_band = 50.0;
+        gd.f_kvar_limit = 1.0e9;
+        let mut env = MockEnv::new(
+            Complex64::new(2_300_000.0, 0.0),
+            &[("g1", 1000.0, 0.0), ("g2", 1000.0, 0.0)],
+        );
+        assert!(gd.sample(&mut env));
+        assert_eq!(gd.list_size, 3);
+        assert_eq!(gd.total_weight, 3.0);
+        assert_eq!(gd.gen_pointer_list.len(), 2); // only the two that resolved
+        // PDiff = +300, share = 300 * (1/3) = 100 for each resolved gen.
+        assert!((env.kw[0] - 1100.0).abs() < 1e-9);
+        assert!((env.kw[1] - 1100.0).abs() < 1e-9);
     }
 
     #[test]

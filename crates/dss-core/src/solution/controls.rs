@@ -391,6 +391,8 @@ fn dispatch_control(
             (
                 ControlKind::GenDispatch {
                     monitored: gd.ccd.monitored_element,
+                    // 1-based terminal; `.max(1)` guards an unset/0 terminal that
+                    // Pascal would turn into an out-of-range `Power[0]`.
                     element_terminal: gd.ccd.element_terminal.max(1) as usize,
                 },
                 format!("GenDispatcher.{}", gd.ccd.cd.obj.name()),

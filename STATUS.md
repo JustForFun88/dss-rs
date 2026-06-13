@@ -59,10 +59,11 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 283, golden_feeders 1,
+cargo test --workspace      # dss-core lib 289, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_reliability 1, golden_allocation 1,
-                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
+                            # golden_gendispatcher 1, golden_slice 2,
+                            # golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -1081,12 +1082,27 @@ accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
   pushing a present-time control action (Pascal `ControlQueue.Push(0,0,0,Self)`).
 - **Registration:** new class right after Generator (Pascal DSSClassDefs.pas:231),
   `ElemKind::Control` (joins `ckt.controls`, no Yprim, zero currents).
-- **Tests:** 3 oracle-pinned `exec` integration tests (`gendispatcher_*`): equal
+- **Tests:** 5 oracle-pinned `exec` integration tests (`gendispatcher_*`): equal
   weights → both gens 1511.569498763734 kW; weights [3,1] → 1767.354.../1255.784...;
-  no GenList → dispatch all gens (same as equal). 3 `props.json` scenarios
-  (default, full, makelike-quirk; pure insertions, `props_roundtrip` green). Net
-  dss-core lib 270 → **283**. Remaining WP6.8 parts (StorageController + AutoAdd
-  skeletons, ReduceAlgs basic) not started.
+  no GenList → dispatch all gens (same as equal); **kvar redispatch** (pf=0.95
+  gens, kvarlimit binds → 1509.812.../591.260...); **monitored terminal=2**
+  honored (gens floor at 1.0, distinct from terminal 1). 3 `props.json` scenarios
+  (default, full, makelike-quirk; pure insertions, `props_roundtrip` green).
+- **Audit follow-up (this commit):** closed the kvar-path coverage hole flagged by
+  the WP6.8 audit — the previous unit/integration tests all suppressed the QDiff
+  branch. Added 4 unit tests (kvar redispatch / kvar weights / `Max(0.0,…)` floor /
+  unresolved-genlist subset) + the 2 integration tests above, and documented the
+  deliberate deferrals (`MakePosSequence` unported = upstream NIL-deref crash;
+  `Element` Required flag inert) and the one Pascal divergence (resolved-subset
+  iteration vs Pascal's NIL-deref on a partially-resolved list). Net dss-core lib
+  270 → **289**.
+- **New golden gate `golden_gendispatcher`** (`tests/golden/gendispatcher.json`
+  from `tools/golden/gen_gendispatcher.py`): 5 oracle-pinned scenarios replaying
+  the full redispatch feedback loop and matching every generator's converged
+  `kWBase`/`kvarBase` (equal weights, weighted [3,1], no-genlist, kvar redispatch,
+  monitored terminal=2) at 1e-6 — pins the end-to-end path the inline `exec` tests
+  spot-check. Remaining WP6.8 parts (StorageController + AutoAdd skeletons,
+  ReduceAlgs basic) not started.
 
 ---
 
