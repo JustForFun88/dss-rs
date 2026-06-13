@@ -11,7 +11,8 @@ Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
 (`10d3550`); on branch `phase-6-meters-topology`. Execution plan:
 **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/Generator,
 8500-node gate). Done so far: **WP6.1 (topology foundations), WP6.2
-(Generator), WP6.3 (MeterElement + Monitor)** — see §1d.
+(Generator), WP6.3 (MeterElement + Monitor), WP6.4 (EnergyMeter + zone
+build)** — see §1d.
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -50,13 +51,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.3 done; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.4 done; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 232, golden_feeders 1,
+cargo test --workspace      # dss-core lib 235, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -788,6 +789,66 @@ Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
   `props.json` regenerated (pure insertions); `props_roundtrip` green. dss-core
   lib tests 228 → 232.
 
+**WP6.4 — EnergyMeter object + zone build — ✅ done, gate-green.** Files:
+- `elements/meter/energymeter.rs` (new): `TEnergyMeterObj` port. Props 1–24 +
+  the CktElement tail (`basefreq`/`enabled`/Like = 27): `element`
+  (`object_ref_any`), `terminal`, `action`, `option`/`ZoneList` (the new
+  `string_list` prop type), `kVANormal`/`kVAEmerg`, `PeakCurrent`
+  (`double_v_array` over `SensorCurrent`, length = nphases), `Mask`
+  (`double_f_array` over the 67 registers), the 7 loss-report booleans,
+  `Int_Rate`/`Int_Duration`, and the 5 read-only reliability doubles. Ctor
+  seeds the fixed register names + `SensorCurrent := 400 A`, `ResetRegisters`
+  (drag-hand maxima = −1e50). `RecalcElementData` (PD-element validation 525,
+  terminal check 524, `SetBus(1,…)` + adopt nphases/nconds on element change),
+  `MakeLike`, `AssignVoltBaseRegisterNames` (`%.3g kV …` via `util::fmt_g`).
+  `CalcYPrim` empty, `GetCurrents` zeros. The register **accumulation**
+  (`TakeSample`, WP6.5) and reliability indices (WP6.6) are deferred; the
+  register/derivative/totals-mask arrays + drag-hand reset are in place.
+- `solution/meters.rs` (new): the zone builder as free functions over the
+  registry (the WP5.7 dispatcher pattern — the meter's `BranchList`/
+  `SequenceList`/`LoadList`/`ZonePCE`/`VBaseList` are built in **locals** while
+  the *other* elements' flags/refs and the buses' `DistFromMeter` are mutated
+  through the store, then installed into the meter). `do_reset_meter_zones`
+  (Circuit.pas `DoResetMeterZones`, gated on `meter_zones_computed`/
+  `zones_locked`) → `reset_meter_zones_all` (clear Checked/IsIsolated/
+  TerminalsChecked + meter/sensor/parent refs on every element, build bus
+  adjacency, `SetHasMeterFlag`, walk meters in creation order) →
+  `make_meter_zone_lists` (verbatim main loop: `AddNewObject` shunts,
+  `AddNewChild` PD branches, `AddToVoltBaseList`, loop/parallel detection via
+  `CheckParallel`, `ZoneEndsList`, customer counting) + `TotalUpDownstream​Customers`
+  (backward sweep) + `GetPCEatZone`. **Manual `ZoneList` zone-building deferred**
+  (needs a name→ref resolver inside the dispatcher; the property still parses/
+  dumps — no gate exercises the manual path).
+- **Trigger wiring:** `ymatrix.rs` `build_y_matrix` calls `do_reset_meter_zones`
+  right after `reprocess_bus_defs` (Pascal `ReprocessBusDefs` tail, Circuit.pas
+  l.2246) — so zones rebuild on every Y-build that reprocessed the buses (with
+  `zones_locked = false`).
+- **Shared engine:** new `PropType::StringList` + `PropDef::string_list`
+  (Pascal `InterpretTStringListArray` parse / `StringListToString` render
+  `[a, b, c]`) + `DssObject::{get,set}_string_list`; the `DoubleFArray` parse
+  now returns the **parsed count** via `parse_as_vector` (Pascal `ParseAsVector`
+  → `prevInt`), which the `Mask` side effect needs to default the unspecified
+  slots to 1.0. `obj/dss_enum.rs` `energy_meter_action` enum (Allocate/Clear/
+  Reduce/Save/TakeSample/ZoneDump → 0..5). `circuit.rs`: `ElemKind::EnergyMeter`
+  + new `energy_meters` list (device list, no Yprim, not PD/PC). `meter_element.rs`
+  `AllocateSensorArrays` fixed to **preserve** `SensorCurrent`/`SensorVoltage`
+  across resizes (Pascal `ReAllocMem`; the ctor's 400 A survives the recalc).
+  `exec/mod.rs`: EnergyMeter registered after Monitor; public
+  `Dss::meter_zone(name)` → `MeterZoneView` (`AllBranchesInZone`/`AllEndElements`/
+  `ZonePCE`/`RegisterNames`) mirroring dss-python `Meters.*`.
+- **Oracle facts (probed, then pinned):** `Meters.AllBranchesInZone` =
+  `SequenceList` = the BranchList `GoForward` (LIFO-over-children) order;
+  `AllEndElements` = the `ZoneEndsList` order; `ZonePCE` = the shunt objects in
+  branch order. A sub-meter mid-feeder **stops** the parent meter's zone (the
+  metered element gets `HasEnergyMeter`, excluded from the PD search). The
+  StringList dump is `[E, R, C]`-style; `Mask` defaults trailing slots to 1.0.
+- Tests: 3 exec integration (`energymeter_zone_radial` — branches/ends/PCE +
+  `TotalUpDownstreamCustomers` totals; `energymeter_submeter_boundary` — the
+  sub-meter zone split; `energymeter_requires_pd_element` — the 525 error).
+  `gen_props.py`: 3 EnergyMeter scenarios (default, option/mask/zonelist/
+  peakcurrent edited, makelike) → `props.json` regenerated (pure insertions);
+  `props_roundtrip` green. dss-core lib tests 232 → 235.
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -972,8 +1033,10 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 Executing `PHASE6_PLAN.md` on branch `phase-6-meters-topology`.
 Done: WP6.1 (topology foundations), WP6.2 (Generator), WP6.3 (MeterElement +
-Monitor). Next: WP6.4/6.5 (EnergyMeter zones + registers), WP6.6
-(reliability), WP6.7 (Sensor), WP6.8 (GenDispatcher + skeletons), WP6.9
+Monitor), WP6.4 (EnergyMeter object + zone build). Next: WP6.5 (EnergyMeter
+registers + `TakeSample` + hook wiring — the EnergyMeter `SampleAll` branch is
+still stubbed in `sample_all_monitors_and_meters`), WP6.6 (reliability),
+WP6.7 (Sensor + load allocation), WP6.8 (GenDispatcher + skeletons), WP6.9
 (goldens + 8500-node gate), WP6.10 (exit).
 
 Enabling facts from Phase 5/WP6.3: the control loop dispatches through
@@ -983,3 +1046,8 @@ the monitor sweep now reuses — `solution/monitors.rs`); the meter/monitor
 real bodies (monitor `SampleAll` mode≠5 + `SampleAllMode5`), with the
 EnergyMeter `SampleAll` branch still stubbed for WP6.5. Deferred monitor modes
 3/4/7/8/10/12 build their header but defer the sample body (no gate uses them).
+WP6.4 added the zone-build dispatcher (`solution/meters.rs`) fired from
+`build_y_matrix` after bus reprocessing — the EnergyMeter `BranchList`/
+`SequenceList`/`ZonePCE` are now populated and exposed via `Dss::meter_zone`;
+the manual-`ZoneList` zone-build path and the register `TakeSample` remain for
+WP6.4-followups / WP6.5.

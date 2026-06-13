@@ -20,6 +20,7 @@ use crate::elements::general::{
     growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
     xy_curve,
 };
+use crate::elements::meter::energymeter;
 use crate::elements::meter::monitor;
 use crate::elements::pc::{generator, load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
@@ -708,6 +709,11 @@ impl Dss {
                 monitor::class_props(&enums),
                 |name| Box::new(monitor::Monitor::new(name)),
                 ElemKind::Meter,
+            ),
+            DssClass::ckt_class(
+                energymeter::class_props(&enums),
+                |name| Box::new(energymeter::EnergyMeter::new(name)),
+                ElemKind::EnergyMeter,
             ),
         ];
         let class_by_name = classes
@@ -2054,6 +2060,29 @@ pub struct MonitorView {
     pub channels: Vec<Vec<f32>>,
 }
 
+/// Raw `ElemRef` lists copied out of an [`energymeter::EnergyMeter`] before
+/// resolving full names (avoids a long tuple type in [`Dss::meter_zone`]).
+struct MeterZoneRefs {
+    branches: Vec<ElemRef>,
+    ends: Vec<ElemRef>,
+    pce: Vec<ElemRef>,
+    register_names: Vec<String>,
+}
+
+/// An EnergyMeter's zone topology for the test/golden harness (dss-python
+/// `Meters.AllBranchesInZone` / `AllEndElements` / `ZonePCE`).
+#[derive(Debug, Clone)]
+pub struct MeterZoneView {
+    /// `AllBranchesInZone`: the zone branches in `SequenceList` order (FullNames).
+    pub all_branches_in_zone: Vec<String>,
+    /// `AllEndElements`: the feeder-end branches (FullNames).
+    pub all_end_elements: Vec<String>,
+    /// `ZonePCE`: the zone PC elements (loads/generators), FullNames.
+    pub zone_pce: Vec<String>,
+    /// `RegisterNames` (length `NumEMRegisters`).
+    pub register_names: Vec<String>,
+}
+
 /// Per-element snapshot for the golden feeder gate: mirrors dss-python's
 /// `CktElement.Powers`/`Currents` over the oracle's `First/Next` iteration
 /// (= creation) order.
@@ -2151,6 +2180,48 @@ impl Dss {
             }
         }
         None
+    }
+
+    /// An EnergyMeter's zone topology — the dss-python `Meters.AllBranchesInZone`
+    /// / `AllEndElements` / `ZonePCE` / `CountBranches` surface (tests/goldens).
+    /// `name` may be `"m1"` or `"EnergyMeter.m1"` (case-insensitive). `None` if
+    /// no such meter exists.
+    pub fn meter_zone(&self, name: &str) -> Option<MeterZoneView> {
+        let bare = name
+            .strip_prefix("EnergyMeter.")
+            .or_else(|| name.strip_prefix("energymeter."))
+            .unwrap_or(name);
+        // Locate the meter, copy out its ElemRef lists, then resolve full names.
+        let mut lists: Option<MeterZoneRefs> = None;
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(em) = obj.as_any().downcast_ref::<energymeter::EnergyMeter>()
+                    && em.data().name().eq_ignore_ascii_case(bare)
+                {
+                    lists = Some(MeterZoneRefs {
+                        branches: em.sequence_list().to_vec(),
+                        ends: em.zone_end_elements(),
+                        pce: em.zone_pce().to_vec(),
+                        register_names: em.register_names().to_vec(),
+                    });
+                }
+            }
+        }
+        let lists = lists?;
+        let full_name = |r: ElemRef| -> String {
+            let cn = self.classes[r.cls].props.class_name();
+            format!(
+                "{}.{}",
+                cn,
+                self.classes[r.cls].objects[r.idx].data().name()
+            )
+        };
+        Some(MeterZoneView {
+            all_branches_in_zone: lists.branches.iter().map(|&r| full_name(r)).collect(),
+            all_end_elements: lists.ends.iter().map(|&r| full_name(r)).collect(),
+            zone_pce: lists.pce.iter().map(|&r| full_name(r)).collect(),
+            register_names: lists.register_names,
+        })
     }
 
     /// Per-transformer winding taps in creation order, keyed by name —
@@ -3287,5 +3358,103 @@ mod tests {
         let b2 = ckt.bus_list.find("b2").unwrap();
         assert_eq!((ckt.buses[b2].x, ckt.buses[b2].y), (7.0, 8.0));
         std::fs::remove_file(&file).ok();
+    }
+
+    /// The micro radial of PHASE6_PLAN §1.2 `meter_zone_micro`: one meter on the
+    /// head line walks the whole feeder. Zone branches/ends/PCE transcribed from
+    /// the oracle (dss-python 0.15.7 `Meters.AllBranchesInZone` /
+    /// `AllEndElements` / `ZonePCE`).
+    fn micro_zone_script() -> Vec<&'static str> {
+        vec![
+            "New circuit.test basekv=12.47 bus1=src",
+            "New line.l1 bus1=src bus2=b2 length=1",
+            "New line.l2 bus1=b2 bus2=b3 length=2",
+            "New line.l3 bus1=b2 bus2=b4 length=1",
+            "New load.ld1 bus1=b3 kV=12.47 kW=100 numcust=3",
+            "New load.ld2 bus1=b4 kV=12.47 kW=50 numcust=2",
+        ]
+    }
+
+    #[test]
+    fn energymeter_zone_radial() {
+        let mut dss = Dss::new();
+        for c in micro_zone_script() {
+            dss.command(c);
+        }
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(
+            z.all_branches_in_zone,
+            vec!["Line.l1", "Line.l3", "Line.l2"]
+        );
+        assert_eq!(z.all_end_elements, vec!["Line.l3", "Line.l2"]);
+        assert_eq!(z.zone_pce, vec!["Load.ld2", "Load.ld1"]);
+
+        // TotalUpDownstreamCustomers: ld1=3 on l2, ld2=2 on l3; l1 totals 5.
+        assert_eq!(branch_customers(&dss, "line.l2"), (3, 3));
+        assert_eq!(branch_customers(&dss, "line.l3"), (2, 2));
+        assert_eq!(branch_customers(&dss, "line.l1"), (0, 5));
+    }
+
+    #[test]
+    fn energymeter_submeter_boundary() {
+        let mut dss = Dss::new();
+        for c in micro_zone_script() {
+            dss.command(c);
+        }
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("New energymeter.m2 element=line.l2 terminal=1");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        // m1's zone stops at the sub-meter on l2.
+        let z1 = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(z1.all_branches_in_zone, vec!["Line.l1", "Line.l3"]);
+        assert_eq!(z1.all_end_elements, vec!["Line.l3"]);
+        assert_eq!(z1.zone_pce, vec!["Load.ld2"]);
+
+        let z2 = dss.meter_zone("m2").expect("m2 zone");
+        assert_eq!(z2.all_branches_in_zone, vec!["Line.l2"]);
+        assert_eq!(z2.all_end_elements, vec!["Line.l2"]);
+        assert_eq!(z2.zone_pce, vec!["Load.ld1"]);
+    }
+
+    /// `element=` must resolve to a PD element; a load triggers the Pascal
+    /// "is not a Power Delivery (PD) element" error (525).
+    #[test]
+    fn energymeter_requires_pd_element() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=100");
+        dss.command("New energymeter.m1 element=load.ld1");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("not a Power Delivery")),
+            "expected PD-element error, got {:?}",
+            dss.errors()
+        );
+    }
+
+    /// Helper: `(BranchNumCustomers, BranchTotalCustomers)` for a named element.
+    fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
+        let (cls, name) = full.split_once('.').unwrap();
+        for class in &dss.classes {
+            if !class.props.class_name().eq_ignore_ascii_case(cls) {
+                continue;
+            }
+            for obj in &class.objects {
+                if obj.data().name().eq_ignore_ascii_case(name)
+                    && let Some(e) = obj.as_ckt_element()
+                {
+                    return (e.cd().branch_num_customers, e.cd().branch_total_customers);
+                }
+            }
+        }
+        panic!("element {full} not found");
     }
 }

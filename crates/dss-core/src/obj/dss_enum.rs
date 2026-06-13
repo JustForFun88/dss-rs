@@ -253,6 +253,7 @@ pub struct EnumRegistry {
     pub gen_model: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
+    pub energy_meter_action: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -641,6 +642,24 @@ impl EnumRegistry {
             &[0, 1, 2, 3, 0],
         ));
 
+        // EnergyMeter.pas: ActionEnum (Allocate/Clear/Reduce/Save/TakeSample/
+        // ZoneDump → 0..5).
+        let energy_meter_action = push(DssEnum::new(
+            "EnergyMeter: Action",
+            true,
+            1,
+            2,
+            &[
+                "Allocate",
+                "Clear",
+                "Reduce",
+                "Save",
+                "TakeSample",
+                "ZoneDump",
+            ],
+            &[0, 1, 2, 3, 4, 5],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -671,6 +690,7 @@ impl EnumRegistry {
             gen_status,
             gen_model,
             monitor_action,
+            energy_meter_action,
         }
     }
 

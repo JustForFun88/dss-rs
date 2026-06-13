@@ -3918,6 +3918,119 @@
     "Enabled": "Yes",
     "Like": ""
    }
+  },
+  {
+   "name": "energymeter_default",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+    "New EnergyMeter.m1 element=Line.l1 terminal=1"
+   ],
+   "target": "EnergyMeter.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Action": "",
+    "Option": "[E, R, C]",
+    "kVANormal": "0",
+    "kVAEmerg": "0",
+    "PeakCurrent": "[ 400 400 400]",
+    "ZoneList": "",
+    "LocalOnly": "No",
+    "Mask": "[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1]",
+    "Losses": "Yes",
+    "LineLosses": "Yes",
+    "XfmrLosses": "Yes",
+    "SeqLosses": "Yes",
+    "3PhaseLosses": "Yes",
+    "VBaseLosses": "Yes",
+    "PhaseVoltageReport": "No",
+    "Int_Rate": "0",
+    "Int_Duration": "0",
+    "SAIFI": "0",
+    "SAIFIkW": "0",
+    "SAIDI": "0",
+    "CAIDI": "0",
+    "CustInterrupts": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "energymeter_options_mask",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+    "New Line.l2 bus1=b2 bus2=b3 r1=0.1 x1=0.1 length=2",
+    "New EnergyMeter.m1 element=Line.l1 terminal=1 option=(T,M,V) zonelist=(line.l1, line.l2) kVANormal=5000 kVAEmerg=6000 peakcurrent=(300, 350, 400) mask=(0 0 1) LocalOnly=yes Losses=no LineLosses=no Int_Rate=0.1 Int_Duration=2.5"
+   ],
+   "target": "EnergyMeter.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Action": "",
+    "Option": "[T, M, V]",
+    "kVANormal": "5000",
+    "kVAEmerg": "6000",
+    "PeakCurrent": "[ 300 350 400]",
+    "ZoneList": "[line.l1, line.l2]",
+    "LocalOnly": "Yes",
+    "Mask": "[ 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1]",
+    "Losses": "No",
+    "LineLosses": "No",
+    "XfmrLosses": "Yes",
+    "SeqLosses": "Yes",
+    "3PhaseLosses": "Yes",
+    "VBaseLosses": "Yes",
+    "PhaseVoltageReport": "No",
+    "Int_Rate": "0.1",
+    "Int_Duration": "2.5",
+    "SAIFI": "0",
+    "SAIFIkW": "0",
+    "SAIDI": "0",
+    "CAIDI": "0",
+    "CustInterrupts": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "energymeter_makelike",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+    "New EnergyMeter.base element=Line.l1 terminal=1 option=(T,R,V) kVANormal=1000 LocalOnly=yes",
+    "New EnergyMeter.m1 like=base kVAEmerg=2000"
+   ],
+   "target": "EnergyMeter.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Action": "",
+    "Option": "[T, R, V]",
+    "kVANormal": "1000",
+    "kVAEmerg": "2000",
+    "PeakCurrent": "[ 400 400 400]",
+    "ZoneList": "",
+    "LocalOnly": "Yes",
+    "Mask": "[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1]",
+    "Losses": "Yes",
+    "LineLosses": "Yes",
+    "XfmrLosses": "Yes",
+    "SeqLosses": "Yes",
+    "3PhaseLosses": "Yes",
+    "VBaseLosses": "Yes",
+    "PhaseVoltageReport": "No",
+    "Int_Rate": "0",
+    "Int_Duration": "0",
+    "SAIFI": "0",
+    "SAIFIkW": "0",
+    "SAIDI": "0",
+    "CAIDI": "0",
+    "CustInterrupts": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
   }
  ]
 }
