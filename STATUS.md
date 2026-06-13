@@ -58,7 +58,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 262, golden_feeders 1,
+cargo test --workspace      # dss-core lib 270, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_reliability 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1,
@@ -1027,6 +1027,31 @@ accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
   test API. `gen_props.py`: 6 Sensor scenarios (default, single-command zeroing,
   two-step survival, P/Q→current, kVs+delta, makelike) → `props.json` regenerated
   (pure insertions); `props_roundtrip` green. dss-core lib 257 → **262**.
+- **WP6.7 audit follow-up (gate-green):** closed coverage/faithfulness gaps the
+  self-audit found. `do_allocate_loads_cmd` now forces `Mode := SNAPSHOT` before
+  the guess solve (Pascal ExecHelper.pas l.2617; guarded `if Mode <> SNAPSHOT`,
+  via `set_mode`) — previously omitted, latent once non-snapshot modes run.
+  Comments added in `allocate_load_for_meter` documenting the `load_list`-vs-
+  `BranchList` equivalence and the two intentional defensive guards (nil
+  `SensorObj` / connected-phase past the sensor's phase count, where Pascal would
+  deref-nil / read OOB).
+- **New `allocation` golden gate** (`tools/golden/gen_allocation.py` →
+  `tests/golden/allocation.json` → `tests/golden_allocation.rs`, the
+  `gen_reliability.py` pattern): 6 scenarios replayed and matched per load on the
+  oracle `Loads.kW`/`AllocationFactor` after `allocateloads` — 3-phase
+  ConnectedkVA, `NumAllocIterations=4`, kWh/Cfactor spec (the `KwhPf`→`c_factor`
+  branch), unbalanced single-phase (distinct `PhsAllocationFactor[ConnectedPhase]`,
+  pinning the connected-phase index), a current-spec Sensor and a P/Q Sensor.
+- **New `exec` unit tests** (kept alongside the golden for clearer per-case
+  failure messages; the `TakeSample`/WLS ones have no COM getter and so can only
+  live here — same split as reliability's per-branch accumulators):
+  `allocateloads_kwh_spec_loads`, `allocateloads_single_phase_per_phase_factor`,
+  `allocateloads_pq_sensor`, `sensor_take_sample_{wye,delta}` (via new
+  `Dss::sensor_sample` API — the only gate exercising `TakeSample`'s
+  offset/`RotatePhases` math, oracle-cross-checked against the metered element's
+  currents + node voltages), and 3 `sensor.rs` unit tests (`rotate_phases_wraps`,
+  `wls_voltage_error_matches_formula`, `wls_current_error_from_pq`). Net dss-core
+  lib 262 → **270**; new `golden_allocation` integration target (1 test).
 
 ---
 
