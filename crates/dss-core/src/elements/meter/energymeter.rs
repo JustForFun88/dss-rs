@@ -194,6 +194,13 @@ pub struct EnergyMeter {
     source_num_interruptions: f64,
     source_int_duration: f64,
 
+    /// Pascal `AssumeRestoration` (EnergyMeter.pas l.414): not a parsed property
+    /// — set programmatically by `DoLambdaCalcs` (the `RelCalc` command) and read
+    /// by both `CalcNum_Int` (forward sweep) and `TotalUpDownstreamCustomers`
+    /// (customer roll-up at zone build). Defaults FALSE; not copied by `MakeLike`,
+    /// matching Pascal.
+    assume_restoration: bool,
+
     // Reliability outputs (read-only; WP6.6 fills them).
     saifi: f64,
     saifi_kw: f64,
@@ -267,6 +274,7 @@ impl EnergyMeter {
             max_zone_kva_emerg: 0.0,
             source_num_interruptions: 0.0,
             source_int_duration: 0.0,
+            assume_restoration: false,
             saifi: 0.0,
             saifi_kw: 0.0,
             saidi: 0.0,
@@ -322,6 +330,15 @@ impl EnergyMeter {
     /// `Source_IntDuration` (average interruption duration of upline circuit).
     pub fn source_int_duration(&self) -> f64 {
         self.source_int_duration
+    }
+    /// Pascal `AssumeRestoration` (set by `DoLambdaCalcs`, read by the customer
+    /// roll-up at zone build).
+    pub fn assume_restoration(&self) -> bool {
+        self.assume_restoration
+    }
+    /// Pascal `pMeter.AssumeRestoration := AssumeRestoration` in `DoLambdaCalcs`.
+    pub(crate) fn set_assume_restoration(&mut self, value: bool) {
+        self.assume_restoration = value;
     }
     /// Write back the reliability indices computed by `CalcReliabilityIndices`.
     pub(crate) fn set_reliability_results(

@@ -58,9 +58,10 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 253, golden_feeders 1,
+cargo test --workspace      # dss-core lib 257, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
-                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
+                            # golden_reliability 1, golden_slice 2,
+                            # golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -957,10 +958,23 @@ accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
   the abort, so the bus/branch accumulators are populated and testable.
 - Oracle pin: probed `relcalc` on a 2-section radial feeder → `#52902` (no
   per-branch reliability getters exist in the COM API, so the dormant indices
-  can't be golden-pinned until OCP devices land). 2 new tests: the 52902
-  abort + the hand-computed backward-sweep accumulators
-  (`BranchFltRate = FaultRate·pctperm·0.01·Len`; `AccumulatedBrFltRate` roll-up;
-  `BusTotalNumCustomers`). dss-core lib 251 → **253**.
+  can't be golden-pinned until OCP devices land). 6 tests: the 52902 abort +
+  hand-computed backward-sweep accumulators (`BranchFltRate =
+  FaultRate·pctperm·0.01·Len`; `AccumulatedBrFltRate`/miles roll-up;
+  `BusTotalNumCustomers`), a junction-rollup branching feeder, the no-section
+  invariant, and `AssumeRestoration` parse. dss-core lib 251 → **257**.
+- Audit hardening: `TotalUpDownstreamCustomers` now applies the full Pascal
+  `HasOCPDevice ∧ AssumeRestoration ∧ HasAutoOCPDevice` roll-up guard (via a
+  new meter `AssumeRestoration` field set by `DoLambdaCalcs`) instead of an
+  unconditional roll-up — correct-by-vacuity in Phase 6, future-proof for
+  Phase 7. `GetOCPDeviceType`'s inlined `0` is now marked `TODO(WP7)`.
+- Oracle-pinned after all: although per-*branch* getters are absent, the
+  per-*bus* reliability quantities the sweep fills before the abort **are**
+  exposed (`Bus.Lambda`/`N_Customers`/`TotalMiles`/`SectionID`). New
+  `tools/golden/gen_reliability.py` → `tests/golden/reliability.json` →
+  `tests/golden_reliability.rs` pins both feeders (radial + branching) to the
+  oracle; the branch accumulators follow from the bus↔branch identity (no OCP →
+  branch value = FROM-bus value).
 
 ---
 
