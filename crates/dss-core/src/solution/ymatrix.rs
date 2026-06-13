@@ -66,8 +66,25 @@ pub fn build_y_matrix(
         }
     }
 
-    // Tune up the Yprims if necessary: all of them on a frequency change,
-    // else only the invalidated ones.
+    // Tune up the Yprims. Pascal logs "Recalc All Yprims" on a frequency
+    // change and "Recalc Invalid Yprims" otherwise (`Ymatrix.pas`
+    // ReCalcAllYPrims/ReCalcInvalidYPrims) — the event-log gates pin these
+    // strings, so keep the message frequency-driven.
+    //
+    // The recompute itself, however, always touches *every* element: the base
+    // `TDSSCktElement.CalcYPrim` only clears `YPrimInvalid` under
+    // `{$IFDEF DSS_CAPI_INCREMENTAL_Y}` + the non-default
+    // `AlwaysResetYPrimInvalid` solver option, so in the oracle's default
+    // build the flag is never reset and `ReCalcInvalidYPrims` recomputes all
+    // Yprims on every `BuildYMatrix`. Reproduce that exactly. It matters for
+    // time-series modes: a load's admittance `Yeq = (P - jQ)/Vbase²` is
+    // shape-scaled and folded into Y as the fixed-point convergence
+    // accelerator; if it is frozen at the load level of the step where Y was
+    // last structurally rebuilt (e.g. a tap change), the per-step iteration
+    // path diverges from the oracle and the daily EnergyMeter / monitor
+    // trajectory drifts (verified empirically against the pinned oracle:
+    // restamping with the current Yeq each build is what makes the IEEE13
+    // daily registers match at 1e-4).
     let sys = sys_ctx(ckt);
     let recalc_all = ckt.solution.frequency_changed;
     if ckt.log_events {
@@ -82,10 +99,8 @@ pub fn build_y_matrix(
     }
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
-        if recalc_all || elem.cd().yprim_invalid {
-            elem.calc_yprim(&sys);
-            elem.cd_mut().yprim_invalid = false;
-        }
+        elem.calc_yprim(&sys);
+        elem.cd_mut().yprim_invalid = false;
     }
     ckt.solution.frequency_changed = false;
 

@@ -7,7 +7,7 @@
  "scenarios": [
   {
    "name": "daily_ieee13",
-   "tol": 1e-05,
+   "tol": 1e-06,
    "commands": [
     "Set DefaultBaseFrequency=60",
     "new circuit.IEEE13Nodeckt",

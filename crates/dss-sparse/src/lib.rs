@@ -65,6 +65,17 @@ pub struct SparseSet {
     symbolic: Option<SymbolicLu<usize>>,
     factors: Option<Lu<usize, Complex64>>,
     singular_col: Option<usize>,
+    /// Per-row equilibration factors applied before factorization
+    /// (`row_scale[i] = 1/max_j |A_ij|`). KLU scales by default (`scale=2`,
+    /// row-max); without it faer's LU loses ~`log10(max_entry/min_entry)`
+    /// digits on badly-scaled circuit matrices — e.g. an ideal switch's
+    /// ~1e4 S admittance alongside ~1e-2 S lines drives the IEEE13 Y to
+    /// cond ≈ 2e8, and the un-equilibrated factorization is only
+    /// backward-stable to ~1e-10, which lets the fixed point limit-cycle
+    /// instead of converging cleanly. The factored matrix is
+    /// `diag(row_scale)·A`, so solves scale the right-hand side to match
+    /// (`x` is unchanged).
+    row_scale: Vec<f64>,
 }
 
 impl SparseSet {
@@ -77,6 +88,7 @@ impl SparseSet {
             symbolic: None,
             factors: None,
             singular_col: None,
+            row_scale: Vec::new(),
         }
     }
 
@@ -183,9 +195,13 @@ impl SparseSet {
         }
     }
 
-    /// Solve without factoring (must already be factored).
+    /// Solve without factoring (must already be factored). The factored
+    /// matrix is `diag(row_scale)·A`, so the right-hand side is scaled to
+    /// match before the triangular solves (the solution `x` is unchanged).
     fn solve_one(&self, b: &[Complex64], x: &mut [Complex64]) -> Result<(), SparseError> {
-        x.copy_from_slice(b);
+        for i in 0..self.n {
+            x[i] = b[i] * self.row_scale[i];
+        }
         let rhs = MatMut::from_column_major_slice_mut(x, self.n, 1);
         self.factors
             .as_ref()
@@ -251,24 +267,62 @@ impl SparseSet {
         Ok(())
     }
 
+    /// Compute the row-max equilibration factors from the assembled matrix
+    /// and build `diag(row_scale)·A` (the matrix actually factored). KLU's
+    /// default `scale=2` behavior; see [`SparseSet::row_scale`].
+    fn build_scaled(&mut self) -> Result<SparseColMat<usize, Complex64>, SparseError> {
+        let matrix = self.matrix.as_ref().expect("assembled");
+        let mut row_max = vec![0.0f64; self.n];
+        for col in 0..self.n {
+            let rows = matrix.row_idx_of_col_raw(col);
+            let vals = matrix.val_of_col(col);
+            for (k, &r) in rows.iter().enumerate() {
+                let a = vals[k].norm();
+                if a > row_max[r] {
+                    row_max[r] = a;
+                }
+            }
+        }
+        self.row_scale = row_max
+            .iter()
+            .map(|&mx| if mx > 0.0 { 1.0 / mx } else { 1.0 })
+            .collect();
+        // Scale the assembled values in CSC order (column-major).
+        let (symbolic, vals) = matrix.parts();
+        let mut sval = vals.to_vec();
+        let mut pos = 0usize;
+        for col in 0..self.n {
+            let rows = matrix.row_idx_of_col_raw(col);
+            for &r in rows {
+                sval[pos] *= self.row_scale[r];
+                pos += 1;
+            }
+        }
+        let owned = symbolic
+            .to_owned()
+            .map_err(|e| SparseError::Internal(format!("{e:?}")))?;
+        Ok(SparseColMat::new(owned, sval))
+    }
+
     /// LU-factor the matrix; no-op if already factored
     /// (KLUSolve `FactorSparseMatrix`). The symbolic analysis is reused
-    /// across calls when the sparsity pattern is unchanged.
+    /// across calls when the sparsity pattern is unchanged. The matrix is
+    /// row-equilibrated before factorization (see [`SparseSet::row_scale`]).
     pub fn factor(&mut self) -> Result<(), SparseError> {
         if self.factors.is_some() {
             return Ok(());
         }
         self.assemble()?;
-        let matrix = self.matrix.as_ref().expect("assembled above");
+        let scaled = self.build_scaled()?;
 
         if self.symbolic.is_none() {
-            let sym = SymbolicLu::try_new(matrix.symbolic())
+            let sym = SymbolicLu::try_new(scaled.symbolic())
                 .map_err(|e| SparseError::Internal(format!("{e:?}")))?;
             self.symbolic = Some(sym);
         }
         let symbolic = self.symbolic.as_ref().expect("set above").clone();
 
-        match Lu::try_new_with_symbolic(symbolic, matrix.rb()) {
+        match Lu::try_new_with_symbolic(symbolic, scaled.rb()) {
             Ok(lu) => {
                 self.factors = Some(lu);
                 self.singular_col = None;
@@ -291,13 +345,7 @@ impl SparseSet {
             });
         }
         self.factor()?;
-        x.copy_from_slice(b);
-        let rhs = MatMut::from_column_major_slice_mut(x, self.n, 1);
-        self.factors
-            .as_ref()
-            .expect("factored above")
-            .solve_in_place(rhs);
-        Ok(())
+        self.solve_one(b, x)
     }
 }
 

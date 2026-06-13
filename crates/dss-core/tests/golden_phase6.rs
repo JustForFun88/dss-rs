@@ -4,8 +4,9 @@
 //! scenario's command list and must match `tests/golden/phase6.json`:
 //!
 //!   - monitor_daily_ieee13: per-monitor header + SampleCount exact, channel
-//!     sample arrays elementwise (mode-5 wall-clock + iteration-count channels
-//!     skipped — see below);
+//!     sample arrays elementwise (only the mode-5 wall-clock timing channels
+//!     are skipped — the port records 0 for them; the iteration-count channels
+//!     now match the oracle exactly);
 //!   - meter_daily_ieee13: registers 1e-4 rel + names exact, zone branch / end
 //!     / PCE counts exact;
 //!   - generator_snap: iterations + node order exact, voltages 1e-6 rel, each
@@ -176,17 +177,17 @@ fn run_monitors(sc: &Scenario, dss: &Dss) {
             if m.skip_channels.contains(&ch) {
                 continue;
             }
-            // The IEEE13 daily trajectory's per-step fixed-point iteration stops
-            // at the 1e-4 convergence tolerance, so the converged samples are
-            // path-dependent at that level once the two engines' ~1e-9 solver
-            // differences shift an iteration count (exactly the phase5 daily
-            // behavior). 2e-4 rel / 1e-3 abs absorbs that; the header strings,
-            // SampleCount and discrete structure are matched exactly.
+            // Channels are stored f32; the underlying f64 daily trajectory now
+            // tracks the oracle to ~1e-9 (the load-Yeq restamp fix in
+            // `build_y_matrix`), so the narrowed f32 samples match to a few
+            // ULPs. 1e-6 rel / 1e-4 abs is the planned f32 channel tolerance
+            // (PHASE6_PLAN §1.2); header strings, SampleCount and the discrete
+            // structure are matched exactly.
             assert_scalar_close(
                 act,
                 exp,
-                2e-4,
-                1e-3,
+                1e-6,
+                1e-4,
                 &format!(
                     "{} monitor {} channel {} ({})",
                     sc.name,
@@ -218,15 +219,14 @@ fn run_meters(sc: &Scenario, dss: &Dss) {
                 sc.name, m.name
             );
             let exp = m.register_values[i];
-            // 1e-3 rel (not the 8500 gate's 1e-4): with the IEEE13 regulators
-            // active over 24 daily steps, the per-step fixed-point iteration is
-            // path-dependent at the 1e-4 convergence tolerance (the phase5 daily
-            // ±1-iteration / 2e-4 voltage effect). The threshold-crossing
-            // overload/EEN/UE energy registers integrate that divergence and
-            // land ~6e-4 rel apart; the smooth energy/loss registers match far
-            // tighter. The 8500 gate (no per-step tap hunting in the metered
-            // zone) pins the same machinery at 1e-4.
-            let tol = 1e-3 * exp.abs().max(1.0);
+            // 1e-4 rel — the PORTING_PLAN §4 energy-accumulation policy, same as
+            // the 8500 gate. The threshold-crossing overload/EEN/UE registers
+            // used to need 1e-3 here because the IEEE13 daily fixed-point path
+            // drifted from the oracle (the load-Yeq accelerator was frozen at
+            // the first step's load level — see `build_y_matrix`); with that
+            // fixed the per-step trajectory tracks the oracle to ~1e-9 and every
+            // register matches at 1e-4 (worst observed ~1e-7).
+            let tol = 1e-4 * exp.abs().max(1.0);
             assert!(
                 (value - exp).abs() <= tol,
                 "{}: meter {} register {name} differs: {value} vs {exp}",
