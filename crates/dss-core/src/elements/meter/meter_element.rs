@@ -95,14 +95,17 @@ impl MeterElementData {
     }
 
     /// Pascal `TMeterElement.AllocateSensorArrays`: size the per-phase sensor
-    /// arrays and the metered-element calc buffers (Sensor, WP6.7).
-    #[allow(dead_code)]
+    /// arrays and the metered-element calc buffers. The calc buffers and
+    /// `PhsAllocationFactor` are zeroed, but `SensorCurrent`/`SensorVoltage` are
+    /// `ReAllocMem`'d — i.e. **preserved** across resizes (the EnergyMeter ctor
+    /// seeds `SensorCurrent := 400 A` and `RecalcElementData` re-allocates
+    /// without clobbering it).
     pub fn allocate_sensor_arrays(&mut self, metered_yorder: usize) {
         self.calculated_current = vec![Complex64::ZERO; metered_yorder];
         self.calculated_voltage = vec![Complex64::ZERO; metered_yorder];
         let nph = self.cd.nphases;
-        self.sensor_current = vec![0.0; nph];
-        self.sensor_voltage = vec![0.0; nph];
+        self.sensor_current.resize(nph, 0.0);
+        self.sensor_voltage.resize(nph, 0.0);
         self.phs_allocation_factor = vec![0.0; nph];
     }
 

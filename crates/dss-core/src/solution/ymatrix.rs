@@ -49,6 +49,9 @@ pub fn build_y_matrix(
     // references into the system Y matrix.
     if ckt.bus_name_redefined {
         ckt.reprocess_bus_defs(env.store, env.parser, env.vars, env.errors);
+        // Pascal `ReprocessBusDefs` tail (Circuit.pas l.2246): rebuild the meter
+        // zones now that the bus references are current.
+        crate::solution::meters::do_reset_meter_zones(ckt, env.store);
     }
 
     let y_matrix_size = ckt.num_nodes;

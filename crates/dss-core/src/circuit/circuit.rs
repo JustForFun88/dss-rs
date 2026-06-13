@@ -32,6 +32,7 @@ pub enum ElemKind {
     Control,
     Generator,
     Meter,
+    EnergyMeter,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -65,6 +66,9 @@ pub struct Circuit {
     pub controls: Vec<ElemRef>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
     pub monitors: Vec<ElemRef>,
+    /// EnergyMeter elements (Phase 6): no Yprim, not PD/PC; device list + own
+    /// list. Walked in creation order by `ResetMeterZonesAll` / `SampleAll`.
+    pub energy_meters: Vec<ElemRef>,
 
     pub solution: Solution,
 
@@ -145,6 +149,7 @@ impl Circuit {
             generators: Vec::new(),
             controls: Vec::new(),
             monitors: Vec::new(),
+            energy_meters: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
             is_solved: false,
@@ -222,6 +227,7 @@ impl Circuit {
             // Monitors (and other meter elements) likewise: device list + own
             // list, no Yprim.
             ElemKind::Meter => self.monitors.push(r),
+            ElemKind::EnergyMeter => self.energy_meters.push(r),
         }
         elem.cd_mut().handle = self.ckt_elements.len();
     }

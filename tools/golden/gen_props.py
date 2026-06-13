@@ -901,6 +901,36 @@ SCENARIOS = [
             "New Monitor.m1 like=base mode=1",
         ],
     },
+    {
+        "name": "energymeter_default",
+        "target": "EnergyMeter.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+            "New EnergyMeter.m1 element=Line.l1 terminal=1",
+        ],
+    },
+    {
+        "name": "energymeter_options_mask",
+        "target": "EnergyMeter.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 r1=0.1 x1=0.1 length=2",
+            "New EnergyMeter.m1 element=Line.l1 terminal=1 option=(T,M,V) "
+            "zonelist=(line.l1, line.l2) kVANormal=5000 kVAEmerg=6000 "
+            "peakcurrent=(300, 350, 400) mask=(0 0 1) LocalOnly=yes Losses=no "
+            "LineLosses=no Int_Rate=0.1 Int_Duration=2.5",
+        ],
+    },
+    {
+        "name": "energymeter_makelike",
+        "target": "EnergyMeter.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+            "New EnergyMeter.base element=Line.l1 terminal=1 option=(T,R,V) "
+            "kVANormal=1000 LocalOnly=yes",
+            "New EnergyMeter.m1 like=base kVAEmerg=2000",
+        ],
+    },
 ]
 
 
