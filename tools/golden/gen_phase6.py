@@ -91,12 +91,13 @@ def scenario_monitor_daily(d) -> dict:
         header = list(mon.Header)
         nch = mon.NumChannels
         channels = [[float(x) for x in mon.Channel(i)] for i in range(1, nch + 1)]
-        # Mode-5 skipped channels (0-based):
-        #   10/11 SolveSnap_uSecs / TimeStep_uSecs — wall-clock (port records 0);
-        #   0/1   TotalIterations / ControlIteration — path-dependent ±1 at the
-        #         1e-4 convergence tolerance over the 24-step daily trajectory
-        #         (exactly the phase5 daily iteration-count divergence).
-        skip = [0, 1, 10, 11] if nm == "m5" else []
+        # Mode-5 skipped channels (0-based): only the wall-clock timings
+        #   10/11 SolveSnap_uSecs / TimeStep_uSecs — the port records 0 for them.
+        # The iteration-count channels (0/1 TotalIterations / ControlIteration)
+        # are NOT skipped: with the load-Yeq restamp fix in build_y_matrix the
+        # per-step iteration counts now match the oracle exactly over the daily
+        # trajectory (they used to drift ±1 at the 1e-4 convergence tolerance).
+        skip = [10, 11] if nm == "m5" else []
         monitors.append(
             {
                 "name": nm,

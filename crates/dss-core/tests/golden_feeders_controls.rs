@@ -220,7 +220,15 @@ fn run_case(name: &str) {
         );
     }
 
-    // Full per-element property dumps (numeric-skeleton comparison).
+    // Full per-element property dumps (numeric-skeleton comparison). The
+    // absolute floor is 1e-9 (aligned with the node-voltage comparison above,
+    // and looser than the 1e-6 power floor): a few property dumps are near-zero
+    // cancellation quantities — e.g. a near-balanced transformer's ~5e-5 A
+    // winding current — whose last printed digit sits at the LU solver's
+    // backward-error floor and flips under any solve-path change (here, the
+    // KLU-style row equilibration in `dss-sparse`). 1e-9 amps/volts/watts is
+    // well below physical significance; the 1e-9 *relative* term keeps
+    // significant quantities pinned tightly.
     let element_names: Vec<String> = golden.elements.keys().cloned().collect();
     for el_name in &element_names {
         let props = &golden.elements[el_name].properties;
@@ -231,7 +239,7 @@ fn run_case(name: &str) {
                 &actual,
                 expected,
                 1e-9,
-                1e-12,
+                1e-9,
                 &format!("{name} {el_name} property {prop}"),
             );
         }
