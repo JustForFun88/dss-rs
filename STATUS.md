@@ -60,7 +60,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 315, golden_feeders 1,
+cargo test --workspace      # dss-core lib 319, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_slice 2,
@@ -1203,13 +1203,40 @@ siblings in `ReduceAlgs.pas`) hinges on the unported 210-line
   ShortLines; unknown → error "Unknown Reduction Strategy" + falls back to
   rsDefault). `do_reduce_cmd` ports the `Reduce` command's energy-meter
   precondition (error 1890, exact message) and then logs a NOT_PORTED
-  deferral for the reduction itself (no silent no-op). `MarkCapandReactorBuses`
-  / `ReduceZone` / `Interpolate` (l.2298) deferred with the merge.
+  deferral for the reduction itself (no silent no-op). `ReduceZone` /
+  `Interpolate` (l.2298) deferred with the merge.
 - **+4 unit tests** (option defaults+round-trip incl. the empty-ReduceOption
   `Get` elision; first-char strategy dispatch incl. the `S` ambiguity + unknown
   fallback; Reduce no-meter 1890; Reduce-with-meter deferral). No golden
   regeneration (the wired options/command were previously the "not ported"
   error; no existing golden exercised them). Net dss-core lib 311 → **315**.
+
+**WP6.8 (parts 3/4 + 4/4) — audit follow-up — ✅ done, gate-green.** Fixed
+fidelity gaps found auditing the AutoAdd/ReduceAlgs surface against Pascal:
+- `parse_int_array` (`parseIntArray`) no longer swallows the parser exception.
+  It now does the Pascal two-pass (count → `SetLength` zero-fill → fill),
+  **records** the `MakeInteger` conversion error, and stops at the bad token —
+  so `Set UEregs=(10 abc 13)` → `[10,0,0]` + logged error (was silently
+  `[10,0,13]`). The roundable-decimal path (`13.7 → 14`) is unchanged.
+- `do_reduce_cmd` now ports `MarkCapandReactorBuses` (marks enabled shunt
+  cap/reactor buses `Keep`, *before* the meter check, exactly as Pascal) and
+  the named-meter path: a missing meter is error 262 `EnergyMeter "X" not
+  found.` (uppercased name) instead of the generic deferral; `'A'`/all-meters
+  and a resolved meter still log the NOT_PORTED deferral.
+- `do_auto_add_bus_list` File= read error now matches Pascal code 268
+  (`Error trying to read bus list file: %s`).
+- **+4 tests** (non-numeric reg token logs error + truncates; unknown
+  `addtype` → CAPADD default, no error; Reduce named-meter 262; Reduce marks
+  cap/reactor buses) and the 1890 test tightened to pin the full URL. Net
+  dss-core lib 315 → **319**.
+- **New golden gate** `golden_autoadd_reduce` (10 oracle-pinned scenarios) vs
+  `tests/golden/autoadd_reduce.json` from `tools/golden/gen_autoadd_reduce.py`:
+  replays the AutoAdd/Reduce option surface and matches every `Get` echo
+  byte-for-byte, plus `addtype=foo`→`capacitor` (no error), `ueregs=(10 abc 13)`
+  → `[10, 0, 0]` + conversion error (oracle #303), `13.7`→`14`, Reduce #1890 /
+  #262. `Bus.Keep` and the reduction itself aren't exposed by the COM API, so
+  they remain pinned by the unit tests. (Generated with the pinned oracle —
+  python 3.12.4 / dss-python 0.15.7 / backend 0.14.5.)
 
 WP6.8 complete (4/4). Next: WP6.9 (goldens + 8500-node gate). Note for WP6.9:
 the `Interpolate` command (Run_8500Node calls it after solve) is unported, so

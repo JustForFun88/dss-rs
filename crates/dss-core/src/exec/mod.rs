@@ -1573,8 +1573,10 @@ impl Dss {
                         }
                     }
                     // Pascal `parseIntArray` (ExecOptions.pas l.350) via AuxParser.
-                    opt::UE_REGS => ckt.ue_regs = parse_int_array(aux_parser, vars, &param),
-                    opt::LOSS_REGS => ckt.loss_regs = parse_int_array(aux_parser, vars, &param),
+                    opt::UE_REGS => ckt.ue_regs = parse_int_array(aux_parser, vars, &param, errors),
+                    opt::LOSS_REGS => {
+                        ckt.loss_regs = parse_int_array(aux_parser, vars, &param, errors)
+                    }
                     // Pascal `Set Trapezoidal=`: the meter integration rule
                     // (reset to false by `Set mode=`).
                     opt::TRAPEZOIDAL => ckt.trapezoidal_integration = interpret_yes_no(&param),
@@ -2156,18 +2158,53 @@ impl Dss {
         errors.extend(errs);
     }
 
+    /// Pascal `TExecHelper.MarkCapandReactorBuses` (ExecHelper.pas l.1573): mark
+    /// every bus carrying an *enabled, shunt-connected* capacitor or reactor as
+    /// a "keeper" (`Bus.Keep := TRUE`) so a later circuit reduction won't
+    /// eliminate it. Runs as a side-effect of the `Reduce` command regardless of
+    /// whether the reduction itself proceeds.
+    fn mark_cap_and_reactor_buses(&mut self) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        // `ElemRef` is `Copy`; snapshot the refs so the bus write below doesn't
+        // alias the element-list borrow (the store borrows `classes`, disjoint
+        // from `ckt`).
+        let refs: Vec<ElemRef> = ckt
+            .shunt_capacitors
+            .iter()
+            .chain(ckt.reactors.iter())
+            .copied()
+            .collect();
+        let store = ClassStore { classes };
+        for r in refs {
+            let elem = store.ckt_elem(r);
+            if elem.is_shunt() && elem.cd().enabled {
+                let bus = elem.cd().terminals[0].bus_ref;
+                if let Some(b) = ckt.buses.get_mut(bus) {
+                    b.keep = true;
+                }
+            }
+        }
+    }
+
     /// Pascal `DoReduceCmd` (ExecHelper.pas l.1614): the `Reduce` command. The
-    /// energy-meter precondition (error 1890) is reproduced faithfully; the
-    /// reduction itself — `MarkCapandReactorBuses` + `EnergyMeter.ReduceZone`
-    /// dispatching `ReduceAlgs.pas` (`DoReduceDefault`/`DoReduceShortLines`/…)
-    /// → `TLineObj.MergeWith` — is NOT_PORTED (the 210-line line merge is
-    /// unported), so the strategy is parsed/stored but no zone is reduced.
-    /// Deferred to a later phase.
+    /// observable surface is reproduced faithfully — the cap/reactor bus marking
+    /// ([`Self::mark_cap_and_reactor_buses`]), the error-1890 no-meter
+    /// precondition, the `'A'`(ll)-vs-named-meter dispatch, and the error-262
+    /// "EnergyMeter not found". The reduction *work itself* —
+    /// `EnergyMeter.ReduceZone` dispatching `ReduceAlgs.pas`
+    /// (`DoReduceDefault`/`DoReduceShortLines`/…) → `TLineObj.MergeWith` — is
+    /// NOT_PORTED (the 210-line line merge is unported), so a resolved meter
+    /// records a deferral instead of reducing its zone.
     fn do_reduce_cmd(&mut self) {
-        // Consume the meter-name / 'All' argument (unused until the reduction
-        // is ported).
+        // Pascal reads the next parm and uppercases it (`AnsiUpperCase`).
         self.parser.next_param(&self.vars);
-        let _param = self.parser.make_string(&self.vars);
+        let mut param = self.parser.make_string(&self.vars).to_uppercase();
+
+        // Pascal marks cap/reactor buses Keep *before* the meter-count check.
+        self.mark_cap_and_reactor_buses();
 
         let no_meters = self
             .circuit
@@ -2185,11 +2222,50 @@ impl Dss {
             );
             return;
         }
-        self.errors.push(
-            "Reduce: circuit reduction is not ported yet (the zone line-merge \
-             requires Line.MergeWith — deferred to a later phase)."
-                .to_string(),
-        );
+
+        // Pascal: empty arg defaults to 'A' (all meters).
+        if param.is_empty() {
+            param = "A".to_string();
+        }
+
+        if param.starts_with('A') {
+            // All meters → ReduceZone on each (NOT_PORTED).
+            self.errors.push(Self::reduce_deferred_msg());
+            return;
+        }
+
+        // Named meter: resolve it (Pascal `MeterClass.SetActive(Param)`); a
+        // miss is error 262, a hit would `ReduceZone` (NOT_PORTED → deferral).
+        let found = {
+            let Dss {
+                classes, circuit, ..
+            } = self;
+            let ckt = circuit.as_ref().expect("gated in command()");
+            let store = ClassStore { classes };
+            ckt.energy_meters.iter().any(|&r| {
+                store
+                    .ckt_elem(r)
+                    .cd()
+                    .obj
+                    .name()
+                    .eq_ignore_ascii_case(&param)
+            })
+        };
+        if found {
+            self.errors.push(Self::reduce_deferred_msg());
+        } else {
+            // Pascal error 262 (echoes the uppercased name).
+            self.errors
+                .push(format!("EnergyMeter \"{param}\" not found."));
+        }
+    }
+
+    /// The NOT_PORTED deferral logged when a `Reduce` would otherwise call
+    /// `EnergyMeter.ReduceZone` (see [`Self::do_reduce_cmd`]).
+    fn reduce_deferred_msg() -> String {
+        "Reduce: circuit reduction is not ported yet (the zone line-merge \
+         requires Line.MergeWith — deferred to a later phase)."
+            .to_string()
     }
 
     /// Pascal `DoSetVoltageBases` (the `CalcVoltageBases` command).
@@ -2897,19 +2973,47 @@ fn enum_ord(
     }
 }
 
-/// Pascal `parseIntArray` (ExecOptions.pas l.350): tokenize `s` on the
-/// AuxParser and read each token as an integer. Like Pascal `IntValue`, a
-/// non-numeric token yields 0 (silent — Pascal logs no error here).
-fn parse_int_array(aux_parser: &mut Parser, vars: &ParserVars, s: &str) -> Vec<i32> {
+/// Pascal `parseIntArray` (ExecOptions.pas l.350): reparse `s` on the AuxParser
+/// into an integer array. Pascal runs two passes — pass 1 counts the tokens and
+/// `SetLength`s the array (zero-filling), pass 2 reads each token via `IntValue`
+/// (`MakeInteger`). A token that is neither an integer nor a roundable decimal
+/// makes `MakeInteger` *raise* `EParserProblem`, which the executive logs and
+/// which aborts the fill — leaving the already-sized array zero-filled from the
+/// bad token onward. We reproduce that exactly: the error is recorded and the
+/// remaining slots stay 0 (a roundable decimal like `13.7` still rounds to 14,
+/// matching the `MakeInteger` double-fallback path).
+fn parse_int_array(
+    aux_parser: &mut Parser,
+    vars: &ParserVars,
+    s: &str,
+    errors: &mut Vec<String>,
+) -> Vec<i32> {
+    // Pass 1: count the tokens (StrValue never raises).
     aux_parser.set_cmd_string(s);
-    let mut out = Vec::new();
+    let mut count = 0usize;
     loop {
         aux_parser.next_param(vars);
-        let param = aux_parser.make_string(vars);
-        if param.is_empty() {
+        if aux_parser.make_string(vars).is_empty() {
             break;
         }
-        out.push(aux_parser.make_integer(vars).unwrap_or(0));
+        count += 1;
+    }
+
+    // Pascal `SetLength(iarray, count)` — new slots are zero-filled.
+    let mut out = vec![0i32; count];
+
+    // Pass 2: read each token as an integer, stopping at the first conversion
+    // error (Pascal raises and unwinds), leaving the remaining slots at 0.
+    aux_parser.set_cmd_string(s);
+    for slot in &mut out {
+        aux_parser.next_param(vars);
+        match aux_parser.make_integer(vars) {
+            Ok(v) => *slot = v,
+            Err(e) => {
+                errors.push(e.message().to_string());
+                break;
+            }
+        }
     }
     out
 }
@@ -2944,9 +3048,9 @@ fn do_auto_add_bus_list(
                     }
                 }
             }
-            Err(e) => errors.push(format!(
-                "Error trying to read bus list file \"{param}\": {e}"
-            )),
+            // Pascal `DoSimpleMsg('Error trying to read bus list file: %s',
+            // [E.message], 268)`.
+            Err(e) => errors.push(format!("Error trying to read bus list file: {e}")),
         }
     } else {
         // Parse bus names off the inline array list.
@@ -3796,6 +3900,51 @@ mod tests {
         );
     }
 
+    /// `Set UEregs=` with a non-numeric token reproduces the Pascal
+    /// `MakeInteger` *raise*: the parser error is logged and the fill stops at
+    /// the bad token, leaving the already-sized array zero-filled from there on
+    /// (`[10, 0, 0]`, not a silent `[10, 0, 13]`). A roundable decimal still
+    /// rounds (`13.7 -> 14`) via the double fallback.
+    #[test]
+    fn ueregs_nonnumeric_token_logs_error_and_truncates() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Set ueregs=(10 abc 13)");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Integer number conversion error")),
+            "expected a logged conversion error, got {:?}",
+            dss.errors()
+        );
+        assert_eq!(dss.circuit().unwrap().ue_regs, vec![10, 0, 0]);
+
+        // The roundable-decimal path is unaffected (fresh circuit so the
+        // error log above doesn't bleed into this assertion).
+        let mut dss2 = Dss::new();
+        dss2.command("New circuit.c2");
+        dss2.command("Set lossregs=(13.7 14)");
+        assert!(dss2.errors().is_empty(), "{:?}", dss2.errors());
+        assert_eq!(dss2.circuit().unwrap().loss_regs, vec![14, 14]);
+    }
+
+    /// `Set addtype=` with an unrecognized value resolves to the enum default
+    /// (CAPADD) with **no** error — Pascal `StringToOrdinal` returns the default
+    /// rather than raising.
+    #[test]
+    fn addtype_unknown_falls_back_to_default_no_error() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Set addtype=foo");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(
+            dss.circuit().unwrap().auto_add_obj.add_type,
+            crate::circuit::CAPADD
+        );
+        dss.command("Get addtype");
+        assert_eq!(dss.result(), "capacitor");
+    }
+
     /// `Set AutoBusList=` parses an inline bus-name list (`DoAutoAddBusList`),
     /// stored insertion-ordered and echoed comma-separated by `Get`.
     #[test]
@@ -3892,19 +4041,76 @@ mod tests {
         assert_eq!(dss.circuit().unwrap().reduction_strategy, Rs::Default);
     }
 
-    /// `Reduce` with no energy meters reproduces Pascal error 1890.
+    /// `Reduce` with no energy meters reproduces Pascal error 1890, including
+    /// the full documentation URL (pinned so an edit can't silently drift it).
     #[test]
     fn reduce_command_requires_energy_meter() {
         let mut dss = Dss::new();
         dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
         dss.command("reduce");
         assert!(
-            dss.errors()
-                .iter()
-                .any(|e| e.contains("energy meter is required")),
+            dss.errors().iter().any(|e| e
+                == "An energy meter is required to use this feature. Please check \
+                    https://sourceforge.net/p/electricdss/code/HEAD/tree/trunk/Version8/Doc/Circuit%20Reduction%20for%20Version8.docx \
+                    for examples."),
             "{:?}",
             dss.errors()
         );
+    }
+
+    /// `Reduce <name>` with a meter present but no such meter reproduces Pascal
+    /// error 262 (echoing the *uppercased* name), not the generic deferral.
+    #[test]
+    fn reduce_named_meter_not_found_is_262() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("reduce nope");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e == "EnergyMeter \"NOPE\" not found."),
+            "{:?}",
+            dss.errors()
+        );
+        // The deferral must NOT fire for a name that did not resolve.
+        assert!(
+            !dss.errors().iter().any(|e| e.contains("not ported")),
+            "{:?}",
+            dss.errors()
+        );
+    }
+
+    /// `Reduce` marks enabled shunt cap/reactor buses as keepers *before* the
+    /// meter check — so the marking happens even on the error-1890 path
+    /// (Pascal `MarkCapandReactorBuses` runs unconditionally).
+    #[test]
+    fn reduce_marks_cap_and_reactor_buses() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("New capacitor.c bus1=b1 phases=3 kvar=600 kv=12.47");
+        dss.command("New reactor.r bus1=b2 phases=3 kvar=100 kv=12.47");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        // Bus refs are materialized at Y-build (solve) time in this port; a
+        // real `Reduce` always runs post-solve (it needs metered zones).
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        // No energy meter → error 1890, but the marking still ran first.
+        dss.command("reduce");
+        let ckt = dss.circuit().unwrap();
+        let keep = |name: &str| {
+            ckt.buses
+                .iter()
+                .find(|b| b.name.eq_ignore_ascii_case(name))
+                .map(|b| b.keep)
+                .unwrap_or(false)
+        };
+        assert!(keep("b1"), "shunt capacitor bus should be a keeper");
+        assert!(keep("b2"), "shunt reactor bus should be a keeper");
     }
 
     /// `Reduce` with a meter present passes the precondition but the zone
