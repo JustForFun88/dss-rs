@@ -14,8 +14,8 @@ Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
 (Generator), WP6.3 (MeterElement + Monitor), WP6.4 (EnergyMeter + zone
 build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6 (reliability:
 fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation), WP6.8
-(GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs basic)** —
-see §1d.
+(GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs basic),
+WP6.9 (goldens + the 8500-node gate)** — see §1d. **WP6.10 (phase exit) next.**
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -54,7 +54,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.8 done (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs basic); WP6.9 (8500-node gate) next; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.9 done (8500-node gate + phase6 goldens green); WP6.10 (phase exit) next; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
@@ -62,9 +62,10 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 319, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
+                            # golden_phase6 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
-                            # golden_gendispatcher 1, golden_slice 2,
-                            # golden_smoke 3, props_roundtrip 1,
+                            # golden_gendispatcher 1, golden_autoadd_reduce 1,
+                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -1241,6 +1242,58 @@ fidelity gaps found auditing the AutoAdd/ReduceAlgs surface against Pascal:
 WP6.8 complete (4/4). Next: WP6.9 (goldens + 8500-node gate). Note for WP6.9:
 the `Interpolate` command (Run_8500Node calls it after solve) is unported, so
 drop it from any 8500 replay or port it then.
+
+---
+
+**WP6.9 — Goldens + the 8500-node gate — ✅ done, gate-green.** Two new
+oracle-pinned golden gates (no new lib tests — all golden-harness driven), both
+generated with the pinned oracle (python 3.12.4 / dss-python 0.15.7 / backend
+0.14.5):
+
+- **`golden_ieee8500.rs` vs `tests/golden/ieee8500.json`** (the headline
+  Phase-6 gate; `tools/golden/gen_ieee8500.py`). Compiles the **unmodified**
+  `8500-Node/Master.dss`, then per `Run_8500Node.dss`: `New Energymeter.m1
+  Line.ln5815900-1 1`, `Set Maxiterations=20`, `Solve` (snap), then a 24-step
+  daily segment for register integration. The Rust engine matches:
+  converged + total iterations **exactly (67)**; `YNodeOrder` exactly (**8531
+  nodes**); node voltages + total power + losses at 1e-6 rel; the **12
+  RegControl tap numbers** (4 banks) + **10 capacitor states** exactly + the 12
+  regulated transformer taps (1e-12 rel) — the controls-at-scale regression;
+  all **67 EnergyMeter registers at 1e-4 rel** (names exact) after the daily
+  integration (zone kWh, line/xfmr loss split, seq + voltage-base buckets,
+  EEN/UE). The golden stores only the 12 *moved* transformer taps (the 1178
+  fixed load xfmrs stay at 1.0). `Interpolate` + all Show/Export/Plot dropped
+  (file/UI, Phase 8). **Solve time: 0.19 s release** (full compile + snap +
+  24-step daily + assertions; oracle daily-solve ≈ 0.12 s) — well within the 5×
+  budget; 4.1 s debug, so kept un-`#[ignore]`d.
+- **`golden_phase6.rs` vs `tests/golden/phase6.json`** (`tools/golden/gen_phase6.py`,
+  command-replay like phase5; reuses the inline IEEE13 from `gen_phase5`). Four
+  scenarios:
+  - `monitor_daily_ieee13`: IEEE13 (controls active) + daily shape + monitors on
+    `line.650632` (modes 0/1/5) and `transformer.reg1` (mode 2); 24 daily steps.
+    Per-monitor header (data channels, vs our full-Pascal `header[2..]`) +
+    `SampleCount` exact; channel sample arrays elementwise at 2e-4 rel / 1e-3 abs
+    (the phase5 daily ±1-iteration / convergence-tolerance path-dependence).
+    Mode-5 channels skipped: 10/11 (wall-clock µs) + 0/1 (TotalIterations /
+    ControlIteration — path-dependent ±1). **Plan deviation (empirical):** the
+    plan named `line.671680`, but bus 680 is a dead-end stub (charging current
+    only → noise-dominated angle); switched to the feeder head `line.650632`.
+  - `meter_daily_ieee13`: IEEE13 + daily shape + `energymeter.m1` on
+    `line.650632`; 24 steps. Registers 1e-3 rel (the overload/EEN/UE
+    threshold-crossing energies integrate the same daily path-dependence to
+    ~6e-4 rel — the 8500 gate, whose metered zone has no per-step tap hunting,
+    pins the same machinery at 1e-4); names exact; zone branch/end/PCE counts
+    exact (13/6/N).
+  - `generator_snap`: IEEE13 + two generators (model 1 PQ wye @675 + model 3 PV
+    delta @634); snapshot. Iterations exact (**15**), node order exact, voltages
+    1e-6 rel, each generator's terminal powers 1e-6 rel (via `snapshot_elements`).
+  - `meter_zone_micro`: a hand-built radial with a branch + mid-feeder sub-meter
+    — `AllBranchesInZone`/`AllEndElements`/`ZonePCE` exact for both meters (the
+    parent zone stops at the sub-meter: m1 = [l1,l4]/[l4]/[ld4], m2 =
+    [l2,l3]/[l3]/[ld3]).
+
+Phase 6 is now WP6.1–WP6.9 complete; **WP6.10 (phase exit)** is next (marker
+sweep, re-run everything, rewrite STATUS, then Phase 7 plan).
 
 ---
 
