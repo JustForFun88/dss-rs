@@ -1626,6 +1626,44 @@ impl Load {
     }
 
     /// Pascal `ComputeAllocatedLoad`.
+    /// Pascal `Set_AllocationFactor` (Load.pas l.2131): used by
+    /// `EnergyMeter.AllocateLoad` to scale a load's allocation factor. Only
+    /// ConnectedkVA / kWh-spec loads change `kWbase`; fixed kW/kvar loads ignore
+    /// it (via `ComputeAllocatedLoad`).
+    pub fn set_allocation_factor(&mut self, value: f64) {
+        self.allocation_factor = value;
+        match self.load_spec_type {
+            LoadSpec::ConnectedKvaPf => self.kva_allocation_factor = value,
+            LoadSpec::KwhPf => self.c_factor = value,
+            _ => {}
+        }
+        self.compute_allocated_load();
+        self.has_been_allocated = true;
+    }
+
+    /// Pascal `Set_kVAAllocationFactor` (Load.pas l.2113): the `Set
+    /// AllocationFactors=X` command path. Forces the ConnectedkVA spec and
+    /// re-tracks the property dump order (xfkVA/PF next; kVA/kvar/kW/kWh cleared).
+    pub fn set_kva_allocation_factor(&mut self, value: f64) {
+        use prop::*;
+        self.kva_allocation_factor = value;
+        self.allocation_factor = value;
+        self.load_spec_type = LoadSpec::ConnectedKvaPf;
+        self.cd.obj.set_as_next_seq(XFKVA);
+        self.cd.obj.set_as_next_seq(PF);
+        self.cd.obj.clear_seq(KVA);
+        self.cd.obj.clear_seq(KVAR);
+        self.cd.obj.clear_seq(KW);
+        self.cd.obj.clear_seq(KWH);
+        self.compute_allocated_load();
+        self.has_been_allocated = true;
+    }
+
+    /// `FAllocationFactor` (read by `AllocateLoad`).
+    pub fn allocation_factor(&self) -> f64 {
+        self.allocation_factor
+    }
+
     fn compute_allocated_load(&mut self) {
         match self.load_spec_type {
             LoadSpec::ConnectedKvaPf => {

@@ -12,6 +12,7 @@ use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::{BusAdjLists, CktTree, NO_BUS, build_active_bus_adjacency_lists};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE, reg};
+use crate::elements::meter::sensor::Sensor;
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
 use crate::elements::pd::capacitor::Capacitor;
@@ -19,6 +20,8 @@ use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore, SysCtx};
+use crate::solution::SolveEnv;
+use crate::solution::solution::{solve, sys_ctx};
 use crate::support::line_units::{LineUnits, convert_line_units};
 
 /// Pascal `TDSSCircuit.DoResetMeterZones` (Circuit.pas l.2145): rebuild every
@@ -71,7 +74,9 @@ fn reset_meter_zones_all(ckt: &mut Circuit, store: &mut dyn ElemStore) {
 
     // Set the HasEnergyMeter flag on each metered element.
     set_has_meter_flag(ckt, store);
-    // Pascal also calls `SensorClass.SetHasSensorFlag` here — Sensor is WP6.7.
+    // Pascal `SensorClass.SetHasSensorFlag` (EnergyMeter.pas l.836): mark each
+    // sensor's metered element so the zone walk passes the sensor down its zone.
+    set_has_sensor_flag(ckt, store);
 
     for bus in &mut ckt.buses {
         bus.bus_checked = false;
@@ -109,6 +114,33 @@ fn set_has_meter_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
                 .cd_mut()
                 .flags
                 .include(ElemFlags::HAS_ENERGY_METER);
+        }
+    }
+}
+
+/// Pascal `TSensor.SetHasSensorFlag` (Sensor.pas l.357): clear `HasSensorObj`
+/// on all PD/PC elements, then set it (and the back-pointer `sensor_obj`) on
+/// each sensor's metered element. The metered element's own sensor wins over the
+/// upstream one the zone walk would otherwise propagate.
+fn set_has_sensor_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
+    for &r in ckt.pd_elements.iter().chain(&ckt.pc_elements) {
+        store
+            .ckt_elem_mut(r)
+            .cd_mut()
+            .flags
+            .exclude(ElemFlags::HAS_SENSOR_OBJ);
+    }
+    for &sensor_ref in &ckt.sensors {
+        let metered = store
+            .obj(sensor_ref)
+            .as_any()
+            .downcast_ref::<Sensor>()
+            .expect("sensors holds Sensor objects")
+            .metered_element();
+        if let Some(mr) = metered {
+            let cd = store.ckt_elem_mut(mr).cd_mut();
+            cd.flags.include(ElemFlags::HAS_SENSOR_OBJ);
+            cd.sensor_obj = Some(sensor_ref);
         }
     }
 }
@@ -592,6 +624,145 @@ pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys:
         if enabled {
             take_sample_one(meter_ref, ckt, store, sys);
         }
+    }
+}
+
+/// Pascal `TExecHelper.DoAllocateLoadsCmd` allocation loop (ExecHelper.pas
+/// l.2605). The caller has already forced `LoadMultiplier = 1.0`. Solve a guess
+/// from the present factors, then iterate: recompute every meter/sensor
+/// allocation factor, run each meter's zone load adjustment, and re-solve.
+pub(crate) fn allocate_loads(ckt: &mut Circuit, env: &mut SolveEnv, max_iters: usize) {
+    let _ = solve(ckt, env); // guess based on present allocation factors
+    for _ in 0..max_iters {
+        let sys = sys_ctx(ckt);
+        calc_allocation_factors_all(ckt, env.store, &sys);
+        allocate_load_all(ckt, env.store);
+        let _ = solve(ckt, env); // update the solution
+    }
+}
+
+/// `CalcAllocationFactors` over every EnergyMeter then every Sensor (Pascal
+/// order). Each reads its metered element's currents vs the measured peak.
+fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
+    let node_v = &ckt.solution.node_v;
+    for meter_ref in ckt.energy_meters.clone() {
+        let Some(mr) = downcast_meter(store, meter_ref).metered_element() else {
+            continue;
+        };
+        let (meter_obj, metered_obj) = store.pair_mut(meter_ref, mr);
+        let ce = metered_obj
+            .as_ckt_element_mut()
+            .expect("metered element is a circuit element");
+        meter_obj
+            .as_any_mut()
+            .downcast_mut::<EnergyMeter>()
+            .expect("energy_meters holds EnergyMeter objects")
+            .med
+            .calc_allocation_factors(ce, sys, node_v);
+    }
+    for sensor_ref in ckt.sensors.clone() {
+        let metered = store
+            .obj(sensor_ref)
+            .as_any()
+            .downcast_ref::<Sensor>()
+            .expect("sensors holds Sensor objects")
+            .metered_element();
+        let Some(mr) = metered else { continue };
+        let (sensor_obj, metered_obj) = store.pair_mut(sensor_ref, mr);
+        let ce = metered_obj
+            .as_ckt_element_mut()
+            .expect("metered element is a circuit element");
+        sensor_obj
+            .as_any_mut()
+            .downcast_mut::<Sensor>()
+            .expect("sensors holds Sensor objects")
+            .med
+            .calc_allocation_factors(ce, sys, node_v);
+    }
+}
+
+/// `AllocateLoad` over every EnergyMeter zone.
+fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
+    for meter_ref in ckt.energy_meters.clone() {
+        allocate_load_for_meter(meter_ref, ckt, store);
+    }
+}
+
+/// Pascal `TEnergyMeterObj.AllocateLoad` (EnergyMeter.pas l.2147): walk the
+/// meter's zone loads and scale each by its upstream sensor's allocation factor
+/// (single-phase loads use the connected-phase factor; poly-phase loads use the
+/// average factor). The sensor may be a Sensor object **or** an EnergyMeter.
+fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore) {
+    let loads = downcast_meter(store, meter_ref).load_list().to_vec();
+    for load_ref in loads {
+        let (nphases, sensor_ref, alloc_factor, node_ref0) = {
+            let load = store
+                .obj(load_ref)
+                .as_any()
+                .downcast_ref::<Load>()
+                .expect("load_list holds Load objects");
+            (
+                load.cd.nphases,
+                load.cd.sensor_obj,
+                load.allocation_factor(),
+                load.cd.node_ref.first().copied().unwrap_or(0),
+            )
+        };
+        let Some(sref) = sensor_ref else { continue };
+        let Some((s_nphases, avg, phs)) = sensor_alloc_data(store, sref) else {
+            continue;
+        };
+        let new_factor = if nphases == 1 {
+            // Connected phase from NodeRef[1] → MapNodeToBus → NodeNum (1..3).
+            let connected_phase = ckt
+                .map_node_to_bus
+                .get(node_ref0)
+                .map(|nb| nb.node_num)
+                .unwrap_or(0);
+            if connected_phase > 0 && connected_phase < 4 {
+                let f = if s_nphases == 1 {
+                    phs.first().copied().unwrap_or(1.0)
+                } else {
+                    phs.get((connected_phase - 1) as usize)
+                        .copied()
+                        .unwrap_or(1.0)
+                };
+                Some(alloc_factor * f)
+            } else {
+                None // Pascal leaves the factor unchanged outside phases 1..3
+            }
+        } else {
+            Some(alloc_factor * avg)
+        };
+        if let Some(nf) = new_factor {
+            store
+                .obj_mut(load_ref)
+                .as_any_mut()
+                .downcast_mut::<Load>()
+                .expect("load_list holds Load objects")
+                .set_allocation_factor(nf);
+        }
+    }
+}
+
+/// The (nphases, AvgAllocFactor, PhsAllocationFactor) of a metering device,
+/// which may be a [`Sensor`] or an [`EnergyMeter`] (both embed `MeterElementData`).
+fn sensor_alloc_data(store: &dyn ElemStore, r: ElemRef) -> Option<(usize, f64, Vec<f64>)> {
+    let obj = store.obj(r);
+    if let Some(s) = obj.as_any().downcast_ref::<Sensor>() {
+        Some((
+            s.med.cd.nphases,
+            s.med.avg_alloc_factor,
+            s.med.phs_allocation_factor.clone(),
+        ))
+    } else {
+        obj.as_any().downcast_ref::<EnergyMeter>().map(|em| {
+            (
+                em.med.cd.nphases,
+                em.med.avg_alloc_factor,
+                em.med.phs_allocation_factor.clone(),
+            )
+        })
     }
 }
 
