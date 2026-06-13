@@ -806,6 +806,39 @@ SCENARIOS = [
         ],
     },
     {
+        # --- GenDispatcher (WP6.8) ---
+        # The monitored element must exist (RecalcElementData attaches the
+        # control's terminal to it); GenDispatcher without `element=` raises 372.
+        "name": "gendispatcher_default",
+        "target": "GenDispatcher.gd1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New GenDispatcher.gd1 element=Line.l1",
+        ],
+    },
+    {
+        "name": "gendispatcher_full",
+        "target": "GenDispatcher.gd1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New GenDispatcher.gd1 element=Line.l1 terminal=1 kwlimit=3500 "
+            "kwband=250 kvarlimit=1500 genlist=[g1, g2] weights=[2, 1]",
+        ],
+    },
+    {
+        # MakeLike copies *only* terminal + monitored element (Pascal quirk): the
+        # dispatch settings revert to ctor defaults on the `like=` object.
+        "name": "gendispatcher_makelike",
+        "target": "GenDispatcher.gd1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+            "New GenDispatcher.base element=Line.l1 terminal=1 kwlimit=5000 "
+            "kwband=300 kvarlimit=1500 genlist=[g1, g2] weights=[2, 1]",
+            "New GenDispatcher.gd1 like=base element=Line.l2",
+        ],
+    },
+    {
         "name": "generator_default",
         "target": "Generator.g1",
         "commands": ["New Generator.g1 bus1=genbus"],

@@ -3362,6 +3362,68 @@
    }
   },
   {
+   "name": "gendispatcher_default",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New GenDispatcher.gd1 element=Line.l1"
+   ],
+   "target": "GenDispatcher.gd1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kWLimit": "8000",
+    "kWBand": "100",
+    "kvarLimit": "4000",
+    "GenList": "",
+    "Weights": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gendispatcher_full",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New GenDispatcher.gd1 element=Line.l1 terminal=1 kwlimit=3500 kwband=250 kvarlimit=1500 genlist=[g1, g2] weights=[2, 1]"
+   ],
+   "target": "GenDispatcher.gd1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kWLimit": "3500",
+    "kWBand": "250",
+    "kvarLimit": "1500",
+    "GenList": "[g1, g2]",
+    "Weights": "[ 2 1]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gendispatcher_makelike",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+    "New GenDispatcher.base element=Line.l1 terminal=1 kwlimit=5000 kwband=300 kvarlimit=1500 genlist=[g1, g2] weights=[2, 1]",
+    "New GenDispatcher.gd1 like=base element=Line.l2"
+   ],
+   "target": "GenDispatcher.gd1",
+   "properties": {
+    "Element": "Line.l2",
+    "Terminal": "1",
+    "kWLimit": "8000",
+    "kWBand": "100",
+    "kvarLimit": "4000",
+    "GenList": "",
+    "Weights": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
    "name": "generator_default",
    "commands": [
     "New Generator.g1 bus1=genbus"

@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
-use crate::elements::control::{cap_control, reg_control};
+use crate::elements::control::{cap_control, gen_dispatcher, reg_control};
 use crate::elements::general::{
     growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
     xy_curve,
@@ -734,6 +734,13 @@ impl Dss {
                 generator::class_props(&enums),
                 |name| Box::new(generator::Generator::new(name)),
                 ElemKind::Generator,
+            ),
+            // GenDispatcher is registered right after Generator
+            // (Pascal DSSClassDefs.pas:231).
+            DssClass::ckt_class(
+                gen_dispatcher::class_props(&enums),
+                |name| Box::new(gen_dispatcher::GenDispatcher::new(name)),
+                ElemKind::Control,
             ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
             DssClass::ckt_class(
@@ -2453,6 +2460,22 @@ impl Dss {
         None
     }
 
+    /// A generator's `(kWbase, kvarBase)` by name — the oracle's
+    /// `Generators.kW` / `Generators.kvar` (test API for GenDispatcher
+    /// redispatch).
+    pub fn generator_kw_kvar(&self, name: &str) -> Option<(f64, f64)> {
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(g) = obj.as_any().downcast_ref::<generator::Generator>()
+                    && g.data().name().eq_ignore_ascii_case(name)
+                {
+                    return Some((g.kw_base, g.kvar_base));
+                }
+            }
+        }
+        None
+    }
+
     /// Test API for Pascal `TSensorObj.TakeSample`: drive the named sensor
     /// against the solved circuit and return its `(CalculatedCurrent,
     /// CalculatedVoltage)` per phase. (`TakeSample` is otherwise dead in the
@@ -3552,6 +3575,69 @@ mod tests {
         // exceeds again rather than reporting "Solution aborted.").
         dss.command("Get hour");
         assert!(!dss.circuit().unwrap().solution.solution_abort);
+    }
+
+    /// Build the 2-bus + line + load + two-generator micro-circuit the
+    /// GenDispatcher oracle probes used.
+    fn gen_disp_two_bus(dss: &mut Dss, gd_props: &str) {
+        dss.command("New circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95");
+        dss.command("New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1");
+        dss.command("New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1");
+        dss.command(&format!(
+            "New gendispatcher.gd1 element=line.l1 terminal=1 {gd_props}"
+        ));
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+    }
+
+    /// WP6.8: the control loop's GenDispatcher redispatches its generators so
+    /// the monitored line power approaches `kWLimit`. Oracle probe (pinned
+    /// dss-python): equal weights → g1 = g2 = 1511.569498763734 kW.
+    #[test]
+    fn gendispatcher_redispatches_to_oracle() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(
+            &mut dss,
+            "kwlimit=2000 kwband=100 genlist=[g1,g2] weights=[1,1]",
+        );
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, _kvar) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1511.569498763734).abs() < 1e-6, "{g} kW = {kw}");
+        }
+    }
+
+    /// Weighted redispatch [3, 1]: g1 = 1767.3542481456006, g2 = 1255.7847493818672.
+    #[test]
+    fn gendispatcher_respects_weights_oracle() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(
+            &mut dss,
+            "kwlimit=2000 kwband=100 genlist=[g1,g2] weights=[3,1]",
+        );
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, _) = dss.generator_kw_kvar("g1").unwrap();
+        let (kw2, _) = dss.generator_kw_kvar("g2").unwrap();
+        assert!((kw1 - 1767.3542481456006).abs() < 1e-6, "g1 kW = {kw1}");
+        assert!((kw2 - 1255.7847493818672).abs() < 1e-6, "g2 kW = {kw2}");
+    }
+
+    /// No GenList → dispatch every enabled generator (uniform weights); same
+    /// result as the explicit equal-weight list.
+    #[test]
+    fn gendispatcher_no_list_dispatches_all_gens() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(&mut dss, "kwlimit=2000 kwband=100");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, _) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1511.569498763734).abs() < 1e-6, "{g} kW = {kw}");
+        }
     }
 
     /// WP5.8 step 6: time-option round trips, all values transcribed from the
