@@ -1,6 +1,7 @@
 pub mod ckt;
 pub mod control;
 pub mod general;
+pub mod meter;
 pub mod pc;
 pub mod pd;
 pub mod traits;

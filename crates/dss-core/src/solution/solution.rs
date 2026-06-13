@@ -820,14 +820,19 @@ fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `EndOfTimeStepCleanup` (`SolutionAlgs.pas` l.86): storage,
-/// InvControl and ExpControl updates plus mode-5 monitor sampling — all
-/// Phase 6+ classes, so the body is empty; the call sites in the time-series
-/// loops are kept so Phase 6 only fills this in.
-fn end_of_time_step_cleanup(_ckt: &mut Circuit, _env: &mut SolveEnv) {}
+/// InvControl and ExpControl updates (all Phase 7) plus the mode-5 monitor
+/// sampling (`MonitorClass.SampleAllMode5`, l.96 — captures the per-step
+/// timings).
+fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
+    crate::solution::monitors::sample_all_monitors(ckt, env, true);
+}
 
-/// Monitor/EnergyMeter `SampleAll` hook (Phase 6). `sample_meters` is
-/// `Solution.SampleTheMeters` at the call site.
-fn sample_all_monitors_and_meters(_ckt: &mut Circuit, _env: &mut SolveEnv, _sample_meters: bool) {}
+/// Pascal `MonitorClass.SampleAll` + (if `sample_meters`)
+/// `EnergyMeterClass.SampleAll` (`SolutionAlgs.pas` l.78). EnergyMeter sampling
+/// lands in WP6.5; the monitor sweep (mode ≠ 5) is wired now.
+fn sample_all_monitors_and_meters(ckt: &mut Circuit, env: &mut SolveEnv, _sample_meters: bool) {
+    crate::solution::monitors::sample_all_monitors(ckt, env, false);
+}
 
 /// Pascal `SolveDaily` (`SolutionAlgs.pas` l.160): step `number_of_times`
 /// times through the daily shapes. Demand-interval files are EnergyMeter

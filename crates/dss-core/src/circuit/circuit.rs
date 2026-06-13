@@ -31,6 +31,7 @@ pub enum ElemKind {
     Reactor,
     Control,
     Generator,
+    Meter,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -62,6 +63,8 @@ pub struct Circuit {
     pub generators: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
+    /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
+    pub monitors: Vec<ElemRef>,
 
     pub solution: Solution,
 
@@ -141,6 +144,7 @@ impl Circuit {
             reactors: Vec::new(),
             generators: Vec::new(),
             controls: Vec::new(),
+            monitors: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
             is_solved: false,
@@ -215,6 +219,9 @@ impl Circuit {
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),
+            // Monitors (and other meter elements) likewise: device list + own
+            // list, no Yprim.
+            ElemKind::Meter => self.monitors.push(r),
         }
         elem.cd_mut().handle = self.ckt_elements.len();
     }
