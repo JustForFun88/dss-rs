@@ -30,6 +30,7 @@ pub enum ElemKind {
     Capacitor,
     Reactor,
     Control,
+    Generator,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -58,6 +59,7 @@ pub struct Circuit {
     pub transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
     pub reactors: Vec<ElemRef>,
+    pub generators: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
 
@@ -73,6 +75,10 @@ pub struct Circuit {
 
     pub load_multiplier: f64,
     pub gen_multiplier: f64,
+    /// `GeneratorDispatchReference`: the per-mode dispatch level
+    /// `SetGeneratorDispRef` derives each solve (LOADMODE generators compare
+    /// `DispValue` against it).
+    pub generator_dispatch_reference: f64,
     pub default_growth_rate: f64,
     pub default_growth_factor: f64,
     pub positive_sequence: bool,
@@ -133,6 +139,7 @@ impl Circuit {
             transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
             reactors: Vec::new(),
+            generators: Vec::new(),
             controls: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
@@ -145,6 +152,7 @@ impl Circuit {
             solution_was_attempted: false,
             load_multiplier: 1.0,
             gen_multiplier: 1.0,
+            generator_dispatch_reference: 0.0,
             default_growth_rate: 1.025,
             default_growth_factor: 1.0,
             positive_sequence: false,
@@ -199,6 +207,10 @@ impl Circuit {
             ElemKind::Reactor => {
                 self.pd_elements.push(r);
                 self.reactors.push(r);
+            }
+            ElemKind::Generator => {
+                self.pc_elements.push(r);
+                self.generators.push(r);
             }
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).

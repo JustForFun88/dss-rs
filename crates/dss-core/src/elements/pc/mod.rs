@@ -5,8 +5,10 @@
 //!
 //! [`CktElement`]: crate::elements::traits::CktElement
 
+pub mod generator;
 pub mod load;
 pub mod vsource;
 
+pub use generator::Generator;
 pub use load::Load;
 pub use vsource::VSource;

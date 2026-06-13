@@ -17,7 +17,8 @@ use dss_parser::{Parser, ParserVars};
 use dss_sparse::SparseSet;
 
 use crate::circuit::Circuit;
-use crate::elements::traits::{ElemStore, InjCtx, SysCtx};
+use crate::elements::pc::generator::Generator;
+use crate::elements::traits::{ElemRef, ElemStore, InjCtx, SysCtx};
 use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
@@ -310,6 +311,17 @@ impl Solution {
         Ok(())
     }
 
+    /// KLUSolve `GetMatrixElement` on the assembled system Y (`hYsystem`):
+    /// 1-based global node `node` maps to matrix index `node - 1`.
+    pub fn system_matrix_element(&mut self, node: usize) -> Result<Complex64, String> {
+        let y = self
+            .y_system
+            .as_mut()
+            .ok_or_else(|| "System Y matrix not built yet".to_string())?;
+        let i = node - 1;
+        y.get_element(i, i).map_err(|e| e.to_string())
+    }
+
     /// Pascal `Converged`: per-node voltage-magnitude error against
     /// `NodeVbase` (or relative change when no base), exact NaN/Inf checks.
     fn converged(&mut self, num_nodes: usize) -> bool {
@@ -493,6 +505,9 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         load_model: s.load_model,
         mode: s.mode,
         load_multiplier: ckt.load_multiplier,
+        gen_multiplier: ckt.gen_multiplier,
+        generator_dispatch_reference: ckt.generator_dispatch_reference,
+        price_signal: ckt.price_signal,
         default_growth_factor: ckt.default_growth_factor,
         year: s.year,
         dbl_hour: s.dbl_hour,
@@ -612,6 +627,80 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
     result
 }
 
+/// Pascal `TSolutionObj.SetGeneratorDispRef`: the global generator dispatch
+/// reference per solve mode (generator.pas LOADMODE/PRICEMODE compare their
+/// `DispValue` against it).
+fn set_generator_disp_ref(ckt: &mut Circuit) {
+    let lm = ckt.load_multiplier;
+    let gf = ckt.default_growth_factor;
+    let hm = ckt.default_hour_mult.re;
+    ckt.generator_dispatch_reference = match ckt.solution.mode {
+        SolveMode::Snapshot
+        | SolveMode::Dynamic
+        | SolveMode::Harmonic
+        | SolveMode::Monte1
+        | SolveMode::Direct => lm * gf,
+        SolveMode::Yearly => gf * hm, // note: no load multiplier for yearly
+        SolveMode::Daily
+        | SolveMode::DutyCycle
+        | SolveMode::Time
+        | SolveMode::Monte2
+        | SolveMode::Monte3
+        | SolveMode::PeakDay
+        | SolveMode::LD1
+        | SolveMode::LD2
+        | SolveMode::HarmonicT => lm * gf * hm,
+        SolveMode::MonteFault | SolveMode::FaultStudy => 1.0,
+        SolveMode::AutoAdd => gf,
+    };
+}
+
+/// Pascal `TSolutionObj.SetGeneratordQdV`: for model-3 (PV) generators, seed
+/// the `dQ/dV` slope from the system Y diagonal, then re-establish the
+/// zero-load snapshot if any was found.
+fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    let gens: Vec<ElemRef> = ckt.generators.clone();
+    let gen_disp_save = ckt.generator_dispatch_reference;
+    ckt.generator_dispatch_reference = 1000.0; // turn all generators on
+    let mut did_one = false;
+
+    for r in gens {
+        // Read the model/enabled/node first (immutable view).
+        let node0 = {
+            let g = env
+                .store
+                .obj(r)
+                .as_any()
+                .downcast_ref::<Generator>()
+                .expect("generators list holds Generators");
+            if !g.cd.enabled || g.gen_model != 3 {
+                continue;
+            }
+            g.first_node_ref()
+        };
+        if node0 == 0 {
+            continue; // first node grounded — nothing to slope against
+        }
+        let yii = ckt.solution.system_matrix_element(node0)?.norm();
+        let g = env
+            .store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<Generator>()
+            .expect("generators list holds Generators");
+        g.init_dqdv_calc();
+        g.calc_dqdv(yii);
+        g.reset_start_point();
+        did_one = true;
+    }
+
+    ckt.generator_dispatch_reference = gen_disp_save;
+    if did_one {
+        solve_zero_load_snapshot(ckt, env)?; // reset the initial solution
+    }
+    Ok(())
+}
+
 /// Pascal `DoPFLOWsolution`.
 fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.solution_count += 1;
@@ -626,7 +715,8 @@ fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
         // "8-14-06 This should give a better answer than zero load snapshot"
         solve_y_direct(ckt, env)?;
-        // SetGeneratordQdV: no Model-3 generators in Phase 3 → no extra work.
+        set_generator_dqdv(ckt, env)?; // set dQdV for Model-3 generators
+        // The above resets the active sparse set to hY.
         ckt.solution.solution_initialized = true;
     }
 
@@ -682,6 +772,7 @@ fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 
 /// Pascal `SolveSnap`.
 fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    set_generator_disp_ref(ckt); // Pascal SnapShotInit's first action
     ckt.solution.snap_shot_init();
     let mut total_iterations = 0;
     loop {

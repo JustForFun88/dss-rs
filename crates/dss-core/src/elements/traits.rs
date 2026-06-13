@@ -27,6 +27,10 @@ pub trait ElemStore {
     /// control's references before splitting the mutable borrows).
     fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
 
+    /// Single mutable object view (for `as_any_mut` downcasts when only one
+    /// element is touched, e.g. the model-3 generator DQDV sweep).
+    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn crate::obj::base::DssObject;
+
     /// Two distinct objects borrowed mutably at once — the Rust stand-in for
     /// Pascal's live cross-object pointers during `Sample`/`DoPendingAction`
     /// (PHASE5_PLAN §2.1: the control plus its controlled element). Panics if
@@ -70,6 +74,13 @@ pub struct SysCtx {
     pub mode: SolveMode,
     /// `Circuit.LoadMultiplier`.
     pub load_multiplier: f64,
+    /// `Circuit.GenMultiplier`.
+    pub gen_multiplier: f64,
+    /// `Circuit.GeneratorDispatchReference` (set per solve by
+    /// `SetGeneratorDispRef`).
+    pub generator_dispatch_reference: f64,
+    /// `Circuit.PriceSignal` ($/MWh).
+    pub price_signal: f64,
     /// `Circuit.DefaultGrowthFactor`.
     pub default_growth_factor: f64,
     /// `Solution.Year`.

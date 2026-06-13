@@ -117,6 +117,10 @@ pub struct CktElementData {
     /// changed, so the circuit must set `BusNameRedefined` (which in Pascal
     /// happens immediately through the `ActiveCircuit` global).
     pub signal_bus_name_redefined: bool,
+    /// Signal to the executive: reset `Solution.SolutionInitialized` (Pascal
+    /// writes it straight through the `ActiveCircuit` global from a property
+    /// side effect — e.g. adding a model-3 generator forces a DQDV re-init).
+    pub signal_reset_solution_initialized: bool,
 
     /// Pascal `Flags` (`TDSSObjectFlags`), element-level subset.
     pub flags: ElemFlags,
@@ -171,6 +175,7 @@ impl CktElementData {
             iterminal_updated: false,
             handle: 0,
             signal_bus_name_redefined: false,
+            signal_reset_solution_initialized: false,
             flags: ElemFlags::NONE,
             // Pascal `TPDElement.Create`: `FromTerminal := 1`.
             from_terminal: 1,
