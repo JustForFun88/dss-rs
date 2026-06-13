@@ -1002,7 +1002,15 @@ fn nearest_base_kv(ckt: &Circuit, kv: f64) -> f64 {
 /// Pascal `SetVoltageBases` (the `CalcVoltageBases` command): zero-load
 /// solve, then assign each bus the nearest legal base.
 pub fn set_voltage_bases(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    // Meter zones are not built in this load flow (no meters in Phase 3).
+    // Pascal `SetVoltageBases` (Solution.pas l.1083): suppress the meter-zone
+    // auto-build during the zero-load snapshot — the voltage bases are not
+    // available yet — by forcing both gate flags TRUE, then rebuild the zones
+    // explicitly once `kVBase` is set, so `AddToVoltBaseList` sees valid bases.
+    let saved_zones_computed = ckt.meter_zones_computed;
+    let saved_zones_locked = ckt.zones_locked;
+    ckt.meter_zones_computed = true;
+    ckt.zones_locked = true;
+
     solve_zero_load_snapshot(ckt, env)?;
 
     for b in 0..ckt.buses.len() {
@@ -1017,5 +1025,11 @@ pub fn set_voltage_bases(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 
     initialize_node_vbase(ckt); // for convergence test
     ckt.is_solved = true;
+
+    // Now build the meter zones with the freshly-assigned voltage bases.
+    ckt.meter_zones_computed = saved_zones_computed;
+    ckt.zones_locked = saved_zones_locked;
+    crate::solution::meters::do_reset_meter_zones(ckt, env.store);
+
     Ok(())
 }

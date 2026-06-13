@@ -7,10 +7,15 @@
 //! installed into the meter object.
 
 use crate::circuit::Circuit;
-use crate::circuit::ckt_tree::{BusAdjLists, CktTree, build_active_bus_adjacency_lists};
+use crate::circuit::ckt_tree::{BusAdjLists, CktTree, NO_BUS, build_active_bus_adjacency_lists};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE};
+use crate::elements::pc::generator::Generator;
+use crate::elements::pc::load::Load;
+use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
+use crate::elements::pd::reactor::Reactor;
+use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{ElemRef, ElemStore};
 use crate::support::line_units::{LineUnits, convert_line_units};
 
@@ -111,6 +116,29 @@ fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
     store.obj(r).as_any().downcast_ref::<Line>().is_some()
 }
 
+/// Whether the element at `r` is one of the zone-eligible shunt PC element
+/// types (Pascal `PCElementType in {LOAD,GEN,PVSYSTEM,STORAGE,CAP,REACTOR}`).
+/// Shunt capacitors/reactors reach the PC adjacency list via `is_shunt()`.
+// TODO(WP6.8): add PVSystem/Storage here when those PC classes land.
+fn is_zone_pce(store: &dyn ElemStore, r: ElemRef) -> bool {
+    let any = store.obj(r).as_any();
+    any.downcast_ref::<Load>().is_some()
+        || any.downcast_ref::<Generator>().is_some()
+        || any.downcast_ref::<Capacitor>().is_some()
+        || any.downcast_ref::<Reactor>().is_some()
+}
+
+/// Whether the element at `r` is a Power Delivery element (Pascal
+/// `(DSSObjType and BaseClassMask) = PD_ELEMENT`), used by the manual
+/// `ZoneList` filter.
+fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
+    let any = store.obj(r).as_any();
+    any.downcast_ref::<Line>().is_some()
+        || any.downcast_ref::<Transformer>().is_some()
+        || any.downcast_ref::<Capacitor>().is_some()
+        || any.downcast_ref::<Reactor>().is_some()
+}
+
 /// Pascal `CheckParallel`: two lines share both terminal buses (in either
 /// orientation).
 fn check_parallel(store: &dyn ElemStore, a: ElemRef, b: ElemRef) -> bool {
@@ -157,7 +185,7 @@ fn make_meter_zone_lists(
     adj: &BusAdjLists,
 ) {
     // Peek the meter's parse-time state.
-    let (enabled, metered_element, metered_terminal, manual_zone) = {
+    let (enabled, metered_element, metered_terminal, defined_zone_list) = {
         let em = store
             .obj(meter_ref)
             .as_any()
@@ -167,9 +195,12 @@ fn make_meter_zone_lists(
             em.enabled(),
             em.metered_element(),
             em.metered_terminal() as usize,
-            !em.defined_zone_list().is_empty(),
+            em.defined_zone_list().to_vec(),
         )
     };
+    // `DefinedZoneList.Count = 0` selects the automatic (connectivity) walk;
+    // otherwise the zone is the manually-specified element chain.
+    let manual_zone = !defined_zone_list.is_empty();
 
     // `MaxVBaseCount = (NumEMRegisters - VBaseStart) div 5 = NumEMVbase`.
     let mut vbase_list = vec![0.0; NUM_EM_VBASE];
@@ -191,10 +222,13 @@ fn make_meter_zone_lists(
     }
 
     let Some(metered) = metered_element else {
-        // Pascal DoSimpleMsg 527; leave an empty zone.
+        // Pascal: `BranchList := TCktTree.Create` then `DoSimpleMsg 527; Exit`,
+        // leaving a non-nil but empty BranchList. (The 527 text is the same
+        // "Circuit Element not set" already surfaced by RecalcElementData at
+        // edit time; solution-time messages have no sink in this port.)
         let em = downcast_meter(store, meter_ref);
         em.install_zone(
-            None,
+            Some(CktTree::new()),
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -239,6 +273,10 @@ fn make_meter_zone_lists(
         node.from_terminal = metered_terminal;
         node.volt_base_index = vbi;
     }
+
+    // Manual-ZoneList cursor (Pascal `ZoneListCounter`): monotonic across the
+    // whole walk; each branch terminal consumes the next valid PD entry.
+    let mut zone_list_counter = 0usize;
 
     // ****************  MAIN LOOP *****************************
     let mut active = Some(metered);
@@ -294,9 +332,15 @@ fn make_meter_zone_lists(
                 continue;
             }
 
-            // Record the "to" bus and propagate DistFromMeter.
+            // Record the "to" bus and propagate DistFromMeter. A manual-zone
+            // child has `from_bus = NO_BUS` (Pascal ground bus 0, DistFromMeter
+            // 0), so treat an unset origin as zero distance.
             tree.node_mut(node_idx).add_to_bus_reference(test_bus);
-            let base_dist = ckt.buses[node_from_bus.min(ckt.buses.len() - 1)].dist_from_meter;
+            let base_dist = if node_from_bus < ckt.buses.len() {
+                ckt.buses[node_from_bus].dist_from_meter
+            } else {
+                0.0
+            };
             ckt.buses[test_bus].dist_from_meter = if active_is_line {
                 base_dist + len_km
             } else {
@@ -313,14 +357,17 @@ fn make_meter_zone_lists(
                 if checked {
                     continue;
                 }
+                // Something is connected here regardless of its type.
                 tree.node_mut(node_idx).is_dangling = false;
+                // Pascal gates the add/check on the PCElementType allow-list
+                // (LOAD/GEN/PVSYSTEM/STORAGE/CAP/REACTOR). The adjacency list
+                // may hold any enabled PC element, so re-check the type here.
+                if !is_zone_pce(store, pc_ref) {
+                    continue;
+                }
                 tree.add_new_object(pc_ref);
                 // Count customers if it is a load, and add to the load list.
-                if let Some(load) = store
-                    .obj(pc_ref)
-                    .as_any()
-                    .downcast_ref::<crate::elements::pc::load::Load>()
-                {
+                if let Some(load) = store.obj(pc_ref).as_any().downcast_ref::<Load>() {
                     branch_num_customers += load.num_customers;
                     load_list.push(pc_ref);
                 }
@@ -400,8 +447,29 @@ fn make_meter_zone_lists(
                     tree.zone_ends.add(node_idx, test_bus);
                     zone_ends.push((active_ref, test_bus));
                 }
+            } else {
+                // Zone is manually specified: just add the next valid PD element
+                // in the list as a child of the present branch (Pascal l.1987).
+                // No connectivity, flags, or reductions — "Can't do reductions
+                // if manually spec'd". `zone_list_counter` advances past
+                // not-found / disabled / non-PD entries.
+                zone_list_counter += 1;
+                while zone_list_counter <= defined_zone_list.len() {
+                    let name = &defined_zone_list[zone_list_counter - 1];
+                    match store.find_ckt_element(name) {
+                        None => zone_list_counter += 1, // not found; search next
+                        Some(test_ref) => {
+                            let enabled = store.ckt_elem(test_ref).cd().enabled;
+                            if !enabled || !is_pd_element(store, test_ref) {
+                                zone_list_counter += 1; // ignore disabled / non-PD
+                            } else {
+                                tree.add_new_child(test_ref, NO_BUS, 0);
+                            }
+                            break;
+                        }
+                    }
+                }
             }
-            // (Manual ZoneList zone-building is deferred — see module note.)
         }
 
         // Write the accumulated customer count onto the branch.
