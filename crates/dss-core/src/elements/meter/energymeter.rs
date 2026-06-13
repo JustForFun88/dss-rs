@@ -173,6 +173,9 @@ pub struct EnergyMeter {
     derivatives: Vec<f64>,
     totals_mask: Vec<f64>,
     first_sample_after_reset: bool,
+    /// Pascal `Flg.NeedsRecalc`: set when `element`/`terminal` change, gates the
+    /// `EndEdit` recalc so unrelated property edits don't re-run validation.
+    needs_recalc: bool,
 
     // Voltage-base list (built by the zone walk).
     vbase_list: Vec<f64>,
@@ -237,6 +240,7 @@ impl EnergyMeter {
             derivatives: vec![0.0; NUM_EM_REGISTERS],
             totals_mask: vec![1.0; NUM_EM_REGISTERS],
             first_sample_after_reset: true,
+            needs_recalc: false,
             vbase_list: vec![0.0; MAX_VBASE_COUNT],
             vbase_count: 0,
             branch_list: None,
@@ -301,6 +305,8 @@ impl EnergyMeter {
     /// phase/conductor counts, set the meter's bus and throw the branch list
     /// away (it is rebuilt by the next zone reset).
     pub fn recalc(&mut self, errors: &mut Vec<String>) {
+        // Pascal `RecalcElementData` clears NeedsRecalc before validating.
+        self.needs_recalc = false;
         let Some(snap) = self.metered_snap.clone() else {
             errors.push(format!(
                 "EnergyMeter: \"{}\" Circuit Element not set. Element must be defined previously.",
@@ -702,6 +708,7 @@ impl DssObject for EnergyMeter {
         match idx {
             prop::ELEMENT | prop::TERMINAL => {
                 self.med.metered_element_changed = true;
+                self.needs_recalc = true;
             }
             prop::MASK => {
                 // Pascal: the slots past the supplied values default to 1.0.
@@ -724,6 +731,11 @@ impl DssObject for EnergyMeter {
     }
 
     fn end_edit(&mut self) {
+        // Pascal `EndEdit`: only recalc when a basic datum (element/terminal)
+        // changed, so editing e.g. `kVANormal` alone doesn't re-run validation.
+        if !self.needs_recalc {
+            return;
+        }
         let mut errors = Vec::new();
         self.recalc(&mut errors);
         for e in errors {

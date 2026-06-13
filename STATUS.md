@@ -57,7 +57,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 235, golden_feeders 1,
+cargo test --workspace      # dss-core lib 242, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -816,9 +816,7 @@ Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
   `make_meter_zone_lists` (verbatim main loop: `AddNewObject` shunts,
   `AddNewChild` PD branches, `AddToVoltBaseList`, loop/parallel detection via
   `CheckParallel`, `ZoneEndsList`, customer counting) + `TotalUpDownstream​Customers`
-  (backward sweep) + `GetPCEatZone`. **Manual `ZoneList` zone-building deferred**
-  (needs a name→ref resolver inside the dispatcher; the property still parses/
-  dumps — no gate exercises the manual path).
+  (backward sweep) + `GetPCEatZone`.
 - **Trigger wiring:** `ymatrix.rs` `build_y_matrix` calls `do_reset_meter_zones`
   right after `reprocess_bus_defs` (Pascal `ReprocessBusDefs` tail, Circuit.pas
   l.2246) — so zones rebuild on every Y-build that reprocessed the buses (with
@@ -848,6 +846,35 @@ Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
   `gen_props.py`: 3 EnergyMeter scenarios (default, option/mask/zonelist/
   peakcurrent edited, makelike) → `props.json` regenerated (pure insertions);
   `props_roundtrip` green. dss-core lib tests 232 → 235.
+
+**WP6.4 hardening (audit-driven) — ✅ done, gate-green.** Closed the gaps an
+audit flagged against the Pascal spec:
+- **Manual `ZoneList` zone build implemented** (Pascal l.1987 else-branch): new
+  `ElemStore::find_ckt_element` (Pascal `SetElementActive`) resolves the listed
+  full names; each branch terminal consumes the next valid PD entry via the
+  monotonic `zone_list_counter`. NOTE: the oracle (dss_capi 0.14.5) **access-
+  violates** on a manual zone, so there is no golden — the port produces a
+  deterministic, memory-safe zone instead (`energymeter_manual_zonelist` locks
+  it and guards against silent-no-op regression).
+- **PC-type filter** (`is_zone_pce`) added to the zone walk — the
+  `PCElementType ∈ {LOAD,GEN,PVSYSTEM,STORAGE,CAP,REACTOR}` allow-list Pascal
+  gates `AddNewObject` on (the adjacency list may hold any PC element).
+- **`EndEdit` recalc now gated on `needs_recalc`** (Pascal `Flg.NeedsRecalc`,
+  set only by `element`/`terminal`): editing an unrelated property — or creating
+  a bare meter with no element — no longer raises a spurious "Circuit Element
+  not set" (oracle: a bare meter is created cleanly).
+- **`set_voltage_bases` voltage-base timing fix** (Pascal `SetVoltageBases`
+  l.1083): suppress the meter-zone auto-build during the zero-load snapshot
+  (force both gate flags TRUE), assign `kVBase`, then call `DoResetMeterZones`
+  explicitly — so `AddToVoltBaseList` sees valid bases. Previously the zone was
+  built during `CalcVoltageBases` with `kVBase = 0`, leaving every per-base loss
+  register named `Aux<n>`.
+- Disabled / no-element meters now install a non-nil empty `BranchList`
+  (Pascal `TCktTree.Create` then `Exit`).
+- +7 exec tests (parallel lines, meshed/loop zone, multi-voltage-base register
+  names, manual zonelist, bad terminal 524, disabled empty zone, no-element/
+  unrelated-edit no-revalidation) — all transcribed from the oracle where it
+  doesn't crash. dss-core lib tests 235 → 242.
 
 ---
 
@@ -1048,6 +1075,8 @@ EnergyMeter `SampleAll` branch still stubbed for WP6.5. Deferred monitor modes
 3/4/7/8/10/12 build their header but defer the sample body (no gate uses them).
 WP6.4 added the zone-build dispatcher (`solution/meters.rs`) fired from
 `build_y_matrix` after bus reprocessing — the EnergyMeter `BranchList`/
-`SequenceList`/`ZonePCE` are now populated and exposed via `Dss::meter_zone`;
-the manual-`ZoneList` zone-build path and the register `TakeSample` remain for
-WP6.4-followups / WP6.5.
+`SequenceList`/`ZonePCE` are now populated and exposed via `Dss::meter_zone`.
+The audit-driven WP6.4 hardening implemented the manual-`ZoneList` zone build,
+the zone-walk PC-type filter, the `NeedsRecalc`-gated `EndEdit`, and the
+`SetVoltageBases` voltage-base timing fix. The register `TakeSample` (and its
+class sweeps) remains for WP6.5.

@@ -27,6 +27,12 @@ pub trait ElemStore {
     /// control's references before splitting the mutable borrows).
     fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
 
+    /// Pascal `TDSSCircuit.SetElementActive`: resolve a full element name
+    /// (`Class.Name`, or a bare `Name` searched across all circuit-element
+    /// classes) to its [`ElemRef`], or `None` if not found. Used by the
+    /// EnergyMeter manual `ZoneList` zone build.
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef>;
+
     /// Single mutable object view (for `as_any_mut` downcasts when only one
     /// element is touched, e.g. the model-3 generator DQDV sweep).
     fn obj_mut(&mut self, r: ElemRef) -> &mut dyn crate::obj::base::DssObject;
