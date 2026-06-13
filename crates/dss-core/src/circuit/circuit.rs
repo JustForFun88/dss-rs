@@ -20,6 +20,24 @@ pub struct NodeBus {
     pub node_num: i32,
 }
 
+/// Pascal `Circuit.pas` `TReductionStrategy` — the circuit-reduction mode
+/// selected by `Set ReduceOption=` and consumed by `EnergyMeter.ReduceZone`.
+/// (`rsTapEnds` was removed upstream 2018-02-28.) The reduction algorithms
+/// themselves (`ReduceAlgs.pas`) are `NOT_PORTED` — they hinge on the
+/// unported 210-line `TLineObj.MergeWith` series/parallel line merge; only the
+/// option/command surface is ported in WP6.8. Deferred to a later phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReductionStrategy {
+    #[default]
+    Default,
+    ShortLines,
+    MergeParallel,
+    BreakLoop,
+    Dangling,
+    Switches,
+    Laterals,
+}
+
 /// Which class-specific list an element joins in `AddCktElement`
 /// (the `DSSObjType and CLASSMASK` dispatch, Phase 3 subset).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +160,16 @@ pub struct Circuit {
     /// hash-list dedup/`Find` is only needed by the unported `MakeBusList`).
     pub auto_add_bus_list: Vec<String>,
 
+    /// `ReductionStrategy`/`ReductionStrategyString` — the `Set ReduceOption=`
+    /// state. The strategy is parsed and stored; the actual zone reduction is
+    /// `NOT_PORTED` (see [`ReductionStrategy`]).
+    pub reduction_strategy: ReductionStrategy,
+    pub reduction_strategy_string: String,
+    /// `ReductionZmag` (ohms) — the short-line merge threshold (`Set Zmag=`).
+    pub reduction_zmag: f64,
+    /// `ReduceLateralsKeepLoad` (`Set KeepLoad=`).
+    pub reduce_laterals_keep_load: bool,
+
     /// Scratch for `ProcessBusDefs`/`AddBus` (`NodeBuffer`).
     node_buffer: Vec<i32>,
 }
@@ -213,6 +241,10 @@ impl Circuit {
             ue_regs: vec![10],   // Overload UE
             loss_regs: vec![13], // Zone Losses
             auto_add_bus_list: Vec::new(),
+            reduction_strategy: ReductionStrategy::Default,
+            reduction_strategy_string: String::new(),
+            reduction_zmag: 0.02,
+            reduce_laterals_keep_load: true,
             node_buffer: vec![0; 50],
         }
     }
