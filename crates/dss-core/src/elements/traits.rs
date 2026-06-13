@@ -108,6 +108,18 @@ pub struct InjCtx<'a> {
     pub currents: &'a mut [Complex64],
 }
 
+/// Per-element reliability inputs returned by [`CktElement::reliability_data`]
+/// for the EnergyMeter reliability sweep (Pascal `TPDElement` fields).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReliabilityData {
+    /// `BranchFltRate` = `CalcFltRate` result (faults/yr for this branch).
+    pub branch_flt_rate: f64,
+    /// `HrsToRepair`: average repair time (hours).
+    pub hrs_to_repair: f64,
+    /// `MilesThisLine`: branch length in miles (0 for non-line PD elements).
+    pub miles_this_line: f64,
+}
+
 /// Pascal `TDSSCktElement` virtual surface (Phase 3 subset).
 pub trait CktElement {
     fn cd(&self) -> &CktElementData;
@@ -164,6 +176,16 @@ pub trait CktElement {
     /// class default is false.
     fn is_shunt(&self) -> bool {
         false
+    }
+
+    /// Per-element reliability inputs for the EnergyMeter reliability sweep
+    /// (Pascal `TPDElement.CalcFltRate` + the `HrsToRepair`/`MilesThisLine`
+    /// fields). `CalcFltRate` is virtual: the base `TPDElement` formula is
+    /// `FaultRate · pctperm · 0.01`, which `TLineObj` overrides by multiplying
+    /// by `Len`. Non-PD elements return the zero default and never appear in a
+    /// meter `SequenceList`.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData::default()
     }
 
     /// Pascal `TDSSCktElement.GetTermVoltages(iTerm, VBuffer)`: the node voltages

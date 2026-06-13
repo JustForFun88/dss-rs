@@ -14,7 +14,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::winding::Winding;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -961,6 +961,15 @@ impl CktElement for Transformer {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData {
+            branch_flt_rate: self.fault_rate * self.pct_perm * 0.01,
+            hrs_to_repair: self.hrs_to_repair,
+            miles_this_line: 0.0,
+        }
     }
 
     fn norm_amps(&self) -> f64 {
