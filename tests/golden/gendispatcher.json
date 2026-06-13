@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "scenarios": [
+    {
+      "name": "equal-weights",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95",
+        "New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2000 kwband=100 genlist=[g1,g2] weights=[1,1]",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "generators": [
+        {
+          "name": "g1",
+          "kw": 1511.569498763734,
+          "kvar": 0.0
+        },
+        {
+          "name": "g2",
+          "kw": 1511.569498763734,
+          "kvar": 0.0
+        }
+      ]
+    },
+    {
+      "name": "weighted-3-1",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95",
+        "New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2000 kwband=100 genlist=[g1,g2] weights=[3,1]",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "generators": [
+        {
+          "name": "g1",
+          "kw": 1767.3542481456006,
+          "kvar": 0.0
+        },
+        {
+          "name": "g2",
+          "kw": 1255.7847493818672,
+          "kvar": 0.0
+        }
+      ]
+    },
+    {
+      "name": "no-genlist-all-gens",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95",
+        "New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2000 kwband=100",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "generators": [
+        {
+          "name": "g1",
+          "kw": 1511.569498763734,
+          "kvar": 0.0
+        },
+        {
+          "name": "g2",
+          "kw": 1511.569498763734,
+          "kvar": 0.0
+        }
+      ]
+    },
+    {
+      "name": "kvar-redispatch",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95",
+        "New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1",
+        "New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1",
+        "New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2000 kwband=100 kvarlimit=500 genlist=[g1,g2] weights=[1,1]",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "generators": [
+        {
+          "name": "g1",
+          "kw": 1509.8126154343354,
+          "kvar": 591.2600618943429
+        },
+        {
+          "name": "g2",
+          "kw": 1509.8126154343354,
+          "kvar": 591.2600618943429
+        }
+      ]
+    },
+    {
+      "name": "monitored-terminal-2",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95",
+        "New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1",
+        "New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2000 kwband=100 terminal=2 genlist=[g1,g2] weights=[1,1]",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "generators": [
+        {
+          "name": "g1",
+          "kw": 1.0,
+          "kvar": 0.0
+        },
+        {
+          "name": "g2",
+          "kw": 1.0,
+          "kvar": 0.0
+        }
+      ]
+    }
+  ]
+}

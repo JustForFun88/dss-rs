@@ -3640,6 +3640,54 @@ mod tests {
         }
     }
 
+    /// WP6.8: the QDiff (kvar) redispatch path, exercised end-to-end. The gens
+    /// run at `pf=0.95` so they carry a dispatchable `kvarBase`, and both
+    /// `kWLimit` and `kvarLimit` bind. Oracle probe (pinned dss-python): equal
+    /// weights → g1 = g2 = (1509.8126154343354 kW, 591.2600618943429 kvar).
+    #[test]
+    fn gendispatcher_redispatches_kvar_to_oracle() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95");
+        dss.command("New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1");
+        dss.command("New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1");
+        dss.command(
+            "New gendispatcher.gd1 element=line.l1 terminal=1 \
+             kwlimit=2000 kwband=100 kvarlimit=500 genlist=[g1,g2] weights=[1,1]",
+        );
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, kvar) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1509.8126154343354).abs() < 1e-6, "{g} kW = {kw}");
+            assert!((kvar - 591.2600618943429).abs() < 1e-6, "{g} kvar = {kvar}");
+        }
+    }
+
+    /// WP6.8: the monitored *terminal* is honored (not hard-wired to 1). A later
+    /// `terminal=2` overrides the helper's `terminal=1`; terminal 2 of the line
+    /// sits at the load/gen bus, so the measured power drives `PDiff` strongly
+    /// negative and both gens floor at `Max(1.0, …)` — a result distinct from
+    /// terminal 1's 1511.57 kW, which pins that the terminal index is read.
+    /// Oracle probe (pinned dss-python): g1 = g2 = 1.0 kW.
+    #[test]
+    fn gendispatcher_honors_monitored_terminal() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(
+            &mut dss,
+            "kwlimit=2000 kwband=100 terminal=2 genlist=[g1,g2] weights=[1,1]",
+        );
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, _) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1.0).abs() < 1e-6, "{g} kW = {kw}");
+        }
+    }
+
     /// WP5.8 step 6: time-option round trips, all values transcribed from the
     /// pinned oracle.
     #[test]
