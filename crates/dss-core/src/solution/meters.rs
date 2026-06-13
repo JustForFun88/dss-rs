@@ -693,6 +693,11 @@ fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
 /// (single-phase loads use the connected-phase factor; poly-phase loads use the
 /// average factor). The sensor may be a Sensor object **or** an EnergyMeter.
 fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore) {
+    // Pascal walks `BranchList` (`First`/`GoForward`) and, per branch, its shunt
+    // objects (`FirstObject`/`NextObject`), filtering to `LOAD_ELEMENT`. The
+    // meter's `load_list` is exactly that set (only Loads are pushed during the
+    // zone build, in the same branch-tree order) and the per-load scaling is
+    // independent, so iterating it is equivalent — no other shunt type responds.
     let loads = downcast_meter(store, meter_ref).load_list().to_vec();
     for load_ref in loads {
         let (nphases, sensor_ref, alloc_factor, node_ref0) = {
@@ -708,6 +713,10 @@ fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn El
                 load.cd.node_ref.first().copied().unwrap_or(0),
             )
         };
+        // Pascal dereferences `LoadElem.SensorObj` unconditionally; every zone
+        // load is given a sensor (the meter, or an upstream Sensor) by the zone
+        // build, so this is never NIL there. We guard defensively rather than
+        // panic if the back-pointer is somehow unset.
         let Some(sref) = sensor_ref else { continue };
         let Some((s_nphases, avg, phs)) = sensor_alloc_data(store, sref) else {
             continue;
@@ -720,6 +729,11 @@ fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn El
                 .map(|nb| nb.node_num)
                 .unwrap_or(0);
             if connected_phase > 0 && connected_phase < 4 {
+                // Pascal indexes `PhsAllocationFactor[ConnectedPhase]` directly
+                // (1-based → `connected_phase - 1` here). A connected phase past
+                // the sensor's phase count is a malformed circuit (e.g. a 3-phase
+                // node on a 2-phase sensor) where Pascal reads past the array; we
+                // fall back to the no-change factor 1.0 instead.
                 let f = if s_nphases == 1 {
                     phs.first().copied().unwrap_or(1.0)
                 } else {
