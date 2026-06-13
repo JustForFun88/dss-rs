@@ -6,6 +6,7 @@ use num_complex::Complex64;
 
 use dss_parser::{Parser, ParserVars};
 
+use crate::circuit::auto_add::AutoAdd;
 use crate::circuit::bus::Bus;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::solution::Solution;
@@ -125,6 +126,22 @@ pub struct Circuit {
     /// `LegalVoltageBases` in kV (no 0.0 terminator; the Vec length rules).
     pub legal_voltage_bases: Vec<f64>,
 
+    /// `AutoAddObj` — the auto-add option state (skeleton; see `auto_add.rs`).
+    pub auto_add_obj: AutoAdd,
+    /// `UEWeight` — weighting of unserved energy in the auto-add objective.
+    pub ue_weight: f64,
+    /// `LossWeight` — weighting of losses in the auto-add objective.
+    pub loss_weight: f64,
+    /// `UEregs` — meter register indices summed as "unserved energy".
+    pub ue_regs: Vec<i32>,
+    /// `LossRegs` — meter register indices summed as "losses".
+    pub loss_regs: Vec<i32>,
+    /// `AutoAddBusList` — candidate buses for the auto-add search. Pascal uses
+    /// a `TBusHashListType`; the skeleton keeps an insertion-ordered,
+    /// original-case `Vec<String>` (sufficient for the `Get` echo — the
+    /// hash-list dedup/`Find` is only needed by the unported `MakeBusList`).
+    pub auto_add_bus_list: Vec<String>,
+
     /// Scratch for `ProcessBusDefs`/`AddBus` (`NodeBuffer`).
     node_buffer: Vec<i32>,
 }
@@ -189,6 +206,13 @@ impl Circuit {
             emerg_min_volts: 0.90,
             emerg_max_volts: 1.08,
             legal_voltage_bases: vec![0.208, 0.480, 12.47, 24.9, 34.5, 115.0, 230.0],
+            // Pascal `Circuit.Create`: AutoAddObj.Init + the loss/UE defaults.
+            auto_add_obj: AutoAdd::new(),
+            ue_weight: 1.0, // Default to weighting UE same as losses
+            loss_weight: 1.0,
+            ue_regs: vec![10],   // Overload UE
+            loss_regs: vec![13], // Zone Losses
+            auto_add_bus_list: Vec::new(),
             node_buffer: vec![0; 50],
         }
     }

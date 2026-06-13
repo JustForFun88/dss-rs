@@ -10,7 +10,7 @@
 //! the active circuit, the parsers, the enum table, and the error log.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use dss_parser::{Parser, ParserVars};
 
@@ -353,11 +353,20 @@ mod opt {
     pub const EMERGVMINPU: usize = 23;
     pub const EMERGVMAXPU: usize = 24;
     pub const PCT_GROWTH: usize = 28;
+    pub const GEN_KW: usize = 29;
+    pub const GEN_PF: usize = 30;
+    pub const CAP_KVAR: usize = 31;
+    pub const ADD_TYPE: usize = 32;
     pub const ALLOW_DUPLICATES: usize = 33;
     pub const ZONE_LOCK: usize = 34;
+    pub const UE_WEIGHT: usize = 35;
+    pub const LOSS_WEIGHT: usize = 36;
+    pub const UE_REGS: usize = 37;
+    pub const LOSS_REGS: usize = 38;
     pub const VOLTAGE_BASES: usize = 39;
     pub const ALGORITHM: usize = 40;
     pub const TRAPEZOIDAL: usize = 41;
+    pub const AUTO_BUS_LIST: usize = 42;
     pub const CONTROL_MODE: usize = 43;
     pub const DEFAULT_DAILY: usize = 46;
     pub const DEFAULT_YEARLY: usize = 47;
@@ -1382,6 +1391,7 @@ impl Dss {
                 errors,
                 default_base_freq,
                 max_allocation_iterations,
+                current_dir,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -1522,11 +1532,56 @@ impl Dss {
                                 ckt.default_growth_rate.powi(ckt.solution.year - 1);
                         }
                     }
+                    // Pascal `Set GenkW/GenPF/Capkvar/AddType=`: the auto-add
+                    // option object (`Circuit.AutoAddObj`). The auto-add solve
+                    // itself is NOT_PORTED (see circuit/auto_add.rs).
+                    opt::GEN_KW => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.auto_add_obj.gen_kw = v;
+                        }
+                    }
+                    opt::GEN_PF => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.auto_add_obj.gen_pf = v;
+                        }
+                    }
+                    opt::CAP_KVAR => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.auto_add_obj.cap_kvar = v;
+                        }
+                    }
+                    opt::ADD_TYPE => {
+                        if let Some(v) = enum_ord(enums, enums.add_type, &param, errors) {
+                            ckt.auto_add_obj.add_type = v;
+                        }
+                    }
                     opt::ALLOW_DUPLICATES => ckt.duplicates_allowed = interpret_yes_no(&param),
                     opt::ZONE_LOCK => ckt.zones_locked = interpret_yes_no(&param),
+                    opt::UE_WEIGHT => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.ue_weight = v;
+                        }
+                    }
+                    opt::LOSS_WEIGHT => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.loss_weight = v;
+                        }
+                    }
+                    // Pascal `parseIntArray` (ExecOptions.pas l.350) via AuxParser.
+                    opt::UE_REGS => ckt.ue_regs = parse_int_array(aux_parser, vars, &param),
+                    opt::LOSS_REGS => ckt.loss_regs = parse_int_array(aux_parser, vars, &param),
                     // Pascal `Set Trapezoidal=`: the meter integration rule
                     // (reset to false by `Set mode=`).
                     opt::TRAPEZOIDAL => ckt.trapezoidal_integration = interpret_yes_no(&param),
+                    // Pascal `DoAutoAddBusList` (ExecHelper.pas l.1986).
+                    opt::AUTO_BUS_LIST => do_auto_add_bus_list(
+                        aux_parser,
+                        vars,
+                        current_dir,
+                        &param,
+                        &mut ckt.auto_add_bus_list,
+                        errors,
+                    ),
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];
@@ -1772,8 +1827,25 @@ impl Dss {
                     &mut result,
                     &float_to_str((ckt.default_growth_rate - 1.0) * 100.0),
                 ),
+                opt::GEN_KW => append_result(&mut result, &float_to_str(ckt.auto_add_obj.gen_kw)),
+                opt::GEN_PF => append_result(&mut result, &float_to_str(ckt.auto_add_obj.gen_pf)),
+                opt::CAP_KVAR => {
+                    append_result(&mut result, &float_to_str(ckt.auto_add_obj.cap_kvar))
+                }
+                opt::ADD_TYPE => append_result(
+                    &mut result,
+                    // Pascal echoes the lowercase device word, not the enum name.
+                    match ckt.auto_add_obj.add_type {
+                        crate::circuit::CAPADD => "capacitor",
+                        _ => "generator",
+                    },
+                ),
                 opt::ALLOW_DUPLICATES => append_result(&mut result, yes_no(ckt.duplicates_allowed)),
                 opt::ZONE_LOCK => append_result(&mut result, yes_no(ckt.zones_locked)),
+                opt::UE_WEIGHT => append_result(&mut result, &float_to_str(ckt.ue_weight)),
+                opt::LOSS_WEIGHT => append_result(&mut result, &float_to_str(ckt.loss_weight)),
+                opt::UE_REGS => append_result(&mut result, &int_array_to_string(&ckt.ue_regs)),
+                opt::LOSS_REGS => append_result(&mut result, &int_array_to_string(&ckt.loss_regs)),
                 opt::VOLTAGE_BASES => {
                     // Pascal builds `(b1, b2, ... , )` replacing GlobalResult.
                     result = "(".to_string();
@@ -1788,6 +1860,11 @@ impl Dss {
                         .get(enums.solve_alg)
                         .ordinal_to_string(ckt.solution.algorithm),
                 ),
+                opt::AUTO_BUS_LIST => {
+                    for name in &ckt.auto_add_bus_list {
+                        append_result(&mut result, name);
+                    }
+                }
                 opt::CONTROL_MODE => append_result(
                     &mut result,
                     &enums
@@ -2767,6 +2844,67 @@ fn enum_ord(
     }
 }
 
+/// Pascal `parseIntArray` (ExecOptions.pas l.350): tokenize `s` on the
+/// AuxParser and read each token as an integer. Like Pascal `IntValue`, a
+/// non-numeric token yields 0 (silent — Pascal logs no error here).
+fn parse_int_array(aux_parser: &mut Parser, vars: &ParserVars, s: &str) -> Vec<i32> {
+    aux_parser.set_cmd_string(s);
+    let mut out = Vec::new();
+    loop {
+        aux_parser.next_param(vars);
+        let param = aux_parser.make_string(vars);
+        if param.is_empty() {
+            break;
+        }
+        out.push(aux_parser.make_integer(vars).unwrap_or(0));
+    }
+    out
+}
+
+/// Pascal `TExecHelper.DoAutoAddBusList` (ExecHelper.pas l.1986): parse the
+/// `Set AutoBusList=` argument — either an inline bus-name list or the
+/// `File=name` form (one bus name per line, resolved against the data path).
+fn do_auto_add_bus_list(
+    aux_parser: &mut Parser,
+    vars: &ParserVars,
+    current_dir: &Path,
+    s: &str,
+    out: &mut Vec<String>,
+    errors: &mut Vec<String>,
+) {
+    out.clear();
+    aux_parser.set_cmd_string(s);
+    let parm_name = aux_parser.next_param(vars);
+    let mut param = aux_parser.make_string(vars);
+
+    if parm_name.eq_ignore_ascii_case("file") {
+        // Load the list from a file (one bus name per line).
+        let path = current_dir.join(&param);
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                for line in content.lines() {
+                    aux_parser.set_cmd_string(line);
+                    aux_parser.next_param(vars);
+                    let p = aux_parser.make_string(vars);
+                    if !p.is_empty() {
+                        out.push(p);
+                    }
+                }
+            }
+            Err(e) => errors.push(format!(
+                "Error trying to read bus list file \"{param}\": {e}"
+            )),
+        }
+    } else {
+        // Parse bus names off the inline array list.
+        while !param.is_empty() {
+            out.push(param.clone());
+            aux_parser.next_param(vars);
+            param = aux_parser.make_string(vars);
+        }
+    }
+}
+
 /// Pascal `AppendGlobalResult`: comma-separated accumulation.
 fn append_result(result: &mut String, s: &str) {
     if result.is_empty() {
@@ -2779,6 +2917,23 @@ fn append_result(result: &mut String, s: &str) {
 
 fn yes_no(b: bool) -> &'static str {
     if b { "Yes" } else { "No" }
+}
+
+/// Pascal `IntArrayToString` (Utilities.pas): `[NULL]` when empty, else
+/// `[a, b, c]`.
+fn int_array_to_string(arr: &[i32]) -> String {
+    if arr.is_empty() {
+        return "[NULL]".to_string();
+    }
+    let mut s = String::from("[");
+    for (i, v) in arr.iter().enumerate() {
+        if i != 0 {
+            s.push_str(", ");
+        }
+        s.push_str(&v.to_string());
+    }
+    s.push(']');
+    s
 }
 
 /// Pascal `MakeLikeProperty` set path: find the source object by name in the
@@ -3513,6 +3668,81 @@ mod tests {
         assert!(dss.errors().is_empty(), "{:?}", dss.errors());
         dss.command("Get mode tolerance maxiterations");
         assert_eq!(dss.result(), "Daily, 0.001, 25");
+    }
+
+    /// AutoAdd option object defaults (`TAutoAdd.Init` + Circuit loss/UE
+    /// defaults) echoed back through `Get`.
+    #[test]
+    fn autoadd_options_defaults_via_get() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Get genkw genpf capkvar addtype ueweight lossweight ueregs lossregs");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(dss.result(), "1000, 1, 600, generator, 1, 1, [10], [13]");
+    }
+
+    /// `Set` the AutoAdd options, then verify both the circuit state and the
+    /// `Get` echo (AddType maps to the lowercase device word).
+    #[test]
+    fn autoadd_options_set_then_get() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command(
+            "Set genkw=500 genpf=0.95 capkvar=1200 addtype=capacitor \
+             ueweight=2 lossweight=3 ueregs=[1,2,3] lossregs=[13,14]",
+        );
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        {
+            let ckt = dss.circuit().unwrap();
+            assert_eq!(ckt.auto_add_obj.gen_kw, 500.0);
+            assert_eq!(ckt.auto_add_obj.gen_pf, 0.95);
+            assert_eq!(ckt.auto_add_obj.cap_kvar, 1200.0);
+            assert_eq!(ckt.auto_add_obj.add_type, crate::circuit::CAPADD);
+            assert_eq!(ckt.ue_weight, 2.0);
+            assert_eq!(ckt.loss_weight, 3.0);
+            assert_eq!(ckt.ue_regs, vec![1, 2, 3]);
+            assert_eq!(ckt.loss_regs, vec![13, 14]);
+        }
+        dss.command("Get genkw genpf capkvar addtype ueweight lossweight ueregs lossregs");
+        assert_eq!(
+            dss.result(),
+            "500, 0.95, 1200, capacitor, 2, 3, [1, 2, 3], [13, 14]"
+        );
+    }
+
+    /// `Set AutoBusList=` parses an inline bus-name list (`DoAutoAddBusList`),
+    /// stored insertion-ordered and echoed comma-separated by `Get`.
+    #[test]
+    fn autoadd_bus_list_inline_round_trips() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Set autobuslist=[b1, b2, b3]");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(
+            dss.circuit().unwrap().auto_add_bus_list,
+            vec!["b1".to_string(), "b2".to_string(), "b3".to_string()]
+        );
+        dss.command("Get autobuslist");
+        assert_eq!(dss.result(), "b1, b2, b3");
+    }
+
+    /// The AutoAdd *solve mode* is `NOT_PORTED` (the capacity search needs
+    /// aux-current injection + meter sampling). `Solve mode=autoadd` therefore
+    /// still reports the unknown-mode error — the documented deferral.
+    #[test]
+    fn autoadd_solve_mode_still_deferred() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=autoadd");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Unknown solution mode")),
+            "expected AutoAdd solve to remain deferred, got {:?}",
+            dss.errors()
+        );
     }
 
     /// Build the 2-bus regulator micro-circuit the WP5.7 oracle probes used.
