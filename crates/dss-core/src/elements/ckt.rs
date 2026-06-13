@@ -143,6 +143,12 @@ pub struct CktElementData {
     pub branch_num_customers: i32,
     /// `BranchTotalCustomers` (customers downstream incl. this branch).
     pub branch_total_customers: i32,
+    /// `TPDElement.Overload_EEN`: degree of normal-rating overload, set as a
+    /// side effect of `excess_kva_norm`. Inert on non-PD elements.
+    pub overload_een: f64,
+    /// `TPDElement.Overload_UE`: degree of emergency-rating overload, set as a
+    /// side effect of `excess_kva_emerg`.
+    pub overload_ue: f64,
 }
 
 impl CktElementData {
@@ -185,6 +191,8 @@ impl CktElementData {
             sensor_obj: None,
             branch_num_customers: 0,
             branch_total_customers: 0,
+            overload_een: 0.0,
+            overload_ue: 0.0,
         }
     }
 

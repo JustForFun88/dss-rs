@@ -525,6 +525,13 @@ impl CktElement for Capacitor {
         self.recalc();
     }
 
+    fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
     /// Pascal `TPDElement.IsShunt` (set by the Bus1/Bus2 side effects).
     fn is_shunt(&self) -> bool {
         self.is_shunt

@@ -828,10 +828,15 @@ fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
 }
 
 /// Pascal `MonitorClass.SampleAll` + (if `sample_meters`)
-/// `EnergyMeterClass.SampleAll` (`SolutionAlgs.pas` l.78). EnergyMeter sampling
-/// lands in WP6.5; the monitor sweep (mode ≠ 5) is wired now.
-fn sample_all_monitors_and_meters(ckt: &mut Circuit, env: &mut SolveEnv, _sample_meters: bool) {
+/// `EnergyMeterClass.SampleAll` (`SolutionAlgs.pas` l.78): the monitor sweep
+/// (mode ≠ 5) always runs; the EnergyMeter register sweep runs when the solve
+/// mode requests it.
+fn sample_all_monitors_and_meters(ckt: &mut Circuit, env: &mut SolveEnv, sample_meters: bool) {
     crate::solution::monitors::sample_all_monitors(ckt, env, false);
+    if sample_meters {
+        let sys = sys_ctx(ckt);
+        crate::solution::meters::take_sample_all(ckt, env.store, &sys);
+    }
 }
 
 /// Pascal `SolveDaily` (`SolutionAlgs.pas` l.160): step `number_of_times`

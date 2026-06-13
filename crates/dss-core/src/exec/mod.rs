@@ -354,6 +354,7 @@ mod opt {
     pub const ZONE_LOCK: usize = 34;
     pub const VOLTAGE_BASES: usize = 39;
     pub const ALGORITHM: usize = 40;
+    pub const TRAPEZOIDAL: usize = 41;
     pub const CONTROL_MODE: usize = 43;
     pub const DEFAULT_DAILY: usize = 46;
     pub const DEFAULT_YEARLY: usize = 47;
@@ -1492,6 +1493,9 @@ impl Dss {
                     }
                     opt::ALLOW_DUPLICATES => ckt.duplicates_allowed = interpret_yes_no(&param),
                     opt::ZONE_LOCK => ckt.zones_locked = interpret_yes_no(&param),
+                    // Pascal `Set Trapezoidal=`: the meter integration rule
+                    // (reset to false by `Set mode=`).
+                    opt::TRAPEZOIDAL => ckt.trapezoidal_integration = interpret_yes_no(&param),
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];
@@ -1858,12 +1862,29 @@ impl Dss {
             vars,
             errors,
         };
+        let sys = crate::solution::solution::sys_ctx(ckt);
         crate::solution::monitors::sample_all_monitors(ckt, &mut env, false);
+        // Pascal `DoSampleCmd` l.1037: `EnergyMeterClass.SampleAll` (gets
+        // generators too — the generator register sweep is WP6.8).
+        crate::solution::meters::take_sample_all(ckt, env.store, &sys);
     }
 
-    /// Pascal `DoResetCmd` (subset): reset the monitor buffers. Other reset
-    /// targets (meters, faults, controls) arrive with their classes.
+    /// Pascal `DoResetCmd` (`ExecHelper.pas` l.1527): with no argument, reset
+    /// monitors and meters (faults/controls/logs are later phases); `Monitors`
+    /// or `Meters` selects one target.
     fn do_reset_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars).to_uppercase();
+        let (do_monitors, do_meters) = if param.is_empty() {
+            (true, true)
+        } else {
+            // Pascal dispatches on `M`+`O`/`E`; only monitors/meters are ported.
+            let b = param.as_bytes();
+            (
+                b.first() == Some(&b'M') && b.get(1) == Some(&b'O'),
+                b.first() == Some(&b'M') && b.get(1) == Some(&b'E'),
+            )
+        };
         let Dss {
             classes,
             circuit,
@@ -1880,7 +1901,12 @@ impl Dss {
             vars,
             errors,
         };
-        crate::solution::monitors::reset_all_monitors(ckt, &mut env);
+        if do_monitors {
+            crate::solution::monitors::reset_all_monitors(ckt, &mut env);
+        }
+        if do_meters {
+            crate::solution::meters::reset_all_meters(ckt, env.store);
+        }
     }
 
     /// Pascal `DoSetVoltageBases` (the `CalcVoltageBases` command).
@@ -2245,6 +2271,32 @@ impl Dss {
             zone_pce: lists.pce.iter().map(|&r| full_name(r)).collect(),
             register_names: lists.register_names,
         })
+    }
+
+    /// An EnergyMeter's register values paired with names — the dss-python
+    /// `Meters.RegisterValues` / `RegisterNames` surface (tests/goldens).
+    /// `name` may be `"m1"` or `"EnergyMeter.m1"` (case-insensitive).
+    pub fn meter_registers(&self, name: &str) -> Option<Vec<(String, f64)>> {
+        let bare = name
+            .strip_prefix("EnergyMeter.")
+            .or_else(|| name.strip_prefix("energymeter."))
+            .unwrap_or(name);
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(em) = obj.as_any().downcast_ref::<energymeter::EnergyMeter>()
+                    && em.data().name().eq_ignore_ascii_case(bare)
+                {
+                    return Some(
+                        em.register_names()
+                            .iter()
+                            .cloned()
+                            .zip(em.registers().iter().copied())
+                            .collect(),
+                    );
+                }
+            }
+        }
+        None
     }
 
     /// Per-transformer winding taps in creation order, keyed by name —
@@ -3642,5 +3694,100 @@ mod tests {
             }
         }
         panic!("element {full} not found");
+    }
+
+    /// Helper: fetch a meter register value by name.
+    fn meter_reg(dss: &Dss, meter: &str, reg_name: &str) -> f64 {
+        dss.meter_registers(meter)
+            .unwrap_or_else(|| panic!("meter {meter} not found"))
+            .into_iter()
+            .find(|(n, _)| n == reg_name)
+            .unwrap_or_else(|| panic!("register {reg_name} not found"))
+            .1
+    }
+
+    /// Build the 2-bus daily case shared by the register tests. Loadshape ramps
+    /// 1→2→3 over 3 one-hour steps; the meter is on the source line.
+    fn daily_meter_case(trapezoidal: bool) -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New loadshape.ls npts=3 interval=1 mult=(1.0 2.0 3.0)");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        // `Set mode=` resets the trapezoidal flag, so set it afterwards.
+        dss.command("Set mode=daily number=3 stepsize=1h time=(0,0)");
+        dss.command(if trapezoidal {
+            "Set trapezoidal=yes"
+        } else {
+            "Set trapezoidal=no"
+        });
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Plain Euler integration: `kWh = Σ interval·P`. Oracle (dss-python
+    /// 0.15.7) register values for the 1→2→3 daily ramp.
+    #[test]
+    fn energymeter_daily_registers_euler() {
+        let dss = daily_meter_case(false);
+        let approx = |got: f64, want: f64| {
+            assert!(
+                (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+                "got {got}, want {want}"
+            );
+        };
+        approx(meter_reg(&dss, "m1", "kWh"), 6009.009963043285);
+        approx(meter_reg(&dss, "m1", "kvarh"), 8.436633138535129);
+        approx(meter_reg(&dss, "m1", "Zone kWh"), 5999.979170340599);
+        approx(meter_reg(&dss, "m1", "Max kW"), 3005.7947873123644);
+        approx(meter_reg(&dss, "m1", "Line Losses"), 9.038717950944731);
+        approx(
+            meter_reg(&dss, "m1", "Zone Max kW Losses"),
+            5.814433198962477,
+        );
+        // The single voltage base bucket carries the same line losses.
+        approx(
+            meter_reg(&dss, "m1", "12.5 kV Line Loss"),
+            9.038717950944731,
+        );
+    }
+
+    /// Trapezoidal integration: the first sample after reset is skipped, then
+    /// `kWh += 0.5·interval·(P + P_prev)`. Same circuit, oracle values.
+    #[test]
+    fn energymeter_daily_registers_trapezoidal() {
+        let dss = daily_meter_case(true);
+        let approx = |got: f64, want: f64| {
+            assert!(
+                (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+                "got {got}, want {want}"
+            );
+        };
+        approx(meter_reg(&dss, "m1", "kWh"), 4005.7905368432225);
+        approx(meter_reg(&dss, "m1", "Zone kWh"), 3999.9865469246124);
+        // Drag-hand maxima are independent of the integration rule.
+        approx(meter_reg(&dss, "m1", "Max kW"), 3005.7947873123644);
+        approx(
+            meter_reg(&dss, "m1", "Zone Max kW Losses"),
+            5.814433198962477,
+        );
+    }
+
+    /// `Reset Meters` zeroes the registers and re-primes the drag-hand maxima to
+    /// the large-negative sentinel.
+    #[test]
+    fn energymeter_reset_registers() {
+        let mut dss = daily_meter_case(false);
+        assert!(meter_reg(&dss, "m1", "kWh") > 1.0, "registers accumulated");
+        dss.command("Reset Meters");
+        assert_eq!(meter_reg(&dss, "m1", "kWh"), 0.0);
+        assert_eq!(meter_reg(&dss, "m1", "Zone kWh"), 0.0);
+        // Drag-hand registers reset to -1e50.
+        assert_eq!(meter_reg(&dss, "m1", "Max kW"), -1.0e50);
+        assert_eq!(meter_reg(&dss, "m1", "Zone Max kW Losses"), -1.0e50);
     }
 }

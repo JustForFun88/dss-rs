@@ -318,6 +318,43 @@ impl CktElement for Reactor {
         self.recalc();
     }
 
+    fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
+    /// Pascal `TReactorObj.GetLosses` (Reactor.pas l.1017): no-load losses are
+    /// `V²/Rp` across the shunt — only when `Rp` is specified on a shunt
+    /// reactor; otherwise the default element behavior.
+    fn get_losses_split(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO);
+        }
+        if self.rp_specified && self.is_shunt && self.rp != 0.0 {
+            let total = self.losses(sys, node_v);
+            let mut no_load = 0.0_f64;
+            let cd = &self.cd;
+            for i in 0..cd.nphases {
+                let v = node_v[cd.node_ref[i]];
+                no_load += (v.re * v.re + v.im * v.im) / self.rp;
+            }
+            if sys.positive_sequence {
+                no_load *= 3.0;
+            }
+            let no_load = Complex64::new(no_load, 0.0);
+            (total, total - no_load, no_load)
+        } else {
+            let total = self.losses(sys, node_v);
+            (total, total, Complex64::ZERO)
+        }
+    }
+
     /// Pascal `TPDElement.IsShunt` (set by the Bus1/Bus2 side effects).
     fn is_shunt(&self) -> bool {
         self.is_shunt

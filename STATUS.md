@@ -51,13 +51,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.4 done; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.5 done; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 242, golden_feeders 1,
+cargo test --workspace      # dss-core lib 245, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -878,6 +878,47 @@ audit flagged against the Pascal spec:
 
 ---
 
+**WP6.5 — EnergyMeter registers + TakeSample + hook wiring — ✅ done, gate-green.**
+Files: `elements/ckt.rs`, `elements/traits.rs`, `elements/pd/{line,transformer,
+reactor,capacitor}.rs`, `elements/pc/load.rs`, `elements/meter/energymeter.rs`,
+`solution/meters.rs`, `solution/solution.rs`, `exec/mod.rs`.
+- **CktElement numeric surface** (`traits.rs`): `norm_amps`/`emerg_amps`
+  accessors (default 0; PD elements override), `max_terminal_one_imag`
+  (CktElement.pas l.552), `excess_kva_norm`/`excess_kva_emerg` (PDElement.pas
+  l.230/257 — side-effect-set the new `overload_een`/`overload_ue` on
+  `CktElementData`), `get_losses_split` (default `(total,total,0)`),
+  `get_seq_losses` (default 0).
+- **PD overrides:** `Line.get_seq_losses` (3-phase `Phase2SymComp`, Line.pas
+  l.1495), `Transformer.get_losses_split` (no-load = power into `Yprim_Shunt`,
+  Transformer.pas l.1635), `Reactor.get_losses_split` (`V²/Rp` shunt branch,
+  Reactor.pas l.1017).
+- **Load EEN/UE** (`load.rs`): `een_factor`/`ue_factor` fields +
+  `exceeds_normal`/`unserved` (Load.pas l.2057/2004 — lowest-phase-Vpu vs
+  the circuit `normal_min_volts`/`emerg_min_volts` criteria).
+- **`TakeSample`** ported verbatim as a free function in `solution/meters.rs`
+  (EnergyMeter.pas l.1289): metered-terminal power, the radial/meshed overload
+  EEN/UE pass (sets PD `Overload_*` + load factors), the zone losses sweep
+  (line/transformer split, seq + 3-/1-phase modes, voltage-base buckets),
+  `Accumulate_Load`/`Accumulate_Gen`, drag-hand maxima, and the
+  `MaxZonekVA`/excess overload-energy registers. `Integrate` honours the
+  circuit trapezoidal flag (skipping the first sample after reset);
+  `SetDragHandRegister` keeps running maxima. The meter's branch tree and
+  register arrays are moved out for the walk (the store keeps the meter
+  borrowed) and written back via `begin/end_take_sample`.
+- **Hook wiring:** `sample_all_monitors_and_meters` now runs
+  `take_sample_all` when the mode requests meter sampling; `DoSampleCmd`
+  (`Sample`) and `DoResetCmd` (`Reset`/`Reset Meters`) wired; new
+  `Set Trapezoidal=` option (ordinal 41); `Dss::meter_registers` test API.
+- **`take_sample_all`/`reset_all_meters`** added; `SystemMeter` core and the
+  Generator/Storage/PVSystem `ResetRegistersAll`/`SampleAll` call sites stay
+  deferred (WP6.8 / later), as does the phase-voltage-report demand-interval
+  path (Phase 8).
+- +3 exec tests vs the oracle (daily 1→2→3 ramp: Euler kWh/zone/losses,
+  trapezoidal kWh/zone, `Reset Meters` zeroing + drag-hand sentinel). dss-core
+  lib tests 242 → 245.
+
+---
+
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
 
 ### Circuit model (`src/circuit/`)
@@ -1060,23 +1101,24 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 Executing `PHASE6_PLAN.md` on branch `phase-6-meters-topology`.
 Done: WP6.1 (topology foundations), WP6.2 (Generator), WP6.3 (MeterElement +
-Monitor), WP6.4 (EnergyMeter object + zone build). Next: WP6.5 (EnergyMeter
-registers + `TakeSample` + hook wiring — the EnergyMeter `SampleAll` branch is
-still stubbed in `sample_all_monitors_and_meters`), WP6.6 (reliability),
-WP6.7 (Sensor + load allocation), WP6.8 (GenDispatcher + skeletons), WP6.9
-(goldens + 8500-node gate), WP6.10 (exit).
+Monitor), WP6.4 (EnergyMeter object + zone build), WP6.5 (EnergyMeter registers
++ `TakeSample` + hook wiring). Next: WP6.6 (reliability), WP6.7 (Sensor + load
+allocation), WP6.8 (GenDispatcher + skeletons — also add PVSystem/Storage to
+`is_zone_pce`), WP6.9 (goldens + 8500-node gate), WP6.10 (exit).
 
 Enabling facts from Phase 5/WP6.3: the control loop dispatches through
 `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut` (the pattern
 the monitor sweep now reuses — `solution/monitors.rs`); the meter/monitor
 `sample_all_monitors_and_meters` / `end_of_time_step_cleanup` hooks now have
-real bodies (monitor `SampleAll` mode≠5 + `SampleAllMode5`), with the
-EnergyMeter `SampleAll` branch still stubbed for WP6.5. Deferred monitor modes
+real bodies (monitor `SampleAll` mode≠5 + `SampleAllMode5`, plus the EnergyMeter
+`SampleAll`/`take_sample_all` wired in WP6.5). Deferred monitor modes
 3/4/7/8/10/12 build their header but defer the sample body (no gate uses them).
 WP6.4 added the zone-build dispatcher (`solution/meters.rs`) fired from
 `build_y_matrix` after bus reprocessing — the EnergyMeter `BranchList`/
 `SequenceList`/`ZonePCE` are now populated and exposed via `Dss::meter_zone`.
-The audit-driven WP6.4 hardening implemented the manual-`ZoneList` zone build,
-the zone-walk PC-type filter, the `NeedsRecalc`-gated `EndEdit`, and the
-`SetVoltageBases` voltage-base timing fix. The register `TakeSample` (and its
-class sweeps) remains for WP6.5.
+WP6.5 ported `TakeSample`/`Integrate` (register accumulation over the zone walk)
+plus the PD loss/excess-kVA surface and the Load EEN/UE getters; registers are
+exposed via `Dss::meter_registers`. Still deferred: the `SystemMeter` register
+core, the Generator/Storage/PVSystem `ResetRegistersAll`/`SampleAll` call sites
+(WP6.8+), reliability indices (WP6.6), and the demand-interval/phase-voltage
+files (Phase 8).
