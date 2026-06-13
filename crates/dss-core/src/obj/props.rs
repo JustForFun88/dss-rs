@@ -138,6 +138,12 @@ impl PropFlags {
     pub const REQUIRED_IN_SPEC_SET: Self = Self(1 << 34);
     pub const IS_FILENAME: Self = Self(1 << 35);
     pub const GLOBAL_COUNT: Self = Self(1 << 36);
+    /// Pascal `DynamicDefault`: the default is recomputed from other properties
+    /// (e.g. `kWBand` from `%kWBand`); only affects JSON-default elision.
+    pub const DYNAMIC_DEFAULT: Self = Self(1 << 37);
+    /// Pascal `Units_hour`: documents the unit of a time property (JSON schema
+    /// metadata only).
+    pub const UNITS_HOUR: Self = Self(1 << 38);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

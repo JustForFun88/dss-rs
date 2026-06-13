@@ -356,7 +356,8 @@ enum ControlKind {
     },
     /// StorageController is a Phase-6 skeleton: with no Storage element the fleet
     /// is always empty, so `Sample`/`DoPendingAction`/`Reset` are inert no-ops
-    /// (PHASE6_PLAN §2.6). Carries no refs — there is nothing to dispatch.
+    /// (PHASE6_PLAN §2.6; the named-missing-list per-sample 14403 is the one
+    /// documented divergence). Carries no refs — there is nothing to dispatch.
     StorageSkeleton,
 }
 
@@ -472,6 +473,9 @@ fn dispatch_control(
     }
 
     // StorageController skeleton: empty fleet → nothing to sample/act/reset.
+    // (Faithful for the default element list; a named-but-missing ElementList
+    // would emit a per-sample 14403 in Pascal — deferred with `Sample` to
+    // Phase 7, see storage_controller.rs module doc.)
     if let ControlKind::StorageSkeleton = kind {
         return Ok(());
     }

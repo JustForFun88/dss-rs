@@ -59,7 +59,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 303, golden_feeders 1,
+cargo test --workspace      # dss-core lib 307, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_slice 2,
@@ -1133,6 +1133,26 @@ accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
   props harness gained a per-scenario `allow_errors` flag (gen_props.py +
   `props_roundtrip.rs`) so the faithful 37201/14403 don't trip the "no engine
   errors" assertion. Net dss-core lib 289 → **303**.
+
+**WP6.8 (part 2/4) audit follow-up — ✅ done, gate-green.** Three Pascal-fidelity
+fixes from an audit against `StorageController.pas`:
+- **`MakeFleetList` flag clear (l.1927):** the default branch (and a
+  fully-resolved named branch) now clears `FleetListChanged`, while the
+  missing-name path still `Exit`s with it set (l.1889). Without this a second
+  `Edit` re-ran the fleet build and re-emitted 37201; now it doesn't.
+- **`RecalcElementData` phase sync (l.803-804):** the control now adopts the
+  monitored element's `Nphases`/`NConds` on a valid recalc, so a later `MonPhase`
+  edit validates against the right phase count (was always vs the default 3).
+- **`Sample` named-missing divergence documented:** for a specified-but-missing
+  `ElementList`, Pascal `Sample` re-runs `MakeFleetList` and emits 14403 *per
+  sample step*; the skeleton's blanket no-op defers that with the rest of
+  `Sample` (Phase 7) — now spelled out in the module doc + `controls.rs`.
+- Plus metadata-only `DynamicDefault`/`Units_hour` PropFlags added and applied
+  (kWThreshold/kWBand/kWBandLow, Tup/TFlat/Tdn/InhibitTime) for table fidelity.
+- **+4 unit tests** (default-recalc clears flag / no repeat 37201; named-missing
+  keeps flag pending; MonPhase>nphases errors+resets; recalc syncs nphases).
+  No golden regeneration needed (none of the fixes change a `?` dump). Net
+  dss-core lib 303 → **307**.
 
 Remaining WP6.8 parts (AutoAdd skeleton, ReduceAlgs basic) not started.
 

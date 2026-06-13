@@ -20,8 +20,19 @@
 //! `SetFleet*`, `GetControlPower`/`GetControlCurrent`, the kWh/kW fleet
 //! aggregates, and `MakePosSequence`. Because the fleet is always empty in
 //! Phase 6, `Sample`/`DoPendingAction`/`Reset` are inert no-ops here — which is
-//! also the observable behavior (an empty fleet dispatches nothing). When the
-//! Storage element lands, these get real bodies and a control-loop gate.
+//! also the observable behavior for the **default** (unspecified) element list:
+//! Pascal `Sample` → `DoLoadFollowMode` re-runs `MakeFleetList` (l.1078), whose
+//! default branch is silent, then dispatches nothing (`FleetSize = 0`).
+//!
+//! **Known skeleton divergence** (NOT_PORTED → Phase 7): when the user specifies
+//! an `ElementList` of Storage names that do not resolve (always, in Phase 6),
+//! Pascal `Sample` re-enters the *named* branch of `MakeFleetList` and emits
+//! error 14403 on **every** sample step of a time-series solve. This skeleton's
+//! control-sweep entry is a blanket no-op, so it suppresses those per-step
+//! errors. The parse-time 14403/37201 (from `RecalcElementData`) are still
+//! reproduced; only the per-sample repetition is deferred with the rest of
+//! `Sample`. When the Storage element lands, these get real bodies and a
+//! control-loop gate.
 //!
 //! The four fleet-aggregate readbacks (`kWhTotal`/`kWTotal`/`kWhActual`/
 //! `kWActual`) are Pascal `SilentReadOnly + ReadByFunction` doubles whose
@@ -107,9 +118,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kWTargetLow"),
         PropDef::double("%kWBand"),
         // Pascal DynamicDefault + Redundant(pctkWBand) (metadata-only here).
-        PropDef::double("kWBand").flags(PropFlags::REDUNDANT),
+        PropDef::double("kWBand").flags(PropFlags::REDUNDANT | PropFlags::DYNAMIC_DEFAULT),
         PropDef::double("%kWBandLow"),
-        PropDef::double("kWBandLow").flags(PropFlags::REDUNDANT),
+        PropDef::double("kWBandLow").flags(PropFlags::REDUNDANT | PropFlags::DYNAMIC_DEFAULT),
         PropDef::string_list("ElementList"),
         // Pascal DoubleDArray + IndirectCount over the ElementList: the element
         // count is the storage-name-list length (see `array_size`).
@@ -134,11 +145,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("LoadShape", "Daily"),
         PropDef::object_ref_class("LoadShape", "Duty"),
         PropDef::boolean("EventLog"),
-        PropDef::integer("InhibitTime").flags(PropFlags::NON_NEGATIVE),
-        PropDef::double("Tup").flags(PropFlags::NON_NEGATIVE),
-        PropDef::double("TFlat").flags(PropFlags::NON_NEGATIVE),
-        PropDef::double("Tdn").flags(PropFlags::NON_NEGATIVE),
-        PropDef::double("kWThreshold"),
+        PropDef::integer("InhibitTime").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("Tup").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("TFlat").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("Tdn").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        // Pascal DynamicDefault (recomputed from kWTarget in PropertySideEffects).
+        PropDef::double("kWThreshold").flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::double("DispFactor"),
         PropDef::double("ResetLevel"),
         // Pascal SuppressJSON (derivable from length(SeasonTargets)).
@@ -269,25 +281,38 @@ impl StorageController {
     }
 
     /// Pascal `TStorageControllerObj.MakeFleetList`. In Phase 6 there is no
-    /// Storage class, so a named list never resolves (error 14403, Pascal
-    /// `Exit`s on the first miss) and the default "scan all enabled Storage"
-    /// branch clears the name list and finds nothing — both yield an empty
-    /// fleet (returns `false`), which the caller turns into error 37201.
+    /// Storage class, so the fleet is always empty and the function returns
+    /// `false` (the caller turns that into error 37201).
+    ///
+    /// The `FleetListChanged := FALSE` clear at the tail of Pascal `MakeFleetList`
+    /// (l.1927) is reached by the **default** branch and by a **fully-resolved
+    /// named** branch, but **not** by the early `Exit` taken when a named element
+    /// is missing (l.1889). Reproducing that distinction is what stops a later
+    /// `RecalcElementData` (a second `Edit`) from re-emitting 37201 every time:
+    /// only the missing-name path leaves the rebuild pending.
     fn make_fleet_list(&mut self) -> bool {
         if self.element_list_specified {
+            // Named list. The first name never resolves (no Storage class), so a
+            // *non-empty* list errors and Pascal `Exit`s with FleetListChanged
+            // still TRUE.
             if let Some(first) = self.storage_name_list.first() {
                 self.ccd
                     .cd
                     .obj
                     .push_error(format!("Error: Storage Element \"{first}\" not found."));
+                return false; // FleetListChanged stays true (Pascal Exits here)
             }
-            return false;
+            // Empty named list: the resolve loop never runs and Pascal falls
+            // through to the shared tail below.
+        } else {
+            // Default branch: scan all enabled Storage (none exist) → empty fleet.
+            self.storage_name_list.clear();
+            self.fleet_size = 0;
+            self.weights.clear();
         }
-        // Default branch: no enabled Storage elements exist.
-        self.storage_name_list.clear();
-        self.fleet_size = 0;
-        self.weights.clear();
-        false
+        // Pascal `FleetListChanged := FALSE` (l.1927).
+        self.fleet_list_changed = false;
+        false // FleetPointerList is always empty in Phase 6 → Result stays FALSE
     }
 
     /// Pascal `TStorageControllerObj.RecalcElementData` (parse-time subset):
@@ -311,6 +336,12 @@ impl StorageController {
                 self.ccd.element_terminal
             ));
         } else {
+            // Pascal: FNphases := MonitoredElement.Nphases; NConds := FNphases;
+            // the control adopts the monitored element's phase count (so a later
+            // MonPhase edit validates against the right number of phases).
+            self.ccd.cd.nphases = mon.nphases;
+            self.ccd.cd.set_nconds(mon.nphases);
+
             // Set the name of the control's 1st terminal's connected bus.
             let t = self.ccd.element_terminal;
             let bus = if t >= 1 && (t as usize) <= mon.buses.len() {
@@ -851,6 +882,91 @@ mod tests {
         // No ElementList → default branch finds no Storage → 37201.
         let mut sc = StorageController::new("sc1");
         assert!(!sc.make_fleet_list());
+    }
+
+    #[test]
+    fn default_recalc_clears_fleet_flag_no_repeat_37201() {
+        // Pascal's MakeFleetList default branch clears FleetListChanged, so a
+        // *second* RecalcElementData (a re-Edit) must not re-run the fleet build
+        // nor re-emit 37201.
+        let mut sc = StorageController::new("sc1");
+        sc.mon_snap = Some(RefSnapshot {
+            full_name: "line.l1".into(),
+            nphases: 3,
+            nterms: 2,
+            buses: vec!["b1".into(), "b2".into()],
+        });
+        sc.recalc();
+        let first = sc.ccd.cd.obj.take_errors();
+        assert_eq!(
+            first
+                .iter()
+                .filter(|e| e.contains("No unassigned Storage"))
+                .count(),
+            1,
+            "{first:?}"
+        );
+        assert!(
+            !sc.fleet_list_changed,
+            "default branch must clear the rebuild flag"
+        );
+        // Second recalc: flag cleared → no rebuild → no fresh 37201.
+        sc.recalc();
+        let second = sc.ccd.cd.obj.take_errors();
+        assert!(
+            second.iter().all(|e| !e.contains("No unassigned Storage")),
+            "second recalc re-emitted 37201: {second:?}"
+        );
+    }
+
+    #[test]
+    fn named_missing_recalc_keeps_flag_pending() {
+        // The named branch Exits *before* clearing FleetListChanged (Pascal
+        // l.1889), so the rebuild stays pending and a re-Edit re-emits 14403.
+        let mut sc = StorageController::new("sc1");
+        sc.set_string_list(prop::ELEMENT_LIST, vec!["sa".into()]);
+        sc.side_effects(prop::ELEMENT_LIST, 0);
+        assert!(!sc.make_fleet_list());
+        assert!(
+            sc.fleet_list_changed,
+            "missing-name path must leave the rebuild flag set"
+        );
+    }
+
+    #[test]
+    fn mon_phase_above_nphases_errors_and_resets() {
+        // Default nphases = 3; MonPhase = 4 is out of range → error + reset to 1.
+        let mut sc = StorageController::new("sc1");
+        sc.set_i32(prop::MON_PHASE, 4);
+        sc.side_effects(prop::MON_PHASE, 0);
+        assert_eq!(sc.f_mon_phase, 1);
+        let errs = sc.ccd.cd.obj.take_errors();
+        assert!(
+            errs.iter().any(|e| e.contains("Monitored phase")),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn recalc_syncs_nphases_to_monitored_element() {
+        // Pascal: FNphases := MonitoredElement.Nphases; NConds := FNphases.
+        let mut sc = StorageController::new("sc1");
+        assert_eq!(sc.ccd.cd.nphases, 3); // ctor default
+        sc.mon_snap = Some(RefSnapshot {
+            full_name: "line.l1".into(),
+            nphases: 1,
+            nterms: 2,
+            buses: vec!["b1".into(), "b2".into()],
+        });
+        sc.recalc();
+        assert_eq!(sc.ccd.cd.nphases, 1);
+        assert_eq!(sc.ccd.cd.nconds, 1);
+        assert_eq!(sc.get_bus_name(1), "b1");
+        // A subsequent MonPhase=2 now validates against the synced nphases (1)
+        // and is rejected, instead of silently passing against the default 3.
+        sc.set_i32(prop::MON_PHASE, 2);
+        sc.side_effects(prop::MON_PHASE, 0);
+        assert_eq!(sc.f_mon_phase, 1);
     }
 
     #[test]
