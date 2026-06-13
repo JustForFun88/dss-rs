@@ -112,7 +112,6 @@ impl MeterElementData {
     /// Pascal `TMeterElement.CalcAllocationFactors`: the per-phase factor each
     /// load must scale to match the measured peak current (`metered` supplies
     /// `GetCurrents` into `calculated_current`).
-    #[allow(dead_code)]
     pub fn calc_allocation_factors(
         &mut self,
         metered: &mut dyn CktElement,

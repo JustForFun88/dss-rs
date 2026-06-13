@@ -22,6 +22,7 @@ use crate::elements::general::{
 };
 use crate::elements::meter::energymeter;
 use crate::elements::meter::monitor;
+use crate::elements::meter::sensor;
 use crate::elements::pc::{generator, load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
@@ -188,6 +189,7 @@ mod cmd {
     pub const GET: usize = 32;
     pub const INIT: usize = 33;
     pub const FILEEDIT: usize = 35;
+    pub const ALLOCATE_LOADS: usize = 45;
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
     pub const BUSCOORDS: usize = 58;
@@ -364,8 +366,10 @@ mod opt {
     pub const PRICE_CURVE: usize = 51;
     pub const BASE_FREQUENCY: usize = 53;
     pub const MAX_CONTROL_ITER: usize = 55;
+    pub const ALLOCATION_FACTORS: usize = 48;
     pub const CASE_NAME: usize = 63;
     pub const LOG: usize = 66;
+    pub const NUM_ALLOC_ITERATIONS: usize = 72;
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
     pub const NEGLECT_LOAD_Y: usize = 95;
     pub const MIN_ITERATIONS: usize = 110;
@@ -642,6 +646,8 @@ pub struct Dss {
     circuit: Option<Circuit>,
     /// `DSS.DefaultBaseFreq` (`Set DefaultBaseFrequency=`).
     default_base_freq: f64,
+    /// `DSS.MaxAllocationIterations` (`Set NumAllocIterations=`); default 2.
+    max_allocation_iterations: i32,
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.
     current_dir: PathBuf,
     /// `DSS.In_Redirect` / `DSS.Redirect_Abort`.
@@ -740,6 +746,12 @@ impl Dss {
                 |name| Box::new(energymeter::EnergyMeter::new(name)),
                 ElemKind::EnergyMeter,
             ),
+            // Sensor is registered after EnergyMeter (Pascal DSSClassDefs.pas:294).
+            DssClass::ckt_class(
+                sensor::class_props(&enums),
+                |name| Box::new(sensor::Sensor::new(name)),
+                ElemKind::Sensor,
+            ),
         ];
         let class_by_name = classes
             .iter()
@@ -761,6 +773,7 @@ impl Dss {
             last_result: String::new(),
             circuit: None,
             default_base_freq: 60.0,
+            max_allocation_iterations: 2,
             current_dir: std::env::current_dir().unwrap_or_default(),
             in_redirect: false,
             redirect_abort: false,
@@ -941,6 +954,7 @@ impl Dss {
             cmd::GET => self.do_get_cmd(),
             cmd::SAMPLE => self.do_sample_cmd(),
             cmd::RESET => self.do_reset_cmd(),
+            cmd::ALLOCATE_LOADS => self.do_allocate_loads_cmd(),
             cmd::RELCALC => self.do_relcalc_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
             cmd::INIT => {
@@ -1353,6 +1367,7 @@ impl Dss {
                 enums,
                 errors,
                 default_base_freq,
+                max_allocation_iterations,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -1558,6 +1573,33 @@ impl Dss {
                     opt::MAX_CONTROL_ITER => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.max_control_iterations = v;
+                        }
+                    }
+                    // Pascal `DoSetAllocationFactors` (ExecHelper.pas l.2651):
+                    // set every load's kVA allocation factor (ConnectedkVA spec).
+                    opt::ALLOCATION_FACTORS => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            if v <= 0.0 {
+                                errors.push(
+                                    "Allocation Factor must be greater than zero.".to_string(),
+                                );
+                            } else {
+                                let mut store = ClassStore {
+                                    classes: &mut classes[..],
+                                };
+                                for &lr in &ckt.loads {
+                                    if let Some(load) =
+                                        store.obj_mut(lr).as_any_mut().downcast_mut::<load::Load>()
+                                    {
+                                        load.set_kva_allocation_factor(v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    opt::NUM_ALLOC_ITERATIONS => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            *max_allocation_iterations = v;
                         }
                     }
                     opt::CASE_NAME => ckt.case_name = param.clone(),
@@ -1869,6 +1911,33 @@ impl Dss {
         // Pascal `DoSampleCmd` l.1037: `EnergyMeterClass.SampleAll` (gets
         // generators too — the generator register sweep is WP6.8).
         crate::solution::meters::take_sample_all(ckt, env.store, &sys);
+    }
+
+    /// Pascal `TExecHelper.DoAllocateLoadsCmd` (`ExecHelper.pas` l.2605): adjust
+    /// loads defined by connected kVA or kWh billing to match the EnergyMeter /
+    /// Sensor measured peaks. Solves a snapshot guess, then iterates
+    /// `MaxAllocationIterations` times: recompute each meter/sensor allocation
+    /// factor, run each meter's zone allocation, and re-solve.
+    fn do_allocate_loads_cmd(&mut self) {
+        let max_iters = self.max_allocation_iterations.max(0) as usize;
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        ckt.load_multiplier = 1.0;
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        crate::solution::meters::allocate_loads(ckt, &mut env, max_iters);
     }
 
     /// Pascal `DoResetCmd` (`ExecHelper.pas` l.1527): with no argument, reset
@@ -2356,6 +2425,21 @@ impl Dss {
                             .zip(em.registers().iter().copied())
                             .collect(),
                     );
+                }
+            }
+        }
+        None
+    }
+
+    /// A load's `(kWbase, FAllocationFactor)` by name — the oracle's
+    /// `Loads.kW` / `Loads.AllocationFactor` (test API for `allocateloads`).
+    pub fn load_alloc(&self, name: &str) -> Option<(f64, f64)> {
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(ld) = obj.as_any().downcast_ref::<load::Load>()
+                    && ld.data().name().eq_ignore_ascii_case(name)
+                {
+                    return Some((ld.kw_base, ld.allocation_factor()));
                 }
             }
         }
@@ -4320,6 +4404,129 @@ mod tests {
             dss.errors().iter().any(|e| e
                 .contains("No Overcurrent Protection device (Relay, Recloser, or Fuse) defined")),
             "Relcalc yes must still abort without OCP devices, got {:?}",
+            dss.errors()
+        );
+    }
+
+    // ---- WP6.7: Sensor + load allocation -------------------------------------
+
+    /// A radial feeder with an EnergyMeter at the head and two ConnectedkVA-spec
+    /// loads. The meter's `SensorCurrent` defaults to 400 A, so `allocateloads`
+    /// scales the zone loads to push the metered current toward that peak.
+    fn allocation_feeder() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        assert!(dss.errors().is_empty(), "build errors: {:?}", dss.errors());
+        dss
+    }
+
+    fn close_rel(a: f64, e: f64) -> bool {
+        (a - e).abs() <= 1e-3 + 1e-4 * e.abs()
+    }
+
+    /// `allocateloads` with the default `MaxAllocationIterations = 2`. Values
+    /// transcribed from the pinned oracle (`Loads.kW` / `AllocationFactor`).
+    #[test]
+    fn allocateloads_meter_drives_zone() {
+        let mut dss = allocation_feeder();
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, f2) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 2867.625566), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 4588.200906), "ld2 kW {kw2}");
+        assert!(close_rel(f1, 6.372501), "ld1 factor {f1}");
+        assert!(close_rel(f2, 6.372501), "ld2 factor {f2}");
+    }
+
+    /// `Set NumAllocIterations=4` runs two more allocation passes, converging
+    /// the loads slightly (oracle-pinned).
+    #[test]
+    fn allocateloads_honors_numallociterations() {
+        let mut dss = allocation_feeder();
+        dss.command("set numallociterations=4");
+        dss.command("allocateloads");
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, _) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 2863.277886), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 4581.244618), "ld2 kW {kw2}");
+        assert!(close_rel(f1, 6.36284), "ld1 factor {f1}");
+    }
+
+    /// `Set AllocationFactors=X` sets every load's kVA allocation factor; for a
+    /// ConnectedkVA-spec load `kWbase = xfkVA · factor · |pf|`.
+    #[test]
+    fn set_allocation_factors_scales_all_loads() {
+        let mut dss = allocation_feeder();
+        dss.command("set allocationfactors=0.8");
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, f2) = dss.load_alloc("ld2").unwrap();
+        assert!((kw1 - 360.0).abs() < 1e-9, "ld1 {kw1}"); // 500·0.8·0.9
+        assert!((kw2 - 576.0).abs() < 1e-9, "ld2 {kw2}"); // 800·0.8·0.9
+        assert!((f1 - 0.8).abs() < 1e-12);
+        assert!((f2 - 0.8).abs() < 1e-12);
+        // A non-positive factor is rejected (Pascal error 271).
+        dss.command("set allocationfactors=0");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Allocation Factor must be greater than zero")),
+            "{:?}",
+            dss.errors()
+        );
+    }
+
+    /// A Sensor on the mid-feeder line (measured `currents` set in a *separate*
+    /// edit so they survive `RecalcElementData`'s `ZeroSensorArrays`) gives its
+    /// downstream load its own allocation target; the meter still drives the
+    /// upstream load. Oracle-pinned.
+    #[test]
+    fn allocateloads_with_sensor() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("new sensor.s1 element=line.l2 terminal=1");
+        dss.command("edit sensor.s1 currents=[20,20,20]");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, _) = dss.load_alloc("ld1").unwrap();
+        let (kw2, _) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 6780.125059), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 382.584034), "ld2 kW {kw2}");
+    }
+
+    /// A bare Sensor (no `element=`) records the Pascal 666 error; defining the
+    /// element makes it valid and adopts the line's phase count.
+    #[test]
+    fn sensor_requires_element() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new sensor.s1 terminal=1 kvbase=12.47");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Circuit Element is not set")),
+            "bare sensor must error, got {:?}",
             dss.errors()
         );
     }

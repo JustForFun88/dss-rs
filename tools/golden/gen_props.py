@@ -931,6 +931,68 @@ SCENARIOS = [
             "New EnergyMeter.m1 like=base kVAEmerg=2000",
         ],
     },
+    # --- Sensor (WP6.7) ---
+    # NOTE (probed): `element=`/`conn=`/`deltadirection=` all set NeedsRecalc, so
+    # `RecalcElementData` runs at EndEdit and `ZeroSensorArrays` zeros the
+    # measured arrays. A single `New Sensor … currents=…` therefore dumps
+    # `[ 0 0 0]`; to retain measured values they must be set in a later `edit`
+    # (no recalc trigger). MakeLike copies only the shape/metered fields, so a
+    # `like=` sensor keeps the new object's defaults and NIL arrays (dump '').
+    {
+        "name": "sensor_default",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1",
+        ],
+    },
+    {
+        "name": "sensor_currents_single_zeroed",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1 currents=(10 11 12) "
+            "conn=wye weight=2 %error=3",
+        ],
+    },
+    {
+        "name": "sensor_currents_twostep",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1",
+            "Edit Sensor.s1 currents=(10 11 12)",
+        ],
+    },
+    {
+        "name": "sensor_pq",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47",
+            "Edit Sensor.s1 kws=(100 100 100) kvars=(30 30 30)",
+        ],
+    },
+    {
+        "name": "sensor_kvs_delta",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1 conn=delta deltadirection=-1 kvbase=4.16",
+            "Edit Sensor.s1 kvs=(7.2 7.2 7.2)",
+        ],
+    },
+    {
+        "name": "sensor_makelike",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.base element=Line.l1 terminal=1 conn=delta deltadirection=-1 "
+            "kvbase=4.16 weight=3 %error=2",
+            "Edit Sensor.base kvs=(7.2 7.2 7.2)",
+            "New Sensor.s1 like=base",
+        ],
+    },
 ]
 
 
