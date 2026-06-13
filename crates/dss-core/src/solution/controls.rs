@@ -15,13 +15,17 @@
 //! deleting further records mid-sweep work identically), and put back at the
 //! end.
 
+use num_complex::Complex64;
+
 use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::reg_control::RegControl;
+use crate::elements::pc::generator::Generator;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
 use crate::solution::control_queue::{ControlActioner, ControlQueue, TimeRec};
 use crate::solution::solution::{
     CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, MULTIRATE, Solution, SolveEnv, SolveResult, TIMEDRIVEN,
@@ -336,6 +340,7 @@ pub(crate) fn reset_all_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
 }
 
 /// Which concrete control class an [`ElemRef`] names, plus its element refs.
+#[derive(Clone, Copy)]
 enum ControlKind {
     Reg {
         controlled: Option<ElemRef>,
@@ -343,6 +348,10 @@ enum ControlKind {
     Cap {
         controlled: Option<ElemRef>,
         monitored: Option<ElemRef>,
+    },
+    GenDispatch {
+        monitored: Option<ElemRef>,
+        element_terminal: usize,
     },
 }
 
@@ -378,6 +387,14 @@ fn dispatch_control(
                 },
                 format!("CapControl.{}", cc.ccd.cd.obj.name()),
             )
+        } else if let Some(gd) = obj.as_any().downcast_ref::<GenDispatcher>() {
+            (
+                ControlKind::GenDispatch {
+                    monitored: gd.ccd.monitored_element,
+                    element_terminal: gd.ccd.element_terminal.max(1) as usize,
+                },
+                format!("GenDispatcher.{}", gd.ccd.cd.obj.name()),
+            )
         } else {
             return Err(format!(
                 "Internal error: control element {} is not a ported control class.",
@@ -392,6 +409,55 @@ fn dispatch_control(
         ));
         "Solution aborted.".to_string()
     };
+
+    // GenDispatcher redispatches a *dynamic* set of generators, so it needs the
+    // whole class registry (not a fixed pair/triple) and uses none of the
+    // event/Y context — handle it before building the shared `CtrlCtx`.
+    // `DoPendingAction`/`Reset` are no-ops in Pascal; only `Sample` acts.
+    if let ControlKind::GenDispatch {
+        monitored,
+        element_terminal,
+    } = kind
+    {
+        if let ControlOp::Sample = op {
+            let Some(mon) = monitored else {
+                return Err(abort(errors, &full_name, "Monitored element not set"));
+            };
+            // Clone the dispatcher out so the env can hold the store mutably;
+            // `Sample` only mutates the cached generator list, copied back after.
+            let mut gd = store
+                .obj(r)
+                .as_any()
+                .downcast_ref::<GenDispatcher>()
+                .expect("kind matched above")
+                .clone();
+            let generators = ckt.generators.clone();
+            let changed = {
+                let mut env = GenDispEnv {
+                    store: &mut **store,
+                    node_v: &ckt.solution.node_v,
+                    sys: &sys,
+                    monitored: mon,
+                    element_terminal,
+                    generators,
+                };
+                gd.sample(&mut env)
+            };
+            *store
+                .obj_mut(r)
+                .as_any_mut()
+                .downcast_mut::<GenDispatcher>()
+                .expect("kind matched above") = gd;
+            if changed {
+                // Force a recalc of power parameters + a re-solve at the new
+                // dispatch value (Pascal `LoadsNeedUpdating := TRUE` +
+                // `ControlQueue.Push(0, 0, 0, Self)`).
+                ckt.solution.loads_need_updating = true;
+                queue.push(0, 0.0, 0, 0, r);
+            }
+        }
+        return Ok(());
+    }
 
     // Build the shared control context from disjoint Solution fields.
     let Solution {
@@ -421,6 +487,8 @@ fn dispatch_control(
     };
 
     match kind {
+        // Handled (and returned) above, before the CtrlCtx was built.
+        ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
         ControlKind::Reg { controlled } => {
             let Some(target) = controlled else {
                 return Err(abort(ctx.errors, &full_name, "Transformer element not set"));
@@ -534,4 +602,67 @@ fn dispatch_control(
     }
 
     Ok(())
+}
+
+/// [`GenDispatchEnv`] over the class registry: the monitored element's terminal
+/// power and the dispatched generators' `kWBase`/`kvarBase`, reached through the
+/// store. The generator-scan list is the circuit's creation-ordered
+/// `generators` list (cloned by the caller so the store can be borrowed freely).
+struct GenDispEnv<'a> {
+    store: &'a mut dyn ElemStore,
+    node_v: &'a [Complex64],
+    sys: &'a SysCtx,
+    monitored: ElemRef,
+    element_terminal: usize,
+    generators: Vec<ElemRef>,
+}
+
+impl GenDispEnv<'_> {
+    fn generator(store: &dyn ElemStore, g: ElemRef) -> &Generator {
+        store
+            .obj(g)
+            .as_any()
+            .downcast_ref::<Generator>()
+            .expect("GenDispatcher list entry is a Generator")
+    }
+    fn generator_mut(store: &mut dyn ElemStore, g: ElemRef) -> &mut Generator {
+        store
+            .obj_mut(g)
+            .as_any_mut()
+            .downcast_mut::<Generator>()
+            .expect("GenDispatcher list entry is a Generator")
+    }
+}
+
+impl GenDispatchEnv for GenDispEnv<'_> {
+    fn monitored_power(&mut self) -> Complex64 {
+        self.store.ckt_elem_mut(self.monitored).terminal_power(
+            self.sys,
+            self.node_v,
+            self.element_terminal,
+        )
+    }
+    fn find_enabled_gen(&self, name: &str) -> Option<ElemRef> {
+        let r = self.store.find_ckt_element(&format!("generator.{name}"))?;
+        self.store.ckt_elem(r).cd().enabled.then_some(r)
+    }
+    fn all_enabled_gens(&self) -> Vec<ElemRef> {
+        self.generators
+            .iter()
+            .copied()
+            .filter(|&g| self.store.ckt_elem(g).cd().enabled)
+            .collect()
+    }
+    fn gen_kw_base(&self, g: ElemRef) -> f64 {
+        Self::generator(self.store, g).kw_base
+    }
+    fn set_gen_kw_base(&mut self, g: ElemRef, value: f64) {
+        Self::generator_mut(self.store, g).kw_base = value;
+    }
+    fn gen_kvar_base(&self, g: ElemRef) -> f64 {
+        Self::generator(self.store, g).kvar_base
+    }
+    fn set_gen_kvar_base(&mut self, g: ElemRef, value: f64) {
+        Self::generator_mut(self.store, g).kvar_base = value;
+    }
 }
