@@ -258,6 +258,8 @@ pub struct EnumRegistry {
     pub storage_ctrl_discharge_mode: EnumId,
     /// 'StorageController: Charge Mode' (StorageController.pas `ChargeModeEnum`).
     pub storage_ctrl_charge_mode: EnumId,
+    /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
+    pub add_type: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -693,6 +695,18 @@ impl EnumRegistry {
             &[2, 4, 7, 9],
         ));
 
+        // DSSClass.pas:1172 AddTypeEnum (GENADD=1, CAPADD=2; default CAPADD).
+        let mut at = DssEnum::new(
+            "AutoAdd Device Type",
+            true,
+            1,
+            1,
+            &["Generator", "Capacitor"],
+            &[1, 2],
+        );
+        at.default_value = 2;
+        let add_type = push(at);
+
         Self {
             enums,
             units: units_id,
@@ -726,6 +740,7 @@ impl EnumRegistry {
             energy_meter_action,
             storage_ctrl_discharge_mode,
             storage_ctrl_charge_mode,
+            add_type,
         }
     }
 
