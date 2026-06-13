@@ -11,7 +11,7 @@ Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
 (`10d3550`); on branch `phase-6-meters-topology`. Execution plan:
 **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/Generator,
 8500-node gate). Done so far: **WP6.1 (topology foundations), WP6.2
-(Generator)** — see §1d.
+(Generator), WP6.3 (MeterElement + Monitor)** — see §1d.
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -50,13 +50,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.2 done; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.3 done; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 219, golden_feeders 1,
+cargo test --workspace      # dss-core lib 232, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -731,6 +731,63 @@ Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
   sample call sites are deferred to WP6.5 (they belong with the EnergyMeter
   hook wiring); `TakeSample` itself is ported and unit-tested now.
 
+**WP6.3 — MeterElement base + Monitor — ✅ done, gate-green.** Files:
+- `elements/meter/meter_element.rs` (new): `MeterElementData` (Pascal
+  `TMeterElement`, embeds `CktElementData`): `metered_element: Option<ElemRef>`
+  + `metered_terminal`/`metered_element_changed` + a `MeteredSnapshot`
+  (full_name/kind/nphases/nconds/nterms/yorder/buses + num_windings/num_steps/
+  num_variables — captured at `element=` resolution like the WP4.7 control
+  `RefSnapshot`, since `RecalcElementData` runs at `EndEdit` after the foreign
+  view is gone) + the sensor-allocation arrays and
+  `AllocateSensorArrays`/`CalcAllocationFactors` (ported, `#[allow(dead_code)]`
+  until Sensor in WP6.7).
+- `elements/meter/monitor.rs` (new): `TMonitorObj` port. Props 1–7 (`element`
+  any-class `object_ref_any`, `terminal`, `mode`, `action`, `residual`,
+  `VIPolar`, `PPolar`) + CktElement tail (`basefreq`/`enabled`/Like = 10);
+  `RecalcElementData` (mode→class validation 663/664/2016001/2016002, terminal
+  check 665, adopt metered nphases/nconds, `SetBus(1,…)`); `ClearMonitorStream`
+  (the **exact** per-mode header strings + `RecordSize`, incl. all the
+  ±16 sequence / ±32 magnitude / ±64 pos-seq / residual / VIpolar/Ppolar
+  combos — probed against the oracle); `TakeSample` (modes **0,1,2,5,6,9,11**
+  faithfully, the symmetrical-component + power + polar conversions, residual,
+  the magnitude/posseq write paths) into a growing in-memory **`Vec<f32>`**
+  (`AddDblToBuffer` f32 narrowing; one buffer holds all samples — we never
+  spill to disk, so `Save`/`MonitorStream` flush is folded in). `CalcYPrim` is
+  empty and `GetCurrents` returns zeros (a monitor never stamps Y). Modes 3
+  (PCElement state vars — dynamics surface), 4 (flicker/Pstcalc), 7 (Storage),
+  8/10 (transformer winding currents/voltages) and 12 (LL) build their header
+  but **defer the sample body** (no gate exercises them; Phase 6+/7) — noted in
+  the module header. File `Save`/`TranslateToCSV` is Phase 8.
+- **Shared engine:** `obj/dss_enum.rs` `monitor_action` enum (Clear/Save/
+  TakeSample/Process/Reset → 0/1/2/3/0); `capacitor.rs` `states()` accessor
+  (mode-6 read). `circuit.rs`: `ElemKind::Meter` (device list + new `monitors`
+  list, **not** PD/PC, no Yprim — like controls). `exec/mod.rs`: Monitor
+  registered **after** Generator (Pascal DSSClassDefs.pas:288); the `Sample`
+  command (`DoSampleCmd` → `MonitorClass.SampleAll`) and a minimal `Reset`
+  command (`reset_all_monitors`); a public `Dss::monitor_view(name)` →
+  `MonitorView` (header/sample_count/dbl_hour/channels) mirroring dss-python
+  `Monitors.Header`/`SampleCount`/`Channel(i)`/`dblHour`.
+- **Solution wiring:** `solution/monitors.rs` (new) — `sample_all_monitors`
+  (Pascal `SampleAll` mode≠5 / `SampleAllMode5` mode=5; pair_mut the monitor +
+  its metered element, the WP5.7 disjoint-borrow pattern) + `reset_all_monitors`.
+  The Phase-5 no-op hook stubs got real bodies: `sample_all_monitors_and_meters`
+  → monitor `SampleAll` (EnergyMeter `SampleAll` still WP6.5);
+  `end_of_time_step_cleanup` → `SampleAllMode5` (`SolutionAlgs.pas` l.96).
+- **Oracle facts (probed, then pinned):** snapshot `Solve` does **not** sample
+  monitors — sampling happens in the time-series loop (or the `Sample`
+  command + a buffer flush); a daily `number=1 stepsize=1h` solve samples at
+  hour 1 where the flat default shape gives mult=1, so the sample equals the
+  snapshot solution. Mode-5 channels 11/12 (`SolveSnap_uSecs`/`TimeStep_uSecs`)
+  are wall-clock timings → the port records 0 and the tests skip them.
+- Tests: 4 exec integration (`monitor_mode0_mode1_daily` — V/I + powers
+  channels transcribed from the oracle; `monitor_mode5_solution_vars` — the 10
+  deterministic solution vars; `monitor_header_modifiers` — 7 modifier-combo
+  headers; `monitor_mode2_tap_and_class_check` — transformer tap + the 663
+  class-mismatch error). `gen_props.py`: 5 Monitor scenarios (default, mode-1
+  residual+ppolar, mag+seq VIpolar-off, transformer-tap, makelike) →
+  `props.json` regenerated (pure insertions); `props_roundtrip` green. dss-core
+  lib tests 228 → 232.
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -914,15 +971,15 @@ this environment; the `py` launcher is broken — use `python` directly.
 ## 7. Current frontier — Phase 6
 
 Executing `PHASE6_PLAN.md` on branch `phase-6-meters-topology`.
-Done: WP6.1 (topology foundations), WP6.2 (Generator). Next: WP6.3
-(MeterElement + Monitor), WP6.4/6.5 (EnergyMeter zones + registers),
-WP6.6 (reliability), WP6.7 (Sensor), WP6.8 (GenDispatcher + skeletons),
-WP6.9 (goldens + 8500-node gate), WP6.10 (exit).
+Done: WP6.1 (topology foundations), WP6.2 (Generator), WP6.3 (MeterElement +
+Monitor). Next: WP6.4/6.5 (EnergyMeter zones + registers), WP6.6
+(reliability), WP6.7 (Sensor), WP6.8 (GenDispatcher + skeletons), WP6.9
+(goldens + 8500-node gate), WP6.10 (exit).
 
-Enabling facts from Phase 5: the control loop dispatches through
+Enabling facts from Phase 5/WP6.3: the control loop dispatches through
 `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut` (the pattern
-any new control/metering element reuses); the event log carries all
-`LogThisEvent` call sites; time-series modes drive `interval_hrs` and the
-`sample_the_meters` flag exactly as the meters will need (the no-op hook
-stubs sit at `solution.rs` `sample_all_monitors_and_meters` /
-`end_of_time_step_cleanup`).
+the monitor sweep now reuses — `solution/monitors.rs`); the meter/monitor
+`sample_all_monitors_and_meters` / `end_of_time_step_cleanup` hooks now have
+real bodies (monitor `SampleAll` mode≠5 + `SampleAllMode5`), with the
+EnergyMeter `SampleAll` branch still stubbed for WP6.5. Deferred monitor modes
+3/4/7/8/10/12 build their header but defer the sample body (no gate uses them).

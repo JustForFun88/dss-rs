@@ -859,6 +859,48 @@ SCENARIOS = [
             "New Generator.g1 like=base bus1=gb2",
         ],
     },
+    {
+        "name": "monitor_default",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.m1 element=Line.l1 terminal=1 mode=0",
+        ],
+    },
+    {
+        "name": "monitor_mode1_residual",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.m1 element=Line.l1 terminal=1 mode=1 residual=yes ppolar=no",
+        ],
+    },
+    {
+        "name": "monitor_vipolar_off",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.m1 element=Line.l1 terminal=1 mode=48 vipolar=no",
+        ],
+    },
+    {
+        "name": "monitor_transformer_tap",
+        "target": "Monitor.mt",
+        "commands": [
+            "New Transformer.t1 phases=3 windings=2 buses=[sourcebus b2] "
+            "conns=[wye wye] kvs=[12.47 4.16] kvas=[1000 1000] xhl=5",
+            "New Monitor.mt element=Transformer.t1 terminal=2 mode=2",
+        ],
+    },
+    {
+        "name": "monitor_makelike",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.base element=Line.l1 terminal=1 mode=0 residual=yes",
+            "New Monitor.m1 like=base mode=1",
+        ],
+    },
 ]
 
 

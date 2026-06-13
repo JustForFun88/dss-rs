@@ -251,6 +251,8 @@ pub struct EnumRegistry {
     pub gen_status: EnumId,
     /// 'Generator: Model' (generator.pas `GenModelEnum`).
     pub gen_model: EnumId,
+    /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
+    pub monitor_action: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -628,6 +630,17 @@ impl EnumRegistry {
             &[1, 2, 3, 4, 5, 6, 7],
         ));
 
+        // Monitor.pas: ActionEnum (Clear/Save/TakeSample/Process/Reset →
+        // 0/1/2/3/0; Reset is an alias of Clear).
+        let monitor_action = push(DssEnum::new(
+            "Monitor: Action",
+            true,
+            1,
+            1,
+            &["Clear", "Save", "TakeSample", "Process", "Reset"],
+            &[0, 1, 2, 3, 0],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -657,6 +670,7 @@ impl EnumRegistry {
             gen_disp_mode,
             gen_status,
             gen_model,
+            monitor_action,
         }
     }
 

@@ -20,6 +20,7 @@ use crate::elements::general::{
     growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
     xy_curve,
 };
+use crate::elements::meter::monitor;
 use crate::elements::pc::{generator, load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
@@ -169,6 +170,8 @@ mod cmd {
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
     pub const SOLVE: usize = 9;
+    pub const RESET: usize = 13;
+    pub const SAMPLE: usize = 26;
     pub const COMPILE: usize = 14;
     pub const SET: usize = 15;
     pub const COMMENT: usize = 19; // "//"
@@ -700,6 +703,12 @@ impl Dss {
                 |name| Box::new(generator::Generator::new(name)),
                 ElemKind::Generator,
             ),
+            // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
+            DssClass::ckt_class(
+                monitor::class_props(&enums),
+                |name| Box::new(monitor::Monitor::new(name)),
+                ElemKind::Meter,
+            ),
         ];
         let class_by_name = classes
             .iter()
@@ -899,6 +908,8 @@ impl Dss {
             cmd::CALC_VOLTAGE_BASES => self.do_calc_voltage_bases(),
             cmd::BUILD_Y => self.do_build_y(),
             cmd::GET => self.do_get_cmd(),
+            cmd::SAMPLE => self.do_sample_cmd(),
+            cmd::RESET => self.do_reset_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
@@ -1799,6 +1810,50 @@ impl Dss {
         let _ = solve(ckt, &mut env); // hard errors are recorded by solve()
     }
 
+    /// Pascal `DoSampleCmd` (`ExecHelper.pas` l.1036): `MonitorClass.SampleAll`
+    /// — force every enabled monitor (mode ≠ 5) to take a sample.
+    fn do_sample_cmd(&mut self) {
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        crate::solution::monitors::sample_all_monitors(ckt, &mut env, false);
+    }
+
+    /// Pascal `DoResetCmd` (subset): reset the monitor buffers. Other reset
+    /// targets (meters, faults, controls) arrive with their classes.
+    fn do_reset_cmd(&mut self) {
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        crate::solution::monitors::reset_all_monitors(ckt, &mut env);
+    }
+
     /// Pascal `DoSetVoltageBases` (the `CalcVoltageBases` command).
     fn do_calc_voltage_bases(&mut self) {
         let Dss {
@@ -1987,6 +2042,18 @@ impl Dss {
     }
 }
 
+/// A monitor's recorded buffer for the golden/test harness (dss-python
+/// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
+#[derive(Debug, Clone)]
+pub struct MonitorView {
+    pub header: Vec<String>,
+    pub sample_count: i32,
+    /// Per-sample hour values (record slot 0).
+    pub dbl_hour: Vec<f64>,
+    /// `channels[i]` = the (i+1)-th channel across all samples (f32).
+    pub channels: Vec<Vec<f32>>,
+}
+
 /// Per-element snapshot for the golden feeder gate: mirrors dss-python's
 /// `CktElement.Powers`/`Currents` over the oracle's `First/Next` iteration
 /// (= creation) order.
@@ -2057,6 +2124,33 @@ impl Dss {
             });
         }
         out
+    }
+
+    /// Read a monitor's recorded data — the dss-python `Monitors.Header` /
+    /// `SampleCount` / `Channel(i)` / `dblHour` surface (tests/goldens).
+    /// `name` may be `"m1"` or `"Monitor.m1"` (case-insensitive). `None` if no
+    /// such monitor exists.
+    pub fn monitor_view(&self, name: &str) -> Option<MonitorView> {
+        let bare = name
+            .strip_prefix("Monitor.")
+            .or_else(|| name.strip_prefix("monitor."))
+            .unwrap_or(name);
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(m) = obj.as_any().downcast_ref::<monitor::Monitor>()
+                    && m.med.cd.obj.name().eq_ignore_ascii_case(bare)
+                {
+                    let nch = m.num_channels();
+                    return Some(MonitorView {
+                        header: m.header().to_vec(),
+                        sample_count: m.sample_count(),
+                        dbl_hour: m.dbl_hour(),
+                        channels: (1..=nch).map(|i| m.channel(i)).collect(),
+                    });
+                }
+            }
+        }
+        None
     }
 
     /// Per-transformer winding taps in creation order, keyed by name —
@@ -2625,6 +2719,208 @@ mod tests {
     /// Parse the single number a `?` scalar query returns.
     fn query_f64(dss: &mut Dss, what: &str) -> f64 {
         query(dss, what).parse().expect("numeric query result")
+    }
+
+    /// A mode-0 (V&I) and mode-1 (powers) monitor on a 2-bus line sampled by a
+    /// single daily step. Channel values transcribed from the oracle
+    /// (dss-python 0.15.7): at hour 1 the flat default shape gives mult=1, so
+    /// the sample equals the snapshot solution.
+    #[test]
+    fn monitor_mode0_mode1_daily() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 pu=1.0");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95");
+        dss.command("New monitor.m0 element=line.l1 terminal=1 mode=0");
+        dss.command("New monitor.m1 element=line.l1 terminal=1 mode=1");
+        dss.command("Set mode=daily number=1 stepsize=1h");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let m0 = dss.monitor_view("m0").expect("m0");
+        assert_eq!(m0.sample_count, 1);
+        assert_eq!(
+            m0.header,
+            vec![
+                "hour", "t(sec)", "V1", "VAngle1", "V2", "VAngle2", "V3", "VAngle3", "I1",
+                "IAngle1", "I2", "IAngle2", "I3", "IAngle3"
+            ]
+        );
+        assert_eq!(m0.dbl_hour, vec![1.0]);
+        // V1, VAngle1, I1, IAngle1 (channels 1,2,7,8 — 0-based 0,1,6,7).
+        assert!(
+            (m0.channels[0][0] - 7199.3564).abs() < 1e-2,
+            "V1 {}",
+            m0.channels[0][0]
+        );
+        assert!(
+            (m0.channels[1][0] - (-0.0025524646)).abs() < 1e-4,
+            "VAng1 {}",
+            m0.channels[1][0]
+        );
+        assert!(
+            (m0.channels[6][0] - 4.8712726).abs() < 1e-4,
+            "I1 {}",
+            m0.channels[6][0]
+        );
+        assert!(
+            (m0.channels[7][0] - (-18.096796)).abs() < 1e-3,
+            "IAng1 {}",
+            m0.channels[7][0]
+        );
+
+        let m1 = dss.monitor_view("m1").expect("m1");
+        assert_eq!(
+            m1.header,
+            vec![
+                "hour", "t(sec)", "S1 (kVA)", "Ang1", "S2 (kVA)", "Ang2", "S3 (kVA)", "Ang3"
+            ]
+        );
+        assert!(
+            (m1.channels[0][0] - 35.070026).abs() < 1e-3,
+            "S1 {}",
+            m1.channels[0][0]
+        );
+        assert!(
+            (m1.channels[1][0] - 18.094244).abs() < 1e-3,
+            "Ang1 {}",
+            m1.channels[1][0]
+        );
+    }
+
+    /// A mode-5 (solution variables) monitor records the per-step solution
+    /// state. Channels 11/12 are wall-clock timings (non-reproducible), so only
+    /// the deterministic 1..10 are checked (oracle dss-python 0.15.7).
+    #[test]
+    fn monitor_mode5_solution_vars() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 pu=1.0");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95");
+        dss.command("New monitor.m5 element=line.l1 terminal=1 mode=5");
+        dss.command("Set mode=daily number=1 stepsize=1h");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let m5 = dss.monitor_view("m5").expect("m5");
+        assert_eq!(m5.sample_count, 1);
+        let v = |i: usize| m5.channels[i][0];
+        assert_eq!(v(2), 15.0); // MaxIterations
+        assert_eq!(v(3), 10.0); // MaxControlIterations
+        assert_eq!(v(4), 1.0); // Converged
+        assert_eq!(v(5), 1.0); // IntervalHrs
+        assert_eq!(v(6), 1.0); // SolutionCount
+        assert_eq!(v(7), 1.0); // Mode = daily (ordinal 1)
+        assert_eq!(v(8), 60.0); // Frequency
+        assert_eq!(v(9), 0.0); // Year
+    }
+
+    /// The header-string modifier paths (±16 sequence / ±32 magnitude / ±64
+    /// pos-seq, residual, VIpolar/Ppolar) match the oracle (dss-python 0.15.7).
+    #[test]
+    fn monitor_header_modifiers() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1");
+        let hdr = |dss: &mut Dss, decl: &str| -> Vec<String> {
+            dss.command(decl);
+            dss.monitor_view("m").expect("m").header
+        };
+        assert_eq!(
+            hdr(
+                &mut dss,
+                "New monitor.m element=line.l1 mode=0 residual=yes"
+            ),
+            vec![
+                "hour", "t(sec)", "V1", "VAngle1", "V2", "VAngle2", "V3", "VAngle3", "VN",
+                "VNAngle", "I1", "IAngle1", "I2", "IAngle2", "I3", "IAngle3", "IN", "INAngle"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=0 residual=no VIPolar=no"),
+            vec![
+                "hour", "t(sec)", "V1.re", "V1.im", "V2.re", "V2.im", "V3.re", "V3.im", "I1.re",
+                "I1.im", "I2.re", "I2.im", "I3.re", "I3.im"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=16 VIPolar=yes"),
+            vec![
+                "hour", "t(sec)", "V0", "VAngle0", "V1", "VAngle1", "V2", "VAngle2", "I0",
+                "IAngle0", "I1", "IAngle1", "I2", "IAngle2"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=32"),
+            vec![
+                "hour",
+                "t(sec)",
+                "|V|1 (volts)",
+                "|V|2 (volts)",
+                "|V|3 (volts)",
+                "|I|1 (amps)",
+                "|I|2 (amps)",
+                "|I|3 (amps)"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=64"),
+            vec!["hour", "t(sec)", "V1", "V1ang", "I1", "I1ang"]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=96"),
+            vec!["hour", "t(sec)", "V", "I"]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=1 PPolar=no"),
+            vec![
+                "hour",
+                "t(sec)",
+                "P1 (kW)",
+                "Q1 (kvar)",
+                "P2 (kW)",
+                "Q2 (kvar)",
+                "P3 (kW)",
+                "Q3 (kvar)"
+            ]
+        );
+    }
+
+    /// A mode-2 monitor records a transformer tap; a wrong element class errors.
+    #[test]
+    fn monitor_mode2_tap_and_class_check() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 pu=1.0");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+        dss.command(
+            "New transformer.t1 phases=3 windings=2 buses=[b2 b3] conns=[wye wye] \
+             kvs=[12.47 4.16] kvas=[1000 1000] xhl=5 tap=1.05",
+        );
+        dss.command("New load.ld1 bus1=b3 phases=3 kv=4.16 kw=100 pf=0.95");
+        dss.command("New monitor.mt element=transformer.t1 terminal=2 mode=2");
+        dss.command("Set mode=daily number=1 stepsize=1h");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let mt = dss.monitor_view("mt").expect("mt");
+        assert_eq!(mt.header, vec!["hour", "t(sec)", "Tap (pu)"]);
+        assert!(
+            (mt.channels[0][0] - 1.05).abs() < 1e-5,
+            "tap {}",
+            mt.channels[0][0]
+        );
+
+        // Mode 2 on a line is rejected (Pascal 663).
+        let mut bad = Dss::new();
+        bad.command("New circuit.t basekv=12.47");
+        bad.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1");
+        bad.command("New monitor.bad element=line.l1 mode=2");
+        assert!(
+            bad.errors()
+                .iter()
+                .any(|e| e.contains("is not a transformer")),
+            "{:?}",
+            bad.errors()
+        );
     }
 
     #[test]

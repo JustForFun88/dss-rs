@@ -123,6 +123,12 @@ pub struct Capacitor {
 }
 
 impl Capacitor {
+    /// Per-step switch states (`States[1..NumSteps]`, 0=open/1=closed). Read by
+    /// mode-6 monitors (`Meters/Monitor.pas` TakeSample).
+    pub fn states(&self) -> &[i32] {
+        &self.fstates
+    }
+
     /// Pascal `TCapacitorObj.Create`.
     pub fn new(name: &str) -> Self {
         let mut cd = CktElementData::new(name, prop::NUM_PROPS);
