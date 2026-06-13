@@ -57,7 +57,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 245, golden_feeders 1,
+cargo test --workspace      # dss-core lib 251, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -913,9 +913,22 @@ reactor,capacitor}.rs`, `elements/pc/load.rs`, `elements/meter/energymeter.rs`,
   Generator/Storage/PVSystem `ResetRegistersAll`/`SampleAll` call sites stay
   deferred (WP6.8 / later), as does the phase-voltage-report demand-interval
   path (Phase 8).
-- +3 exec tests vs the oracle (daily 1→2→3 ramp: Euler kWh/zone/losses,
-  trapezoidal kWh/zone, `Reset Meters` zeroing + drag-hand sentinel). dss-core
-  lib tests 242 → 245.
+
+**WP6.5 audit follow-up — ✅ fixed, gate-green.**
+- **`Reset` (no-arg) now resets controls + clears the event/error log**
+  (`do_reset_cmd`), matching Pascal `DoResetCmd` (ExecHelper.pas l.1537):
+  the no-arg path was previously only resetting monitors + meters, silently
+  skipping `DoResetControls` even though Phase-5 controls exist. Re-uses the
+  already-tested `reset_all_controls`; the `C`/`E` selectors and the
+  unknown-argument error are now wired (`F`/`K` accepted as no-ops — no Fault /
+  KeepList class yet).
+- **Register-coverage tests** added against the oracle to exercise the
+  TakeSample paths the original WP6.5 tests left unvalidated: generator
+  registers (`Accumulate_Gen` sign), sequence-mode loss split, transformer
+  load/no-load split + a 2nd voltage-base bucket, line-overload + radial
+  EEN/UE, voltage-criterion EEN/UE, and the `Reset` controls path
+  (`capacitor_closed` test API). dss-core lib tests 242 → **251**
+  (3 WP6.5 daily-ramp tests + 6 follow-up).
 
 ---
 
