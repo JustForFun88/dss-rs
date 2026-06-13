@@ -1870,20 +1870,36 @@ impl Dss {
     }
 
     /// Pascal `DoResetCmd` (`ExecHelper.pas` l.1527): with no argument, reset
-    /// monitors and meters (faults/controls/logs are later phases); `Monitors`
-    /// or `Meters` selects one target.
+    /// monitors, meters, controls and clear the event/error logs; otherwise the
+    /// first letter selects the target (`MOnitors`/`MEters`/`Controls`/
+    /// `Eventlog`). Faults (`F`) and the topology `KeepList` (`K`) have no class
+    /// in this port yet, so those selectors are accepted as no-ops.
     fn do_reset_cmd(&mut self) {
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars).to_uppercase();
-        let (do_monitors, do_meters) = if param.is_empty() {
-            (true, true)
+        let b = param.as_bytes();
+        // Decode the Pascal `case Param[1] of` dispatch into a set of targets.
+        let (do_monitors, do_meters, do_controls, do_eventlog) = if param.is_empty() {
+            (true, true, true, true)
         } else {
-            // Pascal dispatches on `M`+`O`/`E`; only monitors/meters are ported.
-            let b = param.as_bytes();
-            (
-                b.first() == Some(&b'M') && b.get(1) == Some(&b'O'),
-                b.first() == Some(&b'M') && b.get(1) == Some(&b'E'),
-            )
+            match b.first() {
+                Some(&b'M') => (
+                    b.get(1) == Some(&b'O'),
+                    b.get(1) == Some(&b'E'),
+                    false,
+                    false,
+                ),
+                Some(&b'C') => (false, false, true, false),
+                Some(&b'E') => (false, false, false, true),
+                // `F` (faults) / `K` (keep list) are later-phase classes; accept
+                // the selector without erroring so scripts don't abort.
+                Some(&b'F') | Some(&b'K') => (false, false, false, false),
+                _ => {
+                    self.errors
+                        .push(format!("Unknown argument to Reset Command: \"{param}\""));
+                    return;
+                }
+            }
         };
         let Dss {
             classes,
@@ -1906,6 +1922,13 @@ impl Dss {
         }
         if do_meters {
             crate::solution::meters::reset_all_meters(ckt, env.store);
+        }
+        if do_controls {
+            // Pascal `DoResetControls`: `Reset()` on every enabled control.
+            let _ = crate::solution::controls::reset_all_controls(ckt, &mut env);
+        }
+        if do_eventlog {
+            ckt.solution.event_log.clear();
         }
     }
 
@@ -2362,6 +2385,21 @@ impl Dss {
                 (obj.data().name().to_string(), states)
             })
             .collect()
+    }
+
+    /// Terminal-1 closed flag of a capacitor by name (test API for the `Reset`
+    /// controls path: `CapControl.Reset` drives the bank back to `InitialState`
+    /// via `ControlledElement.Closed[0]`).
+    pub fn capacitor_closed(&self, name: &str) -> Option<bool> {
+        let cls = self
+            .classes
+            .iter()
+            .find(|c| c.props.class_name().eq_ignore_ascii_case("Capacitor"))?;
+        cls.objects
+            .iter()
+            .find(|o| o.data().name().eq_ignore_ascii_case(name))
+            .and_then(|o| o.as_ckt_element())
+            .map(|e| e.cd().all_conductors_closed())
     }
 
     /// CAPI `Circuit_Get_TotalPower`: the sum of every source's terminal-1
@@ -3789,5 +3827,189 @@ mod tests {
         // Drag-hand registers reset to -1e50.
         assert_eq!(meter_reg(&dss, "m1", "Max kW"), -1.0e50);
         assert_eq!(meter_reg(&dss, "m1", "Zone Max kW Losses"), -1.0e50);
+    }
+
+    /// Helper used by the new register tests: build a 3-step daily case from a
+    /// list of `New ...` commands, run it, and return the solved `Dss`. The
+    /// loadshape `ls` (1→2→3) and the daily-mode/trapezoidal-off boilerplate are
+    /// shared; callers pass the topology + `voltagebases`.
+    fn meter_case(decls: &[&str], voltagebases: &str, extra_set: &[&str]) -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New loadshape.ls npts=3 interval=1 mult=(1.0 2.0 3.0)");
+        for d in decls {
+            dss.command(d);
+        }
+        dss.command(&format!("Set voltagebases=[{voltagebases}]"));
+        dss.command("CalcVoltageBases");
+        for s in extra_set {
+            dss.command(s);
+        }
+        dss.command("Set mode=daily number=3 stepsize=1h time=(0,0)");
+        dss.command("Set trapezoidal=no");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    fn approx_meter(dss: &Dss, reg_name: &str, want: f64) {
+        let got = meter_reg(dss, "m1", reg_name);
+        assert!(
+            (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+            "{reg_name}: got {got}, want {want}"
+        );
+    }
+
+    /// A generator in the zone accumulates the Gen registers (`Accumulate_Gen`:
+    /// `−Power[1]·0.001` into the gen totals, *not* the zone-load totals). Oracle
+    /// values for a 500 kW gen on the same 1→2→3 daily ramp.
+    #[test]
+    fn energymeter_generator_registers() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1",
+                "New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls",
+                "New generator.g1 bus1=b2 kV=12.47 kW=500 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &[],
+        );
+        approx_meter(&dss, "Gen kWh", 2999.9974045506274);
+        approx_meter(&dss, "Gen kvarh", -0.0010792012877156054);
+        approx_meter(&dss, "Gen Max kW", 1499.9981626190265);
+        approx_meter(&dss, "Gen Max kVA", 1499.9981626191664);
+        // Zone load is unaffected by the generator (gen has its own totals).
+        approx_meter(&dss, "Zone kWh", 5999.994809101255);
+    }
+
+    /// 3-phase line sequence-mode loss split (`GetSeqLosses`, 3-phase only):
+    /// balanced line ⇒ all loss in the positive/line mode, ~0 zero-mode.
+    #[test]
+    fn energymeter_sequence_mode_losses() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1",
+                "New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &[],
+        );
+        approx_meter(&dss, "Line Mode Line Losses", 9.038717950944614);
+        approx_meter(&dss, "3-phase Line Losses", 9.038717950944731);
+        approx_meter(&dss, "1- and 2-phase Line Losses", 0.0);
+        // Balanced ⇒ zero-sequence loss is numerically ~0 (1e-20).
+        assert!(
+            meter_reg(&dss, "m1", "Zero Mode Line Losses").abs() < 1e-9,
+            "zero-mode loss should be ~0 for a balanced line"
+        );
+    }
+
+    /// A transformer in the zone exercises the load/no-load loss split
+    /// (`GetLosses` override) and the second voltage-base bucket (the 4.16 kV
+    /// secondary, reached via line `l2`). Oracle values.
+    #[test]
+    fn energymeter_transformer_loss_split_and_vbase() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1",
+                "New transformer.t1 windings=2 buses=(b2 b3) conns=(wye wye) \
+                 kvs=(12.47 4.16) kvas=(2000 2000) xhl=5 %loadloss=1 %noloadloss=0.2",
+                "New line.l2 bus1=b3 bus2=b4 length=0.5 r1=0.05 x1=0.05",
+                "New load.ld1 bus1=b4 kV=4.16 kW=1000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47 4.16",
+            &[],
+        );
+        approx_meter(&dss, "Transformer Losses", 85.06511357026721);
+        approx_meter(&dss, "Load Losses kWh", 103.96306991988196);
+        approx_meter(&dss, "No Load Losses kWh", 11.675484334236636);
+        approx_meter(&dss, "Line Losses", 30.57344068385137);
+        // First voltage-base bucket (12.5 kV primary side): transformer split.
+        approx_meter(&dss, "12.5 kV Load Loss", 73.389629);
+        approx_meter(&dss, "12.5 kV No Load Loss", 11.675484);
+        // Second voltage-base bucket (4.16 kV secondary): line l2 losses +
+        // the load energy bucketed by its parent branch's voltage base.
+        approx_meter(&dss, "4.16 kV Line Loss", 21.134364);
+        approx_meter(&dss, "4.16 kV Load Energy", 5999.665065);
+    }
+
+    /// An under-rated line drives the overload registers and the *radial*
+    /// EEN/UE marking (`ExcesskVANorm/Emerg` set `Overload_EEN/UE`, loads marked
+    /// by the degree of overload). Oracle values.
+    #[test]
+    fn energymeter_overload_and_radial_een_ue() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1 normamps=50 emergamps=70",
+                "New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &[],
+        );
+        approx_meter(&dss, "Overload kWh Normal", 2849.1631405361386);
+        approx_meter(&dss, "Overload kWh Emerg", 1985.482037568384);
+        approx_meter(&dss, "Load EEN", 7062.605747589624);
+        approx_meter(&dss, "Load UE", 3616.152913382251);
+    }
+
+    /// A high-impedance line with ample current rating: no line overload, so the
+    /// EEN/UE come from the load's *voltage* criterion (`ExceedsNormal`/
+    /// `Unserved`, `VminNormal`/`VminEmerg` defaults). Oracle values.
+    #[test]
+    fn energymeter_voltage_een_ue() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=2 x1=2 normamps=2000 emergamps=3000",
+                "New load.ld1 bus1=b2 kV=12.47 kW=4000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &["Set normvminpu=0.95 emergvminpu=0.90"],
+        );
+        // No line overload ⇒ overload-energy registers stay 0.
+        approx_meter(&dss, "Overload kWh Normal", 0.0);
+        approx_meter(&dss, "Overload kWh Emerg", 0.0);
+        // EEN/UE come purely from the voltage criterion.
+        approx_meter(&dss, "Load EEN", 28188.694199630165);
+        approx_meter(&dss, "Load UE", 11344.628473647135);
+    }
+
+    /// `Reset` (no argument) must reset controls too (Pascal `DoResetControls`):
+    /// a CapControl that opened its bank during the solve has the bank driven
+    /// back to its `InitialState` (closed) by the reset.
+    #[test]
+    fn reset_command_resets_controls() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1 r1=0.5 x1=1.0");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=50 pf=0.99 model=1");
+        dss.command("New capacitor.c1 bus1=b2 kV=12.47 kvar=600 numsteps=1");
+        // kvar control opens the bank when the sensed kvar is below `offsetting`;
+        // the tiny load keeps it below, so the solve switches the bank OUT.
+        dss.command(
+            "New capcontrol.cc1 element=line.l1 terminal=1 capacitor=c1 \
+             type=kvar ptratio=1 onsetting=200 offsetting=100",
+        );
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        // The control opened the bank during the solve.
+        assert_eq!(
+            dss.capacitor_closed("c1"),
+            Some(false),
+            "control should have opened the bank"
+        );
+        // No-arg Reset must run DoResetControls → bank back to InitialState.
+        dss.command("Reset");
+        assert_eq!(
+            dss.capacitor_closed("c1"),
+            Some(true),
+            "Reset must reset controls (close the bank to InitialState)"
+        );
     }
 }
