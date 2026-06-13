@@ -20,7 +20,7 @@ use crate::elements::general::{
     growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
     xy_curve,
 };
-use crate::elements::pc::{load, vsource};
+use crate::elements::pc::{generator, load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::obj::base::DssObject;
@@ -444,6 +444,10 @@ impl ElemStore for ClassStore<'_> {
         self.classes[r.cls].objects[r.idx].as_ref()
     }
 
+    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
+        self.classes[r.cls].objects[r.idx].as_mut()
+    }
+
     fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
         assert_ne!((a.cls, a.idx), (b.cls, b.idx), "pair_mut: aliasing refs");
         if a.cls == b.cls {
@@ -690,6 +694,11 @@ impl Dss {
                 cap_control::class_props(&enums),
                 |name| Box::new(cap_control::CapControl::new(name)),
                 ElemKind::Control,
+            ),
+            DssClass::ckt_class(
+                generator::class_props(&enums),
+                |name| Box::new(generator::Generator::new(name)),
+                ElemKind::Generator,
             ),
         ];
         let class_by_name = classes
@@ -1255,6 +1264,10 @@ impl Dss {
             }
             if cd.yprim_invalid && cd.enabled {
                 ckt.solution.system_y_changed = true;
+            }
+            if cd.signal_reset_solution_initialized {
+                cd.signal_reset_solution_initialized = false;
+                ckt.solution.solution_initialized = false;
             }
         }
 
@@ -2524,6 +2537,89 @@ mod tests {
         }
         // Iteration count reported like the oracle's Solution.Iterations.
         assert!(ckt.solution.iteration >= 2);
+    }
+
+    /// Generator model 1 (constant PQ) injects negative load: a 100 kW / pf
+    /// 0.95 generator delivers −33.333 kW, −10.956 kvar per phase (oracle
+    /// dss-python 0.15.7, stiff source + short line).
+    #[test]
+    fn generator_model1_pq_snapshot() {
+        let mut dss = Dss::new();
+        dss.command(
+            "New circuit.t1 basekv=12.47 bus1=sourcebus pu=1.0 \
+             r1=0 x1=0.0001 r0=0 x0=0.0001",
+        );
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=genbus length=1 \
+             r1=0.01 x1=0.01 r0=0.01 x0=0.01 c1=0 c0=0",
+        );
+        dss.command("New Generator.g1 bus1=genbus kV=12.47 kW=100 PF=0.95 model=1 conn=wye");
+        dss.command("Set controlmode=off");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert!(dss.circuit().unwrap().is_solved);
+
+        let snap = dss.snapshot_elements();
+        let g = snap
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("Generator.g1"))
+            .expect("generator snapshot");
+        for ph in 0..3 {
+            assert!(
+                (g.powers[2 * ph] - (-33.333333)).abs() < 1e-3,
+                "phase {ph} P {}",
+                g.powers[2 * ph]
+            );
+            assert!(
+                (g.powers[2 * ph + 1] - (-10.956137)).abs() < 1e-3,
+                "phase {ph} Q {}",
+                g.powers[2 * ph + 1]
+            );
+        }
+    }
+
+    /// Generator model 3 (constant P, |V|) exercises the DQDV var-control
+    /// machinery (`SetGeneratordQdV`): a 300 kW PV generator holds |V| ≈ 1 pu
+    /// and absorbs/produces vars to do it, landing at −100.003 kW, −64.728
+    /// kvar per phase (oracle dss-python 0.15.7).
+    #[test]
+    fn generator_model3_pv_snapshot() {
+        let mut dss = Dss::new();
+        dss.command(
+            "New circuit.t1 basekv=12.47 bus1=sourcebus pu=1.0 \
+             r1=0 x1=0.0001 r0=0 x0=0.0001",
+        );
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=genbus length=1 \
+             r1=0.05 x1=0.10 r0=0.05 x0=0.10 c1=0 c0=0",
+        );
+        dss.command("New Load.ld1 bus1=genbus kV=12.47 kW=500 PF=0.9 conn=wye model=1");
+        dss.command(
+            "New Generator.g1 bus1=genbus kV=12.47 kW=300 model=3 conn=wye \
+             Vpu=1.0 maxkvar=200 minkvar=-200",
+        );
+        dss.command("Set controlmode=off");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert!(dss.circuit().unwrap().is_solved);
+
+        let snap = dss.snapshot_elements();
+        let g = snap
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("Generator.g1"))
+            .expect("generator snapshot");
+        for ph in 0..3 {
+            assert!(
+                (g.powers[2 * ph] - (-100.00275)).abs() < 1e-2,
+                "phase {ph} P {}",
+                g.powers[2 * ph]
+            );
+            assert!(
+                (g.powers[2 * ph + 1] - (-64.7282)).abs() < 1e-2,
+                "phase {ph} Q {}",
+                g.powers[2 * ph + 1]
+            );
+        }
     }
 
     /// Parse the single number a `?` scalar query returns.

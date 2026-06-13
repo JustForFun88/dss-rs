@@ -245,6 +245,12 @@ pub struct EnumRegistry {
     pub t_shape_action: EnumId,
     /// 'PriceShape: Action' (PriceShape.pas `ActionEnum`).
     pub price_shape_action: EnumId,
+    /// 'Generator: Dispatch Mode' (generator.pas `GenDispModeEnum`).
+    pub gen_disp_mode: EnumId,
+    /// 'Generator: Status' (generator.pas `GenStatusEnum`).
+    pub gen_status: EnumId,
+    /// 'Generator: Model' (generator.pas `GenModelEnum`).
+    pub gen_model: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -581,6 +587,47 @@ impl EnumRegistry {
             &[0, 1],
         ));
 
+        // generator.pas TGenerator.Create: GenDispModeEnum / GenStatusEnum /
+        // GenModelEnum.
+        let mut gdm = DssEnum::new(
+            "Generator: Dispatch Mode",
+            true,
+            1,
+            1,
+            &["Default", "LoadLevel", "Price"],
+            &[0, 1, 2],
+        );
+        gdm.default_value = 0;
+        let gen_disp_mode = push(gdm);
+
+        let mut gst = DssEnum::new(
+            "Generator: Status",
+            true,
+            1,
+            1,
+            &["Variable", "Fixed"],
+            &[0, 1],
+        );
+        gst.default_value = 0;
+        let gen_status = push(gst);
+
+        let gen_model = push(DssEnum::new(
+            "Generator: Model",
+            true,
+            0,
+            0,
+            &[
+                "Constant PQ",
+                "Constant Z",
+                "Constant P|V|",
+                "Constant P, fixed Q",
+                "Constant P, fixed X",
+                "User model",
+                "Approximate inverter model",
+            ],
+            &[1, 2, 3, 4, 5, 6, 7],
+        ));
+
         Self {
             enums,
             units: units_id,
@@ -607,6 +654,9 @@ impl EnumRegistry {
             load_shape_interp,
             t_shape_action,
             price_shape_action,
+            gen_disp_mode,
+            gen_status,
+            gen_model,
         }
     }
 

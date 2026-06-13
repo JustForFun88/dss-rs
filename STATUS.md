@@ -10,7 +10,8 @@
 Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
 (`10d3550`); on branch `phase-6-meters-topology`. Execution plan:
 **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/Generator,
-8500-node gate). Done so far: **WP6.1 (topology foundations)** — see §1d.
+8500-node gate). Done so far: **WP6.1 (topology foundations), WP6.2
+(Generator)** — see §1d.
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -49,7 +50,7 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1 done; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.2 done; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
@@ -685,6 +686,51 @@ Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
   build has its own loop; port them with `Circuit.GetTopology` when a
   consumer lands. dss-core lib tests 212 → 219.
 
+**WP6.2 — Generator — ✅ done, gate-green.** Files:
+- `elements/pc/generator.rs` (new): `TGeneratorObj` power-flow port (scope
+  PHASE6_PLAN §2.5). Full 44-prop table + spectrum/basefreq/enabled tails;
+  ctor defaults (kW=1000, kvar=60, kV=12.47, Vbase=7200 L-N, kVArating=
+  kW·1.2, puXd/Xdp/Xdpp=1/0.28/0.20, Vminpu/max=0.90/1.10, PVFactor=0.1,
+  pctReserve=20); `SetNominalGeneration` (dispatch ON/OFF via
+  GeneratorDispatchReference/PriceSignal, OFF → tiny −0.1·kW/nphases
+  resistive load; mode-dispatch shape mults; Yeq/Yeq95/Yeq105; model-3 var
+  clamp; model-7 PhaseCurrentLimit); `RecalcElementData`; `CalcYPrim`/
+  `CalcYPrimMatrix` (negate Yeq for generation, model-3 only 1% in Yprim,
+  wye/delta); **all six power-flow models** `DoConstantPQGen`/`DoConstantZGen`/
+  `DoPVTypeGen`/`DoFixedQGen`/`DoFixedQZGen`/`DoCurrentLimitedPQ` (model 7,
+  incl. ForceBalanced pos-seq via `SymComp`); `StickCurrInTerminalArray`
+  (signs **reversed** from Load — generator injects); `InjCurrents`/
+  `GetTerminalCurrents`; the kW/PF/kvar/kVA/MVA web (`SyncUpPowerQuantities`/
+  `SetkWkvar`/`side_effect_kvar`, `kVANotSet`); 6 energy registers +
+  `TakeSample`/`Integrate`/`SetDragHandRegister`/`CheckOnFuel`; the model-3
+  DQDV trio (`InitDQDVCalc`/`CalcDQDV`/`ResetStartPoint`). UserModel/UserData/
+  ShaftModel/ShaftData/DynamicEq/DynOut are `NOT_PORTED` (no DLLs / dynamics →
+  Phase 7) — stored + dumped, setting them is a hard parse error. Model 6
+  (user DLL) records error 567 at solve.
+- `obj/dss_enum.rs`: `gen_disp_mode`/`gen_status`/`gen_model` enums.
+- `circuit/circuit.rs`: `ElemKind::Generator` (joins PC list +
+  `generators` list), `generator_dispatch_reference` field.
+- `elements/traits.rs` `SysCtx`: `gen_multiplier`/`generator_dispatch_reference`/
+  `price_signal`; `ElemStore::obj_mut`. `elements/ckt.rs`:
+  `signal_reset_solution_initialized` (model-3 edit → `SolutionInitialized:=
+  FALSE`, propagated in `exec::edit_active`).
+- `solution/solution.rs`: `SetGeneratorDispRef` (per-mode dispatch ref, run at
+  `solve_snap` head) + `SetGeneratordQdV` (model-3 DQDV from the system-Y
+  diagonal via new `Solution::system_matrix_element`, then a re-init zero-load
+  snapshot), wired into `DoPFLOWsolution` where the Phase-3 stub had been.
+- Registered in `exec::Dss::new`. Tests: 7 inline (`set_nominal_generation`
+  scalars, kW/PF/kVA web, OFF state, delta nconds, fixed status, TakeSample)
+  + 2 exec integration (`generator_model1_pq_snapshot`,
+  `generator_model3_pv_snapshot` — the latter exercises the DQDV path),
+  numbers transcribed from the oracle. `gen_props.py`: 8 Generator scenarios
+  (default, kW/PF, kW/kvar delta, model-3 PV, kVA, fuel, status/dispatch,
+  makelike) → `props.json` regenerated; `props_roundtrip` green. dss-core lib
+  tests 219 → 228.
+
+  Class-level `SampleAll`/`ResetRegistersAll` sweeps + the solution-loop
+  sample call sites are deferred to WP6.5 (they belong with the EnergyMeter
+  hook wiring); `TakeSample` itself is ported and unit-tested now.
+
 ---
 
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
@@ -868,7 +914,7 @@ this environment; the `py` launcher is broken — use `python` directly.
 ## 7. Current frontier — Phase 6
 
 Executing `PHASE6_PLAN.md` on branch `phase-6-meters-topology`.
-Done: WP6.1 (topology foundations). Next: WP6.2 (Generator), WP6.3
+Done: WP6.1 (topology foundations), WP6.2 (Generator). Next: WP6.3
 (MeterElement + Monitor), WP6.4/6.5 (EnergyMeter zones + registers),
 WP6.6 (reliability), WP6.7 (Sensor), WP6.8 (GenDispatcher + skeletons),
 WP6.9 (goldens + 8500-node gate), WP6.10 (exit).

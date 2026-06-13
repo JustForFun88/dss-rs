@@ -805,6 +805,60 @@ SCENARIOS = [
             "New CapControl.cc1 like=base capacitor=cap2",
         ],
     },
+    {
+        "name": "generator_default",
+        "target": "Generator.g1",
+        "commands": ["New Generator.g1 bus1=genbus"],
+    },
+    {
+        "name": "generator_kw_pf",
+        "target": "Generator.g1",
+        "commands": ["New Generator.g1 bus1=genbus kV=12.47 kW=250 pf=0.9 model=1"],
+    },
+    {
+        "name": "generator_kw_kvar_delta",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus phases=3 kV=4.16 kW=500 kvar=100 conn=delta",
+        ],
+    },
+    {
+        "name": "generator_model3_pv",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus kV=12.47 kW=300 model=3 "
+            "vpu=1.02 maxkvar=150 minkvar=-150 pvfactor=0.15",
+        ],
+    },
+    {
+        "name": "generator_kva",
+        "target": "Generator.g1",
+        "commands": ["New Generator.g1 bus1=genbus kV=12.47 kW=100 kVA=150"],
+    },
+    {
+        "name": "generator_fuel",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus kV=12.47 kW=100 "
+            "usefuel=yes fuelkwh=5000 %fuel=80 %reserve=15",
+        ],
+    },
+    {
+        "name": "generator_status_dispatch",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus kV=12.47 kW=200 pf=0.95 "
+            "status=fixed dispmode=loadlevel dispvalue=0.8 forceon=yes",
+        ],
+    },
+    {
+        "name": "generator_makelike",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.base bus1=gb kV=12.47 kW=400 pf=0.92 model=3 conn=delta",
+            "New Generator.g1 like=base bus1=gb2",
+        ],
+    },
 ]
 
 
