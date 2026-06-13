@@ -12,7 +12,8 @@ Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
 **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/Generator,
 8500-node gate). Done so far: **WP6.1 (topology foundations), WP6.2
 (Generator), WP6.3 (MeterElement + Monitor), WP6.4 (EnergyMeter + zone
-build)** — see §1d.
+build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6 (reliability:
+fault-rate sweep + `RelCalc`)** — see §1d.
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -51,13 +52,13 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.5 done; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.6 done; `PHASE6_PLAN.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 251, golden_feeders 1,
+cargo test --workspace      # dss-core lib 253, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
@@ -929,6 +930,37 @@ reactor,capacitor}.rs`, `elements/pc/load.rs`, `elements/meter/energymeter.rs`,
   EEN/UE, voltage-criterion EEN/UE, and the `Reset` controls path
   (`capacitor_closed` test API). dss-core lib tests 242 → **251**
   (3 WP6.5 daily-ramp tests + 6 follow-up).
+
+---
+
+**WP6.6 — Reliability: fault-rate sweep + `RelCalc` — ✅ done, gate-green.**
+Files: `solution/meters.rs` (`calc_all_reliability_indices` /
+`calc_reliability_indices`), `elements/traits.rs` (`ReliabilityData` +
+`CktElement::reliability_data`), `elements/pd/{line,transformer,capacitor,
+reactor}.rs` (`CalcFltRate` overrides), `elements/ckt.rs` (PD reliability
+accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
+`TDSSBus` field), `elements/meter/energymeter.rs` (source getters +
+`set_reliability_results`), `exec/mod.rs` (`RelCalc` cmd ord. 100 →
+`do_relcalc_cmd`).
+- Ports `TPDElement.CalcFltRate`/`AccumFltRate`/`CalcNum_Int`/
+  `CalcCustInterrupts`/`ZeroReliabilityAccums`, `TLineObj.CalcFltRate`
+  (× `Len`), and `TEnergyMeterObj.CalcReliabilityIndices` (EnergyMeter.pas
+  l.2411) 1:1, plus `DoLambdaCalcs` (the per-circuit driver: zero all buses,
+  loop meters; `AssumeRestoration` is the single positional yes/no param).
+- **Decision (user-confirmed): "faithful port, dormant math".** OCP devices
+  (Relay/Recloser/Fuse) are Phase 7, so `Flg.HasOCPDevice` is never set →
+  `SectionCount` stays 0 → `RelCalc` aborts with **error 52902 exactly like
+  the oracle** (dss-python raises `DSSException (#52902)` on the same feeder).
+  The section-array / SAIFI / SAIDI / CAIDI math below the abort is ported
+  verbatim but is unreachable until Phase 7 (`GetOCPDeviceType` inlined to 0
+  for now). The backward fault-rate sweep + customer rollup *do* run before
+  the abort, so the bus/branch accumulators are populated and testable.
+- Oracle pin: probed `relcalc` on a 2-section radial feeder → `#52902` (no
+  per-branch reliability getters exist in the COM API, so the dormant indices
+  can't be golden-pinned until OCP devices land). 2 new tests: the 52902
+  abort + the hand-computed backward-sweep accumulators
+  (`BranchFltRate = FaultRate·pctperm·0.01·Len`; `AccumulatedBrFltRate` roll-up;
+  `BusTotalNumCustomers`). dss-core lib 251 → **253**.
 
 ---
 

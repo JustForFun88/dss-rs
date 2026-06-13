@@ -149,6 +149,18 @@ pub struct CktElementData {
     /// `TPDElement.Overload_UE`: degree of emergency-rating overload, set as a
     /// side effect of `excess_kva_emerg`.
     pub overload_ue: f64,
+
+    // --- Reliability accumulators (Pascal `TPDElement` l.32-48), written by
+    // --- the EnergyMeter reliability sweep (`CalcReliabilityIndices`). Inert
+    // --- on non-PD elements (never appear in a meter `SequenceList`).
+    /// `BranchFltRate`: net failure rate for this branch (`CalcFltRate`).
+    pub branch_flt_rate: f64,
+    /// `AccumulatedBrFltRate`: failure rate accumulated to this branch.
+    pub accumulated_br_flt_rate: f64,
+    /// `AccumulatedMilesDownStream`: total line miles downstream of this branch.
+    pub accumulated_miles_downstream: f64,
+    /// `BranchSectionID`: feeder section this branch belongs to.
+    pub branch_section_id: i32,
 }
 
 impl CktElementData {
@@ -193,6 +205,10 @@ impl CktElementData {
             branch_total_customers: 0,
             overload_een: 0.0,
             overload_ue: 0.0,
+            branch_flt_rate: 0.0,
+            accumulated_br_flt_rate: 0.0,
+            accumulated_miles_downstream: 0.0,
+            branch_section_id: 0,
         }
     }
 

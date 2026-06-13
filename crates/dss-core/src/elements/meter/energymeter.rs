@@ -315,6 +315,29 @@ impl EnergyMeter {
     pub fn zone_pce(&self) -> &[ElemRef] {
         &self.zone_pce
     }
+    /// `Source_NumInterruptions` (annual interruptions of the upline circuit).
+    pub fn source_num_interruptions(&self) -> f64 {
+        self.source_num_interruptions
+    }
+    /// `Source_IntDuration` (average interruption duration of upline circuit).
+    pub fn source_int_duration(&self) -> f64 {
+        self.source_int_duration
+    }
+    /// Write back the reliability indices computed by `CalcReliabilityIndices`.
+    pub(crate) fn set_reliability_results(
+        &mut self,
+        saifi: f64,
+        saifi_kw: f64,
+        saidi: f64,
+        caidi: f64,
+        cust_interrupts: f64,
+    ) {
+        self.saifi = saifi;
+        self.saifi_kw = saifi_kw;
+        self.saidi = saidi;
+        self.caidi = caidi;
+        self.cust_interrupts = cust_interrupts;
+    }
     /// `ZoneEndsList` resolved to the branch elements (Pascal `AllEndElements`).
     pub fn zone_end_elements(&self) -> Vec<ElemRef> {
         self.zone_ends.iter().map(|&(r, _)| r).collect()

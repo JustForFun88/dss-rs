@@ -35,6 +35,9 @@ pub struct Bus {
     pub bus_flt_rate: f64,
     /// `Bus_Num_Interrupt`: interruptions at this bus per year.
     pub bus_num_interrupt: f64,
+    /// `Bus_Int_Duration`: average annual interruption duration for this bus.
+    /// (Not cleared by `ZeroReliabilityAccums`, matching Pascal.)
+    pub bus_int_duration: f64,
     /// `BusCustInterrupts`: accumulated customer interruptions.
     pub bus_cust_interrupts: f64,
     /// `BusCustDurations`: accumulated customer outage durations.
@@ -66,6 +69,7 @@ impl Bus {
             // FPC zero-initializes the class fields the ctor doesn't touch.
             bus_flt_rate: 0.0,
             bus_num_interrupt: 0.0,
+            bus_int_duration: 0.0,
             bus_cust_interrupts: 0.0,
             bus_cust_durations: 0.0,
             bus_total_num_customers: 0,

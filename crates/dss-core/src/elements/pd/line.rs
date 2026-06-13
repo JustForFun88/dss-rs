@@ -9,7 +9,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_code::LineCodeObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -367,6 +367,17 @@ impl CktElement for Line {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys.positive_sequence);
+    }
+
+    /// Pascal `TLineObj.CalcFltRate` (l.1129): the base rate scaled by line
+    /// length (`Faultrate · pctperm · 0.01 · Len`, faultrate in per-unit-length
+    /// terms). `MilesThisLine` is maintained by the length/units side effects.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData {
+            branch_flt_rate: self.fault_rate * self.pct_perm * 0.01 * self.len,
+            hrs_to_repair: self.hrs_to_repair,
+            miles_this_line: self.miles_this_line,
+        }
     }
 
     fn norm_amps(&self) -> f64 {
