@@ -187,7 +187,7 @@ fn make_meter_zone_lists(
     adj: &BusAdjLists,
 ) {
     // Peek the meter's parse-time state.
-    let (enabled, metered_element, metered_terminal, defined_zone_list) = {
+    let (enabled, metered_element, metered_terminal, defined_zone_list, assume_restoration) = {
         let em = store
             .obj(meter_ref)
             .as_any()
@@ -198,6 +198,7 @@ fn make_meter_zone_lists(
             em.metered_element(),
             em.metered_terminal() as usize,
             em.defined_zone_list().to_vec(),
+            em.assume_restoration(),
         )
     };
     // `DefinedZoneList.Count = 0` selects the automatic (connectivity) walk;
@@ -482,7 +483,7 @@ fn make_meter_zone_lists(
     // ****************  END MAIN LOOP *****************************
 
     // Pascal `TotalUpDownstreamCustomers`: backward sweep summing customers.
-    total_up_downstream_customers(&sequence_list, store);
+    total_up_downstream_customers(&sequence_list, assume_restoration, store);
 
     // `GetPCEatZone`: the zone PC elements in BranchList order.
     let mut zone_pce: Vec<ElemRef> = Vec::new();
@@ -508,7 +509,11 @@ fn make_meter_zone_lists(
 /// Pascal `TEnergyMeterObj.TotalUpDownstreamCustomers` (l.1693): backward sweep
 /// over the sequence list (end branches first) summing `BranchNumCustomers`
 /// into `BranchTotalCustomers` and up each parent link.
-fn total_up_downstream_customers(sequence_list: &[ElemRef], store: &mut dyn ElemStore) {
+fn total_up_downstream_customers(
+    sequence_list: &[ElemRef],
+    assume_restoration: bool,
+    store: &mut dyn ElemStore,
+) {
     // Init totals + clear the Checked flag.
     for &r in sequence_list {
         let cd = store.ckt_elem_mut(r).cd_mut();
@@ -516,13 +521,15 @@ fn total_up_downstream_customers(sequence_list: &[ElemRef], store: &mut dyn Elem
         cd.branch_total_customers = 0;
     }
     for &r in sequence_list.iter().rev() {
-        let (already, num, parent, total) = {
+        let (already, num, parent, total, has_ocp, has_auto) = {
             let cd = store.ckt_elem(r).cd();
             (
                 cd.flags.contains(ElemFlags::CHECKED),
                 cd.branch_num_customers,
                 cd.parent_pd,
                 cd.branch_total_customers,
+                cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+                cd.flags.contains(ElemFlags::HAS_AUTO_OCP_DEVICE),
             )
         };
         if already {
@@ -534,9 +541,13 @@ fn total_up_downstream_customers(sequence_list: &[ElemRef], store: &mut dyn Elem
             cd.flags.include(ElemFlags::CHECKED);
             cd.branch_total_customers = new_total;
         }
-        // Phase 6 has no OCP devices, so the AssumeRestoration guard never
-        // trips — always roll up into the parent.
-        if let Some(p) = parent {
+        // Roll up into the parent unless this is an automatic OCP device and we
+        // are assuming restoration (then downstream customers are restored and
+        // not counted upstream). OCP devices are Phase 7, so `has_ocp` is never
+        // set today and this always rolls up — but the guard is now faithful.
+        if let Some(p) = parent
+            && !(has_ocp && assume_restoration && has_auto)
+        {
             store.ckt_elem_mut(p).cd_mut().branch_total_customers += new_total;
         }
     }
@@ -1029,6 +1040,9 @@ pub(crate) fn calc_all_reliability_indices(
     let mut errors = Vec::new();
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
+        // Pascal `pMeter.AssumeRestoration := AssumeRestoration` before the calc;
+        // the field is also read by the next zone build's customer roll-up.
+        downcast_meter(store, meter_ref).set_assume_restoration(assume_restoration);
         if let Err(e) = calc_reliability_indices(meter_ref, assume_restoration, ckt, store) {
             errors.push(e);
         }
@@ -1202,8 +1216,10 @@ fn calc_reliability_indices(
         s.sum_branch_flt_rates += to_num_int * branch_flt;
         s.sum_flt_rates_x_repair_hrs += to_num_int * branch_flt * rel.hrs_to_repair;
         if has_ocp {
-            // GetOCPDeviceType: fuse=1/recloser=2/relay=3 — the OCP control
-            // classes land in Phase 7, so this is unreachable today.
+            // TODO(WP7): GetOCPDeviceType returns fuse=1/recloser=2/relay=3 from
+            // the control device at this branch. The Relay/Recloser/Fuse classes
+            // land in Phase 7; until then `has_ocp` is never set so this whole
+            // block is unreachable and the hardcoded 0 cannot be observed.
             s.ocp_device_type = 0;
             s.seq_index = 0;
             s.total_customers = branch_total;
