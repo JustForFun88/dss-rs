@@ -3,8 +3,53 @@
  "cases": [
   {
    "path": "Test/IndMachTest.DSS",
-   "tag": "missing_data_file",
+   "tag": "missing_data_file=WPWind2400.csv",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/IndMachTest.DSS failed: Some(\"DSSException: (#613) Error opening file: \\\"WPWind2400.csv\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Test\\\\IndMachTest.DSS\\\", line: 35]\")"
+  },
+  {
+   "path": "Test/Run_SimpleStorageTest-1ph.DSS",
+   "tag": "missing_data_file=SimpleStorageTest-1ph.DSS",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/Run_SimpleStorageTest-1ph.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Test\\\\SimpleStorageTest-1ph.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
+  },
+  {
+   "path": "Test/Run_SimpleStorageTest.DSS",
+   "tag": "missing_data_file=SimpleStorageTest.DSS",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/Run_SimpleStorageTest.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Test\\\\SimpleStorageTest.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/RunVplot_ckt5.dss",
+   "tag": "missing_data_file=Master.dss",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/RunVplot_ckt5.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Master.dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8\\\\Dist"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss",
+   "tag": "missing_data_file=Master_ckt5.dss",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Program Files\\\\OpenDSS\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss",
+   "tag": "missing_data_file=IEEELineCodes.DSS",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"../../IEEETestCases/IEEELineCodes.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\c"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS",
+   "tag": "missing_data_file=Loadshape5a.DSS",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Loadshape5a.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss",
+   "tag": "missing_data_file=@loadshape_script_dss",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss failed: Some(\"DSSException: (#242) Redirect file not found: \\\"@loadshape_script_dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss",
+   "tag": "missing_data_file=Master_ckt5.dss",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"..\\\\..\\\\Distrib\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\\\RustPr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS",
+   "tag": "missing_data_file=IEEE123Master.dss",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\opendss\\\\IEEETestCases\\\\123Bus\\\\IEEE123Master.dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tes"
   }
  ]
 }

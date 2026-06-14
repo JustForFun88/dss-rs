@@ -74,11 +74,20 @@ def main() -> None:
     dss_files = sorted(DST.rglob("*.dss"))
     texts = {f: read_text(f) for f in dss_files}
 
-    # Mark every file that is redirected/compiled by some other file.
+    # Map every file to the masters that redirect/compile it (its referrers).
     referenced: set[Path] = set()
+    referrers: dict[Path, list[Path]] = {}
     for f, text in texts.items():
         for t in redirect_targets(f, text):
             referenced.add(t)
+            referrers.setdefault(t, []).append(f)
+
+    def referrer_note(f: Path) -> str:
+        refs = sorted(r.relative_to(DST).as_posix() for r in referrers.get(f, []))
+        if not refs:
+            return "not referenced by any master (orphan fragment / data include)"
+        shown = ", ".join(refs[:4])
+        return f"included by: {shown}" + (f" (+{len(refs) - 4} more)" if len(refs) > 4 else "")
 
     needs_investigation = []
     not_entry = []
@@ -96,13 +105,17 @@ def main() -> None:
                     "note": "auto-seeded entry-point candidate; verify on both engines",
                 }
             )
-        else:
+        elif has_redir:
             not_entry.append(
                 {
                     "path": rel,
-                    "tag": "include_assembler" if has_redir else "include_fragment",
-                    "note": "auto-seeded; redirected/compiled by a master or a pure fragment",
+                    "tag": "include_assembler",
+                    "note": f"redirects/compiles other files; {referrer_note(f)}",
                 }
+            )
+        else:
+            not_entry.append(
+                {"path": rel, "tag": "include_fragment", "note": referrer_note(f)}
             )
 
     def write(name: str, cases: list, comment: str) -> None:
