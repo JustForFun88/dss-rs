@@ -74,6 +74,37 @@ Field-specific points:
   position is the exact `tap_number` check; the float is 1e-12 rel. Shared with
   `golden_feeders_controls.rs` / `golden_phase5.rs`.
 
+## Live corpus gate (`corpus_live.rs` / `tools/oracle/oracle_server.py`)
+
+The opt-in live gate (CORPUS_TEST_PLAN.md) reuses this gate's comparison layer
+and tolerance classes verbatim (`harness::{compare_system_y, compare_yprim,
+compare_injection, compare_element, compare_discrete}`, `harness::tol_for`), so
+the policy above applies unchanged. Two gate-specific points:
+
+- **Full Y, every case — no fingerprint substitution.** Unlike the checkpoint
+  goldens (which store only a fingerprint for large feeders to keep the committed
+  file small), the live gate compares the **full** assembled Y entry-by-entry for
+  every case (nothing is stored, so size is irrelevant). The fingerprint is still
+  checked as a cheap additional guard. There is no exception to the full Y / full
+  voltage / full current comparison.
+
+- **Element set compared for equality.** The gate asserts the Rust and oracle
+  element name sets are identical (case-insensitive) before comparing each
+  element's currents/powers, so an element present on only one side is a failure,
+  never a silent omission. Control elements (RegControl, …) carry empty terminal
+  arrays on both sides and compare trivially.
+
+- **Monitors / EnergyMeter registers / zones — not yet compared in this gate
+  (documented).** No `solvable_now` case defines a monitor or meter today (the
+  promoted cases are snapshots), so there is nothing to compare here yet; and
+  their fidelity against the same pinned oracle is already pinned by
+  `golden_phase6.rs` (monitor channels — including the mode-5 wall-clock-channel
+  skip — and meter registers/zone counts) and the per-step `golden_checkpoints.rs`
+  model. They will be added to `corpus_live.rs` (reusing `Dss::meter_registers` /
+  `meter_zone` / `monitor_view`) when the first metered/monitored multi-step case
+  is promoted into `solvable_now`. The full Y / voltage / current / power / YPrim /
+  injection / discrete comparison has **no** such exception.
+
 ## Pre-existing exceptions in other gates
 
 - **Property dumps — abs floor 1e-9 (`golden_feeders_controls.rs`).** A few

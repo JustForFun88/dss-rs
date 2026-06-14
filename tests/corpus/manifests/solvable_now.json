@@ -1,0 +1,85 @@
+{
+ "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[].",
+ "cases": [
+  {
+   "path": "Test/CapacitorConfigs.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/LoadTest.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/Master_TestCapInterface.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/ReactorConfigs.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/Stevenson.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/XYCurvetest.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/VSConverter/SG2012.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  }
+ ]
+}

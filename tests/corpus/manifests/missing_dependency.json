@@ -1,0 +1,10 @@
+{
+ "comment": "Entry points referencing a data file absent from the copy (corpus integrity gap).",
+ "cases": [
+  {
+   "path": "Test/IndMachTest.DSS",
+   "tag": "missing_data_file",
+   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/IndMachTest.DSS failed: Some(\"DSSException: (#613) Error opening file: \\\"WPWind2400.csv\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Test\\\\IndMachTest.DSS\\\", line: 35]\")"
+  }
+ ]
+}

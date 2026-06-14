@@ -211,7 +211,7 @@ def run_steps(
     Y fingerprint (large feeders). Returns (node_order, checkpoints)."""
     d.Text.Command = "clear"
     if master is not None:
-        master_abs = (REPO_ROOT / ".inputs" / "electricdss-tst" / master).resolve()
+        master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / master).resolve()
         if not master_abs.is_file():
             sys.exit(f"master not found: {master_abs}")
         d.Text.Command = f'Compile "{master_abs}"'
@@ -284,7 +284,7 @@ def scenario_ieee13_daily(d) -> dict:
     }
 
 
-# IEEE 123-Bus master, relative to .inputs/electricdss-tst (compiled by the
+# IEEE 123-Bus master, relative to tests/corpus/electricdss-tst (compiled by the
 # harness, like golden_feeders_controls.rs).
 IEEE123_MASTER = "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss"
 

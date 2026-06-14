@@ -77,7 +77,8 @@ fn load_golden() -> Golden {
 fn ieee8500_matches_oracle() {
     let golden = load_golden();
     let master = repo_root()
-        .join(".inputs")
+        .join("tests")
+        .join("corpus")
         .join("electricdss-tst")
         .join(&golden.master);
     assert!(
