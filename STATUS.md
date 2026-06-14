@@ -26,9 +26,11 @@ foundations), WP6.2 (Generator), WP6.3 (MeterElement + Monitor), WP6.4
 WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
 basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see §1d.
 **Phase 7 IN PROGRESS** — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch
-`phase-7-extended-elements` cut from `main`; **WP7.1 (line constants & geometry)
-next** (DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
-§Phase 7, the largest phase ~18%).
+`phase-7-extended-elements` cut from `main`; **WP7.1 step 1 done** (the Carson
+line-constants engine `support/line_constants/`, oracle-pinned, gate-green,
+uncommitted — see §1e); **WP7.1 step 2 (catalog classes) next** (DER, protection,
+line constants, harmonics, dynamics; PORTING_PLAN.md §Phase 7, the largest phase
+~18%).
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -1443,6 +1445,52 @@ holes; all fixed and verified:
 
 ---
 
+## 1e. Phase 7 record (branch `phase-7-extended-elements`) — IN PROGRESS
+
+Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small step
+→ full gate → update this file → stop for confirmation.
+
+**WP7.1 step 1 — Carson line-constants engine — ✅ done, gate-green (uncommitted).**
+- `src/support/line_constants/mod.rs` (`LineConstants` = Pascal `TLineConstants`,
+  `General/LineConstants.pas`) + `oh.rs` (`OhLineConstants`, a plain alias — the
+  Pascal `TOHLineConstants` adds nothing over the base). Pure Carson math engine
+  beside the other `support/` helpers; reuses `support/cmatrix.rs` (Kron, invert),
+  `support/line_units.rs` (unit conversion), `support/mathutil.rs`
+  (`bessel_i0`/`bessel_i1` for the DERI skin-effect `Zint`). 0-based conductor
+  indices.
+- Ported verbatim: `Calc(f, EarthModel)` (self/mutual Z, the P→invert→Yc path),
+  `Get_Zint` (SimpleCarson/FullCarson no-skin vs DERI Bessel skin effect),
+  `Get_Ze` (all three earth models — SimpleCarson, FullCarson Tleis series, DERI
+  complex earth factor `Fme`), `Kron`/`Reduce` (eliminate-last-row reduction +
+  top-left Yc extraction), the unit-converting `z_matrix`/`yc_matrix` getters,
+  the GMR↔radius round-conductor defaulting setters, and
+  `conductors_in_same_space`.
+- **`TODO(compat)`:** the truncated upstream constants `mu0 = 12.56637e-7`,
+  `Twopi = 6.283185307` (used as a *distinct* quantity from `2·PI` — the
+  FullCarson/Zint terms use the full `std::f64::consts::PI`), `e0 = 8.854e-12`.
+  `Twopi` carries `#[allow(clippy::approx_constant)]` (it is the upstream literal,
+  not `TAU`). Like Pascal's `CMatrix.kron`, a zero Yc pivot in `invert` is not
+  checked (existing cmatrix `TODO(compat)`).
+- **Data flow understood (for steps 2–3):** `TLineGeometryObj.UpdateLineGeometryData`
+  sets the engine arrays from the wire objects (X/Y with FUnits, radius/capradius/
+  GMR/Rdc/Rac with the wire's own units), then `Calc(f, ActiveEarthModel)` + an
+  optional `Reduce`. `ConductorData` derives `Rdc = Rac/1.02` when Rdc is unset
+  (the DERI `Zint` consumes it) and `capradius` defaults to `radius`.
+- **Gate:** 5 inline tests pinned against the dss-python oracle (PIN.txt 0.15.7 /
+  backend 0.14.5), probed by building the same SI geometry through a `Line` and
+  reading `Rmatrix`/`Xmatrix` (ohm/m) + `Cmatrix` (nF/m): a 3-phase overhead full
+  matrix under **all three earth models** (DERI/SimpleCarson/FullCarson) and a
+  4-cond→3 Kron reduce (DERI), entry-by-entry at 1e-8 rel; plus the
+  same-space/zero-height validator. dss-core lib tests **319 → 324**. Full
+  three-command gate green.
+- **Next (WP7.1 step 2):** the catalog classes — `conductor_data.rs`
+  (ConductorData base + WireData/CNData/TSData, CableData base), `line_spacing.rs`,
+  `line_geometry.rs` — via `define_properties!`, then step 3 un-`NOT_PORTED` Line's
+  geometry fetch path, then step 4 the corpus feeder gate. (CN/TS/cable engine
+  specializations land alongside CNData/TSData in step 2.)
+
+---
+
 ## 2. What Phase 3 built (file-by-file map — still the architectural reference)
 
 ### Circuit model (`src/circuit/`)
@@ -1633,11 +1681,14 @@ origin). The work landed on branch `phase-6-meters-topology` (WP6.10 phase-exit
 `207b9cb`, the post-exit live-gate deepening + audit hardening through `cc6d2e2`;
 everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 **Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
-the branch `phase-7-extended-elements` is cut from `main` (no code committed
-yet); **WP7.1 (line constants & geometry) is next.** Execute it per the plan
-(PORTING_PLAN.md §Phase 7, the largest phase ~18%, six independently-gated
-sub-blocks ordered risk-ascending: line constants → protection → DER →
-harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see PHASE7_PLAN §0).
+the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
+Carson line-constants engine, `support/line_constants/`) is done and gate-green
+(uncommitted) — see §1e**; **WP7.1 step 2 (the catalog classes ConductorData/
+WireData/CNData/TSData/CableData, LineSpacing, LineGeometry) is next.** Execute
+the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
+independently-gated sub-blocks ordered risk-ascending: line constants →
+protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
+PHASE7_PLAN §0).
 
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
