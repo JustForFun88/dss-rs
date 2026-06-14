@@ -11,6 +11,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use dss_core::exec::{Dss, ElementSnapshot};
+use num_complex::Complex64;
 use serde::Deserialize;
 
 /// Schema of `tests/golden/<case>.json` (schema version 1).
@@ -228,5 +230,402 @@ pub fn assert_complex_close(
              |diff| = {diff:e} > allowed {allowed:e}",
             i / 2
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Assembled-model comparison layer.
+//
+// Shared by the checkpointed-model gate (`golden_checkpoints.rs`, against
+// committed schema-2 goldens) and the live corpus gate (`corpus_live.rs`,
+// against the pinned oracle at test time). Both compare the captured electrical
+// model — system Y, element YPrim, injection vector, element currents/powers,
+// and discrete control state — using the same tolerance policy (`Tol`/
+// `tol_for`). See tests/TOLERANCE_NOTES.md for the per-field rationale.
+// ---------------------------------------------------------------------------
+
+/// Full assembled-Y CSC coordinates (micro/feeder scenarios); `(rows[k],
+/// cols[k]) -> re[k] + j*im[k]`, 0-based, row i ↔ node order index i.
+#[derive(Debug, Deserialize)]
+pub struct YMat {
+    pub n: usize,
+    pub rows: Vec<usize>,
+    pub cols: Vec<usize>,
+    pub re: Vec<f64>,
+    pub im: Vec<f64>,
+}
+
+/// A selected element's YPrim block, column-major flat (`out[col*yorder+row]`),
+/// re/im split — the raw `CktElement.Yprim` / `CMatrix` storage order.
+#[derive(Debug, Deserialize)]
+pub struct YPrim {
+    pub name: String,
+    pub yorder: usize,
+    pub re: Vec<f64>,
+    pub im: Vec<f64>,
+}
+
+/// Compact fingerprint of the assembled system Y (large feeders): nnz above a
+/// floor, Frobenius norm, complex trace, max|diagonal|.
+#[derive(Debug, Deserialize)]
+pub struct YFingerprint {
+    pub nnz: usize,
+    pub frob: f64,
+    pub tr_re: f64,
+    pub tr_im: f64,
+    pub maxdiag: f64,
+}
+
+/// An element's terminal currents (A, re/im) and powers (kW/kvar).
+#[derive(Debug, Deserialize)]
+pub struct ElementCap {
+    pub name: String,
+    pub i_re: Vec<f64>,
+    pub i_im: Vec<f64>,
+    pub p_kw: Vec<f64>,
+    pub p_kvar: Vec<f64>,
+}
+
+/// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
+#[derive(Debug, Deserialize)]
+pub struct Injection {
+    pub re: Vec<f64>,
+    pub im: Vec<f64>,
+}
+
+/// Per-scenario-kind tolerances (see tests/TOLERANCE_NOTES.md). Discrete state
+/// is always exact and never goes through this.
+pub struct Tol {
+    pub v_rel: f64,
+    pub v_abs: f64,
+    pub y_rel: f64,
+    pub y_abs: f64,
+    /// Currents (A) and powers (kW/kvar) of elements + the injection vector.
+    pub i_rel: f64,
+    pub i_abs: f64,
+}
+
+/// Map a scenario `kind` to its tolerance class.
+pub fn tol_for(kind: &str) -> Tol {
+    match kind {
+        // Micro circuits: everything to ~1e-9 rel; small abs floors below
+        // physical significance (volts / siemens / amps).
+        "micro" => Tol {
+            v_rel: 1e-9,
+            v_abs: 1e-6,
+            y_rel: 1e-9,
+            y_abs: 1e-6,
+            i_rel: 1e-9,
+            i_abs: 1e-6,
+        },
+        // Feeders / large networks: voltages/admittances/currents 1e-6 rel. The
+        // abs floors absorb dead-end / cancellation quantities (µA branch
+        // currents, kW that sum to ~0) where 1e-6-rel voltage agreement caps
+        // absolute agreement.
+        _ => Tol {
+            v_rel: 1e-6,
+            v_abs: 1e-6,
+            y_rel: 1e-6,
+            y_abs: 1e-3,
+            i_rel: 1e-6,
+            i_abs: 1e-4,
+        },
+    }
+}
+
+/// Coordinate map of a captured Y matrix, keyed by (row, col).
+fn y_coord_map(y: &YMat) -> BTreeMap<(usize, usize), Complex64> {
+    let mut m = BTreeMap::new();
+    for i in 0..y.rows.len() {
+        m.insert((y.rows[i], y.cols[i]), Complex64::new(y.re[i], y.im[i]));
+    }
+    m
+}
+
+/// Compare the assembled system Y entry-by-entry over the union of both
+/// patterns. Reports the worst offenders (largest |rel|) with node names, the
+/// nnz on each side, and whether the sparsity pattern changed.
+pub fn compare_system_y(dss: &mut Dss, exp: &YMat, node_order: &[String], tol: &Tol, ctx: &str) {
+    let (n, coords) = dss
+        .system_y_csc()
+        .unwrap_or_else(|| panic!("{ctx}: Rust has no assembled system Y"));
+    assert_eq!(n, exp.n, "{ctx}: system Y order differs ({n} vs {})", exp.n);
+
+    let exp_map = y_coord_map(exp);
+    let mut act_map: BTreeMap<(usize, usize), Complex64> = BTreeMap::new();
+    for (r, c, v) in coords {
+        // A CSC dump should not repeat (r,c), but sum defensively.
+        *act_map.entry((r, c)).or_insert(Complex64::ZERO) += v;
+    }
+
+    // Union of keys.
+    let mut keys: Vec<(usize, usize)> = exp_map.keys().copied().collect();
+    for k in act_map.keys() {
+        if !exp_map.contains_key(k) {
+            keys.push(*k);
+        }
+    }
+
+    let name = |i: usize| node_order.get(i).map(String::as_str).unwrap_or("?");
+    // Count nonzeros above the abs floor on each side (drops cancellation zeros).
+    let above = |m: &BTreeMap<(usize, usize), Complex64>| {
+        m.values().filter(|v| v.norm() > tol.y_abs).count()
+    };
+    let nnz_act = above(&act_map);
+    let nnz_exp = above(&exp_map);
+
+    // Collect every offender; report the worst few sorted by relative error.
+    let mut offenders: Vec<(f64, String)> = Vec::new();
+    let mut pattern_diffs = 0usize;
+    for (r, c) in keys {
+        let a = act_map.get(&(r, c)).copied().unwrap_or(Complex64::ZERO);
+        let e = exp_map.get(&(r, c)).copied().unwrap_or(Complex64::ZERO);
+        let diff = (a - e).norm();
+        let allowed = tol.y_abs + tol.y_rel * e.norm();
+        if diff > allowed {
+            let in_exp = exp_map.contains_key(&(r, c));
+            let in_act = act_map.contains_key(&(r, c));
+            let pattern = if in_exp == in_act {
+                "match"
+            } else {
+                pattern_diffs += 1;
+                if in_act {
+                    "EXTRA in actual"
+                } else {
+                    "MISSING in actual"
+                }
+            };
+            let rel = diff / e.norm().max(f64::MIN_POSITIVE);
+            offenders.push((
+                rel,
+                format!(
+                    "Y[{r},{c}] ({}, {}): actual ({:.6e},{:.6e}) vs oracle ({:.6e},{:.6e})  \
+                     |abs|={diff:.3e} |rel|={rel:.3e} > allowed {allowed:.3e} (pattern {pattern})",
+                    name(r),
+                    name(c),
+                    a.re,
+                    a.im,
+                    e.re,
+                    e.im,
+                ),
+            ));
+        }
+    }
+    if offenders.is_empty() {
+        return;
+    }
+    offenders.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let top: String = offenders
+        .iter()
+        .take(5)
+        .map(|(_, m)| format!("\n    {m}"))
+        .collect();
+    panic!(
+        "{ctx}: system Y mismatch — {} entries out of tolerance ({pattern_diffs} structural); \
+         nnz actual={nnz_act} oracle={nnz_exp}{}\n  top offenders:{top}",
+        offenders.len(),
+        if nnz_act != nnz_exp {
+            "  <-- SPARSITY PATTERN CHANGED"
+        } else {
+            ""
+        },
+    );
+}
+
+/// Compare the assembled-Y fingerprint: nnz (above floor) exact, Frobenius
+/// norm / trace / max|diag| at `y_rel`. The cheap structural+magnitude guard.
+pub fn compare_fingerprint(dss: &mut Dss, exp: &YFingerprint, tol: &Tol, ctx: &str) {
+    const FLOOR: f64 = 1e-9;
+    let (_n, coords) = dss
+        .system_y_csc()
+        .unwrap_or_else(|| panic!("{ctx}: Rust has no assembled system Y"));
+    let mut nnz = 0usize;
+    let mut frob = 0.0f64;
+    let mut tr = Complex64::ZERO;
+    let mut maxdiag = 0.0f64;
+    for (r, c, v) in &coords {
+        let m = v.norm();
+        if m > FLOOR {
+            nnz += 1;
+        }
+        frob += m * m;
+        if r == c {
+            tr += *v;
+            maxdiag = maxdiag.max(m);
+        }
+    }
+    let frob = frob.sqrt();
+    assert_eq!(
+        nnz, exp.nnz,
+        "{ctx}: Y fingerprint nnz differs (actual {nnz} vs oracle {}) — SPARSITY PATTERN CHANGED",
+        exp.nnz
+    );
+    let close = |a: f64, e: f64, what: &str| {
+        let allowed = tol.y_abs + tol.y_rel * e.abs();
+        assert!(
+            (a - e).abs() <= allowed,
+            "{ctx}: Y fingerprint {what} differs: actual {a:.9e} vs oracle {e:.9e} \
+             (|diff|={:.3e} > allowed {allowed:.3e})",
+            (a - e).abs()
+        );
+    };
+    close(frob, exp.frob, "Frobenius norm");
+    close(tr.re, exp.tr_re, "trace.re");
+    close(tr.im, exp.tr_im, "trace.im");
+    close(maxdiag, exp.maxdiag, "max|diag|");
+}
+
+/// Compare a selected element's YPrim block (column-major flat, same layout on
+/// both sides).
+pub fn compare_yprim(dss: &Dss, exp: &YPrim, tol: &Tol, ctx: &str) {
+    let (yorder, flat) = dss
+        .element_yprim(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no element {} (or no Yprim)", exp.name));
+    assert_eq!(
+        yorder, exp.yorder,
+        "{ctx}: {} yorder differs ({yorder} vs {})",
+        exp.name, exp.yorder
+    );
+    assert_eq!(
+        flat.len(),
+        exp.re.len(),
+        "{ctx}: {} Yprim length differs",
+        exp.name
+    );
+    for (k, a) in flat.iter().enumerate() {
+        let e = Complex64::new(exp.re[k], exp.im[k]);
+        let diff = (a - e).norm();
+        let allowed = tol.y_abs + tol.y_rel * e.norm();
+        let row = k % yorder;
+        let col = k / yorder;
+        assert!(
+            diff <= allowed,
+            "{ctx}: {} Yprim[{row},{col}] differs: actual ({:.6e},{:.6e}) vs oracle ({:.6e},{:.6e}); \
+             |diff|={diff:.3e} > allowed {allowed:.3e}",
+            exp.name,
+            a.re,
+            a.im,
+            e.re,
+            e.im
+        );
+    }
+}
+
+/// Compare the node injection-current vector (nodes 1..n; slot 0 = ground).
+pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tol, ctx: &str) {
+    let cur = dss.node_injection_currents();
+    let n = exp.re.len();
+    assert!(
+        cur.len() > n,
+        "{ctx}: injection vector too short ({} nodes, need > {n})",
+        cur.len(),
+    );
+    let mut actual = Vec::with_capacity(2 * n);
+    for c in cur.iter().take(n + 1).skip(1) {
+        actual.push(c.re);
+        actual.push(c.im);
+    }
+    let mut expected = Vec::with_capacity(2 * n);
+    for (re, im) in exp.re.iter().zip(&exp.im) {
+        expected.push(*re);
+        expected.push(*im);
+    }
+    assert_complex_close(
+        &actual,
+        &expected,
+        tol.i_rel,
+        tol.i_abs,
+        &format!("{ctx} injection currents"),
+    );
+}
+
+/// Compare one element's terminal currents and powers against a capture.
+pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tol, ctx: &str) {
+    let snap = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
+        .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    let mut ei = Vec::with_capacity(2 * exp.i_re.len());
+    for (re, im) in exp.i_re.iter().zip(&exp.i_im) {
+        ei.push(*re);
+        ei.push(*im);
+    }
+    assert_complex_close(
+        &snap.currents,
+        &ei,
+        tol.i_rel,
+        tol.i_abs,
+        &format!("{ctx} {} currents", exp.name),
+    );
+    let mut ep = Vec::with_capacity(2 * exp.p_kw.len());
+    for (kw, kvar) in exp.p_kw.iter().zip(&exp.p_kvar) {
+        ep.push(*kw);
+        ep.push(*kvar);
+    }
+    assert_complex_close(
+        &snap.powers,
+        &ep,
+        tol.i_rel,
+        tol.i_abs,
+        &format!("{ctx} {} powers", exp.name),
+    );
+}
+
+/// Compare per-step discrete control state EXACTLY: transformer taps (1e-12 rel
+/// — see the feeder-gate note), RegControl tap numbers and capacitor states by
+/// value. The three maps are the oracle capture keyed by element name.
+pub fn compare_discrete(
+    dss: &Dss,
+    transformers: &BTreeMap<String, Vec<f64>>,
+    regcontrols: &BTreeMap<String, i32>,
+    capacitors: &BTreeMap<String, Vec<i32>>,
+    ctx: &str,
+) {
+    let taps = dss.transformer_taps();
+    assert_eq!(
+        taps.len(),
+        transformers.len(),
+        "{ctx}: transformer count differs"
+    );
+    for (name, tr_taps) in &taps {
+        let exp = transformers
+            .get(name)
+            .unwrap_or_else(|| panic!("{ctx}: oracle has no transformer {name}"));
+        assert_eq!(
+            tr_taps.len(),
+            exp.len(),
+            "{ctx}: transformer {name} winding count differs"
+        );
+        for (w, (a, e)) in tr_taps.iter().zip(exp).enumerate() {
+            assert!(
+                (a - e).abs() <= 1e-12 * e.abs().max(1.0),
+                "{ctx}: transformer {name} winding {} tap: {a} vs {e}",
+                w + 1
+            );
+        }
+    }
+    let tap_numbers = dss.regcontrol_tap_numbers();
+    assert_eq!(
+        tap_numbers.len(),
+        regcontrols.len(),
+        "{ctx}: regcontrol count differs"
+    );
+    for (name, num) in &tap_numbers {
+        let exp = regcontrols
+            .get(name)
+            .unwrap_or_else(|| panic!("{ctx}: oracle has no regcontrol {name}"));
+        assert_eq!(num, exp, "{ctx}: regcontrol {name} tap number differs");
+    }
+    let states = dss.capacitor_states();
+    assert_eq!(
+        states.len(),
+        capacitors.len(),
+        "{ctx}: capacitor count differs"
+    );
+    for (name, cap_states) in &states {
+        let exp = capacitors
+            .get(name)
+            .unwrap_or_else(|| panic!("{ctx}: oracle has no capacitor {name}"));
+        assert_eq!(cap_states, exp, "{ctx}: capacitor {name} states differ");
     }
 }

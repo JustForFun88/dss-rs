@@ -29,7 +29,8 @@ fn repo_root() -> PathBuf {
 fn run_case(name: &str) {
     let golden = Golden::load(name);
     let master = repo_root()
-        .join(".inputs")
+        .join("tests")
+        .join("corpus")
         .join("electricdss-tst")
         .join(&golden.master);
     assert!(

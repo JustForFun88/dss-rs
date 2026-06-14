@@ -67,6 +67,8 @@ cargo test --workspace      # dss-core lib 319, golden_feeders 1,
                             # golden_allocation 1, golden_gendispatcher 1,
                             # golden_autoadd_reduce 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1,
+                            # corpus_manifest 1, corpus_live 2 (auto-skip
+                            #   w/o DSS_LIVE_ORACLE / DSS_LIVE_CLASSIFY),
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -112,6 +114,33 @@ cargo test --workspace      # dss-core lib 319, golden_feeders 1,
   `Y[634.1]`), `ieee123_snap` (large-feeder fingerprint-only + selected YPrim
   path). Tolerances: `tests/TOLERANCE_NOTES.md`. The assembled Y is compared
   **unfactored** so the `dss-sparse` row equilibration is out of scope.
+
+### Live corpus oracle gate (`crates/dss-core/tests/corpus_live.rs`) — opt-in
+See `CORPUS_TEST_PLAN.md`. The whole `electricdss-tst` corpus is **vendored** into
+`tests/corpus/electricdss-tst/` (1544 files, 122 MiB; `tools/corpus/vendor.py`,
+`.git` excluded, with `SHA256SUMS` + `README.md` provenance) so tests no longer
+depend on the temporary `.inputs/electricdss-tst`.
+- **Manifest accounting (always-on).** Every `.dss` (915) is in exactly one
+  manifest under `tests/corpus/manifests/` (`solvable_now`, `skipped_unsupported`,
+  `skipped_oracle_issue`, `skipped_needs_investigation`, `missing_dependency`,
+  `not_an_entry_point`). `corpus_manifest.rs` enforces the bijection — no silent
+  omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
+  it until the file is classified.
+- **Live comparison (opt-in, `DSS_LIVE_ORACLE=1`).** For each `solvable_now`
+  case the gate compiles+solves on the Rust engine and on the pinned dss-python
+  oracle (`tools/oracle/oracle_server.py`, a one-shot subprocess over JSON), and
+  compares the full assembled model per step — node order, **full** system Y,
+  node voltages, **every** element's currents/powers, selected YPrim blocks, the
+  injection vector, and discrete state — reusing the `harness/mod.rs` comparators
+  and the checkpoint gate's tolerance policy. It **auto-skips (passes)** without
+  the env var / oracle, so the mandated gate stays green everywhere. No goldens
+  are written; the oracle is consulted live.
+- **Growth.** `DSS_LIVE_CLASSIFY=1 corpus_live_classify` probes the
+  `skipped_needs_investigation` candidates with the full comparison and writes
+  `tmp/classify_report.json`; `tools/corpus/apply_classify.py` promotes the
+  passing cases into `solvable_now` (and routes oracle/engine failures to the
+  right skip bucket). `tools/corpus/coverage_report.py` →
+  `tests/corpus/COVERAGE.md` tracks the burn-down toward 100% of entry points.
 
 ### Phase 4 gate (`crates/dss-core/tests/golden_feeders.rs`) — green
 The three committed **controls-off variants** (`tests/golden/phase4/

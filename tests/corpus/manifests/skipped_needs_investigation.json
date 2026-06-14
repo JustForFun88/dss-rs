@@ -1,0 +1,45 @@
+{
+ "comment": "Entry-point candidates not yet verified/diagnosed. The working queue that drains over time.",
+ "cases": [
+  {
+   "path": "Test/AutoTrans/Auto1bus-step1.dss",
+   "tag": "entry_point",
+   "note": "live probe: Test/AutoTrans/Auto1bus-step1.dss step 0: entry 11 differs: actual (-46476.71038156053, -80496.6327343493) vs expected (-46476.61034443656, -80496.69252079383); |diff| = 1.1654117350544871e-1 > allowed 9.295148582926187e-2"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
+   "tag": "entry_point",
+   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 45s\")"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS",
+   "tag": "wrapper",
+   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 45s\")"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
+   "tag": "entry_point",
+   "note": "live probe: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
+   "tag": "entry_point",
+   "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
+   "tag": "entry_point",
+   "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
+   "tag": "entry_point",
+   "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
+   "tag": "entry_point",
+   "note": "live probe: oracle produced no JSON response\n--- stdout ---\n{\"ok\":true,\"result\":{\"node_order\":[\"SOURCEBUS.1\",\"SOURCEBUS.2\",\"SOURCEBUS.3\",\"SX2000404A.2\",\"SX2000404A.1\",\"SX2000405A.2\",\"SX2000405A.1\",\"SX2000402A.1\",\"SX2000402A.2\",\"SX2000403A.2\",\"SX2000403A.1\",\"SX2804272B.1\",\"SX2804272B.2\",\"SX2001309A.2\",\"SX2001309"
+  }
+ ]
+}

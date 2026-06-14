@@ -347,6 +347,16 @@ simulator; P7–P8 → full behavior parity; P9 → 1:1 including exotics.
   feeders), per-element YPrim, injection vector, voltages, and discrete state —
   so such a bug fails at the step and matrix entry it first appears. The Y is
   compared unfactored, so the `dss-sparse` row equilibration is out of scope.
+- **Live corpus gate** (`corpus_live.rs` / `tools/oracle/oracle_server.py`; see
+  `CORPUS_TEST_PLAN.md`): the entire `electricdss-tst` corpus is vendored into
+  `tests/corpus/electricdss-tst/` (so tests never depend on the temporary
+  `.inputs/`), with every `.dss` accounted for in exactly one manifest under
+  `tests/corpus/manifests/` (bijection enforced by `corpus_manifest.rs`, always
+  on). For each `solvable_now` case an **opt-in** (`DSS_LIVE_ORACLE=1`) gate runs
+  the Rust engine and the pinned oracle **live** (no goldens) and compares the
+  full model — full Y, voltages, every element's currents/powers, YPrim,
+  injection, discrete state — reusing the checkpoint gate's comparators and
+  policy. The `solvable_now` manifest expands toward 100% as the port matures.
 - **Unit tests**: inline `#[cfg(test)]` (existing convention); golden values obtained by
   probing the Pascal behavior through dss-python (e.g. a single Line's YPrim entries).
 - **Auto-generated property tests**: every registered class gets default-dump +
