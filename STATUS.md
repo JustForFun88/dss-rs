@@ -7,10 +7,13 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-14, **Phase 6 COMPLETE (WP6.1–WP6.10), gate-green** —
-Phase 5 merged to `main` (`10d3550`); on branch `phase-6-meters-topology`
-(WP6.1–WP6.9 committed through `d1cc68c` + the Yeq/checkpoint follow-ups; the
-live-corpus infra in `19a5493`/`593420f`; **WP6.10 is this update, uncommitted**).
+Last updated: 2026-06-14, **Phase 6 COMPLETE (WP6.1–WP6.10) and MERGED to
+`main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
+origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
+`d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
+`19a5493`/`593420f`, WP6.10 phase-exit `207b9cb`, and the post-exit live-gate
+deepening + audit hardening through `cc6d2e2`. Phase 5 had merged earlier
+(`10d3550`).
 Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/
 Generator, 8500-node gate). **The phase gate passes: the unmodified IEEE
 8500-Node master (+ `Energymeter.m1` + a 24-step daily run) converges in 67
@@ -41,9 +44,8 @@ elements (Transformer/Capacitor/Reactor), catalog objects
 RegControl/CapControl, the `define_properties!` macro (bounded scope), and the
 **phase gate: the IEEE13/IEEE37/IEEE123 controls-off feeders solve and match
 the oracle** (exact iteration counts + node order; voltages, per-element
-powers/currents, total power and losses at 1e-6 rel). On branch
-`phase-4-pd-elements`, Phase 4 work uncommitted past WP4.6. Next: Phase 5
-(`PHASE5_PLAN.md`).
+powers/currents, total power and losses at 1e-6 rel). Merged to `main`
+(`5f27a25`); developed on branch `phase-4-pd-elements`.
 
 > **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the
 > full gate → update this file → **stop and wait for explicit user
@@ -60,9 +62,9 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 1 | Shared math (`support/`) + full `TDSSParser` port | ✅ done (commit `729eb77`) |
 | 2 | Object model, property engine, executive skeleton | ✅ done (commit `22f861d`) |
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
-| **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
+| **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | ✅ **done** — WP6.1–WP6.10 complete, gate-green (8500-node gate + phase6 goldens green); **uncommitted past WP6.9**; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ⏭️ next — write `PHASE7_PLAN.md` first (PORTING_PLAN.md §Phase 7) |
 
 ### Gate state (all green)
@@ -739,7 +741,7 @@ Phase 3" executive messages reworded; full gate green.
 
 ---
 
-## 1d. Phase 6 record (branch `phase-6-meters-topology`)
+## 1d. Phase 6 record (branch `phase-6-meters-topology` → merged to `main` `b98223a`)
 
 Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
 
@@ -1621,11 +1623,13 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 6 complete, Phase 7 next
+## 7. Current frontier — Phase 6 complete & merged, Phase 7 next
 
-Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete and gate-green** on
-branch `phase-6-meters-topology` (WP6.10 = this update, uncommitted; everything
-earlier committed through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
+Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
+to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
+origin). The work landed on branch `phase-6-meters-topology` (WP6.10 phase-exit
+`207b9cb`, the post-exit live-gate deepening + audit hardening through `cc6d2e2`;
+everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 **Next: Phase 7** — write `PHASE7_PLAN.md` first, then execute it
 (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six independently-gated
 sub-blocks: line constants, DER, protection, harmonics, dynamics,
