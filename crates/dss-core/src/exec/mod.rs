@@ -2509,6 +2509,10 @@ pub struct ElementSnapshot {
     pub currents: Vec<f64>,
 }
 
+/// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
+/// coordinates, returned by [`Dss::system_y_csc`].
+pub type SystemYCsc = (usize, Vec<(usize, usize, num_complex::Complex64)>);
+
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -2869,6 +2873,77 @@ impl Dss {
         match &self.circuit {
             Some(ckt) => ckt.solution.event_log.entries(),
             None => &[],
+        }
+    }
+
+    /// Coordinate dump of the **assembled, unfactored** system Y matrix:
+    /// `(n, [(row, col, value)])`, 0-based, where row `i` corresponds to node
+    /// `i + 1` (so `node_name(row + 1)` names the row). The values are
+    /// pre-equilibration — the matrix exactly as stamped from element YPrims —
+    /// so they line up with the oracle's `YMatrix.getYSparse(factor=False)`.
+    /// `None` if no system Y has been built. Test/golden API (the assembled-model
+    /// checkpoint of `golden_checkpoints.rs`).
+    pub fn system_y_csc(&mut self) -> Option<SystemYCsc> {
+        let ckt = self.circuit.as_mut()?;
+        let y = ckt.solution.y_system.as_mut()?;
+        let n = y.size();
+        let (rows, cols, vals) = y.coo_entries().ok()?;
+        let coords = rows
+            .into_iter()
+            .zip(cols)
+            .zip(vals)
+            .map(|((r, c), v)| (r, c, v))
+            .collect();
+        Some((n, coords))
+    }
+
+    /// An element's primitive admittance matrix `Yprim` as a **column-major**
+    /// `yorder × yorder` flat array (`out[col * yorder + row]`) — the exact
+    /// layout of the oracle's `CktElement.Yprim` (Pascal `TcMatrix`, column-major)
+    /// and of `CMatrix`'s own storage, so the two compare without any transpose.
+    /// `name` is a full `Class.name` (e.g. `"Transformer.reg1"`) when it
+    /// contains a dot, else a bare object name matched across all classes
+    /// (case-insensitive). `None` if no such element exists or it has no Yprim.
+    /// Test/golden API (the selected-element checkpoint of `golden_checkpoints.rs`).
+    pub fn element_yprim(&self, name: &str) -> Option<(usize, Vec<num_complex::Complex64>)> {
+        let want_full = name.contains('.');
+        for class in &self.classes {
+            let cn = class.props.class_name();
+            for obj in &class.objects {
+                let matches = if want_full {
+                    format!("{}.{}", cn, obj.data().name()).eq_ignore_ascii_case(name)
+                } else {
+                    obj.data().name().eq_ignore_ascii_case(name)
+                };
+                if !matches {
+                    continue;
+                }
+                let Some(ce) = obj.as_ckt_element() else {
+                    continue;
+                };
+                let cd = ce.cd();
+                let yorder = cd.yorder;
+                let yprim = cd.yprim.as_ref()?;
+                let mut out = Vec::with_capacity(yorder * yorder);
+                for col in 0..yorder {
+                    for row in 0..yorder {
+                        out.push(yprim.get(row, col));
+                    }
+                }
+                return Some((yorder, out));
+            }
+        }
+        None
+    }
+
+    /// The node injection-current vector the solver last used (`Solution.Currents`,
+    /// the RHS of `Y·V = I`), length `num_nodes + 1` with slot 0 = ground —
+    /// the oracle's `YMatrix.getI()` surface. Empty when no circuit exists.
+    /// Test/golden API.
+    pub fn node_injection_currents(&self) -> Vec<num_complex::Complex64> {
+        match &self.circuit {
+            Some(ckt) => ckt.solution.currents.clone(),
+            None => Vec::new(),
         }
     }
 }

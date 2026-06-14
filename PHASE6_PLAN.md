@@ -468,6 +468,19 @@ Steps:
    (`meter_zone_micro` catches structural bugs cheap), then per-register on
    the micro daily case, then 8500.
 
+> **Hardening (post-WP6.9): checkpointed-model gate.** The WP6.9 goldens (like
+> the rest) compare only converged outputs, which let the "frozen load `Yeq`"
+> bug hide until it had drifted the daily EnergyMeter registers (~6e-4, masked
+> by a relaxed tolerance). Added `golden_checkpoints.rs` /
+> `tools/golden/gen_checkpoints.py` (`tests/golden/checkpoints.json`, schema 2):
+> it captures the **assembled model after every committed time step** — the
+> unfactored system Y, selected element YPrim blocks, injection vector,
+> voltages, and discrete state — so an assembled-model bug fails at the step and
+> matrix entry it first appears. `ieee13_daily` is the direct regression guard
+> (reverting the `build_y_matrix` Yeq restamp fails it at step 6, `Y[634.1]`);
+> `ieee123_snap` exercises the large-feeder fingerprint path. Tolerances in
+> `tests/TOLERANCE_NOTES.md`.
+
 ---
 
 ### WP6.10 — Phase exit
@@ -475,7 +488,7 @@ Steps:
 1. `rg "TODO\(compat\)"` / `rg "NOT_PORTED"` sweep — all new sites point at
    their phase.
 2. Re-run everything: props, slice, feeders, feeders_controls, phase4,
-   phase5, phase6, ieee8500. All green.
+   phase5, phase6, checkpoints, ieee8500. All green.
 3. Rewrite `STATUS.md` (Phase 6 record; "next = Phase 7, write PHASE7_PLAN.md
    first").
 4. Commit only on explicit user request.
