@@ -72,10 +72,12 @@ low-frequency GIC branch (<0.51 Hz), which harmonics touches, is in scope here.
   feeders_controls, phase4, phase5, phase6, checkpoints, ieee8500, reliability,
   allocation, gendispatcher, autoadd_reduce, props, corpus_manifest) still green.
 - **`props_roundtrip`** extended with default + edited dumps for **every** new
-  class (≈18 new classes: WireData, CNData, TSData, CableData, LineSpacing,
-  LineGeometry, Fault, Fuse, Recloser, Relay, SwtControl, PVSystem, Storage,
-  InvControl, ExpControl, IndMach012, VCCS, UPFC, UPFCControl, VSConverter,
-  ESPVLControl, DynamicExp).
+  New-able class (≈21: WireData, CNData, TSData, LineSpacing, LineGeometry,
+  Fault, Fuse, Recloser, Relay, SwtControl, PVSystem, Storage, InvControl,
+  ExpControl, IndMach012, VCCS, UPFC, UPFCControl, VSConverter, ESPVLControl,
+  DynamicExp). The abstract bases (ConductorData/CableData/InvBasedPCE/DynEqPCE)
+  are **not** New-able — `CreateDSSClasses` never registers them — so they are
+  covered via their concrete subclasses, not as standalone props dumps.
 - **Two-tier numeric gate per sub-block** (the established Phase-4/5/6 pattern):
   1. **Targeted golden** — `tools/golden/gen_phase7.py` → `tests/golden/phase7/
      <scenario>.json` (command-replay like phase5/phase6), plus checkpoint
@@ -128,8 +130,9 @@ low-frequency GIC branch (<0.51 Hz), which harmonics touches, is in scope here.
 shunt Yc of a multi-conductor line from geometry via **Carson's equations**;
 `OHLineConstants`/`CNLineConstants`/`TSLineConstants`/`CableConstants` specialize
 it for overhead, concentric-neutral, tape-shield, and bare cable. Port into a new
-**`src/support/line_constants/`** module (mirrors PORTING_PLAN's planned
-`general/line_constants/`):
+**`src/support/line_constants/`** module — a pure Carson math engine beside the
+other `support/` math helpers (`cmatrix.rs`/`mathutil.rs`), reusing
+`support/cmatrix.rs`'s Kron (the catalog *classes* live under `elements/general/`):
 
 - `mod.rs` — `LineConstants` base: the conductor coordinate arrays (X/Y/radius/
   GMR/Rdc/R60/`NormAmps`), `Get_Zint` (internal impedance / skin effect — the
@@ -196,6 +199,15 @@ and Storage — port as a shared `InvBasedPceData` struct + trait the way
 `PcElementData` factors Generator/Load (`InverterON`, `CutIn`/`CutOut`,
 watt/var-priority, `kVA_exceeded` limiting, the smooth/`VarFollowInverter` logic).
 
+The `DynEqPCE`-inherited props `DynamicEq` (a `DSSObjectReference` to
+`DynamicExp`) and `DynOut` ride on `InvBasedPceData`. **`DynamicEq` resolves to a
+real `DynamicExp` object**, ported up front as **WP7.3 step 0** — self-contained
+catalog work (reuses the done RPN; the engine registers `DynamicExp` before the
+inverter PCEs in `CreateDSSClasses`), so no `NOT_PORTED` string stand-in is
+needed. The dynamic-expression *integration* and the `DynOut` state-variable
+selection are dynamics-only and stay in WP7.7 (which also flips Generator's
+Phase-6 `NOT_PORTED` `DynamicEq` to the same real ref).
+
 `PVsystem.pas` (2735) and `Storage.pas` (3556) are PC elements built on the
 **Generator template** (the WP6.2 injection-model architecture):
 `SetNominalPVSystem`/`SetNominalStorage`, `CalcYPrimMatrix`/`CalcYPrim`, the
@@ -256,17 +268,20 @@ method (Euler/Trapezoidal/Gear), driving:
   machine, the canonical dynamics test element), `vccs.pas` (861), `UPFC.pas`
   (1181) + `UPFCControl.pas` (290), `VSConverter.pas` (498),
   `ESPVLControl.pas` (461).
-- `General/DynamicExp.pas` (591, user-defined dynamic expressions) + its
-  evaluator, and `PCElements/DynEqPCE.pas` (273, the base PCE that integrates a
-  `DynamicExp`) — a small expression interpreter over the existing RPN machinery
-  (`dss-parser/src/rpn.rs`).
+- `PCElements/DynEqPCE.pas` (273, the base PCE that *integrates* a `DynamicExp`
+  during the step loop). The `General/DynamicExp.pas` (591) object + its RPN
+  expression interpreter (`dss-parser/src/rpn.rs`) is **not** ported here — it is
+  self-contained catalog work pulled forward to **WP7.3 step 0** so `DynamicEq`
+  refs resolve from the DER block on; WP7.7 only adds the integration that
+  consumes it.
 - Monitor mode 3 (state variables) gets its real sample body (Phase 6 stubbed it
   to names/count); gate compares dynamics-mode trajectories at **1e-5 rel**.
 - `MakePosSequence` (deferred everywhere since Phase 6) is ported on demand where
   a dynamics-init path needs it.
 
 Split across two WPs: **WP7.7** (the solve loop + Generator/Storage/PVSystem
-state vars + IndMach012 + DynamicExp/DynEqPCE — the core machinery) and **WP7.8**
+state vars + IndMach012 + DynEqPCE integration — the core machinery; the
+`DynamicExp` object itself lands earlier, WP7.3 step 0) and **WP7.8**
 (VCCS/UPFC/UPFCControl/VSConverter/ESPVLControl — the converter/FACTS family).
 
 ### 2.6 Faultstudy / AutoAdd / Feeder
@@ -358,13 +373,24 @@ Steps:
 
 ---
 
-### WP7.3 — DER A: InvBasedPCE base + PVSystem [12%]
+### WP7.3 — DER A: DynamicExp object + InvBasedPCE base + PVSystem [12%]
 
-**Pascal:** `PCElements/InvBasedPCE.pas`, `PCElements/PVsystem.pas`.
+**Pascal:** `General/DynamicExp.pas`, `PCElements/InvBasedPCE.pas`,
+`PCElements/PVsystem.pas`.
 
 Steps:
+0. `general/dynamic_exp.rs` — the `DynamicExp` catalog object + its expression
+   interpreter over the done `dss-parser` RPN (`define_properties!`, `MakeLike`,
+   `props.json`). Self-contained: no solve-loop dependency, and the engine
+   registers it before the inverter PCEs (`CreateDSSClasses`). Lands the object +
+   evaluator only — the dynamic-expression *integration* (consumption during a
+   dynamics solve) is WP7.7. Porting it here lets PVSystem/Storage/Generator
+   resolve `DynamicEq` as a real `DSSObjectReference` instead of a `NOT_PORTED`
+   string.
 1. `pc/inv_based_pce.rs` — `InvBasedPceData` + trait (inverter on/off, CutIn/
-   CutOut, watt/var priority, `kVA_exceeded` clamp, VarFollowInverter).
+   CutOut, watt/var priority, `kVA_exceeded` clamp, VarFollowInverter); carries
+   the `DynEqPCE`-inherited `DynamicEq` (real ref to the step-0 object) + `DynOut`
+   (string-list slot; its dynamics effect is WP7.7).
 2. `pc/pvsystem.rs` — `TPVsystemObj` on the Generator template:
    `SetNominalPVSystem`, P-T-V curves (XYcurve) + irradiance/temperature shapes
    (snapshot-clone), `CalcYPrim`, `DoConstantPQPV` + inverter clamp, registers +
@@ -435,13 +461,13 @@ Steps:
 
 ---
 
-### WP7.7 — Dynamics core: solve loop + Generator/Storage/PV state vars + IndMach012 + DynamicExp/DynEqPCE [14%]
+### WP7.7 — Dynamics core: solve loop + Generator/Storage/PV state vars + IndMach012 + DynEqPCE [14%]
 
 **Pascal:** `Common/SolutionAlgs.pas` `SolveDynamic`; `Common/Solution.pas`
 `SolveDynamicStep`/`IterativeSolution`; `Common/Dynamics.pas` (DynaVars, done as
 support); per-element `InitStateVars`/`IntegrateStates`/`CalcDynamic`/`StateVars`
 (Generator, Storage, PVSystem); `PCElements/IndMach012.pas`,
-`General/DynamicExp.pas`, `PCElements/DynEqPCE.pas`.
+`PCElements/DynEqPCE.pas` (the `DynamicExp` object itself: WP7.3 step 0).
 
 Steps:
 1. `solution/solution.rs`: `SolveMode::Dynamic` → `solve_dynamic` (the
@@ -449,11 +475,15 @@ Steps:
 2. Generator/Storage/PVSystem dynamics state machinery (the Phase-6-deferred
    §2.5 set) + Monitor mode 3 real sample body.
 3. `pc/ind_mach012.rs` — the induction machine (the canonical dynamics test
-   element). `general/dynamic_exp.rs` + `pc/dyneq_pce.rs` — the dynamic-expression
-   evaluator over `dss-parser` RPN + the integrating base PCE.
+   element). `pc/dyneq_pce.rs` — the integrating base PCE that drives the
+   already-ported `DynamicExp` evaluator (WP7.3 step 0) over `DynaVars.h`: wire
+   its `IntegrateStates`/`CalcDynamic` into the step loop and activate `DynOut`
+   state-variable selection. Generator's Phase-6 `NOT_PORTED` `DynamicEq`/`DynOut`
+   are flipped to the real ref + behavior here; PVSystem/Storage already carry the
+   real ref (WP7.3), so only the integration behavior is added.
 4. Gate: a dynamics corpus case (IndMach012/generator dynamics) — **mode-3
    monitor trajectory 1e-5 rel**, step count exact; targeted golden
-   `phase7/dynamics*.json`; `props.json` for IndMach012/DynamicExp.
+   `phase7/dynamics*.json`; `props.json` for IndMach012 (DynamicExp props: WP7.3).
 
 ---
 
