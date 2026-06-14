@@ -24,7 +24,7 @@ Scenarios:
 Usage:
     python tools/golden/gen_phase5.py
 
-Writes tests/golden/phase5.json
+Writes one file per scenario under tests/golden/phase5/ (<name>.json).
 
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "tests" / "golden" / "phase5.json"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase5"
 SCHEMA = 1
 
 # The unmodified IEEE13 master, inlined (Clear/Redirect/Solve/BusCoords
@@ -147,14 +147,13 @@ def scenario_daily_ieee13() -> dict:
     for reg in ("reg1", "reg2", "reg3"):
         cmds.append(f"RegControl.{reg}.eventlog=yes")
     cmds.append("set mode=daily stepsize=1h number=1")
-    # Per-step tolerance 1e-5 (not the snapshot gate's 1e-6): each step's
-    # fixed-point iteration stops at the 1e-4 convergence tolerance, so the
-    # converged voltages are path-dependent at that level. Over a 24-step
-    # trajectory the engines' ~1e-9 solver differences accumulate to ~1e-6
-    # relative (observed 1.4e-6 worst node). The *discrete* trajectory —
-    # per-step iteration counts, dblHour, every tap change in the event log,
-    # final taps/tap numbers — is compared exactly and matches.
-    return {"name": "daily_ieee13", "tol": 1e-5, "commands": cmds, "n_steps": 24}
+    # Per-step tolerance 1e-6 (same as the snapshot gate). The daily trajectory
+    # tracks the oracle to ~1e-9 once build_y_matrix restamps each load's
+    # shape-scaled Yeq per step; the whole discrete trajectory — per-step
+    # iteration counts, dblHour, every tap change in the event log, final
+    # taps/tap numbers — matches exactly too. (Was 1e-5 with a ±1-iteration
+    # allowance while the Yeq accelerator was frozen at the first step's load.)
+    return {"name": "daily_ieee13", "tol": 1e-6, "commands": cmds, "n_steps": 24}
 
 
 def scenario_duty_2bus() -> dict:
@@ -274,11 +273,20 @@ def main() -> None:
     ]
     results = [run_scenario(DSS, sc) for sc in scenarios]
 
-    OUT.write_text(
-        json.dumps({"schema": SCHEMA, "oracle": oracle, "scenarios": results}, indent=1)
-        + "\n"
-    )
-    print(f"wrote {OUT} ({len(results)} scenarios)")
+    # One file per scenario under OUT_DIR; golden_phase5.rs runs every *.json in
+    # the directory, so adding a scenario is just dropping a new file.
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    names = {sc["name"] for sc in results}
+    for sc in results:
+        path = OUT_DIR / f"{sc['name']}.json"
+        path.write_text(
+            json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)}")
+    for p in OUT_DIR.glob("*.json"):
+        if p.stem not in names:
+            p.unlink()
+            print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

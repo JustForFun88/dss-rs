@@ -1,0 +1,143 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "priceshape",
+ "scenarios": [
+  {
+   "name": "priceshape_default",
+   "commands": [
+    "New PriceShape.d"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Price": "",
+    "Hour": "",
+    "Mean": "0",
+    "StdDev": "0",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_fixed",
+   "commands": [
+    "New PriceShape.d npts=4 interval=1 price=(2 4 6 8)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Price": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2.58198889747161",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_sinterval",
+   "commands": [
+    "New PriceShape.d npts=4 sinterval=900 price=(1 2 4 8)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Price": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_hour",
+   "commands": [
+    "New PriceShape.d npts=3 hour=(1 2 4) price=(1 2 4)"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Price": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "0",
+    "MInterval": "0",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_mean_stddev",
+   "commands": [
+    "New PriceShape.d npts=4 interval=1 price=(2 4 6 8) mean=5 stddev=2"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Price": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "priceshape_makelike",
+   "commands": [
+    "New PriceShape.base npts=3 interval=2 price=(11 22 33)",
+    "New PriceShape.d like=base"
+   ],
+   "target": "PriceShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Price": "[ 11 22 33]",
+    "Hour": "",
+    "Mean": "22",
+    "StdDev": "11",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "Action": "",
+    "Like": ""
+   }
+  }
+ ]
+}

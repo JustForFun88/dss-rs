@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "scenario": {
+  "name": "meter_zone_micro",
+  "commands": [
+   "new circuit.micro basekv=12.47 phases=3 bus1=src",
+   "new line.l1 bus1=src bus2=b1 length=1 r1=0.1 x1=0.2 c1=0 c0=0 r0=0.1 x0=0.2",
+   "new line.l2 bus1=b1 bus2=b2 length=1 r1=0.1 x1=0.2 c1=0 c0=0 r0=0.1 x0=0.2",
+   "new line.l3 bus1=b2 bus2=b3 length=1 r1=0.1 x1=0.2 c1=0 c0=0 r0=0.1 x0=0.2",
+   "new line.l4 bus1=b1 bus2=b4 length=1 r1=0.1 x1=0.2 c1=0 c0=0 r0=0.1 x0=0.2",
+   "new load.ld3 bus1=b3 phases=3 kv=12.47 kw=100 model=1",
+   "new load.ld4 bus1=b4 phases=3 kv=12.47 kw=100 model=1",
+   "new energymeter.m1 element=line.l1 terminal=1",
+   "new energymeter.m2 element=line.l2 terminal=1",
+   "set voltagebases=[12.47]",
+   "calcvoltagebases"
+  ],
+  "meter_zones": [
+   {
+    "name": "m1",
+    "branches": [
+     "Line.l1",
+     "Line.l4"
+    ],
+    "ends": [
+     "Line.l4"
+    ],
+    "pce": [
+     "Load.ld4"
+    ]
+   },
+   {
+    "name": "m2",
+    "branches": [
+     "Line.l2",
+     "Line.l3"
+    ],
+    "ends": [
+     "Line.l3"
+    ],
+    "pce": [
+     "Load.ld3"
+    ]
+   }
+  ]
+ }
+}

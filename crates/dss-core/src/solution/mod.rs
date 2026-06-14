@@ -4,6 +4,8 @@
 pub mod control_queue;
 pub(crate) mod controls;
 pub mod event_log;
+pub(crate) mod meters;
+pub(crate) mod monitors;
 pub mod solution;
 pub mod ymatrix;
 

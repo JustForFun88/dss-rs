@@ -1,6 +1,6 @@
 //! Phase 5 gate (PHASE5_PLAN.md WP5.9): compile the **unmodified** IEEE13,
-//! IEEE37 and IEEE123 masters from `.inputs/electricdss-tst` — controls
-//! active, exactly as the committed Phase-0 goldens were generated — and
+//! IEEE37 and IEEE123 masters from the vendored `tests/corpus/electricdss-tst`
+//! — controls active, exactly as the committed Phase-0 goldens were generated — and
 //! match `tests/golden/{ieee13,ieee37,ieee123}.json`:
 //!
 //! - converged flag and total iteration count **exactly** (ieee13: 11);
@@ -29,7 +29,8 @@ fn repo_root() -> PathBuf {
 fn run_case(name: &str) {
     let golden = Golden::load(name);
     let master = repo_root()
-        .join(".inputs")
+        .join("tests")
+        .join("corpus")
         .join("electricdss-tst")
         .join(&golden.master);
     assert!(
@@ -220,7 +221,15 @@ fn run_case(name: &str) {
         );
     }
 
-    // Full per-element property dumps (numeric-skeleton comparison).
+    // Full per-element property dumps (numeric-skeleton comparison). The
+    // absolute floor is 1e-9 (aligned with the node-voltage comparison above,
+    // and looser than the 1e-6 power floor): a few property dumps are near-zero
+    // cancellation quantities — e.g. a near-balanced transformer's ~5e-5 A
+    // winding current — whose last printed digit sits at the LU solver's
+    // backward-error floor and flips under any solve-path change (here, the
+    // KLU-style row equilibration in `dss-sparse`). 1e-9 amps/volts/watts is
+    // well below physical significance; the 1e-9 *relative* term keeps
+    // significant quantities pinned tightly.
     let element_names: Vec<String> = golden.elements.keys().cloned().collect();
     for el_name in &element_names {
         let props = &golden.elements[el_name].properties;
@@ -231,7 +240,7 @@ fn run_case(name: &str) {
                 &actual,
                 expected,
                 1e-9,
-                1e-12,
+                1e-9,
                 &format!("{name} {el_name} property {prop}"),
             );
         }

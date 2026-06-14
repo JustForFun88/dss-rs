@@ -13,7 +13,10 @@ Usage:
     python tools/golden/gen_props.py
 
 Reads  nothing (scenarios are defined below)
-Writes tests/golden/props.json
+Writes one file per class under tests/golden/props/ (<class>.json), where the
+class is the scenario-name prefix before the first `_` (e.g. all `loadshape_*`
+scenarios -> props/loadshape.json). props_roundtrip.rs runs every file in the
+directory, so a class's diff stays isolated to its own file.
 
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
@@ -29,7 +32,7 @@ from pathlib import Path
 _NUM_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "tests" / "golden" / "props.json"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "props"
 SCHEMA = 1
 
 # Each scenario: a name, the command script (run after `clear; new circuit`),
@@ -805,6 +808,280 @@ SCENARIOS = [
             "New CapControl.cc1 like=base capacitor=cap2",
         ],
     },
+    {
+        # --- GenDispatcher (WP6.8) ---
+        # The monitored element must exist (RecalcElementData attaches the
+        # control's terminal to it); GenDispatcher without `element=` raises 372.
+        "name": "gendispatcher_default",
+        "target": "GenDispatcher.gd1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New GenDispatcher.gd1 element=Line.l1",
+        ],
+    },
+    {
+        "name": "gendispatcher_full",
+        "target": "GenDispatcher.gd1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New GenDispatcher.gd1 element=Line.l1 terminal=1 kwlimit=3500 "
+            "kwband=250 kvarlimit=1500 genlist=[g1, g2] weights=[2, 1]",
+        ],
+    },
+    {
+        # MakeLike copies *only* terminal + monitored element (Pascal quirk): the
+        # dispatch settings revert to ctor defaults on the `like=` object.
+        "name": "gendispatcher_makelike",
+        "target": "GenDispatcher.gd1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+            "New GenDispatcher.base element=Line.l1 terminal=1 kwlimit=5000 "
+            "kwband=300 kvarlimit=1500 genlist=[g1, g2] weights=[2, 1]",
+            "New GenDispatcher.gd1 like=base element=Line.l2",
+        ],
+    },
+    {
+        # --- StorageController (WP6.8 skeleton) ---
+        # The Storage element is Phase 7, so a StorageController on a circuit
+        # with no Storage always logs error 37201 at RecalcElementData (the Rust
+        # port reproduces this); `allow_errors` captures the dump past it.
+        "name": "storagecontroller_default",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.sc1 element=Line.l1",
+        ],
+    },
+    {
+        "name": "storagecontroller_full",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.sc1 element=Line.l1 terminal=1 kWTarget=5000 %kWBand=5 "
+            "kWTargetLow=2500 %kWBandLow=4 modedischarge=support modecharge=peakshavelow "
+            "monphase=avg TimeDischargeTrigger=10 TimeChargeTrigger=3 %RatekW=30 "
+            "%RateCharge=25 %Reserve=20 EventLog=yes InhibitTime=8 TUp=0.5 TFlat=1.5 "
+            "TDn=0.4 kWThreshold=4000 DispFactor=0.8 ResetLevel=0.7 Seasons=2 "
+            "SeasonTargets=[5000, 4500] SeasonTargetsLow=[2500, 2200]",
+        ],
+    },
+    {
+        # ElementList + Weights round-trip (the named entries never resolve to a
+        # Storage element — 14403 — but the name list / weights still dump).
+        "name": "storagecontroller_elementlist",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.sc1 element=Line.l1 elementlist=[sa, sb] weights=[2, 3]",
+        ],
+    },
+    {
+        # MakeLike copies essentially every dispatch setting (unlike
+        # GenDispatcher); the derived object only overrides Element.
+        "name": "storagecontroller_makelike",
+        "target": "StorageController.sc1",
+        "allow_errors": True,
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+            "New StorageController.base element=Line.l1 terminal=1 kWTarget=5000 %kWBand=5 "
+            "modedischarge=follow %Reserve=20 Seasons=2 SeasonTargets=[5000, 4500] "
+            "SeasonTargetsLow=[2500, 2200]",
+            "New StorageController.sc1 like=base element=Line.l2",
+        ],
+    },
+    {
+        "name": "generator_default",
+        "target": "Generator.g1",
+        "commands": ["New Generator.g1 bus1=genbus"],
+    },
+    {
+        "name": "generator_kw_pf",
+        "target": "Generator.g1",
+        "commands": ["New Generator.g1 bus1=genbus kV=12.47 kW=250 pf=0.9 model=1"],
+    },
+    {
+        "name": "generator_kw_kvar_delta",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus phases=3 kV=4.16 kW=500 kvar=100 conn=delta",
+        ],
+    },
+    {
+        "name": "generator_model3_pv",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus kV=12.47 kW=300 model=3 "
+            "vpu=1.02 maxkvar=150 minkvar=-150 pvfactor=0.15",
+        ],
+    },
+    {
+        "name": "generator_kva",
+        "target": "Generator.g1",
+        "commands": ["New Generator.g1 bus1=genbus kV=12.47 kW=100 kVA=150"],
+    },
+    {
+        "name": "generator_fuel",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus kV=12.47 kW=100 "
+            "usefuel=yes fuelkwh=5000 %fuel=80 %reserve=15",
+        ],
+    },
+    {
+        "name": "generator_status_dispatch",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.g1 bus1=genbus kV=12.47 kW=200 pf=0.95 "
+            "status=fixed dispmode=loadlevel dispvalue=0.8 forceon=yes",
+        ],
+    },
+    {
+        "name": "generator_makelike",
+        "target": "Generator.g1",
+        "commands": [
+            "New Generator.base bus1=gb kV=12.47 kW=400 pf=0.92 model=3 conn=delta",
+            "New Generator.g1 like=base bus1=gb2",
+        ],
+    },
+    {
+        "name": "monitor_default",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.m1 element=Line.l1 terminal=1 mode=0",
+        ],
+    },
+    {
+        "name": "monitor_mode1_residual",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.m1 element=Line.l1 terminal=1 mode=1 residual=yes ppolar=no",
+        ],
+    },
+    {
+        "name": "monitor_vipolar_off",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.m1 element=Line.l1 terminal=1 mode=48 vipolar=no",
+        ],
+    },
+    {
+        "name": "monitor_transformer_tap",
+        "target": "Monitor.mt",
+        "commands": [
+            "New Transformer.t1 phases=3 windings=2 buses=[sourcebus b2] "
+            "conns=[wye wye] kvs=[12.47 4.16] kvas=[1000 1000] xhl=5",
+            "New Monitor.mt element=Transformer.t1 terminal=2 mode=2",
+        ],
+    },
+    {
+        "name": "monitor_makelike",
+        "target": "Monitor.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Monitor.base element=Line.l1 terminal=1 mode=0 residual=yes",
+            "New Monitor.m1 like=base mode=1",
+        ],
+    },
+    {
+        "name": "energymeter_default",
+        "target": "EnergyMeter.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+            "New EnergyMeter.m1 element=Line.l1 terminal=1",
+        ],
+    },
+    {
+        "name": "energymeter_options_mask",
+        "target": "EnergyMeter.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 r1=0.1 x1=0.1 length=2",
+            "New EnergyMeter.m1 element=Line.l1 terminal=1 option=(T,M,V) "
+            "zonelist=(line.l1, line.l2) kVANormal=5000 kVAEmerg=6000 "
+            "peakcurrent=(300, 350, 400) mask=(0 0 1) LocalOnly=yes Losses=no "
+            "LineLosses=no Int_Rate=0.1 Int_Duration=2.5",
+        ],
+    },
+    {
+        "name": "energymeter_makelike",
+        "target": "EnergyMeter.m1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+            "New EnergyMeter.base element=Line.l1 terminal=1 option=(T,R,V) "
+            "kVANormal=1000 LocalOnly=yes",
+            "New EnergyMeter.m1 like=base kVAEmerg=2000",
+        ],
+    },
+    # --- Sensor (WP6.7) ---
+    # NOTE (probed): `element=`/`conn=`/`deltadirection=` all set NeedsRecalc, so
+    # `RecalcElementData` runs at EndEdit and `ZeroSensorArrays` zeros the
+    # measured arrays. A single `New Sensor … currents=…` therefore dumps
+    # `[ 0 0 0]`; to retain measured values they must be set in a later `edit`
+    # (no recalc trigger). MakeLike copies only the shape/metered fields, so a
+    # `like=` sensor keeps the new object's defaults and NIL arrays (dump '').
+    {
+        "name": "sensor_default",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1",
+        ],
+    },
+    {
+        "name": "sensor_currents_single_zeroed",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1 currents=(10 11 12) "
+            "conn=wye weight=2 %error=3",
+        ],
+    },
+    {
+        "name": "sensor_currents_twostep",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1",
+            "Edit Sensor.s1 currents=(10 11 12)",
+        ],
+    },
+    {
+        "name": "sensor_pq",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47",
+            "Edit Sensor.s1 kws=(100 100 100) kvars=(30 30 30)",
+        ],
+    },
+    {
+        "name": "sensor_kvs_delta",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.s1 element=Line.l1 terminal=1 conn=delta deltadirection=-1 kvbase=4.16",
+            "Edit Sensor.s1 kvs=(7.2 7.2 7.2)",
+        ],
+    },
+    {
+        "name": "sensor_makelike",
+        "target": "Sensor.s1",
+        "commands": [
+            "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+            "New Sensor.base element=Line.l1 terminal=1 conn=delta deltadirection=-1 "
+            "kvbase=4.16 weight=3 %error=2",
+            "Edit Sensor.base kvs=(7.2 7.2 7.2)",
+            "New Sensor.s1 like=base",
+        ],
+    },
 ]
 
 
@@ -826,10 +1103,23 @@ def check_pin() -> str:
 
 
 def run_scenario(d, scenario: dict) -> dict:
+    # Some objects log a non-fatal error during their own RecalcElementData even
+    # when fully specified — e.g. a StorageController on a circuit with no
+    # Storage element always reports 37201 ("No unassigned Storage Elements
+    # found"), exactly as the Rust port does. `allow_errors` lets those
+    # scenarios capture the property dump past the logged error (EarlyAbort off).
+    allow = scenario.get("allow_errors", False)
     d.Text.Command = "clear"
     d.Text.Command = "new circuit.propsprobe"
+    d.Error.EarlyAbort = not allow
     for cmd in scenario["commands"]:
-        d.Text.Command = cmd
+        if allow:
+            try:
+                d.Text.Command = cmd
+            except Exception:  # noqa: BLE001 - the logged error is expected
+                pass
+        else:
+            d.Text.Command = cmd
 
     target = scenario["target"]
     # Activate the target object (the `?` query sets it active) and read names.
@@ -856,27 +1146,46 @@ def run_scenario(d, scenario: dict) -> dict:
             value = _NUM_RE.sub("0", value)
         props[name] = value
 
-    return {
+    out = {
         "name": scenario["name"],
         "commands": scenario["commands"],
         "target": target,
         "properties": props,
     }
+    if scenario.get("allow_errors"):
+        out["allow_errors"] = True
+    return out
 
 
 def main() -> None:
     oracle_version = check_pin()
     from dss import dss as d
 
-    data = {
-        "schema": SCHEMA,
-        "oracle": {"dss_python": oracle_version, "engine": d.Version},
-        "scenarios": [run_scenario(d, s) for s in SCENARIOS],
-    }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(data, indent=1))
-    for s in data["scenarios"]:
-        print(f"{s['name']}: {s['properties']} -> {OUT.relative_to(REPO_ROOT)}")
+    oracle = {"dss_python": oracle_version, "engine": d.Version}
+    scenarios = [run_scenario(d, s) for s in SCENARIOS]
+
+    # Group by class = scenario-name prefix before the first `_`, preserving
+    # definition order, and write one file per class.
+    by_class: dict[str, list] = {}
+    for s in scenarios:
+        cls = s["name"].split("_", 1)[0]
+        by_class.setdefault(cls, []).append(s)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for cls, scs in by_class.items():
+        path = OUT_DIR / f"{cls}.json"
+        path.write_text(
+            json.dumps(
+                {"schema": SCHEMA, "oracle": oracle, "class": cls, "scenarios": scs},
+                indent=1,
+            )
+            + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)} ({len(scs)} scenarios)")
+    for p in OUT_DIR.glob("*.json"):
+        if p.stem not in by_class:
+            p.unlink()
+            print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

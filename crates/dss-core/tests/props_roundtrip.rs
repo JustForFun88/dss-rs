@@ -1,10 +1,11 @@
 //! Phase 2 gate: property round-trip against the dss-python oracle.
 //!
-//! For each scenario in `tests/golden/props.json`, replay the identical command
-//! script through the Rust [`Dss`] executive and check that every property
-//! reads back the same value the oracle produced. Per PORTING_PLAN.md §4,
-//! numbers are compared with tolerance and the surrounding structure exactly,
-//! never by raw float-string diffing.
+//! For each scenario under `tests/golden/props/` (one `<class>.json` per DSS
+//! class, each holding that class's scenarios; the gate runs every file in the
+//! directory), replay the identical command script through the Rust [`Dss`]
+//! executive and check that every property reads back the same value the oracle
+//! produced. Per PORTING_PLAN.md §4, numbers are compared with tolerance and the
+//! surrounding structure exactly, never by raw float-string diffing.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -12,8 +13,10 @@ use std::path::PathBuf;
 use dss_core::exec::Dss;
 use serde::Deserialize;
 
+/// One per-class file: `{schema, oracle, class, scenarios}` (`oracle`/`class`
+/// ignored here).
 #[derive(Debug, Deserialize)]
-struct PropsGolden {
+struct PropsFile {
     schema: u32,
     scenarios: Vec<Scenario>,
 }
@@ -25,25 +28,44 @@ struct Scenario {
     target: String,
     /// Property name → oracle value string.
     properties: BTreeMap<String, String>,
+    /// Some objects log a non-fatal error during their own RecalcElementData
+    /// even when fully specified (e.g. a StorageController on a circuit with no
+    /// Storage element always logs 37201 — faithfully reproduced). Those
+    /// scenarios still pin the property dump; the error itself is covered by a
+    /// dedicated unit test, so skip the "no engine errors" assertion here.
+    #[serde(default)]
+    allow_errors: bool,
 }
 
-fn load_golden() -> PropsGolden {
-    let path: PathBuf = [
+/// Load every `*.json` class file from `tests/golden/props/` (sorted by file
+/// name for deterministic order) and flatten their scenarios.
+fn load_scenarios() -> Vec<Scenario> {
+    let dir: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "..",
         "..",
         "tests",
         "golden",
-        "props.json",
+        "props",
     ]
     .iter()
     .collect();
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-    let g: PropsGolden = serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("cannot parse {}: {e}", path.display()));
-    assert_eq!(g.schema, 1, "props golden schema mismatch");
-    g
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    files.sort();
+    let mut scenarios = Vec::new();
+    for p in &files {
+        let text = std::fs::read_to_string(p)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()));
+        let f: PropsFile = serde_json::from_str(&text)
+            .unwrap_or_else(|e| panic!("cannot parse {}: {e}", p.display()));
+        assert_eq!(f.schema, 1, "{}: props golden schema mismatch", p.display());
+        scenarios.extend(f.scenarios);
+    }
+    scenarios
 }
 
 /// Split a value string into its non-numeric "skeleton" (each number replaced
@@ -118,10 +140,10 @@ fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
 
 #[test]
 fn props_roundtrip_matches_oracle() {
-    let golden = load_golden();
-    assert!(!golden.scenarios.is_empty(), "no scenarios in golden");
+    let scenarios = load_scenarios();
+    assert!(!scenarios.is_empty(), "no scenarios in golden");
 
-    for sc in &golden.scenarios {
+    for sc in &scenarios {
         let mut dss = Dss::new();
         // gen_props.py runs this preamble before every scenario (the `?`
         // query is circuit-gated in ProcessCommand, so the oracle needed a
@@ -132,7 +154,7 @@ fn props_roundtrip_matches_oracle() {
             dss.command(cmd);
         }
         assert!(
-            dss.errors().is_empty(),
+            sc.allow_errors || dss.errors().is_empty(),
             "scenario {}: unexpected engine errors: {:?}",
             sc.name,
             dss.errors()

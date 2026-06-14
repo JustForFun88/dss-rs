@@ -1,0 +1,174 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "xycurve",
+ "scenarios": [
+  {
+   "name": "xycurve_default",
+   "commands": [
+    "New XYcurve.c1"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "0",
+    "Points": "[ 0 0]",
+    "YArray": "",
+    "XArray": "",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "0",
+    "Y": "0",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_arrays",
+   "commands": [
+    "New XYcurve.c1 npts=4 yarray=(10 20 30 40) xarray=(1 2 3 4)"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "4",
+    "Points": "[ 1 10 2 20 3 30 4 40]",
+    "YArray": "[ 10 20 30 40]",
+    "XArray": "[ 1 2 3 4]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "1",
+    "Y": "10",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_abbrev",
+   "commands": [
+    "New XYcurve.c1 np=3 yarr=(0 5 10) xarr=(0 1 2)"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "3",
+    "Points": "[ 0 0 1 5 2 10]",
+    "YArray": "[ 0 5 10]",
+    "XArray": "[ 0 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "0",
+    "Y": "0",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_shift_scale",
+   "commands": [
+    "New XYcurve.c1 npts=3 xarray=(0 1 2) yarray=(0 10 20) xscale=2 yscale=3 xshift=1 yshift=5"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "3",
+    "Points": "[ 0 0 1 10 2 20]",
+    "YArray": "[ 0 10 20]",
+    "XArray": "[ 0 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "1",
+    "Y": "5",
+    "XShift": "1",
+    "YShift": "5",
+    "XScale": "2",
+    "YScale": "3",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_x_accessor",
+   "commands": [
+    "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+    "Edit XYcurve.c1 x=2.5"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "4",
+    "Points": "[ 1 10 2 20 3 30 4 40]",
+    "YArray": "[ 10 20 30 40]",
+    "XArray": "[ 1 2 3 4]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "2.5",
+    "Y": "25",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_shrink_npts",
+   "commands": [
+    "New XYcurve.c1 npts=4 xarray=(1 2 3 4) yarray=(10 20 30 40)",
+    "Edit XYcurve.c1 npts=2"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "2",
+    "Points": "[ 1 10 2 20]",
+    "YArray": "[ 10 20]",
+    "XArray": "[ 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "1",
+    "Y": "10",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "xycurve_makelike",
+   "commands": [
+    "New XYcurve.base npts=3 xarray=(0 1 2) yarray=(5 7 9)",
+    "New XYcurve.c1 like=base"
+   ],
+   "target": "XYcurve.c1",
+   "properties": {
+    "NPts": "3",
+    "Points": "[ 0 5 1 7 2 9]",
+    "YArray": "[ 5 7 9]",
+    "XArray": "[ 0 1 2]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "X": "0",
+    "Y": "0",
+    "XShift": "0",
+    "YShift": "0",
+    "XScale": "1",
+    "YScale": "1",
+    "Like": ""
+   }
+  }
+ ]
+}

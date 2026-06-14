@@ -94,6 +94,11 @@ pub enum PropType {
     /// entry, count = the integer property `size_prop` (`NumWindings`);
     /// rendered `[b1, b2, ]`.
     BusesOnStruct,
+    /// `StringListProperty` (e.g. an EnergyMeter `Option`/`ZoneList`): a list of
+    /// string tokens parsed via Pascal `InterpretTStringListArray`. Lists may be
+    /// read/written by function (`SetOptions`/`GetOptions`), which the object
+    /// resolves per ordinal. Rendered `[a, b, c]` (empty → `""`).
+    StringList,
 }
 
 /// Pascal `TPropertyFlag` set, as a small bitset. Only the flags that affect
@@ -133,6 +138,12 @@ impl PropFlags {
     pub const REQUIRED_IN_SPEC_SET: Self = Self(1 << 34);
     pub const IS_FILENAME: Self = Self(1 << 35);
     pub const GLOBAL_COUNT: Self = Self(1 << 36);
+    /// Pascal `DynamicDefault`: the default is recomputed from other properties
+    /// (e.g. `kWBand` from `%kWBand`); only affects JSON-default elision.
+    pub const DYNAMIC_DEFAULT: Self = Self(1 << 37);
+    /// Pascal `Units_hour`: documents the unit of a time property (JSON schema
+    /// metadata only).
+    pub const UNITS_HOUR: Self = Self(1 << 38);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -350,6 +361,12 @@ impl PropDef {
         }
     }
 
+    /// `StringListProperty` (Pascal `InterpretTStringListArray` +
+    /// `StringListToString`); e.g. an EnergyMeter `Option`/`ZoneList`.
+    pub fn string_list(name: &'static str) -> Self {
+        Self::base(name, PropType::StringList)
+    }
+
     pub fn flags(mut self, flags: PropFlags) -> Self {
         self.flags = flags;
         self
@@ -472,10 +489,36 @@ impl ClassProps {
                 Ok(0)
             }
             PropType::DoubleFArray => {
+                // Pascal `DoubleFArrayProperty` (`DSSObjectHelper.pas` l.651):
+                // `PropParser.ParseAsVector(count, ...)` returns the number of
+                // values actually supplied — the `prevInt` some side effects need
+                // (e.g. EnergyMeter `Mask` fills the remaining slots with 1.0).
                 let n = pd.size_prop;
                 let mut buf = vec![0.0; n];
-                interpret_dbl_array(eng.parser, eng.vars, value, n, &mut buf)?;
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(&format!("[{value}]"));
+                eng.parser.next_param(eng.vars);
+                let count = eng.parser.parse_as_vector(eng.vars, &mut buf, false)?;
                 obj.set_f64_array(idx, buf);
+                Ok(count.min(n) as i32)
+            }
+            PropType::StringList => {
+                // Pascal `InterpretTStringListArray`: tokenize the value through
+                // the scratch parser (commas/spaces, brackets already stripped by
+                // the outer command parser). `file=` specs are deferred.
+                let lower = pd.flags.contains(PropFlags::TRANSFORM_LOWERCASE);
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut list = Vec::new();
+                loop {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if token.is_empty() {
+                        break;
+                    }
+                    list.push(if lower { token.to_lowercase() } else { token });
+                }
+                obj.set_string_list(idx, list);
                 Ok(0)
             }
             PropType::SymMatrixReal | PropType::SymMatrixImag => {
@@ -869,6 +912,15 @@ impl ClassProps {
                 }
                 s.push(']');
                 s
+            }
+            PropType::StringList => {
+                // Pascal `StringListToString`: `[a, b, c]`; empty list → "".
+                let list = obj.get_string_list(idx);
+                if list.is_empty() {
+                    String::new()
+                } else {
+                    format!("[{}]", list.join(", "))
+                }
             }
             PropType::Bus => obj.get_bus_name(pd.size_prop),
             PropType::BusOnStruct => obj.get_active_struct_bus(),

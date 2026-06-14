@@ -6,6 +6,7 @@ use num_complex::Complex64;
 
 use dss_parser::{Parser, ParserVars};
 
+use crate::circuit::auto_add::AutoAdd;
 use crate::circuit::bus::Bus;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::solution::Solution;
@@ -19,6 +20,24 @@ pub struct NodeBus {
     pub node_num: i32,
 }
 
+/// Pascal `Circuit.pas` `TReductionStrategy` — the circuit-reduction mode
+/// selected by `Set ReduceOption=` and consumed by `EnergyMeter.ReduceZone`.
+/// (`rsTapEnds` was removed upstream 2018-02-28.) The reduction algorithms
+/// themselves (`ReduceAlgs.pas`) are `NOT_PORTED` — they hinge on the
+/// unported 210-line `TLineObj.MergeWith` series/parallel line merge; only the
+/// option/command surface is ported in WP6.8. Deferred to a later phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReductionStrategy {
+    #[default]
+    Default,
+    ShortLines,
+    MergeParallel,
+    BreakLoop,
+    Dangling,
+    Switches,
+    Laterals,
+}
+
 /// Which class-specific list an element joins in `AddCktElement`
 /// (the `DSSObjType and CLASSMASK` dispatch, Phase 3 subset).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +49,10 @@ pub enum ElemKind {
     Capacitor,
     Reactor,
     Control,
+    Generator,
+    Meter,
+    EnergyMeter,
+    Sensor,
 }
 
 /// The circuit model (`TDSSCircuit`).
@@ -58,8 +81,17 @@ pub struct Circuit {
     pub transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
     pub reactors: Vec<ElemRef>,
+    pub generators: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
+    /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
+    pub monitors: Vec<ElemRef>,
+    /// EnergyMeter elements (Phase 6): no Yprim, not PD/PC; device list + own
+    /// list. Walked in creation order by `ResetMeterZonesAll` / `SampleAll`.
+    pub energy_meters: Vec<ElemRef>,
+    /// Sensor elements (Phase 6, WP6.7): no Yprim, not PD/PC; device list + own
+    /// list. Walked in creation order by `SetHasSensorFlag` / `CalcAllocationFactors`.
+    pub sensors: Vec<ElemRef>,
 
     pub solution: Solution,
 
@@ -73,6 +105,10 @@ pub struct Circuit {
 
     pub load_multiplier: f64,
     pub gen_multiplier: f64,
+    /// `GeneratorDispatchReference`: the per-mode dispatch level
+    /// `SetGeneratorDispRef` derives each solve (LOADMODE generators compare
+    /// `DispValue` against it).
+    pub generator_dispatch_reference: f64,
     pub default_growth_rate: f64,
     pub default_growth_factor: f64,
     pub positive_sequence: bool,
@@ -108,6 +144,32 @@ pub struct Circuit {
     /// `LegalVoltageBases` in kV (no 0.0 terminator; the Vec length rules).
     pub legal_voltage_bases: Vec<f64>,
 
+    /// `AutoAddObj` — the auto-add option state (skeleton; see `auto_add.rs`).
+    pub auto_add_obj: AutoAdd,
+    /// `UEWeight` — weighting of unserved energy in the auto-add objective.
+    pub ue_weight: f64,
+    /// `LossWeight` — weighting of losses in the auto-add objective.
+    pub loss_weight: f64,
+    /// `UEregs` — meter register indices summed as "unserved energy".
+    pub ue_regs: Vec<i32>,
+    /// `LossRegs` — meter register indices summed as "losses".
+    pub loss_regs: Vec<i32>,
+    /// `AutoAddBusList` — candidate buses for the auto-add search. Pascal uses
+    /// a `TBusHashListType`; the skeleton keeps an insertion-ordered,
+    /// original-case `Vec<String>` (sufficient for the `Get` echo — the
+    /// hash-list dedup/`Find` is only needed by the unported `MakeBusList`).
+    pub auto_add_bus_list: Vec<String>,
+
+    /// `ReductionStrategy`/`ReductionStrategyString` — the `Set ReduceOption=`
+    /// state. The strategy is parsed and stored; the actual zone reduction is
+    /// `NOT_PORTED` (see [`ReductionStrategy`]).
+    pub reduction_strategy: ReductionStrategy,
+    pub reduction_strategy_string: String,
+    /// `ReductionZmag` (ohms) — the short-line merge threshold (`Set Zmag=`).
+    pub reduction_zmag: f64,
+    /// `ReduceLateralsKeepLoad` (`Set KeepLoad=`).
+    pub reduce_laterals_keep_load: bool,
+
     /// Scratch for `ProcessBusDefs`/`AddBus` (`NodeBuffer`).
     node_buffer: Vec<i32>,
 }
@@ -133,7 +195,11 @@ impl Circuit {
             transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
             reactors: Vec::new(),
+            generators: Vec::new(),
             controls: Vec::new(),
+            monitors: Vec::new(),
+            energy_meters: Vec::new(),
+            sensors: Vec::new(),
             solution: Solution::new(default_base_freq),
             fundamental: default_base_freq,
             is_solved: false,
@@ -145,6 +211,7 @@ impl Circuit {
             solution_was_attempted: false,
             load_multiplier: 1.0,
             gen_multiplier: 1.0,
+            generator_dispatch_reference: 0.0,
             default_growth_rate: 1.025,
             default_growth_factor: 1.0,
             positive_sequence: false,
@@ -167,6 +234,17 @@ impl Circuit {
             emerg_min_volts: 0.90,
             emerg_max_volts: 1.08,
             legal_voltage_bases: vec![0.208, 0.480, 12.47, 24.9, 34.5, 115.0, 230.0],
+            // Pascal `Circuit.Create`: AutoAddObj.Init + the loss/UE defaults.
+            auto_add_obj: AutoAdd::new(),
+            ue_weight: 1.0, // Default to weighting UE same as losses
+            loss_weight: 1.0,
+            ue_regs: vec![10],   // Overload UE
+            loss_regs: vec![13], // Zone Losses
+            auto_add_bus_list: Vec::new(),
+            reduction_strategy: ReductionStrategy::Default,
+            reduction_strategy_string: String::new(),
+            reduction_zmag: 0.02,
+            reduce_laterals_keep_load: true,
             node_buffer: vec![0; 50],
         }
     }
@@ -200,9 +278,18 @@ impl Circuit {
                 self.pd_elements.push(r);
                 self.reactors.push(r);
             }
+            ElemKind::Generator => {
+                self.pc_elements.push(r);
+                self.generators.push(r);
+            }
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),
+            // Monitors (and other meter elements) likewise: device list + own
+            // list, no Yprim.
+            ElemKind::Meter => self.monitors.push(r),
+            ElemKind::EnergyMeter => self.energy_meters.push(r),
+            ElemKind::Sensor => self.sensors.push(r),
         }
         elem.cd_mut().handle = self.ckt_elements.len();
     }

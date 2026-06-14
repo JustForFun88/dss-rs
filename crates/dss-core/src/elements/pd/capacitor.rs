@@ -14,7 +14,7 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::{CktElement, SysCtx};
+use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -123,6 +123,12 @@ pub struct Capacitor {
 }
 
 impl Capacitor {
+    /// Per-step switch states (`States[1..NumSteps]`, 0=open/1=closed). Read by
+    /// mode-6 monitors (`Meters/Monitor.pas` TakeSample).
+    pub fn states(&self) -> &[i32] {
+        &self.fstates
+    }
+
     /// Pascal `TCapacitorObj.Create`.
     pub fn new(name: &str) -> Self {
         let mut cd = CktElementData::new(name, prop::NUM_PROPS);
@@ -519,9 +525,25 @@ impl CktElement for Capacitor {
         self.recalc();
     }
 
+    fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
     /// Pascal `TPDElement.IsShunt` (set by the Bus1/Bus2 side effects).
     fn is_shunt(&self) -> bool {
         self.is_shunt
+    }
+
+    /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData {
+            branch_flt_rate: self.fault_rate * self.pct_perm * 0.01,
+            hrs_to_repair: self.hrs_to_repair,
+            miles_this_line: 0.0,
+        }
     }
 
     /// Pascal `TCapacitorObj.CalcYPrim`: accumulate every energized step into the
@@ -911,6 +933,9 @@ mod tests {
             load_model: 1,
             mode: SolveMode::Snapshot,
             load_multiplier: 1.0,
+            gen_multiplier: 1.0,
+            generator_dispatch_reference: 0.0,
+            price_signal: 25.0,
             default_growth_factor: 1.0,
             year: 0,
             dbl_hour: 0.0,

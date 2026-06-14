@@ -234,6 +234,11 @@ pub struct Load {
     pub phase_curr: Vec<Complex64>,
     pub load_solution_count: i32,
     pub open_load_solution_count: i32,
+    /// `EEN_Factor`/`UE_Factor`: overload-driven unserved-energy factors set by
+    /// the EnergyMeter zone sweep (`TakeSample`) and consumed by
+    /// [`Load::exceeds_normal`]/[`Load::unserved`].
+    pub een_factor: f64,
+    pub ue_factor: f64,
     pub yprim_open_cond: Option<CMatrix>,
 
     pub yearly_shape: String,
@@ -353,6 +358,8 @@ impl Load {
             phase_curr: vec![Complex64::ZERO; 3],
             load_solution_count: -1,
             open_load_solution_count: -1,
+            een_factor: 0.0,
+            ue_factor: 0.0,
             yprim_open_cond: None,
             yearly_shape: String::new(),
             daily_shape: String::new(),
@@ -701,6 +708,89 @@ impl Load {
         self.load_solution_count = sys.solution_count;
     }
 
+    /// Lowest per-unit phase voltage (Pascal `TakeSample` voltage criterion used
+    /// by `ExceedsNormal`/`Unserved`): refresh the phase voltages if stale, then
+    /// `min(|Vterminal[i]|) / Vbase`.
+    fn min_phase_vpu(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+        if self.load_solution_count != sys.solution_count {
+            self.calc_vterminal_phase(sys, node_v);
+        }
+        let mut vpu = self.v_base;
+        for i in 0..self.cd.nphases {
+            let vmag = self.cd.vterminal[i].norm();
+            if vmag < vpu {
+                vpu = vmag;
+            }
+        }
+        vpu / self.v_base
+    }
+
+    /// Pascal `TLoadObj.ExceedsNormal` (Load.pas l.2057): true if a critical
+    /// line is overloaded (`EEN_Factor > 0`) or the lowest phase voltage is
+    /// below the normal-minimum criterion; in the latter case it (re)computes
+    /// `EEN_Factor`. `norm_min`/`emerg_min` are the circuit defaults.
+    pub fn exceeds_normal(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        norm_min: f64,
+        emerg_min: f64,
+    ) -> bool {
+        if self.een_factor > 0.0 {
+            return true;
+        }
+        let vpu = self.min_phase_vpu(sys, node_v);
+        let norm_crit = if self.vmin_normal != 0.0 {
+            self.vmin_normal
+        } else {
+            norm_min
+        };
+        let emerg_crit = if self.vmin_emerg != 0.0 {
+            self.vmin_emerg
+        } else {
+            emerg_min
+        };
+        if vpu < norm_crit {
+            self.een_factor = (norm_crit - vpu) / (norm_crit - emerg_crit);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Pascal `TLoadObj.Unserved` (Load.pas l.2004): true if a critical line is
+    /// overloaded (`UE_Factor > 0`) or the lowest phase voltage is below the
+    /// emergency-minimum criterion; in the latter case it (re)computes
+    /// `UE_Factor`.
+    pub fn unserved(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        norm_min: f64,
+        emerg_min: f64,
+    ) -> bool {
+        if self.ue_factor > 0.0 {
+            return true;
+        }
+        let vpu = self.min_phase_vpu(sys, node_v);
+        let norm_crit = if self.vmin_normal != 0.0 {
+            self.vmin_normal
+        } else {
+            norm_min
+        };
+        let emerg_crit = if self.vmin_emerg != 0.0 {
+            self.vmin_emerg
+        } else {
+            emerg_min
+        };
+        if vpu < emerg_crit {
+            self.ue_factor = (emerg_crit - vpu) / (norm_crit - emerg_crit);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Pascal `CalcYPrimContribution`: `InjCurrent = Yprim · V(node)`.
     fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
@@ -972,6 +1062,9 @@ pub fn default_recalc_ctx() -> SysCtx {
         load_model: crate::solution::POWERFLOW,
         mode: SolveMode::Snapshot,
         load_multiplier: 1.0,
+        gen_multiplier: 1.0,
+        generator_dispatch_reference: 0.0,
+        price_signal: 25.0,
         default_growth_factor: 1.0,
         year: 0,
         dbl_hour: 0.0,
@@ -1533,6 +1626,44 @@ impl Load {
     }
 
     /// Pascal `ComputeAllocatedLoad`.
+    /// Pascal `Set_AllocationFactor` (Load.pas l.2131): used by
+    /// `EnergyMeter.AllocateLoad` to scale a load's allocation factor. Only
+    /// ConnectedkVA / kWh-spec loads change `kWbase`; fixed kW/kvar loads ignore
+    /// it (via `ComputeAllocatedLoad`).
+    pub fn set_allocation_factor(&mut self, value: f64) {
+        self.allocation_factor = value;
+        match self.load_spec_type {
+            LoadSpec::ConnectedKvaPf => self.kva_allocation_factor = value,
+            LoadSpec::KwhPf => self.c_factor = value,
+            _ => {}
+        }
+        self.compute_allocated_load();
+        self.has_been_allocated = true;
+    }
+
+    /// Pascal `Set_kVAAllocationFactor` (Load.pas l.2113): the `Set
+    /// AllocationFactors=X` command path. Forces the ConnectedkVA spec and
+    /// re-tracks the property dump order (xfkVA/PF next; kVA/kvar/kW/kWh cleared).
+    pub fn set_kva_allocation_factor(&mut self, value: f64) {
+        use prop::*;
+        self.kva_allocation_factor = value;
+        self.allocation_factor = value;
+        self.load_spec_type = LoadSpec::ConnectedKvaPf;
+        self.cd.obj.set_as_next_seq(XFKVA);
+        self.cd.obj.set_as_next_seq(PF);
+        self.cd.obj.clear_seq(KVA);
+        self.cd.obj.clear_seq(KVAR);
+        self.cd.obj.clear_seq(KW);
+        self.cd.obj.clear_seq(KWH);
+        self.compute_allocated_load();
+        self.has_been_allocated = true;
+    }
+
+    /// `FAllocationFactor` (read by `AllocateLoad`).
+    pub fn allocation_factor(&self) -> f64 {
+        self.allocation_factor
+    }
+
     fn compute_allocated_load(&mut self) {
         match self.load_spec_type {
             LoadSpec::ConnectedKvaPf => {
