@@ -27,11 +27,6 @@
    "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge"
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
-   "tag": "entry_point",
-   "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master.dss step 0: oracle did not converge"
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
    "tag": "entry_point",
    "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge"

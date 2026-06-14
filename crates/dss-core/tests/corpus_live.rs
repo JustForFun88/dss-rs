@@ -17,11 +17,16 @@
 //!
 //! Scope: this gate compares the full assembled **electrical** model (the Y / V /
 //! current mandate, no exceptions) plus every element's powers and the discrete
-//! control state. Monitor channels and EnergyMeter registers/zones are NOT yet
-//! compared here — no `solvable_now` case defines one today, and their fidelity
-//! is already pinned against the same oracle by `golden_phase6.rs` /
-//! `golden_checkpoints.rs`. They will be wired in when the first metered/monitored
-//! multi-step case is promoted (see tests/TOLERANCE_NOTES.md).
+//! control state, for every case. Monitor channels and EnergyMeter
+//! registers/zones are **also** compared — per step, with the same
+//! `compare_monitor`/`compare_meter` comparators `golden_phase6.rs` uses — for
+//! the cases that opt in via `check_meters_monitors` in `solvable_now.json` (the
+//! daily IEEE13/IEEE37/IEEE123 runs that define meters + deterministic-mode
+//! monitors). Incidental master-defined monitors are *not* compared: the pinned
+//! oracle returns a phantom `Channel(i)` for an *unsampled* monitor, so only
+//! cases that actually sample their monitors opt in (see tests/TOLERANCE_NOTES.md
+//! and `solvable_now_has_multistep_depth` below, which pins that ≥1 such case
+//! always exists).
 
 mod harness;
 
@@ -357,6 +362,16 @@ fn run_and_compare(
         // Snapshot every element once (needs &mut), then the immutable compares.
         let snaps = dss.snapshot_elements();
 
+        // The oracle returns one YPrim block per `selected_elements` entry
+        // (oracle_server.py). Assert that, so a case that names selected
+        // elements can never silently skip the YPrim comparison.
+        assert_eq!(
+            cp.yprims.len(),
+            selected.len(),
+            "{ctx}: oracle returned {} YPrim block(s) for {} selected element(s)",
+            cp.yprims.len(),
+            selected.len()
+        );
         for yp in &cp.yprims {
             compare_yprim(&dss, yp, &tol, &ctx);
         }
@@ -439,6 +454,38 @@ fn load_solvable() -> Vec<SolvableCase> {
     let m: SolvableManifest =
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
     m.cases
+}
+
+/// Always-on (no oracle) depth guard: the live gate's *breadth* is checked by
+/// `corpus_manifest.rs` (every `.dss` accounted for), but nothing there pins its
+/// *depth*. This asserts `solvable_now` keeps at least one genuinely deep case —
+/// a multi-step run that also compares meters/monitors, and a case that compares
+/// YPrim — so editing those down to bare snapshots fails `cargo test --workspace`
+/// rather than silently dropping the multi-step / meter / monitor / YPrim live
+/// coverage. Mirrors the count guards in `golden_phase5.rs` / `golden_phase6.rs`.
+#[test]
+fn solvable_now_has_multistep_depth() {
+    let cases = load_solvable();
+    assert!(!cases.is_empty(), "solvable_now must not be empty");
+    let multistep_metered = cases
+        .iter()
+        .filter(|c| c.n_steps > 1 && c.check_meters_monitors)
+        .count();
+    assert!(
+        multistep_metered >= 1,
+        "solvable_now must keep ≥1 multi-step (n_steps>1) case with \
+         check_meters_monitors=true (live multi-step + meter + monitor coverage); \
+         found {multistep_metered}"
+    );
+    let with_yprim = cases
+        .iter()
+        .filter(|c| !c.selected_elements.is_empty())
+        .count();
+    assert!(
+        with_yprim >= 1,
+        "solvable_now must keep ≥1 case with selected_elements (live YPrim \
+         coverage); found {with_yprim}"
+    );
 }
 
 #[test]

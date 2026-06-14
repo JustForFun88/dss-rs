@@ -8,7 +8,7 @@
 //! uses only a subset, so dead-code analysis is suppressed module-wide.
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use dss_core::exec::{Dss, ElementSnapshot};
@@ -638,9 +638,18 @@ pub struct MonitorCap {
     pub header: Vec<String>,
     pub sample_count: i32,
     pub channels: Vec<Vec<f64>>,
+    /// 0-based channel indices to skip (e.g. the mode-5 wall-clock timing
+    /// channels, which the port records as 0 — see `golden_phase6.rs`). Empty
+    /// for the live gate, which only captures deterministic monitor modes.
+    #[serde(default)]
+    pub skip_channels: Vec<usize>,
 }
 
 /// An EnergyMeter's register names/values and zone branch/end/PCE counts.
+/// `branches`/`ends`/`pce` are the zone member name lists; when non-empty (the
+/// live gate captures them) membership is compared as a case-insensitive set,
+/// strengthening the bare count check. `golden_phase6.rs`'s meter golden leaves
+/// them empty (it pins micro-zone membership separately, ordered).
 #[derive(Debug, Deserialize)]
 pub struct MeterCap {
     pub name: String,
@@ -649,13 +658,19 @@ pub struct MeterCap {
     pub n_branches: usize,
     pub n_ends: usize,
     pub n_pce: usize,
+    #[serde(default)]
+    pub branches: Vec<String>,
+    #[serde(default)]
+    pub ends: Vec<String>,
+    #[serde(default)]
+    pub pce: Vec<String>,
 }
 
 /// Compare a monitor's header (data channels, exact), sample count (exact), and
 /// every channel's sample array (`tol.i_rel`/`i_abs` on the f32 samples — the
-/// same policy `golden_phase6.rs` uses). The capture must define only
-/// deterministic monitor modes (no mode-5 wall-clock channels) so all channels
-/// are compared with no skips.
+/// same policy `golden_phase6.rs` uses). Channels listed in `exp.skip_channels`
+/// (the mode-5 wall-clock timings) are skipped; the live gate leaves it empty
+/// (it captures only deterministic modes, so every channel is compared).
 pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tol, ctx: &str) {
     let view = dss
         .monitor_view(&exp.name)
@@ -680,6 +695,9 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tol, ctx: &str) {
         exp.name
     );
     for (ch, (act, e)) in view.channels.iter().zip(&exp.channels).enumerate() {
+        if exp.skip_channels.contains(&ch) {
+            continue;
+        }
         assert_eq!(
             act.len(),
             e.len(),
@@ -751,4 +769,24 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, ctx: &str) {
         "{ctx}: meter {} PCE count differs",
         exp.name
     );
+    // Membership (case-insensitive set) when the capture carries the lists — a
+    // strictly stronger check than the counts above, order-independent so a
+    // different zone-walk order is not a spurious failure.
+    let set = |v: &[String]| -> BTreeSet<String> { v.iter().map(|s| s.to_lowercase()).collect() };
+    let cmp_members = |act: &[String], e: &[String], what: &str| {
+        if e.is_empty() {
+            return;
+        }
+        let (a, b) = (set(act), set(e));
+        assert!(
+            a == b,
+            "{ctx}: meter {} {what} membership differs (Rust∖oracle={:?}, oracle∖Rust={:?})",
+            exp.name,
+            a.difference(&b).collect::<Vec<_>>(),
+            b.difference(&a).collect::<Vec<_>>(),
+        );
+    };
+    cmp_members(&zone.all_branches_in_zone, &exp.branches, "branch");
+    cmp_members(&zone.all_end_elements, &exp.ends, "end");
+    cmp_members(&zone.zone_pce, &exp.pce, "PCE");
 }

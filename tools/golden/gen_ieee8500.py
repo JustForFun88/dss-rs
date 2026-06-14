@@ -37,8 +37,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT = REPO_ROOT / "tests" / "golden" / "ieee8500.json"
 SCHEMA = 1
 
-# Master path, relative to `.inputs/electricdss-tst` (the harness joins the same
-# root, exactly like golden_feeders_controls.rs).
+# Master path. This generator (manual, maintainer-only) reads the master from
+# `.inputs/electricdss-tst`; the gate (`golden_ieee8500.rs`) reads the same
+# relative path from the vendored `tests/corpus/electricdss-tst` copy.
 MASTER_REL = "Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
 
 # Replayed after `Compile <master>` (the harness issues the compile itself).

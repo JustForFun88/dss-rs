@@ -101,14 +101,22 @@ def capture_all_meters(ckt) -> list:
     m = ckt.Meters
     i = m.First
     while i:
+        branches = list(m.AllBranchesInZone)
+        ends = list(m.AllEndElements)
+        pce = list(m.ZonePCE)
         out.append(
             {
                 "name": m.Name,
                 "register_names": list(m.RegisterNames),
                 "register_values": list(m.RegisterValues),
-                "n_branches": len(list(m.AllBranchesInZone)),
-                "n_ends": len(list(m.AllEndElements)),
-                "n_pce": len(list(m.ZonePCE)),
+                "n_branches": len(branches),
+                "n_ends": len(ends),
+                "n_pce": len(pce),
+                # Zone member name lists (compared as a case-insensitive set by
+                # the gate — stronger than the counts above).
+                "branches": branches,
+                "ends": ends,
+                "pce": pce,
             }
         )
         i = m.Next

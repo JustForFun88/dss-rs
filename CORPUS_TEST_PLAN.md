@@ -1,5 +1,15 @@
 # Plan: Live oracle-comparison test infrastructure over a vendored `electricdss-tst` corpus
 
+> **Status: implemented** (this is the design record; see `STATUS.md` →
+> "Live corpus oracle gate" for current state). All development steps in §6 are
+> done, including the steps written here as "later, separate": the corpus is
+> vendored, the three runtime `.inputs/electricdss-tst` gate references are
+> repointed at `tests/corpus/electricdss-tst` (no test reads `.inputs`), and the
+> oracle server hard-asserts **both** the dss-python 0.15.7 and engine 0.14.5
+> pins. Manifests are **JSON** (the §2 zero-new-dep fallback), not TOML. The live
+> gate runs in the `live-oracle` CI job and covers 17 solvable cases, including
+> three control-diverse 24-step daily runs and the 8500-node master.
+
 ## Context
 
 The golden gates today are "Python generates JSON from the pinned oracle → commit

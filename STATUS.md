@@ -76,8 +76,10 @@ cargo test --workspace      # dss-core lib 319, golden_feeders 1,
                             # golden_allocation 1, golden_gendispatcher 1,
                             # golden_autoadd_reduce 1, golden_slice 2,
                             # golden_smoke 3, props_roundtrip 1,
-                            # corpus_manifest 1, corpus_live 2 (auto-skip
-                            #   w/o DSS_LIVE_ORACLE / DSS_LIVE_CLASSIFY),
+                            # corpus_manifest 1, corpus_live 3
+                            #   (solvable_now_has_multistep_depth always-on;
+                            #    solvable + classify auto-skip w/o
+                            #    DSS_LIVE_ORACLE / DSS_LIVE_CLASSIFY),
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -136,24 +138,40 @@ depend on the temporary `.inputs/electricdss-tst`.
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
 - **Live comparison (`DSS_LIVE_ORACLE=1`; runs in the `live-oracle` CI job).**
-  For each `solvable_now` case the gate compiles+solves on the Rust engine and on
-  the pinned dss-python oracle (`tools/oracle/oracle_server.py`, a one-shot
-  subprocess over JSON), and compares the full assembled model per step — node
-  order, **full** system Y (entry-by-entry, no fingerprint substitution), node
-  voltages, **every** element's currents/powers, selected YPrim blocks, the
-  injection vector, and discrete state — reusing the `harness/mod.rs` comparators
-  and the checkpoint gate's tolerance policy. The `IEEE13Nodeckt.dss` case is a
-  **24-step daily run with a meter + three monitors (modes 0/1/2) + selected
-  elements**, so the gate also exercises the **multi-step per-step**, **YPrim**,
-  **monitor-channel** and **EnergyMeter-register/zone** paths live
-  (`compare_monitor`/`compare_meter`, gated per case by `check_meters_monitors`;
-  incidental master-defined monitors are *not* compared — the pinned oracle
-  returns a phantom `Channel(i)` for an unsampled monitor, see
-  `tests/TOLERANCE_NOTES.md`). The two tests **auto-skip (pass)** without the env
-  var / oracle, so `cargo test --workspace` stays green everywhere; the
-  **`live-oracle` GitHub Actions job** installs the pinned oracle (PIN.txt) and
-  runs them, so the gate is no longer decorative. No goldens are written; the
-  oracle is consulted live.
+  For each of the **17** `solvable_now` cases the gate compiles+solves on the Rust
+  engine and on the pinned dss-python oracle (`tools/oracle/oracle_server.py`, a
+  one-shot subprocess over JSON), and compares the full assembled model per step —
+  node order, **full** system Y (entry-by-entry, no fingerprint substitution),
+  node voltages, **every** element's currents/powers, selected YPrim blocks (a
+  guard fails the case if the oracle returns no YPrim for a named selected
+  element), the injection vector, and discrete state — reusing the `harness/mod.rs`
+  comparators and the checkpoint gate's tolerance policy.
+  - **Three control-diverse 24-step daily runs** — `IEEE13Nodeckt` (wye gang
+    reg), `ieee37` (delta, open-delta LDC reg bank) and `IEEE123Master` (multiple
+    cascaded reg banks) — each with a meter + three monitors (modes 0/1/2) +
+    selected elements, so the **multi-step per-step**, **YPrim**,
+    **monitor-channel** and **EnergyMeter-register/zone** paths are all exercised
+    live (`compare_monitor`/`compare_meter`, the *same* comparators
+    `golden_phase6.rs` now routes through, gated per case by
+    `check_meters_monitors`). Incidental master-defined monitors are *not*
+    compared — the pinned oracle returns a phantom `Channel(i)` for an unsampled
+    monitor (see `tests/TOLERANCE_NOTES.md`).
+  - The **IEEE 8500-Node master is promoted** (snapshot; `post: Set
+    Maxiterations=20` to converge — the bare probe didn't, which is why the
+    classifier had parked it), so the full 8531-node Y, every element's I/P, and a
+    YPrim block are compared live at scale (complementing the always-on
+    `golden_ieee8500.rs` golden, whose `compare_discrete` also pins the full
+    1190-transformer tap set here).
+  - **Depth is guarded always-on.** `solvable_now_has_multistep_depth` (no oracle)
+    asserts `solvable_now` keeps ≥1 multi-step `check_meters_monitors` case and ≥1
+    case with selected elements, so the deep coverage can't silently revert to
+    snapshots. The solvable + classify tests **auto-skip (pass)** without the env
+    var / oracle, so `cargo test --workspace` stays green everywhere; the
+    **`live-oracle` GitHub Actions job** installs the pinned oracle (PIN.txt) and
+    runs the **whole `corpus_live` binary** (not a name filter that could green on
+    zero matched tests). The oracle server hard-asserts **both** dss-python 0.15.7
+    **and** engine 0.14.5 (PIN.txt). No goldens are written; the oracle is
+    consulted live.
 - **Growth.** `DSS_LIVE_CLASSIFY=1 corpus_live_classify` probes the
   `skipped_needs_investigation` candidates with the full comparison and writes
   `tmp/classify_report.json`; `tools/corpus/apply_classify.py` promotes the

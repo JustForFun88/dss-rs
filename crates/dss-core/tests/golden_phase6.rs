@@ -21,7 +21,9 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::assert_complex_close;
+use harness::{
+    MeterCap, MonitorCap, assert_complex_close, compare_meter, compare_monitor, tol_for,
+};
 use serde::Deserialize;
 
 /// One scenario file: `{schema, oracle, scenario}` (the `oracle` block is
@@ -37,9 +39,9 @@ struct Scenario {
     name: String,
     commands: Vec<String>,
     #[serde(default)]
-    monitors: Vec<MonitorExpect>,
+    monitors: Vec<MonitorCap>,
     #[serde(default)]
-    meters: Vec<MeterExpect>,
+    meters: Vec<MeterCap>,
     #[serde(default)]
     meter_zones: Vec<ZoneExpect>,
     // generator_snap fields:
@@ -55,26 +57,6 @@ struct Scenario {
     v_im: Vec<f64>,
     #[serde(default)]
     generators: Vec<GenExpect>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MonitorExpect {
-    name: String,
-    header: Vec<String>,
-    sample_count: i32,
-    channels: Vec<Vec<f64>>,
-    /// 0-based channel indices to skip (mode-5 wall-clock timings).
-    skip_channels: Vec<usize>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MeterExpect {
-    name: String,
-    register_names: Vec<String>,
-    register_values: Vec<f64>,
-    n_branches: usize,
-    n_ends: usize,
-    n_pce: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,28 +110,6 @@ fn load_scenarios() -> Vec<Scenario> {
         .collect()
 }
 
-/// Scalar element-wise closeness for one monitor channel.
-fn assert_scalar_close(actual: &[f32], expected: &[f64], rel: f64, abs: f64, what: &str) {
-    assert_eq!(
-        actual.len(),
-        expected.len(),
-        "{what}: sample count mismatch ({} vs {})",
-        actual.len(),
-        expected.len()
-    );
-    for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
-        let a = *a as f64;
-        let allowed = abs + rel * e.abs();
-        assert!(
-            (a - e).abs() <= allowed,
-            "{what}: sample {i} differs: actual {a} vs expected {e} \
-             (|diff| = {:e} > allowed {:e})",
-            (a - e).abs(),
-            allowed
-        );
-    }
-}
-
 fn replay(sc: &Scenario) -> Dss {
     let mut dss = Dss::new();
     dss.command("clear");
@@ -167,118 +127,24 @@ fn replay(sc: &Scenario) -> Dss {
 }
 
 fn run_monitors(sc: &Scenario, dss: &Dss) {
+    // Channels are stored f32; the underlying f64 daily trajectory tracks the
+    // oracle to ~1e-9 (the load-Yeq restamp fix in `build_y_matrix`), so the
+    // narrowed f32 samples match at the feeder class tolerance (1e-6 rel /
+    // 1e-4 abs, PHASE6_PLAN §1.2). Header strings, SampleCount and the discrete
+    // structure are matched exactly; the mode-5 wall-clock channels are skipped
+    // via `skip_channels`. Identical comparator as the live corpus gate.
+    let tol = tol_for("feeder");
     for m in &sc.monitors {
-        let view = dss
-            .monitor_view(&m.name)
-            .unwrap_or_else(|| panic!("{}: no monitor {}", sc.name, m.name));
-        // Our `monitor_view.header` carries the full Pascal header, which leads
-        // with the `hour` / `t(sec)` time columns; dss-python's `Monitors.Header`
-        // is the data channels only (the hour column is its separate `dblHour`).
-        // Compare the data channels (`channel(i)` already skips the time slots).
-        assert_eq!(
-            &view.header[2..],
-            m.header.as_slice(),
-            "{}: monitor {} header differs",
-            sc.name,
-            m.name
-        );
-        assert_eq!(
-            view.sample_count, m.sample_count,
-            "{}: monitor {} sample count differs",
-            sc.name, m.name
-        );
-        assert_eq!(
-            view.channels.len(),
-            m.channels.len(),
-            "{}: monitor {} channel count differs",
-            sc.name,
-            m.name
-        );
-        for (ch, (act, exp)) in view.channels.iter().zip(&m.channels).enumerate() {
-            if m.skip_channels.contains(&ch) {
-                continue;
-            }
-            // Channels are stored f32; the underlying f64 daily trajectory now
-            // tracks the oracle to ~1e-9 (the load-Yeq restamp fix in
-            // `build_y_matrix`), so the narrowed f32 samples match to a few
-            // ULPs. 1e-6 rel / 1e-4 abs is the planned f32 channel tolerance
-            // (PHASE6_PLAN §1.2); header strings, SampleCount and the discrete
-            // structure are matched exactly.
-            assert_scalar_close(
-                act,
-                exp,
-                1e-6,
-                1e-4,
-                &format!(
-                    "{} monitor {} channel {} ({})",
-                    sc.name,
-                    m.name,
-                    ch + 1,
-                    m.header[ch]
-                ),
-            );
-        }
+        compare_monitor(dss, m, &tol, &sc.name);
     }
 }
 
 fn run_meters(sc: &Scenario, dss: &Dss) {
+    // Registers at 1e-4 rel (PORTING_PLAN §4 energy-accumulation policy), names
+    // exact, zone branch/end/PCE counts exact. Identical comparator as the live
+    // corpus gate.
     for m in &sc.meters {
-        let regs = dss
-            .meter_registers(&m.name)
-            .unwrap_or_else(|| panic!("{}: no meter {}", sc.name, m.name));
-        assert_eq!(
-            regs.len(),
-            m.register_names.len(),
-            "{}: meter {} register count differs",
-            sc.name,
-            m.name
-        );
-        for (i, (name, value)) in regs.iter().enumerate() {
-            assert_eq!(
-                name, &m.register_names[i],
-                "{}: meter {} register {i} name differs",
-                sc.name, m.name
-            );
-            let exp = m.register_values[i];
-            // 1e-4 rel — the PORTING_PLAN §4 energy-accumulation policy, same as
-            // the 8500 gate. The threshold-crossing overload/EEN/UE registers
-            // used to need 1e-3 here because the IEEE13 daily fixed-point path
-            // drifted from the oracle (the load-Yeq accelerator was frozen at
-            // the first step's load level — see `build_y_matrix`); with that
-            // fixed the per-step trajectory tracks the oracle to ~1e-9 and every
-            // register matches at 1e-4 (worst observed ~1e-7).
-            let tol = 1e-4 * exp.abs().max(1.0);
-            assert!(
-                (value - exp).abs() <= tol,
-                "{}: meter {} register {name} differs: {value} vs {exp}",
-                sc.name,
-                m.name
-            );
-        }
-        let zone = dss
-            .meter_zone(&m.name)
-            .unwrap_or_else(|| panic!("{}: no meter zone {}", sc.name, m.name));
-        assert_eq!(
-            zone.all_branches_in_zone.len(),
-            m.n_branches,
-            "{}: meter {} branch count differs",
-            sc.name,
-            m.name
-        );
-        assert_eq!(
-            zone.all_end_elements.len(),
-            m.n_ends,
-            "{}: meter {} end count differs",
-            sc.name,
-            m.name
-        );
-        assert_eq!(
-            zone.zone_pce.len(),
-            m.n_pce,
-            "{}: meter {} PCE count differs",
-            sc.name,
-            m.name
-        );
+        compare_meter(dss, m, &sc.name);
     }
 }
 
