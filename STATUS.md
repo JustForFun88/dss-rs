@@ -25,8 +25,10 @@ foundations), WP6.2 (Generator), WP6.3 (MeterElement + Monitor), WP6.4
 (reliability: fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation),
 WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
 basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see §1d.
-**Next: Phase 7 — write `PHASE7_PLAN.md` first** (DER, protection, line
-constants, harmonics, dynamics; PORTING_PLAN.md §Phase 7).
+**Phase 7 IN PROGRESS** — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch
+`phase-7-extended-elements` cut from `main`; **WP7.1 (line constants & geometry)
+next** (DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
+§Phase 7, the largest phase ~18%).
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -65,7 +67,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ⏭️ next — write `PHASE7_PLAN.md` first (PORTING_PLAN.md §Phase 7) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 next |
 
 ### Gate state (all green)
 ```
@@ -1623,17 +1625,19 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 6 complete & merged, Phase 7 next
+## 7. Current frontier — Phase 7 in progress (plan written), WP7.1 next
 
 Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
 to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
 origin). The work landed on branch `phase-6-meters-topology` (WP6.10 phase-exit
 `207b9cb`, the post-exit live-gate deepening + audit hardening through `cc6d2e2`;
 everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
-**Next: Phase 7** — write `PHASE7_PLAN.md` first, then execute it
+**Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
+the branch `phase-7-extended-elements` is cut from `main` (no code committed
+yet); **WP7.1 (line constants & geometry) is next.** Execute it per the plan
 (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six independently-gated
-sub-blocks: line constants, DER, protection, harmonics, dynamics,
-faultstudy/AutoAdd-modes/`Feeder`).
+sub-blocks ordered risk-ascending: line constants → protection → DER →
+harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see PHASE7_PLAN §0).
 
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
