@@ -24,7 +24,7 @@ Scenarios:
 Usage:
     python tools/golden/gen_phase5.py
 
-Writes tests/golden/phase5.json
+Writes one file per scenario under tests/golden/phase5/ (<name>.json).
 
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "tests" / "golden" / "phase5.json"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase5"
 SCHEMA = 1
 
 # The unmodified IEEE13 master, inlined (Clear/Redirect/Solve/BusCoords
@@ -273,11 +273,20 @@ def main() -> None:
     ]
     results = [run_scenario(DSS, sc) for sc in scenarios]
 
-    OUT.write_text(
-        json.dumps({"schema": SCHEMA, "oracle": oracle, "scenarios": results}, indent=1)
-        + "\n"
-    )
-    print(f"wrote {OUT} ({len(results)} scenarios)")
+    # One file per scenario under OUT_DIR; golden_phase5.rs runs every *.json in
+    # the directory, so adding a scenario is just dropping a new file.
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    names = {sc["name"] for sc in results}
+    for sc in results:
+        path = OUT_DIR / f"{sc['name']}.json"
+        path.write_text(
+            json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)}")
+    for p in OUT_DIR.glob("*.json"):
+        if p.stem not in names:
+            p.unlink()
+            print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

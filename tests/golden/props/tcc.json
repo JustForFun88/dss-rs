@@ -1,0 +1,92 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "tcc",
+ "scenarios": [
+  {
+   "name": "tcc_default",
+   "commands": [
+    "New TCC_Curve.tcc1"
+   ],
+   "target": "TCC_Curve.tcc1",
+   "properties": {
+    "NPts": "0",
+    "C_Array": "",
+    "T_Array": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tcc_full",
+   "commands": [
+    "New TCC_Curve.tcc1 npts=3 C_array=(1 2 3) T_array=(0.1 0.2 0.3)"
+   ],
+   "target": "TCC_Curve.tcc1",
+   "properties": {
+    "NPts": "3",
+    "C_Array": "[ 1 2 3]",
+    "T_Array": "[ 0.1 0.2 0.3]",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tcc_abbrev",
+   "commands": [
+    "New TCC_Curve.tcc1 np=2 c=(10 20) t=(1 2)"
+   ],
+   "target": "TCC_Curve.tcc1",
+   "properties": {
+    "NPts": "2",
+    "C_Array": "[ 10 20]",
+    "T_Array": "[ 1 2]",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tcc_edit_then_more",
+   "commands": [
+    "New TCC_Curve.tcc1 npts=2",
+    "Edit TCC_Curve.tcc1 C_array=(5 6)",
+    "~ T_array=(9 8)"
+   ],
+   "target": "TCC_Curve.tcc1",
+   "properties": {
+    "NPts": "2",
+    "C_Array": "[ 5 6]",
+    "T_Array": "[ 9 8]",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tcc_shrink_npts",
+   "commands": [
+    "New TCC_Curve.tcc1 npts=3 C_array=(1 2 3) T_array=(7 8 9)",
+    "Edit TCC_Curve.tcc1 npts=2"
+   ],
+   "target": "TCC_Curve.tcc1",
+   "properties": {
+    "NPts": "2",
+    "C_Array": "[ 1 2]",
+    "T_Array": "[ 7 8]",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tcc_makelike",
+   "commands": [
+    "New TCC_Curve.base npts=2 C_array=(1 2) T_array=(3 4)",
+    "New TCC_Curve.tcc1 like=base"
+   ],
+   "target": "TCC_Curve.tcc1",
+   "properties": {
+    "NPts": "2",
+    "C_Array": "[ 1 2]",
+    "T_Array": "[ 3 4]",
+    "Like": ""
+   }
+  }
+ ]
+}

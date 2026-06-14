@@ -1,0 +1,92 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "growthshape",
+ "scenarios": [
+  {
+   "name": "growthshape_default",
+   "commands": [
+    "New GrowthShape.gs1"
+   ],
+   "target": "GrowthShape.gs1",
+   "properties": {
+    "NPts": "0",
+    "Year": "",
+    "Mult": "",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "growthshape_full",
+   "commands": [
+    "New GrowthShape.gs1 npts=5 year=(1999 2000 2001 2005 2010) mult=(1.10 1.07 1.05 1.025 1.01)"
+   ],
+   "target": "GrowthShape.gs1",
+   "properties": {
+    "NPts": "5",
+    "Year": "[ 1999 2000 2001 2005 2010]",
+    "Mult": "[ 1.1 1.07 1.05 1.025 1.01]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "growthshape_year_rounds",
+   "commands": [
+    "New GrowthShape.gs1 npts=3 year=(2000.4 2001.6 2002.5) mult=(1.05 1.04 1.03)"
+   ],
+   "target": "GrowthShape.gs1",
+   "properties": {
+    "NPts": "3",
+    "Year": "[ 2000 2002 2002]",
+    "Mult": "[ 1.05 1.04 1.03]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "growthshape_edit_shrink",
+   "commands": [
+    "New GrowthShape.gs1 npts=4 year=(2000 2001 2002 2003) mult=(1.05 1.04 1.03 1.02)",
+    "Edit GrowthShape.gs1 npts=2"
+   ],
+   "target": "GrowthShape.gs1",
+   "properties": {
+    "NPts": "2",
+    "Year": "[ 2000 2001]",
+    "Mult": "[ 1.05 1.04]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "growthshape_makelike",
+   "commands": [
+    "New GrowthShape.base npts=2 year=(2000 2010) mult=(1.05 1.02)",
+    "New GrowthShape.gs1 like=base"
+   ],
+   "target": "GrowthShape.gs1",
+   "properties": {
+    "NPts": "2",
+    "Year": "[ 2000 2010]",
+    "Mult": "[ 1.05 1.02]",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Like": ""
+   }
+  }
+ ]
+}

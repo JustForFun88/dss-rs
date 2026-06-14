@@ -1,0 +1,187 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "tshape",
+ "scenarios": [
+  {
+   "name": "tshape_default",
+   "commands": [
+    "New TShape.t"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Temp": "",
+    "Hour": "",
+    "Mean": "0",
+    "StdDev": "0",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_fixed",
+   "commands": [
+    "New TShape.t npts=4 interval=1 temp=(20 30 50 80)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Temp": "[ 20 30 50 80]",
+    "Hour": "",
+    "Mean": "45",
+    "StdDev": "26.4575131106459",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_sinterval",
+   "commands": [
+    "New TShape.t npts=4 sinterval=900 temp=(1 2 4 8)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Temp": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_minterval",
+   "commands": [
+    "New TShape.t npts=4 minterval=15 temp=(1 2 4 8)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Temp": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "900",
+    "MInterval": "15",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_hour_interval0",
+   "commands": [
+    "New TShape.t npts=3 interval=0 hour=(1 2 4) temp=(1 2 4)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Temp": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "0",
+    "MInterval": "0",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_hour_no_interval",
+   "commands": [
+    "New TShape.t npts=3 hour=(1 2 4) temp=(1 2 4)"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "1",
+    "Temp": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.33333333333333",
+    "StdDev": "1.52752523165195",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_mean_stddev",
+   "commands": [
+    "New TShape.t npts=4 interval=1 temp=(20 30 50 80) mean=5 stddev=2"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Temp": "[ 20 30 50 80]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "Action": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tshape_makelike",
+   "commands": [
+    "New TShape.base npts=3 interval=2 temp=(11 22 33)",
+    "New TShape.t like=base"
+   ],
+   "target": "TShape.t",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Temp": "[ 11 22 33]",
+    "Hour": "",
+    "Mean": "22",
+    "StdDev": "11",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "Action": "",
+    "Like": ""
+   }
+  }
+ ]
+}
