@@ -1,6 +1,6 @@
-"""Generate tests/golden/phase6.json from the pinned oracle (PHASE6_PLAN WP6.9 §1.2).
+"""Generate the Phase-6 goldens from the pinned oracle (PHASE6_PLAN WP6.9 §1.2).
 
-Command-replay style like phase5.json. Four scenarios exercise the Phase-6
+Command-replay style like the phase5 goldens. Four scenarios exercise the Phase-6
 meter/monitor/generator/topology machinery against the oracle; the Rust harness
 (`golden_phase6.rs`) replays the identical command lists and must match.
 
@@ -27,8 +27,8 @@ meter/monitor/generator/topology machinery against the oracle; the Rust harness
 Usage:
     python tools/golden/gen_phase6.py
 
-Writes tests/golden/phase6.json. Regeneration is manual and must use the exact
-versions in tools/golden/PIN.txt.
+Writes one file per scenario under tests/golden/phase6/ (<name>.json). Regeneration
+is manual and must use the exact versions in tools/golden/PIN.txt.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_phase5 import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "tests" / "golden" / "phase6.json"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase6"
 SCHEMA = 1
 
 
@@ -98,6 +98,11 @@ def scenario_monitor_daily(d) -> dict:
         # per-step iteration counts now match the oracle exactly over the daily
         # trajectory (they used to drift ±1 at the 1e-4 convergence tolerance).
         skip = [10, 11] if nm == "m5" else []
+        # Those two channels are real microsecond wall-clock timings — they vary
+        # every run. The harness skips them, so zero them in the golden too,
+        # otherwise every regeneration churns the file with timing noise.
+        for ch in skip:
+            channels[ch] = [0.0] * len(channels[ch])
         monitors.append(
             {
                 "name": nm,
@@ -212,11 +217,20 @@ def main() -> None:
         scenario_generator_snap(d),
         scenario_meter_zone_micro(d),
     ]
-    OUT.write_text(
-        json.dumps({"schema": SCHEMA, "oracle": oracle, "scenarios": scenarios}, indent=1)
-        + "\n"
-    )
-    print(f"wrote {OUT} ({len(scenarios)} scenarios)")
+    # One file per scenario under OUT_DIR; golden_phase6.rs runs every *.json in
+    # the directory, so adding a scenario is just dropping a new file.
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    names = {sc["name"] for sc in scenarios}
+    for sc in scenarios:
+        path = OUT_DIR / f"{sc['name']}.json"
+        path.write_text(
+            json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)}")
+    for p in OUT_DIR.glob("*.json"):
+        if p.stem not in names:
+            p.unlink()
+            print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

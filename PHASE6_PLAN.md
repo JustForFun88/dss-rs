@@ -472,7 +472,8 @@ Steps:
 > the rest) compare only converged outputs, which let the "frozen load `Yeq`"
 > bug hide until it had drifted the daily EnergyMeter registers (~6e-4, masked
 > by a relaxed tolerance). Added `golden_checkpoints.rs` /
-> `tools/golden/gen_checkpoints.py` (`tests/golden/checkpoints.json`, schema 2):
+> `tools/golden/gen_checkpoints.py` (`tests/golden/checkpoints/<scenario>.json`,
+> schema 2 — one file per scenario; the gate runs every file in the directory):
 > it captures the **assembled model after every committed time step** — the
 > unfactored system Y, selected element YPrim blocks, injection vector,
 > voltages, and discrete state — so an assembled-model bug fails at the step and

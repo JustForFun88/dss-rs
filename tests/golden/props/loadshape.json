@@ -1,0 +1,393 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "loadshape",
+ "scenarios": [
+  {
+   "name": "loadshape_default",
+   "commands": [
+    "New LoadShape.d"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "0",
+    "Interval": "1",
+    "Mult": "",
+    "Hour": "",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_fixed",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(1 2 4 8)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_abbrev",
+   "commands": [
+    "New LoadShape.d np=3 int=1 pmult=(0.5 0.9 1.0)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "1",
+    "Mult": "[ 0.5 0.9 1]",
+    "Hour": "",
+    "Mean": "0.8",
+    "StdDev": "0.264575131106459",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 0.5 0.9 1]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_pq",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(1 2 4 8) qmult=(.5 .6 .7 .8)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "[ 0.5 0.6 0.7 0.8]",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0.8",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_sinterval",
+   "commands": [
+    "New LoadShape.d npts=4 sinterval=900 mult=(1 2 4 8)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "900",
+    "MInterval": "15",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_minterval_useactual",
+   "commands": [
+    "New LoadShape.d npts=4 minterval=15 mult=(1 2 4 8) useactual=yes"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "0.25",
+    "Mult": "[ 1 2 4 8]",
+    "Hour": "",
+    "Mean": "3.75",
+    "StdDev": "3.09569593683445",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "Yes",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "900",
+    "MInterval": "15",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_hour_array",
+   "commands": [
+    "New LoadShape.d npts=3 interval=0 hour=(1 2 4) mult=(1 2 4)"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "0",
+    "Mult": "[ 1 2 4]",
+    "Hour": "[ 1 2 4]",
+    "Mean": "2.5",
+    "StdDev": "1.11803398874989",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "4",
+    "QMax": "0",
+    "SInterval": "0",
+    "MInterval": "0",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 1 2 4]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_normalize",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) action=normalize"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 0.25 0.5 0.75 1]",
+    "Hour": "",
+    "Mean": "0.625",
+    "StdDev": "0.322748612183951",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 0.25 0.5 0.75 1]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_normalize_pbase",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) pbase=10 action=normalize"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 0.2 0.4 0.6 0.8]",
+    "Hour": "",
+    "Mean": "0.5",
+    "StdDev": "0.258198889747161",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "0.8",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "10",
+    "QBase": "0",
+    "PMult": "[ 0.2 0.4 0.6 0.8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_interp_edge",
+   "commands": [
+    "New LoadShape.d npts=5 interval=1 mult=(0.2 0.4 1.0 0.7 0.3) interpolation=edge"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "5",
+    "Interval": "1",
+    "Mult": "[ 0.2 0.4 1 0.7 0.3]",
+    "Hour": "",
+    "Mean": "0.52",
+    "StdDev": "0.327108544675922",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "1",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 0.2 0.4 1 0.7 0.3]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Edge",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_mean_stddev",
+   "commands": [
+    "New LoadShape.d npts=4 interval=1 mult=(2 4 6 8) mean=5 stddev=2"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "4",
+    "Interval": "1",
+    "Mult": "[ 2 4 6 8]",
+    "Hour": "",
+    "Mean": "5",
+    "StdDev": "2",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "",
+    "UseActual": "No",
+    "PMax": "8",
+    "QMax": "0",
+    "SInterval": "3600",
+    "MInterval": "60",
+    "PBase": "0",
+    "QBase": "0",
+    "PMult": "[ 2 4 6 8]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  },
+  {
+   "name": "loadshape_makelike",
+   "commands": [
+    "New LoadShape.base npts=3 interval=2 mult=(1 2 3) qmult=(4 5 6) pbase=7 useactual=yes",
+    "New LoadShape.d like=base"
+   ],
+   "target": "LoadShape.d",
+   "properties": {
+    "NPts": "3",
+    "Interval": "2",
+    "Mult": "[ 1 2 3]",
+    "Hour": "",
+    "Mean": "2",
+    "StdDev": "1",
+    "CSVFile": "",
+    "SngFile": "",
+    "DblFile": "",
+    "Action": "",
+    "QMult": "[ 4 5 6]",
+    "UseActual": "Yes",
+    "PMax": "3",
+    "QMax": "6",
+    "SInterval": "7200",
+    "MInterval": "120",
+    "PBase": "7",
+    "QBase": "0",
+    "PMult": "[ 1 2 3]",
+    "PQCSVFile": "",
+    "MemoryMapping": "No",
+    "Interpolation": "Avg",
+    "Like": ""
+   }
+  }
+ ]
+}

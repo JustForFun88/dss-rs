@@ -1,30 +1,36 @@
-"""Generate tests/golden/checkpoints.json from the pinned oracle.
+"""Generate the checkpointed-model goldens from the pinned oracle.
 
 The *checkpointed-model* gate (see the golden-infrastructure plan). Unlike the
 phase5/phase6 command-replay goldens — which compare only converged outputs
-(voltages, currents, registers) — this golden captures the **assembled
+(voltages, currents, registers) — these goldens capture the **assembled
 electrical model itself** after every committed time step: the system Y matrix,
-selected element YPrim blocks, and (later steps) the injection vector and
-discrete control state. A stale Y/YPrim then fails at the step it first goes
-wrong, at the matrix entry that is wrong, instead of as downstream accumulated
-drift.
+selected element YPrim blocks, the injection vector, and discrete control state.
+A stale Y/YPrim then fails at the step it first goes wrong, at the matrix entry
+that is wrong, instead of as downstream accumulated drift.
 
 A "checkpoint" = the committed circuit state after one `solve` (number=1)
 returns: controls converged, taps/caps final, Y rebuilt. No internal solver
 iteration is ever captured.
 
-Scenarios:
-  - micro_yeq_steps: a tiny radial + a load shape flat for several hours then a
-    jump, mode=daily. The full assembled Y (CSC) and each load's YPrim are
-    captured every step. A load's Yeq=(P-jQ)/Vbase^2 scales with the multiplier,
-    so the assembled-Y diagonal at the load bus must change at the jump — the
-    direct regression guard for the "frozen load Yeq" bug.
+Output layout: one file per scenario under tests/golden/checkpoints/
+(<name>.json, schema 2). golden_checkpoints.rs runs *every* file in that
+directory, so adding a scenario is just dropping a new file — and each
+scenario's diff stays isolated to its own file.
+
+Scenarios (one builder each, registered in SCENARIOS):
+  - micro_yeq_steps: a tiny radial + a flat-then-jump daily shape. Full
+    assembled Y (CSC) + load YPrim each step — control-free per-step pin.
+  - ieee13_daily: IEEE13 (controls active) + the 24-pt daily shape. The direct
+    regression guard for the "frozen load Yeq" bug — at each tap-change rebuild
+    the recompute-all path re-stamps the current Yeq.
+  - ieee123_snap: IEEE123 master, snapshot — the large-feeder fingerprint-only
+    + selected-YPrim path.
 
 Usage:
-    python tools/golden/gen_checkpoints.py
+    python tools/golden/gen_checkpoints.py                # regenerate all
+    python tools/golden/gen_checkpoints.py ieee13_daily   # one scenario
 
-Writes tests/golden/checkpoints.json (schema 2). Regeneration is manual and must
-use the exact versions in tools/golden/PIN.txt.
+Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
 
 from __future__ import annotations
@@ -39,7 +45,7 @@ from gen_phase5 import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
 from gen_phase6 import MICRO  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "tests" / "golden" / "checkpoints.json"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "checkpoints"
 SCHEMA = 2
 
 
@@ -309,20 +315,42 @@ def scenario_ieee123_snap(d) -> dict:
     }
 
 
+# name -> builder. One file per entry under OUT_DIR; golden_checkpoints.rs runs
+# every *.json in the directory, so this is the single source of truth for which
+# scenarios exist.
+SCENARIOS = {
+    "micro_yeq_steps": scenario_micro_yeq,
+    "ieee13_daily": scenario_ieee13_daily,
+    "ieee123_snap": scenario_ieee123_snap,
+}
+
+
 def main() -> None:
     oracle = check_pin()
     from dss import DSS as d
 
-    scenarios = [
-        scenario_micro_yeq(d),
-        scenario_ieee13_daily(d),
-        scenario_ieee123_snap(d),
-    ]
-    OUT.write_text(
-        json.dumps({"schema": SCHEMA, "oracle": oracle, "scenarios": scenarios}, indent=1)
-        + "\n"
-    )
-    print(f"wrote {OUT} ({len(scenarios)} scenarios)")
+    wanted = set(sys.argv[1:])
+    unknown = wanted - set(SCENARIOS)
+    if unknown:
+        sys.exit(f"unknown scenario(s): {sorted(unknown)}; known: {sorted(SCENARIOS)}")
+    names = [n for n in SCENARIOS if not wanted or n in wanted]
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        sc = SCENARIOS[name](d)
+        assert sc["name"] == name, f"{name}: builder returned name {sc['name']!r}"
+        path = OUT_DIR / f"{name}.json"
+        path.write_text(
+            json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)} ({sc['n_steps']} steps)")
+
+    # On a full regen, drop any stale scenario files no longer in the registry.
+    if not wanted:
+        for p in OUT_DIR.glob("*.json"):
+            if p.stem not in SCENARIOS:
+                p.unlink()
+                print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

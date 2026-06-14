@@ -1,7 +1,8 @@
 //! Phase 6 golden (PHASE6_PLAN.md WP6.9 / §1.2): command-replay scenarios that
 //! pin the meter / monitor / generator / topology machinery against the pinned
 //! oracle (`tools/golden/gen_phase6.py`). The Rust engine replays each
-//! scenario's command list and must match `tests/golden/phase6.json`:
+//! scenario's command list and must match its file under `tests/golden/phase6/`
+//! (one `<scenario>.json` per scenario; the gate runs every file in the dir):
 //!
 //!   - monitor_daily_ieee13: per-monitor header + SampleCount exact, channel
 //!     sample arrays elementwise (only the mode-5 wall-clock timing channels
@@ -23,10 +24,12 @@ use dss_core::exec::Dss;
 use harness::assert_complex_close;
 use serde::Deserialize;
 
+/// One scenario file: `{schema, oracle, scenario}` (the `oracle` block is
+/// ignored here).
 #[derive(Debug, Deserialize)]
-struct Golden {
+struct ScenarioFile {
     schema: u32,
-    scenarios: Vec<Scenario>,
+    scenario: Scenario,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,23 +91,41 @@ struct GenExpect {
     powers: Vec<f64>,
 }
 
-fn load_golden() -> Golden {
-    let path: PathBuf = [
+/// Load every `*.json` scenario file from `tests/golden/phase6/`, sorted by
+/// file name for deterministic run order.
+fn load_scenarios() -> Vec<Scenario> {
+    let dir: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "..",
         "..",
         "tests",
         "golden",
-        "phase6.json",
+        "phase6",
     ]
     .iter()
     .collect();
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-    let g: Golden = serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("cannot parse {}: {e}", path.display()));
-    assert_eq!(g.schema, 1, "phase6 golden schema mismatch");
-    g
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .map(|p| {
+            let text = std::fs::read_to_string(p)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()));
+            let f: ScenarioFile = serde_json::from_str(&text)
+                .unwrap_or_else(|e| panic!("cannot parse {}: {e}", p.display()));
+            assert_eq!(
+                f.schema,
+                1,
+                "{}: phase6 golden schema mismatch",
+                p.display()
+            );
+            f.scenario
+        })
+        .collect()
 }
 
 /// Scalar element-wise closeness for one monitor channel.
@@ -347,9 +368,9 @@ fn run_generator_snap(sc: &Scenario, dss: &mut Dss) {
 
 #[test]
 fn phase6_scenarios_match_oracle() {
-    let golden = load_golden();
-    assert_eq!(golden.scenarios.len(), 4, "expected 4 phase6 scenarios");
-    for sc in &golden.scenarios {
+    let scenarios = load_scenarios();
+    assert_eq!(scenarios.len(), 4, "expected 4 phase6 scenarios");
+    for sc in &scenarios {
         let mut dss = replay(sc);
         match sc.name.as_str() {
             "monitor_daily_ieee13" => run_monitors(sc, &dss),

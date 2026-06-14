@@ -84,7 +84,8 @@ cargo test --workspace      # dss-core lib 319, golden_feeders 1,
   element powers / currents at 1e-6 rel, total power + losses at 1e-6, and
   **every element's full property dump** via the numeric-skeleton comparator.
   **`ieee34mod1` (stretch) passes too** — no `#[ignore]` needed.
-- `golden_phase5.rs` vs `tests/golden/phase5.json` (`tools/golden/gen_phase5.py`,
+- `golden_phase5.rs` vs `tests/golden/phase5/*.json` (one file per scenario;
+  `tools/golden/gen_phase5.py`,
   command-replay like slice.json): `daily_ieee13` (24 hourly steps, every load
   on a 24-pt shape, regcontrol event logs on), `duty_2bus` (12×300 s steps,
   TIMEDRIVEN), `eventlog_ieee13` (`Set Log=yes`), `capcontrol_micro` (kvar
@@ -96,7 +97,9 @@ cargo test --workspace      # dss-core lib 319, golden_feeders 1,
   load's shape-scaled `Yeq` per Y build (commit `a6903f1`).
 
 ### Checkpointed-model gate (`crates/dss-core/tests/golden_checkpoints.rs`) — green
-- `gen_checkpoints.py` → `tests/golden/checkpoints.json` (schema 2). Unlike the
+- `gen_checkpoints.py` → `tests/golden/checkpoints/<scenario>.json` (schema 2,
+  one file per scenario; the gate runs every file in the directory, so adding a
+  scenario is just adding a file). Unlike the
   other command-replay gates (which compare only converged outputs), this one
   captures the **assembled electrical model after every committed time step** —
   the unfactored system Y, selected element YPrim blocks, the injection vector,
@@ -1281,7 +1284,8 @@ generated with the pinned oracle (python 3.12.4 / dss-python 0.15.7 / backend
   (file/UI, Phase 8). **Solve time: 0.19 s release** (full compile + snap +
   24-step daily + assertions; oracle daily-solve ≈ 0.12 s) — well within the 5×
   budget; 4.1 s debug, so kept un-`#[ignore]`d.
-- **`golden_phase6.rs` vs `tests/golden/phase6.json`** (`tools/golden/gen_phase6.py`,
+- **`golden_phase6.rs` vs `tests/golden/phase6/*.json`** (one file per scenario;
+  `tools/golden/gen_phase6.py`,
   command-replay like phase5; reuses the inline IEEE13 from `gen_phase5`). Four
   scenarios:
   - `monitor_daily_ieee13`: IEEE13 (controls active) + daily shape + monitors on
@@ -1480,9 +1484,12 @@ cargo test --workspace
 cargo run -p dss-cli -- path\to\script.dss
 
 # Regenerate goldens (MANUAL ONLY, pinned versions in tools/golden/PIN.txt)
-python tools/golden/gen_props.py     # -> tests/golden/props.json   (Phase 2+)
-python tools/golden/gen_slice.py     # -> tests/golden/slice.json   (Phase 3)
-python tools/golden/gen_phase4.py    # -> tests/golden/phase4/*.dss + phase4.json
+python tools/golden/gen_props.py       # -> tests/golden/props/<class>.json   (Phase 2+)
+python tools/golden/gen_slice.py       # -> tests/golden/slice.json           (Phase 3)
+python tools/golden/gen_phase4.py      # -> tests/golden/phase4/*.dss + phase4.json
+python tools/golden/gen_phase5.py      # -> tests/golden/phase5/<scenario>.json
+python tools/golden/gen_phase6.py      # -> tests/golden/phase6/<scenario>.json
+python tools/golden/gen_checkpoints.py # -> tests/golden/checkpoints/<scenario>.json
 ```
 Oracle pin: Python 3.12.4, dss-python 0.15.7, dss-python-backend 0.14.5
 (the same dss_capi release vendored in `.inputs/dss_capi`). `python` works in

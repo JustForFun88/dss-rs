@@ -13,7 +13,10 @@ Usage:
     python tools/golden/gen_props.py
 
 Reads  nothing (scenarios are defined below)
-Writes tests/golden/props.json
+Writes one file per class under tests/golden/props/ (<class>.json), where the
+class is the scenario-name prefix before the first `_` (e.g. all `loadshape_*`
+scenarios -> props/loadshape.json). props_roundtrip.rs runs every file in the
+directory, so a class's diff stays isolated to its own file.
 
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
@@ -29,7 +32,7 @@ from pathlib import Path
 _NUM_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "tests" / "golden" / "props.json"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "props"
 SCHEMA = 1
 
 # Each scenario: a name, the command script (run after `clear; new circuit`),
@@ -1158,15 +1161,31 @@ def main() -> None:
     oracle_version = check_pin()
     from dss import dss as d
 
-    data = {
-        "schema": SCHEMA,
-        "oracle": {"dss_python": oracle_version, "engine": d.Version},
-        "scenarios": [run_scenario(d, s) for s in SCENARIOS],
-    }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(data, indent=1))
-    for s in data["scenarios"]:
-        print(f"{s['name']}: {s['properties']} -> {OUT.relative_to(REPO_ROOT)}")
+    oracle = {"dss_python": oracle_version, "engine": d.Version}
+    scenarios = [run_scenario(d, s) for s in SCENARIOS]
+
+    # Group by class = scenario-name prefix before the first `_`, preserving
+    # definition order, and write one file per class.
+    by_class: dict[str, list] = {}
+    for s in scenarios:
+        cls = s["name"].split("_", 1)[0]
+        by_class.setdefault(cls, []).append(s)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for cls, scs in by_class.items():
+        path = OUT_DIR / f"{cls}.json"
+        path.write_text(
+            json.dumps(
+                {"schema": SCHEMA, "oracle": oracle, "class": cls, "scenarios": scs},
+                indent=1,
+            )
+            + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)} ({len(scs)} scenarios)")
+    for p in OUT_DIR.glob("*.json"):
+        if p.stem not in by_class:
+            p.unlink()
+            print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

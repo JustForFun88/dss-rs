@@ -1,0 +1,71 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "spectrum",
+ "scenarios": [
+  {
+   "name": "spectrum_default",
+   "commands": [
+    "New Spectrum.s1"
+   ],
+   "target": "Spectrum.s1",
+   "properties": {
+    "NumHarm": "0",
+    "Harmonic": "",
+    "%Mag": "",
+    "Angle": "",
+    "CSVFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "spectrum_full",
+   "commands": [
+    "New Spectrum.s1 NumHarm=3 harmonic=(1 5 7) %mag=(100 20 14.3) angle=(0 0 0)"
+   ],
+   "target": "Spectrum.s1",
+   "properties": {
+    "NumHarm": "3",
+    "Harmonic": "[ 1 5 7]",
+    "%Mag": "[ 100 20 14.3]",
+    "Angle": "[ 0 0 0]",
+    "CSVFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "spectrum_abbrev",
+   "commands": [
+    "New Spectrum.s1 numh=2 harm=(1 3) %m=(100 33) ang=(0 180)"
+   ],
+   "target": "Spectrum.s1",
+   "properties": {
+    "NumHarm": "2",
+    "Harmonic": "[ 1 3]",
+    "%Mag": "[ 100 33]",
+    "Angle": "[ 0 180]",
+    "CSVFile": "",
+    "Like": ""
+   }
+  },
+  {
+   "name": "spectrum_makelike",
+   "commands": [
+    "New Spectrum.base NumHarm=2 harmonic=(1 3) %mag=(100 33) angle=(0 180)",
+    "New Spectrum.s1 like=base"
+   ],
+   "target": "Spectrum.s1",
+   "properties": {
+    "NumHarm": "2",
+    "Harmonic": "[ 1 3]",
+    "%Mag": "[ 100 33]",
+    "Angle": "[ 0 180]",
+    "CSVFile": "",
+    "Like": ""
+   }
+  }
+ ]
+}

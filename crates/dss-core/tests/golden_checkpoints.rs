@@ -1,16 +1,20 @@
-//! Checkpointed-model gate (golden-infrastructure plan): replay each
-//! `tests/golden/checkpoints.json` scenario and, at every committed time step,
-//! compare the **assembled electrical model** against the pinned oracle — not
-//! just the converged outputs. A checkpoint is the state after one `solve`
-//! (number=1) returns. Each step pins:
+//! Checkpointed-model gate (golden-infrastructure plan): run **every** scenario
+//! file in `tests/golden/checkpoints/` (one file per scenario) and, at every
+//! committed time step, compare the **assembled electrical model** against the
+//! pinned oracle — not just the converged outputs. A checkpoint is the state
+//! after one `solve` (number=1) returns. Each step pins:
 //!
 //!   - `dblHour`, iteration count, converged flag (exact);
 //!   - node order (exact) and node voltages;
-//!   - the assembled, unfactored system Y matrix (entry-by-entry on micro
-//!     scenarios) — `Dss::system_y_csc` vs the oracle `YMatrix.getYSparse(False)`;
-//!   - selected element YPrim blocks — `Dss::element_yprim` vs `CktElement.Yprim`.
+//!   - the assembled, unfactored system Y matrix (entry-by-entry on micro/feeder
+//!     scenarios, fingerprint on large) — `Dss::system_y_csc` vs the oracle
+//!     `YMatrix.getYSparse(False)`;
+//!   - selected element YPrim blocks — `Dss::element_yprim` vs `CktElement.Yprim`;
+//!   - injection vector, selected element currents/powers, discrete state.
 //!
-//! Regenerate only manually: `python tools/golden/gen_checkpoints.py`.
+//! Adding a scenario is just adding a `<name>.json` to that directory (the
+//! generator writes one per `SCENARIOS` entry). Regenerate only manually:
+//! `python tools/golden/gen_checkpoints.py [scenario...]`.
 
 mod harness;
 
@@ -21,10 +25,12 @@ use dss_core::exec::{Dss, ElementSnapshot};
 use num_complex::Complex64;
 use serde::Deserialize;
 
+/// One scenario file: `{schema, oracle, scenario}` (the `oracle` provenance
+/// block is ignored here).
 #[derive(Debug, Deserialize)]
-struct Golden {
+struct ScenarioFile {
     schema: u32,
-    scenarios: Vec<Scenario>,
+    scenario: Scenario,
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,23 +149,41 @@ fn tol_for(kind: &str) -> Tol {
     }
 }
 
-fn load_golden() -> Golden {
-    let path: PathBuf = [
+/// Load every `*.json` scenario file from `tests/golden/checkpoints/`, sorted by
+/// file name for deterministic run order.
+fn load_scenarios() -> Vec<Scenario> {
+    let dir: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "..",
         "..",
         "tests",
         "golden",
-        "checkpoints.json",
+        "checkpoints",
     ]
     .iter()
     .collect();
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-    let g: Golden = serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("cannot parse {}: {e}", path.display()));
-    assert_eq!(g.schema, 2, "checkpoints golden schema mismatch");
-    g
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    files.sort();
+    assert!(
+        !files.is_empty(),
+        "no checkpoint scenarios in {}",
+        dir.display()
+    );
+    files
+        .iter()
+        .map(|p| {
+            let text = std::fs::read_to_string(p)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()));
+            let f: ScenarioFile = serde_json::from_str(&text)
+                .unwrap_or_else(|e| panic!("cannot parse {}: {e}", p.display()));
+            assert_eq!(f.schema, 2, "{}: checkpoints schema mismatch", p.display());
+            f.scenario
+        })
+        .collect()
 }
 
 /// Coordinate map of a golden Y matrix, keyed by (row, col).
@@ -584,12 +608,7 @@ fn run_scenario(sc: &Scenario) {
 
 #[test]
 fn checkpoint_scenarios_match_oracle() {
-    let golden = load_golden();
-    assert!(
-        !golden.scenarios.is_empty(),
-        "expected at least one checkpoint scenario"
-    );
-    for sc in &golden.scenarios {
+    for sc in &load_scenarios() {
         run_scenario(sc);
     }
 }
