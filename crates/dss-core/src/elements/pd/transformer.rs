@@ -14,7 +14,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::winding::Winding;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -963,6 +963,48 @@ impl CktElement for Transformer {
         self.recalc();
     }
 
+    /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData {
+            branch_flt_rate: self.fault_rate * self.pct_perm * 0.01,
+            hrs_to_repair: self.hrs_to_repair,
+            miles_this_line: 0.0,
+        }
+    }
+
+    fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
+    /// Pascal `TTransfObj.GetLosses` (Transformer.pas l.1635): no-load losses
+    /// are the power into `Yprim_Shunt` from each terminal; load losses are the
+    /// remainder of the total.
+    fn get_losses_split(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO);
+        }
+        let total = self.losses(sys, node_v); // side effect: computes Iterminal
+        let yorder = self.cd.yorder;
+        self.cd.compute_vterminal(node_v);
+        let mut no_load = Complex64::ZERO;
+        if let Some(yshunt) = &self.cd.yprim_shunt {
+            let mut temp = vec![Complex64::ZERO; yorder];
+            yshunt.mv_mult(&mut temp, &self.cd.vterminal);
+            for (v, t) in self.cd.vterminal.iter().zip(temp.iter()).take(yorder) {
+                no_load += v * t.conj();
+            }
+        }
+        let load = total - no_load;
+        (total, load, no_load)
+    }
+
     /// Pascal `TTransfObj.CalcYPrim`: stamp `Y_Term`/`Y_Term_NL` into the
     /// series/shunt YPrim via `TermRef`, add neutral branches, then apply the
     /// open-conductor corrections.
@@ -1564,6 +1606,9 @@ mod tests {
             load_model: 1,
             mode: SolveMode::Snapshot,
             load_multiplier: 1.0,
+            gen_multiplier: 1.0,
+            generator_dispatch_reference: 0.0,
+            price_signal: 25.0,
             default_growth_factor: 1.0,
             year: 0,
             dbl_hour: 0.0,

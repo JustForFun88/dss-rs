@@ -1,0 +1,111 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "monitor",
+ "scenarios": [
+  {
+   "name": "monitor_default",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Monitor.m1 element=Line.l1 terminal=1 mode=0"
+   ],
+   "target": "Monitor.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Mode": "0",
+    "Action": "",
+    "Residual": "No",
+    "VIPolar": "Yes",
+    "PPolar": "Yes",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "monitor_mode1_residual",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Monitor.m1 element=Line.l1 terminal=1 mode=1 residual=yes ppolar=no"
+   ],
+   "target": "Monitor.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Mode": "1",
+    "Action": "",
+    "Residual": "Yes",
+    "VIPolar": "Yes",
+    "PPolar": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "monitor_vipolar_off",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Monitor.m1 element=Line.l1 terminal=1 mode=48 vipolar=no"
+   ],
+   "target": "Monitor.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Mode": "48",
+    "Action": "",
+    "Residual": "No",
+    "VIPolar": "No",
+    "PPolar": "Yes",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "monitor_transformer_tap",
+   "commands": [
+    "New Transformer.t1 phases=3 windings=2 buses=[sourcebus b2] conns=[wye wye] kvs=[12.47 4.16] kvas=[1000 1000] xhl=5",
+    "New Monitor.mt element=Transformer.t1 terminal=2 mode=2"
+   ],
+   "target": "Monitor.mt",
+   "properties": {
+    "Element": "Transformer.t1",
+    "Terminal": "2",
+    "Mode": "2",
+    "Action": "",
+    "Residual": "No",
+    "VIPolar": "Yes",
+    "PPolar": "Yes",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "monitor_makelike",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Monitor.base element=Line.l1 terminal=1 mode=0 residual=yes",
+    "New Monitor.m1 like=base mode=1"
+   ],
+   "target": "Monitor.m1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Mode": "1",
+    "Action": "",
+    "Residual": "Yes",
+    "VIPolar": "Yes",
+    "PPolar": "Yes",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

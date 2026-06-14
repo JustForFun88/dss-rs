@@ -220,6 +220,21 @@ pub trait DssObject {
         unreachable!("set_i32_array not implemented for property {idx}")
     }
 
+    /// `StringListProperty` read (e.g. an EnergyMeter `Option`/`ZoneList`):
+    /// the list of strings the dump renders as `[a, b, c]` (empty → `""`).
+    /// Some lists are computed on read (Pascal `ReadByFunction`, e.g.
+    /// `GetOptions`), so this returns by value.
+    fn get_string_list(&self, idx: usize) -> Vec<String> {
+        unreachable!("get_string_list not implemented for property {idx}")
+    }
+    /// `StringListProperty` write: the parsed token list (Pascal
+    /// `InterpretTStringListArray`; `WriteByFunction` lists like `SetOptions`
+    /// interpret the tokens into flags instead of storing them).
+    fn set_string_list(&mut self, idx: usize, value: Vec<String>) {
+        let _ = value;
+        unreachable!("set_string_list not implemented for property {idx}")
+    }
+
     /// `DoubleDArrayProperty` read (e.g. an XYcurve `Points`): the interleaved
     /// `[x0, y0, x1, y1, ...]` pairs, freshly built (no stable backing slice, so
     /// this returns by value unlike [`DssObject::get_f64_array`]).

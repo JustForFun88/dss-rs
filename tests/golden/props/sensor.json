@@ -1,0 +1,165 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "sensor",
+ "scenarios": [
+  {
+   "name": "sensor_default",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Sensor.s1 element=Line.l1 terminal=1"
+   ],
+   "target": "Sensor.s1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kVBase": "12.47",
+    "Clear": "No",
+    "kVs": "[ 0 0 0]",
+    "Currents": "[ 0 0 0]",
+    "kWs": "[ 0 0 0]",
+    "kvars": "[ 0 0 0]",
+    "Conn": "wye",
+    "DeltaDirection": "1",
+    "%Error": "1",
+    "Weight": "1",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "sensor_currents_single_zeroed",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Sensor.s1 element=Line.l1 terminal=1 currents=(10 11 12) conn=wye weight=2 %error=3"
+   ],
+   "target": "Sensor.s1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kVBase": "12.47",
+    "Clear": "No",
+    "kVs": "[ 0 0 0]",
+    "Currents": "[ 0 0 0]",
+    "kWs": "[ 0 0 0]",
+    "kvars": "[ 0 0 0]",
+    "Conn": "wye",
+    "DeltaDirection": "1",
+    "%Error": "3",
+    "Weight": "2",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "sensor_currents_twostep",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Sensor.s1 element=Line.l1 terminal=1",
+    "Edit Sensor.s1 currents=(10 11 12)"
+   ],
+   "target": "Sensor.s1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kVBase": "12.47",
+    "Clear": "No",
+    "kVs": "[ 0 0 0]",
+    "Currents": "[ 10 11 12]",
+    "kWs": "[ 0 0 0]",
+    "kvars": "[ 0 0 0]",
+    "Conn": "wye",
+    "DeltaDirection": "1",
+    "%Error": "1",
+    "Weight": "1",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "sensor_pq",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Sensor.s1 element=Line.l1 terminal=1 kvbase=12.47",
+    "Edit Sensor.s1 kws=(100 100 100) kvars=(30 30 30)"
+   ],
+   "target": "Sensor.s1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kVBase": "12.47",
+    "Clear": "No",
+    "kVs": "[ 0 0 0]",
+    "Currents": "[ 14.5013162149359 14.5013162149359 14.5013162149359]",
+    "kWs": "[ 100 100 100]",
+    "kvars": "[ 30 30 30]",
+    "Conn": "wye",
+    "DeltaDirection": "1",
+    "%Error": "1",
+    "Weight": "1",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "sensor_kvs_delta",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Sensor.s1 element=Line.l1 terminal=1 conn=delta deltadirection=-1 kvbase=4.16",
+    "Edit Sensor.s1 kvs=(7.2 7.2 7.2)"
+   ],
+   "target": "Sensor.s1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kVBase": "4.16",
+    "Clear": "No",
+    "kVs": "[ 7.2 7.2 7.2]",
+    "Currents": "[ 0 0 0]",
+    "kWs": "[ 0 0 0]",
+    "kvars": "[ 0 0 0]",
+    "Conn": "delta",
+    "DeltaDirection": "-1",
+    "%Error": "1",
+    "Weight": "1",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "sensor_makelike",
+   "commands": [
+    "New Line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1",
+    "New Sensor.base element=Line.l1 terminal=1 conn=delta deltadirection=-1 kvbase=4.16 weight=3 %error=2",
+    "Edit Sensor.base kvs=(7.2 7.2 7.2)",
+    "New Sensor.s1 like=base"
+   ],
+   "target": "Sensor.s1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "kVBase": "12.47",
+    "Clear": "No",
+    "kVs": "",
+    "Currents": "",
+    "kWs": "",
+    "kvars": "",
+    "Conn": "wye",
+    "DeltaDirection": "1",
+    "%Error": "1",
+    "Weight": "1",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

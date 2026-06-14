@@ -10,9 +10,62 @@
 use num_complex::Complex64;
 
 use crate::circuit::Terminal;
+use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObjData;
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
+
+/// Element status flags — the element-level subset of Pascal
+/// `TDSSObjectFlag` (`Common/DSSClass.pas` l.133). The property-engine flags
+/// (`EditingActive`, `HasBeenSaved`, `DefaultAndUnedited`, `NeedsRecalc`,
+/// `NeedsYPrim`) are handled by other mechanisms in this port and are not
+/// represented here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ElemFlags(u32);
+
+impl ElemFlags {
+    pub const NONE: Self = Self(0);
+    /// `Flg.Checked` — topology-search visit marker.
+    pub const CHECKED: Self = Self(1 << 0);
+    /// `Flg.Flag` — general-purpose scratch flag ("don't assume inited").
+    pub const FLAG: Self = Self(1 << 1);
+    /// `Flg.HasEnergyMeter` — an EnergyMeter is metering this element.
+    pub const HAS_ENERGY_METER: Self = Self(1 << 2);
+    /// `Flg.HasSensorObj` — a Sensor is metering this element.
+    pub const HAS_SENSOR_OBJ: Self = Self(1 << 3);
+    /// `Flg.IsIsolated` — not reached by any meter-zone/topology sweep.
+    pub const IS_ISOLATED: Self = Self(1 << 4);
+    /// `Flg.HasControl` — some control element controls this element.
+    pub const HAS_CONTROL: Self = Self(1 << 5);
+    /// `Flg.IsMonitored` — some control element monitors this element.
+    pub const IS_MONITORED: Self = Self(1 << 6);
+    /// `Flg.HasOCPDevice` — Fuse, Relay or Recloser attached.
+    pub const HAS_OCP_DEVICE: Self = Self(1 << 7);
+    /// `Flg.HasAutoOCPDevice` — Relay or Recloser only.
+    pub const HAS_AUTO_OCP_DEVICE: Self = Self(1 << 8);
+
+    /// Pascal `<flag> in Flags`.
+    pub fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Pascal `Include(Flags, <flag>)`.
+    pub fn include(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    /// Pascal `Exclude(Flags, <flag>)`.
+    pub fn exclude(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
+}
+
+impl std::ops::BitOr for ElemFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
 
 /// Shared circuit-element data (`TDSSCktElement` fields).
 #[derive(Debug, Clone)]
@@ -64,6 +117,50 @@ pub struct CktElementData {
     /// changed, so the circuit must set `BusNameRedefined` (which in Pascal
     /// happens immediately through the `ActiveCircuit` global).
     pub signal_bus_name_redefined: bool,
+    /// Signal to the executive: reset `Solution.SolutionInitialized` (Pascal
+    /// writes it straight through the `ActiveCircuit` global from a property
+    /// side effect — e.g. adding a model-3 generator forces a DQDV re-init).
+    pub signal_reset_solution_initialized: bool,
+
+    /// Pascal `Flags` (`TDSSObjectFlags`), element-level subset.
+    pub flags: ElemFlags,
+
+    // --- Meter-zone fields (Pascal `TPDElement`, with `meter_obj`/
+    // --- `sensor_obj` also on `TPCElement`). Written by the EnergyMeter
+    // --- zone build (`MakeMeterZoneLists`); meaningful for PD elements and
+    // --- (the refs) for zone PC elements, inert otherwise.
+    /// `FromTerminal`: terminal (1-based) facing the meter on a radial feeder.
+    pub from_terminal: usize,
+    /// `ToTerminal`: set by the reliability sweep from `from_terminal`.
+    pub to_terminal: usize,
+    /// `ParentPDElement`: the upline branch in the meter zone.
+    pub parent_pd: Option<ElemRef>,
+    /// `MeterObj`: upline EnergyMeter.
+    pub meter_obj: Option<ElemRef>,
+    /// `SensorObj`: upline Sensor/meter for allocation and estimation.
+    pub sensor_obj: Option<ElemRef>,
+    /// `BranchNumCustomers` (customers connected directly to this branch).
+    pub branch_num_customers: i32,
+    /// `BranchTotalCustomers` (customers downstream incl. this branch).
+    pub branch_total_customers: i32,
+    /// `TPDElement.Overload_EEN`: degree of normal-rating overload, set as a
+    /// side effect of `excess_kva_norm`. Inert on non-PD elements.
+    pub overload_een: f64,
+    /// `TPDElement.Overload_UE`: degree of emergency-rating overload, set as a
+    /// side effect of `excess_kva_emerg`.
+    pub overload_ue: f64,
+
+    // --- Reliability accumulators (Pascal `TPDElement` l.32-48), written by
+    // --- the EnergyMeter reliability sweep (`CalcReliabilityIndices`). Inert
+    // --- on non-PD elements (never appear in a meter `SequenceList`).
+    /// `BranchFltRate`: net failure rate for this branch (`CalcFltRate`).
+    pub branch_flt_rate: f64,
+    /// `AccumulatedBrFltRate`: failure rate accumulated to this branch.
+    pub accumulated_br_flt_rate: f64,
+    /// `AccumulatedMilesDownStream`: total line miles downstream of this branch.
+    pub accumulated_miles_downstream: f64,
+    /// `BranchSectionID`: feeder section this branch belongs to.
+    pub branch_section_id: i32,
 }
 
 impl CktElementData {
@@ -96,6 +193,22 @@ impl CktElementData {
             iterminal_updated: false,
             handle: 0,
             signal_bus_name_redefined: false,
+            signal_reset_solution_initialized: false,
+            flags: ElemFlags::NONE,
+            // Pascal `TPDElement.Create`: `FromTerminal := 1`.
+            from_terminal: 1,
+            to_terminal: 0,
+            parent_pd: None,
+            meter_obj: None,
+            sensor_obj: None,
+            branch_num_customers: 0,
+            branch_total_customers: 0,
+            overload_een: 0.0,
+            overload_ue: 0.0,
+            branch_flt_rate: 0.0,
+            accumulated_br_flt_rate: 0.0,
+            accumulated_miles_downstream: 0.0,
+            branch_section_id: 0,
         }
     }
 

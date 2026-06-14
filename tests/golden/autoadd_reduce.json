@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "scenarios": [
+    {
+      "name": "autoadd-defaults",
+      "commands": [
+        "New circuit.c1"
+      ],
+      "gets": [
+        {
+          "query": "genkw genpf capkvar addtype ueweight lossweight ueregs lossregs",
+          "result": "1000, 1, 600, generator, 1, 1, [10], [13]"
+        },
+        {
+          "query": "autobuslist",
+          "result": ""
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "autoadd-set",
+      "commands": [
+        "New circuit.c1",
+        "Set genkw=500 genpf=0.95 capkvar=1200 addtype=capacitor ueweight=2 lossweight=3 ueregs=[1,2,3] lossregs=[13,14]"
+      ],
+      "gets": [
+        {
+          "query": "genkw genpf capkvar addtype ueweight lossweight ueregs lossregs",
+          "result": "500, 0.95, 1200, capacitor, 2, 3, [1, 2, 3], [13, 14]"
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "autoadd-buslist",
+      "commands": [
+        "New circuit.c1",
+        "Set autobuslist=[b1, b2, b3]"
+      ],
+      "gets": [
+        {
+          "query": "autobuslist",
+          "result": "b1, b2, b3"
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "addtype-unknown-falls-back",
+      "commands": [
+        "New circuit.c1",
+        "Set addtype=foo"
+      ],
+      "gets": [
+        {
+          "query": "addtype",
+          "result": "capacitor"
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "ueregs-nonnumeric-token",
+      "commands": [
+        "New circuit.c1",
+        "Set ueregs=(10 abc 13)"
+      ],
+      "gets": [
+        {
+          "query": "ueregs",
+          "result": "[10, 0, 0]"
+        }
+      ],
+      "error_number": 303,
+      "error_contains": "Integer number conversion error for string: \"abc\""
+    },
+    {
+      "name": "lossregs-decimal-rounds",
+      "commands": [
+        "New circuit.c1",
+        "Set lossregs=(13.7 14)"
+      ],
+      "gets": [
+        {
+          "query": "lossregs",
+          "result": "[14, 14]"
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "reduce-option-defaults",
+      "commands": [
+        "New circuit.c1"
+      ],
+      "gets": [
+        {
+          "query": "zmag keepload",
+          "result": "0.02, Yes"
+        },
+        {
+          "query": "reduceoption",
+          "result": ""
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "reduce-option-set",
+      "commands": [
+        "New circuit.c1",
+        "Set reduceoption=shortlines zmag=0.05 keepload=no"
+      ],
+      "gets": [
+        {
+          "query": "reduceoption zmag keepload",
+          "result": "shortlines, 0.05, No"
+        }
+      ],
+      "error_number": null,
+      "error_contains": null
+    },
+    {
+      "name": "reduce-no-meter-1890",
+      "commands": [
+        "New circuit.c1 basekv=12.47 bus1=src phases=3",
+        "reduce"
+      ],
+      "gets": [],
+      "error_number": 1890,
+      "error_contains": "An energy meter is required to use this feature."
+    },
+    {
+      "name": "reduce-named-meter-not-found-262",
+      "commands": [
+        "New circuit.c1 basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve",
+        "reduce nope"
+      ],
+      "gets": [],
+      "error_number": 262,
+      "error_contains": "EnergyMeter \"NOPE\" not found."
+    }
+  ]
+}

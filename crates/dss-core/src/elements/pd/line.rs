@@ -9,12 +9,13 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_code::LineCodeObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
+use crate::support::mathutil::SymComp;
 use crate::util::EPSILON;
 
 /// Pascal `CAP_EPSILON` (Line.pas): "5 kvar of capacitive reactance at
@@ -366,6 +367,61 @@ impl CktElement for Line {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys.positive_sequence);
+    }
+
+    /// Pascal `TLineObj.CalcFltRate` (l.1129): the base rate scaled by line
+    /// length (`Faultrate · pctperm · 0.01 · Len`, faultrate in per-unit-length
+    /// terms). `MilesThisLine` is maintained by the length/units side effects.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData {
+            branch_flt_rate: self.fault_rate * self.pct_perm * 0.01 * self.len,
+            hrs_to_repair: self.hrs_to_repair,
+            miles_this_line: self.miles_this_line,
+        }
+    }
+
+    fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+    fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
+    /// Pascal `TLineObj.GetSeqLosses` (Line.pas l.1495): pos/neg/zero-mode
+    /// losses summed over both terminals — 3-phase branches only.
+    fn get_seq_losses(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        let mut pos = Complex64::ZERO;
+        let mut neg = Complex64::ZERO;
+        let mut zero = Complex64::ZERO;
+        if self.cd.nphases == 3 {
+            self.compute_iterminal(sys, node_v);
+            let cd = &self.cd;
+            let np = cd.nphases;
+            let sc = SymComp::default();
+            for i in 0..2 {
+                let k = i * np;
+                let vph: [Complex64; 3] = [
+                    node_v[cd.node_ref[k]],
+                    node_v[cd.node_ref[k + 1]],
+                    node_v[cd.node_ref[k + 2]],
+                ];
+                let mut v012 = [Complex64::ZERO; 3];
+                let mut i012 = [Complex64::ZERO; 3];
+                sc.phase_to_sym(&vph, &mut v012);
+                sc.phase_to_sym(&cd.iterminal[k..k + 3], &mut i012);
+                pos += v012[1] * i012[1].conj();
+                neg += v012[2] * i012[2].conj();
+                zero += v012[0] * i012[0].conj();
+            }
+            pos *= 3.0;
+            neg *= 3.0;
+            zero *= 3.0;
+        }
+        (pos, neg, zero)
     }
 
     /// Pascal `TLineObj.CalcYPrim` (sym-component and matrix paths; the

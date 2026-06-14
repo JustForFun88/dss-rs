@@ -5,8 +5,12 @@
 
 pub mod cap_control;
 pub mod control_elem;
+pub mod gen_dispatcher;
 pub mod reg_control;
+pub mod storage_controller;
 
 pub use cap_control::CapControl;
 pub use control_elem::{ControlElemData, RefSnapshot};
+pub use gen_dispatcher::GenDispatcher;
 pub use reg_control::RegControl;
+pub use storage_controller::StorageController;

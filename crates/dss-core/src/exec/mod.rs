@@ -10,17 +10,20 @@
 //! the active circuit, the parsers, the enum table, and the error log.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::{Circuit, ElemKind};
-use crate::elements::control::{cap_control, reg_control};
+use crate::elements::control::{cap_control, gen_dispatcher, reg_control, storage_controller};
 use crate::elements::general::{
     growth_shape, line_code, load_shape, price_shape, spectrum, tcc_curve, temp_shape, xfmr_code,
     xy_curve,
 };
-use crate::elements::pc::{load, vsource};
+use crate::elements::meter::energymeter;
+use crate::elements::meter::monitor;
+use crate::elements::meter::sensor;
+use crate::elements::pc::{generator, load, vsource};
 use crate::elements::pd::{capacitor, line, reactor, transformer};
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::obj::base::DssObject;
@@ -169,6 +172,8 @@ mod cmd {
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
     pub const SOLVE: usize = 9;
+    pub const RESET: usize = 13;
+    pub const SAMPLE: usize = 26;
     pub const COMPILE: usize = 14;
     pub const SET: usize = 15;
     pub const COMMENT: usize = 19; // "//"
@@ -184,6 +189,7 @@ mod cmd {
     pub const GET: usize = 32;
     pub const INIT: usize = 33;
     pub const FILEEDIT: usize = 35;
+    pub const ALLOCATE_LOADS: usize = 45;
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
     pub const BUSCOORDS: usize = 58;
@@ -194,6 +200,8 @@ mod cmd {
     pub const CD: usize = 72;
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
+    pub const REDUCE: usize = 61;
+    pub const RELCALC: usize = 100;
     pub const VAR: usize = 101;
     pub const CLEAR_ALL: usize = 119;
     pub const COMHELP: usize = 120;
@@ -346,10 +354,20 @@ mod opt {
     pub const EMERGVMINPU: usize = 23;
     pub const EMERGVMAXPU: usize = 24;
     pub const PCT_GROWTH: usize = 28;
+    pub const GEN_KW: usize = 29;
+    pub const GEN_PF: usize = 30;
+    pub const CAP_KVAR: usize = 31;
+    pub const ADD_TYPE: usize = 32;
     pub const ALLOW_DUPLICATES: usize = 33;
     pub const ZONE_LOCK: usize = 34;
+    pub const UE_WEIGHT: usize = 35;
+    pub const LOSS_WEIGHT: usize = 36;
+    pub const UE_REGS: usize = 37;
+    pub const LOSS_REGS: usize = 38;
     pub const VOLTAGE_BASES: usize = 39;
     pub const ALGORITHM: usize = 40;
+    pub const TRAPEZOIDAL: usize = 41;
+    pub const AUTO_BUS_LIST: usize = 42;
     pub const CONTROL_MODE: usize = 43;
     pub const DEFAULT_DAILY: usize = 46;
     pub const DEFAULT_YEARLY: usize = 47;
@@ -358,11 +376,16 @@ mod opt {
     pub const PRICE_CURVE: usize = 51;
     pub const BASE_FREQUENCY: usize = 53;
     pub const MAX_CONTROL_ITER: usize = 55;
+    pub const ALLOCATION_FACTORS: usize = 48;
     pub const CASE_NAME: usize = 63;
     pub const LOG: usize = 66;
+    pub const NUM_ALLOC_ITERATIONS: usize = 72;
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
     pub const NEGLECT_LOAD_Y: usize = 95;
     pub const MIN_ITERATIONS: usize = 110;
+    pub const REDUCE_OPTION: usize = 59;
+    pub const KEEP_LOAD: usize = 112;
+    pub const ZMAG: usize = 113;
 }
 
 /// A class constructor: build a fresh, all-default object of the class.
@@ -442,6 +465,33 @@ impl ElemStore for ClassStore<'_> {
 
     fn obj(&self, r: ElemRef) -> &dyn DssObject {
         self.classes[r.cls].objects[r.idx].as_ref()
+    }
+
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef> {
+        let lower = full_name.to_lowercase();
+        let (cls_name, obj_name) = match lower.split_once('.') {
+            Some((c, n)) => (Some(c), n),
+            None => (None, lower.as_str()),
+        };
+        for (ci, class) in self.classes.iter().enumerate() {
+            // Only circuit-element classes are eligible (Pascal DeviceList).
+            if class.kind.is_none() {
+                continue;
+            }
+            if let Some(cn) = cls_name
+                && !class.props.class_name().eq_ignore_ascii_case(cn)
+            {
+                continue;
+            }
+            if let Some(&oi) = class.name_to_idx.get(obj_name) {
+                return Some(ElemRef { cls: ci, idx: oi });
+            }
+        }
+        None
+    }
+
+    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
+        self.classes[r.cls].objects[r.idx].as_mut()
     }
 
     fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
@@ -609,6 +659,8 @@ pub struct Dss {
     circuit: Option<Circuit>,
     /// `DSS.DefaultBaseFreq` (`Set DefaultBaseFrequency=`).
     default_base_freq: f64,
+    /// `DSS.MaxAllocationIterations` (`Set NumAllocIterations=`); default 2.
+    max_allocation_iterations: i32,
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.
     current_dir: PathBuf,
     /// `DSS.In_Redirect` / `DSS.Redirect_Abort`.
@@ -691,6 +743,42 @@ impl Dss {
                 |name| Box::new(cap_control::CapControl::new(name)),
                 ElemKind::Control,
             ),
+            DssClass::ckt_class(
+                generator::class_props(&enums),
+                |name| Box::new(generator::Generator::new(name)),
+                ElemKind::Generator,
+            ),
+            // GenDispatcher is registered right after Generator
+            // (Pascal DSSClassDefs.pas:231).
+            DssClass::ckt_class(
+                gen_dispatcher::class_props(&enums),
+                |name| Box::new(gen_dispatcher::GenDispatcher::new(name)),
+                ElemKind::Control,
+            ),
+            // StorageController follows GenDispatcher (Pascal DSSClassDefs.pas:237;
+            // the Storage element at :234 is Phase 7, so it is skipped here).
+            DssClass::ckt_class(
+                storage_controller::class_props(&enums),
+                |name| Box::new(storage_controller::StorageController::new(name)),
+                ElemKind::Control,
+            ),
+            // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
+            DssClass::ckt_class(
+                monitor::class_props(&enums),
+                |name| Box::new(monitor::Monitor::new(name)),
+                ElemKind::Meter,
+            ),
+            DssClass::ckt_class(
+                energymeter::class_props(&enums),
+                |name| Box::new(energymeter::EnergyMeter::new(name)),
+                ElemKind::EnergyMeter,
+            ),
+            // Sensor is registered after EnergyMeter (Pascal DSSClassDefs.pas:294).
+            DssClass::ckt_class(
+                sensor::class_props(&enums),
+                |name| Box::new(sensor::Sensor::new(name)),
+                ElemKind::Sensor,
+            ),
         ];
         let class_by_name = classes
             .iter()
@@ -712,6 +800,7 @@ impl Dss {
             last_result: String::new(),
             circuit: None,
             default_base_freq: 60.0,
+            max_allocation_iterations: 2,
             current_dir: std::env::current_dir().unwrap_or_default(),
             in_redirect: false,
             redirect_abort: false,
@@ -890,6 +979,11 @@ impl Dss {
             cmd::CALC_VOLTAGE_BASES => self.do_calc_voltage_bases(),
             cmd::BUILD_Y => self.do_build_y(),
             cmd::GET => self.do_get_cmd(),
+            cmd::SAMPLE => self.do_sample_cmd(),
+            cmd::RESET => self.do_reset_cmd(),
+            cmd::ALLOCATE_LOADS => self.do_allocate_loads_cmd(),
+            cmd::RELCALC => self.do_relcalc_cmd(),
+            cmd::REDUCE => self.do_reduce_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
@@ -1256,6 +1350,10 @@ impl Dss {
             if cd.yprim_invalid && cd.enabled {
                 ckt.solution.system_y_changed = true;
             }
+            if cd.signal_reset_solution_initialized {
+                cd.signal_reset_solution_initialized = false;
+                ckt.solution.solution_initialized = false;
+            }
         }
 
         for action in &ref_actions {
@@ -1297,6 +1395,8 @@ impl Dss {
                 enums,
                 errors,
                 default_base_freq,
+                max_allocation_iterations,
+                current_dir,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -1437,8 +1537,67 @@ impl Dss {
                                 ckt.default_growth_rate.powi(ckt.solution.year - 1);
                         }
                     }
+                    // Pascal `Set GenkW/GenPF/Capkvar/AddType=`: the auto-add
+                    // option object (`Circuit.AutoAddObj`). The auto-add solve
+                    // itself is NOT_PORTED (see circuit/auto_add.rs).
+                    opt::GEN_KW => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.auto_add_obj.gen_kw = v;
+                        }
+                    }
+                    opt::GEN_PF => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.auto_add_obj.gen_pf = v;
+                        }
+                    }
+                    opt::CAP_KVAR => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.auto_add_obj.cap_kvar = v;
+                        }
+                    }
+                    opt::ADD_TYPE => {
+                        if let Some(v) = enum_ord(enums, enums.add_type, &param, errors) {
+                            ckt.auto_add_obj.add_type = v;
+                        }
+                    }
                     opt::ALLOW_DUPLICATES => ckt.duplicates_allowed = interpret_yes_no(&param),
                     opt::ZONE_LOCK => ckt.zones_locked = interpret_yes_no(&param),
+                    opt::UE_WEIGHT => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.ue_weight = v;
+                        }
+                    }
+                    opt::LOSS_WEIGHT => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.loss_weight = v;
+                        }
+                    }
+                    // Pascal `parseIntArray` (ExecOptions.pas l.350) via AuxParser.
+                    opt::UE_REGS => ckt.ue_regs = parse_int_array(aux_parser, vars, &param, errors),
+                    opt::LOSS_REGS => {
+                        ckt.loss_regs = parse_int_array(aux_parser, vars, &param, errors)
+                    }
+                    // Pascal `Set Trapezoidal=`: the meter integration rule
+                    // (reset to false by `Set mode=`).
+                    opt::TRAPEZOIDAL => ckt.trapezoidal_integration = interpret_yes_no(&param),
+                    // Pascal `DoAutoAddBusList` (ExecHelper.pas l.1986).
+                    opt::AUTO_BUS_LIST => do_auto_add_bus_list(
+                        aux_parser,
+                        vars,
+                        current_dir,
+                        &param,
+                        &mut ckt.auto_add_bus_list,
+                        errors,
+                    ),
+                    // Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049). The
+                    // strategy is stored; the reduction itself is NOT_PORTED.
+                    opt::REDUCE_OPTION => set_reduce_strategy(ckt, &param, errors),
+                    opt::KEEP_LOAD => ckt.reduce_laterals_keep_load = interpret_yes_no(&param),
+                    opt::ZMAG => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.reduction_zmag = v;
+                        }
+                    }
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];
@@ -1499,6 +1658,33 @@ impl Dss {
                     opt::MAX_CONTROL_ITER => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.max_control_iterations = v;
+                        }
+                    }
+                    // Pascal `DoSetAllocationFactors` (ExecHelper.pas l.2651):
+                    // set every load's kVA allocation factor (ConnectedkVA spec).
+                    opt::ALLOCATION_FACTORS => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            if v <= 0.0 {
+                                errors.push(
+                                    "Allocation Factor must be greater than zero.".to_string(),
+                                );
+                            } else {
+                                let mut store = ClassStore {
+                                    classes: &mut classes[..],
+                                };
+                                for &lr in &ckt.loads {
+                                    if let Some(load) =
+                                        store.obj_mut(lr).as_any_mut().downcast_mut::<load::Load>()
+                                    {
+                                        load.set_kva_allocation_factor(v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    opt::NUM_ALLOC_ITERATIONS => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            *max_allocation_iterations = v;
                         }
                     }
                     opt::CASE_NAME => ckt.case_name = param.clone(),
@@ -1657,8 +1843,25 @@ impl Dss {
                     &mut result,
                     &float_to_str((ckt.default_growth_rate - 1.0) * 100.0),
                 ),
+                opt::GEN_KW => append_result(&mut result, &float_to_str(ckt.auto_add_obj.gen_kw)),
+                opt::GEN_PF => append_result(&mut result, &float_to_str(ckt.auto_add_obj.gen_pf)),
+                opt::CAP_KVAR => {
+                    append_result(&mut result, &float_to_str(ckt.auto_add_obj.cap_kvar))
+                }
+                opt::ADD_TYPE => append_result(
+                    &mut result,
+                    // Pascal echoes the lowercase device word, not the enum name.
+                    match ckt.auto_add_obj.add_type {
+                        crate::circuit::CAPADD => "capacitor",
+                        _ => "generator",
+                    },
+                ),
                 opt::ALLOW_DUPLICATES => append_result(&mut result, yes_no(ckt.duplicates_allowed)),
                 opt::ZONE_LOCK => append_result(&mut result, yes_no(ckt.zones_locked)),
+                opt::UE_WEIGHT => append_result(&mut result, &float_to_str(ckt.ue_weight)),
+                opt::LOSS_WEIGHT => append_result(&mut result, &float_to_str(ckt.loss_weight)),
+                opt::UE_REGS => append_result(&mut result, &int_array_to_string(&ckt.ue_regs)),
+                opt::LOSS_REGS => append_result(&mut result, &int_array_to_string(&ckt.loss_regs)),
                 opt::VOLTAGE_BASES => {
                     // Pascal builds `(b1, b2, ... , )` replacing GlobalResult.
                     result = "(".to_string();
@@ -1673,6 +1876,14 @@ impl Dss {
                         .get(enums.solve_alg)
                         .ordinal_to_string(ckt.solution.algorithm),
                 ),
+                opt::AUTO_BUS_LIST => {
+                    for name in &ckt.auto_add_bus_list {
+                        append_result(&mut result, name);
+                    }
+                }
+                opt::REDUCE_OPTION => append_result(&mut result, &ckt.reduction_strategy_string),
+                opt::KEEP_LOAD => append_result(&mut result, yes_no(ckt.reduce_laterals_keep_load)),
+                opt::ZMAG => append_result(&mut result, &float_to_str(ckt.reduction_zmag)),
                 opt::CONTROL_MODE => append_result(
                     &mut result,
                     &enums
@@ -1784,6 +1995,277 @@ impl Dss {
             errors,
         };
         let _ = solve(ckt, &mut env); // hard errors are recorded by solve()
+    }
+
+    /// Pascal `DoSampleCmd` (`ExecHelper.pas` l.1036): `MonitorClass.SampleAll`
+    /// — force every enabled monitor (mode ≠ 5) to take a sample.
+    fn do_sample_cmd(&mut self) {
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        crate::solution::monitors::sample_all_monitors(ckt, &mut env, false);
+        // Pascal `DoSampleCmd` l.1037: `EnergyMeterClass.SampleAll` (gets
+        // generators too — the generator register sweep is WP6.8).
+        crate::solution::meters::take_sample_all(ckt, env.store, &sys);
+    }
+
+    /// Pascal `TExecHelper.DoAllocateLoadsCmd` (`ExecHelper.pas` l.2605): adjust
+    /// loads defined by connected kVA or kWh billing to match the EnergyMeter /
+    /// Sensor measured peaks. Solves a snapshot guess, then iterates
+    /// `MaxAllocationIterations` times: recompute each meter/sensor allocation
+    /// factor, run each meter's zone allocation, and re-solve.
+    fn do_allocate_loads_cmd(&mut self) {
+        let max_iters = self.max_allocation_iterations.max(0) as usize;
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        ckt.load_multiplier = 1.0;
+        // Pascal `DoAllocateLoadsCmd` (ExecHelper.pas l.2617): force SNAPSHOT
+        // before the guess solve — `if Mode <> SNAPSHOT then Mode := SNAPSHOT`,
+        // whose `Set_Mode` side effect re-inits the solution and clears the
+        // meter-sampling state that a prior yearly/daily run may have left set.
+        if ckt.solution.mode != SolveMode::Snapshot {
+            crate::solution::set_mode(ckt, SolveMode::Snapshot, errors);
+        }
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        crate::solution::meters::allocate_loads(ckt, &mut env, max_iters);
+    }
+
+    /// Pascal `DoResetCmd` (`ExecHelper.pas` l.1527): with no argument, reset
+    /// monitors, meters, controls and clear the event/error logs; otherwise the
+    /// first letter selects the target (`MOnitors`/`MEters`/`Controls`/
+    /// `Eventlog`). Faults (`F`) and the topology `KeepList` (`K`) have no class
+    /// in this port yet, so those selectors are accepted as no-ops.
+    fn do_reset_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars).to_uppercase();
+        let b = param.as_bytes();
+        // Decode the Pascal `case Param[1] of` dispatch into a set of targets.
+        let (do_monitors, do_meters, do_controls, do_eventlog) = if param.is_empty() {
+            (true, true, true, true)
+        } else {
+            match b.first() {
+                Some(&b'M') => (
+                    b.get(1) == Some(&b'O'),
+                    b.get(1) == Some(&b'E'),
+                    false,
+                    false,
+                ),
+                Some(&b'C') => (false, false, true, false),
+                Some(&b'E') => (false, false, false, true),
+                // `F` (faults) / `K` (keep list) are later-phase classes; accept
+                // the selector without erroring so scripts don't abort.
+                Some(&b'F') | Some(&b'K') => (false, false, false, false),
+                _ => {
+                    self.errors
+                        .push(format!("Unknown argument to Reset Command: \"{param}\""));
+                    return;
+                }
+            }
+        };
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        if do_monitors {
+            crate::solution::monitors::reset_all_monitors(ckt, &mut env);
+        }
+        if do_meters {
+            crate::solution::meters::reset_all_meters(ckt, env.store);
+        }
+        if do_controls {
+            // Pascal `DoResetControls`: `Reset()` on every enabled control.
+            let _ = crate::solution::controls::reset_all_controls(ckt, &mut env);
+        }
+        if do_eventlog {
+            ckt.solution.event_log.clear();
+        }
+    }
+
+    /// Pascal `TExecHelper.DoLambdaCalcs` (the `RelCalc` command): fault-rate and
+    /// bus-interruption reliability calc over every EnergyMeter zone. The single
+    /// positional parameter (any name) is the `AssumeRestoration` yes/no flag.
+    fn do_relcalc_cmd(&mut self) {
+        // EnergyMeter objects required (Pascal error 28724).
+        if self
+            .circuit
+            .as_ref()
+            .expect("gated in command()")
+            .energy_meters
+            .is_empty()
+        {
+            self.errors.push(
+                "No EnergyMeter Objects Defined. EnergyMeter objects required for this function."
+                    .to_string(),
+            );
+            return;
+        }
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars);
+        let assume_restoration = !param.is_empty() && interpret_yes_no(&param);
+
+        let Dss {
+            classes,
+            circuit,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+        let errs = crate::solution::meters::calc_all_reliability_indices(
+            ckt,
+            &mut store,
+            assume_restoration,
+        );
+        errors.extend(errs);
+    }
+
+    /// Pascal `TExecHelper.MarkCapandReactorBuses` (ExecHelper.pas l.1573): mark
+    /// every bus carrying an *enabled, shunt-connected* capacitor or reactor as
+    /// a "keeper" (`Bus.Keep := TRUE`) so a later circuit reduction won't
+    /// eliminate it. Runs as a side-effect of the `Reduce` command regardless of
+    /// whether the reduction itself proceeds.
+    fn mark_cap_and_reactor_buses(&mut self) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        // `ElemRef` is `Copy`; snapshot the refs so the bus write below doesn't
+        // alias the element-list borrow (the store borrows `classes`, disjoint
+        // from `ckt`).
+        let refs: Vec<ElemRef> = ckt
+            .shunt_capacitors
+            .iter()
+            .chain(ckt.reactors.iter())
+            .copied()
+            .collect();
+        let store = ClassStore { classes };
+        for r in refs {
+            let elem = store.ckt_elem(r);
+            if elem.is_shunt() && elem.cd().enabled {
+                let bus = elem.cd().terminals[0].bus_ref;
+                if let Some(b) = ckt.buses.get_mut(bus) {
+                    b.keep = true;
+                }
+            }
+        }
+    }
+
+    /// Pascal `DoReduceCmd` (ExecHelper.pas l.1614): the `Reduce` command. The
+    /// observable surface is reproduced faithfully — the cap/reactor bus marking
+    /// ([`Self::mark_cap_and_reactor_buses`]), the error-1890 no-meter
+    /// precondition, the `'A'`(ll)-vs-named-meter dispatch, and the error-262
+    /// "EnergyMeter not found". The reduction *work itself* —
+    /// `EnergyMeter.ReduceZone` dispatching `ReduceAlgs.pas`
+    /// (`DoReduceDefault`/`DoReduceShortLines`/…) → `TLineObj.MergeWith` — is
+    /// NOT_PORTED (the 210-line line merge is unported), so a resolved meter
+    /// records a deferral instead of reducing its zone.
+    fn do_reduce_cmd(&mut self) {
+        // Pascal reads the next parm and uppercases it (`AnsiUpperCase`).
+        self.parser.next_param(&self.vars);
+        let mut param = self.parser.make_string(&self.vars).to_uppercase();
+
+        // Pascal marks cap/reactor buses Keep *before* the meter-count check.
+        self.mark_cap_and_reactor_buses();
+
+        let no_meters = self
+            .circuit
+            .as_ref()
+            .expect("gated in command()")
+            .energy_meters
+            .is_empty();
+        if no_meters {
+            // Pascal error 1890.
+            self.errors.push(
+                "An energy meter is required to use this feature. Please check \
+                 https://sourceforge.net/p/electricdss/code/HEAD/tree/trunk/Version8/Doc/Circuit%20Reduction%20for%20Version8.docx \
+                 for examples."
+                    .to_string(),
+            );
+            return;
+        }
+
+        // Pascal: empty arg defaults to 'A' (all meters).
+        if param.is_empty() {
+            param = "A".to_string();
+        }
+
+        if param.starts_with('A') {
+            // All meters → ReduceZone on each (NOT_PORTED).
+            self.errors.push(Self::reduce_deferred_msg());
+            return;
+        }
+
+        // Named meter: resolve it (Pascal `MeterClass.SetActive(Param)`); a
+        // miss is error 262, a hit would `ReduceZone` (NOT_PORTED → deferral).
+        let found = {
+            let Dss {
+                classes, circuit, ..
+            } = self;
+            let ckt = circuit.as_ref().expect("gated in command()");
+            let store = ClassStore { classes };
+            ckt.energy_meters.iter().any(|&r| {
+                store
+                    .ckt_elem(r)
+                    .cd()
+                    .obj
+                    .name()
+                    .eq_ignore_ascii_case(&param)
+            })
+        };
+        if found {
+            self.errors.push(Self::reduce_deferred_msg());
+        } else {
+            // Pascal error 262 (echoes the uppercased name).
+            self.errors
+                .push(format!("EnergyMeter \"{param}\" not found."));
+        }
+    }
+
+    /// The NOT_PORTED deferral logged when a `Reduce` would otherwise call
+    /// `EnergyMeter.ReduceZone` (see [`Self::do_reduce_cmd`]).
+    fn reduce_deferred_msg() -> String {
+        "Reduce: circuit reduction is not ported yet (the zone line-merge \
+         requires Line.MergeWith — deferred to a later phase)."
+            .to_string()
     }
 
     /// Pascal `DoSetVoltageBases` (the `CalcVoltageBases` command).
@@ -1974,6 +2456,41 @@ impl Dss {
     }
 }
 
+/// A monitor's recorded buffer for the golden/test harness (dss-python
+/// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
+#[derive(Debug, Clone)]
+pub struct MonitorView {
+    pub header: Vec<String>,
+    pub sample_count: i32,
+    /// Per-sample hour values (record slot 0).
+    pub dbl_hour: Vec<f64>,
+    /// `channels[i]` = the (i+1)-th channel across all samples (f32).
+    pub channels: Vec<Vec<f32>>,
+}
+
+/// Raw `ElemRef` lists copied out of an [`energymeter::EnergyMeter`] before
+/// resolving full names (avoids a long tuple type in [`Dss::meter_zone`]).
+struct MeterZoneRefs {
+    branches: Vec<ElemRef>,
+    ends: Vec<ElemRef>,
+    pce: Vec<ElemRef>,
+    register_names: Vec<String>,
+}
+
+/// An EnergyMeter's zone topology for the test/golden harness (dss-python
+/// `Meters.AllBranchesInZone` / `AllEndElements` / `ZonePCE`).
+#[derive(Debug, Clone)]
+pub struct MeterZoneView {
+    /// `AllBranchesInZone`: the zone branches in `SequenceList` order (FullNames).
+    pub all_branches_in_zone: Vec<String>,
+    /// `AllEndElements`: the feeder-end branches (FullNames).
+    pub all_end_elements: Vec<String>,
+    /// `ZonePCE`: the zone PC elements (loads/generators), FullNames.
+    pub zone_pce: Vec<String>,
+    /// `RegisterNames` (length `NumEMRegisters`).
+    pub register_names: Vec<String>,
+}
+
 /// Per-element snapshot for the golden feeder gate: mirrors dss-python's
 /// `CktElement.Powers`/`Currents` over the oracle's `First/Next` iteration
 /// (= creation) order.
@@ -1991,6 +2508,10 @@ pub struct ElementSnapshot {
     /// Amps, re/im interleaved per conductor and terminal (`Iterminal`).
     pub currents: Vec<f64>,
 }
+
+/// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
+/// coordinates, returned by [`Dss::system_y_csc`].
+pub type SystemYCsc = (usize, Vec<(usize, usize, num_complex::Complex64)>);
 
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
@@ -2044,6 +2565,175 @@ impl Dss {
             });
         }
         out
+    }
+
+    /// Read a monitor's recorded data — the dss-python `Monitors.Header` /
+    /// `SampleCount` / `Channel(i)` / `dblHour` surface (tests/goldens).
+    /// `name` may be `"m1"` or `"Monitor.m1"` (case-insensitive). `None` if no
+    /// such monitor exists.
+    pub fn monitor_view(&self, name: &str) -> Option<MonitorView> {
+        let bare = name
+            .strip_prefix("Monitor.")
+            .or_else(|| name.strip_prefix("monitor."))
+            .unwrap_or(name);
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(m) = obj.as_any().downcast_ref::<monitor::Monitor>()
+                    && m.med.cd.obj.name().eq_ignore_ascii_case(bare)
+                {
+                    let nch = m.num_channels();
+                    return Some(MonitorView {
+                        header: m.header().to_vec(),
+                        sample_count: m.sample_count(),
+                        dbl_hour: m.dbl_hour(),
+                        channels: (1..=nch).map(|i| m.channel(i)).collect(),
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// An EnergyMeter's zone topology — the dss-python `Meters.AllBranchesInZone`
+    /// / `AllEndElements` / `ZonePCE` / `CountBranches` surface (tests/goldens).
+    /// `name` may be `"m1"` or `"EnergyMeter.m1"` (case-insensitive). `None` if
+    /// no such meter exists.
+    pub fn meter_zone(&self, name: &str) -> Option<MeterZoneView> {
+        let bare = name
+            .strip_prefix("EnergyMeter.")
+            .or_else(|| name.strip_prefix("energymeter."))
+            .unwrap_or(name);
+        // Locate the meter, copy out its ElemRef lists, then resolve full names.
+        let mut lists: Option<MeterZoneRefs> = None;
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(em) = obj.as_any().downcast_ref::<energymeter::EnergyMeter>()
+                    && em.data().name().eq_ignore_ascii_case(bare)
+                {
+                    lists = Some(MeterZoneRefs {
+                        branches: em.sequence_list().to_vec(),
+                        ends: em.zone_end_elements(),
+                        pce: em.zone_pce().to_vec(),
+                        register_names: em.register_names().to_vec(),
+                    });
+                }
+            }
+        }
+        let lists = lists?;
+        let full_name = |r: ElemRef| -> String {
+            let cn = self.classes[r.cls].props.class_name();
+            format!(
+                "{}.{}",
+                cn,
+                self.classes[r.cls].objects[r.idx].data().name()
+            )
+        };
+        Some(MeterZoneView {
+            all_branches_in_zone: lists.branches.iter().map(|&r| full_name(r)).collect(),
+            all_end_elements: lists.ends.iter().map(|&r| full_name(r)).collect(),
+            zone_pce: lists.pce.iter().map(|&r| full_name(r)).collect(),
+            register_names: lists.register_names,
+        })
+    }
+
+    /// An EnergyMeter's register values paired with names — the dss-python
+    /// `Meters.RegisterValues` / `RegisterNames` surface (tests/goldens).
+    /// `name` may be `"m1"` or `"EnergyMeter.m1"` (case-insensitive).
+    pub fn meter_registers(&self, name: &str) -> Option<Vec<(String, f64)>> {
+        let bare = name
+            .strip_prefix("EnergyMeter.")
+            .or_else(|| name.strip_prefix("energymeter."))
+            .unwrap_or(name);
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(em) = obj.as_any().downcast_ref::<energymeter::EnergyMeter>()
+                    && em.data().name().eq_ignore_ascii_case(bare)
+                {
+                    return Some(
+                        em.register_names()
+                            .iter()
+                            .cloned()
+                            .zip(em.registers().iter().copied())
+                            .collect(),
+                    );
+                }
+            }
+        }
+        None
+    }
+
+    /// A load's `(kWbase, FAllocationFactor)` by name — the oracle's
+    /// `Loads.kW` / `Loads.AllocationFactor` (test API for `allocateloads`).
+    pub fn load_alloc(&self, name: &str) -> Option<(f64, f64)> {
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(ld) = obj.as_any().downcast_ref::<load::Load>()
+                    && ld.data().name().eq_ignore_ascii_case(name)
+                {
+                    return Some((ld.kw_base, ld.allocation_factor()));
+                }
+            }
+        }
+        None
+    }
+
+    /// A generator's `(kWbase, kvarBase)` by name — the oracle's
+    /// `Generators.kW` / `Generators.kvar` (test API for GenDispatcher
+    /// redispatch).
+    pub fn generator_kw_kvar(&self, name: &str) -> Option<(f64, f64)> {
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(g) = obj.as_any().downcast_ref::<generator::Generator>()
+                    && g.data().name().eq_ignore_ascii_case(name)
+                {
+                    return Some((g.kw_base, g.kvar_base));
+                }
+            }
+        }
+        None
+    }
+
+    /// Test API for Pascal `TSensorObj.TakeSample`: drive the named sensor
+    /// against the solved circuit and return its `(CalculatedCurrent,
+    /// CalculatedVoltage)` per phase. (`TakeSample` is otherwise dead in the
+    /// snapshot path — `SensorClass.SampleAll` is only invoked by the
+    /// state-estimation API, which is a later phase — so this is the only gate
+    /// that exercises the offset/`RotatePhases` math.)
+    pub fn sensor_sample(
+        &mut self,
+        name: &str,
+    ) -> Option<(Vec<num_complex::Complex64>, Vec<num_complex::Complex64>)> {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref()?;
+        let sensor_ref = ckt.sensors.iter().copied().find(|r| {
+            classes[r.cls].objects[r.idx]
+                .data()
+                .name()
+                .eq_ignore_ascii_case(name)
+        })?;
+        let metered = classes[sensor_ref.cls].objects[sensor_ref.idx]
+            .as_any()
+            .downcast_ref::<sensor::Sensor>()?
+            .metered_element()?;
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        let mut store = ClassStore { classes };
+        let (s_obj, m_obj) = store.pair_mut(sensor_ref, metered);
+        let m_ce = m_obj
+            .as_ckt_element_mut()
+            .expect("metered element is a circuit element");
+        let s = s_obj
+            .as_any_mut()
+            .downcast_mut::<sensor::Sensor>()
+            .expect("sensors holds Sensor objects");
+        s.take_sample(m_ce, &sys, &node_v);
+        let nph = s.med.cd.nphases;
+        Some((
+            s.med.calculated_current[..nph].to_vec(),
+            s.med.calculated_voltage[..nph].to_vec(),
+        ))
     }
 
     /// Per-transformer winding taps in creation order, keyed by name —
@@ -2111,6 +2801,21 @@ impl Dss {
             .collect()
     }
 
+    /// Terminal-1 closed flag of a capacitor by name (test API for the `Reset`
+    /// controls path: `CapControl.Reset` drives the bank back to `InitialState`
+    /// via `ControlledElement.Closed[0]`).
+    pub fn capacitor_closed(&self, name: &str) -> Option<bool> {
+        let cls = self
+            .classes
+            .iter()
+            .find(|c| c.props.class_name().eq_ignore_ascii_case("Capacitor"))?;
+        cls.objects
+            .iter()
+            .find(|o| o.data().name().eq_ignore_ascii_case(name))
+            .and_then(|o| o.as_ckt_element())
+            .map(|e| e.cd().all_conductors_closed())
+    }
+
     /// CAPI `Circuit_Get_TotalPower`: the sum of every source's terminal-1
     /// power, in kW/kvar (negative of the power delivered to the circuit).
     pub fn total_power(&mut self) -> (f64, f64) {
@@ -2168,6 +2873,77 @@ impl Dss {
         match &self.circuit {
             Some(ckt) => ckt.solution.event_log.entries(),
             None => &[],
+        }
+    }
+
+    /// Coordinate dump of the **assembled, unfactored** system Y matrix:
+    /// `(n, [(row, col, value)])`, 0-based, where row `i` corresponds to node
+    /// `i + 1` (so `node_name(row + 1)` names the row). The values are
+    /// pre-equilibration — the matrix exactly as stamped from element YPrims —
+    /// so they line up with the oracle's `YMatrix.getYSparse(factor=False)`.
+    /// `None` if no system Y has been built. Test/golden API (the assembled-model
+    /// checkpoint of `golden_checkpoints.rs`).
+    pub fn system_y_csc(&mut self) -> Option<SystemYCsc> {
+        let ckt = self.circuit.as_mut()?;
+        let y = ckt.solution.y_system.as_mut()?;
+        let n = y.size();
+        let (rows, cols, vals) = y.coo_entries().ok()?;
+        let coords = rows
+            .into_iter()
+            .zip(cols)
+            .zip(vals)
+            .map(|((r, c), v)| (r, c, v))
+            .collect();
+        Some((n, coords))
+    }
+
+    /// An element's primitive admittance matrix `Yprim` as a **column-major**
+    /// `yorder × yorder` flat array (`out[col * yorder + row]`) — the exact
+    /// layout of the oracle's `CktElement.Yprim` (Pascal `TcMatrix`, column-major)
+    /// and of `CMatrix`'s own storage, so the two compare without any transpose.
+    /// `name` is a full `Class.name` (e.g. `"Transformer.reg1"`) when it
+    /// contains a dot, else a bare object name matched across all classes
+    /// (case-insensitive). `None` if no such element exists or it has no Yprim.
+    /// Test/golden API (the selected-element checkpoint of `golden_checkpoints.rs`).
+    pub fn element_yprim(&self, name: &str) -> Option<(usize, Vec<num_complex::Complex64>)> {
+        let want_full = name.contains('.');
+        for class in &self.classes {
+            let cn = class.props.class_name();
+            for obj in &class.objects {
+                let matches = if want_full {
+                    format!("{}.{}", cn, obj.data().name()).eq_ignore_ascii_case(name)
+                } else {
+                    obj.data().name().eq_ignore_ascii_case(name)
+                };
+                if !matches {
+                    continue;
+                }
+                let Some(ce) = obj.as_ckt_element() else {
+                    continue;
+                };
+                let cd = ce.cd();
+                let yorder = cd.yorder;
+                let yprim = cd.yprim.as_ref()?;
+                let mut out = Vec::with_capacity(yorder * yorder);
+                for col in 0..yorder {
+                    for row in 0..yorder {
+                        out.push(yprim.get(row, col));
+                    }
+                }
+                return Some((yorder, out));
+            }
+        }
+        None
+    }
+
+    /// The node injection-current vector the solver last used (`Solution.Currents`,
+    /// the RHS of `Y·V = I`), length `num_nodes + 1` with slot 0 = ground —
+    /// the oracle's `YMatrix.getI()` surface. Empty when no circuit exists.
+    /// Test/golden API.
+    pub fn node_injection_currents(&self) -> Vec<num_complex::Complex64> {
+        match &self.circuit {
+            Some(ckt) => ckt.solution.currents.clone(),
+            None => Vec::new(),
         }
     }
 }
@@ -2272,6 +3048,128 @@ fn enum_ord(
     }
 }
 
+/// Pascal `parseIntArray` (ExecOptions.pas l.350): reparse `s` on the AuxParser
+/// into an integer array. Pascal runs two passes — pass 1 counts the tokens and
+/// `SetLength`s the array (zero-filling), pass 2 reads each token via `IntValue`
+/// (`MakeInteger`). A token that is neither an integer nor a roundable decimal
+/// makes `MakeInteger` *raise* `EParserProblem`, which the executive logs and
+/// which aborts the fill — leaving the already-sized array zero-filled from the
+/// bad token onward. We reproduce that exactly: the error is recorded and the
+/// remaining slots stay 0 (a roundable decimal like `13.7` still rounds to 14,
+/// matching the `MakeInteger` double-fallback path).
+fn parse_int_array(
+    aux_parser: &mut Parser,
+    vars: &ParserVars,
+    s: &str,
+    errors: &mut Vec<String>,
+) -> Vec<i32> {
+    // Pass 1: count the tokens (StrValue never raises).
+    aux_parser.set_cmd_string(s);
+    let mut count = 0usize;
+    loop {
+        aux_parser.next_param(vars);
+        if aux_parser.make_string(vars).is_empty() {
+            break;
+        }
+        count += 1;
+    }
+
+    // Pascal `SetLength(iarray, count)` — new slots are zero-filled.
+    let mut out = vec![0i32; count];
+
+    // Pass 2: read each token as an integer, stopping at the first conversion
+    // error (Pascal raises and unwinds), leaving the remaining slots at 0.
+    aux_parser.set_cmd_string(s);
+    for slot in &mut out {
+        aux_parser.next_param(vars);
+        match aux_parser.make_integer(vars) {
+            Ok(v) => *slot = v,
+            Err(e) => {
+                errors.push(e.message().to_string());
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Pascal `TExecHelper.DoAutoAddBusList` (ExecHelper.pas l.1986): parse the
+/// `Set AutoBusList=` argument — either an inline bus-name list or the
+/// `File=name` form (one bus name per line, resolved against the data path).
+fn do_auto_add_bus_list(
+    aux_parser: &mut Parser,
+    vars: &ParserVars,
+    current_dir: &Path,
+    s: &str,
+    out: &mut Vec<String>,
+    errors: &mut Vec<String>,
+) {
+    out.clear();
+    aux_parser.set_cmd_string(s);
+    let parm_name = aux_parser.next_param(vars);
+    let mut param = aux_parser.make_string(vars);
+
+    if parm_name.eq_ignore_ascii_case("file") {
+        // Load the list from a file (one bus name per line).
+        let path = current_dir.join(&param);
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                for line in content.lines() {
+                    aux_parser.set_cmd_string(line);
+                    aux_parser.next_param(vars);
+                    let p = aux_parser.make_string(vars);
+                    if !p.is_empty() {
+                        out.push(p);
+                    }
+                }
+            }
+            // Pascal `DoSimpleMsg('Error trying to read bus list file: %s',
+            // [E.message], 268)`.
+            Err(e) => errors.push(format!("Error trying to read bus list file: {e}")),
+        }
+    } else {
+        // Parse bus names off the inline array list.
+        while !param.is_empty() {
+            out.push(param.clone());
+            aux_parser.next_param(vars);
+            param = aux_parser.make_string(vars);
+        }
+    }
+}
+
+/// Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049): parse the
+/// `Set ReduceOption=` value into a [`crate::circuit::ReductionStrategy`]. The
+/// first character (case-insensitive) selects the mode; an `S` is
+/// disambiguated Switch-vs-Shortlines by `CompareTextShortest(S, 'SWITCH')`.
+/// The strategy is only stored — the reduction (`ReduceAlgs.pas`) is
+/// `NOT_PORTED`.
+fn set_reduce_strategy(ckt: &mut Circuit, s: &str, errors: &mut Vec<String>) {
+    use crate::circuit::ReductionStrategy as Rs;
+    ckt.reduction_strategy_string = s.to_string();
+    ckt.reduction_strategy = Rs::Default;
+    let Some(first) = s.bytes().next() else {
+        return; // No option given
+    };
+    ckt.reduction_strategy = match first.to_ascii_uppercase() {
+        b'B' => Rs::BreakLoop,
+        b'D' => Rs::Default,
+        b'E' => Rs::Dangling, // Ends
+        b'L' => Rs::Laterals,
+        b'M' => Rs::MergeParallel,
+        b'S' => {
+            if crate::util::compare_text_shortest_eq(s, "SWITCH") {
+                Rs::Switches
+            } else {
+                Rs::ShortLines
+            }
+        }
+        _ => {
+            errors.push(format!("Unknown Reduction Strategy: \"{s}\"."));
+            return; // leaves rsDefault, matching Pascal
+        }
+    };
+}
+
 /// Pascal `AppendGlobalResult`: comma-separated accumulation.
 fn append_result(result: &mut String, s: &str) {
     if result.is_empty() {
@@ -2284,6 +3182,23 @@ fn append_result(result: &mut String, s: &str) {
 
 fn yes_no(b: bool) -> &'static str {
     if b { "Yes" } else { "No" }
+}
+
+/// Pascal `IntArrayToString` (Utilities.pas): `[NULL]` when empty, else
+/// `[a, b, c]`.
+fn int_array_to_string(arr: &[i32]) -> String {
+    if arr.is_empty() {
+        return "[NULL]".to_string();
+    }
+    let mut s = String::from("[");
+    for (i, v) in arr.iter().enumerate() {
+        if i != 0 {
+            s.push_str(", ");
+        }
+        s.push_str(&v.to_string());
+    }
+    s.push(']');
+    s
 }
 
 /// Pascal `MakeLikeProperty` set path: find the source object by name in the
@@ -2526,9 +3441,294 @@ mod tests {
         assert!(ckt.solution.iteration >= 2);
     }
 
+    /// Generator model 1 (constant PQ) injects negative load: a 100 kW / pf
+    /// 0.95 generator delivers −33.333 kW, −10.956 kvar per phase (oracle
+    /// dss-python 0.15.7, stiff source + short line).
+    #[test]
+    fn generator_model1_pq_snapshot() {
+        let mut dss = Dss::new();
+        dss.command(
+            "New circuit.t1 basekv=12.47 bus1=sourcebus pu=1.0 \
+             r1=0 x1=0.0001 r0=0 x0=0.0001",
+        );
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=genbus length=1 \
+             r1=0.01 x1=0.01 r0=0.01 x0=0.01 c1=0 c0=0",
+        );
+        dss.command("New Generator.g1 bus1=genbus kV=12.47 kW=100 PF=0.95 model=1 conn=wye");
+        dss.command("Set controlmode=off");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert!(dss.circuit().unwrap().is_solved);
+
+        let snap = dss.snapshot_elements();
+        let g = snap
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("Generator.g1"))
+            .expect("generator snapshot");
+        for ph in 0..3 {
+            assert!(
+                (g.powers[2 * ph] - (-33.333333)).abs() < 1e-3,
+                "phase {ph} P {}",
+                g.powers[2 * ph]
+            );
+            assert!(
+                (g.powers[2 * ph + 1] - (-10.956137)).abs() < 1e-3,
+                "phase {ph} Q {}",
+                g.powers[2 * ph + 1]
+            );
+        }
+    }
+
+    /// Generator model 3 (constant P, |V|) exercises the DQDV var-control
+    /// machinery (`SetGeneratordQdV`): a 300 kW PV generator holds |V| ≈ 1 pu
+    /// and absorbs/produces vars to do it, landing at −100.003 kW, −64.728
+    /// kvar per phase (oracle dss-python 0.15.7).
+    #[test]
+    fn generator_model3_pv_snapshot() {
+        let mut dss = Dss::new();
+        dss.command(
+            "New circuit.t1 basekv=12.47 bus1=sourcebus pu=1.0 \
+             r1=0 x1=0.0001 r0=0 x0=0.0001",
+        );
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=genbus length=1 \
+             r1=0.05 x1=0.10 r0=0.05 x0=0.10 c1=0 c0=0",
+        );
+        dss.command("New Load.ld1 bus1=genbus kV=12.47 kW=500 PF=0.9 conn=wye model=1");
+        dss.command(
+            "New Generator.g1 bus1=genbus kV=12.47 kW=300 model=3 conn=wye \
+             Vpu=1.0 maxkvar=200 minkvar=-200",
+        );
+        dss.command("Set controlmode=off");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert!(dss.circuit().unwrap().is_solved);
+
+        let snap = dss.snapshot_elements();
+        let g = snap
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("Generator.g1"))
+            .expect("generator snapshot");
+        for ph in 0..3 {
+            assert!(
+                (g.powers[2 * ph] - (-100.00275)).abs() < 1e-2,
+                "phase {ph} P {}",
+                g.powers[2 * ph]
+            );
+            assert!(
+                (g.powers[2 * ph + 1] - (-64.7282)).abs() < 1e-2,
+                "phase {ph} Q {}",
+                g.powers[2 * ph + 1]
+            );
+        }
+    }
+
     /// Parse the single number a `?` scalar query returns.
     fn query_f64(dss: &mut Dss, what: &str) -> f64 {
         query(dss, what).parse().expect("numeric query result")
+    }
+
+    /// A mode-0 (V&I) and mode-1 (powers) monitor on a 2-bus line sampled by a
+    /// single daily step. Channel values transcribed from the oracle
+    /// (dss-python 0.15.7): at hour 1 the flat default shape gives mult=1, so
+    /// the sample equals the snapshot solution.
+    #[test]
+    fn monitor_mode0_mode1_daily() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 pu=1.0");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95");
+        dss.command("New monitor.m0 element=line.l1 terminal=1 mode=0");
+        dss.command("New monitor.m1 element=line.l1 terminal=1 mode=1");
+        dss.command("Set mode=daily number=1 stepsize=1h");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let m0 = dss.monitor_view("m0").expect("m0");
+        assert_eq!(m0.sample_count, 1);
+        assert_eq!(
+            m0.header,
+            vec![
+                "hour", "t(sec)", "V1", "VAngle1", "V2", "VAngle2", "V3", "VAngle3", "I1",
+                "IAngle1", "I2", "IAngle2", "I3", "IAngle3"
+            ]
+        );
+        assert_eq!(m0.dbl_hour, vec![1.0]);
+        // V1, VAngle1, I1, IAngle1 (channels 1,2,7,8 — 0-based 0,1,6,7).
+        assert!(
+            (m0.channels[0][0] - 7199.3564).abs() < 1e-2,
+            "V1 {}",
+            m0.channels[0][0]
+        );
+        assert!(
+            (m0.channels[1][0] - (-0.0025524646)).abs() < 1e-4,
+            "VAng1 {}",
+            m0.channels[1][0]
+        );
+        assert!(
+            (m0.channels[6][0] - 4.8712726).abs() < 1e-4,
+            "I1 {}",
+            m0.channels[6][0]
+        );
+        assert!(
+            (m0.channels[7][0] - (-18.096796)).abs() < 1e-3,
+            "IAng1 {}",
+            m0.channels[7][0]
+        );
+
+        let m1 = dss.monitor_view("m1").expect("m1");
+        assert_eq!(
+            m1.header,
+            vec![
+                "hour", "t(sec)", "S1 (kVA)", "Ang1", "S2 (kVA)", "Ang2", "S3 (kVA)", "Ang3"
+            ]
+        );
+        assert!(
+            (m1.channels[0][0] - 35.070026).abs() < 1e-3,
+            "S1 {}",
+            m1.channels[0][0]
+        );
+        assert!(
+            (m1.channels[1][0] - 18.094244).abs() < 1e-3,
+            "Ang1 {}",
+            m1.channels[1][0]
+        );
+    }
+
+    /// A mode-5 (solution variables) monitor records the per-step solution
+    /// state. Channels 11/12 are wall-clock timings (non-reproducible), so only
+    /// the deterministic 1..10 are checked (oracle dss-python 0.15.7).
+    #[test]
+    fn monitor_mode5_solution_vars() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 pu=1.0");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95");
+        dss.command("New monitor.m5 element=line.l1 terminal=1 mode=5");
+        dss.command("Set mode=daily number=1 stepsize=1h");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let m5 = dss.monitor_view("m5").expect("m5");
+        assert_eq!(m5.sample_count, 1);
+        let v = |i: usize| m5.channels[i][0];
+        assert_eq!(v(2), 15.0); // MaxIterations
+        assert_eq!(v(3), 10.0); // MaxControlIterations
+        assert_eq!(v(4), 1.0); // Converged
+        assert_eq!(v(5), 1.0); // IntervalHrs
+        assert_eq!(v(6), 1.0); // SolutionCount
+        assert_eq!(v(7), 1.0); // Mode = daily (ordinal 1)
+        assert_eq!(v(8), 60.0); // Frequency
+        assert_eq!(v(9), 0.0); // Year
+    }
+
+    /// The header-string modifier paths (±16 sequence / ±32 magnitude / ±64
+    /// pos-seq, residual, VIpolar/Ppolar) match the oracle (dss-python 0.15.7).
+    #[test]
+    fn monitor_header_modifiers() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1");
+        let hdr = |dss: &mut Dss, decl: &str| -> Vec<String> {
+            dss.command(decl);
+            dss.monitor_view("m").expect("m").header
+        };
+        assert_eq!(
+            hdr(
+                &mut dss,
+                "New monitor.m element=line.l1 mode=0 residual=yes"
+            ),
+            vec![
+                "hour", "t(sec)", "V1", "VAngle1", "V2", "VAngle2", "V3", "VAngle3", "VN",
+                "VNAngle", "I1", "IAngle1", "I2", "IAngle2", "I3", "IAngle3", "IN", "INAngle"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=0 residual=no VIPolar=no"),
+            vec![
+                "hour", "t(sec)", "V1.re", "V1.im", "V2.re", "V2.im", "V3.re", "V3.im", "I1.re",
+                "I1.im", "I2.re", "I2.im", "I3.re", "I3.im"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=16 VIPolar=yes"),
+            vec![
+                "hour", "t(sec)", "V0", "VAngle0", "V1", "VAngle1", "V2", "VAngle2", "I0",
+                "IAngle0", "I1", "IAngle1", "I2", "IAngle2"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=32"),
+            vec![
+                "hour",
+                "t(sec)",
+                "|V|1 (volts)",
+                "|V|2 (volts)",
+                "|V|3 (volts)",
+                "|I|1 (amps)",
+                "|I|2 (amps)",
+                "|I|3 (amps)"
+            ]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=64"),
+            vec!["hour", "t(sec)", "V1", "V1ang", "I1", "I1ang"]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=96"),
+            vec!["hour", "t(sec)", "V", "I"]
+        );
+        assert_eq!(
+            hdr(&mut dss, "Edit monitor.m mode=1 PPolar=no"),
+            vec![
+                "hour",
+                "t(sec)",
+                "P1 (kW)",
+                "Q1 (kvar)",
+                "P2 (kW)",
+                "Q2 (kvar)",
+                "P3 (kW)",
+                "Q3 (kvar)"
+            ]
+        );
+    }
+
+    /// A mode-2 monitor records a transformer tap; a wrong element class errors.
+    #[test]
+    fn monitor_mode2_tap_and_class_check() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 pu=1.0");
+        dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+        dss.command(
+            "New transformer.t1 phases=3 windings=2 buses=[b2 b3] conns=[wye wye] \
+             kvs=[12.47 4.16] kvas=[1000 1000] xhl=5 tap=1.05",
+        );
+        dss.command("New load.ld1 bus1=b3 phases=3 kv=4.16 kw=100 pf=0.95");
+        dss.command("New monitor.mt element=transformer.t1 terminal=2 mode=2");
+        dss.command("Set mode=daily number=1 stepsize=1h");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let mt = dss.monitor_view("mt").expect("mt");
+        assert_eq!(mt.header, vec!["hour", "t(sec)", "Tap (pu)"]);
+        assert!(
+            (mt.channels[0][0] - 1.05).abs() < 1e-5,
+            "tap {}",
+            mt.channels[0][0]
+        );
+
+        // Mode 2 on a line is rejected (Pascal 663).
+        let mut bad = Dss::new();
+        bad.command("New circuit.t basekv=12.47");
+        bad.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1");
+        bad.command("New monitor.bad element=line.l1 mode=2");
+        assert!(
+            bad.errors()
+                .iter()
+                .any(|e| e.contains("is not a transformer")),
+            "{:?}",
+            bad.errors()
+        );
     }
 
     #[test]
@@ -2681,6 +3881,50 @@ mod tests {
         assert_eq!(iter_w, iter_wo, "RegControl changed the iteration count");
     }
 
+    /// WP6.1: `BuildActiveBusAdjacencyLists` (CktTree.pas l.678) — non-shunt
+    /// PD branches are listed at *every* terminal's bus; PC elements and
+    /// shunt capacitors land on the terminal-1 PC list; sources (NON_PCPD)
+    /// appear in neither.
+    #[test]
+    fn bus_adjacency_lists_bucket_elements() {
+        use crate::circuit::ckt_tree::build_active_bus_adjacency_lists;
+
+        let mut dss = Dss::new();
+        dss.command("New circuit.adj basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+        dss.command(
+            "New line.l1 bus1=sourcebus bus2=b2 length=1 units=km \
+             r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=0 c0=0",
+        );
+        dss.command("New capacitor.cap1 bus1=b2 kv=12.47 kvar=300");
+        dss.command("New load.ld1 bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let Dss {
+            classes, circuit, ..
+        } = &mut dss;
+        let ckt = circuit.as_ref().unwrap();
+        let store = ClassStore { classes };
+        let adj = build_active_bus_adjacency_lists(ckt, &store);
+
+        let sb = ckt.bus_list.find("sourcebus").unwrap();
+        let b2 = ckt.bus_list.find("b2").unwrap();
+        let names = |refs: &[ElemRef]| -> Vec<String> {
+            refs.iter()
+                .map(|&r| store.ckt_elem(r).cd().obj.name().to_string())
+                .collect()
+        };
+
+        // The line (non-shunt PD) shows up at both of its terminal buses.
+        assert_eq!(names(&adj.pd[sb]), vec!["l1"]);
+        assert_eq!(names(&adj.pd[b2]), vec!["l1"]);
+        // PC list at b2: the load plus the shunt capacitor (PD element on
+        // the PC list, in pc_elements-then-pd_elements build order), and
+        // no source anywhere.
+        assert_eq!(names(&adj.pc[b2]), vec!["ld1", "cap1"]);
+        assert!(adj.pc[sb].is_empty(), "sources are NON_PCPD");
+    }
+
     #[test]
     fn get_returns_set_values() {
         let mut dss = Dss::new();
@@ -2689,6 +3933,277 @@ mod tests {
         assert!(dss.errors().is_empty(), "{:?}", dss.errors());
         dss.command("Get mode tolerance maxiterations");
         assert_eq!(dss.result(), "Daily, 0.001, 25");
+    }
+
+    /// AutoAdd option object defaults (`TAutoAdd.Init` + Circuit loss/UE
+    /// defaults) echoed back through `Get`.
+    #[test]
+    fn autoadd_options_defaults_via_get() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Get genkw genpf capkvar addtype ueweight lossweight ueregs lossregs");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(dss.result(), "1000, 1, 600, generator, 1, 1, [10], [13]");
+    }
+
+    /// `Set` the AutoAdd options, then verify both the circuit state and the
+    /// `Get` echo (AddType maps to the lowercase device word).
+    #[test]
+    fn autoadd_options_set_then_get() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command(
+            "Set genkw=500 genpf=0.95 capkvar=1200 addtype=capacitor \
+             ueweight=2 lossweight=3 ueregs=[1,2,3] lossregs=[13,14]",
+        );
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        {
+            let ckt = dss.circuit().unwrap();
+            assert_eq!(ckt.auto_add_obj.gen_kw, 500.0);
+            assert_eq!(ckt.auto_add_obj.gen_pf, 0.95);
+            assert_eq!(ckt.auto_add_obj.cap_kvar, 1200.0);
+            assert_eq!(ckt.auto_add_obj.add_type, crate::circuit::CAPADD);
+            assert_eq!(ckt.ue_weight, 2.0);
+            assert_eq!(ckt.loss_weight, 3.0);
+            assert_eq!(ckt.ue_regs, vec![1, 2, 3]);
+            assert_eq!(ckt.loss_regs, vec![13, 14]);
+        }
+        dss.command("Get genkw genpf capkvar addtype ueweight lossweight ueregs lossregs");
+        assert_eq!(
+            dss.result(),
+            "500, 0.95, 1200, capacitor, 2, 3, [1, 2, 3], [13, 14]"
+        );
+    }
+
+    /// `Set UEregs=` with a non-numeric token reproduces the Pascal
+    /// `MakeInteger` *raise*: the parser error is logged and the fill stops at
+    /// the bad token, leaving the already-sized array zero-filled from there on
+    /// (`[10, 0, 0]`, not a silent `[10, 0, 13]`). A roundable decimal still
+    /// rounds (`13.7 -> 14`) via the double fallback.
+    #[test]
+    fn ueregs_nonnumeric_token_logs_error_and_truncates() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Set ueregs=(10 abc 13)");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Integer number conversion error")),
+            "expected a logged conversion error, got {:?}",
+            dss.errors()
+        );
+        assert_eq!(dss.circuit().unwrap().ue_regs, vec![10, 0, 0]);
+
+        // The roundable-decimal path is unaffected (fresh circuit so the
+        // error log above doesn't bleed into this assertion).
+        let mut dss2 = Dss::new();
+        dss2.command("New circuit.c2");
+        dss2.command("Set lossregs=(13.7 14)");
+        assert!(dss2.errors().is_empty(), "{:?}", dss2.errors());
+        assert_eq!(dss2.circuit().unwrap().loss_regs, vec![14, 14]);
+    }
+
+    /// `Set addtype=` with an unrecognized value resolves to the enum default
+    /// (CAPADD) with **no** error — Pascal `StringToOrdinal` returns the default
+    /// rather than raising.
+    #[test]
+    fn addtype_unknown_falls_back_to_default_no_error() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Set addtype=foo");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(
+            dss.circuit().unwrap().auto_add_obj.add_type,
+            crate::circuit::CAPADD
+        );
+        dss.command("Get addtype");
+        assert_eq!(dss.result(), "capacitor");
+    }
+
+    /// `Set AutoBusList=` parses an inline bus-name list (`DoAutoAddBusList`),
+    /// stored insertion-ordered and echoed comma-separated by `Get`.
+    #[test]
+    fn autoadd_bus_list_inline_round_trips() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Set autobuslist=[b1, b2, b3]");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(
+            dss.circuit().unwrap().auto_add_bus_list,
+            vec!["b1".to_string(), "b2".to_string(), "b3".to_string()]
+        );
+        dss.command("Get autobuslist");
+        assert_eq!(dss.result(), "b1, b2, b3");
+    }
+
+    /// The AutoAdd *solve mode* is `NOT_PORTED` (the capacity search needs
+    /// aux-current injection + meter sampling). `Solve mode=autoadd` therefore
+    /// still reports the unknown-mode error — the documented deferral.
+    #[test]
+    fn autoadd_solve_mode_still_deferred() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=autoadd");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Unknown solution mode")),
+            "expected AutoAdd solve to remain deferred, got {:?}",
+            dss.errors()
+        );
+    }
+
+    /// `Set ReduceOption/Zmag/KeepLoad=` defaults + round-trip through `Get`.
+    /// (ReduceOption's default string is empty, so `Get` elides it — exactly
+    /// like Pascal `AppendGlobalResult` on a zero-length string.)
+    #[test]
+    fn reduce_options_defaults_and_round_trip() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        dss.command("Get zmag keepload");
+        assert_eq!(dss.result(), "0.02, Yes");
+        dss.command("Get reduceoption");
+        assert_eq!(dss.result(), "");
+
+        dss.command("Set reduceoption=shortlines zmag=0.05 keepload=no");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        {
+            let ckt = dss.circuit().unwrap();
+            assert_eq!(
+                ckt.reduction_strategy,
+                crate::circuit::ReductionStrategy::ShortLines
+            );
+            assert_eq!(ckt.reduction_strategy_string, "shortlines");
+            assert_eq!(ckt.reduction_zmag, 0.05);
+            assert!(!ckt.reduce_laterals_keep_load);
+        }
+        dss.command("Get reduceoption zmag keepload");
+        assert_eq!(dss.result(), "shortlines, 0.05, No");
+    }
+
+    /// `DoSetReduceStrategy` dispatches on the first character; `S` resolves to
+    /// Switch via `CompareTextShortest(S,'SWITCH')`, else ShortLines.
+    #[test]
+    fn reduce_strategy_first_char_dispatch() {
+        use crate::circuit::ReductionStrategy as Rs;
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1");
+        let cases = [
+            ("break", Rs::BreakLoop),
+            ("default", Rs::Default),
+            ("ends", Rs::Dangling),
+            ("laterals", Rs::Laterals),
+            ("merge", Rs::MergeParallel),
+            ("switch", Rs::Switches),
+            ("shortlines", Rs::ShortLines),
+            ("s", Rs::Switches), // CompareTextShortest("s","SWITCH")=0 -> Switch
+        ];
+        for (opt, want) in cases {
+            dss.command(&format!("Set reduceoption={opt}"));
+            assert_eq!(dss.circuit().unwrap().reduction_strategy, want, "opt={opt}");
+        }
+        // Unknown strategy: error logged, strategy falls back to Default.
+        dss.command("Set reduceoption=zzz");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Unknown Reduction Strategy")),
+            "{:?}",
+            dss.errors()
+        );
+        assert_eq!(dss.circuit().unwrap().reduction_strategy, Rs::Default);
+    }
+
+    /// `Reduce` with no energy meters reproduces Pascal error 1890, including
+    /// the full documentation URL (pinned so an edit can't silently drift it).
+    #[test]
+    fn reduce_command_requires_energy_meter() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("reduce");
+        assert!(
+            dss.errors().iter().any(|e| e
+                == "An energy meter is required to use this feature. Please check \
+                    https://sourceforge.net/p/electricdss/code/HEAD/tree/trunk/Version8/Doc/Circuit%20Reduction%20for%20Version8.docx \
+                    for examples."),
+            "{:?}",
+            dss.errors()
+        );
+    }
+
+    /// `Reduce <name>` with a meter present but no such meter reproduces Pascal
+    /// error 262 (echoing the *uppercased* name), not the generic deferral.
+    #[test]
+    fn reduce_named_meter_not_found_is_262() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("reduce nope");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e == "EnergyMeter \"NOPE\" not found."),
+            "{:?}",
+            dss.errors()
+        );
+        // The deferral must NOT fire for a name that did not resolve.
+        assert!(
+            !dss.errors().iter().any(|e| e.contains("not ported")),
+            "{:?}",
+            dss.errors()
+        );
+    }
+
+    /// `Reduce` marks enabled shunt cap/reactor buses as keepers *before* the
+    /// meter check — so the marking happens even on the error-1890 path
+    /// (Pascal `MarkCapandReactorBuses` runs unconditionally).
+    #[test]
+    fn reduce_marks_cap_and_reactor_buses() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("New capacitor.c bus1=b1 phases=3 kvar=600 kv=12.47");
+        dss.command("New reactor.r bus1=b2 phases=3 kvar=100 kv=12.47");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        // Bus refs are materialized at Y-build (solve) time in this port; a
+        // real `Reduce` always runs post-solve (it needs metered zones).
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        // No energy meter → error 1890, but the marking still ran first.
+        dss.command("reduce");
+        let ckt = dss.circuit().unwrap();
+        let keep = |name: &str| {
+            ckt.buses
+                .iter()
+                .find(|b| b.name.eq_ignore_ascii_case(name))
+                .map(|b| b.keep)
+                .unwrap_or(false)
+        };
+        assert!(keep("b1"), "shunt capacitor bus should be a keeper");
+        assert!(keep("b2"), "shunt reactor bus should be a keeper");
+    }
+
+    /// `Reduce` with a meter present passes the precondition but the zone
+    /// reduction (`Line.MergeWith`) is NOT_PORTED — the documented deferral.
+    #[test]
+    fn reduce_command_with_meter_deferred() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("reduce");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("reduction is not ported")),
+            "{:?}",
+            dss.errors()
+        );
     }
 
     /// Build the 2-bus regulator micro-circuit the WP5.7 oracle probes used.
@@ -2758,6 +4273,142 @@ mod tests {
         // exceeds again rather than reporting "Solution aborted.").
         dss.command("Get hour");
         assert!(!dss.circuit().unwrap().solution.solution_abort);
+    }
+
+    /// Build the 2-bus + line + load + two-generator micro-circuit the
+    /// GenDispatcher oracle probes used.
+    fn gen_disp_two_bus(dss: &mut Dss, gd_props: &str) {
+        dss.command("New circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95");
+        dss.command("New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1");
+        dss.command("New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=1.0 model=1");
+        dss.command(&format!(
+            "New gendispatcher.gd1 element=line.l1 terminal=1 {gd_props}"
+        ));
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+    }
+
+    /// WP6.8: the control loop's GenDispatcher redispatches its generators so
+    /// the monitored line power approaches `kWLimit`. Oracle probe (pinned
+    /// dss-python): equal weights → g1 = g2 = 1511.569498763734 kW.
+    #[test]
+    fn gendispatcher_redispatches_to_oracle() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(
+            &mut dss,
+            "kwlimit=2000 kwband=100 genlist=[g1,g2] weights=[1,1]",
+        );
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, _kvar) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1511.569498763734).abs() < 1e-6, "{g} kW = {kw}");
+        }
+    }
+
+    /// Weighted redispatch [3, 1]: g1 = 1767.3542481456006, g2 = 1255.7847493818672.
+    #[test]
+    fn gendispatcher_respects_weights_oracle() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(
+            &mut dss,
+            "kwlimit=2000 kwband=100 genlist=[g1,g2] weights=[3,1]",
+        );
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, _) = dss.generator_kw_kvar("g1").unwrap();
+        let (kw2, _) = dss.generator_kw_kvar("g2").unwrap();
+        assert!((kw1 - 1767.3542481456006).abs() < 1e-6, "g1 kW = {kw1}");
+        assert!((kw2 - 1255.7847493818672).abs() < 1e-6, "g2 kW = {kw2}");
+    }
+
+    /// No GenList → dispatch every enabled generator (uniform weights); same
+    /// result as the explicit equal-weight list.
+    #[test]
+    fn gendispatcher_no_list_dispatches_all_gens() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(&mut dss, "kwlimit=2000 kwband=100");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, _) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1511.569498763734).abs() < 1e-6, "{g} kW = {kw}");
+        }
+    }
+
+    /// WP6.8: the QDiff (kvar) redispatch path, exercised end-to-end. The gens
+    /// run at `pf=0.95` so they carry a dispatchable `kvarBase`, and both
+    /// `kWLimit` and `kvarLimit` bind. Oracle probe (pinned dss-python): equal
+    /// weights → g1 = g2 = (1509.8126154343354 kW, 591.2600618943429 kvar).
+    #[test]
+    fn gendispatcher_redispatches_kvar_to_oracle() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95");
+        dss.command("New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1");
+        dss.command("New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1");
+        dss.command(
+            "New gendispatcher.gd1 element=line.l1 terminal=1 \
+             kwlimit=2000 kwband=100 kvarlimit=500 genlist=[g1,g2] weights=[1,1]",
+        );
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, kvar) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1509.8126154343354).abs() < 1e-6, "{g} kW = {kw}");
+            assert!((kvar - 591.2600618943429).abs() < 1e-6, "{g} kvar = {kvar}");
+        }
+    }
+
+    /// WP6.8: the monitored *terminal* is honored (not hard-wired to 1). A later
+    /// `terminal=2` overrides the helper's `terminal=1`; terminal 2 of the line
+    /// sits at the load/gen bus, so the measured power drives `PDiff` strongly
+    /// negative and both gens floor at `Max(1.0, …)` — a result distinct from
+    /// terminal 1's 1511.57 kW, which pins that the terminal index is read.
+    /// Oracle probe (pinned dss-python): g1 = g2 = 1.0 kW.
+    #[test]
+    fn gendispatcher_honors_monitored_terminal() {
+        let mut dss = Dss::new();
+        gen_disp_two_bus(
+            &mut dss,
+            "kwlimit=2000 kwband=100 terminal=2 genlist=[g1,g2] weights=[1,1]",
+        );
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        for g in ["g1", "g2"] {
+            let (kw, _) = dss.generator_kw_kvar(g).unwrap();
+            assert!((kw - 1.0).abs() < 1e-6, "{g} kW = {kw}");
+        }
+    }
+
+    /// WP6.8 StorageController skeleton: a circuit carrying a StorageController
+    /// (whose fleet is always empty in Phase 6) must still solve — the control
+    /// sweep treats it as an inert no-op. The only logged error is the faithful
+    /// 37201 ("No unassigned Storage Elements found") emitted at parse-time
+    /// RecalcElementData, exactly as the oracle reports on a Storage-less circuit.
+    #[test]
+    fn storagecontroller_skeleton_solves_as_noop() {
+        let mut dss = Dss::new();
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 kw=3000 pf=0.95");
+        dss.command("new storagecontroller.sc1 element=line.l1 terminal=1");
+        // The 37201 is logged during the New command; everything after solves.
+        let errs: Vec<String> = dss.errors().to_vec();
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].contains("No unassigned Storage Elements found"));
+
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        // No *new* errors from the control loop; the circuit converged.
+        assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
+        assert!(dss.circuit().unwrap().solution.converged_flag);
     }
 
     /// WP5.8 step 6: time-option round trips, all values transcribed from the
@@ -2851,5 +4502,1098 @@ mod tests {
         let b2 = ckt.bus_list.find("b2").unwrap();
         assert_eq!((ckt.buses[b2].x, ckt.buses[b2].y), (7.0, 8.0));
         std::fs::remove_file(&file).ok();
+    }
+
+    /// The micro radial of PHASE6_PLAN §1.2 `meter_zone_micro`: one meter on the
+    /// head line walks the whole feeder. Zone branches/ends/PCE transcribed from
+    /// the oracle (dss-python 0.15.7 `Meters.AllBranchesInZone` /
+    /// `AllEndElements` / `ZonePCE`).
+    fn micro_zone_script() -> Vec<&'static str> {
+        vec![
+            "New circuit.test basekv=12.47 bus1=src",
+            "New line.l1 bus1=src bus2=b2 length=1",
+            "New line.l2 bus1=b2 bus2=b3 length=2",
+            "New line.l3 bus1=b2 bus2=b4 length=1",
+            "New load.ld1 bus1=b3 kV=12.47 kW=100 numcust=3",
+            "New load.ld2 bus1=b4 kV=12.47 kW=50 numcust=2",
+        ]
+    }
+
+    #[test]
+    fn energymeter_zone_radial() {
+        let mut dss = Dss::new();
+        for c in micro_zone_script() {
+            dss.command(c);
+        }
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(
+            z.all_branches_in_zone,
+            vec!["Line.l1", "Line.l3", "Line.l2"]
+        );
+        assert_eq!(z.all_end_elements, vec!["Line.l3", "Line.l2"]);
+        assert_eq!(z.zone_pce, vec!["Load.ld2", "Load.ld1"]);
+
+        // TotalUpDownstreamCustomers: ld1=3 on l2, ld2=2 on l3; l1 totals 5.
+        assert_eq!(branch_customers(&dss, "line.l2"), (3, 3));
+        assert_eq!(branch_customers(&dss, "line.l3"), (2, 2));
+        assert_eq!(branch_customers(&dss, "line.l1"), (0, 5));
+    }
+
+    #[test]
+    fn energymeter_submeter_boundary() {
+        let mut dss = Dss::new();
+        for c in micro_zone_script() {
+            dss.command(c);
+        }
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("New energymeter.m2 element=line.l2 terminal=1");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        // m1's zone stops at the sub-meter on l2.
+        let z1 = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(z1.all_branches_in_zone, vec!["Line.l1", "Line.l3"]);
+        assert_eq!(z1.all_end_elements, vec!["Line.l3"]);
+        assert_eq!(z1.zone_pce, vec!["Load.ld2"]);
+
+        let z2 = dss.meter_zone("m2").expect("m2 zone");
+        assert_eq!(z2.all_branches_in_zone, vec!["Line.l2"]);
+        assert_eq!(z2.all_end_elements, vec!["Line.l2"]);
+        assert_eq!(z2.zone_pce, vec!["Load.ld1"]);
+    }
+
+    /// `element=` must resolve to a PD element; a load triggers the Pascal
+    /// "is not a Power Delivery (PD) element" error (525).
+    #[test]
+    fn energymeter_requires_pd_element() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=100");
+        dss.command("New energymeter.m1 element=load.ld1");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("not a Power Delivery")),
+            "expected PD-element error, got {:?}",
+            dss.errors()
+        );
+    }
+
+    /// Parallel lines (l2a ∥ l2b, both b2→b3): both still join the zone; the
+    /// `IsParallel` flag is internal metadata, not an exclusion. Branch/end/PCE
+    /// order transcribed from the oracle (`Meters.AllBranchesInZone` etc.).
+    #[test]
+    fn energymeter_parallel_lines() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New line.l2a bus1=b2 bus2=b3 length=2");
+        dss.command("New line.l2b bus1=b2 bus2=b3 length=2");
+        dss.command("New load.ld1 bus1=b3 kV=12.47 kW=100 numcust=1");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(
+            z.all_branches_in_zone,
+            vec!["Line.l1", "Line.l2b", "Line.l2a"]
+        );
+        assert_eq!(z.all_end_elements, vec!["Line.l2b", "Line.l2a"]);
+        assert_eq!(z.zone_pce, vec!["Load.ld1"]);
+    }
+
+    /// A meshed zone (l4 closes b4→b2 back to the head): the loop branch is
+    /// detected and not re-added, so the walk terminates. Order from the oracle.
+    #[test]
+    fn energymeter_loop_zone() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New line.l2 bus1=b2 bus2=b3 length=1");
+        dss.command("New line.l3 bus1=b3 bus2=b4 length=1");
+        dss.command("New line.l4 bus1=b4 bus2=b2 length=1");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(
+            z.all_branches_in_zone,
+            vec!["Line.l1", "Line.l4", "Line.l3", "Line.l2"]
+        );
+        assert_eq!(z.all_end_elements, vec!["Line.l3", "Line.l2"]);
+        assert!(z.zone_pce.is_empty());
+    }
+
+    /// A transformer crossing voltage bases (12.47→0.48 kV) drives
+    /// `AddToVoltBaseList` to two slots; `AssignVoltBaseRegisterNames` names the
+    /// per-base loss registers (`%.3g kV …`) and fills the unused slots with
+    /// `Aux<n>`. Register names + branch order transcribed from the oracle.
+    #[test]
+    fn energymeter_multi_vbase_register_names() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command(
+            "New transformer.tx phases=3 windings=2 buses=[b2, b3] \
+             conns=[wye, wye] kvs=[12.47, 0.48] kvas=[500, 500] xhl=5",
+        );
+        dss.command("New line.l2 bus1=b3 bus2=b4 length=1");
+        dss.command("New load.ld1 bus1=b4 kV=0.48 kW=100");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47, 0.48]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        assert_eq!(
+            z.all_branches_in_zone,
+            vec!["Line.l1", "Transformer.tx", "Line.l2"]
+        );
+        // VBaseStart = 32; the two bases occupy slots 0/1, the rest are Aux.
+        assert_eq!(z.register_names[32], "12.5 kV Losses");
+        assert_eq!(z.register_names[33], "0.48 kV Losses");
+        assert_eq!(z.register_names[34], "Aux1");
+        assert_eq!(z.register_names[35], "Aux6");
+        assert_eq!(z.register_names[39], "12.5 kV Line Loss");
+        assert_eq!(z.register_names[40], "0.48 kV Line Loss");
+    }
+
+    /// Manual `ZoneList` zone build. NOTE: the oracle (dss_capi 0.14.5) raises an
+    /// **access violation** on a manual zone, so there is no golden — this test
+    /// locks our deterministic, memory-safe behavior, and guards against the
+    /// path silently degrading back to a no-op. The listed PD element is chained
+    /// as a child of the metered branch (no connectivity/feeder-ends).
+    #[test]
+    fn energymeter_manual_zonelist() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New line.l2 bus1=b2 bus2=b3 length=2");
+        dss.command("New line.lx bus1=b2 bus2=b9 length=1"); // not in the zonelist
+        dss.command("New load.ld1 bus1=b3 kV=12.47 kW=100 numcust=3");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1 zonelist=[line.l2]");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 zone");
+        // l2 is chained from l1; lx (not listed) is excluded. The downstream
+        // load at l2's far bus is still collected.
+        assert_eq!(z.all_branches_in_zone, vec!["Line.l1", "Line.l2"]);
+        assert!(!z.all_branches_in_zone.iter().any(|b| b == "Line.lx"));
+        assert_eq!(z.zone_pce, vec!["Load.ld1"]);
+        // Manual zones populate no feeder ends (Pascal skips ZoneEndsList).
+        assert!(z.all_end_elements.is_empty());
+    }
+
+    /// A terminal number past the metered element's terminal count is the Pascal
+    /// 524 "Terminal no. ... does not exist" error.
+    #[test]
+    fn energymeter_bad_terminal() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New energymeter.m1 element=line.l1 terminal=3");
+        assert!(
+            dss.errors().iter().any(|e| e.contains("does not exist")),
+            "expected terminal-does-not-exist error, got {:?}",
+            dss.errors()
+        );
+    }
+
+    /// A disabled meter builds no zone (Pascal `BranchList := NIL`): the zone
+    /// lists are empty. (The oracle errs #5501 on `AllBranchesInZone` here; we
+    /// expose the empty zone instead of erroring.)
+    #[test]
+    fn energymeter_disabled_empty_zone() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=100");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1 enabled=no");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        let z = dss.meter_zone("m1").expect("m1 exists");
+        assert!(z.all_branches_in_zone.is_empty());
+        assert!(z.zone_pce.is_empty());
+    }
+
+    /// Pascal gates `EndEdit` recalc on `NeedsRecalc`: a meter created without an
+    /// `element` (or edited on an unrelated property) must NOT raise the
+    /// "Circuit Element not set" error. Oracle: such a meter is created cleanly.
+    #[test]
+    fn energymeter_no_element_no_revalidation() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.test basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1");
+        dss.command("New energymeter.mz"); // no element set
+        assert!(
+            dss.errors().is_empty(),
+            "a bare meter must not error, got {:?}",
+            dss.errors()
+        );
+        // Editing an unrelated property on a valid meter must not re-validate.
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=100");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Edit energymeter.m1 kVANormal=5000");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    }
+
+    /// Helper: `(BranchNumCustomers, BranchTotalCustomers)` for a named element.
+    fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
+        let (cls, name) = full.split_once('.').unwrap();
+        for class in &dss.classes {
+            if !class.props.class_name().eq_ignore_ascii_case(cls) {
+                continue;
+            }
+            for obj in &class.objects {
+                if obj.data().name().eq_ignore_ascii_case(name)
+                    && let Some(e) = obj.as_ckt_element()
+                {
+                    return (e.cd().branch_num_customers, e.cd().branch_total_customers);
+                }
+            }
+        }
+        panic!("element {full} not found");
+    }
+
+    /// Helper: fetch a meter register value by name.
+    fn meter_reg(dss: &Dss, meter: &str, reg_name: &str) -> f64 {
+        dss.meter_registers(meter)
+            .unwrap_or_else(|| panic!("meter {meter} not found"))
+            .into_iter()
+            .find(|(n, _)| n == reg_name)
+            .unwrap_or_else(|| panic!("register {reg_name} not found"))
+            .1
+    }
+
+    /// Build the 2-bus daily case shared by the register tests. Loadshape ramps
+    /// 1→2→3 over 3 one-hour steps; the meter is on the source line.
+    fn daily_meter_case(trapezoidal: bool) -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New loadshape.ls npts=3 interval=1 mult=(1.0 2.0 3.0)");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        // `Set mode=` resets the trapezoidal flag, so set it afterwards.
+        dss.command("Set mode=daily number=3 stepsize=1h time=(0,0)");
+        dss.command(if trapezoidal {
+            "Set trapezoidal=yes"
+        } else {
+            "Set trapezoidal=no"
+        });
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Plain Euler integration: `kWh = Σ interval·P`. Oracle (dss-python
+    /// 0.15.7) register values for the 1→2→3 daily ramp.
+    #[test]
+    fn energymeter_daily_registers_euler() {
+        let dss = daily_meter_case(false);
+        let approx = |got: f64, want: f64| {
+            assert!(
+                (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+                "got {got}, want {want}"
+            );
+        };
+        approx(meter_reg(&dss, "m1", "kWh"), 6009.009963043285);
+        approx(meter_reg(&dss, "m1", "kvarh"), 8.436633138535129);
+        approx(meter_reg(&dss, "m1", "Zone kWh"), 5999.979170340599);
+        approx(meter_reg(&dss, "m1", "Max kW"), 3005.7947873123644);
+        approx(meter_reg(&dss, "m1", "Line Losses"), 9.038717950944731);
+        approx(
+            meter_reg(&dss, "m1", "Zone Max kW Losses"),
+            5.814433198962477,
+        );
+        // The single voltage base bucket carries the same line losses.
+        approx(
+            meter_reg(&dss, "m1", "12.5 kV Line Loss"),
+            9.038717950944731,
+        );
+    }
+
+    /// Trapezoidal integration: the first sample after reset is skipped, then
+    /// `kWh += 0.5·interval·(P + P_prev)`. Same circuit, oracle values.
+    #[test]
+    fn energymeter_daily_registers_trapezoidal() {
+        let dss = daily_meter_case(true);
+        let approx = |got: f64, want: f64| {
+            assert!(
+                (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+                "got {got}, want {want}"
+            );
+        };
+        approx(meter_reg(&dss, "m1", "kWh"), 4005.7905368432225);
+        approx(meter_reg(&dss, "m1", "Zone kWh"), 3999.9865469246124);
+        // Drag-hand maxima are independent of the integration rule.
+        approx(meter_reg(&dss, "m1", "Max kW"), 3005.7947873123644);
+        approx(
+            meter_reg(&dss, "m1", "Zone Max kW Losses"),
+            5.814433198962477,
+        );
+    }
+
+    /// `Reset Meters` zeroes the registers and re-primes the drag-hand maxima to
+    /// the large-negative sentinel.
+    #[test]
+    fn energymeter_reset_registers() {
+        let mut dss = daily_meter_case(false);
+        assert!(meter_reg(&dss, "m1", "kWh") > 1.0, "registers accumulated");
+        dss.command("Reset Meters");
+        assert_eq!(meter_reg(&dss, "m1", "kWh"), 0.0);
+        assert_eq!(meter_reg(&dss, "m1", "Zone kWh"), 0.0);
+        // Drag-hand registers reset to -1e50.
+        assert_eq!(meter_reg(&dss, "m1", "Max kW"), -1.0e50);
+        assert_eq!(meter_reg(&dss, "m1", "Zone Max kW Losses"), -1.0e50);
+    }
+
+    /// Helper used by the new register tests: build a 3-step daily case from a
+    /// list of `New ...` commands, run it, and return the solved `Dss`. The
+    /// loadshape `ls` (1→2→3) and the daily-mode/trapezoidal-off boilerplate are
+    /// shared; callers pass the topology + `voltagebases`.
+    fn meter_case(decls: &[&str], voltagebases: &str, extra_set: &[&str]) -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New loadshape.ls npts=3 interval=1 mult=(1.0 2.0 3.0)");
+        for d in decls {
+            dss.command(d);
+        }
+        dss.command(&format!("Set voltagebases=[{voltagebases}]"));
+        dss.command("CalcVoltageBases");
+        for s in extra_set {
+            dss.command(s);
+        }
+        dss.command("Set mode=daily number=3 stepsize=1h time=(0,0)");
+        dss.command("Set trapezoidal=no");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    fn approx_meter(dss: &Dss, reg_name: &str, want: f64) {
+        let got = meter_reg(dss, "m1", reg_name);
+        assert!(
+            (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+            "{reg_name}: got {got}, want {want}"
+        );
+    }
+
+    /// A generator in the zone accumulates the Gen registers (`Accumulate_Gen`:
+    /// `−Power[1]·0.001` into the gen totals, *not* the zone-load totals). Oracle
+    /// values for a 500 kW gen on the same 1→2→3 daily ramp.
+    #[test]
+    fn energymeter_generator_registers() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1",
+                "New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls",
+                "New generator.g1 bus1=b2 kV=12.47 kW=500 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &[],
+        );
+        approx_meter(&dss, "Gen kWh", 2999.9974045506274);
+        approx_meter(&dss, "Gen kvarh", -0.0010792012877156054);
+        approx_meter(&dss, "Gen Max kW", 1499.9981626190265);
+        approx_meter(&dss, "Gen Max kVA", 1499.9981626191664);
+        // Zone load is unaffected by the generator (gen has its own totals).
+        approx_meter(&dss, "Zone kWh", 5999.994809101255);
+    }
+
+    /// 3-phase line sequence-mode loss split (`GetSeqLosses`, 3-phase only):
+    /// balanced line ⇒ all loss in the positive/line mode, ~0 zero-mode.
+    #[test]
+    fn energymeter_sequence_mode_losses() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1",
+                "New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &[],
+        );
+        approx_meter(&dss, "Line Mode Line Losses", 9.038717950944614);
+        approx_meter(&dss, "3-phase Line Losses", 9.038717950944731);
+        approx_meter(&dss, "1- and 2-phase Line Losses", 0.0);
+        // Balanced ⇒ zero-sequence loss is numerically ~0 (1e-20).
+        assert!(
+            meter_reg(&dss, "m1", "Zero Mode Line Losses").abs() < 1e-9,
+            "zero-mode loss should be ~0 for a balanced line"
+        );
+    }
+
+    /// A transformer in the zone exercises the load/no-load loss split
+    /// (`GetLosses` override) and the second voltage-base bucket (the 4.16 kV
+    /// secondary, reached via line `l2`). Oracle values.
+    #[test]
+    fn energymeter_transformer_loss_split_and_vbase() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1",
+                "New transformer.t1 windings=2 buses=(b2 b3) conns=(wye wye) \
+                 kvs=(12.47 4.16) kvas=(2000 2000) xhl=5 %loadloss=1 %noloadloss=0.2",
+                "New line.l2 bus1=b3 bus2=b4 length=0.5 r1=0.05 x1=0.05",
+                "New load.ld1 bus1=b4 kV=4.16 kW=1000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47 4.16",
+            &[],
+        );
+        approx_meter(&dss, "Transformer Losses", 85.06511357026721);
+        approx_meter(&dss, "Load Losses kWh", 103.96306991988196);
+        approx_meter(&dss, "No Load Losses kWh", 11.675484334236636);
+        approx_meter(&dss, "Line Losses", 30.57344068385137);
+        // First voltage-base bucket (12.5 kV primary side): transformer split.
+        approx_meter(&dss, "12.5 kV Load Loss", 73.389629);
+        approx_meter(&dss, "12.5 kV No Load Loss", 11.675484);
+        // Second voltage-base bucket (4.16 kV secondary): line l2 losses +
+        // the load energy bucketed by its parent branch's voltage base.
+        approx_meter(&dss, "4.16 kV Line Loss", 21.134364);
+        approx_meter(&dss, "4.16 kV Load Energy", 5999.665065);
+    }
+
+    /// An under-rated line drives the overload registers and the *radial*
+    /// EEN/UE marking (`ExcesskVANorm/Emerg` set `Overload_EEN/UE`, loads marked
+    /// by the degree of overload). Oracle values.
+    #[test]
+    fn energymeter_overload_and_radial_een_ue() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=0.1 x1=0.1 normamps=50 emergamps=70",
+                "New load.ld1 bus1=b2 kV=12.47 kW=1000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &[],
+        );
+        approx_meter(&dss, "Overload kWh Normal", 2849.1631405361386);
+        approx_meter(&dss, "Overload kWh Emerg", 1985.482037568384);
+        approx_meter(&dss, "Load EEN", 7062.605747589624);
+        approx_meter(&dss, "Load UE", 3616.152913382251);
+    }
+
+    /// A high-impedance line with ample current rating: no line overload, so the
+    /// EEN/UE come from the load's *voltage* criterion (`ExceedsNormal`/
+    /// `Unserved`, `VminNormal`/`VminEmerg` defaults). Oracle values.
+    #[test]
+    fn energymeter_voltage_een_ue() {
+        let dss = meter_case(
+            &[
+                "New line.l1 bus1=src bus2=b2 length=1 r1=2 x1=2 normamps=2000 emergamps=3000",
+                "New load.ld1 bus1=b2 kV=12.47 kW=4000 pf=1 model=1 daily=ls",
+                "New energymeter.m1 element=line.l1 terminal=1",
+            ],
+            "12.47",
+            &["Set normvminpu=0.95 emergvminpu=0.90"],
+        );
+        // No line overload ⇒ overload-energy registers stay 0.
+        approx_meter(&dss, "Overload kWh Normal", 0.0);
+        approx_meter(&dss, "Overload kWh Emerg", 0.0);
+        // EEN/UE come purely from the voltage criterion.
+        approx_meter(&dss, "Load EEN", 28188.694199630165);
+        approx_meter(&dss, "Load UE", 11344.628473647135);
+    }
+
+    /// `Reset` (no argument) must reset controls too (Pascal `DoResetControls`):
+    /// a CapControl that opened its bank during the solve has the bank driven
+    /// back to its `InitialState` (closed) by the reset.
+    #[test]
+    fn reset_command_resets_controls() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src");
+        dss.command("New line.l1 bus1=src bus2=b2 length=1 r1=0.5 x1=1.0");
+        dss.command("New load.ld1 bus1=b2 kV=12.47 kW=50 pf=0.99 model=1");
+        dss.command("New capacitor.c1 bus1=b2 kV=12.47 kvar=600 numsteps=1");
+        // kvar control opens the bank when the sensed kvar is below `offsetting`;
+        // the tiny load keeps it below, so the solve switches the bank OUT.
+        dss.command(
+            "New capcontrol.cc1 element=line.l1 terminal=1 capacitor=c1 \
+             type=kvar ptratio=1 onsetting=200 offsetting=100",
+        );
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        // The control opened the bank during the solve.
+        assert_eq!(
+            dss.capacitor_closed("c1"),
+            Some(false),
+            "control should have opened the bank"
+        );
+        // No-arg Reset must run DoResetControls → bank back to InitialState.
+        dss.command("Reset");
+        assert_eq!(
+            dss.capacitor_closed("c1"),
+            Some(true),
+            "Reset must reset controls (close the bank to InitialState)"
+        );
+    }
+
+    // --- WP6.6 reliability ------------------------------------------------
+
+    /// Two-section radial feeder (src→b1→b2) with per-line fault data and a
+    /// load on each section. Solved snapshot, EnergyMeter on the source line.
+    /// `units=mi` keeps `len=1` (so the fault-rate math is unchanged) while
+    /// making `MilesThisLine = 1` per line for the miles-accumulator assertions.
+    fn reliability_feeder() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+        dss.command(
+            "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.2 pctperm=80 repair=4",
+        );
+        dss.command(
+            "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.3 pctperm=90 repair=5",
+        );
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+        dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Branching feeder: src→b1, then two laterals b1→b2 and b1→b3, exercising
+    /// the parent customer roll-up at the junction bus b1.
+    fn branching_reliability_feeder() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+        dss.command(
+            "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.2 pctperm=80",
+        );
+        dss.command(
+            "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.3 pctperm=90",
+        );
+        dss.command(
+            "New line.l3 bus1=b1 bus2=b3 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.5 pctperm=100",
+        );
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+        dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+        dss.command("New load.ld3 bus1=b3 phases=3 kv=12.47 kw=150 numcust=7");
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    fn bus_f64(dss: &Dss, bus: &str, f: impl Fn(&crate::circuit::bus::Bus) -> f64) -> f64 {
+        let ckt = dss.circuit.as_ref().unwrap();
+        let idx = ckt.bus_list.find(bus).expect("bus not found");
+        f(&ckt.buses[idx])
+    }
+
+    fn bus_total_miles(dss: &Dss, bus: &str) -> f64 {
+        bus_f64(dss, bus, |b| b.bus_total_miles)
+    }
+
+    fn bus_section_id(dss: &Dss, bus: &str) -> i32 {
+        let ckt = dss.circuit.as_ref().unwrap();
+        let idx = ckt.bus_list.find(bus).expect("bus not found");
+        ckt.buses[idx].bus_section_id
+    }
+
+    fn accum_miles(dss: &Dss, full: &str) -> f64 {
+        let (cls, name) = full.split_once('.').unwrap();
+        for class in &dss.classes {
+            if !class.props.class_name().eq_ignore_ascii_case(cls) {
+                continue;
+            }
+            for obj in &class.objects {
+                if obj.data().name().eq_ignore_ascii_case(name)
+                    && let Some(e) = obj.as_ckt_element()
+                {
+                    return e.cd().accumulated_miles_downstream;
+                }
+            }
+        }
+        panic!("element {full} not found");
+    }
+
+    fn branch_section_id(dss: &Dss, full: &str) -> i32 {
+        let (cls, name) = full.split_once('.').unwrap();
+        for class in &dss.classes {
+            if !class.props.class_name().eq_ignore_ascii_case(cls) {
+                continue;
+            }
+            for obj in &class.objects {
+                if obj.data().name().eq_ignore_ascii_case(name)
+                    && let Some(e) = obj.as_ckt_element()
+                {
+                    return e.cd().branch_section_id;
+                }
+            }
+        }
+        panic!("element {full} not found");
+    }
+
+    fn meter_assume_restoration(dss: &Dss, name: &str) -> bool {
+        for class in &dss.classes {
+            for obj in &class.objects {
+                if obj.data().name().eq_ignore_ascii_case(name)
+                    && let Some(em) = obj
+                        .as_any()
+                        .downcast_ref::<crate::elements::meter::energymeter::EnergyMeter>()
+                {
+                    return em.assume_restoration();
+                }
+            }
+        }
+        panic!("meter {name} not found");
+    }
+
+    fn bus_flt_rate(dss: &Dss, bus: &str) -> f64 {
+        let ckt = dss.circuit.as_ref().unwrap();
+        let idx = ckt.bus_list.find(bus).expect("bus not found");
+        ckt.buses[idx].bus_flt_rate
+    }
+
+    fn bus_total_custs(dss: &Dss, bus: &str) -> i32 {
+        let ckt = dss.circuit.as_ref().unwrap();
+        let idx = ckt.bus_list.find(bus).expect("bus not found");
+        ckt.buses[idx].bus_total_num_customers
+    }
+
+    fn accum_flt_rate(dss: &Dss, full: &str) -> f64 {
+        let (cls, name) = full.split_once('.').unwrap();
+        for class in &dss.classes {
+            if !class.props.class_name().eq_ignore_ascii_case(cls) {
+                continue;
+            }
+            for obj in &class.objects {
+                if obj.data().name().eq_ignore_ascii_case(name)
+                    && let Some(e) = obj.as_ckt_element()
+                {
+                    return e.cd().accumulated_br_flt_rate;
+                }
+            }
+        }
+        panic!("element {full} not found");
+    }
+
+    /// With no OCP device (Relay/Recloser/Fuse — all Phase 7) the zone has zero
+    /// sections, so `Relcalc` aborts with error 52902 exactly like the oracle
+    /// (dss-python raises `DSSException (#52902)` on the same feeder).
+    #[test]
+    fn relcalc_no_ocp_device_aborts() {
+        let mut dss = reliability_feeder();
+        dss.command("Relcalc");
+        assert!(
+            dss.errors().iter().any(|e| e
+                .contains("No Overcurrent Protection device (Relay, Recloser, or Fuse) defined")),
+            "Relcalc must abort without OCP devices, got {:?}",
+            dss.errors()
+        );
+    }
+
+    /// Although `Relcalc` aborts, the backward fault-rate sweep and the
+    /// up/downstream customer rollup run *before* the section check, so the bus
+    /// and branch accumulators are populated. Hand-computed from the feeder:
+    /// `BranchFltRate = FaultRate·pctperm·0.01·Len` (0.16 for l1, 0.27 for l2);
+    /// `AccumulatedBrFltRate` rolls the downstream bus rate up each branch.
+    #[test]
+    fn relcalc_backward_sweep_accumulators() {
+        let mut dss = reliability_feeder();
+        dss.command("Relcalc");
+
+        // l2: ToBus b2 has 0 fault rate → accumulated = its own 0.27.
+        assert!((accum_flt_rate(&dss, "line.l2") - 0.27).abs() < 1e-12);
+        // l1: ToBus b1 carries l2's 0.27 → accumulated = 0.27 + 0.16 = 0.43.
+        assert!((accum_flt_rate(&dss, "line.l1") - 0.43).abs() < 1e-12);
+
+        // FROM-bus accumulated failure rates (no OCP → roll up to FROM bus).
+        assert!((bus_flt_rate(&dss, "src") - 0.43).abs() < 1e-12);
+        assert!((bus_flt_rate(&dss, "b1") - 0.27).abs() < 1e-12);
+        // b2 is a downstream (TO) bus only → never accumulated.
+        assert!(bus_flt_rate(&dss, "b2").abs() < 1e-12);
+
+        // Up/downstream customers: src sees all 35, b1 sees l2's 25.
+        assert_eq!(bus_total_custs(&dss, "src"), 35);
+        assert_eq!(bus_total_custs(&dss, "b1"), 25);
+    }
+
+    /// `AccumFltRate` also sweeps line miles: `AccumulatedMilesDownStream =
+    /// ToBus.BusTotalMiles + MilesThisLine`, rolled up into `FromBus.BusTotalMiles`.
+    /// With `units=mi length=1`, `MilesThisLine = 1` for each line.
+    #[test]
+    fn relcalc_miles_accumulators() {
+        let mut dss = reliability_feeder();
+        dss.command("Relcalc");
+
+        // l2: ToBus b2 has 0 miles → accumulated = its own 1.0.
+        assert!((accum_miles(&dss, "line.l2") - 1.0).abs() < 1e-12);
+        // l1: ToBus b1 carries l2's 1.0 → accumulated = 1.0 + 1.0 = 2.0.
+        assert!((accum_miles(&dss, "line.l1") - 2.0).abs() < 1e-12);
+
+        // FROM-bus total miles roll up the same way.
+        assert!((bus_total_miles(&dss, "src") - 2.0).abs() < 1e-12);
+        assert!((bus_total_miles(&dss, "b1") - 1.0).abs() < 1e-12);
+        // b2 is a TO-only end bus → never accumulated.
+        assert!(bus_total_miles(&dss, "b2").abs() < 1e-12);
+    }
+
+    /// Junction roll-up: a single feeder (l1) splitting into two laterals
+    /// (l2→b2, l3→b3). The junction bus b1 and the metered branch l1 must
+    /// accumulate the failure rates and customers of *both* laterals.
+    #[test]
+    fn relcalc_branching_customer_rollup() {
+        let mut dss = branching_reliability_feeder();
+        dss.command("Relcalc");
+
+        // Branch fault rates: l1=0.16, l2=0.27, l3=0.50.
+        // b1 (junction) FROM-bus rate = l2 + l3 = 0.27 + 0.50 = 0.77.
+        assert!((bus_flt_rate(&dss, "b1") - 0.77).abs() < 1e-12);
+        // l1 accumulates b1's 0.77 plus its own 0.16 = 0.93; rolled to src.
+        assert!((accum_flt_rate(&dss, "line.l1") - 0.93).abs() < 1e-12);
+        assert!((bus_flt_rate(&dss, "src") - 0.93).abs() < 1e-12);
+
+        // Customers: b1 totals both laterals' loads (25 + 7) → 32; src all 42.
+        assert_eq!(bus_total_custs(&dss, "b1"), 32);
+        assert_eq!(bus_total_custs(&dss, "src"), 42);
+    }
+
+    /// With no OCP device every zone bus and branch stays in section 0 (the
+    /// pre-first-OCP section), and the forward sweep never increments
+    /// `SectionCount`.
+    #[test]
+    fn relcalc_no_sections_without_ocp() {
+        let mut dss = reliability_feeder();
+        dss.command("Relcalc");
+
+        for bus in ["src", "b1", "b2"] {
+            assert_eq!(bus_section_id(&dss, bus), 0, "bus {bus} section");
+        }
+        for branch in ["line.l1", "line.l2"] {
+            assert_eq!(
+                branch_section_id(&dss, branch),
+                0,
+                "branch {branch} section"
+            );
+        }
+    }
+
+    /// The single positional `RelCalc` parameter is the `AssumeRestoration`
+    /// yes/no flag (Pascal `pMeter.AssumeRestoration := AssumeRestoration`). It
+    /// defaults FALSE and is stored on the meter for the customer roll-up.
+    #[test]
+    fn relcalc_assume_restoration_parsed() {
+        let mut dss = reliability_feeder();
+        // Default (no param) → FALSE.
+        dss.command("Relcalc");
+        assert!(!meter_assume_restoration(&dss, "m1"));
+
+        // `Relcalc yes` → TRUE (still aborts: no OCP devices).
+        dss.command("Relcalc yes");
+        assert!(meter_assume_restoration(&dss, "m1"));
+        assert!(
+            dss.errors().iter().any(|e| e
+                .contains("No Overcurrent Protection device (Relay, Recloser, or Fuse) defined")),
+            "Relcalc yes must still abort without OCP devices, got {:?}",
+            dss.errors()
+        );
+    }
+
+    // ---- WP6.7: Sensor + load allocation -------------------------------------
+
+    /// A radial feeder with an EnergyMeter at the head and two ConnectedkVA-spec
+    /// loads. The meter's `SensorCurrent` defaults to 400 A, so `allocateloads`
+    /// scales the zone loads to push the metered current toward that peak.
+    fn allocation_feeder() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        assert!(dss.errors().is_empty(), "build errors: {:?}", dss.errors());
+        dss
+    }
+
+    fn close_rel(a: f64, e: f64) -> bool {
+        (a - e).abs() <= 1e-3 + 1e-4 * e.abs()
+    }
+
+    /// `allocateloads` with the default `MaxAllocationIterations = 2`. Values
+    /// transcribed from the pinned oracle (`Loads.kW` / `AllocationFactor`).
+    #[test]
+    fn allocateloads_meter_drives_zone() {
+        let mut dss = allocation_feeder();
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, f2) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 2867.625566), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 4588.200906), "ld2 kW {kw2}");
+        assert!(close_rel(f1, 6.372501), "ld1 factor {f1}");
+        assert!(close_rel(f2, 6.372501), "ld2 factor {f2}");
+    }
+
+    /// `Set NumAllocIterations=4` runs two more allocation passes, converging
+    /// the loads slightly (oracle-pinned).
+    #[test]
+    fn allocateloads_honors_numallociterations() {
+        let mut dss = allocation_feeder();
+        dss.command("set numallociterations=4");
+        dss.command("allocateloads");
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, _) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 2863.277886), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 4581.244618), "ld2 kW {kw2}");
+        assert!(close_rel(f1, 6.36284), "ld1 factor {f1}");
+    }
+
+    /// `Set AllocationFactors=X` sets every load's kVA allocation factor; for a
+    /// ConnectedkVA-spec load `kWbase = xfkVA · factor · |pf|`.
+    #[test]
+    fn set_allocation_factors_scales_all_loads() {
+        let mut dss = allocation_feeder();
+        dss.command("set allocationfactors=0.8");
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, f2) = dss.load_alloc("ld2").unwrap();
+        assert!((kw1 - 360.0).abs() < 1e-9, "ld1 {kw1}"); // 500·0.8·0.9
+        assert!((kw2 - 576.0).abs() < 1e-9, "ld2 {kw2}"); // 800·0.8·0.9
+        assert!((f1 - 0.8).abs() < 1e-12);
+        assert!((f2 - 0.8).abs() < 1e-12);
+        // A non-positive factor is rejected (Pascal error 271).
+        dss.command("set allocationfactors=0");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Allocation Factor must be greater than zero")),
+            "{:?}",
+            dss.errors()
+        );
+    }
+
+    /// A Sensor on the mid-feeder line (measured `currents` set in a *separate*
+    /// edit so they survive `RecalcElementData`'s `ZeroSensorArrays`) gives its
+    /// downstream load its own allocation target; the meter still drives the
+    /// upstream load. Oracle-pinned.
+    #[test]
+    fn allocateloads_with_sensor() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("new sensor.s1 element=line.l2 terminal=1");
+        dss.command("edit sensor.s1 currents=[20,20,20]");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, _) = dss.load_alloc("ld1").unwrap();
+        let (kw2, _) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 6780.125059), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 382.584034), "ld2 kW {kw2}");
+    }
+
+    /// A bare Sensor (no `element=`) records the Pascal 666 error; defining the
+    /// element makes it valid and adopts the line's phase count.
+    #[test]
+    fn sensor_requires_element() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new sensor.s1 terminal=1 kvbase=12.47");
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Circuit Element is not set")),
+            "bare sensor must error, got {:?}",
+            dss.errors()
+        );
+    }
+
+    // The replay scenarios below (kWh-spec, single-phase per-phase, P/Q-sensor)
+    // are also covered by the data-driven gate `tests/golden_allocation.rs`;
+    // they are kept here as well for clearer per-case failure messages.
+
+    /// `allocateloads` over **kWh/Cfactor-spec** loads (`LoadSpec::KwhPf`): the
+    /// allocation factor feeds `Set_AllocationFactor`'s `c_factor` branch, not
+    /// `kva_allocation_factor`. Oracle-pinned `Loads.kW`/`AllocationFactor`.
+    #[test]
+    fn allocateloads_kwh_spec_loads() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 kwh=200000 cfactor=0.3 pf=0.9");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 kwh=350000 cfactor=0.3 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, f2) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 2710.478969), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 4743.338196), "ld2 kW {kw2}");
+        assert!(close_rel(f1, 9.757724), "ld1 cfactor {f1}");
+        assert!(close_rel(f2, 9.757724), "ld2 cfactor {f2}");
+    }
+
+    /// `allocateloads` over **single-phase** loads on distinct phases: each load
+    /// is scaled by its connected phase's `PhsAllocationFactor[ConnectedPhase]`
+    /// (the meter is the sensor). Unbalanced xfkVA → distinct per-phase factors
+    /// (an off-by-one in the phase index would cross-wire them). Oracle-pinned.
+    #[test]
+    fn allocateloads_single_phase_per_phase_factor() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1.1 phases=1 kv=7.2 xfkva=200 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld2 bus1=b1.2 phases=1 kv=7.2 xfkva=400 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld3 bus1=b1.3 phases=1 kv=7.2 xfkva=600 allocationfactor=0.5 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("set voltagebases=[12.47,7.2]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, f1) = dss.load_alloc("ld1").unwrap();
+        let (kw2, f2) = dss.load_alloc("ld2").unwrap();
+        let (kw3, f3) = dss.load_alloc("ld3").unwrap();
+        // The factors are phase-distinct (13.9 / 6.95 / 4.63) — this is the part
+        // that pins the connected-phase indexing.
+        assert!(close_rel(f1, 13.902785), "ld1 factor {f1}");
+        assert!(close_rel(f2, 6.951545), "ld2 factor {f2}");
+        assert!(close_rel(f3, 4.634581), "ld3 factor {f3}");
+        assert!(close_rel(kw1, 2502.501239), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 2502.556163), "ld2 kW {kw2}");
+        assert!(close_rel(kw3, 2502.673607), "ld3 kW {kw3}");
+    }
+
+    /// `allocateloads` driven by a **P/Q (kWs/kvars) Sensor**: the sensor's
+    /// `UpdateCurrentVector` converts |S|/Vbase to a per-phase current target
+    /// that then drives its downstream load, while the meter drives the
+    /// upstream load. Oracle-pinned.
+    #[test]
+    fn allocateloads_pq_sensor() {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9");
+        dss.command("new energymeter.m1 element=line.l1 terminal=1");
+        dss.command("new sensor.s1 element=line.l2 terminal=1 kvbase=12.47");
+        // P/Q in a separate edit so they survive RecalcElementData's zeroing.
+        dss.command("edit sensor.s1 kWs=[400,400,400] kvars=[200,200,200]");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        dss.command("allocateloads");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let (kw1, _) = dss.load_alloc("ld1").unwrap();
+        let (kw2, _) = dss.load_alloc("ld2").unwrap();
+        assert!(close_rel(kw1, 5431.462098), "ld1 kW {kw1}");
+        assert!(close_rel(kw2, 1179.744649), "ld2 kW {kw2}");
+    }
+
+    /// Feeder shared by the `TakeSample` tests: a Sensor on line `l2` term 1
+    /// (bus `b1`), one 3-phase load downstream, solved.
+    fn sample_feeder(conn: &str) -> Dss {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
+        dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+        dss.command("new line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+        dss.command("new load.ld2 bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.9");
+        dss.command(&format!(
+            "new sensor.s1 element=line.l2 terminal=1 kvbase=12.47 conn={conn}"
+        ));
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve mode=snap");
+        assert!(dss.errors().is_empty(), "build: {:?}", dss.errors());
+        dss
+    }
+
+    fn cclose(a: num_complex::Complex64, re: f64, im: f64) -> bool {
+        (a.re - re).abs() <= 1e-3 + 1e-4 * re.abs() && (a.im - im).abs() <= 1e-3 + 1e-4 * im.abs()
+    }
+
+    /// `TakeSample` (wye): `CalculatedCurrent` = the metered element's terminal-1
+    /// currents; `CalculatedVoltage` = the terminal node voltages. Oracle-pinned.
+    #[test]
+    fn sensor_take_sample_wye() {
+        let mut dss = sample_feeder("wye");
+        let (curr, volt) = dss.sensor_sample("s1").unwrap();
+        assert!(cclose(curr[0], 46.530078, -22.890880), "I0 {:?}", curr[0]);
+        assert!(cclose(curr[1], -43.089122, -28.850790), "I1 {:?}", curr[1]);
+        assert!(cclose(curr[2], -3.440956, 51.741669), "I2 {:?}", curr[2]);
+        assert!(cclose(volt[0], 7169.263686, -24.130402), "V0 {:?}", volt[0]);
+        assert!(
+            cclose(volt[1], -3605.529385, -6196.699277),
+            "V1 {:?}",
+            volt[1]
+        );
+        assert!(
+            cclose(volt[2], -3563.734300, 6220.829680),
+            "V2 {:?}",
+            volt[2]
+        );
+    }
+
+    /// `TakeSample` (delta): `CalculatedVoltage[i] = VTerminal[i] -
+    /// VTerminal[RotatePhases(i)]` (DeltaDirection +1 → L-L differences).
+    /// Oracle-pinned (computed from the same node voltages).
+    #[test]
+    fn sensor_take_sample_delta() {
+        let mut dss = sample_feeder("delta");
+        let (_curr, volt) = dss.sensor_sample("s1").unwrap();
+        assert!(
+            cclose(volt[0], 10774.793071, 6172.568875),
+            "V0 {:?}",
+            volt[0]
+        );
+        assert!(
+            cclose(volt[1], -41.795084, -12417.528957),
+            "V1 {:?}",
+            volt[1]
+        );
+        assert!(
+            cclose(volt[2], -10732.997986, 6244.960082),
+            "V2 {:?}",
+            volt[2]
+        );
     }
 }

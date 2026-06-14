@@ -1,0 +1,6 @@
+# The vendored OpenDSS corpus is a byte-faithful mirror of the upstream source
+# (see tools/corpus/vendor.py / tests/corpus/SHA256SUMS). Never apply EOL or
+# other normalization to it, so it stays identical to the source on every
+# platform and the committed checksums remain valid (core.autocrlf is on here).
+tests/corpus/electricdss-tst/** -text
+tests/corpus/SHA256SUMS -text

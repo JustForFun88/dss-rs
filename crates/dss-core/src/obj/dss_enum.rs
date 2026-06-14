@@ -245,6 +245,21 @@ pub struct EnumRegistry {
     pub t_shape_action: EnumId,
     /// 'PriceShape: Action' (PriceShape.pas `ActionEnum`).
     pub price_shape_action: EnumId,
+    /// 'Generator: Dispatch Mode' (generator.pas `GenDispModeEnum`).
+    pub gen_disp_mode: EnumId,
+    /// 'Generator: Status' (generator.pas `GenStatusEnum`).
+    pub gen_status: EnumId,
+    /// 'Generator: Model' (generator.pas `GenModelEnum`).
+    pub gen_model: EnumId,
+    /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
+    pub monitor_action: EnumId,
+    pub energy_meter_action: EnumId,
+    /// 'StorageController: Discharge Mode' (StorageController.pas `DischargeModeEnum`).
+    pub storage_ctrl_discharge_mode: EnumId,
+    /// 'StorageController: Charge Mode' (StorageController.pas `ChargeModeEnum`).
+    pub storage_ctrl_charge_mode: EnumId,
+    /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
+    pub add_type: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw
@@ -581,6 +596,117 @@ impl EnumRegistry {
             &[0, 1],
         ));
 
+        // generator.pas TGenerator.Create: GenDispModeEnum / GenStatusEnum /
+        // GenModelEnum.
+        let mut gdm = DssEnum::new(
+            "Generator: Dispatch Mode",
+            true,
+            1,
+            1,
+            &["Default", "LoadLevel", "Price"],
+            &[0, 1, 2],
+        );
+        gdm.default_value = 0;
+        let gen_disp_mode = push(gdm);
+
+        let mut gst = DssEnum::new(
+            "Generator: Status",
+            true,
+            1,
+            1,
+            &["Variable", "Fixed"],
+            &[0, 1],
+        );
+        gst.default_value = 0;
+        let gen_status = push(gst);
+
+        let gen_model = push(DssEnum::new(
+            "Generator: Model",
+            true,
+            0,
+            0,
+            &[
+                "Constant PQ",
+                "Constant Z",
+                "Constant P|V|",
+                "Constant P, fixed Q",
+                "Constant P, fixed X",
+                "User model",
+                "Approximate inverter model",
+            ],
+            &[1, 2, 3, 4, 5, 6, 7],
+        ));
+
+        // Monitor.pas: ActionEnum (Clear/Save/TakeSample/Process/Reset →
+        // 0/1/2/3/0; Reset is an alias of Clear).
+        let monitor_action = push(DssEnum::new(
+            "Monitor: Action",
+            true,
+            1,
+            1,
+            &["Clear", "Save", "TakeSample", "Process", "Reset"],
+            &[0, 1, 2, 3, 0],
+        ));
+
+        // EnergyMeter.pas: ActionEnum (Allocate/Clear/Reduce/Save/TakeSample/
+        // ZoneDump → 0..5).
+        let energy_meter_action = push(DssEnum::new(
+            "EnergyMeter: Action",
+            true,
+            1,
+            2,
+            &[
+                "Allocate",
+                "Clear",
+                "Reduce",
+                "Save",
+                "TakeSample",
+                "ZoneDump",
+            ],
+            &[0, 1, 2, 3, 4, 5],
+        ));
+
+        // StorageController.pas TStorageController.Create: DischargeModeEnum /
+        // ChargeModeEnum (non-sequential ordinals; the Pascal `False` flag).
+        // MODEFOLLOW=1 MODELOADSHAPE=2 MODESUPPORT=3 MODETIME=4 MODEPEAKSHAVE=5
+        // MODESCHEDULE=6 MODEPEAKSHAVELOW=7 CURRENTPEAKSHAVE=8 CURRENTPEAKSHAVELOW=9.
+        let storage_ctrl_discharge_mode = push(DssEnum::new(
+            "StorageController: Discharge Mode",
+            false,
+            1,
+            2,
+            &[
+                "Peakshave",
+                "Follow",
+                "Support",
+                "Loadshape",
+                "Time",
+                "Schedule",
+                "I-Peakshave",
+            ],
+            &[5, 1, 3, 2, 4, 6, 8],
+        ));
+        let storage_ctrl_charge_mode = push(DssEnum::new(
+            "StorageController: Charge Mode",
+            false,
+            1,
+            1,
+            &["Loadshape", "Time", "PeakshaveLow", "I-PeakshaveLow"],
+            &[2, 4, 7, 9],
+        ));
+
+        // DSSClass.pas:1172 AddTypeEnum (GENADD=1, CAPADD=2; default CAPADD).
+        let mut at = DssEnum::new(
+            "AutoAdd Device Type",
+            true,
+            1,
+            1,
+            &["Generator", "Capacitor"],
+            &[1, 2],
+        );
+        at.default_value = 2;
+        let add_type = push(at);
+
         Self {
             enums,
             units: units_id,
@@ -607,6 +733,14 @@ impl EnumRegistry {
             load_shape_interp,
             t_shape_action,
             price_shape_action,
+            gen_disp_mode,
+            gen_status,
+            gen_model,
+            monitor_action,
+            energy_meter_action,
+            storage_ctrl_discharge_mode,
+            storage_ctrl_charge_mode,
+            add_type,
         }
     }
 

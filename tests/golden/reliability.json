@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "scenarios": [
+    {
+      "name": "radial-2section",
+      "commands": [
+        "New circuit.t basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2 pctperm=80 repair=4",
+        "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3 pctperm=90 repair=5",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "relcalc_arg": "",
+      "error_number": 52902,
+      "buses": [
+        {
+          "name": "src",
+          "lambda": 0.43000000000000005,
+          "n_customers": 35,
+          "total_miles": 2.0,
+          "section_id": 0
+        },
+        {
+          "name": "b1",
+          "lambda": 0.27,
+          "n_customers": 25,
+          "total_miles": 1.0,
+          "section_id": 0
+        },
+        {
+          "name": "b2",
+          "lambda": 0.0,
+          "n_customers": 0,
+          "total_miles": 0.0,
+          "section_id": 0
+        }
+      ]
+    },
+    {
+      "name": "branching-laterals",
+      "commands": [
+        "New circuit.t basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2 pctperm=80",
+        "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3 pctperm=90",
+        "New line.l3 bus1=b1 bus2=b3 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.5 pctperm=100",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25",
+        "New load.ld3 bus1=b3 phases=3 kv=12.47 kw=150 numcust=7",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "relcalc_arg": "",
+      "error_number": 52902,
+      "buses": [
+        {
+          "name": "src",
+          "lambda": 0.93,
+          "n_customers": 42,
+          "total_miles": 3.0,
+          "section_id": 0
+        },
+        {
+          "name": "b1",
+          "lambda": 0.77,
+          "n_customers": 32,
+          "total_miles": 2.0,
+          "section_id": 0
+        },
+        {
+          "name": "b2",
+          "lambda": 0.0,
+          "n_customers": 0,
+          "total_miles": 0.0,
+          "section_id": 0
+        },
+        {
+          "name": "b3",
+          "lambda": 0.0,
+          "n_customers": 0,
+          "total_miles": 0.0,
+          "section_id": 0
+        }
+      ]
+    }
+  ]
+}

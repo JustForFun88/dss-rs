@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "scenarios": [
+    {
+      "name": "meter-connectedkva",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "error_number": null,
+      "loads": [
+        {
+          "name": "ld1",
+          "kw": 2867.6255661106993,
+          "allocation_factor": 6.372501258023776
+        },
+        {
+          "name": "ld2",
+          "kw": 4588.200905777119,
+          "allocation_factor": 6.372501258023776
+        }
+      ]
+    },
+    {
+      "name": "meter-numalloc4",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap",
+        "Set NumAllocIterations=4"
+      ],
+      "error_number": null,
+      "loads": [
+        {
+          "name": "ld1",
+          "kw": 2863.277886317696,
+          "allocation_factor": 6.362839747372657
+        },
+        {
+          "name": "ld2",
+          "kw": 4581.244618108313,
+          "allocation_factor": 6.362839747372657
+        }
+      ]
+    },
+    {
+      "name": "meter-kwh-spec",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kwh=200000 cfactor=0.3 pf=0.9",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 kwh=350000 cfactor=0.3 pf=0.9",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "error_number": null,
+      "loads": [
+        {
+          "name": "ld1",
+          "kw": 2710.4789688927794,
+          "allocation_factor": 9.757724288014007
+        },
+        {
+          "name": "ld2",
+          "kw": 4743.3381955623645,
+          "allocation_factor": 9.757724288014007
+        }
+      ]
+    },
+    {
+      "name": "meter-single-phase",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1.1 phases=1 kv=7.2 xfkva=200 allocationfactor=0.5 pf=0.9",
+        "New load.ld2 bus1=b1.2 phases=1 kv=7.2 xfkva=400 allocationfactor=0.5 pf=0.9",
+        "New load.ld3 bus1=b1.3 phases=1 kv=7.2 xfkva=600 allocationfactor=0.5 pf=0.9",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "Set voltagebases=[12.47,7.2]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "error_number": null,
+      "loads": [
+        {
+          "name": "ld1",
+          "kw": 2502.5012387375596,
+          "allocation_factor": 13.90278465965311
+        },
+        {
+          "name": "ld2",
+          "kw": 2502.5561632030813,
+          "allocation_factor": 6.951544897786337
+        },
+        {
+          "name": "ld3",
+          "kw": 2502.6736072471394,
+          "allocation_factor": 4.634580754161369
+        }
+      ]
+    },
+    {
+      "name": "sensor-currents",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "New sensor.s1 element=line.l2 terminal=1 kvbase=12.47",
+        "Edit sensor.s1 currents=[20,20,20]",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "error_number": null,
+      "loads": [
+        {
+          "name": "ld1",
+          "kw": 6780.125058684341,
+          "allocation_factor": 15.06694457485409
+        },
+        {
+          "name": "ld2",
+          "kw": 382.5840340334493,
+          "allocation_factor": 0.5313667139353463
+        }
+      ]
+    },
+    {
+      "name": "sensor-pq",
+      "commands": [
+        "New circuit.a basekv=12.47 bus1=src phases=3",
+        "New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "New line.l2 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6",
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+        "New load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9",
+        "New energymeter.m1 element=line.l1 terminal=1",
+        "New sensor.s1 element=line.l2 terminal=1 kvbase=12.47",
+        "Edit sensor.s1 kWs=[400,400,400] kvars=[200,200,200]",
+        "Set voltagebases=[12.47]",
+        "CalcVoltageBases",
+        "Solve mode=snap"
+      ],
+      "error_number": null,
+      "loads": [
+        {
+          "name": "ld1",
+          "kw": 5431.462097618558,
+          "allocation_factor": 12.069915772485682
+        },
+        {
+          "name": "ld2",
+          "kw": 1179.7446490779619,
+          "allocation_factor": 1.6385342348305025
+        }
+      ]
+    }
+  ]
+}

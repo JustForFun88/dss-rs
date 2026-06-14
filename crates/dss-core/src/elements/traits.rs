@@ -27,6 +27,16 @@ pub trait ElemStore {
     /// control's references before splitting the mutable borrows).
     fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
 
+    /// Pascal `TDSSCircuit.SetElementActive`: resolve a full element name
+    /// (`Class.Name`, or a bare `Name` searched across all circuit-element
+    /// classes) to its [`ElemRef`], or `None` if not found. Used by the
+    /// EnergyMeter manual `ZoneList` zone build.
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef>;
+
+    /// Single mutable object view (for `as_any_mut` downcasts when only one
+    /// element is touched, e.g. the model-3 generator DQDV sweep).
+    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn crate::obj::base::DssObject;
+
     /// Two distinct objects borrowed mutably at once — the Rust stand-in for
     /// Pascal's live cross-object pointers during `Sample`/`DoPendingAction`
     /// (PHASE5_PLAN §2.1: the control plus its controlled element). Panics if
@@ -70,6 +80,13 @@ pub struct SysCtx {
     pub mode: SolveMode,
     /// `Circuit.LoadMultiplier`.
     pub load_multiplier: f64,
+    /// `Circuit.GenMultiplier`.
+    pub gen_multiplier: f64,
+    /// `Circuit.GeneratorDispatchReference` (set per solve by
+    /// `SetGeneratorDispRef`).
+    pub generator_dispatch_reference: f64,
+    /// `Circuit.PriceSignal` ($/MWh).
+    pub price_signal: f64,
     /// `Circuit.DefaultGrowthFactor`.
     pub default_growth_factor: f64,
     /// `Solution.Year`.
@@ -89,6 +106,18 @@ pub struct SysCtx {
 pub struct InjCtx<'a> {
     pub node_v: &'a [Complex64],
     pub currents: &'a mut [Complex64],
+}
+
+/// Per-element reliability inputs returned by [`CktElement::reliability_data`]
+/// for the EnergyMeter reliability sweep (Pascal `TPDElement` fields).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReliabilityData {
+    /// `BranchFltRate` = `CalcFltRate` result (faults/yr for this branch).
+    pub branch_flt_rate: f64,
+    /// `HrsToRepair`: average repair time (hours).
+    pub hrs_to_repair: f64,
+    /// `MilesThisLine`: branch length in miles (0 for non-line PD elements).
+    pub miles_this_line: f64,
 }
 
 /// Pascal `TDSSCktElement` virtual surface (Phase 3 subset).
@@ -147,6 +176,16 @@ pub trait CktElement {
     /// class default is false.
     fn is_shunt(&self) -> bool {
         false
+    }
+
+    /// Per-element reliability inputs for the EnergyMeter reliability sweep
+    /// (Pascal `TPDElement.CalcFltRate` + the `HrsToRepair`/`MilesThisLine`
+    /// fields). `CalcFltRate` is virtual: the base `TPDElement` formula is
+    /// `FaultRate · pctperm · 0.01`, which `TLineObj` overrides by multiplying
+    /// by `Len`. Non-PD elements return the zero default and never appear in a
+    /// meter `SequenceList`.
+    fn reliability_data(&self) -> ReliabilityData {
+        ReliabilityData::default()
     }
 
     /// Pascal `TDSSCktElement.GetTermVoltages(iTerm, VBuffer)`: the node voltages
@@ -211,5 +250,106 @@ pub trait CktElement {
             result *= 3.0;
         }
         result
+    }
+
+    /// `NormAmps` rating (PD elements override; 0 = no rating, like Pascal's
+    /// base where `Get_ExcesskVANorm` short-circuits to 0).
+    fn norm_amps(&self) -> f64 {
+        0.0
+    }
+
+    /// `EmergAmps` rating (PD elements override).
+    fn emerg_amps(&self) -> f64 {
+        0.0
+    }
+
+    /// Pascal `TDSSCktElement.MaxTerminalOneIMag` (CktElement.pas l.552): the
+    /// max phase-current magnitude on terminal 1. Forces `Iterminal`.
+    fn max_terminal_one_imag(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+            return 0.0;
+        }
+        self.compute_iterminal(sys, node_v);
+        let cd = self.cd();
+        let mut max_sq = 0.0_f64;
+        for i in 0..cd.nphases {
+            let c = cd.iterminal[i];
+            max_sq = max_sq.max(c.re * c.re + c.im * c.im);
+        }
+        max_sq.sqrt()
+    }
+
+    /// Pascal `TPDElement.Get_ExcessKVANorm` (PDElement.pas l.230): excess kVA
+    /// over the normal rating into `idx_term` (1-based), in kVA. Side effect:
+    /// sets `overload_een` to the per-unit overload factor.
+    fn excess_kva_norm(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        idx_term: usize,
+    ) -> Complex64 {
+        let norm_amps = self.norm_amps();
+        if norm_amps == 0.0 || !self.cd().enabled {
+            self.cd_mut().overload_een = 0.0;
+            return Complex64::ZERO;
+        }
+        let kva = self.terminal_power(sys, node_v, idx_term) * 0.001; // forces Iterminal
+        let imax = self.max_terminal_one_imag(sys, node_v);
+        let factor = imax / norm_amps - 1.0;
+        if factor > 0.0 {
+            self.cd_mut().overload_een = factor;
+            kva * (1.0 - 1.0 / (factor + 1.0))
+        } else {
+            self.cd_mut().overload_een = 0.0;
+            Complex64::ZERO
+        }
+    }
+
+    /// Pascal `TPDElement.Get_ExcessKVAEmerg` (PDElement.pas l.257). Side
+    /// effect: sets `overload_ue`.
+    fn excess_kva_emerg(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        idx_term: usize,
+    ) -> Complex64 {
+        let emerg_amps = self.emerg_amps();
+        if emerg_amps == 0.0 || !self.cd().enabled {
+            self.cd_mut().overload_ue = 0.0;
+            return Complex64::ZERO;
+        }
+        let kva = self.terminal_power(sys, node_v, idx_term) * 0.001;
+        let imax = self.max_terminal_one_imag(sys, node_v);
+        let factor = imax / emerg_amps - 1.0;
+        if factor > 0.0 {
+            self.cd_mut().overload_ue = factor;
+            kva * (1.0 - 1.0 / (factor + 1.0))
+        } else {
+            self.cd_mut().overload_ue = 0.0;
+            Complex64::ZERO
+        }
+    }
+
+    /// Pascal `TDSSCktElement.GetLosses` (CktElement.pas l.441): total, load and
+    /// no-load losses (W, var). Base default returns `(total, total, 0)`;
+    /// Transformer/Reactor override to split the no-load component.
+    fn get_losses_split(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        let total = self.losses(sys, node_v);
+        (total, total, Complex64::ZERO)
+    }
+
+    /// Pascal `TDSSCktElement.GetSeqLosses` (base l.1092): sequence-mode losses.
+    /// Base returns zeros; Line overrides for 3-phase branches.
+    fn get_seq_losses(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (Complex64, Complex64, Complex64) {
+        let _ = (sys, node_v);
+        (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO)
     }
 }
