@@ -56,6 +56,13 @@ def check_pin() -> dict:
         sys.exit(f"dss-python {dss.__version__} != pinned 0.15.7 (tools/golden/PIN.txt)")
     from dss import DSS
 
+    # Also hard-assert the engine/backend (dss-python-backend 0.14.5 == the
+    # vendored Pascal at .inputs/dss_capi). DSS.Version is e.g. "DSS C-API
+    # Library version 0.14.5 revision ...". A backend mismatch is a different
+    # oracle and must fail loudly, not silently change the numbers.
+    if "0.14.5" not in DSS.Version:
+        sys.exit(f"engine {DSS.Version!r} != pinned backend 0.14.5 (tools/golden/PIN.txt)")
+
     return {"dss_python": dss.__version__, "engine": DSS.Version}
 
 

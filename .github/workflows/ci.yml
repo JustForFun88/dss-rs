@@ -46,6 +46,11 @@ jobs:
       - name: Install pinned oracle (tools/golden/PIN.txt)
         run: pip install "dss-python==0.15.7" "dss-python-backend==0.14.5"
       - name: Live oracle comparison
+        # Run the whole corpus_live binary (not a single -name filter): a name
+        # filter that matches nothing exits 0, so a renamed test would silently
+        # green this job. corpus_live_classify self-skips without DSS_LIVE_CLASSIFY
+        # and solvable_now_has_multistep_depth needs no oracle.
         env:
           DSS_LIVE_ORACLE: "1"
-        run: cargo test -p dss-core --test corpus_live corpus_live_solvable_cases_match_oracle -- --nocapture
+          DSS_ORACLE_TIMEOUT_SECS: "600"
+        run: cargo test -p dss-core --test corpus_live -- --nocapture --test-threads=1

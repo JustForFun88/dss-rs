@@ -95,16 +95,18 @@ the policy above applies unchanged. Two gate-specific points:
   arrays on both sides and compare trivially.
 
 - **Monitors / EnergyMeter registers / zones — compared live, opt-in per case.**
-  The `IEEE13Nodeckt.dss` case is promoted to a 24-step daily run with a meter
-  (`m1`) and three deterministic-mode monitors (mode 0/1/2) plus
-  `selected_elements` (so it exercises the multi-step per-step path **and** YPrim
-  **and** meters/monitors live). `compare_monitor` (header + sample count exact,
-  channels at `i_rel`/`i_abs` = 1e-6/1e-4) and `compare_meter` (register names
-  exact, values 1e-4 rel, zone branch/end/PCE counts exact) reuse the
-  `Dss::monitor_view` / `meter_registers` / `meter_zone` accessors and match
-  `golden_phase6.rs`. Comparison is gated by a per-case `check_meters_monitors`
-  flag (`solvable_now.json`), set only for cases that define meters/monitors in
-  **deterministic** modes.
+  Three cases (`IEEE13Nodeckt`, `ieee37`, `IEEE123Master`) are promoted to 24-step
+  daily runs, each with a meter (`m1`) and three deterministic-mode monitors
+  (mode 0/1/2) plus `selected_elements` (so they exercise the multi-step per-step
+  path **and** YPrim **and** meters/monitors live, across wye / open-delta-LDC /
+  multi-bank-regulator control topologies). `compare_monitor` (header + sample
+  count exact, channels at `i_rel`/`i_abs` = 1e-6/1e-4) and `compare_meter`
+  (register names exact, values 1e-4 rel, zone branch/end/PCE counts exact) are
+  the **same** comparators (`harness/mod.rs`) `golden_phase6.rs` routes through —
+  one implementation, no drift. Comparison is gated by a per-case
+  `check_meters_monitors` flag (`solvable_now.json`), set only for cases that
+  define meters/monitors in **deterministic** modes; the always-on
+  `solvable_now_has_multistep_depth` test pins that ≥1 such case persists.
 - **Why opt-in (oracle quirk, not a Rust gap).** Comparing *every* master's
   incidental monitors would spuriously fail: the pinned dss-python returns a
   **phantom** element from `Monitors.Channel(i)` for an *unsampled* monitor
