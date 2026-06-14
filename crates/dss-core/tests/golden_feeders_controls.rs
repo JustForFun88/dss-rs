@@ -1,6 +1,6 @@
 //! Phase 5 gate (PHASE5_PLAN.md WP5.9): compile the **unmodified** IEEE13,
-//! IEEE37 and IEEE123 masters from `.inputs/electricdss-tst` — controls
-//! active, exactly as the committed Phase-0 goldens were generated — and
+//! IEEE37 and IEEE123 masters from the vendored `tests/corpus/electricdss-tst`
+//! — controls active, exactly as the committed Phase-0 goldens were generated — and
 //! match `tests/golden/{ieee13,ieee37,ieee123}.json`:
 //!
 //! - converged flag and total iteration count **exactly** (ieee13: 11);

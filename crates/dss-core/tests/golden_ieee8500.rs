@@ -168,6 +168,24 @@ fn ieee8500_matches_oracle() {
         }
     }
 
+    // Every *other* transformer must stay at nominal. The golden lists exactly
+    // the transformers the oracle found moved off 1.0 (|tap-1|>1e-9, see
+    // gen_ieee8500.py:capture_controls), so the ~1178 fixed load xfmrs + the
+    // substation must read 1.0 — this catches a spurious tap on an *uncontrolled*
+    // transformer, which the moved-only golden would otherwise miss.
+    for (tr_name, act) in &taps {
+        if golden.snap.transformers.contains_key(tr_name) {
+            continue;
+        }
+        for (w, a) in act.iter().enumerate() {
+            assert!(
+                (a - 1.0).abs() <= 1e-9,
+                "uncontrolled transformer {tr_name} winding {} moved off nominal: {a}",
+                w + 1
+            );
+        }
+    }
+
     // RegControl tap numbers: exact.
     let tap_numbers: std::collections::HashMap<String, i32> =
         dss.regcontrol_tap_numbers().into_iter().collect();

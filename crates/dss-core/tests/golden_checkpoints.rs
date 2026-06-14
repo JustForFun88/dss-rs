@@ -95,10 +95,15 @@ fn load_scenarios() -> Vec<Scenario> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     files.sort();
-    assert!(
-        !files.is_empty(),
-        "no checkpoint scenarios in {}",
-        dir.display()
+    // Pin the scenario count: the gate runs every file in the directory, so a
+    // deleted/renamed checkpoint file would otherwise silently shrink the suite
+    // (an empty dir would pass vacuously). Bump when adding a checkpoint scenario.
+    assert_eq!(
+        files.len(),
+        3,
+        "expected 3 checkpoint scenario files in {}, found {}",
+        dir.display(),
+        files.len()
     );
     files
         .iter()

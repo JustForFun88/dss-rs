@@ -27,3 +27,25 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+
+  # Live oracle gate: compiles+solves every `solvable_now` corpus case on the Rust
+  # engine AND the pinned dss-python oracle and compares the full model live (the
+  # `DSS_LIVE_ORACLE=1` path of corpus_live.rs). It needs Python + the pinned
+  # oracle, which the main `test` job/most contributors lack — hence its own job
+  # (PHASE6_PLAN / CORPUS_TEST_PLAN: "a dedicated pinned-oracle CI job"). Versions
+  # MUST match tools/golden/PIN.txt exactly.
+  live-oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.4"
+      - name: Install pinned oracle (tools/golden/PIN.txt)
+        run: pip install "dss-python==0.15.7" "dss-python-backend==0.14.5"
+      - name: Live oracle comparison
+        env:
+          DSS_LIVE_ORACLE: "1"
+        run: cargo test -p dss-core --test corpus_live corpus_live_solvable_cases_match_oracle -- --nocapture

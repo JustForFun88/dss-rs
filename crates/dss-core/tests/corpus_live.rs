@@ -33,8 +33,9 @@ use std::time::{Duration, Instant};
 
 use dss_core::exec::Dss;
 use harness::{
-    ElementCap, Injection, YFingerprint, YMat, YPrim, compare_discrete, compare_element,
-    compare_fingerprint, compare_injection, compare_system_y, compare_yprim, tol_for,
+    ElementCap, Injection, MeterCap, MonitorCap, YFingerprint, YMat, YPrim, compare_discrete,
+    compare_element, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
+    compare_system_y, compare_yprim, tol_for,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -80,6 +81,12 @@ struct Checkpoint {
     transformers: BTreeMap<String, Vec<f64>>,
     regcontrols: BTreeMap<String, i32>,
     capacitors: BTreeMap<String, Vec<i32>>,
+    /// Monitor channels / EnergyMeter registers+zone — present only when the case
+    /// defines them (e.g. a daily run with a meter + monitors). Empty otherwise.
+    #[serde(default)]
+    monitors: Vec<MonitorCap>,
+    #[serde(default)]
+    meters: Vec<MeterCap>,
 }
 
 /// A handle to the pinned oracle. Each call spawns a fresh `oracle_server.py`
@@ -204,6 +211,7 @@ impl Oracle {
         post: &[String],
         n_steps: usize,
         selected: &[String],
+        check_mm: bool,
     ) -> CaseResult {
         let req = json!({
             "cmd": "run",
@@ -212,6 +220,7 @@ impl Oracle {
             "n_steps": n_steps,
             "selected_elements": selected,
             "full_csc": true,
+            "check_meters_monitors": check_mm,
         });
         let r = self.call(&req);
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
@@ -265,6 +274,7 @@ fn corpus_file(rel: &str) -> String {
 /// Compile + solve one case on both engines and compare every captured field at
 /// every step. `selected` is the YPrim focus set; element currents/powers are
 /// compared for *all* elements.
+#[allow(clippy::too_many_arguments)]
 fn run_and_compare(
     oracle: &Oracle,
     label: &str,
@@ -273,9 +283,10 @@ fn run_and_compare(
     n_steps: usize,
     selected: &[String],
     kind: &str,
+    check_mm: bool,
 ) {
     let tol = tol_for(kind);
-    let oc = oracle.run_case(case_path, post, n_steps, selected);
+    let oc = oracle.run_case(case_path, post, n_steps, selected, check_mm);
     assert_eq!(oc.n_steps, n_steps, "{label}: oracle step count");
     assert_eq!(
         oc.checkpoints.len(),
@@ -374,6 +385,15 @@ fn run_and_compare(
             &cp.capacitors,
             &ctx,
         );
+
+        // Monitor channels + EnergyMeter registers/zone — compared per step, like
+        // the rest of the model. Empty (skipped) unless the case defines them.
+        for m in &cp.monitors {
+            compare_monitor(&dss, m, &tol, &ctx);
+        }
+        for m in &cp.meters {
+            compare_meter(&dss, m, &ctx);
+        }
     }
 }
 
@@ -398,6 +418,12 @@ struct SolvableCase {
     n_steps: usize,
     #[serde(default)]
     selected_elements: Vec<String>,
+    /// Opt in to comparing this case's monitor channels + EnergyMeter
+    /// registers/zone (set only for cases that define them in deterministic
+    /// modes — e.g. the daily IEEE13 case). Incidental master-defined monitors
+    /// are not compared (their bare-snapshot sampling is ill-defined).
+    #[serde(default)]
+    check_meters_monitors: bool,
 }
 
 fn default_kind() -> String {
@@ -438,6 +464,7 @@ fn corpus_live_solvable_cases_match_oracle() {
             c.n_steps,
             &c.selected_elements,
             &c.kind,
+            c.check_meters_monitors,
         );
     }
     eprintln!(
@@ -493,8 +520,12 @@ fn corpus_live_classify() {
     let m: SkipManifest =
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
 
-    // Silence the default panic hook; we record each failure message ourselves.
-    std::panic::set_hook(Box::new(|_| {}));
+    // Each candidate's failure message is captured from the `catch_unwind`
+    // payload below (`panic_msg`), so we do NOT override the global panic hook:
+    // replacing it would swallow a *sibling* test's panic message if both live
+    // tests ran concurrently (libtest installs its own capturing hook). The
+    // default hook also printing each expected failure to stderr is acceptable
+    // noise for this opt-in diagnostic.
     let mut solvable: Vec<String> = Vec::new();
     let mut failures: Vec<(String, String)> = Vec::new();
     let total = m.cases.len();
@@ -503,7 +534,7 @@ fn corpus_live_classify() {
         let oref = &oracle;
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let abs = corpus_file(&path);
-            run_and_compare(oref, &path, &abs, &[], 1, &[], "feeder");
+            run_and_compare(oref, &path, &abs, &[], 1, &[], "feeder", false);
         }));
         match res {
             Ok(()) => solvable.push(c.path.clone()),
@@ -513,7 +544,6 @@ fn corpus_live_classify() {
             eprintln!("classify: {}/{total} probed", i + 1);
         }
     }
-    let _ = std::panic::take_hook();
 
     solvable.sort();
     failures.sort();

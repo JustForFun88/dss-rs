@@ -74,7 +74,35 @@
   {
    "path": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "post": [
+    "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
+    "Load.671.daily=day",
+    "Load.634a.daily=day",
+    "Load.634b.daily=day",
+    "Load.634c.daily=day",
+    "Load.645.daily=day",
+    "Load.646.daily=day",
+    "Load.692.daily=day",
+    "Load.675a.daily=day",
+    "Load.675b.daily=day",
+    "Load.675c.daily=day",
+    "Load.611.daily=day",
+    "Load.652.daily=day",
+    "Load.670a.daily=day",
+    "Load.670b.daily=day",
+    "Load.670c.daily=day",
+    "New energymeter.m1 element=line.650632 terminal=1",
+    "New monitor.m_vi element=line.650632 terminal=1 mode=0",
+    "New monitor.m_pq element=line.650632 terminal=1 mode=1",
+    "New monitor.m_tap element=transformer.reg1 terminal=1 mode=2",
+    "set mode=daily stepsize=1h number=1"
+   ],
+   "n_steps": 24,
+   "selected_elements": [
+    "line.650632",
+    "transformer.reg1"
+   ],
+   "check_meters_monitors": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",

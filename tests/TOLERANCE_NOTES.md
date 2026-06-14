@@ -94,16 +94,27 @@ the policy above applies unchanged. Two gate-specific points:
   never a silent omission. Control elements (RegControl, …) carry empty terminal
   arrays on both sides and compare trivially.
 
-- **Monitors / EnergyMeter registers / zones — not yet compared in this gate
-  (documented).** No `solvable_now` case defines a monitor or meter today (the
-  promoted cases are snapshots), so there is nothing to compare here yet; and
-  their fidelity against the same pinned oracle is already pinned by
-  `golden_phase6.rs` (monitor channels — including the mode-5 wall-clock-channel
-  skip — and meter registers/zone counts) and the per-step `golden_checkpoints.rs`
-  model. They will be added to `corpus_live.rs` (reusing `Dss::meter_registers` /
-  `meter_zone` / `monitor_view`) when the first metered/monitored multi-step case
-  is promoted into `solvable_now`. The full Y / voltage / current / power / YPrim /
-  injection / discrete comparison has **no** such exception.
+- **Monitors / EnergyMeter registers / zones — compared live, opt-in per case.**
+  The `IEEE13Nodeckt.dss` case is promoted to a 24-step daily run with a meter
+  (`m1`) and three deterministic-mode monitors (mode 0/1/2) plus
+  `selected_elements` (so it exercises the multi-step per-step path **and** YPrim
+  **and** meters/monitors live). `compare_monitor` (header + sample count exact,
+  channels at `i_rel`/`i_abs` = 1e-6/1e-4) and `compare_meter` (register names
+  exact, values 1e-4 rel, zone branch/end/PCE counts exact) reuse the
+  `Dss::monitor_view` / `meter_registers` / `meter_zone` accessors and match
+  `golden_phase6.rs`. Comparison is gated by a per-case `check_meters_monitors`
+  flag (`solvable_now.json`), set only for cases that define meters/monitors in
+  **deterministic** modes.
+- **Why opt-in (oracle quirk, not a Rust gap).** Comparing *every* master's
+  incidental monitors would spuriously fail: the pinned dss-python returns a
+  **phantom** element from `Monitors.Channel(i)` for an *unsampled* monitor
+  (`SampleCount == 0` but `len(Channel(i)) == 1`, verified on EPRI J1's `subVI`,
+  which `monitors.dss` defines after the master's only `Solve`). Rust is
+  self-consistent there (`channel().len() == sample_count == 0`), so the
+  divergence is an oracle artifact, not an engine bug — hence only cases that
+  actually sample their monitors (deterministic modes, ≥1 step) opt in. The full
+  Y / voltage / current / power / YPrim / injection / discrete comparison has
+  **no** such exception and runs on every case.
 
 ## Pre-existing exceptions in other gates
 

@@ -629,3 +629,126 @@ pub fn compare_discrete(
         assert_eq!(cap_states, exp, "{ctx}: capacitor {name} states differ");
     }
 }
+
+/// A monitor's data-channel header, sample count, and per-channel sample arrays
+/// (oracle capture; `header` is the data channels only — no leading hour/sec).
+#[derive(Debug, Deserialize)]
+pub struct MonitorCap {
+    pub name: String,
+    pub header: Vec<String>,
+    pub sample_count: i32,
+    pub channels: Vec<Vec<f64>>,
+}
+
+/// An EnergyMeter's register names/values and zone branch/end/PCE counts.
+#[derive(Debug, Deserialize)]
+pub struct MeterCap {
+    pub name: String,
+    pub register_names: Vec<String>,
+    pub register_values: Vec<f64>,
+    pub n_branches: usize,
+    pub n_ends: usize,
+    pub n_pce: usize,
+}
+
+/// Compare a monitor's header (data channels, exact), sample count (exact), and
+/// every channel's sample array (`tol.i_rel`/`i_abs` on the f32 samples — the
+/// same policy `golden_phase6.rs` uses). The capture must define only
+/// deterministic monitor modes (no mode-5 wall-clock channels) so all channels
+/// are compared with no skips.
+pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tol, ctx: &str) {
+    let view = dss
+        .monitor_view(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no monitor {}", exp.name));
+    // Our header leads with the hour / t(sec) columns; the oracle Header is the
+    // data channels only (`Channel(i)` already skips the time slots).
+    assert_eq!(
+        &view.header[2..],
+        exp.header.as_slice(),
+        "{ctx}: monitor {} header differs",
+        exp.name
+    );
+    assert_eq!(
+        view.sample_count, exp.sample_count,
+        "{ctx}: monitor {} sample count differs",
+        exp.name
+    );
+    assert_eq!(
+        view.channels.len(),
+        exp.channels.len(),
+        "{ctx}: monitor {} channel count differs",
+        exp.name
+    );
+    for (ch, (act, e)) in view.channels.iter().zip(&exp.channels).enumerate() {
+        assert_eq!(
+            act.len(),
+            e.len(),
+            "{ctx}: monitor {} channel {} sample count differs",
+            exp.name,
+            ch + 1
+        );
+        for (k, (a, ev)) in act.iter().zip(e).enumerate() {
+            let a = *a as f64;
+            let allowed = tol.i_abs + tol.i_rel * ev.abs();
+            assert!(
+                (a - ev).abs() <= allowed,
+                "{ctx}: monitor {} channel {} ({}) sample {k} differs: {a} vs {ev} \
+                 (|diff|={:.3e} > allowed {allowed:.3e})",
+                exp.name,
+                ch + 1,
+                exp.header.get(ch).map(String::as_str).unwrap_or("?"),
+                (a - ev).abs()
+            );
+        }
+    }
+}
+
+/// Compare an EnergyMeter's registers (names exact, values 1e-4 rel — the
+/// energy-accumulation policy, PORTING_PLAN §4) and zone branch/end/PCE counts
+/// (exact).
+pub fn compare_meter(dss: &Dss, exp: &MeterCap, ctx: &str) {
+    let regs = dss
+        .meter_registers(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no meter {}", exp.name));
+    assert_eq!(
+        regs.len(),
+        exp.register_names.len(),
+        "{ctx}: meter {} register count differs",
+        exp.name
+    );
+    for (i, (name, value)) in regs.iter().enumerate() {
+        assert_eq!(
+            name, &exp.register_names[i],
+            "{ctx}: meter {} register {i} name differs",
+            exp.name
+        );
+        let e = exp.register_values[i];
+        let allowed = 1e-4 * e.abs().max(1.0);
+        assert!(
+            (value - e).abs() <= allowed,
+            "{ctx}: meter {} register {name} differs: {value} vs {e}",
+            exp.name
+        );
+    }
+    let zone = dss
+        .meter_zone(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no meter zone {}", exp.name));
+    assert_eq!(
+        zone.all_branches_in_zone.len(),
+        exp.n_branches,
+        "{ctx}: meter {} branch count differs",
+        exp.name
+    );
+    assert_eq!(
+        zone.all_end_elements.len(),
+        exp.n_ends,
+        "{ctx}: meter {} end count differs",
+        exp.name
+    );
+    assert_eq!(
+        zone.zone_pce.len(),
+        exp.n_pce,
+        "{ctx}: meter {} PCE count differs",
+        exp.name
+    );
+}

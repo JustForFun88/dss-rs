@@ -67,6 +67,54 @@ def capture_all_elements(ckt) -> list:
     return out
 
 
+def capture_all_monitors(ckt) -> list:
+    """Every monitor's data-channel header, sample count, and channel arrays.
+
+    Mirrors the phase6 monitor golden capture (`Header`/`SampleCount`/
+    `Channel(i)`); empty when the case defines no monitors. Channels are the
+    growing per-sample arrays — compared per step by `corpus_live.rs`.
+    """
+    out = []
+    mon = ckt.Monitors
+    i = mon.First
+    while i:
+        nch = mon.NumChannels
+        out.append(
+            {
+                "name": mon.Name,
+                "header": list(mon.Header),
+                "sample_count": int(mon.SampleCount),
+                "channels": [[float(x) for x in mon.Channel(c)] for c in range(1, nch + 1)],
+            }
+        )
+        i = mon.Next
+    return out
+
+
+def capture_all_meters(ckt) -> list:
+    """Every EnergyMeter's register names/values and zone branch/end/PCE counts.
+
+    Mirrors the phase6 meter golden capture; empty when the case defines no
+    meters. Registers are integration results (compared at 1e-4 rel by the gate).
+    """
+    out = []
+    m = ckt.Meters
+    i = m.First
+    while i:
+        out.append(
+            {
+                "name": m.Name,
+                "register_names": list(m.RegisterNames),
+                "register_values": list(m.RegisterValues),
+                "n_branches": len(list(m.AllBranchesInZone)),
+                "n_ends": len(list(m.AllEndElements)),
+                "n_pce": len(list(m.ZonePCE)),
+            }
+        )
+        i = m.Next
+    return out
+
+
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
     per-step model (the shape `harness::*` / corpus_live.rs deserialize)."""
@@ -75,6 +123,11 @@ def run_case(d, req: dict) -> dict:
     n_steps = int(req.get("n_steps", 1))
     selected = req.get("selected_elements") or []
     full_csc = bool(req.get("full_csc", True))
+    # Monitors/meters are compared only for cases that deliberately define them in
+    # deterministic modes (the daily IEEE13 case). Capturing every master's
+    # incidental monitors would surface ill-defined snapshot-sampling edge cases
+    # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
+    check_mm = bool(req.get("check_meters_monitors", False))
 
     d.Text.Command = "clear"
     d.Text.Command = f'Compile "{case_path}"'
@@ -106,6 +159,8 @@ def run_case(d, req: dict) -> dict:
                 "transformers": disc["transformers"],
                 "regcontrols": disc["regcontrols"],
                 "capacitors": disc["capacitors"],
+                "monitors": capture_all_monitors(ckt) if check_mm else [],
+                "meters": capture_all_meters(ckt) if check_mm else [],
             }
         )
     return {"node_order": node_order, "n_steps": n_steps, "checkpoints": checkpoints}
