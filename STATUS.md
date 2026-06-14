@@ -7,15 +7,23 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-13, **Phase 6 IN PROGRESS** — Phase 5 merged to `main`
-(`10d3550`); on branch `phase-6-meters-topology`. Execution plan:
-**`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/Generator,
-8500-node gate). Done so far: **WP6.1 (topology foundations), WP6.2
-(Generator), WP6.3 (MeterElement + Monitor), WP6.4 (EnergyMeter + zone
-build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6 (reliability:
-fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation), WP6.8
-(GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs basic),
-WP6.9 (goldens + the 8500-node gate)** — see §1d. **WP6.10 (phase exit) next.**
+Last updated: 2026-06-14, **Phase 6 COMPLETE (WP6.1–WP6.10), gate-green** —
+Phase 5 merged to `main` (`10d3550`); on branch `phase-6-meters-topology`
+(WP6.1–WP6.9 committed through `d1cc68c` + the Yeq/checkpoint follow-ups; the
+live-corpus infra in `19a5493`/`593420f`; **WP6.10 is this update, uncommitted**).
+Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/
+Generator, 8500-node gate). **The phase gate passes: the unmodified IEEE
+8500-Node master (+ `Energymeter.m1` + a 24-step daily run) converges in 67
+iterations with `YNodeOrder` exact (8531 nodes), node voltages / total power /
+losses at 1e-6 rel, all 12 RegControl tap numbers + 10 capacitor states exact,
+and all 67 EnergyMeter registers at 1e-4 rel.** All WPs done: **WP6.1 (topology
+foundations), WP6.2 (Generator), WP6.3 (MeterElement + Monitor), WP6.4
+(EnergyMeter + zone build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6
+(reliability: fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation),
+WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
+basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see §1d.
+**Next: Phase 7 — write `PHASE7_PLAN.md` first** (DER, protection, line
+constants, harmonics, dynamics; PORTING_PLAN.md §Phase 7).
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -54,7 +62,8 @@ powers/currents, total power and losses at 1e-6 rel). On branch
 | 3 | ★ Vertical slice: parse → circuit → Y matrix → solve → voltages | ✅ done (commit `2ac8691`) |
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ **done** — WP4.1–4.6 committed (`f5156eb`…`c45719a`); WP4.7–4.10 complete, gate-green, **uncommitted** |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
-| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | 🔨 **in progress** — WP6.1–WP6.9 done (8500-node gate + phase6 goldens green); WP6.10 (phase exit) next; `PHASE6_PLAN.md` |
+| **6** | **Meters/Monitors/topology/Generator + 8500-node gate** | ✅ **done** — WP6.1–WP6.10 complete, gate-green (8500-node gate + phase6 goldens green); **uncommitted past WP6.9**; `PHASE6_PLAN.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ⏭️ next — write `PHASE7_PLAN.md` first (PORTING_PLAN.md §Phase 7) |
 
 ### Gate state (all green)
 ```
@@ -1340,8 +1349,24 @@ generated with the pinned oracle (python 3.12.4 / dss-python 0.15.7 / backend
     parent zone stops at the sub-meter: m1 = [l1,l4]/[l4]/[ld4], m2 =
     [l2,l3]/[l3]/[ld3]).
 
-Phase 6 is now WP6.1–WP6.9 complete; **WP6.10 (phase exit)** is next (marker
-sweep, re-run everything, rewrite STATUS, then Phase 7 plan).
+**WP6.10 — phase exit — ✅ this update, gate-green.** `TODO(compat)` /
+`NOT_PORTED` marker sweep clean: every site points at its phase. One stale
+marker fixed — `solution/meters.rs` `is_zone_pce`'s `TODO(WP6.8)` ("add
+PVSystem/Storage to the zone allow-list when those PC classes land") was
+repointed to **`TODO(WP7)`**: PVSystem/Storage are Phase 7 (DER sub-block), not
+WP6.8 (the old §7 note that scheduled them for WP6.8 was a misattribution — they
+have no objects until Phase 7, so the allow-list is correct-by-vacuity now). The
+only other forward markers are the dormant reliability `GetOCPDeviceType`
+(`TODO(WP7)` — OCP devices are Phase 7) and the AutoAdd/ReduceAlgs `NOT_PORTED`
+skeletons (each documents its blocking dependency — aux-current injection /
+`TLineObj.MergeWith`). Full gate re-run green from a clean tree:
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings`
+(0 warnings); `cargo test --workspace` — every target passes (dss-core lib 319;
+the golden gates incl. `golden_ieee8500` 4.3 s debug / 0.19 s release;
+`corpus_manifest` 1; `corpus_live` 2 auto-skipped; dss-parser 62+1; dss-sparse
+5). **Phase 6 is complete; next is Phase 7** — write `PHASE7_PLAN.md` first
+(DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
+§Phase 7).
 
 ---
 
@@ -1465,14 +1490,15 @@ lists; `yprim` stays `None` and the Y build skips them.
 
 ## 5. `TODO(compat)` / deferrals
 
-Grep `rg "TODO\(compat\)"` for the full marker list (16 sites). Notable:
+Grep `rg "TODO\(compat\)"` for the full marker list (26 sites). Notable:
 truncated `CALPHA`/`pi`/`0.001732`/`57.29577951` constants, FPC banker's
 `Round` shims, LineCode `Repair`=0 default, the `DoubleSymMatrix` zero-matrix
 getter.
 
 `NOT_PORTED` (hard parse error; every site points at its phase):
-- Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` — Phase 6
-  (LineGeometry/WireData).
+- Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` — Phase 7
+  (line constants: LineGeometry/WireData/LineSpacing/CN/TS, PORTING_PLAN §Phase 7
+  sub-block 1). Not in Phase 6 scope.
 - Reactor `RCurve`/`LCurve` — Phase 5 (XYcurve) — XYcurve is now ported; the
   fetch is still `NOT_PORTED` (only the harmonic `CalcYPrim` consumes it, Phase 7).
 - CapControl `ControlSignal` — Phase 5 (LoadShape); still `NOT_PORTED` (the
@@ -1526,28 +1552,41 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 6
+## 7. Current frontier — Phase 6 complete, Phase 7 next
 
-Executing `PHASE6_PLAN.md` on branch `phase-6-meters-topology`.
-Done: WP6.1 (topology foundations), WP6.2 (Generator), WP6.3 (MeterElement +
-Monitor), WP6.4 (EnergyMeter object + zone build), WP6.5 (EnergyMeter registers
-+ `TakeSample` + hook wiring). Next: WP6.6 (reliability), WP6.7 (Sensor + load
-allocation), WP6.8 (GenDispatcher + skeletons — also add PVSystem/Storage to
-`is_zone_pce`), WP6.9 (goldens + 8500-node gate), WP6.10 (exit).
+Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete and gate-green** on
+branch `phase-6-meters-topology` (WP6.10 = this update, uncommitted; everything
+earlier committed through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
+**Next: Phase 7** — write `PHASE7_PLAN.md` first, then execute it
+(PORTING_PLAN.md §Phase 7, the largest phase ~18%, six independently-gated
+sub-blocks: line constants, DER, protection, harmonics, dynamics,
+faultstudy/AutoAdd-modes/`Feeder`).
 
-Enabling facts from Phase 5/WP6.3: the control loop dispatches through
-`ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut` (the pattern
-the monitor sweep now reuses — `solution/monitors.rs`); the meter/monitor
-`sample_all_monitors_and_meters` / `end_of_time_step_cleanup` hooks now have
-real bodies (monitor `SampleAll` mode≠5 + `SampleAllMode5`, plus the EnergyMeter
-`SampleAll`/`take_sample_all` wired in WP6.5). Deferred monitor modes
-3/4/7/8/10/12 build their header but defer the sample body (no gate uses them).
-WP6.4 added the zone-build dispatcher (`solution/meters.rs`) fired from
-`build_y_matrix` after bus reprocessing — the EnergyMeter `BranchList`/
-`SequenceList`/`ZonePCE` are now populated and exposed via `Dss::meter_zone`.
-WP6.5 ported `TakeSample`/`Integrate` (register accumulation over the zone walk)
-plus the PD loss/excess-kVA surface and the Load EEN/UE getters; registers are
-exposed via `Dss::meter_registers`. Still deferred: the `SystemMeter` register
-core, the Generator/Storage/PVSystem `ResetRegistersAll`/`SampleAll` call sites
-(WP6.8+), reliability indices (WP6.6), and the demand-interval/phase-voltage
-files (Phase 8).
+**What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
+- **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
+  `StorageController` behavior — the WP6.8 StorageController is a parse-only
+  skeleton (empty fleet → 37201); `solution/meters.rs::is_zone_pce` carries a
+  `TODO(WP7)` to add PVSystem/Storage to the zone allow-list once they exist.
+- **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — until one sets
+  `Flg.HasOCPDevice`, `RelCalc` aborts with #52902 (oracle-faithful) and the
+  ported SAIFI/SAIDI/section math below the abort stays dormant
+  (`GetOCPDeviceType` inlined to 0, `TODO(WP7)`).
+- **Line constants** `WireData/CNData/TSData/CableData/LineSpacing/LineGeometry`
+  + Carson — Line's `geometry`/`spacing`/`wires`/`cncables`/`tscables` are
+  `NOT_PORTED` (round-trip empty only).
+- **Dynamics & harmonics** (Generator/Storage `DoDynamicMode`/`DoHarmonicMode`,
+  state vars beyond names/count) + `MakePosSequence` everywhere; Monitor modes
+  3/4/7/8/10/12 build their header but defer the sample body; Transformer GIC
+  (<0.51 Hz).
+- **AutoAdd solve mode** (`circuit/auto_add.rs` skeleton) — needs aux-current
+  injection (`UseAuxCurrents`) + meter-register sampling in the solve loop; the
+  options round-trip but the mode keeps its "Unknown solution mode" error.
+- **ReduceAlgs** zone reduction — blocked on the unported `TLineObj.MergeWith`.
+
+**Architecture already in place for Phase 7:** the control loop dispatches
+through `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut`; the
+meter/monitor `sample_all_monitors_and_meters`/`end_of_time_step_cleanup` hooks
+have real bodies; the zone-build dispatcher (`solution/meters.rs`) fires from
+`build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
+reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
+register core and all demand-interval/phase-voltage/`Show`/`Export` files.
