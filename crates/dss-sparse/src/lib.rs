@@ -17,6 +17,10 @@ use faer::sparse::linalg::solvers::{Lu, SymbolicLu};
 use faer::sparse::{SparseColMat, Triplet};
 use num_complex::Complex64;
 
+/// Coordinate (COO) triple `(rows, cols, values)` of a sparse matrix's stored
+/// nonzeros — the return of [`SparseSet::coo_entries`].
+pub type CooEntries = (Vec<usize>, Vec<usize>, Vec<Complex64>);
+
 /// Errors reported by [`SparseSet`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SparseError {
@@ -175,6 +179,32 @@ impl SparseSet {
             }
         }
         Ok(Complex64::ZERO)
+    }
+
+    /// Coordinate dump of the **assembled, unfactored** matrix: returns
+    /// `(rows, cols, vals)` of every stored nonzero, in column-major (CSC)
+    /// order. This is the matrix as stamped from element YPrims, *before* the
+    /// row-equilibration applied for factorization (see [`SparseSet::row_scale`]),
+    /// so it is solver-independent and directly comparable to the oracle's
+    /// `YMatrix.getYSparse(factor=False)`. Duplicate triplets are already summed
+    /// by [`SparseSet::assemble`].
+    pub fn coo_entries(&mut self) -> Result<CooEntries, SparseError> {
+        self.assemble()?;
+        let m = self.matrix.as_ref().expect("assembled above");
+        let nnz = m.compute_nnz();
+        let mut rows = Vec::with_capacity(nnz);
+        let mut cols = Vec::with_capacity(nnz);
+        let mut vals = Vec::with_capacity(nnz);
+        for col in 0..self.n {
+            let row_idx = m.row_idx_of_col_raw(col);
+            let col_vals = m.val_of_col(col);
+            for (k, &r) in row_idx.iter().enumerate() {
+                rows.push(r);
+                cols.push(col);
+                vals.push(col_vals[k]);
+            }
+        }
+        Ok((rows, cols, vals))
     }
 
     /// Reciprocal condition number estimate, 0 if singular

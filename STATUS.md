@@ -62,10 +62,11 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 319, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
-                            # golden_phase6 1, golden_ieee8500 1,
-                            # golden_reliability 1, golden_allocation 1,
-                            # golden_gendispatcher 1, golden_autoadd_reduce 1,
-                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
+                            # golden_phase6 1, golden_checkpoints 1,
+                            # golden_ieee8500 1, golden_reliability 1,
+                            # golden_allocation 1, golden_gendispatcher 1,
+                            # golden_autoadd_reduce 1, golden_slice 2,
+                            # golden_smoke 3, props_roundtrip 1,
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -89,11 +90,25 @@ cargo test --workspace      # dss-core lib 319, golden_feeders 1,
   TIMEDRIVEN), `eventlog_ieee13` (`Set Log=yes`), `capcontrol_micro` (kvar
   control opens Cap1). Per-step `dblHour` exact; **the event logs match the
   oracle line-for-line** (normalized), pinning every tap change/cap switch of
-  the trajectories; final taps/tap numbers/states exact. Per-step iteration
-  counts: exact on step 1, ±1 afterwards; voltages 1e-5 rel until the first
-  iteration-count divergence, then 2e-4 (the 1e-4 convergence tolerance makes
-  tolerance-terminated iterates path-dependent at that level — documented in
-  the test).
+  the trajectories; final taps/tap numbers/states exact. **Per-step iteration
+  counts exact on every step and per-step voltages at 1e-6 rel** — the whole
+  daily trajectory tracks the oracle since `build_y_matrix` restamps each
+  load's shape-scaled `Yeq` per Y build (commit `a6903f1`).
+
+### Checkpointed-model gate (`crates/dss-core/tests/golden_checkpoints.rs`) — green
+- `gen_checkpoints.py` → `tests/golden/checkpoints.json` (schema 2). Unlike the
+  other command-replay gates (which compare only converged outputs), this one
+  captures the **assembled electrical model after every committed time step** —
+  the unfactored system Y, selected element YPrim blocks, the injection vector,
+  node voltages, and discrete control state — and compares each to the oracle.
+  A stale Y/YPrim fails at the step and matrix entry it first goes wrong, not as
+  downstream register drift. Scenarios: `micro_yeq_steps` (control-free daily,
+  full-CSC per-step pin), `ieee13_daily` (24-step daily with regulator tap
+  changes — full CSC + fingerprint; the direct regression guard for the
+  "frozen load Yeq" bug: reverting commit `a6903f1` makes it fail at step 6,
+  `Y[634.1]`), `ieee123_snap` (large-feeder fingerprint-only + selected YPrim
+  path). Tolerances: `tests/TOLERANCE_NOTES.md`. The assembled Y is compared
+  **unfactored** so the `dss-sparse` row equilibration is out of scope.
 
 ### Phase 4 gate (`crates/dss-core/tests/golden_feeders.rs`) — green
 The three committed **controls-off variants** (`tests/golden/phase4/
