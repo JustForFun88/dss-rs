@@ -2,39 +2,19 @@
  "comment": "Cases where the pinned oracle itself errors / is unreliable. tag + note (+ upstream ref).",
  "cases": [
   {
-   "path": "Test/Run_SimpleStorageTest-1ph.DSS",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/Run_SimpleStorageTest-1ph.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Test\\\\SimpleStorageTest-1ph.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
-  },
-  {
-   "path": "Test/Run_SimpleStorageTest.DSS",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/Run_SimpleStorageTest.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Test\\\\SimpleStorageTest.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss"
-  },
-  {
    "path": "Test/SimpleStorageTest-1ph.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#1570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/SimpleStorageTest-1ph.dss failed: Some(\"DSSException: (#1570) Storage User-written Dynamics Model \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Source\\\\DESS1\\\\Dess1.DLL\\\" Not Loaded. DSS Directory = \\\"E:\\\\RustProject\\\\dss-rs\\"
   },
   {
    "path": "Test/SimpleStorageTest.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#1570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/SimpleStorageTest.dss failed: Some(\"DSSException: (#1570) Storage User-written Dynamics Model \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Source\\\\DESS1\\\\Dess1.DLL\\\" Not Loaded. DSS Directory = \\\"E:\\\\RustProject\\\\dss-rs\\\\cra"
   },
   {
    "path": "Test/indmachtest/Master.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/indmachtest/Master.DSS failed: Some(\"DSSException: (#570) Generator User Model Indmach012a Not Loaded. DSS Directory = E:\\\\RustProject\\\\dss-rs\\\\crates\\\\dss-core\\\\\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\cor"
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/RunVplot_ckt5.dss",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/RunVplot_ckt5.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Master.dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8\\\\Dist"
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Program Files\\\\OpenDSS\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5.dss",
@@ -43,162 +23,137 @@
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#250",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss failed: Some(\"DSSException: (#250) Monitor \\\"ckt5mon\\\" not found. \\r\\nExport monitor ckt5mon \\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#250",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss failed: Some(\"DSSException: (#250) Monitor \\\"ckt7mon_p\\\" not found. \\r\\nExport monitor ckt7mon_p  \\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricd"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss failed: Some(\"DSSException: (#401) Load.25609_a.Yearly: LoadShape object \\\"25609_A\\\" not found.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electric"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Substation.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Substation.dss failed: Some(\"DSSException: (#401) Load.aggregate_load.Yearly: LoadShape object \\\"AggLoadProfile\\\" not found.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#130",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS failed: Some(\"DSSException: (#130) Unknown parameter \\\"Num_SubCircuits\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-t"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#130",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss failed: Some(\"DSSException: (#130) Unknown parameter \\\"LinkBranches\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#130",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS failed: Some(\"DSSException: (#130) Unknown parameter \\\"Num_SubCircuits\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricds"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#485",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
   },
   {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"../../IEEETestCases/IEEELineCodes.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\c"
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#265",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-r"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#130",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss failed: Some(\"DSSException: (#130) Unknown parameter \\\"LinkBranches\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#907",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss failed: Some(\"DSSException: (#907) Cannot create directory: \\\"C:\\\\Users\\\\User\\\\Desktop\\\\TCC\\\\IEEE123Barras\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\te"
   },
   {
-   "path": "Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Loadshape5a.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
-  },
-  {
-   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss failed: Some(\"DSSException: (#242) Redirect file not found: \\\"@loadshape_script_dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
-  },
-  {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-p.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#482",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-p.dss failed: Some(\"DSSException: (#482) Error Encountered in Solve: Division by zero\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\e"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#485",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#24713",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss failed: Some(\"DSSException: (#24713) Error: Unknown Export command: \\\"deltaf\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-ts"
   },
   {
-   "path": "Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"..\\\\..\\\\Distrib\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\\\RustPr"
-  },
-  {
    "path": "Version8/Distrib/Examples/Scripts/MultstepDG.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#301",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Scripts/MultstepDG.DSS failed: Some(\"DSSException: (#301) You must create a new circuit object first: \\\"new circuit.mycktname\\\" to execute this command.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\"
   },
   {
    "path": "Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#263",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/Run_IEEE123Bus_GFLDaily.DSS failed: Some(\"DSSException: (#263) New Command: Object Type \\\"WindGen\\\" not found. \\r\\nNew WindGen.wtg1 phases=3 bus1=WindGB k"
   },
   {
    "path": "Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#263",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/Run_IEEE123Bus_GFLDaily.DSS failed: Some(\"DSSException: (#263) New Command: Object Type \\\"WindGen\\\" not found. \\r\\nNew WindGen.wtg1 phases=3 bus1=WindGB kV=0.69 k"
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS",
-   "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\opendss\\\\IEEETestCases\\\\123Bus\\\\IEEE123Master.dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tes"
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/123Bus/WindRamp.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#70401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/WindRamp.DSS failed: Some(\"DSSException: (#70401) CSV file \\\"Windoutput.txt\\\" could not be opened\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8\\\\"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/WindRampRevRegTest.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#70401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/WindRampRevRegTest.DSS failed: Some(\"DSSException: (#70401) CSV file \\\"Windoutput.txt\\\" could not be opened\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#265",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#303",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss failed: Some(\"DSSException: (#303) Error 303 Reported From OpenDSS Intrinsic Function: \\r\\nProcessCommand: Exception Raised While Processing DSS Command: \\r\\ns"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#2190",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss failed: Some(\"DSSException: (#2190) Exception raised in ShowCurrents: Unable to create file \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#303",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS failed: Some(\"DSSException: (#303) Error 303 Reported From OpenDSS Intrinsic Function: \\r\\nProcessCommand: Exception Raised While Processing DSS Command: \\r\\nSh"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wireIndMotor.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wireIndMotor.dss failed: Some(\"DSSException: (#570) Generator User Model IndMach012a Not Loaded. DSS Directory = E:\\\\RustProject\\\\dss-rs\\\\crates\\\\dss-core\\\\\\r\\n[fi"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss failed: Some(\"DSSException: (#570) Generator User Model IndMach012a Not Loaded. DSS Directory = E:\\\\RustProject\\\\dss-rs\\\\crates\\\\dss-core\\\\\\r\\n[fi"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss failed: Some(\"DSSException: (#570) Generator User Model IndMach012a Not Loaded. DSS Directory = E:\\\\RustProject\\\\dss-rs\\\\crates\\\\dss-core\\\\\\r\\n[fi"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
-   "tag": "oracle_error",
+   "tag": "oracle_error_#485",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings.\")"
   }
  ]

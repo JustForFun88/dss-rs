@@ -3,127 +3,127 @@
  "cases": [
   {
    "path": "Test/AutoTrans/Auto1bus.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
    "note": "Test/AutoTrans/Auto1bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not found.\", \"Command \\\""
   },
   {
    "path": "Test/AutoTrans/Auto3bus.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
    "note": "Test/AutoTrans/Auto3bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not found.\", \"Command \\\""
   },
   {
    "path": "Test/AutoTrans/AutoAuto.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=autotrans",
    "note": "Test/AutoTrans/AutoAuto.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"autotrans\\\" not found.\", \"Unknown parameter \\\"wdg\\\" (value \\\"1\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"conn\\\" (value \\\"s\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"kV\\\" (value \\\"345.0\\\") "
   },
   {
    "path": "Test/AutoTrans/AutoHLT.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=fault; unsupported_command=Export",
    "note": "Test/AutoTrans/AutoHLT.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: "
   },
   {
    "path": "Test/BundleDemo.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineGeometry,Wiredata",
    "note": "Test/BundleDemo.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"LineGeometry\\\" not found.\", \"Unknown parameter \\\"cond\\\" (value \\\"1\\\") for object \\\"Vsource.source\\\"\", \"Unknown p"
   },
   {
    "path": "Test/CableParameters.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=TSData,WireData",
    "note": "Test/CableParameters.dss: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"TSData\\\" not found.\", \"Unknown parameter \\\"EpsR\\\" (value \\\"2.3\\\") for object \\\"Vsource.source\\\"\", \"Unknown para"
   },
   {
    "path": "Test/Cable_constants.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNDATA",
    "note": "Test/Cable_constants.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"CNDATA\\\" not found.\", \"Unknown parameter \\\"InsLayer\\\" (value \\\"0.220\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"DiaIns\\\" (value \\\"1.06\\\") for object \\"
   },
   {
    "path": "Test/CapControlFollow.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineSpacing,WireData",
    "note": "Test/CapControlFollow.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object "
   },
   {
    "path": "Test/DistanceRelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Test/DistanceRelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"Z1MAG\\\" (value \\\"0.6977\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"Z1ANG\\\" (value \\\"63.98\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"Z0MAG\\\" (value \\\"2"
   },
   {
    "path": "Test/Dynamic_Kundur.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=var",
    "note": "Test/Dynamic_Kundur.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Unknown solution mode. (not ported in"
   },
   {
    "path": "Test/IEEE13_Assets.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=TSData,WireData",
    "note": "Test/IEEE13_Assets.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"TSDat"
   },
   {
    "path": "Test/IEEE13_CDPSM.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Fuse,PVSystem,Recloser,Relay,Storage",
    "note": "Test/IEEE13_CDPSM.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Relay\\\" not found.\", \"New Command: Object Type \\\"Fuse\\\" not found.\", \"New Command: Object Type \\\"Recloser\\\" not found.\", \"New Command: Object Type \\\"PVSystem\\\" not found.\", \"New Command: Object Type \\\"Storage\\\" not"
   },
   {
    "path": "Test/IEEE13_LineAndCableSpacing.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineSpacing,WireData",
    "note": "Test/IEEE13_LineAndCableSpacing.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Comman"
   },
   {
    "path": "Test/IEEE13_LineGeometry.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineGeometry,WireData",
    "note": "Test/IEEE13_LineGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"LineGeometry\\\" not found.\", \"Unknown parameter \\\"co"
   },
   {
    "path": "Test/IEEE13_LineSpacing.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineSpacing,WireData",
    "note": "Test/IEEE13_LineSpacing.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Objec"
   },
   {
    "path": "Test/IEEE13_SpacingGeometry.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineSpacing,WireData",
    "note": "Test/IEEE13_SpacingGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: O"
   },
   {
    "path": "Test/IEEELineGeometry.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Test/IEEELineGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"Wi"
   },
   {
    "path": "Test/MultiCircuitTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LINEGEOMETRY,Wiredata",
    "note": "Test/MultiCircuitTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"LINEGEOMETRY\\\" not found.\", \"Unknown parameter \\\"cond\\\" (value \\\"1\\\") for object \\\"Vsource.source\\\"\", \"Unk"
   },
   {
    "path": "Test/ODRegTest.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Test/ODRegTest.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Test/PVSystemTest-Duty.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Test/PVSystemTest-Duty.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Monitor.m1.element: CktElement \\\"PVSystem.PV\\\" not found.\", \"Monitor: \\\"m1\\\": Circuit Element is not set. Element must be defined previously.\", \"Monitor.m2.element: CktElement \\\"PVSyst"
   },
   {
    "path": "Test/PVSystemTest.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Test/PVSystemTest.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"temperature\\\" (value \\\"25\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"PF\\\" (value \\\"1\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Mye"
   },
   {
    "path": "Test/PVSystemTestHarm.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Test/PVSystemTestHarm.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"Spectrum\\\" (value \\\"DefaultGen\\\") for object \\\"Line.line1\\\"\", \"Monitor.m1.element: CktElement \\\"PVSystem.PV\\\" not found.\", \"Monitor: \\\"m1\\\": Circuit Element is not s"
   },
   {
    "path": "Test/REACTORTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Dump,Show",
    "note": "Test/REACTORTest.DSS: Rust engine errors after compile: [\"Command \\\"Dump\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Test/ReverseDistanceRelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Test/ReverseDistanceRelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"Z1MAG\\\" (value \\\"0.6977\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"Z1ANG\\\" (value \\\"63.98\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"Z0MAG\\\" (va"
   },
   {
    "path": "Test/ReverseTD21RelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Test/ReverseTD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter"
   },
   {
@@ -133,1062 +133,1062 @@
   },
   {
    "path": "Test/TD21RelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Test/TD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"phas"
   },
   {
    "path": "Test/TestAuto.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Test/TestAuto.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Test/TestDDRegulator.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Test/TestDDRegulator.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Test/TextTsCable750MCM.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=tsdata",
    "note": "Test/TextTsCable750MCM.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"tsdata\\\" not found.\", \"Unknown parameter \\\"diains\\\" (value \\\"0.01739 2 *\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"diacable\\\" (value \\\"0.0197 2 *\\\") for object \\\"Vsource.source\\\"\", \"Unknown param"
   },
   {
    "path": "Test/TriplexLineCodeCalc.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Test/TriplexLineCodeCalc.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\"
   },
   {
    "path": "Test/YgD-Test.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show,Visualize",
    "note": "Test/YgD-Test.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Visualize\\\" is not ported yet.\", \"Comman"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"N"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\","
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not "
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=BatchEdit",
    "note": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"New Command: Object Type \\\"PVSystem\\\" not found.\", \"New Command: Object Type \\\"PVSystem\\\" not found.\", \"New Command: Object Type \\\"PVSystem\\\" not f"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=SetkVBase",
    "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is "
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineGeometry,wireData",
    "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"wireData\\\" not found.\", \"New Command: Object Type \\\"wireData\\\" not found.\", \"New Command: Object Type \\\"wireData\\\" not found.\", \"New Command: Object Type \\\"wireData\\\" not fou"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireDa"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Objec"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=GISCoords,MakeBusList",
    "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"GISCoords\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=GISCoords,MakeBusList",
    "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"Command \\\"GISCoords\\\" is not ported yet.\", \"Command \\\"MakeBusList\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=GISCoords,MakeBusList",
    "note": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"GISCoords\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=GISCoords,MakeBusList",
    "note": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"GISCoords\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=GISCoords,MakeBusList",
    "note": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"Command \\\"GISCoords\\\" is not ported yet.\", \"Command \\\"MakeBusList\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Ty"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Com"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Ob"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireD"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
    "note": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
    "note": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=autotrans",
    "note": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"autotrans\\\" not found.\", \"Unknown parameter \\\"wdg\\\" (value \\\"1\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"conn\\\" (value \\\"s\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"kV"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=fault; unsupported_command=Export",
    "note": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported y"
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=TSData,WireData",
    "note": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command"
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Fuse,PVSystem,Recloser,Relay,Storage",
    "note": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"Relay\\\" not found.\", \"New Command: Object Type \\\"Fuse\\\" not found.\", \"New Command: Object Type \\\"Recloser\\\" not found.\", \"New Command: Object"
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNData,LineSpacing,WireData",
    "note": "Version8/Distrib/Examples/DOCTechNote/1_1.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNData,LineSpacing,WireData",
    "note": "Version8/Distrib/Examples/DOCTechNote/1_2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNData,LineSpacing,WireData",
    "note": "Version8/Distrib/Examples/DOCTechNote/2_1.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNData,LineSpacing,WireData",
    "note": "Version8/Distrib/Examples/DOCTechNote/2_2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"Z1MAG\\\" (value \\\"0.6977\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"Z1ANG\\\" (value \\\"63.98\\\") for object \\\"Line.thev\\\"\", \"Un"
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"Z1MAG\\\" (value \\\"0.6977\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"Z1ANG\\\" (value \\\"63.98\\\") for object \\\"Line.thev\\"
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for objec"
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=relay",
    "note": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for object \\\"Lin"
   },
   {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=DynamicExp; unsupported_command=var",
    "note": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inlin"
   },
   {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=DynamicExp; unsupported_command=var",
    "note": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Z"
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/Examples/ExpControl/Master.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"LoadShape.cloud: LoadShape has no data to be normalized. Check for previous errors. (61"
   },
   {
    "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Isource; unsupported_command=AddBusMarker,ClearBusMarkers,Export,Plot,Show",
    "note": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Isource\\\" not found.\", \"Command \\\"ClearBusMarkers\\\" is not ported yet.\", \"Command \\\"AddBusMarker\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Unknown solution mode. (not "
   },
   {
    "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=GICLine",
    "note": "Version8/Distrib/Examples/GICExample/GIC_Example.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Co"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Swtcontrol; unsupported_command=Open",
    "note": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Open\\\" is not ported yet.\", \"Unknown solu"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Swtcontrol; unsupported_command=Export,Show",
    "note": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"Unknown solution mode. (not ported in Phase 5)\", \"Unknown solution mode. (not ported in Phase "
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transformer.tpv1\\\"\", \"U"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=DynamicExp; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"DynamicExp\\\" not found.\", \"Unknown parameter \\\"expression\\\" (value \\\"it dt = 1 0.61059E-3 / ( -0.2301"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transformer.tpv1\\\"\", \"U"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transf"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"T"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Fault,IndMach012,Relay",
    "note": "Version8/Distrib/Examples/InductionMachine/Master.DSS: Rust engine errors after compile: [\"LoadShape.wind2400: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"New Command: Object Type \\\"Fault\\\" not found.\", \"New Command: Object Type \\\"IndMach012\\\" not found.\", \"New Comm"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Fault,IndMach012,Relay",
    "note": "Version8/Distrib/Examples/InductionMachine/Run.dss: Rust engine errors after compile: [\"LoadShape.wind2400: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"New Command: Object Type \\\"Fault\\\" not found.\", \"New Command: Object Type \\\"IndMach012\\\" not found.\", \"New Command"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\"%Pmpp\\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\"%Pmpp"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\"%P"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (value \\\"100\\\") for"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (value \\\"100\\\")"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (va"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (va"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (val"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\\" (v"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runit"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\\" "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\\" "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Run"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Ru"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runi"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Wiredata",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Run"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (value \\\"100\\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (value \\\"1"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (value \\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (v"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (v"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknow"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknow"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (va"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\"%"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown pa"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\"%"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown par"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" ("
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (value"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown paramete"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown paramete"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" (valu"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown para"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pm"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown param"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\\" ("
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmpp\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown par"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown pa"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown paramete"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown p"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%Pmp"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"TShape.temp\\\"\", \"Unknown parameter \\\"%"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown paramet"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parame"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown par"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unkn"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parame"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Un"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"U"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown pa"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unk"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"U"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown paramet"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown para"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\"%Pmp"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter \\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kVAlimitation-PV2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kVAlimitation-PV2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parame"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kvarlimitation-PV2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kvarlimitation-PV2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown param"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_pctPmpplimitation-PV2.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_pctPmpplimitation-PV2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown pa"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parameter"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=PVSystem",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"PVSystem\\\" not found.\", \"Unknown parameter \\\"P-TCurve\\\" (value \\\"FatorPvsT\\\") for object \\\"XYcurve.fatorpvst\\\"\", \"Unknown parame"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\") for object \\\"XYcur"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\") for object"
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Swtcontrol",
    "note": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"New Command: Object Type \\\"Swtcontrol\\\" not found.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/pst.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=isource",
    "note": "Version8/Distrib/Examples/Matlab/pst.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"LoadShape.pst: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"New Command: Object Type \\\"isource\\\" not found.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData; unsupported_command=var",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" "
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData; unsupported_command=var",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData; unsupported_command=var",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData; unsupported_command=var",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData; unsupported_command=var",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" "
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData; unsupported_command=var",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not f"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireDat"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Trans"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object "
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transf"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transformer"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Tran"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transforme"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transforme"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transforme"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transformer."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for object \\\"Transf"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for o"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for ob"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Export,Show",
    "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Comman"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Isource; unsupported_command=MakeBusList,Open,Plot",
    "note": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Isource\\\" not found.\", \"New Command: Object Type \\\"Isource\\\" not found.\", \"New Command: Object Type \\\"Isource\\\" not found.\", \"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=AddBusMarker",
    "note": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss: Rust engine errors after compile: [\"Command \\\"AddBusMarker\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"dispmode\\\" (value \\\"follow\\\") for object \\\"LoadShape.storageshape\\\""
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=AddBusMarker",
    "note": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss: Rust engine errors after compile: [\"Command \\\"AddBusMarker\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Relay",
    "note": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Relay\\\" not found.\", \"Unknown parameter \\\"kvbase\\\" (value \\\"0.277\\\") for object \\\"Transformer.pt3\\\"\", \"Unknown parameter \\\"Shots\\\" (value \\\"1\\\") for object \\\"Transformer.pt3\\\"\", \"Unknow"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Dump,Show",
    "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss: Rust engine errors after compile: [\"Command \\\"Dump\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=SetBusXY",
    "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" i"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=SetBusXY",
    "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBu"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=SetBusXY",
    "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=SetBusXY",
    "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"Wir"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=MakeBusList,Wait",
    "note": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"Wait\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"No unassigned Storage Elements found to assign to StorageControl"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Set option \\\"SeasonRating\\\" is not ported yet.\", \"Set option \\\"SeasonSignal\\\" is not po"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Set option \\\"SeasonRating\\\" is not ported yet.\", \"Set option \\\"SeasonSignal\\\" is not ported "
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"U"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not fou"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"U"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: O"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unk"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unkno"
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
    "note": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown par"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for ob"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for obje"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%stored\\\" (value \\\"50\\\") for object \\"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for "
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Storage",
    "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhr"
   },
   {
    "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"LoadShape.load1: LoadShape has no data to be normalized. Check for previous errors."
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineSpacing,WireData",
    "note": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New C"
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWDyn.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=vccs",
    "note": "Version8/Distrib/Examples/VCCS/HWDyn.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"vccs\\\" not found.\", \"Unknown parameter \\\"bp1\\\" (value \\\"bp1_micro\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown parameter \\\"bp2\\\" (value \\\"bp2_micro\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown pa"
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWPLL.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=vccs",
    "note": "Version8/Distrib/Examples/VCCS/HWPLL.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"vccs\\\" not found.\", \"Unknown parameter \\\"filter\\\" (value \\\"z_pll\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown parameter \\\"fsample\\\" (value \\\"10000\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown paramet"
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWPLL3.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=vccs",
    "note": "Version8/Distrib/Examples/VCCS/HWPLL3.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"vccs\\\" not found.\", \"Unknown parameter \\\"filter\\\" (value \\\"z_pll\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown parameter \\\"fsample\\\" (value \\\"10000\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown parame"
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWtest.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=VCCS",
    "note": "Version8/Distrib/Examples/VCCS/HWtest.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"VCCS\\\" not found.\", \"Unknown parameter \\\"Ppct\\\" (value \\\"100\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown parameter \\\"bp1\\\" (value \\\"bp1_1phase\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown param"
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsc0test.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=VSConverter",
    "note": "Version8/Distrib/Examples/VSConverter/vsc0test.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"VSConverter\\\" not found.\", \"Unknown parameter \\\"Rac\\\" (value \\\"0.02\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Xac\\\" (value \\\"0.05\\\") for object \\\"Vsource.source\\\"\", \"Unkno"
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsc1test.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=VSConverter",
    "note": "Version8/Distrib/Examples/VSConverter/vsc1test.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"VSConverter\\\" not found.\", \"Unknown parameter \\\"Rac\\\" (value \\\"0.02\\\") for object \\\"Load.ac1\\\"\", \"Unknown parameter \\\"Xac\\\" (value \\\"0.0\\\") for object \\\"Load.ac1\\\"\", \"Unknown parameter "
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsctest.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=VSConverter",
    "note": "Version8/Distrib/Examples/VSConverter/vsctest.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"VSConverter\\\" not found.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/WampServer/testcommandline.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=var",
    "note": "Version8/Distrib/Examples/WampServer/testcommandline.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Invalid inline m"
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=swtcontrol",
    "note": "Version8/Distrib/Examples/civinlar model/civanlar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"swtcontrol\\\" not found.\", \"New Command: Object Type \\\"swtcontrol\\\" not found.\", \"New Command: Object Type \\\"swtcontrol\\\" not found.\", \"New Command: Object Type \\\"swtcontrol\\\" not fou"
   },
   {
@@ -1198,157 +1198,157 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Open",
    "note": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss: Rust engine errors after compile: [\"Command \\\"Open\\\" is not ported yet.\", \"Command \\\"Open\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_VoltageProfile.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_VoltageProfile.DSS: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Export,Plot,Show",
    "note": "Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Exp"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_IEEE123Bus.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Plot,Show",
    "note": "Version8/Distrib/IEEETestCases/123Bus/Run_IEEE123Bus.DSS: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"P"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=BatchEdit",
    "note": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Set option \\\"Overloadreport\\\" is not ported yet.\", \"Set option \\\"Voltexceptionreport\\\" is not porte"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=storage; unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"New C"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=linegeometry,wiredata",
    "note": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=linegeometry,wiredata",
    "note": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not "
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=linegeometry,wiredata",
    "note": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found.\", \"Unknown parameter \\\"cond\\\" (value \\\"1\\\")"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=linegeometry,wiredata",
    "note": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=linegeometry,wiredata",
    "note": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineGeometry,Wiredata",
    "note": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"LineGeometry\\\" not foun"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_Voltage_Profile.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_Voltage_Profile.DSS: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Export,Show",
    "note": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", "
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Export,Show",
    "note": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported y"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=LineSpacing,WireData",
    "note": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not f"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=SetkVBase",
    "note": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not "
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeri"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNData,LineSpacing,WireData",
    "note": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireD"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Close",
    "note": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss: Rust engine errors after compile: [\"Command \\\"Close\\\" is not ported yet.\", \"Command \\\"Close\\\" is not ported yet.\", \"Command \\\"Close\\\" is not ported yet.\", \"Command \\\"Close\\\" is not ported yet.\", \"Command \\\"Close\\\" is not ported yet.\""
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=CNData,LineSpacing,WireData",
    "note": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Objec"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LineCodes/IEEELineGeometry.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=WireData",
    "note": "Version8/Distrib/IEEETestCases/LineCodes/IEEELineGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not fou"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Linegeometry,Wiredata",
    "note": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\","
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_class=Linegeometry,Wiredata",
    "note": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \""
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"sngfile=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"dblfile=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"dblfile=\\\") are not support"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
-   "tag": "unsupported_unknown",
+   "tag": "unsupported_command=Show",
    "note": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Show\\\" is not ported yet.\"]"
   }
  ]

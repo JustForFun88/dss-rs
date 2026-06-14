@@ -4,2902 +4,2902 @@
   {
    "path": "Test/guids.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Test/guids_x.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Test/ieee13_asset_guids.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Test/ieee13_elec_guids.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Test/indmachtest/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Test/indmachtest/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/m1/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/m1/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/m1/Generators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/m1/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/Monitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/Reactor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/RegControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/indmachtest/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Test/indmachtest/Master.DSS"
   },
   {
    "path": "Test/LineConstantsCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Allocated_Loads_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/AnnualSimulation.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/buscoords_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/capacitors_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Linecodes_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Linegeometry_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/lines_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Monitors_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Other_Load_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/sec_serv_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/stepxfmrs_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/substation_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/transformers_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/TriplexLineCodes_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Wiredata_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss, Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Buscoords_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Capacitors_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Generators_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/LineCodes_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/LineGeometry_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Lines_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Loads_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Loadshapes_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Monitors_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Regulators_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Transformers_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/WireData_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/XFR_Loads_ckt5.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/AllocationFactors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/BusCoords_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Capacitors_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/LineCodes_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/LineGeometry_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Lines_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Load_XFMR_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Loads_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Loadshapes_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Monitors_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Services_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Transformers_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Buscoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/ExistingPV.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/LineCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/LoadShapes_mod.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/LoadsInd.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/monitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Regulators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Services.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss, Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Buscoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/LineCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/loadshapes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/services.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Substation.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/triplexlinecodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/vbases.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/xfmrs.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/2nd_ckt.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Buscoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/LineCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/LineGeom.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Loads_Only.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/loadshapes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Sub_Xfmr.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Switches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Xfmr_Only.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Allocated_Loads_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/AnnualSimulation.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/buscoords_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/capacitors_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Linecodes_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Linegeometry_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/lines_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Monitors_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Other_Load_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/sec_serv_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/stepxfmrs_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/substation_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Capacitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/GISCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Monitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/RegControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/transformers_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/TriplexLineCodes_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Wiredata_ckt24.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Reactor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/sub/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/sub/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/sub/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/sub/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Capacitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/CapControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/GISCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Monitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Reactor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/AllocationFactors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/BusCoords_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Capacitors_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/LineCodes_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/LineGeometry_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Lines_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Load_XFMR_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Loads_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Loadshapes_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Monitors_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Services_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Substation_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/GISCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Monitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Transformers_ckt7.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/feeder/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/feeder/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/feeder/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/feeder/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/RegControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/GISCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/RegControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Voltage_Bases_DSS.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEELineCodes.DSS",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/GISCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/RegControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Capacitors.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Reactor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/sub/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/sub/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/sub/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/sub/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Generators.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Lines.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Loads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Capacitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Generator.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/GISCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Monitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/Branches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss, Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/WireData.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Transformers.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEELineCodes.DSS",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Loadshapes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Meters.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/PVSystem.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Regulators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Storage.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/Switches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/ExamplesMaster.dss",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/Examples/DOCTechNote/1_1.dss, Version8/Distrib/Examples/DOCTechNote/1_2.dss, Version8/Distrib/Examples/DOCTechNote/2_1.dss, Version8/Distrib/Examples/DOCTechNote/2_2.dss"
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/SolveAndExportMonitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ExpControl/Master.dss, Version8/Distrib/Examples/ExpControl/Master.dss, Version8/Distrib/Examples/ExpControl/Master.dss, Version8/Distrib/Examples/ExpControl/Master.dss (+1 more)"
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/SystemPCC.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/ExpControl/Master.dss, Version8/Distrib/Examples/ExpControl/Master.dss, Version8/Distrib/Examples/ExpControl/Master.dss, Version8/Distrib/Examples/ExpControl/Master.dss (+1 more)"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/Default_Profile.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/Default_Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/Default_Profile.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/Default_Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Capacitor.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Fault.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Fuse.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/GrowthShape.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/IndMach012.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/line.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/LineCode.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Load.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/LoadShape.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Monitor.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Recloser.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/RegControl.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Relay.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Spectrum.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/TCC_Curve.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Transformer.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/InductionMachine/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape1.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape2.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape3.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape4.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape5.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape5_Actual.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/PVLoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Manual/Example1.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Manual/Example2.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/Default_Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-mm-csv-p.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-mm-csv-pq.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-mm-dbl-p.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-mm-sng-p.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-mm-txt-p.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-mm-txt-pq.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/LS_PhaseA-nomm.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Buscoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/CapControls.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/CloudTransient.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Feeder_Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Fuses.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Generators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/LineCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/LineCodes2.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/LineGeometry.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Lines-Geometry.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/LoadShapes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/LoadXfmrCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/LoadXfmrs.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Regulators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/TplxFaultrate.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Triplex_Linecodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Triplex_Lines.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss, Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/UnbalancedLoads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Voltage_Bases_DSS.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/WireData.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Capacitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Isource.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/RegControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Voltage_Bases_DSS.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Microgrid/ISource/Master.DSS"
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Capacitors.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Generators.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Lines2.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Loads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Transformers.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/command_monitor_pv.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/command_monitor_storage.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/command_monitor_sub.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/command_monitor_wind.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/linecodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/loadshape.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/monitor_pv.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/monitor_storage.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/monitor_sub.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/monitor_wind.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/pvsystemexample.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/regulators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/solve_daily.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/solve_old.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/solve_snapshot.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/storage_power.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/switches.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/tensao_base.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/transformer.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/transformer_sub.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/volt_var_pv.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/wind_control.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/wind_power.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/1-Phase Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/4wireDelta.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/AnnualSimulation.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Leaf_Spectrum.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/OneWeekScript.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/PiecewiseAnnualScript.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/PlottingScripts.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/ReconductorExample.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/ZigZagTransformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/ZigZagTransformerWithVar.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Add_Issues.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Add_Storage.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/BusCoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/BusVoltageBases.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Capacitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/CapControl.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/EnergyMeter.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/GrowthShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Line.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/LineCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Load.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/LoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Monitor.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Spectrum.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/TCC_Curve.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Transformer.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/Vsource.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Add_storage_1target.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Add_storage_2targets.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/LoadShape1.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Seasons.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/CircuitPlottingScripts.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Loads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss, Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Regulators.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss, Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEELineCodes.DSS",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss, Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/PVShape.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SetDailyLoadShape.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/13Bus/IEEELineCodes.DSS",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss, Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/ieee34Mod1.dss",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss, Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/ieee34Mod2.dss",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss, Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/37Bus/IEEELineCodes.DSS",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/IEEETestCases/37Bus/ieee37.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-UnBal/4bus-OYOD-UnBal.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Buscoords.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Capacitors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/CapControls.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/CloudTransient.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Feeder_Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Fuses.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Generators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/LineCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/LineCodes2.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/LineGeometry.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Lines-Geometry.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/LoadXfmrCodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/LoadXfmrs.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Regulators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/TplxFaultrate.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Triplex_Linecodes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Triplex_Lines.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss, Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/UnbalancedLoads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/WireData.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Capacitors.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Generators.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Lines.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Loads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Transformers.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/confirm_kv_bases.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/generators.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/generators_as_vsrcs.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/lines.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/loads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/shunts.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/transformers.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_busxy.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_uuid.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEELineCodes.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/123Bus/IEEELineCodes.DSS, Version8/Distrib/IEEETestCases/13Bus/IEEELineCodes.DSS, Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS, Version8/Distrib/IEEETestCases/37Bus/IEEELineCodes.DSS (+1 more)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/energy_meters.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/DOCTechNote/ExamplesMaster.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/network_protectors.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/Examples/DOCTechNote/ExamplesMaster.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Capacitors.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Grounds.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/LineCodes.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/LineConstantsCode.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/LineGeometry.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Lines.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Loads.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Spectra.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Substation.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/BusCoords.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "not referenced by any master (orphan fragment / data include)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/LineCodes.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/LinesTrafosLoads.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Loadshapes.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Loadshapes_VarySubV.dss",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Substation.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Regulators.DSS",
    "tag": "include_fragment",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "included by: Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEELineCodes.DSS",
    "tag": "include_assembler",
-   "note": "auto-seeded; redirected/compiled by a master or a pure fragment"
+   "note": "redirects/compiles other files; included by: Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss, Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss"
   }
  ]
 }

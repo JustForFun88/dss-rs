@@ -1,19 +1,24 @@
 """Apply a classify report to the corpus manifests (CORPUS_TEST_PLAN.md §2/§6).
 
 Reads `tmp/classify_report.json` (written by the `corpus_live_classify` Rust test)
-and moves entries out of `skipped_needs_investigation` accordingly, preserving the
-bijection (every path stays in exactly one manifest):
+and moves entries out of `skipped_needs_investigation`, preserving the bijection
+(every path stays in exactly one manifest). Each moved entry records the **exact**
+reason, both as a machine-readable `tag` parsed from the engine/oracle error and
+as the full error text in `note`:
 
   - `solvable`                          -> `solvable_now` (kind=feeder, n_steps=1);
-  - failure, missing input data file    -> `missing_dependency`;
-  - failure, Rust engine error          -> `skipped_unsupported`;
-  - failure, other oracle error         -> `skipped_oracle_issue`;
-  - failure, timeout / live mismatch / non-convergence
+  - missing input data / redirect file  -> `missing_dependency`
+                                           (tag `missing_data_file=<name>`);
+  - Rust engine error                   -> `skipped_unsupported`
+                                           (tag `unsupported_class=..` /
+                                            `unsupported_command=..` / `..feature=..`);
+  - other oracle error                  -> `skipped_oracle_issue`
+                                           (tag `oracle_error_#<code>`);
+  - timeout / live mismatch / non-convergence
                                         -> stays in `skipped_needs_investigation`
-                                           (note updated to the observed symptom).
+                                           (note = observed symptom).
 
-Existing entries in the destination manifests are preserved; new ones are merged
-and de-duplicated by path. Review the diff before committing.
+Existing destination entries are preserved; new ones merge/de-dup by path.
 
     python tools/corpus/apply_classify.py            # dry run (prints summary)
     python tools/corpus/apply_classify.py --write      # rewrite the manifests
@@ -22,12 +27,24 @@ and de-duplicated by path. Review the diff before committing.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MANIFESTS = REPO_ROOT / "tests" / "corpus" / "manifests"
 REPORT = REPO_ROOT / "tmp" / "classify_report.json"
+
+# Reasons come from the Rust panic message (engine error list) or the oracle
+# DSSException text; pull the specific unsupported item / file / error code out.
+RE_CMD = re.compile(r'Command\s*\\?"([^"\\]+)\\?"\s*is not ported', re.I)
+RE_CLASS = re.compile(r'Object Type\s*\\?"([^"\\]+)\\?"\s*not found', re.I)
+RE_FEATURE = re.compile(r'\\?"([^"\\]+)\\?"\s*is not ported yet', re.I)
+# Capture the rest of the clause; missing_tag() trims the escape markers and
+# basenames it (the reason is Rust-Debug-escaped, so quotes are \" and path
+# separators are \\, and the path may be truncated by the report's reason cap).
+RE_FILE = re.compile(r"(?:opening file|file not found)\s*:?\s*(\S.*)", re.I)
+RE_CODE = re.compile(r"\(#(\d+)\)")
 
 
 def load(name: str) -> dict:
@@ -46,13 +63,54 @@ def categorize(reason: str) -> str:
     r = reason.lower()
     if "timeout" in r:
         return "investigate"  # long simulation; revisit (reduced steps / own harness)
-    if "error opening file" in r or "cannot open" in r:
+    if "error opening file" in r or "redirect file" in r or "(#243)" in r or "(#613)" in r:
         return "missing_dependency"
     if "rust engine errors" in r:
         return "unsupported"
     if "oracle case" in r and "failed" in r:
         return "oracle_issue"
     return "investigate"  # live mismatch / non-convergence / other
+
+
+def unsupported_tag(reason: str) -> str:
+    classes = sorted(set(RE_CLASS.findall(reason)))
+    cmds = sorted(set(RE_CMD.findall(reason)))
+    parts = []
+    if classes:
+        parts.append("unsupported_class=" + ",".join(classes))
+    if cmds:
+        parts.append("unsupported_command=" + ",".join(cmds))
+    if not parts:
+        if "file-backed numeric arrays" in reason:
+            parts.append("unsupported_feature=file-backed-arrays")
+        else:
+            feats = sorted(set(RE_FEATURE.findall(reason)))
+            if feats:
+                parts.append("unsupported_feature=" + ",".join(feats))
+    return "; ".join(parts) if parts else "unsupported_unknown"
+
+
+def missing_tag(reason: str) -> str:
+    # The reason is Rust-Debug-escaped (\" for quotes, \\ for path separators,
+    # \r\n literal), so extract the rest of the "opening file:"/"file not found:"
+    # clause, trim at the escape markers, then basename it.
+    m = RE_FILE.search(reason)
+    if not m:
+        return "missing_data_file"
+    s = m.group(1)
+    for cut in ("\\r", "\\n", "[file:"):
+        i = s.find(cut)
+        if i != -1:
+            s = s[:i]
+    s = s.replace('\\"', "").replace('"', "").strip()
+    s = s.replace("\\\\", "/").replace("\\", "/").rstrip("/")
+    name = s.split("/")[-1].strip()
+    return f"missing_data_file={name}" if name else "missing_data_file"
+
+
+def oracle_tag(reason: str) -> str:
+    m = RE_CODE.search(reason)
+    return f"oracle_error_#{m.group(1)}" if m else "oracle_error"
 
 
 def main() -> None:
@@ -83,22 +141,17 @@ def main() -> None:
         if path not in failures:
             new_needs.append(case)  # not in report (stale) — keep as-is
             continue
-        note = failures[path][:300]
-        cat = categorize(failures[path])
+        reason = failures[path]
+        note = reason[:300]
+        cat = categorize(reason)
         if cat == "missing_dependency":
-            bp["missing_dependency"].setdefault(
-                path, {"path": path, "tag": "missing_data_file", "note": note}
-            )
+            bp["missing_dependency"].setdefault(path, {"path": path, "tag": missing_tag(reason), "note": note})
             counts["missing_dependency"] += 1
         elif cat == "unsupported":
-            bp["skipped_unsupported"].setdefault(
-                path, {"path": path, "tag": "unsupported_unknown", "note": note}
-            )
+            bp["skipped_unsupported"].setdefault(path, {"path": path, "tag": unsupported_tag(reason), "note": note})
             counts["unsupported"] += 1
         elif cat == "oracle_issue":
-            bp["skipped_oracle_issue"].setdefault(
-                path, {"path": path, "tag": "oracle_error", "note": note}
-            )
+            bp["skipped_oracle_issue"].setdefault(path, {"path": path, "tag": oracle_tag(reason), "note": note})
             counts["oracle_issue"] += 1
         else:
             case = dict(case)
