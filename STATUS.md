@@ -135,15 +135,25 @@ depend on the temporary `.inputs/electricdss-tst`.
   `not_an_entry_point`). `corpus_manifest.rs` enforces the bijection — no silent
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
-- **Live comparison (opt-in, `DSS_LIVE_ORACLE=1`).** For each `solvable_now`
-  case the gate compiles+solves on the Rust engine and on the pinned dss-python
-  oracle (`tools/oracle/oracle_server.py`, a one-shot subprocess over JSON), and
-  compares the full assembled model per step — node order, **full** system Y,
-  node voltages, **every** element's currents/powers, selected YPrim blocks, the
+- **Live comparison (`DSS_LIVE_ORACLE=1`; runs in the `live-oracle` CI job).**
+  For each `solvable_now` case the gate compiles+solves on the Rust engine and on
+  the pinned dss-python oracle (`tools/oracle/oracle_server.py`, a one-shot
+  subprocess over JSON), and compares the full assembled model per step — node
+  order, **full** system Y (entry-by-entry, no fingerprint substitution), node
+  voltages, **every** element's currents/powers, selected YPrim blocks, the
   injection vector, and discrete state — reusing the `harness/mod.rs` comparators
-  and the checkpoint gate's tolerance policy. It **auto-skips (passes)** without
-  the env var / oracle, so the mandated gate stays green everywhere. No goldens
-  are written; the oracle is consulted live.
+  and the checkpoint gate's tolerance policy. The `IEEE13Nodeckt.dss` case is a
+  **24-step daily run with a meter + three monitors (modes 0/1/2) + selected
+  elements**, so the gate also exercises the **multi-step per-step**, **YPrim**,
+  **monitor-channel** and **EnergyMeter-register/zone** paths live
+  (`compare_monitor`/`compare_meter`, gated per case by `check_meters_monitors`;
+  incidental master-defined monitors are *not* compared — the pinned oracle
+  returns a phantom `Channel(i)` for an unsampled monitor, see
+  `tests/TOLERANCE_NOTES.md`). The two tests **auto-skip (pass)** without the env
+  var / oracle, so `cargo test --workspace` stays green everywhere; the
+  **`live-oracle` GitHub Actions job** installs the pinned oracle (PIN.txt) and
+  runs them, so the gate is no longer decorative. No goldens are written; the
+  oracle is consulted live.
 - **Growth.** `DSS_LIVE_CLASSIFY=1 corpus_live_classify` probes the
   `skipped_needs_investigation` candidates with the full comparison and writes
   `tmp/classify_report.json`; `tools/corpus/apply_classify.py` promotes the
@@ -1317,8 +1327,10 @@ generated with the pinned oracle (python 3.12.4 / dss-python 0.15.7 / backend
   regulated transformer taps (1e-12 rel) — the controls-at-scale regression;
   all **67 EnergyMeter registers at 1e-4 rel** (names exact) after the daily
   integration (zone kWh, line/xfmr loss split, seq + voltage-base buckets,
-  EEN/UE). The golden stores only the 12 *moved* transformer taps (the 1178
-  fixed load xfmrs stay at 1.0). `Interpolate` + all Show/Export/Plot dropped
+  EEN/UE). The golden stores only the 12 *moved* transformer taps; the gate
+  **also asserts every other transformer reads 1.0** (the ~1178 fixed load xfmrs
+  + substation), so a spurious tap on an *uncontrolled* transformer is caught,
+  not just the regulated set. `Interpolate` + all Show/Export/Plot dropped
   (file/UI, Phase 8). **Solve time: 0.19 s release** (full compile + snap +
   24-step daily + assertions; oracle daily-solve ≈ 0.12 s) — well within the 5×
   budget; 4.1 s debug, so kept un-`#[ignore]`d.
@@ -1329,18 +1341,20 @@ generated with the pinned oracle (python 3.12.4 / dss-python 0.15.7 / backend
   - `monitor_daily_ieee13`: IEEE13 (controls active) + daily shape + monitors on
     `line.650632` (modes 0/1/5) and `transformer.reg1` (mode 2); 24 daily steps.
     Per-monitor header (data channels, vs our full-Pascal `header[2..]`) +
-    `SampleCount` exact; channel sample arrays elementwise at 2e-4 rel / 1e-3 abs
-    (the phase5 daily ±1-iteration / convergence-tolerance path-dependence).
-    Mode-5 channels skipped: 10/11 (wall-clock µs) + 0/1 (TotalIterations /
-    ControlIteration — path-dependent ±1). **Plan deviation (empirical):** the
-    plan named `line.671680`, but bus 680 is a dead-end stub (charging current
-    only → noise-dominated angle); switched to the feeder head `line.650632`.
+    `SampleCount` exact; channel sample arrays elementwise at **1e-6 rel / 1e-4
+    abs** (PHASE6_PLAN §1.2 — the daily fixed-point path tracks the oracle to
+    ~1e-9 since the `build_y_matrix` load-Yeq restamp, commit `a6903f1`). Only the
+    **mode-5 wall-clock channels 10/11** (`SolveSnap_uSecs`/`TimeStep_uSecs`) are
+    skipped; the iteration-count channels 0/1 now match exactly. **Plan deviation
+    (empirical):** the plan named `line.671680`, but bus 680 is a dead-end stub
+    (charging current only → noise-dominated angle); switched to the feeder head
+    `line.650632`.
   - `meter_daily_ieee13`: IEEE13 + daily shape + `energymeter.m1` on
-    `line.650632`; 24 steps. Registers 1e-3 rel (the overload/EEN/UE
-    threshold-crossing energies integrate the same daily path-dependence to
-    ~6e-4 rel — the 8500 gate, whose metered zone has no per-step tap hunting,
-    pins the same machinery at 1e-4); names exact; zone branch/end/PCE counts
-    exact (13/6/N).
+    `line.650632`; 24 steps. Registers **1e-4 rel** (PORTING_PLAN §4 energy
+    policy); the overload/EEN/UE threshold-crossing energies are **nonzero and
+    pinned** (Overload kWh Normal ≈12642, Load EEN ≈18207, Load UE ≈936) — they
+    match at 1e-4 since the Yeq restamp; names exact; zone branch/end/PCE counts
+    exact (13/6/17).
   - `generator_snap`: IEEE13 + two generators (model 1 PQ wye @675 + model 3 PV
     delta @634); snapshot. Iterations exact (**15**), node order exact, voltages
     1e-6 rel, each generator's terminal powers 1e-6 rel (via `snapshot_elements`).
@@ -1367,6 +1381,43 @@ the golden gates incl. `golden_ieee8500` 4.3 s debug / 0.19 s release;
 5). **Phase 6 is complete; next is Phase 7** — write `PHASE7_PLAN.md` first
 (DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7).
+
+**WP6 testing audit follow-up — ✅ done, gate-green.** A self-audit of the WP6
+testing changes (the per-file golden split + the live corpus gate) found real
+holes; all fixed and verified:
+- **Silent-pass holes closed.** The per-file split (`fcda714`) made the
+  directory-reading gates pass vacuously on an empty dir. `golden_phase5.rs` now
+  pins the scenario count (`assert_eq! == 4`) — previously *no* count/non-empty
+  guard, so an emptied `tests/golden/phase5/` would have passed with zero
+  assertions; `golden_checkpoints.rs` now pins `== 3` (was only non-empty).
+  `golden_phase6.rs` already pinned `== 4`.
+- **8500 fixed-tap coverage.** `golden_ieee8500.rs` now asserts every transformer
+  *not* in the golden's moved set reads 1.0 (the ~1178 fixed load xfmrs +
+  substation), catching a spurious tap on an *uncontrolled* transformer — the
+  moved-only golden previously checked only the 12 regulated ones.
+- **Live gate now exercises meters/monitors/multi-step/YPrim.** Previously every
+  `solvable_now` case was a 1-step snapshot with no `selected_elements` and no
+  meter/monitor, so `corpus_live.rs` never ran the multi-step, YPrim,
+  `compare_monitor`/`compare_meter` paths. The `IEEE13Nodeckt.dss` case is now a
+  24-step daily run with `energymeter.m1` + 3 deterministic-mode monitors +
+  `selected_elements`; new `harness::{compare_monitor,compare_meter}` (reusing
+  `Dss::monitor_view`/`meter_registers`/`meter_zone`) are gated per case by a new
+  `check_meters_monitors` manifest flag. Verified live: **16/16 solvable cases
+  match the oracle** (`DSS_LIVE_ORACLE=1`).
+- **Live gate is no longer CI-decorative.** Added the **`live-oracle`** GitHub
+  Actions job (`.github/workflows/ci.yml`) that installs the pinned oracle and
+  runs `DSS_LIVE_ORACLE=1 corpus_live` — the plan's "dedicated pinned-oracle CI
+  job", previously unimplemented (the live gate ran in *no* automated gate).
+- **Classify panic-hook hazard removed.** `corpus_live_classify` no longer
+  overrides the global panic hook (which would swallow a sibling test's panic
+  message); it relies on the `catch_unwind` payload it already captures.
+- **Oracle quirk documented (not hidden).** The new comparator surfaced that the
+  pinned dss-python returns a phantom `Monitors.Channel(i)` element for an
+  *unsampled* monitor (`SampleCount==0`, `len(Channel)==1`; EPRI J1 `subVI`);
+  Rust is self-consistent. Hence the opt-in scoping above + a `TOLERANCE_NOTES.md`
+  entry. (STATUS §1d tolerances re-synced: the monitor channels are **1e-6/1e-4**
+  and registers **1e-4** — the earlier "2e-4 / 1e-3" text predated the `a6903f1`
+  Yeq restamp and was stale.)
 
 ---
 
