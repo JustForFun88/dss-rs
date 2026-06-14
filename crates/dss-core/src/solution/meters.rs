@@ -153,7 +153,8 @@ fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
 /// Whether the element at `r` is one of the zone-eligible shunt PC element
 /// types (Pascal `PCElementType in {LOAD,GEN,PVSYSTEM,STORAGE,CAP,REACTOR}`).
 /// Shunt capacitors/reactors reach the PC adjacency list via `is_shunt()`.
-// TODO(WP6.8): add PVSystem/Storage here when those PC classes land.
+// TODO(WP7): add PVSystem/Storage to this allow-list when those PC classes land
+// in Phase 7 (the Pascal set already includes them; they have no objects yet).
 fn is_zone_pce(store: &dyn ElemStore, r: ElemRef) -> bool {
     let any = store.obj(r).as_any();
     any.downcast_ref::<Load>().is_some()
