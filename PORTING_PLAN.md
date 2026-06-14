@@ -64,7 +64,8 @@ One big `dss-core` (not crate-per-Pascal-dir): the Pascal units are mutually rec
 dss-core/src/
   lib.rs        # pub struct Dss (= TDSSContext), public API
   support/      # src/Shared: cmatrix.rs (TCMatrix), mathutil.rs (sym components),
-                #   hashlist.rs, line_units.rs, dynamics.rs, ckt_tree.rs, pstcalc.rs
+                #   hashlist.rs, line_units.rs, dynamics.rs, ckt_tree.rs, pstcalc.rs,
+                #   line_constants/ (Carson engine: oh, cn, ts, cable)
   obj/          # DSSObject/DSSClass/DSSObjectHelper replacement:
                 #   base.rs (DssObjData, CktElementData, PdElementData, PcElementData)
                 #   props.rs (PropDef, PropType, PropFlags, generic value parsing)
@@ -78,8 +79,8 @@ dss-core/src/
     control/    # regcontrol.rs, capcontrol.rs, relay.rs, invcontrol.rs...
     meter/      # energymeter.rs, monitor.rs, sensor.rs, reduce.rs
     general/    # loadshape.rs, linecode.rs, line_geometry.rs, wiredata.rs,
-                #   line_constants/ (oh, cn, ts, cable), xfmrcode.rs, xycurve.rs,
-                #   spectrum.rs, tcc_curve.rs, growth_shape.rs...
+                #   xfmrcode.rs, xycurve.rs, spectrum.rs, tcc_curve.rs,
+                #   growth_shape.rs...
   exec/         # Executive.pas, ExecCommands.pas, ExecHelper.pas, ExecOptions.pas
   report/       # ShowResults.pas, ExportResults.pas, Show/ExportOptions, save.rs
   cim/          # ExportCIMXML.pas (Phase 9)
