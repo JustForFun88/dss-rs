@@ -79,6 +79,33 @@ fn build_ts() -> LineConstants {
     lc
 }
 
+/// Build a 4-conductor CN cable (3 phases + a 4th bare-neutral core at x = 0.3),
+/// mirroring `cn_reduce()` in the WP7.1 probe. The caller sets nphases = 3 so the
+/// CN self-Z/capacitance loops run over phases only and the 4th core acts as a
+/// bare neutral that gets Kron-reduced out.
+fn build_cn4() -> LineConstants {
+    let mut lc = LineConstants::new_cn(4);
+    let coords = [(0.0, -1.2), (0.1, -1.2), (0.2, -1.2), (0.3, -1.2)];
+    for (i, &(x, h)) in coords.iter().enumerate() {
+        lc.set_x(i, M, x);
+        lc.set_y(i, M, h);
+        lc.set_radius(i, M, 0.005);
+        lc.set_capradius(i, M, 0.005);
+        lc.set_gmr(i, M, 0.004);
+        lc.set_rdc(i, M, 1.0e-4);
+        lc.set_rac(i, M, 1.05e-4);
+        lc.set_eps_r(i, 2.3);
+        lc.set_ins_layer(i, M, 0.004);
+        lc.set_dia_ins(i, M, 0.022);
+        lc.set_dia_cable(i, M, 0.030);
+        lc.set_k_strand(i, 16);
+        lc.set_dia_strand(i, M, 0.001);
+        lc.set_gmr_strand(i, M, 0.0004);
+        lc.set_r_strand(i, M, 2.0e-3);
+    }
+    lc
+}
+
 // Coaxial insulation capacitance is the same for CN and TS here (identical
 // EpsR/DiaIns/InsLayer); off-diagonals are exactly zero for shielded cables.
 const CABLE_C3_NF: [f64; 9] = [
@@ -309,6 +336,166 @@ fn ts_cable_deri_3cond() {
     ];
     check_z(&lc, &z_ref);
     check_c(&lc, &CABLE_C3_NF);
+}
+
+/// CN cable under the simple-Carson earth model (code 1) — the cable `Calc`
+/// reaches `get_zint`/`get_ze` with a different earth branch than DERI. Only the
+/// earth-return term changes; capacitance is earth-model independent.
+#[test]
+fn cn_cable_carson_3cond() {
+    let mut lc = build_cn();
+    lc.calc(60.0, SIMPLE_CARSON);
+    let z_ref = [
+        (1.995928701217e-04, 1.402304548966e-04),
+        (2.071020560082e-05, -1.735033610268e-05),
+        (7.694803927944e-06, -1.450227660167e-05),
+        (2.071020560082e-05, -1.735033610268e-05),
+        (1.882666874078e-04, 1.418959689162e-04),
+        (2.071020560082e-05, -1.735033610268e-05),
+        (7.694803927944e-06, -1.450227660167e-05),
+        (2.071020560082e-05, -1.735033610268e-05),
+        (1.995928701217e-04, 1.402304548966e-04),
+    ];
+    check_z(&lc, &z_ref);
+    check_c(&lc, &CABLE_C3_NF);
+}
+
+/// CN cable under the full-Carson earth model (code 2).
+#[test]
+fn cn_cable_fullcarson_3cond() {
+    let mut lc = build_cn();
+    lc.calc(60.0, FULL_CARSON);
+    let z_ref = [
+        (1.995938779693e-04, 1.402299934127e-04),
+        (2.071092731833e-05, -1.735087539082e-05),
+        (7.695813121396e-06, -1.450273589516e-05),
+        (2.071092731833e-05, -1.735087539082e-05),
+        (1.882671677572e-04, 1.418954163443e-04),
+        (2.071092731833e-05, -1.735087539082e-05),
+        (7.695813121396e-06, -1.450273589516e-05),
+        (2.071092731833e-05, -1.735087539082e-05),
+        (1.995938779693e-04, 1.402299934127e-04),
+    ];
+    check_z(&lc, &z_ref);
+    check_c(&lc, &CABLE_C3_NF);
+}
+
+/// TS cable under the simple-Carson earth model (code 1).
+#[test]
+fn ts_cable_carson_3cond() {
+    let mut lc = build_ts();
+    lc.calc(60.0, SIMPLE_CARSON);
+    let z_ref = [
+        (4.689993879058e-04, 4.983332077809e-04),
+        (3.559473809878e-04, 2.469610035063e-04),
+        (3.412589418393e-04, 2.058699387985e-04),
+        (3.559473809878e-04, 2.469610035063e-04),
+        (4.797454922198e-04, 4.783691723432e-04),
+        (3.559473809878e-04, 2.469610035063e-04),
+        (3.412589418393e-04, 2.058699387985e-04),
+        (3.559473809878e-04, 2.469610035063e-04),
+        (4.689993879058e-04, 4.983332077809e-04),
+    ];
+    check_z(&lc, &z_ref);
+    check_c(&lc, &CABLE_C3_NF);
+}
+
+/// TS cable under the full-Carson earth model (code 2).
+#[test]
+fn ts_cable_fullcarson_3cond() {
+    let mut lc = build_ts();
+    lc.calc(60.0, FULL_CARSON);
+    let z_ref = [
+        (4.690930328382e-04, 4.984054507193e-04),
+        (3.560427762456e-04, 2.470305399146e-04),
+        (3.413525782443e-04, 2.059421850446e-04),
+        (3.560427762456e-04, 2.470305399146e-04),
+        (4.798425644940e-04, 4.784359589267e-04),
+        (3.560427762456e-04, 2.470305399146e-04),
+        (3.413525782443e-04, 2.059421850446e-04),
+        (3.560427762456e-04, 2.470305399146e-04),
+        (4.690930328382e-04, 4.984054507193e-04),
+    ];
+    check_z(&lc, &z_ref);
+    check_c(&lc, &CABLE_C3_NF);
+}
+
+/// Above the power-frequency band (f ≥ 1 kHz) the cable `Calc` uses the actual
+/// radius for the core self spacing and keeps the conductor internal reactance
+/// (`Zi.im`) — the branch the 60 Hz cable tests never exercise. Asserts Z for
+/// both CN and TS at 5 kHz. Capacitance is omitted: the oracle's `Cmatrix`
+/// getter scales reported nF by the solve frequency (it has no real f branch).
+#[test]
+fn cable_high_freq_radius_branch() {
+    let mut cn = build_cn();
+    cn.calc(5000.0, DERI);
+    let cn_ref = [
+        (5.437160837897e-04, 7.401681588699e-03),
+        (2.261818700187e-06, 2.490864286186e-06),
+        (9.535849721604e-07, 9.911880118441e-07),
+        (2.261818700187e-06, 2.490864286186e-06),
+        (5.426039985115e-04, 7.400452766219e-03),
+        (2.261818700187e-06, 2.490864286188e-06),
+        (9.535849721604e-07, 9.911880118441e-07),
+        (2.261818700187e-06, 2.490864286188e-06),
+        (5.437160837897e-04, 7.401681588699e-03),
+    ];
+    check_z(&cn, &cn_ref);
+
+    let mut ts = build_ts();
+    ts.calc(5000.0, DERI);
+    let ts_ref = [
+        (2.311149680199e-03, 6.266344148098e-03),
+        (1.602361294848e-05, -9.423065093916e-05),
+        (1.329151923265e-06, -4.171522833319e-05),
+        (1.602361294848e-05, -9.423065093916e-05),
+        (2.299070719031e-03, 6.309726214916e-03),
+        (1.602361294848e-05, -9.423065093916e-05),
+        (1.329151923265e-06, -4.171522833319e-05),
+        (1.602361294848e-05, -9.423065093916e-05),
+        (2.311149680199e-03, 6.266344148098e-03),
+    ];
+    check_z(&ts, &ts_ref);
+}
+
+/// CN cable, 4 conductors (3 phases + a bare-neutral core) Kron-reduced to 3 —
+/// exercises the cable reduced-Z/Yc path (`fz_reduced`/`fyc_reduced`) and the
+/// `reduced_size > 0` re-reduce branch in `calc_cn`. The asymmetric diagonal is
+/// expected: the neutral at x = 0.3 sits closer to phase 3 than to phase 1.
+#[test]
+fn cn_cable_reduce_4cond_to_3() {
+    let mut lc = build_cn4();
+    lc.set_nphases(3);
+    lc.calc(60.0, DERI);
+    lc.reduce();
+
+    let z = lc.z_matrix(60.0, 1.0, M, DERI);
+    let yc = lc.yc_matrix(1.0, M);
+    let w = lc.omega();
+
+    let z_ref = [
+        (1.958129515493e-04, 1.416226769335e-04),
+        (2.075131382841e-05, -1.559146688412e-05),
+        (5.884840587231e-06, -1.118926130678e-05),
+        (2.075131382841e-05, -1.559146688412e-05),
+        (1.844743739553e-04, 1.441159324270e-04),
+        (1.840280999639e-05, -1.318786861888e-05),
+        (5.884840587231e-06, -1.118926130678e-05),
+        (1.840280999639e-05, -1.318786861888e-05),
+        (1.870469567699e-04, 1.455055837909e-04),
+    ];
+    for i in 0..3 {
+        for j in 0..3 {
+            let (re, im) = z_ref[i * 3 + j];
+            assert_close(z.get(i, j).re, re, &format!("Zr[{i}][{j}].re"));
+            assert_close(z.get(i, j).im, im, &format!("Zr[{i}][{j}].im"));
+            assert_close(
+                yc.get(i, j).im / w,
+                CABLE_C3_NF[i * 3 + j] * 1e-9,
+                &format!("Cr[{i}][{j}]"),
+            );
+        }
+    }
 }
 
 /// Cable `ConductorsInSameSpace` uses `0.5*DiaCable` for neutral conductors and

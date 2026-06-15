@@ -1488,16 +1488,22 @@ Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small ste
   `TLineGeometryObj.UpdateLineGeometryData` sets the engine arrays from the wire
   objects (incl. the CN/TS cable fields), then `Calc(f, ActiveEarthModel)` + an
   optional `Reduce`; `capradius` defaults to `radius`.
-- **Gate:** 11 inline tests pinned against the dss-python oracle (PIN.txt 0.15.7 /
+- **Gate:** 17 inline tests pinned against the dss-python oracle (PIN.txt 0.15.7 /
   backend 0.14.5), probed (via `tools/golden/probe_line_constants_phase7.py`) by
   building the geometry through a `Line` and reading `Rmatrix`/`Xmatrix` (ohm/m) +
   `Cmatrix` (nF/m): 3-phase overhead under **all three earth models** + a 4→3 Kron
-  reduce; **3-phase CN cable and TS cable** (full Z + coaxial C); a
-  **non-power-frequency** overhead case (f = 5 kHz → the radius/`Zi.im`-retained
-  branch); a **rho_earth = 200** recalc (`set_rho_earth` + `z_matrix` `frho_changed`
-  path); a **unit/length conversion** (ohm·km over 2 km); overhead + cable
-  `ConductorsInSameSpace`. Entry-by-entry at 1e-8 rel. dss-core lib **319 → 330**.
-  Full three-command gate green.
+  reduce; **3-phase CN cable and TS cable** each under **all three earth models**
+  (full Z + coaxial C); **CN and TS cable** at a **non-power-frequency** (f = 5 kHz
+  → the radius/`Zi.im`-retained branch, Z only — the oracle `Cmatrix` getter scales
+  reported nF by the solve frequency); a **CN cable 4→3 Kron reduce** (3 phases + a
+  bare-neutral core, the cable reduced-Z/Yc + `reduced_size>0` re-reduce path); a
+  **non-power-frequency** overhead case; a **rho_earth = 200** recalc
+  (`set_rho_earth` + `z_matrix` `frho_changed` path); a **unit/length conversion**
+  (ohm·km over 2 km); overhead + cable `ConductorsInSameSpace`. Entry-by-entry at
+  1e-8 rel. dss-core lib **319 → 336**. Full three-command gate green.
+  - *(audit-tests follow-up)* The earlier suite ran the cable `Calc` under DERI /
+    60 Hz / unreduced only; the 6 added cable tests close the earth-model,
+    high-frequency, and reduction branch gaps the test audit flagged.
 - **Deferred (tracked):** the units-converting per-conductor *read* getters
   (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) are not ported — they have
   no consumer until the LineGeometry report/dump path; they land in step 3 with it.
