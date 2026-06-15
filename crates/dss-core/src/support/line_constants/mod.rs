@@ -14,13 +14,32 @@ use crate::support::line_units::LineUnits;
 use crate::support::mathutil::{bessel_i0, bessel_i1};
 use num_complex::Complex64;
 
+pub mod cable;
+pub mod cn;
 pub mod oh;
+pub mod ts;
+pub use cn::CnLineConstants;
 pub use oh::OhLineConstants;
+pub use ts::TsLineConstants;
 
 /// Earth-model codes (Pascal `DSSGlobals` constants).
 pub const SIMPLE_CARSON: i32 = 1;
 pub const FULL_CARSON: i32 = 2;
 pub const DERI: i32 = 3;
+
+/// Which Pascal `TLineConstants` subclass this engine reproduces. Selects the
+/// `Calc`/`ConductorsInSameSpace` behavior; the overhead Carson model is the
+/// base, the cable kinds (`TCNLineConstants`/`TTSLineConstants`, both deriving
+/// from `TCableConstants`) build the impedance from coaxial cable data instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineConstantsKind {
+    /// `TOHLineConstants` — overhead line (the base Carson model).
+    Overhead,
+    /// `TCNLineConstants` — concentric-neutral cable.
+    ConcentricNeutral,
+    /// `TTSLineConstants` — tape-shield cable.
+    TapeShield,
+}
 
 // Pascal `LineConstants` unit constants.
 //
@@ -43,6 +62,7 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 /// computed `Z`/`Yc` matrices. Conductor parameters are stored internally in
 /// meters / ohms-per-meter (the setters convert from the supplied units).
 pub struct LineConstants {
+    kind: LineConstantsKind,
     num_conds: usize,
     nphases: usize,
 
@@ -53,6 +73,22 @@ pub struct LineConstants {
     fgmr: Vec<f64>,       // m
     fradius: Vec<f64>,    // m
     fcapradius: Vec<f64>, // m; <0 ⇒ defaults to fradius
+
+    // Cable data (`TCableConstants` and its CN/TS subclasses); empty for the
+    // overhead kind. Units are meters / per-meter like the base arrays.
+    feps_r: Vec<f64>,     // relative permittivity of insulation
+    fins_layer: Vec<f64>, // m
+    fdia_ins: Vec<f64>,   // m, diameter over insulation
+    fdia_cable: Vec<f64>, // m, diameter over cable
+    // Concentric-neutral strand data (`TCNLineConstants`); empty otherwise.
+    fk_strand: Vec<i32>,
+    fdia_strand: Vec<f64>, // m
+    fgmr_strand: Vec<f64>, // m
+    frstrand: Vec<f64>,    // ohms/m
+    // Tape-shield data (`TTSLineConstants`); empty otherwise.
+    fdia_shield: Vec<f64>, // m
+    ftape_layer: Vec<f64>, // m
+    ftape_lap: Vec<f64>,   // percent
 
     fz_matrix: CMatrix,  // ohms/m
     fyc_matrix: CMatrix, // siemens/m  (jwC)
@@ -68,10 +104,31 @@ pub struct LineConstants {
 }
 
 impl LineConstants {
-    /// `TLineConstants.Create(NumConductors)`.
+    /// `TOHLineConstants.Create(NumConductors)` — the overhead base.
     pub fn new(num_conductors: usize) -> Self {
+        Self::with_kind(num_conductors, LineConstantsKind::Overhead)
+    }
+
+    /// `TCNLineConstants.Create(NumConductors)` — concentric-neutral cable.
+    pub fn new_cn(num_conductors: usize) -> Self {
+        Self::with_kind(num_conductors, LineConstantsKind::ConcentricNeutral)
+    }
+
+    /// `TTSLineConstants.Create(NumConductors)` — tape-shield cable.
+    pub fn new_ts(num_conductors: usize) -> Self {
+        Self::with_kind(num_conductors, LineConstantsKind::TapeShield)
+    }
+
+    fn with_kind(num_conductors: usize, kind: LineConstantsKind) -> Self {
         let n = num_conductors;
+        // The cable subclasses `Allocmem` their extra arrays in the constructor;
+        // the overhead base leaves them empty (never indexed in its `Calc`).
+        let cable = !matches!(kind, LineConstantsKind::Overhead);
+        let cn = matches!(kind, LineConstantsKind::ConcentricNeutral);
+        let ts = matches!(kind, LineConstantsKind::TapeShield);
+        let z = |on: bool| if on { vec![0.0; n] } else { Vec::new() };
         LineConstants {
+            kind,
             num_conds: n,
             nphases: n,
             fx: vec![0.0; n],
@@ -83,6 +140,17 @@ impl LineConstants {
             fgmr: vec![-1.0; n],
             fradius: vec![-1.0; n],
             fcapradius: vec![-1.0; n],
+            feps_r: z(cable),
+            fins_layer: z(cable),
+            fdia_ins: z(cable),
+            fdia_cable: z(cable),
+            fk_strand: if cn { vec![0; n] } else { Vec::new() },
+            fdia_strand: z(cn),
+            fgmr_strand: z(cn),
+            frstrand: z(cn),
+            fdia_shield: z(ts),
+            ftape_layer: z(ts),
+            ftape_lap: z(ts),
             fz_matrix: CMatrix::new(n),
             fyc_matrix: CMatrix::new(n),
             fz_reduced: None,
@@ -93,6 +161,11 @@ impl LineConstants {
             fme: Complex64::ZERO,
             frho_changed: true,
         }
+    }
+
+    /// Which subclass this engine reproduces.
+    pub fn kind(&self) -> LineConstantsKind {
+        self.kind
     }
 
     pub fn num_conductors(&self) -> usize {
@@ -275,8 +348,26 @@ impl LineConstants {
     }
 
     /// `Calc(f, EarthModel)`: compute base `Z` and `Yc` matrices (ohms/m,
-    /// siemens/m) for this frequency and earth impedance.
+    /// siemens/m) for this frequency and earth impedance. Dispatches to the
+    /// subclass override selected by [`LineConstants::kind`].
+    ///
+    /// Precondition (as in Pascal): every conductor's geometry must be filled
+    /// first. `Rdc`/`radius`/`GMR`/`capradius` initialize to the "not set"
+    /// sentinel `-1.0`; if a caller leaves one unset, the DERI `Get_Zint`
+    /// (`√(f·µ0/Rdc)`) or the `ln(1/radius)` spacing produces a non-finite
+    /// entry rather than an error — the geometry layer (`UpdateLineGeometryData`)
+    /// is responsible for setting them all, including the `Rdc = Rac/1.02`
+    /// default that `ConductorData` applies.
     pub fn calc(&mut self, f: f64, earth_model: i32) {
+        match self.kind {
+            LineConstantsKind::Overhead => self.calc_overhead(f, earth_model),
+            LineConstantsKind::ConcentricNeutral => self.calc_cn(f, earth_model),
+            LineConstantsKind::TapeShield => self.calc_ts(f, earth_model),
+        }
+    }
+
+    /// `TLineConstants.Calc` — the overhead base.
+    fn calc_overhead(&mut self, f: f64, earth_model: i32) {
         self.set_frequency(f); // side effects
 
         // Free any reduced matrices, remembering the reduced size to redo it.
@@ -424,8 +515,17 @@ impl LineConstants {
     }
 
     /// `ConductorsInSameSpace`: validates geometry; returns an error message
-    /// when a conductor height is ≤ 0 or two conductors overlap.
+    /// when the check fails. Dispatches to the cable override for cable kinds.
     pub fn conductors_in_same_space(&self) -> Option<String> {
+        match self.kind {
+            LineConstantsKind::Overhead => self.cisp_overhead(),
+            _ => self.cisp_cable(),
+        }
+    }
+
+    /// `TLineConstants.ConductorsInSameSpace`: fails when a conductor height is
+    /// ≤ 0 or two conductors overlap.
+    fn cisp_overhead(&self) -> Option<String> {
         // Check for 0 (or negative) Y coordinate.
         for i in 0..self.num_conds {
             if self.fy[i] <= 0.0 {

@@ -1450,44 +1450,62 @@ holes; all fixed and verified:
 Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small step
 → full gate → update this file → stop for confirmation.
 
-**WP7.1 step 1 — Carson line-constants engine — ✅ done, gate-green (uncommitted).**
-- `src/support/line_constants/mod.rs` (`LineConstants` = Pascal `TLineConstants`,
-  `General/LineConstants.pas`) + `oh.rs` (`OhLineConstants`, a plain alias — the
-  Pascal `TOHLineConstants` adds nothing over the base). Pure Carson math engine
-  beside the other `support/` helpers; reuses `support/cmatrix.rs` (Kron, invert),
-  `support/line_units.rs` (unit conversion), `support/mathutil.rs`
-  (`bessel_i0`/`bessel_i1` for the DERI skin-effect `Zint`). 0-based conductor
-  indices.
-- Ported verbatim: `Calc(f, EarthModel)` (self/mutual Z, the P→invert→Yc path),
-  `Get_Zint` (SimpleCarson/FullCarson no-skin vs DERI Bessel skin effect),
+**WP7.1 step 1 — Carson line-constants engine (all 4 specializations) — ✅ done, gate-green (uncommitted).**
+- `src/support/line_constants/` — `mod.rs` (`LineConstants` = Pascal
+  `TLineConstants`, `General/LineConstants.pas`) + the **four specializations**
+  the plan calls for: `oh.rs` (`OhLineConstants`, a plain alias — `TOHLineConstants`
+  adds nothing), `cable.rs` (`TCableConstants` shared cable data + its
+  `ConductorsInSameSpace` override), `cn.rs` (`CnLineConstants` =
+  `TCNLineConstants`), `ts.rs` (`TsLineConstants` = `TTSLineConstants`). No Rust
+  inheritance: a `LineConstantsKind` enum (Overhead/ConcentricNeutral/TapeShield)
+  on the one struct switches `Calc`/`ConductorsInSameSpace`; the cable arrays are
+  allocated only for the cable kinds (`new`/`new_cn`/`new_ts` constructors). Pure
+  math engine beside the other `support/` helpers; reuses `support/cmatrix.rs`
+  (Kron, invert), `support/line_units.rs`, `support/mathutil.rs`
+  (`bessel_i0`/`bessel_i1` for the DERI skin-effect `Zint`). 0-based indices.
+- Ported verbatim: base `Calc(f, EarthModel)` (self/mutual Z, the P→invert→Yc
+  path), `Get_Zint` (SimpleCarson/FullCarson no-skin vs DERI Bessel skin effect),
   `Get_Ze` (all three earth models — SimpleCarson, FullCarson Tleis series, DERI
-  complex earth factor `Fme`), `Kron`/`Reduce` (eliminate-last-row reduction +
-  top-left Yc extraction), the unit-converting `z_matrix`/`yc_matrix` getters,
-  the GMR↔radius round-conductor defaulting setters, and
-  `conductors_in_same_space`.
-- **`TODO(compat)`:** the truncated upstream constants `mu0 = 12.56637e-7`,
-  `Twopi = 6.283185307` (used as a *distinct* quantity from `2·PI` — the
-  FullCarson/Zint terms use the full `std::f64::consts::PI`), `e0 = 8.854e-12`.
-  `Twopi` carries `#[allow(clippy::approx_constant)]` (it is the upstream literal,
-  not `TAU`). Like Pascal's `CMatrix.kron`, a zero Yc pivot in `invert` is not
-  checked (existing cmatrix `TODO(compat)`).
-- **Data flow understood (for steps 2–3):** `TLineGeometryObj.UpdateLineGeometryData`
-  sets the engine arrays from the wire objects (X/Y with FUnits, radius/capradius/
-  GMR/Rdc/Rac with the wire's own units), then `Calc(f, ActiveEarthModel)` + an
-  optional `Reduce`. `ConductorData` derives `Rdc = Rac/1.02` when Rdc is unset
-  (the DERI `Zint` consumes it) and `capradius` defaults to `radius`.
-- **Gate:** 5 inline tests pinned against the dss-python oracle (PIN.txt 0.15.7 /
-  backend 0.14.5), probed by building the same SI geometry through a `Line` and
-  reading `Rmatrix`/`Xmatrix` (ohm/m) + `Cmatrix` (nF/m): a 3-phase overhead full
-  matrix under **all three earth models** (DERI/SimpleCarson/FullCarson) and a
-  4-cond→3 Kron reduce (DERI), entry-by-entry at 1e-8 rel; plus the
-  same-space/zero-height validator. dss-core lib tests **319 → 324**. Full
-  three-command gate green.
+  complex earth factor `Fme`), `Kron`/`Reduce`, the unit-converting
+  `z_matrix`/`yc_matrix` getters, GMR↔radius defaulting setters, and overhead
+  `conductors_in_same_space`. **CN `Calc`** (`CNLineConstants.pas`): append the
+  concentric neutrals as extra conductors, build with the strand
+  resistance/GMR/`RadCN` power-mean spacing, Kron the neutrals out, build Yc
+  directly as the coaxial insulation admittance. **TS `Calc`**
+  (`TSLineConstants.pas`): same shape with the tape-shield resistance/GMR.
+  **Cable `ConductorsInSameSpace`**: no height check, `0.5*DiaCable` radius for
+  neutral conductors. (`TCableConstants.Kron` is identical to the base, so it is
+  not re-implemented.)
+- **`TODO(compat)`:** truncated upstream constants `mu0 = 12.56637e-7`,
+  `Twopi = 6.283185307` (a *distinct* quantity from `2·PI` — FullCarson/Zint use
+  full `std::f64::consts::PI`), `e0 = 8.854e-12`; plus the tape-shield `0.3183`
+  (truncated `1/pi`) in `ts.rs`. All carry `#[allow(clippy::approx_constant)]`.
+  Zero-pivot in `invert`/`kron` unchecked (existing cmatrix `TODO(compat)`).
+- **Precondition documented** on `calc`: geometry must be filled first
+  (`Rdc`/`radius`/`GMR` init to the `-1.0` sentinel → non-finite entry, not an
+  error, if left unset — the geometry layer / `ConductorData`'s `Rdc = Rac/1.02`
+  default is responsible). Data flow for steps 2–3:
+  `TLineGeometryObj.UpdateLineGeometryData` sets the engine arrays from the wire
+  objects (incl. the CN/TS cable fields), then `Calc(f, ActiveEarthModel)` + an
+  optional `Reduce`; `capradius` defaults to `radius`.
+- **Gate:** 11 inline tests pinned against the dss-python oracle (PIN.txt 0.15.7 /
+  backend 0.14.5), probed (via `tools/golden/probe_line_constants_phase7.py`) by
+  building the geometry through a `Line` and reading `Rmatrix`/`Xmatrix` (ohm/m) +
+  `Cmatrix` (nF/m): 3-phase overhead under **all three earth models** + a 4→3 Kron
+  reduce; **3-phase CN cable and TS cable** (full Z + coaxial C); a
+  **non-power-frequency** overhead case (f = 5 kHz → the radius/`Zi.im`-retained
+  branch); a **rho_earth = 200** recalc (`set_rho_earth` + `z_matrix` `frho_changed`
+  path); a **unit/length conversion** (ohm·km over 2 km); overhead + cable
+  `ConductorsInSameSpace`. Entry-by-entry at 1e-8 rel. dss-core lib **319 → 330**.
+  Full three-command gate green.
+- **Deferred (tracked):** the units-converting per-conductor *read* getters
+  (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) are not ported — they have
+  no consumer until the LineGeometry report/dump path; they land in step 3 with it.
 - **Next (WP7.1 step 2):** the catalog classes — `conductor_data.rs`
   (ConductorData base + WireData/CNData/TSData, CableData base), `line_spacing.rs`,
-  `line_geometry.rs` — via `define_properties!`, then step 3 un-`NOT_PORTED` Line's
-  geometry fetch path, then step 4 the corpus feeder gate. (CN/TS/cable engine
-  specializations land alongside CNData/TSData in step 2.)
+  `line_geometry.rs` — via `define_properties!` (these *feed* the engine arrays
+  above); then step 3 un-`NOT_PORTED` Line's geometry fetch path, then step 4 the
+  corpus feeder gate.
 
 ---
 
