@@ -8,6 +8,7 @@
 use super::*;
 
 const M: i32 = 4; // LineUnits::Meter code
+const KM: i32 = 3; // LineUnits::Km code
 
 // Shared SI wire: rac = 3e-4 ohm/m, gmr = 0.005 m, radius = 0.01 m.
 // The oracle derives Rdc = Rac / 1.02 when Rdc is unset (ConductorData side
@@ -32,6 +33,65 @@ fn build(coords: &[(f64, f64)]) -> LineConstants {
     }
     lc
 }
+
+// Shared cable geometry: 3 buried cables (h irrelevant for cable Calc) at
+// x = 0/0.1/0.2 m. Same core conductor for CN and TS.
+const CABLE_COORDS3: [(f64, f64); 3] = [(0.0, -1.2), (0.1, -1.2), (0.2, -1.2)];
+
+/// Common core-conductor + insulation setters shared by `build_cn`/`build_ts`,
+/// mirroring `UpdateLineGeometryData`'s assignment order.
+fn set_cable_common(lc: &mut LineConstants) {
+    for (i, &(x, h)) in CABLE_COORDS3.iter().enumerate() {
+        lc.set_x(i, M, x);
+        lc.set_y(i, M, h);
+        lc.set_radius(i, M, 0.005);
+        lc.set_capradius(i, M, 0.005);
+        lc.set_gmr(i, M, 0.004);
+        lc.set_rdc(i, M, 1.0e-4);
+        lc.set_rac(i, M, 1.05e-4);
+        lc.set_eps_r(i, 2.3);
+        lc.set_ins_layer(i, M, 0.004);
+        lc.set_dia_ins(i, M, 0.022);
+        lc.set_dia_cable(i, M, 0.030);
+    }
+}
+
+fn build_cn() -> LineConstants {
+    let mut lc = LineConstants::new_cn(3);
+    set_cable_common(&mut lc);
+    for i in 0..3 {
+        lc.set_k_strand(i, 16);
+        lc.set_dia_strand(i, M, 0.001);
+        lc.set_gmr_strand(i, M, 0.0004);
+        lc.set_r_strand(i, M, 2.0e-3);
+    }
+    lc
+}
+
+fn build_ts() -> LineConstants {
+    let mut lc = LineConstants::new_ts(3);
+    set_cable_common(&mut lc);
+    for i in 0..3 {
+        lc.set_dia_shield(i, M, 0.025);
+        lc.set_tape_layer(i, M, 0.0002);
+        lc.set_tape_lap(i, 20.0);
+    }
+    lc
+}
+
+// Coaxial insulation capacitance is the same for CN and TS here (identical
+// EpsR/DiaIns/InsLayer); off-diagonals are exactly zero for shielded cables.
+const CABLE_C3_NF: [f64; 9] = [
+    2.830890564838e-01,
+    0.0,
+    0.0,
+    0.0,
+    2.830890564838e-01,
+    0.0,
+    0.0,
+    0.0,
+    2.830890564838e-01,
+];
 
 fn assert_close(got: f64, want: f64, what: &str) {
     let tol = 1e-8 * want.abs().max(1e-12);
@@ -209,4 +269,156 @@ fn conductors_in_same_space_detects_overlap() {
     lc2.set_radius(0, M, 0.01);
     lc2.set_y(0, M, 0.0);
     assert!(lc2.conductors_in_same_space().is_some());
+}
+
+#[test]
+fn cn_cable_deri_3cond() {
+    let mut lc = build_cn();
+    assert_eq!(lc.kind(), LineConstantsKind::ConcentricNeutral);
+    lc.calc(60.0, DERI);
+    let z_ref = [
+        (1.957766526264e-04, 1.402105660670e-04),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (7.705339488750e-06, -1.452216497679e-05),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (1.844408315520e-04, 1.418811316531e-04),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (7.705339488750e-06, -1.452216497679e-05),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (1.957766526264e-04, 1.402105660670e-04),
+    ];
+    check_z(&lc, &z_ref);
+    check_c(&lc, &CABLE_C3_NF);
+}
+
+#[test]
+fn ts_cable_deri_3cond() {
+    let mut lc = build_ts();
+    assert_eq!(lc.kind(), LineConstantsKind::TapeShield);
+    lc.calc(60.0, DERI);
+    let z_ref = [
+        (4.675825330004e-04, 4.983304721750e-04),
+        (3.583518060982e-04, 2.468927740652e-04),
+        (3.436688380811e-04, 2.058672035803e-04),
+        (3.583518060982e-04, 2.468927740652e-04),
+        (4.783159246306e-04, 4.782357442920e-04),
+        (3.583518060982e-04, 2.468927740652e-04),
+        (3.436688380811e-04, 2.058672035803e-04),
+        (3.583518060982e-04, 2.468927740652e-04),
+        (4.675825330004e-04, 4.983304721750e-04),
+    ];
+    check_z(&lc, &z_ref);
+    check_c(&lc, &CABLE_C3_NF);
+}
+
+/// Cable `ConductorsInSameSpace` uses `0.5*DiaCable` for neutral conductors and
+/// drops the height check — a buried (negative-height) cable is *not* flagged,
+/// unlike the overhead validator.
+#[test]
+fn cable_same_space_uses_diacable_and_ignores_height() {
+    let lc = build_cn();
+    assert!(lc.conductors_in_same_space().is_none()); // valid buried cables
+
+    // Two neutral conductors (nphases = 0) 0.02 m apart. Their effective radius
+    // is 0.5*DiaCable = 0.015 m each, so 0.02 < 0.03 ⇒ overlap. (As phases they
+    // would use the 0.005 m core radius and would not overlap — this exercises
+    // the DiaCable branch.)
+    let mut lc2 = LineConstants::new_cn(2);
+    lc2.set_nphases(0);
+    for i in 0..2 {
+        lc2.set_dia_cable(i, M, 0.030);
+        lc2.set_y(i, M, -1.0);
+    }
+    lc2.set_x(0, M, 0.0);
+    lc2.set_x(1, M, 0.02);
+    let msg = lc2.conductors_in_same_space();
+    assert!(msg.is_some());
+    assert!(msg.unwrap().starts_with("Cable conductors 1 and 2"));
+}
+
+/// Above the power-frequency band (f ≥ 1 kHz) `Calc` uses the actual radius for
+/// the self spacing and keeps the conductor internal reactance (`Zi.im`) — the
+/// branch the 60 Hz tests never exercise.
+#[test]
+fn overhead_high_freq_radius_branch() {
+    let mut lc = build(&COORDS3);
+    lc.calc(5000.0, DERI);
+    let z_ref = [
+        (4.923757922619e-03, 5.945699655942e-02),
+        (4.164436672700e-03, 2.984975434922e-02),
+        (4.163753358720e-03, 2.549475346052e-02),
+        (4.164436672700e-03, 2.984975434922e-02),
+        (4.923757922619e-03, 5.945699655942e-02),
+        (4.164436672700e-03, 2.984975434922e-02),
+        (4.163753358720e-03, 2.549475346052e-02),
+        (4.164436672700e-03, 2.984975434922e-02),
+        (4.923757922619e-03, 5.945699655942e-02),
+    ];
+    check_z(&lc, &z_ref);
+    // Capacitance has no frequency branch; the oracle's Cmatrix getter scales
+    // its reported nF by the solve frequency, so C is asserted only in the
+    // power-frequency tests above.
+}
+
+/// Changing `rho_earth` after a `Calc` sets `frho_changed`, and the next
+/// `z_matrix` recomputes against the new earth resistivity (oracle: rho = 200).
+#[test]
+fn rho_earth_change_forces_recalc() {
+    let mut lc = build(&COORDS3);
+    lc.calc(60.0, DERI); // rho = 100 (default)
+    lc.set_rho_earth(200.0); // frho_changed = true; recompute Fme (Frequency ≥ 0)
+    let z = lc.z_matrix(60.0, 1.0, M, DERI); // same f, but rho changed ⇒ recalc
+
+    let z_ref = [
+        (3.529258314601e-04, 9.408891165221e-04),
+        (5.840592326001e-05, 5.414054185596e-04),
+        (5.840585774351e-05, 4.891433563583e-04),
+        (5.840592326001e-05, 5.414054185596e-04),
+        (3.529258314601e-04, 9.408891165221e-04),
+        (5.840592326001e-05, 5.414054185596e-04),
+        (5.840585774351e-05, 4.891433563583e-04),
+        (5.840592326001e-05, 5.414054185596e-04),
+        (3.529258314601e-04, 9.408891165221e-04),
+    ];
+    for i in 0..3 {
+        for j in 0..3 {
+            let (re, im) = z_ref[i * 3 + j];
+            assert_close(z.get(i, j).re, re, &format!("Zrho[{i}][{j}].re"));
+            assert_close(z.get(i, j).im, im, &format!("Zrho[{i}][{j}].im"));
+        }
+    }
+}
+
+/// `z_matrix`/`yc_matrix` scale the per-meter base by `from_per_meter(units) *
+/// length`. Per-km over 2 km ⇒ factor 2000 vs the per-meter base.
+#[test]
+fn matrix_unit_and_length_conversion() {
+    let mut lc = build(&COORDS3);
+    lc.calc(60.0, DERI);
+    let base_z = lc.z_base().clone();
+    let base_yc = lc.yc_base().clone();
+
+    let z = lc.z_matrix(60.0, 2.0, KM, DERI); // 2 km, ohm/km
+    let yc = lc.yc_matrix(2.0, KM);
+    let factor = 1000.0 * 2.0; // from_per_meter(km) * length
+
+    for i in 0..3 {
+        for j in 0..3 {
+            assert_close(
+                z.get(i, j).re,
+                base_z.get(i, j).re * factor,
+                &format!("Zconv[{i}][{j}].re"),
+            );
+            assert_close(
+                z.get(i, j).im,
+                base_z.get(i, j).im * factor,
+                &format!("Zconv[{i}][{j}].im"),
+            );
+            assert_close(
+                yc.get(i, j).im,
+                base_yc.get(i, j).im * factor,
+                &format!("Ycconv[{i}][{j}].im"),
+            );
+        }
+    }
 }
