@@ -77,7 +77,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 349, golden_feeders 1,
+cargo test --workspace      # dss-core lib 351, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_checkpoints 1,
                             # golden_ieee8500 1, golden_reliability 1,
@@ -345,11 +345,17 @@ gate-green, committed.**
   uninitialized, undefined memory the goldens do not pin) and resets `Units` to
   `ft`; `MakeLike` copies `FNConds`/`NPhases`/`FX`/`FY` then `Units :=
   Other.Units` (overriding the side-effect's ft reset).
-- Oracle-pinned: 6 `linespacing_*` `props.json` scenarios (default, full,
-  units=m, array clamp/zero-fill, shrink-nconds truncation+units-reset,
-  makelike) + 5 inline unit tests; `props_roundtrip` green. dss-core lib **344
-  → 349** (audit follow-up added `nconds_grow_*` zero-fill invariant test).
-  Full three-command gate green.
+- `nconds=0` empties the buffers: Pascal `ReAllocmem(FX, 0)` nils the pointer,
+  so `GetDSSArray` returns `''` (not `'[]'`) — `get_f64_array` mirrors this by
+  reading an empty coordinate array as nil (audit follow-up; was `'[]'`).
+- Oracle-pinned: 11 `linespacing_*` `props.json` scenarios (default, full,
+  units=m, array clamp/zero-fill, shrink-nconds truncation+units-reset, makelike,
+  zero-nconds empty-string, units mi/kft/km/none) + 7 inline unit tests;
+  `props_roundtrip` green. dss-core lib **344 → 351** (audit follow-ups added the
+  `nconds_grow_*` zero-fill invariant, the `nconds=0`→`''` fix + golden, full
+  units-enum coverage, and the negative-`nconds` clamp invariant test — the
+  oracle raises on negative `nconds`, so that path is Rust-only). Full
+  three-command gate green.
 
 - **Next (WP7.1 step 2c):** `line_geometry.rs` (the `cond=`/`wire=`/`cncable=`/
   `tscable=`/`spacing=` editing state machine + `CalcMatrices` driving the

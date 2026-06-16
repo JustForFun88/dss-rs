@@ -97,6 +97,81 @@
     "Units": "m",
     "Like": ""
    }
+  },
+  {
+   "name": "linespacing_zero_nconds",
+   "commands": [
+    "New LineSpacing.ls1 nconds=0"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "0",
+    "NPhases": "3",
+    "X": "",
+    "H": "",
+    "Units": "ft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_mi",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mi"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "mi",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_kft",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=kft"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "kft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_km",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=km"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "km",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_none",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=none"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "none",
+    "Like": ""
+   }
   }
  ]
 }
