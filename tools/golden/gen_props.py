@@ -1186,6 +1186,73 @@ SCENARIOS = [
             "New TSData.tsb like=tsa",
         ],
     },
+    {
+        # MakeLike copies neither NumAmpRatings nor AmpRatings: a like= wire
+        # keeps its own default Seasons=1 / Ratings=[ -1] even though the
+        # source set Seasons=2 / Ratings=(600 800).
+        "name": "wiredata_makelike_ratings",
+        "target": "WireData.wml",
+        "commands": [
+            "New WireData.wmlsrc Rdc=0.0526 radius=0.0306 Seasons=2 Ratings=(600 800)",
+            "New WireData.wml like=wmlsrc",
+        ],
+    },
+    {
+        # Same MakeLike quirk for CNData: cable + strand fields copy, but the
+        # source's Seasons=2 / Ratings=(600 800) do not.
+        "name": "cndata_makelike_ratings",
+        "target": "CNData.cnml",
+        "commands": [
+            "New CNData.cnmlsrc k=16 DiaStrand=0.064 GmrStrand=0.0208 EpsR=2.3 "
+            "InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 radius=0.0511 "
+            "Seasons=2 Ratings=(600 800)",
+            "New CNData.cnml like=cnmlsrc",
+        ],
+    },
+    {
+        # Fewer Ratings tokens than Seasons: the DoubleDArray parse zero-fills
+        # the tail and leaves Seasons unchanged.
+        "name": "wiredata_ratings_short",
+        "target": "WireData.wrs",
+        "commands": ["New WireData.wrs Rdc=0.05 radius=0.03 Seasons=3 Ratings=(600)"],
+    },
+    {
+        # More Ratings tokens than Seasons: the parse caps at Seasons tokens.
+        "name": "wiredata_ratings_long",
+        "target": "WireData.wrl",
+        "commands": ["New WireData.wrl Rdc=0.05 radius=0.03 Seasons=2 Ratings=(600 800 900)"],
+    },
+    {
+        # k < 2 logs a critical error, but the object is still created and the
+        # offending k=1 is stored (not rejected). allow_errors captures the dump.
+        "name": "cndata_k_too_few",
+        "target": "CNData.cnk",
+        "commands": [
+            "New CNData.cnk k=1 DiaStrand=0.064 EpsR=2.3 InsLayer=0.22 "
+            "DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 radius=0.0511"
+        ],
+        "allow_errors": True,
+    },
+    {
+        # TapeLap out of [0,100] logs an error; the value is stored, not clamped.
+        "name": "tsdata_tapelap_range",
+        "target": "TSData.tsr",
+        "commands": [
+            "New TSData.tsr DiaShield=0.88 TapeLayer=0.005 TapeLap=150 EpsR=2.3 "
+            "InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 radius=0.0511"
+        ],
+        "allow_errors": True,
+    },
+    {
+        # EpsR < 1 logs a permittivity error; the value is stored as given.
+        "name": "cndata_low_epsr",
+        "target": "CNData.cne",
+        "commands": [
+            "New CNData.cne k=13 DiaStrand=0.064 EpsR=0.5 InsLayer=0.22 "
+            "DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 radius=0.0511"
+        ],
+        "allow_errors": True,
+    },
 ]
 
 

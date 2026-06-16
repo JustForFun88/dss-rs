@@ -96,6 +96,37 @@
     "CapRadius": "0.0511",
     "Like": ""
    }
+  },
+  {
+   "name": "tsdata_tapelap_range",
+   "commands": [
+    "New TSData.tsr DiaShield=0.88 TapeLayer=0.005 TapeLap=150 EpsR=2.3 InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 radius=0.0511"
+   ],
+   "target": "TSData.tsr",
+   "properties": {
+    "DiaShield": "0.88",
+    "TapeLayer": "0.005",
+    "TapeLap": "150",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "0.82",
+    "DiaCable": "0.88",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "none",
+    "GMRAC": "0.03979668",
+    "GMRUnits": "none",
+    "Radius": "0.0511",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   },
+   "allow_errors": true
   }
  ]
 }

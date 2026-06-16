@@ -167,6 +167,76 @@
     "CapRadius": "0.0306",
     "Like": ""
    }
+  },
+  {
+   "name": "wiredata_makelike_ratings",
+   "commands": [
+    "New WireData.wmlsrc Rdc=0.0526 radius=0.0306 Seasons=2 Ratings=(600 800)",
+    "New WireData.wml like=wmlsrc"
+   ],
+   "target": "WireData.wml",
+   "properties": {
+    "RDC": "0.0526",
+    "RAC": "0.053652",
+    "RUnits": "none",
+    "GMRAC": "0.02383128",
+    "GMRUnits": "none",
+    "Radius": "0.0306",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.0612",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0306",
+    "Like": ""
+   }
+  },
+  {
+   "name": "wiredata_ratings_short",
+   "commands": [
+    "New WireData.wrs Rdc=0.05 radius=0.03 Seasons=3 Ratings=(600)"
+   ],
+   "target": "WireData.wrs",
+   "properties": {
+    "RDC": "0.05",
+    "RAC": "0.051",
+    "RUnits": "none",
+    "GMRAC": "0.023364",
+    "GMRUnits": "none",
+    "Radius": "0.03",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.06",
+    "Seasons": "3",
+    "Ratings": "[ 600 0 0]",
+    "CapRadius": "0.03",
+    "Like": ""
+   }
+  },
+  {
+   "name": "wiredata_ratings_long",
+   "commands": [
+    "New WireData.wrl Rdc=0.05 radius=0.03 Seasons=2 Ratings=(600 800 900)"
+   ],
+   "target": "WireData.wrl",
+   "properties": {
+    "RDC": "0.05",
+    "RAC": "0.051",
+    "RUnits": "none",
+    "GMRAC": "0.023364",
+    "GMRUnits": "none",
+    "Radius": "0.03",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.06",
+    "Seasons": "2",
+    "Ratings": "[ 600 800]",
+    "CapRadius": "0.03",
+    "Like": ""
+   }
   }
  ]
 }
