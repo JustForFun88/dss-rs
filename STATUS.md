@@ -77,7 +77,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 348, golden_feeders 1,
+cargo test --workspace      # dss-core lib 349, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_checkpoints 1,
                             # golden_ieee8500 1, golden_reliability 1,
@@ -347,8 +347,9 @@ gate-green, committed.**
   Other.Units` (overriding the side-effect's ft reset).
 - Oracle-pinned: 6 `linespacing_*` `props.json` scenarios (default, full,
   units=m, array clamp/zero-fill, shrink-nconds truncation+units-reset,
-  makelike) + 4 inline unit tests; `props_roundtrip` green. dss-core lib **344
-  → 348**. Full three-command gate green.
+  makelike) + 5 inline unit tests; `props_roundtrip` green. dss-core lib **344
+  → 349** (audit follow-up added `nconds_grow_*` zero-fill invariant test).
+  Full three-command gate green.
 
 - **Next (WP7.1 step 2c):** `line_geometry.rs` (the `cond=`/`wire=`/`cncable=`/
   `tscable=`/`spacing=` editing state machine + `CalcMatrices` driving the
