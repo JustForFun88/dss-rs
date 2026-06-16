@@ -54,6 +54,23 @@ impl LineSpacingObj {
         obj
     }
 
+    /// Pascal `NWires` (= `FNConds`): the conductor count a `LineGeometry`
+    /// matches against when it reads this spacing's coordinates.
+    pub fn nwires(&self) -> i32 {
+        self.fnconds
+    }
+    /// Pascal `Xcoord`/`Ycoord` arrays (length `FNConds`) and `Units` — read by
+    /// `TLineGeometryObj`'s `spacing=` side effect.
+    pub fn xcoord(&self) -> &[f64] {
+        &self.fx
+    }
+    pub fn ycoord(&self) -> &[f64] {
+        &self.fy
+    }
+    pub fn spacing_units(&self) -> i32 {
+        self.units
+    }
+
     /// Pascal `nconds` `PropertySideEffects`: `ReAllocmem(FX/FY, FNConds)`.
     /// Pascal leaves grown entries uninitialized; we zero-fill the tail (the
     /// preserved leading entries match, and undefined upstream memory is not a

@@ -333,6 +333,30 @@ pub trait DssObject {
         unreachable!("set_object_ref not implemented for property {idx}")
     }
 
+    /// `DSSObjectReferenceArrayProperty` write (e.g. a LineGeometry `wires`):
+    /// `refs` is the parsed, resolved list — each `(name, ElemRef, read view)`
+    /// in script order. The object validates the count and stores the references
+    /// (Pascal `SetWires`), cloning each read view as needed (the snapshot-clone
+    /// pattern). The dump value is read back through
+    /// [`DssObject::get_object_ref_names`].
+    fn set_object_ref_array(
+        &mut self,
+        idx: usize,
+        refs: &[(
+            String,
+            crate::elements::traits::ElemRef,
+            &dyn crate::obj::base::DssObject,
+        )],
+    ) {
+        let _ = (idx, refs);
+        unreachable!("set_object_ref_array not implemented for property {idx}")
+    }
+    /// `DSSObjectReferenceArrayProperty` read: the referenced objects' names in
+    /// order (NIL slots render as the empty name `""`).
+    fn get_object_ref_names(&self, idx: usize) -> Vec<String> {
+        unreachable!("get_object_ref_names not implemented for property {idx}")
+    }
+
     /// `ComplexProperty` / `ComplexPartsProperty`: both parse a 2-vector
     /// `(re, im)`; the class stores it as one `Complex` field or two doubles.
     fn get_complex(&self, idx: usize) -> (f64, f64) {

@@ -17,8 +17,8 @@ use dss_parser::{Parser, ParserVars};
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::control::{cap_control, gen_dispatcher, reg_control, storage_controller};
 use crate::elements::general::{
-    conductor_data, growth_shape, line_code, line_spacing, load_shape, price_shape, spectrum,
-    tcc_curve, temp_shape, xfmr_code, xy_curve,
+    conductor_data, growth_shape, line_code, line_geometry, line_spacing, load_shape, price_shape,
+    spectrum, tcc_curve, temp_shape, xfmr_code, xy_curve,
 };
 use crate::elements::meter::energymeter;
 use crate::elements::meter::monitor;
@@ -718,6 +718,10 @@ impl Dss {
             // (Pascal DSSClassDefs.pas).
             DssClass::dss_object(line_spacing::class_props(&enums), |name| {
                 Box::new(line_spacing::LineSpacingObj::new(name))
+            }),
+            // LineGeometry registers after LineSpacing (Pascal DSSClassDefs.pas).
+            DssClass::dss_object(line_geometry::class_props(&enums), |name| {
+                Box::new(line_geometry::LineGeometryObj::new(name))
             }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),
