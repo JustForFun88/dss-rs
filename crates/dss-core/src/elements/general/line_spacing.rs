@@ -97,10 +97,21 @@ impl DssObject for LineSpacingObj {
     }
 
     fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
-        match idx {
-            prop::X => Some(self.fx.as_slice()),
-            prop::H => Some(self.fy.as_slice()),
+        let arr = match idx {
+            prop::X => &self.fx,
+            prop::H => &self.fy,
             _ => unreachable!("LineSpacing has no double array at {idx}"),
+        };
+        // Pascal `ReAllocmem(FX, 0)` (the `nconds=0` side effect) frees the
+        // buffer and leaves the pointer nil, so `GetDSSArray` returns the empty
+        // string `''` — not `'[]'`. Mirror that: an empty coordinate array reads
+        // as nil. (For `nconds < 0` the Pascal realloc raises an exception; we
+        // clamp the size to 0, so that degenerate path likewise reads `''` and
+        // is not oracle-pinnable.)
+        if arr.is_empty() {
+            None
+        } else {
+            Some(arr.as_slice())
         }
     }
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
@@ -238,6 +249,40 @@ mod tests {
         assert_eq!(get(&cls, &obj, "x"), "[ 1 2 3 0 0]"); // leading kept, tail zeroed
         assert_eq!(get(&cls, &obj, "h"), "[ 10 11 12 0 0]");
         assert_eq!(get(&cls, &obj, "units"), "ft"); // realloc side effect resets units
+    }
+
+    #[test]
+    fn nconds_zero_reads_empty_string() {
+        // `nconds=0` frees the coordinate buffers (Pascal `ReAllocmem(FX, 0)`
+        // nils the pointer), so X/H read as the empty string `''`, not `'[]'`.
+        // Oracle-confirmed and pinned by the `linespacing_zero_nconds` golden;
+        // kept here as a unit-level guard on the empty-array → nil mapping.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let mut obj = LineSpacingObj::new("ls");
+        let errs = apply(&cls, &mut obj, &[("nconds", "0")]);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(get(&cls, &obj, "nconds"), "0");
+        assert_eq!(get(&cls, &obj, "x"), "");
+        assert_eq!(get(&cls, &obj, "h"), "");
+    }
+
+    #[test]
+    fn nconds_negative_clamps_to_empty() {
+        // Pascal's `ReAllocmem(FX, FNConds)` *raises an exception* for a negative
+        // `nconds` (the oracle reports DSSException 303), so the degenerate path
+        // cannot be oracle-pinned. We clamp the allocation size to zero rather
+        // than panic: NConds reads back the raw negative value, the coordinate
+        // buffers are empty, and X/H therefore read `''`. Rust-only invariant
+        // locking that graceful clamp.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let mut obj = LineSpacingObj::new("ls");
+        let errs = apply(&cls, &mut obj, &[("nconds", "-1")]);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(get(&cls, &obj, "nconds"), "-1");
+        assert_eq!(get(&cls, &obj, "x"), "");
+        assert_eq!(get(&cls, &obj, "h"), "");
     }
 
     #[test]

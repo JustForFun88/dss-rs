@@ -1302,6 +1302,33 @@ SCENARIOS = [
             "New LineSpacing.ls1 like=base",
         ],
     },
+    {
+        # nconds=0 frees the coordinate buffers: Pascal `ReAllocmem(FX, 0)` nils
+        # the pointer, so X/H dump as the empty string '' (not '[]').
+        "name": "linespacing_zero_nconds",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=0"],
+    },
+    {
+        "name": "linespacing_units_mi",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mi"],
+    },
+    {
+        "name": "linespacing_units_kft",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=kft"],
+    },
+    {
+        "name": "linespacing_units_km",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=km"],
+    },
+    {
+        "name": "linespacing_units_none",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=none"],
+    },
 ]
 
 
