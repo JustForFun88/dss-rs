@@ -1329,6 +1329,21 @@ SCENARIOS = [
         "target": "LineSpacing.ls1",
         "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=none"],
     },
+    {
+        "name": "linespacing_units_in",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=in"],
+    },
+    {
+        "name": "linespacing_units_cm",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=cm"],
+    },
+    {
+        "name": "linespacing_units_mm",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mm"],
+    },
     # ----- LineGeometry (WP7.1 step 2c) ------------------------------------
     {
         # Default geometry has NConds=0, so X/H/Units have no active conductor
