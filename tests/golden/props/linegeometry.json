@@ -215,6 +215,126 @@
     "LineType": "oh",
     "Like": ""
    }
+  },
+  {
+   "name": "linegeometry_ts",
+   "commands": [
+    "New TSData.ts1 DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 GMRac=0.0375 radius=0.0511 normamps=300",
+    "New LineGeometry.g1 nconds=3 nphases=3 linetype=ug_ts cond=1 tscable=ts1 x=-0.5 h=-4 units=ft cond=2 tscable=ts1 x=0 h=-4 cond=3 tscable=ts1 x=0.5 h=-4"
+   ],
+   "target": "LineGeometry.g1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "Cond": "3",
+    "Wire": "ts1",
+    "X": "0.5",
+    "H": "-4",
+    "Units": "ft",
+    "NormAmps": "300",
+    "EmergAmps": "450",
+    "Reduce": "No",
+    "Spacing": "",
+    "Wires": "[ts1, ts1, ts1]",
+    "CNCable": "ts1",
+    "TSCable": "ts1",
+    "CNCables": "[ts1, ts1, ts1]",
+    "TSCables": "[ts1, ts1, ts1]",
+    "Seasons": "1",
+    "Ratings": "[ 0]",
+    "LineType": "ug_ts",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linegeometry_nphases_gt_nconds",
+   "commands": [
+    "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 radunits=ft normamps=530 Runits=ft",
+    "New LineGeometry.g1 nconds=2 nphases=3 cond=1 wire=acsr x=-1 h=10 cond=2 wire=acsr x=1 h=10"
+   ],
+   "target": "LineGeometry.g1",
+   "properties": {
+    "NConds": "2",
+    "NPhases": "3",
+    "Cond": "2",
+    "Wire": "acsr",
+    "X": "1",
+    "H": "10",
+    "Units": "ft",
+    "NormAmps": "530",
+    "EmergAmps": "795",
+    "Reduce": "No",
+    "Spacing": "",
+    "Wires": "[acsr, acsr]",
+    "CNCable": "acsr",
+    "TSCable": "acsr",
+    "CNCables": "[acsr, acsr]",
+    "TSCables": "[acsr, acsr]",
+    "Seasons": "1",
+    "Ratings": "[ 0]",
+    "LineType": "oh",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linegeometry_seasons_direct",
+   "commands": [
+    "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 radunits=ft normamps=530 Runits=ft",
+    "New LineGeometry.g1 nconds=3 nphases=3 cond=1 wire=acsr x=-1 h=10 units=m cond=2 wire=acsr x=0 h=10 cond=3 wire=acsr x=1 h=10 Seasons=2 Ratings=(111 222)"
+   ],
+   "target": "LineGeometry.g1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "Cond": "3",
+    "Wire": "acsr",
+    "X": "1",
+    "H": "10",
+    "Units": "m",
+    "NormAmps": "530",
+    "EmergAmps": "795",
+    "Reduce": "No",
+    "Spacing": "",
+    "Wires": "[acsr, acsr, acsr]",
+    "CNCable": "acsr",
+    "TSCable": "acsr",
+    "CNCables": "[acsr, acsr, acsr]",
+    "TSCables": "[acsr, acsr, acsr]",
+    "Seasons": "2",
+    "Ratings": "[ 111 222]",
+    "LineType": "oh",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linegeometry_normamps_explicit",
+   "commands": [
+    "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 radunits=ft normamps=530 Runits=ft",
+    "New LineGeometry.g1 nconds=3 nphases=3 normamps=999 emergamps=888 cond=1 wire=acsr x=-1 h=10 cond=2 wire=acsr x=0 h=10 cond=3 wire=acsr x=1 h=10"
+   ],
+   "target": "LineGeometry.g1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "Cond": "3",
+    "Wire": "acsr",
+    "X": "1",
+    "H": "10",
+    "Units": "ft",
+    "NormAmps": "999",
+    "EmergAmps": "888",
+    "Reduce": "No",
+    "Spacing": "",
+    "Wires": "[acsr, acsr, acsr]",
+    "CNCable": "acsr",
+    "TSCable": "acsr",
+    "CNCables": "[acsr, acsr, acsr]",
+    "TSCables": "[acsr, acsr, acsr]",
+    "Seasons": "1",
+    "Ratings": "[ 0]",
+    "LineType": "oh",
+    "Like": ""
+   }
   }
  ]
 }

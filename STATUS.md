@@ -407,6 +407,31 @@ machine — ✅ done, gate-green, committed.**
   exec/inline tests; the conductor invariant `NumAmpRatings == len(AmpRatings)`
   makes the array-branch `take(n)` copy identical to Pascal's full-length copy
   (no code change needed there).
+- **Audit-tests follow-up (`/audit-tests` step 2c-i, uncommitted):** the test
+  audit found the **tape-shield path had zero executable coverage** (no test ever
+  wrote `tscable=`/`tscables=`, so the `conductor_amps` `TsDataObj` arm was dead)
+  plus minor happy-path-only gaps. Added 4 oracle-pinned scenarios (linegeometry
+  7 → 11), each settled empirically against the pinned oracle first:
+  `linegeometry_ts` (scalar `tscable=` + `linetype=ug_ts` — exercises TSData
+  resolution, TapeShield kind, the `TsDataObj` amps default, and a non-default
+  LineType); `linegeometry_nphases_gt_nconds` (NPhases stored raw at parse —
+  confirms the `FLineData.Nphases` clamp is correctly deferred to 2c-ii);
+  `linegeometry_seasons_direct` (the `Seasons` resize side effect); and
+  `linegeometry_normamps_explicit` (explicit amps survive a later conductor).
+  Also corrected the inline `scalar`-helper doc comment, which over-claimed full
+  resolution coverage. `props_roundtrip` green (now exercises the TS path).
+- **Surfaced, NOT fixed (needs investigation, tracked):** the **plural cable**
+  forms `cncables=`/`tscables=` leave the oracle's active conductor at `Cond=1`
+  for a bare assignment, whereas Rust's `set_wires` leaves it at `istop` (and
+  overhead `wires=` stays at `istop` in the oracle too). The exact rule is
+  intricate — after a prior `cond=2 cncable=`, a following `cncables=[…]` reads
+  `Cond=2` (a buried-`istart` count-error Exit), and the **vendored
+  `LineGeometry.pas` SetWires/ChangeLineConstantsType do not contain this reset**
+  (source says `istop`), so the pinned 0.14.5 binary diverges from the vendored
+  revision here. Porting it faithfully needs that reconciliation, so it was not
+  guessed/hacked and no failing golden was added; the plural-cable forms stay
+  un-pinned for now (their CN/TS *data* paths are covered via the scalar
+  scenarios). Empirically probed against the oracle (`/audit-tests` follow-up).
 - **Deferred to step 2c-ii:** `UpdateLineGeometryData(f)`/`CalcMatrices` driving
   the `support::line_constants` Carson engine to cache `Zmatrix`/`YCmatrix`/
   `Rho` (the object tracks `data_changed` staleness + the engine `fline_kind`
