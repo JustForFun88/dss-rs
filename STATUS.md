@@ -383,11 +383,24 @@ machine — ✅ done, gate-green, committed.**
 - **New property kind:** `PropType::ObjectRefArray` + `PropDef::object_ref_array`
   + `set_object_ref_array`/`get_object_ref_names` (the `wires`/`cncables`/
   `tscables` `DSSObjectReferenceArrayProperty`; renders `[a, b, c]`, empty `[]`).
-- Oracle-pinned: 5 `linegeometry_*` `props.json` scenarios (default —
+- Oracle-pinned: 7 `linegeometry_*` `props.json` scenarios (default —
   `X`/`H`/`Units` skipped, the oracle raises on the unallocated `NConds=0`
-  arrays; overhead cond/wire + reduce; spacing form; CN cable; makelike) + 7
-  inline unit tests; `props_roundtrip` green. dss-core lib **351 → 358**. Full
-  three-command gate green.
+  arrays; overhead cond/wire + reduce; spacing form; CN cable; makelike;
+  multi-season ratings default; buried-neutral `cncable`+`wires=`) + 10 inline
+  unit tests + an exec parse-path test; `props_roundtrip` green. dss-core lib
+  **351 → 362**. Full three-command gate green.
+- **Audit follow-up (`/audit-code` step 2c-i):** three findings settled against
+  the pinned oracle and fixed. (1) The `wire`/`cncable`/`tscable` side effect now
+  logs the Pascal 10103 "WireData/CNData/TSData object was not defined" when the
+  active conductor is NIL (the generic ObjectRef 401 stays — upstream emits
+  both). (2) `PropType::ObjectRefArray` now `Exit`s on the first unresolved token
+  (Pascal `DSSObjectHelper` array property), so a bad name no longer drops the
+  token and trips a spurious "Unexpected number" count error. (3) The
+  `NumAmpRatings>1`/`AmpRatings` ratings-default branches (and the `cond`
+  out-of-range clamp) were untested — added the two goldens above plus the
+  exec/inline tests; the conductor invariant `NumAmpRatings == len(AmpRatings)`
+  makes the array-branch `take(n)` copy identical to Pascal's full-length copy
+  (no code change needed there).
 - **Deferred to step 2c-ii:** `UpdateLineGeometryData(f)`/`CalcMatrices` driving
   the `support::line_constants` Carson engine to cache `Zmatrix`/`YCmatrix`/
   `Rho` (the object tracks `data_changed` staleness + the engine `fline_kind`

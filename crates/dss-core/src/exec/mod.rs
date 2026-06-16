@@ -3856,6 +3856,29 @@ mod tests {
         assert_eq!(query(&mut dss, "line.l5.phases"), "3");
     }
 
+    #[test]
+    fn line_geometry_undefined_wire_in_array_aborts() {
+        // Pascal `DSSObjectReferenceArrayProperty` Exits on the first unresolved
+        // token: the "not found" is logged and the write function (SetWires)
+        // never runs, so nothing is stored and no spurious "Unexpected number"
+        // count error fires.
+        let mut dss = Dss::new();
+        dss.command("New circuit.p");
+        dss.command("New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 radunits=ft normamps=530 Runits=ft");
+        dss.command("New LineGeometry.g1 nconds=3 nphases=3 wires=[acsr bad acsr]");
+        let errs = dss.errors();
+        assert!(
+            errs.iter().any(|e| e.contains("object \"bad\" not found")),
+            "{errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.contains("Unexpected number")),
+            "{errs:?}"
+        );
+        // Exit before the write function: no conductors were stored.
+        assert_eq!(query(&mut dss, "LineGeometry.g1.wires"), "[, , ]");
+    }
+
     /// WP4.7 step 6 (the "silent killer" check): control elements attach to
     /// existing buses, so adding a RegControl must not change `YNodeOrder`,
     /// and the Y build must skip their `yprim: None` (no stamping, solvable).

@@ -515,9 +515,22 @@ impl DssObject for LineGeometryObj {
                 self.default_amps_from(0);
             }
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
-                // Only the first conductor defaults the geometry ratings.
-                if self.factive_cond == 1 {
-                    self.default_amps_from(0);
+                // Pascal: `conductorObj := FWireData[ActiveCond]`; if assigned,
+                // the first conductor defaults the geometry ratings; if NIL (the
+                // name did not resolve — the generic ObjectRef parse already
+                // logged its 401), log the conductor-not-defined 10103.
+                if let Some(a) = self.active_index() {
+                    if self.fwiredata[a].is_some() {
+                        if self.factive_cond == 1 {
+                            self.default_amps_from(0);
+                        }
+                    } else {
+                        self.data.push_error(
+                            "WireData/CNData/TSData object was not defined. \
+                             Must be previously defined."
+                                .to_string(),
+                        );
+                    }
                 }
             }
             prop::SEASONS => {
@@ -835,5 +848,72 @@ mod tests {
         assert_eq!(get(&cls, &dst, "reduce"), "Yes");
         assert_eq!(get(&cls, &dst, "wires"), "[acsr, acsr, acsr]");
         assert_eq!(get(&cls, &dst, "normamps"), "530");
+    }
+
+    #[test]
+    fn wire_undefined_pushes_not_defined_error() {
+        // An unresolved `wire=` leaves the active conductor NIL; the side effect
+        // logs the Pascal 10103 "object was not defined" (the generic ObjectRef
+        // parse logs its own 401 "not found" separately, upstream).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        scalar(&cls, &mut g, "cond", "1");
+        // Mirror the executive's edit for an unresolved scalar ObjectRef: NIL.
+        let idx = cls.property_index("wire").unwrap();
+        g.set_object_ref(idx, "doesnotexist".to_string(), None);
+        g.data_mut().set_as_next_seq(idx);
+        g.side_effects(idx, 0);
+        let errs = g.data_mut().take_errors();
+        assert!(
+            errs.iter()
+                .any(|e| e.contains("was not defined. Must be previously defined")),
+            "{errs:?}"
+        );
+        assert_eq!(get(&cls, &g, "wire"), ""); // still empty
+    }
+
+    #[test]
+    fn wires_array_defaults_multi_season_ratings() {
+        // The `wires=` array branch defaults the geometry's Seasons/Ratings from
+        // the first conductor when its own are unset (the NumAmpRatings>1 /
+        // AmpRatings-copy branches of `default_amps_from`).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let w4 = build_wire(
+            "w4",
+            &[
+                ("normamps", "530"),
+                ("Seasons", "4"),
+                ("Ratings", "400 450 500 550"),
+            ],
+        );
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        set_ref_array(&cls, &mut g, "wires", &[&w4, &w4, &w4]);
+        assert_eq!(get(&cls, &g, "seasons"), "4");
+        assert_eq!(get(&cls, &g, "ratings"), "[ 400 450 500 550]");
+        assert_eq!(get(&cls, &g, "normamps"), "530");
+        assert_eq!(get(&cls, &g, "emergamps"), "795");
+    }
+
+    #[test]
+    fn cond_out_of_range_is_ignored() {
+        // Pascal `set_ActiveCond` ignores values outside `1..=NConds`; the value
+        // stays at the last valid conductor (the generic struct-index "Invalid
+        // value" diagnostic is not reproduced — transformer wdg precedent).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        scalar(&cls, &mut g, "cond", "2");
+        scalar(&cls, &mut g, "cond", "99"); // above NConds -> ignored
+        assert_eq!(get(&cls, &g, "cond"), "2");
+        scalar(&cls, &mut g, "cond", "0"); // below 1 -> ignored
+        assert_eq!(get(&cls, &g, "cond"), "2");
     }
 }

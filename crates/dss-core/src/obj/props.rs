@@ -616,12 +616,14 @@ impl ClassProps {
                 Ok(0)
             }
             PropType::ObjectRefArray => {
-                // Pascal `DSSObjectReferenceArrayProperty`: parse every token,
-                // resolve each against the fixed class (`cls.Find`), and hand the
-                // resolved list to the object, which validates the count and
-                // stores the references (Pascal `SetWires`). An unresolved token
-                // logs DoSimpleMsg 401 (like the scalar `ObjectRef`) and is
-                // skipped; the edit continues.
+                // Pascal `DSSObjectReferenceArrayProperty` (`WriteByFunction`):
+                // parse every token, resolve each against the fixed class
+                // (`cls.Find`), and hand the resolved list to the object, which
+                // validates the count and stores the references (Pascal
+                // `SetWires`). On the *first* unresolved token the upstream logs
+                // its "object not found" message and `Exit`s immediately
+                // (DSSObjectHelper.pas) — the write function never runs, so
+                // nothing is stored and no count error is raised.
                 let class = pd
                     .object_class
                     .expect("object-ref-array property needs a class");
@@ -640,10 +642,13 @@ impl ClassProps {
                 for token in &names {
                     match eng.foreign.and_then(|f| f.find(class, token)) {
                         Some((r, o)) => refs.push((o.data().name().to_string(), r, o)),
-                        None => eng.errors.push(format!(
-                            "{full}.{}: {class} object \"{token}\" not found.",
-                            pd.name
-                        )),
+                        None => {
+                            eng.errors.push(format!(
+                                "{full}.{}: {class} object \"{token}\" not found.",
+                                pd.name
+                            ));
+                            return Ok(0);
+                        }
                     }
                 }
                 obj.set_object_ref_array(idx, &refs);
