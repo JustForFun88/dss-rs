@@ -212,6 +212,35 @@ mod tests {
     }
 
     #[test]
+    fn nconds_grow_preserves_leading_and_zero_fills_tail() {
+        // Growing `nconds` re-runs the realloc side effect: the leading entries
+        // are preserved and the grown tail reads as zero. Pascal's `ReAllocmem`
+        // leaves that tail uninitialized (nondeterministic heap), so this is a
+        // Rust-only invariant — not oracle-pinnable — locking the zero-fill
+        // choice documented on `realloc_conductors`. The grow also resets units.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let mut obj = LineSpacingObj::new("ls");
+        let errs = apply(
+            &cls,
+            &mut obj,
+            &[
+                ("nconds", "3"),
+                ("x", "1 2 3"),
+                ("h", "10 11 12"),
+                ("units", "m"),
+            ],
+        );
+        assert!(errs.is_empty(), "{errs:?}");
+        let errs = apply(&cls, &mut obj, &[("nconds", "5")]);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(get(&cls, &obj, "nconds"), "5");
+        assert_eq!(get(&cls, &obj, "x"), "[ 1 2 3 0 0]"); // leading kept, tail zeroed
+        assert_eq!(get(&cls, &obj, "h"), "[ 10 11 12 0 0]");
+        assert_eq!(get(&cls, &obj, "units"), "ft"); // realloc side effect resets units
+    }
+
+    #[test]
     fn x_h_arrays_sized_by_nconds() {
         // X/H are DoubleVArray sized by FNConds: extra tokens are dropped and
         // missing tokens zero-fill (Pascal `InterpretDblArray`).
