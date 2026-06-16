@@ -285,7 +285,8 @@ pub mod wire_data {
 
     define_properties! {
         class "WireData", abbrev true, enums enums;
-        1  RDC       => PropDef::double("Rdc").flags(PropFlags::DYNAMIC_DEFAULT);
+        1  RDC       => PropDef::double("Rdc")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
         2  RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
         3  RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
         4  GMRAC     => PropDef::double("GMRac")
@@ -389,7 +390,8 @@ pub mod cn_data {
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         3  GMRSTRAND => PropDef::double("GMRStrand")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-        4  RSTRAND   => PropDef::double("RStrand").flags(PropFlags::NO_DEFAULT);
+        4  RSTRAND   => PropDef::double("RStrand")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
         5  EPSR      => PropDef::double("EpsR");
         6  INSLAYER  => PropDef::double("InsLayer")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
@@ -397,7 +399,8 @@ pub mod cn_data {
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         8  DIACABLE  => PropDef::double("DiaCable")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-        9  RDC       => PropDef::double("Rdc").flags(PropFlags::DYNAMIC_DEFAULT);
+        9  RDC       => PropDef::double("Rdc")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
         10 RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
         11 RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
         12 GMRAC     => PropDef::double("GMRac")
@@ -583,7 +586,8 @@ pub mod ts_data {
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         7  DIACABLE  => PropDef::double("DiaCable")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-        8  RDC       => PropDef::double("Rdc").flags(PropFlags::DYNAMIC_DEFAULT);
+        8  RDC       => PropDef::double("Rdc")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
         9  RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
         10 RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
         11 GMRAC     => PropDef::double("GMRac")

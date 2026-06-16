@@ -149,6 +149,11 @@ impl PropFlags {
     /// [`Self::DYNAMIC_DEFAULT`] this only affects the not-yet-ported JSON
     /// subsystem; it is inert for the text dump and the property setters.
     pub const NO_DEFAULT: Self = Self(1 << 39);
+    /// Pascal `Units_ohm_per_length`: documents the unit (`Ω/[length_unit]`) of a
+    /// per-length resistance/reactance property. Like the other `Units_*` flags
+    /// it is consumed only by the CAPI JSON-schema export (`getPropertyUnits`),
+    /// so it is inert for the text dump and the property setters.
+    pub const UNITS_OHM_PER_LENGTH: Self = Self(1 << 40);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
