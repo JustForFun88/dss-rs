@@ -1401,6 +1401,37 @@ SCENARIOS = [
             "New LineGeometry.g1 like=base",
         ],
     },
+    {
+        # Multi-season conductor: the geometry inherits Seasons/Ratings (and
+        # NormAmps/EmergAmps) from the first conductor when its own are unset,
+        # exercising the NumAmpRatings>1 / AmpRatings-copy defaulting branches.
+        "name": "linegeometry_ratings",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.w4 Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft Seasons=4 Ratings=(400 450 500 550)",
+            "New LineGeometry.g1 nconds=3 nphases=3 "
+            "cond=1 wire=w4 x=-1 h=10 units=m "
+            "cond=2 wire=w4 x=0 h=10 cond=3 wire=w4 x=1 h=10",
+        ],
+    },
+    {
+        # Buried-neutral: CN phase cables + an overhead neutral added via the
+        # plural wires= with the active conductor still a cable, so SetWires
+        # takes the istart=NPhases+1 branch (expected = NConds-NPhases = 1).
+        "name": "linegeometry_buried",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New CNData.cn1 k=16 DiaStrand=0.064 GmrStrand=0.0208 Rstrand=0.0145 "
+            "EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 "
+            "GMRac=0.0375 radius=0.0511 Runits=in radunits=in gmrunits=in normamps=350",
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New LineGeometry.g1 nconds=3 nphases=2 "
+            "cond=1 cncable=cn1 x=-0.5 h=-4 units=ft "
+            "cond=2 cncable=cn1 x=0.5 h=-4 wires=[acsr]",
+        ],
+    },
 ]
 
 
