@@ -2,6 +2,7 @@
 //! catalog codes, and the like — `DSS_OBJECT` classes that exist independently
 //! of any circuit element.
 
+pub mod conductor_data;
 pub mod growth_shape;
 pub mod line_code;
 pub mod load_shape;

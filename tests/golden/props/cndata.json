@@ -1,0 +1,135 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "cndata",
+ "scenarios": [
+  {
+   "name": "cndata_default",
+   "commands": [
+    "New CNData.cn0"
+   ],
+   "target": "CNData.cn0",
+   "properties": {
+    "k": "2",
+    "DiaStrand": "-1",
+    "GMRStrand": "-1",
+    "RStrand": "-1",
+    "EpsR": "2.3",
+    "InsLayer": "-1",
+    "DiaIns": "-1",
+    "DiaCable": "-1",
+    "RDC": "-1",
+    "RAC": "-1",
+    "RUnits": "none",
+    "GMRAC": "-1",
+    "GMRUnits": "none",
+    "Radius": "-1",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "-2",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "-1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cndata_full",
+   "commands": [
+    "New CNData.cn1 k=16 DiaStrand=0.064 GmrStrand=0.0208 Rstrand=0.0145 EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 GMRac=0.0375 radius=0.0511 Runits=in radunits=in gmrunits=in normamps=350"
+   ],
+   "target": "CNData.cn1",
+   "properties": {
+    "k": "16",
+    "DiaStrand": "0.064",
+    "GMRStrand": "0.0208",
+    "RStrand": "0.0145",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "1.06",
+    "DiaCable": "1.16",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "in",
+    "GMRAC": "0.0375",
+    "GMRUnits": "in",
+    "Radius": "0.0511",
+    "RadUnits": "in",
+    "NormAmps": "350",
+    "EmergAmps": "525",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cndata_strand_gmr_default",
+   "commands": [
+    "New CNData.cn2 k=13 DiaStrand=0.0641 Rstrand=0.0145 EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 radius=0.0511"
+   ],
+   "target": "CNData.cn2",
+   "properties": {
+    "k": "13",
+    "DiaStrand": "0.0641",
+    "GMRStrand": "0.02496054",
+    "RStrand": "0.0145",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "1.06",
+    "DiaCable": "1.16",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "none",
+    "GMRAC": "0.03979668",
+    "GMRUnits": "none",
+    "Radius": "0.0511",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   }
+  },
+  {
+   "name": "cndata_makelike",
+   "commands": [
+    "New CNData.cna k=16 DiaStrand=0.064 GmrStrand=0.0208 Rstrand=0.0145 EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 GMRac=0.0375 radius=0.0511",
+    "New CNData.cnb like=cna"
+   ],
+   "target": "CNData.cnb",
+   "properties": {
+    "k": "16",
+    "DiaStrand": "0.064",
+    "GMRStrand": "0.0208",
+    "RStrand": "0.0145",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "1.06",
+    "DiaCable": "1.16",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "none",
+    "GMRAC": "0.0375",
+    "GMRUnits": "none",
+    "Radius": "0.0511",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   }
+  }
+ ]
+}
