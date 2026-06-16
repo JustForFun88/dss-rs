@@ -1253,6 +1253,55 @@ SCENARIOS = [
         ],
         "allow_errors": True,
     },
+    # ----- LineSpacing -----------------------------------------------------
+    {
+        "name": "linespacing_default",
+        "target": "LineSpacing.ls1",
+        "commands": ["New LineSpacing.ls1"],
+    },
+    {
+        "name": "linespacing_full",
+        "target": "LineSpacing.ls1",
+        "commands": [
+            "New LineSpacing.ls1 nconds=3 nphases=3 x=(-1.2909 0 1.2909) "
+            "h=(28.6 28.6 28.6) units=ft"
+        ],
+    },
+    {
+        "name": "linespacing_units_m",
+        "target": "LineSpacing.ls1",
+        "commands": [
+            "New LineSpacing.ls1 nconds=2 nphases=1 x=(0 0.5) h=(10 10) units=m"
+        ],
+    },
+    {
+        # x/h are sized by nconds: extra tokens dropped, missing ones zero-fill.
+        "name": "linespacing_array_clamp",
+        "target": "LineSpacing.ls1",
+        "commands": [
+            "New LineSpacing.ls1 nconds=3 nphases=3 x=(-1.2 0 1.2 9.9) h=(28)"
+        ],
+    },
+    {
+        # Shrinking nconds truncates x/h (realloc preserves the leading
+        # entries) and the side effect resets units to ft.
+        "name": "linespacing_shrink_nconds",
+        "target": "LineSpacing.ls1",
+        "commands": [
+            "New LineSpacing.ls1 nconds=4 nphases=3 x=(-1.2 0 1.2 0) "
+            "h=(28 28 28 24) units=m",
+            "Edit LineSpacing.ls1 nconds=2",
+        ],
+    },
+    {
+        "name": "linespacing_makelike",
+        "target": "LineSpacing.ls1",
+        "commands": [
+            "New LineSpacing.base nconds=4 nphases=3 x=(-1.2 0 1.2 0) "
+            "h=(28 28 28 24) units=m",
+            "New LineSpacing.ls1 like=base",
+        ],
+    },
 ]
 
 
