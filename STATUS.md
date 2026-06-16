@@ -334,7 +334,7 @@ gate-green, committed.**
   (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) land in step 3 with the
   LineGeometry data-flow.
 
-**WP7.1 step 2b — `LineSpacing` (`TLineSpacingObj`) — ✅ done, gate-green, uncommitted.**
+**WP7.1 step 2b — `LineSpacing` (`TLineSpacingObj`) — ✅ done, gate-green, committed (`620cf89`).**
 - `src/elements/general/line_spacing.rs` (new) — port of Pascal
   `General/LineSpacing.pas`. A `DSS_OBJECT` catalog class: 5 props (`nconds`
   [SuppressJSON], `nphases`, `x`, `h` [both `DoubleVArray` sized by `FNConds`
@@ -549,10 +549,9 @@ everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 **Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
 the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
 Carson line-constants engine, `support/line_constants/`) and step 2a (the
-conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`) are done,
-gate-green and committed; step 2b (`LineSpacing`, `line_spacing.rs`) is done and
-gate-green but uncommitted — see §1e**; **WP7.1 step 2c (`LineGeometry`) is
-next.** Execute
+conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`) and step 2b
+(`LineSpacing`, `line_spacing.rs`) are done, gate-green and committed — see
+§1e**; **WP7.1 step 2c (`LineGeometry`) is next.** Execute
 the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
 independently-gated sub-blocks ordered risk-ascending: line constants →
 protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
