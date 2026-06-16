@@ -144,6 +144,11 @@ impl PropFlags {
     /// Pascal `Units_hour`: documents the unit of a time property (JSON schema
     /// metadata only).
     pub const UNITS_HOUR: Self = Self(1 << 38);
+    /// Pascal `NoDefault`: the property has no default value, so it is never
+    /// elided on JSON export (and is flagged in the schema). Like
+    /// [`Self::DYNAMIC_DEFAULT`] this only affects the not-yet-ported JSON
+    /// subsystem; it is inert for the text dump and the property setters.
+    pub const NO_DEFAULT: Self = Self(1 << 39);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

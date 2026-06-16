@@ -386,17 +386,17 @@ pub mod cn_data {
         class "CNData", abbrev true, enums enums;
         1  K         => PropDef::integer("k");
         2  DIASTRAND => PropDef::double("DiaStrand")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         3  GMRSTRAND => PropDef::double("GMRStrand")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
-        4  RSTRAND   => PropDef::double("RStrand");
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
+        4  RSTRAND   => PropDef::double("RStrand").flags(PropFlags::NO_DEFAULT);
         5  EPSR      => PropDef::double("EpsR");
         6  INSLAYER  => PropDef::double("InsLayer")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         7  DIAINS    => PropDef::double("DiaIns")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         8  DIACABLE  => PropDef::double("DiaCable")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         9  RDC       => PropDef::double("Rdc").flags(PropFlags::DYNAMIC_DEFAULT);
         10 RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
         11 RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
@@ -571,17 +571,18 @@ pub mod ts_data {
     define_properties! {
         class "TSData", abbrev true, enums enums;
         1  DIASHIELD => PropDef::double("DiaShield")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         2  TAPELAYER => PropDef::double("TapeLayer")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
-        3  TAPELAP   => PropDef::double("TapeLap").flags(PropFlags::NON_NEGATIVE);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
+        3  TAPELAP   => PropDef::double("TapeLap")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NO_DEFAULT);
         4  EPSR      => PropDef::double("EpsR");
         5  INSLAYER  => PropDef::double("InsLayer")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         6  DIAINS    => PropDef::double("DiaIns")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         7  DIACABLE  => PropDef::double("DiaCable")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
         8  RDC       => PropDef::double("Rdc").flags(PropFlags::DYNAMIC_DEFAULT);
         9  RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
         10 RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
