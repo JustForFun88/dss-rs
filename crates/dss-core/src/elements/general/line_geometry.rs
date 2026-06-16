@@ -604,8 +604,13 @@ mod tests {
 
     /// Apply a scalar property edit through the property engine (no foreign view
     /// needed — object references are driven directly by [`set_ref`]/
-    /// [`set_ref_array`] below). The full parse + object-reference resolution
-    /// path is covered end-to-end by the `props_roundtrip` golden vs the oracle.
+    /// [`set_ref_array`] below). The real parse + object-reference *resolution*
+    /// path is covered end-to-end against the oracle by the `props_roundtrip`
+    /// golden for the scalar `wire`/`cncable`/`tscable`, the `wires` array, and
+    /// `spacing`; the array-resolution abort is covered by the exec test
+    /// `line_geometry_undefined_wire_in_array_aborts`. (The plural `cncables=`/
+    /// `tscables=` forms are not yet golden-pinned — see STATUS: the oracle's
+    /// post-plural active-conductor value diverges and is under investigation.)
     fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) -> Vec<String> {
         let enums = EnumRegistry::new();
         let mut parser = Parser::new();

@@ -1447,6 +1447,63 @@ SCENARIOS = [
             "cond=2 cncable=cn1 x=0.5 h=-4 wires=[acsr]",
         ],
     },
+    {
+        # Tape-shield cable via the scalar tscable= state machine + a non-default
+        # LineType (ug_ts). Exercises TSData resolution, the TapeShield engine
+        # kind, NormAmps/EmergAmps defaulting from the TSData (the TsDataObj amps
+        # path), and the LineType enum binding for a non-oh value.
+        "name": "linegeometry_ts",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New TSData.ts1 DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 "
+            "InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 GMRac=0.0375 "
+            "radius=0.0511 normamps=300",
+            "New LineGeometry.g1 nconds=3 nphases=3 linetype=ug_ts "
+            "cond=1 tscable=ts1 x=-0.5 h=-4 units=ft "
+            "cond=2 tscable=ts1 x=0 h=-4 cond=3 tscable=ts1 x=0.5 h=-4",
+        ],
+    },
+    {
+        # nphases > nconds: the oracle stores NPhases raw at parse time (the
+        # FLineData.Nphases clamp is a solve-time/UpdateLineGeometryData step, not
+        # a property side effect), so NPhases reads back 3 even though NConds=2.
+        "name": "linegeometry_nphases_gt_nconds",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New LineGeometry.g1 nconds=2 nphases=3 "
+            "cond=1 wire=acsr x=-1 h=10 cond=2 wire=acsr x=1 h=10",
+        ],
+    },
+    {
+        # Seasons/Ratings set directly on the geometry (not inherited from a
+        # conductor): the Seasons side effect resizes Ratings to the new count,
+        # then Ratings fills it. The wire's own Seasons=1 does not override.
+        "name": "linegeometry_seasons_direct",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New LineGeometry.g1 nconds=3 nphases=3 "
+            "cond=1 wire=acsr x=-1 h=10 units=m cond=2 wire=acsr x=0 h=10 "
+            "cond=3 wire=acsr x=1 h=10 Seasons=2 Ratings=(111 222)",
+        ],
+    },
+    {
+        # Explicit NormAmps/EmergAmps survive a later conductor: the amps
+        # defaulting only fills when the geometry's own value is still 0, so the
+        # wire's 530/795 does not overwrite the explicit 999/888.
+        "name": "linegeometry_normamps_explicit",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New LineGeometry.g1 nconds=3 nphases=3 normamps=999 emergamps=888 "
+            "cond=1 wire=acsr x=-1 h=10 cond=2 wire=acsr x=0 h=10 "
+            "cond=3 wire=acsr x=1 h=10",
+        ],
+    },
 ]
 
 
