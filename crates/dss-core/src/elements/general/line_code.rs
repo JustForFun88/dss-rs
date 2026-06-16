@@ -57,15 +57,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let conditional = PropFlags::CONDITIONAL_VALUE;
     let defs = vec![
         PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("R1").flags(conditional),
-        PropDef::double("X1").flags(conditional),
-        PropDef::double("R0").flags(conditional),
-        PropDef::double("X0").flags(conditional),
+        PropDef::double("R1").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::double("X1").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::double("R0").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::double("X0").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("C1").scale(1.0e-9).flags(conditional),
         PropDef::double("C0").scale(1.0e-9).flags(conditional),
         PropDef::mapped_string_enum("Units", enums.units),
-        PropDef::sym_matrix_real("RMatrix", NPHASES),
-        PropDef::sym_matrix_imag("XMatrix", NPHASES),
+        PropDef::sym_matrix_real("RMatrix", NPHASES).flags(PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::sym_matrix_imag("XMatrix", NPHASES).flags(PropFlags::UNITS_OHM_PER_LENGTH),
         // CMatrix stores susceptance; GetYCScale converts to/from nF on dump.
         PropDef::sym_matrix_imag("CMatrix", NPHASES).flags(PropFlags::SCALED_BY_FUNCTION),
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
@@ -77,8 +77,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // BooleanActionProperty: setting it `yes` runs DoKronReduction; the
         // getter always reads back `No` (it stores no state).
         PropDef::boolean("Kron"),
-        PropDef::double("Rg"),
-        PropDef::double("Xg"),
+        PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("rho"),
         PropDef::integer("Neutral"),
         PropDef::double("B1")

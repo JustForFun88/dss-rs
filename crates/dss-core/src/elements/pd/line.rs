@@ -77,18 +77,36 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         // The sym-component scalars are shown only while the sym model is
         // active (`PropertyOffset3 = @SymComponentsModel`, ConditionalValue).
-        PropDef::double("r1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::double("x1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::double("r0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::double("x0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
+        PropDef::double("r1").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::UNITS_OHM_PER_LENGTH,
+        ),
+        PropDef::double("x1").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::UNITS_OHM_PER_LENGTH,
+        ),
+        PropDef::double("r0").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::UNITS_OHM_PER_LENGTH,
+        ),
+        PropDef::double("x0").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::UNITS_OHM_PER_LENGTH,
+        ),
         PropDef::double("C1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
         PropDef::double("C0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::sym_matrix_real("rmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::sym_matrix_imag("xmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
+        PropDef::sym_matrix_real("rmatrix", PHASES)
+            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::sym_matrix_imag("xmatrix", PHASES)
+            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::sym_matrix_imag("cmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
         PropDef::boolean("Switch"),
-        PropDef::double("Rg"),
-        PropDef::double("Xg"),
+        PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("rho"),
         PropDef::object_ref("geometry").flags(PropFlags::NOT_PORTED),
         PropDef::mapped_string_enum("units", enums.units),
