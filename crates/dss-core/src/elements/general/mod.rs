@@ -5,6 +5,7 @@
 pub mod conductor_data;
 pub mod growth_shape;
 pub mod line_code;
+pub mod line_spacing;
 pub mod load_shape;
 pub mod price_shape;
 pub mod scalar_shape;

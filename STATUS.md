@@ -27,9 +27,10 @@ WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
 basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see the [Phase 6 record](docs/phase-records/phase-6.md).
 **Phase 7 IN PROGRESS** — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch
 `phase-7-extended-elements` cut from `main`; **WP7.1 step 1 done** (the Carson
-line-constants engine `support/line_constants/`) **and step 2a done** (the
-conductor catalog `WireData`/`CNData`/`TSData`), both oracle-pinned and
-gate-green — see §1e; **WP7.1 step 2b/2c next** (`LineSpacing` + `LineGeometry`).
+line-constants engine `support/line_constants/`), **step 2a done** (the
+conductor catalog `WireData`/`CNData`/`TSData`) **and step 2b done**
+(`LineSpacing`), all oracle-pinned and gate-green — see §1e; **WP7.1 step 2c
+next** (`LineGeometry`).
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -70,13 +71,13 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 next |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 2c `LineGeometry` next) |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 319, golden_feeders 1,
+cargo test --workspace      # dss-core lib 348, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_checkpoints 1,
                             # golden_ieee8500 1, golden_reliability 1,
@@ -233,7 +234,7 @@ superseded only by the code and tests:
 Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small step
 → full gate → update this file → stop for confirmation.
 
-**WP7.1 step 1 — Carson line-constants engine (all 4 specializations) — ✅ done, gate-green (uncommitted).**
+**WP7.1 step 1 — Carson line-constants engine (all 4 specializations) — ✅ done, gate-green, committed.**
 - `src/support/line_constants/` — `mod.rs` (`LineConstants` = Pascal
   `TLineConstants`, `General/LineConstants.pas`) + the **four specializations**
   the plan calls for: `oh.rs` (`OhLineConstants`, a plain alias — `TOHLineConstants`
@@ -290,8 +291,9 @@ Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small ste
 - **Deferred (tracked):** the units-converting per-conductor *read* getters
   (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) are not ported — they have
   no consumer until the LineGeometry report/dump path; they land in step 3 with it.
+
 **WP7.1 step 2a — conductor catalog (`WireData`/`CNData`/`TSData`) — ✅ done,
-gate-green.**
+gate-green, committed.**
 - `src/elements/general/conductor_data.rs` (new) — port of Pascal
   `General/{ConductorData,WireData,CNData,TSData,CableData}.pas`. Pascal's type
   hierarchy is `TConductorDataObj → TWireDataObj` and `TConductorDataObj →
@@ -332,8 +334,23 @@ gate-green.**
   (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) land in step 3 with the
   LineGeometry data-flow.
 
-- **Next (WP7.1 step 2b/2c):** `line_spacing.rs` (`TLineSpacingObj`: X/H arrays,
-  nconds/nphases, units) then `line_geometry.rs` (the `cond=`/`wire=`/`cncable=`/
+**WP7.1 step 2b — `LineSpacing` (`TLineSpacingObj`) — ✅ done, gate-green, uncommitted.**
+- `src/elements/general/line_spacing.rs` (new) — port of Pascal
+  `General/LineSpacing.pas`. A `DSS_OBJECT` catalog class: 5 props (`nconds`
+  [SuppressJSON], `nphases`, `x`, `h` [both `DoubleVArray` sized by `FNConds`
+  via `PropertyOffset2 = @FNConds`], `units` [mapped string enum]). Registered
+  after `TSData`, before `LineGeometry` (Pascal `DSSClassDefs.pas`).
+- **Side effects ported verbatim:** the `nconds` setter reallocates `FX`/`FY`
+  to the new count (grown tail zero-filled — Pascal's `ReAllocmem` leaves it
+  uninitialized, undefined memory the goldens do not pin) and resets `Units` to
+  `ft`; `MakeLike` copies `FNConds`/`NPhases`/`FX`/`FY` then `Units :=
+  Other.Units` (overriding the side-effect's ft reset).
+- Oracle-pinned: 6 `linespacing_*` `props.json` scenarios (default, full,
+  units=m, array clamp/zero-fill, shrink-nconds truncation+units-reset,
+  makelike) + 4 inline unit tests; `props_roundtrip` green. dss-core lib **344
+  → 348**. Full three-command gate green.
+
+- **Next (WP7.1 step 2c):** `line_geometry.rs` (the `cond=`/`wire=`/`cncable=`/
   `tscable=`/`spacing=` editing state machine + `CalcMatrices` driving the
   `LineConstants` engine); then step 3 un-`NOT_PORTED` Line's geometry fetch path,
   then step 4 the corpus feeder gate.
@@ -522,7 +539,7 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 7 in progress (plan written), WP7.1 next
+## 7. Current frontier — Phase 7 in progress, WP7.1 step 2c (`LineGeometry`) next
 
 Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
 to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
@@ -533,8 +550,9 @@ everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
 Carson line-constants engine, `support/line_constants/`) and step 2a (the
 conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`) are done,
-gate-green and committed — see §1e**; **WP7.1 step 2b/2c (`LineSpacing`,
-`LineGeometry`) is next.** Execute
+gate-green and committed; step 2b (`LineSpacing`, `line_spacing.rs`) is done and
+gate-green but uncommitted — see §1e**; **WP7.1 step 2c (`LineGeometry`) is
+next.** Execute
 the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
 independently-gated sub-blocks ordered risk-ascending: line constants →
 protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
