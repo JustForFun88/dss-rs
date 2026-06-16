@@ -1082,6 +1082,110 @@ SCENARIOS = [
             "New Sensor.s1 like=base",
         ],
     },
+    # --- WireData / CNData / TSData (WP7.1 step 2) ---------------------------
+    {
+        "name": "wiredata_default",
+        "target": "WireData.wd1",
+        "commands": ["New WireData.wd1"],
+    },
+    {
+        "name": "wiredata_full",
+        "target": "WireData.acsr",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 Rac=0.0535 Runits=mi GMRac=0.0244 "
+            "GMRunits=ft radius=0.0306 radunits=ft normamps=530 emergamps=795"
+        ],
+    },
+    {
+        "name": "wiredata_abbrev",
+        "target": "WireData.w",
+        "commands": ["New WireData.w rdc=0.1 gmrac=0.0048 rad=0.0635 norm=600"],
+    },
+    {
+        # diam sets the radius field (scale 0.5); GMR/capradius default from it,
+        # Rac defaults from Rdc.
+        "name": "wiredata_diam_defaults",
+        "target": "WireData.wd",
+        "commands": ["New WireData.wd Rdc=0.05 diam=0.1 Runits=ft radunits=ft"],
+    },
+    {
+        # Only GMRac given: radius defaults from GMR/0.7788; GMRunits seeds
+        # radunits; emergamps defaults from normamps.
+        "name": "wiredata_gmr_only",
+        "target": "WireData.wg",
+        "commands": ["New WireData.wg Rdc=0.04 GMRac=0.02 GMRunits=ft normamps=400"],
+    },
+    {
+        "name": "wiredata_ratings",
+        "target": "WireData.wr",
+        "commands": ["New WireData.wr Rdc=0.05 radius=0.03 Seasons=3 Ratings=(600 800 900)"],
+    },
+    {
+        "name": "wiredata_makelike",
+        "target": "WireData.w2",
+        "commands": [
+            "New WireData.w1 Rdc=0.0526 Rac=0.0535 GMRac=0.0244 radius=0.0306 "
+            "Runits=ft radunits=ft GMRunits=ft normamps=530",
+            "New WireData.w2 like=w1",
+        ],
+    },
+    {
+        "name": "cndata_default",
+        "target": "CNData.cn0",
+        "commands": ["New CNData.cn0"],
+    },
+    {
+        "name": "cndata_full",
+        "target": "CNData.cn1",
+        "commands": [
+            "New CNData.cn1 k=16 DiaStrand=0.064 GmrStrand=0.0208 Rstrand=0.0145 "
+            "EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 "
+            "GMRac=0.0375 radius=0.0511 Runits=in radunits=in gmrunits=in normamps=350"
+        ],
+    },
+    {
+        # DiaStrand seeds GmrStrand (0.7788*0.5*DiaStrand) when GmrStrand unset.
+        "name": "cndata_strand_gmr_default",
+        "target": "CNData.cn2",
+        "commands": [
+            "New CNData.cn2 k=13 DiaStrand=0.0641 Rstrand=0.0145 EpsR=2.3 "
+            "InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 radius=0.0511"
+        ],
+    },
+    {
+        "name": "cndata_makelike",
+        "target": "CNData.cnb",
+        "commands": [
+            "New CNData.cna k=16 DiaStrand=0.064 GmrStrand=0.0208 Rstrand=0.0145 "
+            "EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 "
+            "GMRac=0.0375 radius=0.0511",
+            "New CNData.cnb like=cna",
+        ],
+    },
+    {
+        "name": "tsdata_default",
+        "target": "TSData.ts0",
+        "commands": ["New TSData.ts0"],
+    },
+    {
+        "name": "tsdata_full",
+        "target": "TSData.ts1",
+        "commands": [
+            "New TSData.ts1 DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 "
+            "InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 GMRac=0.0375 "
+            "radius=0.0511 normamps=300"
+        ],
+    },
+    {
+        "name": "tsdata_makelike",
+        "target": "TSData.tsb",
+        "commands": [
+            "New TSData.tsa DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 "
+            "InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 GMRac=0.0375 "
+            "radius=0.0511",
+            "New TSData.tsb like=tsa",
+        ],
+    },
 ]
 
 

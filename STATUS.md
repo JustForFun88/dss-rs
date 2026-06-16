@@ -27,10 +27,11 @@ WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
 basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see the [Phase 6 record](docs/phase-records/phase-6.md).
 **Phase 7 IN PROGRESS** — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch
 `phase-7-extended-elements` cut from `main`; **WP7.1 step 1 done** (the Carson
-line-constants engine `support/line_constants/`, oracle-pinned, gate-green,
-uncommitted — see §1e); **WP7.1 step 2 (catalog classes) next** (DER, protection,
-line constants, harmonics, dynamics; PORTING_PLAN.md §Phase 7, the largest phase
-~18%).
+line-constants engine `support/line_constants/`) **and step 2a done** (the
+conductor catalog `WireData`/`CNData`/`TSData`), both oracle-pinned and
+gate-green — see §1e; **WP7.1 step 2b/2c next** (`LineSpacing` + `LineGeometry`).
+Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
+§Phase 7, the largest phase ~18%.
 
 Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
 the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
@@ -289,11 +290,53 @@ Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small ste
 - **Deferred (tracked):** the units-converting per-conductor *read* getters
   (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) are not ported — they have
   no consumer until the LineGeometry report/dump path; they land in step 3 with it.
-- **Next (WP7.1 step 2):** the catalog classes — `conductor_data.rs`
-  (ConductorData base + WireData/CNData/TSData, CableData base), `line_spacing.rs`,
-  `line_geometry.rs` — via `define_properties!` (these *feed* the engine arrays
-  above); then step 3 un-`NOT_PORTED` Line's geometry fetch path, then step 4 the
-  corpus feeder gate.
+**WP7.1 step 2a — conductor catalog (`WireData`/`CNData`/`TSData`) — ✅ done,
+gate-green.**
+- `src/elements/general/conductor_data.rs` (new) — port of Pascal
+  `General/{ConductorData,WireData,CNData,TSData,CableData}.pas`. Pascal's type
+  hierarchy is `TConductorDataObj → TWireDataObj` and `TConductorDataObj →
+  TCableDataObj → TCNDataObj/TTSDataObj`; Rust has no inheritance, so the shared
+  blocks live in two private cores — `ConductorDataCore` (the 13 `TConductorData`
+  props: Rdc/Rac + units, GMR, radius/diam, norm/emerg amps, Seasons/Ratings,
+  CapRadius, with the full side-effect web) and `CableDataCore` (EpsR/InsLayer/
+  DiaIns/DiaCable + error checks). Each concrete class embeds the cores it needs
+  and maps its own 1-based ordinal onto the relevant block.
+- **Property order matches the oracle exactly** (probed): a leaf's own props
+  lead, then `CableData`, then `ConductorData` — the Pascal `inherited
+  DefineProperties` chain. So WireData = 13 ConductorData props; CNData = 4 own
+  (k/DiaStrand/GMRStrand/RStrand) + 4 cable + 13 conductor = 21; TSData = 3 own
+  (DiaShield/TapeLayer/TapeLap) + 4 cable + 13 conductor = 20. Each via
+  `define_properties!` (ordinals inline — the leaves differ, so the conductor
+  table is repeated per class rather than shared by a fn).
+- **Side-effect web ported verbatim:** Rac↔Rdc (`×1.02`/`÷1.02`), GMRac→radius
+  (`÷0.7788`) + radius-zero error, radius/diam→GMR (`×0.7788`) + CapRadius default,
+  GMRunits↔radunits seeding, normamps↔emergamps (`×1.5`), Seasons→`AmpRatings`
+  resize; CN DiaStrand→GmrStrand (`0.7788·0.5·Dia`); the critical-error checks
+  (k<2, EpsR<1, Ins/Dia/shield/tape positivity, TapeLap∈[0,100]) as deferred
+  messages. `diam` shares the radius field via the engine's 0.5 prop scale
+  (`Diam` dumps `FRadius/0.5`). **`MakeLike` copies neither `NumAmpRatings` nor
+  `AmpRatings`** (Pascal quirk) — a `like=` conductor keeps its own `[ -1]`.
+- Defaults reproduced exactly (probed): every spec field inits to the `-1.0`
+  sentinel (so a bare WireData dumps `Rdc=-1 … Diam=-2 Ratings=[ -1]`), units
+  ordinal 0 dumps `none`, `EpsR=2.3`, `TapeLap=20`, `k=2`. Registered in
+  `exec::Dss::new` after the shape classes (Pascal DSSClassDefs.pas registers
+  WireData/CNData/TSData after Spectrum, before LineGeometry).
+- **Gate:** 8 inline tests (diam/dynamic-default couplings, GMR-seeds-radius,
+  MakeLike-skips-ratings, CN strand-GMR default, the k<2 / EpsR<1 / TapeLap-range
+  error paths, TS defaults) + 14 oracle-pinned `props.json` scenarios across new
+  `props/{wiredata,cndata,tsdata}.json` (default/full/abbrev/diam/gmr-only/
+  ratings/makelike for wire; default/full/strand-default/makelike for CN;
+  default/full/makelike for TS); `props_roundtrip` green. dss-core lib **336 →
+  344**. Full three-command gate green.
+- **Deferred (tracked):** the units-converting per-conductor *read* getters
+  (`Get_GMR`/`radius`/`Rdc`/`Rac`/`X`/`Y`/`Capradius`) land in step 3 with the
+  LineGeometry data-flow.
+
+- **Next (WP7.1 step 2b/2c):** `line_spacing.rs` (`TLineSpacingObj`: X/H arrays,
+  nconds/nphases, units) then `line_geometry.rs` (the `cond=`/`wire=`/`cncable=`/
+  `tscable=`/`spacing=` editing state machine + `CalcMatrices` driving the
+  `LineConstants` engine); then step 3 un-`NOT_PORTED` Line's geometry fetch path,
+  then step 4 the corpus feeder gate.
 
 ---
 
@@ -488,9 +531,10 @@ origin). The work landed on branch `phase-6-meters-topology` (WP6.10 phase-exit
 everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 **Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
 the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
-Carson line-constants engine, `support/line_constants/`) is done and gate-green
-(uncommitted) — see §1e**; **WP7.1 step 2 (the catalog classes ConductorData/
-WireData/CNData/TSData/CableData, LineSpacing, LineGeometry) is next.** Execute
+Carson line-constants engine, `support/line_constants/`) and step 2a (the
+conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`) are done,
+gate-green and committed — see §1e**; **WP7.1 step 2b/2c (`LineSpacing`,
+`LineGeometry`) is next.** Execute
 the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
 independently-gated sub-blocks ordered risk-ascending: line constants →
 protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
