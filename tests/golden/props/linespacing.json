@@ -172,6 +172,51 @@
     "Units": "none",
     "Like": ""
    }
+  },
+  {
+   "name": "linespacing_units_in",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=in"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "in",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_cm",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=cm"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "cm",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_mm",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mm"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "mm",
+    "Like": ""
+   }
   }
  ]
 }

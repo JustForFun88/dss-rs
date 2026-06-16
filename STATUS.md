@@ -350,14 +350,20 @@ gate-green, committed.**
 - `nconds=0` empties the buffers: Pascal `ReAllocmem(FX, 0)` nils the pointer,
   so `GetDSSArray` returns `''` (not `'[]'`) — `get_f64_array` mirrors this by
   reading an empty coordinate array as nil (audit follow-up; was `'[]'`).
-- Oracle-pinned: 11 `linespacing_*` `props.json` scenarios (default, full,
+- Oracle-pinned: 14 `linespacing_*` `props.json` scenarios (default, full,
   units=m, array clamp/zero-fill, shrink-nconds truncation+units-reset, makelike,
-  zero-nconds empty-string, units mi/kft/km/none) + 7 inline unit tests;
+  zero-nconds empty-string, units mi/kft/km/none/in/cm/mm) + 7 inline unit tests;
   `props_roundtrip` green. dss-core lib **344 → 351** (audit follow-ups added the
-  `nconds_grow_*` zero-fill invariant, the `nconds=0`→`''` fix + golden, full
-  units-enum coverage, and the negative-`nconds` clamp invariant test — the
-  oracle raises on negative `nconds`, so that path is Rust-only). Full
-  three-command gate green.
+  `nconds_grow_*` zero-fill invariant, the `nconds=0`→`''` fix + golden, and the
+  negative-`nconds` clamp invariant test — the oracle raises on negative
+  `nconds`, so that path is Rust-only). Full three-command gate green.
+- **Audit-tests follow-up (`/audit-tests`, uncommitted):** rounded the units
+  golden out to **all 9 `LineUnits` ordinals** — added `linespacing_units_{in,cm,mm}`
+  (the only Minor finding; the per-class plumbing was already covered by 6
+  ordinals + the full mapping by `dss_enum.rs`). Regenerated with the pinned
+  oracle; only `linespacing.json` changed (11 → 14). The two Rust-only invariant
+  tests (`nconds_grow_*`, negative-`nconds`) needed no change — documented
+  divergences with no oracle to pin. Gate green.
 
 **WP7.1 step 2c-i — `LineGeometry` (`TLineGeometryObj`) object + edit state
 machine — ✅ done, gate-green, committed.**
