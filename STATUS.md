@@ -357,7 +357,7 @@ gate-green, committed.**
   `nconds_grow_*` zero-fill invariant, the `nconds=0`→`''` fix + golden, and the
   negative-`nconds` clamp invariant test — the oracle raises on negative
   `nconds`, so that path is Rust-only). Full three-command gate green.
-- **Audit-tests follow-up (`/audit-tests`, uncommitted):** rounded the units
+- **Audit-tests follow-up (`/audit-tests` step 2b, `b5d5201`):** rounded the units
   golden out to **all 9 `LineUnits` ordinals** — added `linespacing_units_{in,cm,mm}`
   (the only Minor finding; the per-class plumbing was already covered by 6
   ordinals + the full mapping by `dss_enum.rs`). Regenerated with the pinned
@@ -407,7 +407,7 @@ machine — ✅ done, gate-green, committed.**
   exec/inline tests; the conductor invariant `NumAmpRatings == len(AmpRatings)`
   makes the array-branch `take(n)` copy identical to Pascal's full-length copy
   (no code change needed there).
-- **Audit-tests follow-up (`/audit-tests` step 2c-i, uncommitted):** the test
+- **Audit-tests follow-up (`/audit-tests` step 2c-i, `2b54849`):** the test
   audit found the **tape-shield path had zero executable coverage** (no test ever
   wrote `tscable=`/`tscables=`, so the `conductor_amps` `TsDataObj` arm was dead)
   plus minor happy-path-only gaps. Added 4 oracle-pinned scenarios (linegeometry
@@ -624,7 +624,7 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 7 in progress, WP7.1 step 2c (`LineGeometry`) next
+## 7. Current frontier — Phase 7 in progress, WP7.1 step 2c-ii (`LineGeometry` matrices) next
 
 Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
 to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
@@ -634,9 +634,11 @@ everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 **Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
 the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
 Carson line-constants engine, `support/line_constants/`) and step 2a (the
-conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`) and step 2b
-(`LineSpacing`, `line_spacing.rs`) are done, gate-green and committed — see
-§1e**; **WP7.1 step 2c (`LineGeometry`) is next.** Execute
+conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`), step 2b
+(`LineSpacing`, `line_spacing.rs`) and step 2c-i (`LineGeometry` object + edit
+state machine, `line_geometry.rs`) are done, gate-green and committed — see
+§1e**; **WP7.1 step 2c-ii (`UpdateLineGeometryData`/`CalcMatrices` — the Carson
+`Zmatrix`/`YCmatrix` cache) is next.** Execute
 the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
 independently-gated sub-blocks ordered risk-ascending: line constants →
 protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
