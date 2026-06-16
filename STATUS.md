@@ -28,9 +28,11 @@ basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see the 
 **Phase 7 IN PROGRESS** — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch
 `phase-7-extended-elements` cut from `main`; **WP7.1 step 1 done** (the Carson
 line-constants engine `support/line_constants/`), **step 2a done** (the
-conductor catalog `WireData`/`CNData`/`TSData`) **and step 2b done**
-(`LineSpacing`), all oracle-pinned and gate-green — see §1e; **WP7.1 step 2c
-next** (`LineGeometry`).
+conductor catalog `WireData`/`CNData`/`TSData`), **step 2b done**
+(`LineSpacing`) **and step 2c-i done** (the `LineGeometry` object + edit state
+machine + props/`MakeLike`; the matrix wiring `UpdateLineGeometryData` is step
+2c-ii), all oracle-pinned and gate-green — see §1e; **WP7.1 step 2c-ii next**
+(`LineGeometry` `CalcMatrices` → the Carson engine).
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -71,13 +73,13 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 2c `LineGeometry` next) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 2c-ii `LineGeometry` matrices next) |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 351, golden_feeders 1,
+cargo test --workspace      # dss-core lib 358, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_checkpoints 1,
                             # golden_ieee8500 1, golden_reliability 1,
@@ -357,10 +359,42 @@ gate-green, committed.**
   oracle raises on negative `nconds`, so that path is Rust-only). Full
   three-command gate green.
 
-- **Next (WP7.1 step 2c):** `line_geometry.rs` (the `cond=`/`wire=`/`cncable=`/
-  `tscable=`/`spacing=` editing state machine + `CalcMatrices` driving the
-  `LineConstants` engine); then step 3 un-`NOT_PORTED` Line's geometry fetch path,
-  then step 4 the corpus feeder gate.
+**WP7.1 step 2c-i — `LineGeometry` (`TLineGeometryObj`) object + edit state
+machine — ✅ done, gate-green, committed.**
+- `src/elements/general/line_geometry.rs` (new) — port of Pascal
+  `General/LineGeometry.pas` (the object, props, side-effect web, `MakeLike`).
+  19 props via `define_properties!` in the exact oracle order
+  (`nconds`/`nphases`/`cond`/`wire`/`x`/`h`/`units`/`normamps`/`emergamps`/
+  `reduce`/`spacing`/`wires`/`cncable`/`tscable`/`cncables`/`tscables`/`Seasons`/
+  `Ratings`/`LineType`). Registered after `LineSpacing` (Pascal
+  `DSSClassDefs.pas`).
+- **Per-conductor state machine** keyed by `cond=` (`FActiveCond`): `wire=`/
+  `cncable=`/`tscable=`/`x=`/`h=`/`units=` route to the active conductor's slot
+  internally (no engine change — the active index is object state). `cond` is
+  range-guarded `1..=NConds` (Pascal `set_ActiveCond` ignores out-of-range; the
+  generic CAPI struct-index error is not reproduced, the transformer `wdg`
+  precedent). Units are sticky via `FLastUnit`. `spacing=` copies a
+  `LineSpacing`'s coordinates into every conductor (and clears the `X`/`H` set
+  marks); `wires=`/`cncables=`/`tscables=` fill all slots (Pascal `SetWires`,
+  count-validated, the `AllowAllConductors`/JSON branch skipped as JSON-only).
+  Conductor/spacing refs are resolved + **snapshot-cloned** at edit time
+  (WP4.2 `FetchLineCode` pattern); the cloned conductors seed `NormAmps`/
+  `EmergAmps`/`NumAmpRatings`/`AmpRatings` from the first conductor.
+- **New property kind:** `PropType::ObjectRefArray` + `PropDef::object_ref_array`
+  + `set_object_ref_array`/`get_object_ref_names` (the `wires`/`cncables`/
+  `tscables` `DSSObjectReferenceArrayProperty`; renders `[a, b, c]`, empty `[]`).
+- Oracle-pinned: 5 `linegeometry_*` `props.json` scenarios (default —
+  `X`/`H`/`Units` skipped, the oracle raises on the unallocated `NConds=0`
+  arrays; overhead cond/wire + reduce; spacing form; CN cable; makelike) + 7
+  inline unit tests; `props_roundtrip` green. dss-core lib **351 → 358**. Full
+  three-command gate green.
+- **Deferred to step 2c-ii:** `UpdateLineGeometryData(f)`/`CalcMatrices` driving
+  the `support::line_constants` Carson engine to cache `Zmatrix`/`YCmatrix`/
+  `Rho` (the object tracks `data_changed` staleness + the engine `fline_kind`
+  for it). `LineSpacing` has no `DataChanged` flag, so the geometry tracks its
+  own staleness. Then step 3 un-`NOT_PORTED` Line's geometry fetch path
+  (`RecalcElementData` `CalcMatrices(BaseFrequency)`), step 4 the corpus feeder
+  + targeted golden gate.
 
 ---
 

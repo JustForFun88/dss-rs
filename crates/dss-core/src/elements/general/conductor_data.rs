@@ -86,6 +86,17 @@ impl ConductorDataCore {
         }
     }
 
+    /// The current-rating fields a `LineGeometry` defaults from its first
+    /// conductor (`NormAmps`/`EmergAmps`/`NumAmpRatings`/`AmpRatings`).
+    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+        (
+            self.norm_amps,
+            self.emerg_amps,
+            self.num_amp_ratings,
+            &self.amp_ratings,
+        )
+    }
+
     fn get_f64(&self, rel: usize) -> f64 {
         match rel {
             cd::RDC => self.frdc,
@@ -319,6 +330,12 @@ pub mod wire_data {
                 cond: ConductorDataCore::new(),
             }
         }
+
+        /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` — the rating fields a
+        /// `LineGeometry` defaults from its first conductor.
+        pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
+            self.cond.amps()
+        }
     }
 
     impl DssObject for WireDataObj {
@@ -447,6 +464,12 @@ pub mod cn_data {
                 fgmr_strand: -1.0,
                 fr_strand: -1.0,
             }
+        }
+
+        /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` (see
+        /// [`super::wire_data::WireDataObj::amps`]).
+        pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
+            self.cond.amps()
         }
     }
 
@@ -631,6 +654,12 @@ pub mod ts_data {
                 ftape_layer: -1.0,
                 ftape_lap: 20.0,
             }
+        }
+
+        /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` (see
+        /// [`super::wire_data::WireDataObj::amps`]).
+        pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
+            self.cond.amps()
         }
     }
 

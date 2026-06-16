@@ -69,6 +69,12 @@ pub enum PropType {
     /// (resolution to live objects arrives with the classes that consume
     /// them — LoadShape, GrowthShape, Spectrum-as-reference, ...).
     ObjectRef,
+    /// `DSSObjectReferenceArrayProperty`: a list of references resolved against
+    /// a fixed class (Pascal `PropertyOffset2 = @TheClass`), e.g. a LineGeometry
+    /// `wires`/`cncables`/`tscables` writing the per-conductor `FWireData` array.
+    /// The object stores the resolved objects (and validates the count); the
+    /// dump renders the referenced names as `[a, b, c]` (empty → `[]`).
+    ObjectRefArray,
     /// `DoubleVArrayProperty` with `SizeIsFunction`: a dynamic double array
     /// whose element count is computed by the object ([`DssObject::array_size`]),
     /// e.g. a transformer `XSCArray` (length `(NumWindings-1)·NumWindings/2`).
@@ -329,6 +335,15 @@ impl PropDef {
         Self {
             object_class: Some(""),
             ..Self::base(name, PropType::ObjectRef)
+        }
+    }
+    /// `DSSObjectReferenceArrayProperty` resolved at parse time against class
+    /// `class` (Pascal `PropertyOffset2 = @TheClass`), e.g. a LineGeometry
+    /// `wires`. The object stores the resolved objects.
+    pub fn object_ref_array(class: &'static str, name: &'static str) -> Self {
+        Self {
+            object_class: Some(class),
+            ..Self::base(name, PropType::ObjectRefArray)
         }
     }
     /// `DoubleVArrayProperty` whose length is computed by the object
@@ -600,6 +615,40 @@ impl ClassProps {
                 }
                 Ok(0)
             }
+            PropType::ObjectRefArray => {
+                // Pascal `DSSObjectReferenceArrayProperty`: parse every token,
+                // resolve each against the fixed class (`cls.Find`), and hand the
+                // resolved list to the object, which validates the count and
+                // stores the references (Pascal `SetWires`). An unresolved token
+                // logs DoSimpleMsg 401 (like the scalar `ObjectRef`) and is
+                // skipped; the edit continues.
+                let class = pd
+                    .object_class
+                    .expect("object-ref-array property needs a class");
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut names = Vec::new();
+                loop {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if token.is_empty() {
+                        break;
+                    }
+                    names.push(token);
+                }
+                let mut refs = Vec::with_capacity(names.len());
+                for token in &names {
+                    match eng.foreign.and_then(|f| f.find(class, token)) {
+                        Some((r, o)) => refs.push((o.data().name().to_string(), r, o)),
+                        None => eng.errors.push(format!(
+                            "{full}.{}: {class} object \"{token}\" not found.",
+                            pd.name
+                        )),
+                    }
+                }
+                obj.set_object_ref_array(idx, &refs);
+                Ok(0)
+            }
             PropType::Integer => {
                 let v = get_integer(eng, value)?;
                 Ok(set_obj_integer(pd, obj, idx, v, eng, &full))
@@ -839,6 +888,11 @@ impl ClassProps {
             PropType::Integer => obj.get_i32(idx).to_string(),
             PropType::Boolean | PropType::Enabled => str_y_or_n(obj.get_bool(idx)).to_string(),
             PropType::String | PropType::ObjectRef => obj.get_string(idx),
+            PropType::ObjectRefArray => {
+                // Pascal renders the referenced names as `[a, b, c]`; an empty
+                // list is `[]` (unlike `StringList`, which renders empty as "").
+                format!("[{}]", obj.get_object_ref_names(idx).join(", "))
+            }
             PropType::MakeLike | PropType::Action => String::new(), // Pascal: always ''
             PropType::MappedStringEnum => {
                 let enum_id = pd.enum_id.expect("mapped enum property needs an enum");

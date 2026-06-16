@@ -1329,6 +1329,78 @@ SCENARIOS = [
         "target": "LineSpacing.ls1",
         "commands": ["New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=none"],
     },
+    # ----- LineGeometry (WP7.1 step 2c) ------------------------------------
+    {
+        # Default geometry has NConds=0, so X/H/Units have no active conductor
+        # to read — the oracle raises an access violation on those getters
+        # (genuine UB on the unallocated FX/FY/FUnits pointers), so they are
+        # skipped; everything else dumps cleanly (Wires/CNCables '[]', etc.).
+        "name": "linegeometry_default",
+        "target": "LineGeometry.g1",
+        "commands": ["New LineGeometry.g1"],
+        "skip_props": ["X", "H", "Units"],
+    },
+    {
+        # Overhead 4-wire via the cond/wire state machine: 3 phase ACSR + a
+        # neutral, reduced out (reduce=y). NormAmps/EmergAmps default from the
+        # first conductor; the `?` getters see the last active conductor (4).
+        "name": "linegeometry_oh",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New WireData.cn Rdc=0.0526 GMRac=0.00814 GMRunits=ft radius=0.0204 "
+            "radunits=ft normamps=340 Runits=ft",
+            "New LineGeometry.g1 nconds=4 nphases=3 "
+            "cond=1 wire=acsr x=-1.2909 h=13.716 units=m "
+            "cond=2 wire=acsr x=0 h=13.716 "
+            "cond=3 wire=acsr x=1.2909 h=13.716 "
+            "cond=4 wire=cn x=0 h=14.6304 reduce=y",
+        ],
+    },
+    {
+        # Spacing form: a LineSpacing supplies the coordinates; the wires are
+        # the plural array form. Spacing= copies X/H/Units into every conductor.
+        "name": "linegeometry_spacing",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New LineSpacing.sp nconds=3 nphases=3 x=(-1.2909 0 1.2909) "
+            "h=(28.6 28.6 28.6) units=ft",
+            "New LineGeometry.g1 nconds=3 nphases=3 spacing=sp wires=[acsr acsr acsr]",
+        ],
+    },
+    {
+        # Concentric-neutral cable via cncable=; sets the engine kind to CN and
+        # defaults the ratings from the cable.
+        "name": "linegeometry_cn",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New CNData.cn1 k=16 DiaStrand=0.064 GmrStrand=0.0208 Rstrand=0.0145 "
+            "EpsR=2.3 InsLayer=0.22 DiaIns=1.06 DiaCable=1.16 Rdc=0.0997 "
+            "GMRac=0.0375 radius=0.0511 Runits=in radunits=in gmrunits=in normamps=350",
+            "New LineGeometry.g1 nconds=3 nphases=3 "
+            "cond=1 cncable=cn1 x=-0.5 h=-4 units=ft "
+            "cond=2 cncable=cn1 x=0 h=-4 "
+            "cond=3 cncable=cn1 x=0.5 h=-4",
+        ],
+    },
+    {
+        # MakeLike copies the full geometry; the nconds side effect on the
+        # derived object resets ActiveCond to 1, so the `?` getters show cond 1.
+        "name": "linegeometry_makelike",
+        "target": "LineGeometry.g1",
+        "commands": [
+            "New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 "
+            "radunits=ft normamps=530 Runits=ft",
+            "New LineGeometry.base nconds=3 nphases=3 "
+            "cond=1 wire=acsr x=-1.29 h=13.7 units=m "
+            "cond=2 wire=acsr x=0 h=13.7 "
+            "cond=3 wire=acsr x=1.29 h=13.7 reduce=y",
+            "New LineGeometry.g1 like=base",
+        ],
+    },
 ]
 
 
