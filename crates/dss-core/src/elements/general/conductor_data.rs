@@ -289,6 +289,85 @@ impl CableDataCore {
     }
 }
 
+/// The per-conductor data the `LineConstants` engine reads off a catalog object
+/// in `TLineGeometryObj.UpdateLineGeometryData` (LineGeometry.pas:927-964), in
+/// the object's own `LineUnits` codes — the engine converts to meters / per-meter
+/// via its setters. Pascal reads each field directly from `FWireData[i]`.
+pub struct ConductorGeom {
+    pub radius: f64,
+    pub cap_radius: f64,
+    pub gmr: f64,
+    pub rdc: f64,
+    pub rac: f64,
+    /// `RadiusUnits` — applies to `radius`, `cap_radius`, and (for cables) the
+    /// insulation/strand diameters Pascal reads with `RadiusUnits`.
+    pub radius_units: i32,
+    /// `GMRUnits` — applies to `gmr` and (CN) `gmr_strand`.
+    pub gmr_units: i32,
+    /// `ResUnits` — applies to `rdc`/`rac` and (CN) `r_strand`.
+    pub res_units: i32,
+    /// The cable-specific extras, when the conductor is a `CNData`/`TSData`.
+    pub cable: Option<CableGeom>,
+}
+
+/// The cable-class extras `UpdateLineGeometryData` copies into the
+/// `TCNLineConstants`/`TTSLineConstants` engine.
+pub enum CableGeom {
+    /// `TCNDataObj` fields (LineGeometry.pas:939-951).
+    Cn {
+        eps_r: f64,
+        ins_layer: f64,
+        dia_ins: f64,
+        dia_cable: f64,
+        k_strand: i32,
+        dia_strand: f64,
+        gmr_strand: f64,
+        r_strand: f64,
+    },
+    /// `TTSDataObj` fields (LineGeometry.pas:953-963).
+    Ts {
+        eps_r: f64,
+        ins_layer: f64,
+        dia_ins: f64,
+        dia_cable: f64,
+        dia_shield: f64,
+        tape_layer: f64,
+        tape_lap: f64,
+    },
+}
+
+impl ConductorDataCore {
+    /// The `TConductorData`-block portion of a [`ConductorGeom`] (the cable
+    /// extras are filled by the concrete class).
+    fn geom_common(&self) -> ConductorGeom {
+        ConductorGeom {
+            radius: self.fradius,
+            cap_radius: self.fcapradius60,
+            gmr: self.fgmr60,
+            rdc: self.frdc,
+            rac: self.fr60,
+            radius_units: self.fradius_units,
+            gmr_units: self.fgmr_units,
+            res_units: self.fresistance_units,
+            cable: None,
+        }
+    }
+}
+
+/// The [`ConductorGeom`] of any catalog conductor (`WireData`/`CNData`/`TSData`),
+/// or `None` for any other object type. The dispatch Pascal gets for free from
+/// `FWireData[i] is T…DataObj`.
+pub fn conductor_geom(o: &dyn DssObject) -> Option<ConductorGeom> {
+    let any = o.as_any();
+    if let Some(w) = any.downcast_ref::<WireDataObj>() {
+        Some(w.geom())
+    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
+        Some(c.geom())
+    } else {
+        any.downcast_ref::<TsDataObj>().map(|t| t.geom())
+    }
+}
+
 /// `WireData` (`TWireDataObj`): an overhead conductor — purely the
 /// `ConductorData` block (its own `NumPropsThisClass = 0`).
 pub mod wire_data {
@@ -335,6 +414,11 @@ pub mod wire_data {
         /// `LineGeometry` defaults from its first conductor.
         pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
             self.cond.amps()
+        }
+
+        /// The engine geometry inputs (overhead: no cable extras).
+        pub fn geom(&self) -> ConductorGeom {
+            self.cond.geom_common()
         }
     }
 
@@ -470,6 +554,22 @@ pub mod cn_data {
         /// [`super::wire_data::WireDataObj::amps`]).
         pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
             self.cond.amps()
+        }
+
+        /// The engine geometry inputs, including the CN strand/insulation extras.
+        pub fn geom(&self) -> ConductorGeom {
+            let mut g = self.cond.geom_common();
+            g.cable = Some(CableGeom::Cn {
+                eps_r: self.cable.feps_r,
+                ins_layer: self.cable.fins_layer,
+                dia_ins: self.cable.fdia_ins,
+                dia_cable: self.cable.fdia_cable,
+                k_strand: self.fk_strand,
+                dia_strand: self.fdia_strand,
+                gmr_strand: self.fgmr_strand,
+                r_strand: self.fr_strand,
+            });
+            g
         }
     }
 
@@ -660,6 +760,21 @@ pub mod ts_data {
         /// [`super::wire_data::WireDataObj::amps`]).
         pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
             self.cond.amps()
+        }
+
+        /// The engine geometry inputs, including the TS shield/tape extras.
+        pub fn geom(&self) -> ConductorGeom {
+            let mut g = self.cond.geom_common();
+            g.cable = Some(CableGeom::Ts {
+                eps_r: self.cable.feps_r,
+                ins_layer: self.cable.fins_layer,
+                dia_ins: self.cable.fdia_ins,
+                dia_cable: self.cable.fdia_cable,
+                dia_shield: self.fdia_shield,
+                tape_layer: self.ftape_layer,
+                tape_lap: self.ftape_lap,
+            });
+            g
         }
     }
 
