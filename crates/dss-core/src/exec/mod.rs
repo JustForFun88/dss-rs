@@ -3879,6 +3879,40 @@ mod tests {
         assert_eq!(query(&mut dss, "LineGeometry.g1.wires"), "[, , ]");
     }
 
+    /// WP7.1 step 3a: a `geometry=`-specified Line resolves the `LineGeometry`
+    /// class end to end (parse → foreign-class resolve → `FetchGeometryCode`),
+    /// adopts the geometry's conductor count, and solves through the Carson
+    /// matrix path — the full pipeline the inline `geometry_tests` bypass.
+    #[test]
+    fn line_geometry_specified_resolves_and_solves() {
+        let mut dss = Dss::new();
+        dss.command("New circuit.geo basekv=12.47 phases=3");
+        dss.command(
+            "New WireData.w runits=m gmrunits=m radunits=m \
+             rac=0.0003 gmrac=0.005 radius=0.01 normamps=400",
+        );
+        dss.command(
+            "New LineGeometry.geo1 nconds=3 nphases=3 \
+             cond=1 wire=w x=0 h=10 units=m cond=2 wire=w x=1 h=10 cond=3 wire=w x=2 h=10",
+        );
+        dss.command("New Line.l1 bus1=sourcebus bus2=b2 phases=3 geometry=geo1 length=1 units=km");
+        dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Set controlmode=off");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+        // The Line resolved the geometry and took its conductor count + type.
+        assert_eq!(query(&mut dss, "Line.l1.geometry"), "geo1");
+        assert_eq!(query(&mut dss, "Line.l1.phases"), "3");
+        // The sym scalars are hidden (`----`) — a matrix/geometry model is active.
+        assert_eq!(query(&mut dss, "Line.l1.r1"), "----");
+
+        let ckt = dss.circuit().unwrap();
+        assert!(ckt.solution.converged_flag, "geometry line should converge");
+    }
+
     /// WP4.7 step 6 (the "silent killer" check): control elements attach to
     /// existing buses, so adding a RegControl must not change `YNodeOrder`,
     /// and the Y build must skip their `yprim: None` (no stamping, solvable).

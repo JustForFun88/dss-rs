@@ -138,6 +138,21 @@ impl Clone for LineGeometryObj {
     }
 }
 
+impl std::fmt::Debug for LineGeometryObj {
+    // The conductor/spacing slots are `Box<dyn DssObject>` (not `Debug`), so the
+    // derived impl is unavailable; print the scalar geometry state instead.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineGeometryObj")
+            .field("name", &self.data.name())
+            .field("nconds", &self.fnconds)
+            .field("nphases", &self.fnphases)
+            .field("active_cond", &self.factive_cond)
+            .field("reduce", &self.freduce)
+            .field("line_type", &self.fline_type)
+            .finish_non_exhaustive()
+    }
+}
+
 impl LineGeometryObj {
     pub fn new(name: impl Into<String>) -> Self {
         // Pascal `TLineGeometryObj.Create`: zero conductors/phases (no
@@ -477,6 +492,44 @@ impl LineGeometryObj {
         if let Some(ld) = self.fline_data.as_mut() {
             ld.set_rho_earth(value);
         }
+    }
+
+    /// Pascal `LineGeometryObj.Get_Nconds` (LineGeometry.pas:754): the
+    /// *effective* conductor count a consuming `Line` adopts as its phase count
+    /// — `FNPhases` when the geometry is Kron-reduced (the reduced matrices are
+    /// `FNPhases × FNPhases`), otherwise the full `FNConds`.
+    pub fn nconds(&self) -> i32 {
+        if self.freduce {
+            self.fnphases
+        } else {
+            self.fnconds
+        }
+    }
+
+    /// Pascal `LineGeometryObj.NormAmps` (seeded from the first conductor unless
+    /// set explicitly) — `TLineObj.FetchGeometryCode` copies it onto the Line.
+    pub fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+
+    /// Pascal `LineGeometryObj.EmergAmps`.
+    pub fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
+    /// Pascal `LineGeometryObj.NumAmpRatings`.
+    pub fn num_amp_ratings(&self) -> i32 {
+        self.num_amp_ratings
+    }
+
+    /// Pascal `LineGeometryObj.AmpRatings`.
+    pub fn amp_ratings(&self) -> &[f64] {
+        &self.amp_ratings
+    }
+
+    /// Pascal `LineGeometryObj.FLineType`.
+    pub fn line_type(&self) -> i32 {
+        self.fline_type
     }
 }
 

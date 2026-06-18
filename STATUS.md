@@ -30,10 +30,12 @@ basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see the 
 line-constants engine `support/line_constants/`), **step 2a done** (the
 conductor catalog `WireData`/`CNData`/`TSData`), **step 2b done**
 (`LineSpacing`), **step 2c-i done** (the `LineGeometry` object + edit state
-machine + props/`MakeLike`) **and step 2c-ii done** (the matrix wiring —
+machine + props/`MakeLike`), **step 2c-ii done** (the matrix wiring —
 `UpdateLineGeometryData`/`CalcMatrices` driving the Carson engine, Z/Yc pinned
-to the oracle), all gate-green — see §1e; **WP7.1 step 3 next** (un-`NOT_PORTED`
-Line's geometry fetch path + `CalcMatrices(BaseFrequency)`).
+to the oracle) **and step 3a done** (Line's `geometry=` Carson path —
+`FetchGeometryCode`/`FMakeZFromGeometry`, Z/Yc/YPrim pinned to the oracle),
+all gate-green — see §1e; **WP7.1 step 3b next** (the `spacing`/`wires`/
+`cncables`/`tscables` path: `FetchLineSpacing`/`SetWires`/`FMakeZFromSpacing`).
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -74,7 +76,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 2c-ii `LineGeometry` matrices done; step 3 Line geometry-fetch path next) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 3a Line `geometry=` Carson path done; step 3b spacing/wires/cncables/tscables next) |
 
 ### Gate state (all green)
 ```
@@ -494,7 +496,7 @@ follow-up, gate-green).**
   `Get_YCmatrix` pre-existing-`SolutionAbort` NIL gate — it needs the solution
   handle the geometry object lacks; correctly belongs to the step-3 `Line`
   consumer and is tracked there.)*
-- **Audit-tests follow-up (`/audit-tests` step 2c-ii, uncommitted, gate-green):**
+- **Audit-tests follow-up (`/audit-tests` step 2c-ii, committed `6fa2f1c`):**
   strengthened the matrix unit tests where the object→engine *forwarding* of the
   `z_matrix`/`yc_matrix` args was under-exercised — every prior matrix test used
   `length = 1`, `units = m`, `earth_model = DERI`, so only `f` was proven to reach
@@ -510,10 +512,54 @@ follow-up, gate-green).**
   into a `build_overhead_3()` helper. dss-core lib **370 → 372**. Gate green.
 - **Still open (tracked):** the step-2c-i plural-cable `cncables=`/`tscables=`
   active-conductor divergence (above) — independent of the matrix wiring.
-- **Next — step 3:** un-`NOT_PORTED` Line's geometry fetch path
-  (`RecalcElementData` `CalcMatrices(BaseFrequency)` → `geom.z_matrix`/`yc_matrix`
-  with the solution's `ActiveEarthModel`), then step 4 the corpus feeder +
-  targeted golden gate.
+
+**WP7.1 step 3a — Line `geometry=` Carson path (`FetchGeometryCode`/
+`FMakeZFromGeometry`) — ✅ done, gate-green, uncommitted.**
+- `line.rs`: un-`NOT_PORTED` the **`geometry`** scalar ref
+  (`object_ref_class("LineGeometry", "geometry")`); the other geometry forms
+  (`spacing`/`wires`/`cncables`/`tscables`) stay `NOT_PORTED` for step 3b. New
+  fields `geometry_obj: Option<LineGeometryObj>` (snapshot-cloned at resolve time,
+  the WP4.2 `FetchLineCode` pattern), `geometry_name`, `fz_frequency` (Pascal
+  `FZFrequency`, `-1` sentinel).
+- Ported verbatim: **`FetchGeometryCode`** (clone the geometry, push a pre-set
+  `rho` in, copy NormAmps/EmergAmps/NumAmpRatings/AmpRatings/LineType, set
+  `NPhases := geom.Nconds` *reduce-aware* + `set_nconds`, clear the superseded
+  sym/linecode seq marks, `SymComponentsModel := False`); **`FMakeZFromGeometry(f)`**
+  (the `f = FZFrequency` skip-guard, then `Z := geom.Zmatrix[f, len, units]` /
+  `Yc := geom.YCmatrix[…]` under the Line's `FEarthModel` — Z/Yc are **total**,
+  length+units already folded in); **`KillGeometrySpecified`**. `set_object_ref`
+  fetches on resolve (the `linecode` pattern); the sym/matrix/switch side effects
+  and a post-`geometry` `rho=` now drive `KillGeometrySpecified` / push `rho` into
+  the geometry; the `phases=` guard ignores a phase change under a geometry (as
+  under a matrix model — the 18101 message stays the pre-existing matrix-path gap).
+  `MakeLike` carries the three new fields.
+- **`CalcYPrim` split into two paths** (Pascal `CalcYPrim`): the geometry branch
+  inverts the total `Z` directly (no length/freq/Rg/Xg scaling) and adds the
+  **full** `Yc/2` shunt; the sym/linecode branch is byte-for-byte the old code
+  (per-unit-length Z scaled by length·freq + earth return). Shared Kron embed +
+  CAP_EPSILON + open-conductor tail.
+- **`LineGeometryObj`** gained the public accessors `FetchGeometryCode` consumes
+  (`nconds` reduce-aware = Pascal `Get_Nconds`; `norm_amps`/`emerg_amps`/
+  `num_amp_ratings`/`amp_ratings`/`line_type`) + a manual `Debug` (it owns
+  `Box<dyn DssObject>` conductor slots and `Line` derives `Debug`).
+- **Deferred F2 partially lands here:** a geometry `Zmatrix` error
+  (`ELineGeometryProblem`/NIL conductor) is recorded via `push_error` and
+  `CalcYPrim` returns without building YPrim — Pascal sets `SolutionAbort` + Exits.
+  Threading the real solve-abort needs a `CalcYPrim` error sink the trait lacks
+  (no valid feeder hits it). Tracked with a `TODO` at the call site.
+- Oracle-pinned: 3 inline `geometry_tests` drive a `Line` through the property
+  engine + a `build_overhead_3` geometry and assert `Z`/`Yc` == the geometry's
+  total matrices entry-by-entry, anchored to the `deri_full_3cond` diagonal, plus
+  the Zinv Kron embed and `Yc/2` shunt (`geometry_path_builds_oracle_z_and_yc`);
+  the length/units forward (`…_length_units_scale_the_total_z`: 2 km = 1 m ×
+  1000 × 2); and `sym_scalar_detaches_geometry` (an `r1=` after `geometry=` runs
+  `KillGeometrySpecified`). + 1 exec test `line_geometry_specified_resolves_and_solves`
+  (full parse → `LineGeometry` foreign-class resolve → solve; `r1` hidden = `----`).
+  dss-core lib **372 → 376**. Full three-command gate green.
+- **Next — step 3b:** the `spacing=`/`wires=`/`cncables=`/`tscables=` path
+  (`FetchLineSpacing` + a `SetWires` state machine on `Line` + `LoadSpacingAndWires`
+  on `LineGeometry` + `FMakeZFromSpacing`), then step 4 the corpus feeder +
+  targeted golden `phase7/line_geometry*.json` gate.
 
 ---
 
@@ -643,9 +689,11 @@ truncated `CALPHA`/`pi`/`0.001732`/`57.29577951` constants, FPC banker's
 getter.
 
 `NOT_PORTED` (hard parse error; every site points at its phase):
-- Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` — Phase 7
-  (line constants: LineGeometry/WireData/LineSpacing/CN/TS, PORTING_PLAN §Phase 7
-  sub-block 1). Not in Phase 6 scope.
+- Line `geometry` — **ported (WP7.1 step 3a)**: resolves a `LineGeometry`, runs
+  `FetchGeometryCode` + `FMakeZFromGeometry` (the Carson `Zmatrix`/`YCmatrix`).
+  Line `spacing`/`wires`/`cncables`/`tscables` stay `NOT_PORTED` until step 3b
+  (the `FetchLineSpacing`/`SetWires`/`FMakeZFromSpacing` path, PORTING_PLAN
+  §Phase 7 sub-block 1).
 - Reactor `RCurve`/`LCurve` — Phase 5 (XYcurve) — XYcurve is now ported; the
   fetch is still `NOT_PORTED` (only the harmonic `CalcYPrim` consumes it, Phase 7).
 - CapControl `ControlSignal` — Phase 5 (LoadShape); still `NOT_PORTED` (the
@@ -699,7 +747,7 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 7 in progress, WP7.1 step 3 (Line geometry-fetch path) next
+## 7. Current frontier — Phase 7 in progress, WP7.1 step 3b (Line spacing/wires path) next
 
 Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
 to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
@@ -711,13 +759,15 @@ the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
 Carson line-constants engine, `support/line_constants/`) and step 2a (the
 conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`), step 2b
 (`LineSpacing`, `line_spacing.rs`), step 2c-i (`LineGeometry` object + edit
-state machine, `line_geometry.rs`) and step 2c-ii
+state machine, `line_geometry.rs`), step 2c-ii
 (`UpdateLineGeometryData`/`CalcMatrices` — the Carson `Zmatrix`/`YCmatrix` cache
-driving `support/line_constants/`, Z/Yc pinned to the oracle) are done and
-gate-green — see §1e** (steps 1–2c-i committed; 2c-ii uncommitted); **WP7.1
-step 3 (un-`NOT_PORTED` Line's `geometry`/`spacing`/`wires`/`cncables`/
-`tscables` fetch path + `RecalcElementData` `CalcMatrices(BaseFrequency)`) is
-next.** Execute
+driving `support/line_constants/`, Z/Yc pinned to the oracle) and step 3a
+(un-`NOT_PORTED` Line's `geometry=` fetch path — `FetchGeometryCode` +
+`FMakeZFromGeometry` in `CalcYPrim`, Z/Yc/YPrim pinned to the oracle) are done
+and gate-green — see §1e** (steps 1–2c-ii committed; 3a uncommitted); **WP7.1
+step 3b (the remaining `spacing`/`wires`/`cncables`/`tscables` forms:
+`FetchLineSpacing` + a `Line.SetWires` state machine + `FMakeZFromSpacing`),
+then step 4 the geometry corpus feeder + targeted golden, is next.** Execute
 the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
 independently-gated sub-blocks ordered risk-ascending: line constants →
 protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
