@@ -1,0 +1,315 @@
+//! EnergyMeter reliability indices (WP6.6) — Pascal `TExecHelper.DoLambdaCalcs`
+//! / `TEnergyMeterObj.CalcReliabilityIndices` (EnergyMeter.pas l.2411): the
+//! backward fault-rate sweep, the forward interruption sweep (counting the
+//! feeder sections delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
+
+use crate::circuit::Circuit;
+use crate::elements::ckt::ElemFlags;
+use crate::elements::pc::load::Load;
+use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+
+use super::downcast_meter;
+
+// ===================== Reliability (WP6.6) ==================================
+
+/// Pascal `TFeederSection` record (EnergyMeter.pas l.162): one entry per feeder
+/// section (the span between two over-current-protection devices). All-zero on
+/// allocation (`ReallocMem` + the explicit init loop).
+#[derive(Debug, Clone, Default)]
+struct FeederSection {
+    /// 1=Fuse; 2=Recloser; 3=Relay.
+    ocp_device_type: i32,
+    n_customers: i32,
+    n_branches: i32,
+    total_customers: i32,
+    /// Index of the PD element with the OCP device at the section head.
+    seq_index: usize,
+    average_repair_time: f64,
+    sect_fault_rate: f64,
+    sum_flt_rates_x_repair_hrs: f64,
+    sum_branch_flt_rates: f64,
+}
+
+/// FROM bus (0-based index into `ckt.buses`) of a PD element's metered terminal.
+fn pd_from_bus(store: &dyn ElemStore, r: ElemRef) -> usize {
+    let cd = store.ckt_elem(r).cd();
+    cd.terminals[cd.from_terminal - 1].bus_ref
+}
+
+/// Pascal `TExecHelper.DoLambdaCalcs` (ExecHelper.pas l.4847): zero every bus's
+/// `BusFltRate`/`Bus_Num_Interrupt`, then run `CalcReliabilityIndices` on each
+/// EnergyMeter. The caller (the executive) has already checked at least one
+/// meter exists and parsed the `AssumeRestoration` flag. Returns the per-meter
+/// error messages (Pascal calls `DoSimpleMsg` and continues the loop).
+pub(crate) fn calc_all_reliability_indices(
+    ckt: &mut Circuit,
+    store: &mut dyn ElemStore,
+    assume_restoration: bool,
+) -> Vec<String> {
+    // initialize bus quantities
+    for b in ckt.buses.iter_mut() {
+        b.bus_flt_rate = 0.0;
+        b.bus_num_interrupt = 0.0;
+    }
+
+    let mut errors = Vec::new();
+    let meters = ckt.energy_meters.clone();
+    for meter_ref in meters {
+        // Pascal `pMeter.AssumeRestoration := AssumeRestoration` before the calc;
+        // the field is also read by the next zone build's customer roll-up.
+        downcast_meter(store, meter_ref).set_assume_restoration(assume_restoration);
+        if let Err(e) = calc_reliability_indices(meter_ref, assume_restoration, ckt, store) {
+            errors.push(e);
+        }
+    }
+    errors
+}
+
+/// Pascal `TEnergyMeterObj.CalcReliabilityIndices` (EnergyMeter.pas l.2411):
+/// the backward fault-rate sweep, the forward interruption sweep (which counts
+/// the feeder *sections* delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
+///
+/// OCP devices (Relay/Recloser/Fuse) are Phase 7, so `Flg.HasOCPDevice` is never
+/// set: `SectionCount` stays 0 and the sweep aborts with error 52902 exactly as
+/// the oracle does. The section/SAIFI math below the abort is ported 1:1 but is
+/// dormant until those classes exist.
+fn calc_reliability_indices(
+    meter_ref: ElemRef,
+    assume_restoration: bool,
+    ckt: &mut Circuit,
+    store: &mut dyn ElemStore,
+) -> Result<(), String> {
+    let meter_full = format!("EnergyMeter.{}", store.obj(meter_ref).data().name());
+    let (seq, load_list, source_num_int, source_int_dur) = {
+        let em = downcast_meter(store, meter_ref);
+        (
+            em.sequence_list().to_vec(),
+            em.load_list().to_vec(),
+            em.source_num_interruptions(),
+            em.source_int_duration(),
+        )
+    };
+    if seq.is_empty() {
+        // Pascal `not Assigned(SequenceList)` (zone never built).
+        return Err(format!("{meter_full} Zone not defined properly."));
+    }
+
+    // Zero reliability accumulators (each PD element zeros its FROM bus).
+    for &r in seq.iter().rev() {
+        let from_bus = pd_from_bus(store, r);
+        ckt.buses[from_bus].zero_reliability_accums();
+    }
+
+    // Backward sweep: CalcFltRate (sets BranchFltRate) + AccumFltRate.
+    for &r in seq.iter().rev() {
+        let rel = store.ckt_elem(r).reliability_data();
+        let (from_t, from_bus, to_bus, branch_total, has_ocp) = {
+            let cd = store.ckt_elem(r).cd();
+            let from_t = cd.from_terminal;
+            let to_t = if from_t == 2 { 1 } else { 2 };
+            (
+                from_t,
+                cd.terminals[from_t - 1].bus_ref,
+                cd.terminals[to_t - 1].bus_ref,
+                cd.branch_total_customers,
+                cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+            )
+        };
+        let accumulated_br = ckt.buses[to_bus].bus_flt_rate + rel.branch_flt_rate;
+        let accumulated_miles = ckt.buses[to_bus].bus_total_miles + rel.miles_this_line;
+        {
+            let cd = store.ckt_elem_mut(r).cd_mut();
+            cd.to_terminal = if from_t == 2 { 1 } else { 2 };
+            cd.branch_flt_rate = rel.branch_flt_rate;
+            cd.accumulated_br_flt_rate = accumulated_br;
+            cd.accumulated_miles_downstream = accumulated_miles;
+        }
+        ckt.buses[from_bus].bus_total_num_customers += branch_total;
+        ckt.buses[from_bus].bus_total_miles += accumulated_miles;
+        // A fault interrupter isolates all downline faults from the FROM bus.
+        if !has_ocp {
+            ckt.buses[from_bus].bus_flt_rate += accumulated_br;
+        }
+    }
+
+    // Forward sweep: number of interruptions + section assignment.
+    let mut section_count: i32 = 0;
+    {
+        let first = seq[0];
+        let cd = store.ckt_elem(first).cd();
+        let from_bus = cd.terminals[cd.from_terminal - 1].bus_ref;
+        let pbus = &mut ckt.buses[from_bus];
+        pbus.bus_num_interrupt = source_num_int;
+        pbus.bus_cust_interrupts = source_num_int * pbus.bus_total_num_customers as f64;
+        pbus.bus_int_duration = source_int_dur;
+        pbus.bus_section_id = section_count; // section before 1st OCP device is 0
+    }
+    for &r in &seq {
+        let (from_t, from_bus, to_bus, accumulated_br, has_ocp, has_auto) = {
+            let cd = store.ckt_elem(r).cd();
+            let from_t = cd.from_terminal;
+            let to_t = if from_t == 2 { 1 } else { 2 };
+            (
+                from_t,
+                cd.terminals[from_t - 1].bus_ref,
+                cd.terminals[to_t - 1].bus_ref,
+                cd.accumulated_br_flt_rate,
+                cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+                cd.flags.contains(ElemFlags::HAS_AUTO_OCP_DEVICE),
+            )
+        };
+        let from_num_int = ckt.buses[from_bus].bus_num_interrupt;
+        let from_section = ckt.buses[from_bus].bus_section_id;
+        // No interrupting device → same num of interruptions downline.
+        ckt.buses[to_bus].bus_num_interrupt = from_num_int;
+        if has_ocp {
+            if assume_restoration && has_auto {
+                ckt.buses[to_bus].bus_num_interrupt = accumulated_br;
+            } else {
+                ckt.buses[to_bus].bus_num_interrupt += accumulated_br;
+            }
+            section_count += 1;
+            ckt.buses[to_bus].bus_section_id = section_count;
+        } else {
+            ckt.buses[to_bus].bus_section_id = from_section;
+        }
+        let section_id = ckt.buses[to_bus].bus_section_id;
+        let cd = store.ckt_elem_mut(r).cd_mut();
+        cd.to_terminal = if from_t == 2 { 1 } else { 2 };
+        cd.branch_section_id = section_id;
+    }
+
+    if section_count == 0 {
+        // No OCP devices (Phase 6 always lands here, matching the oracle).
+        return Err(
+            "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse) defined. \
+             Aborting Reliability calc."
+                .to_string(),
+        );
+    }
+
+    // Allocate + init the feeder-section array (indices 0..=section_count).
+    let mut sections = vec![FeederSection::default(); section_count as usize + 1];
+
+    // Backward sweep: N·FaultRates and section properties.
+    for &r in seq.iter().rev() {
+        let rel = store.ckt_elem(r).reliability_data();
+        let (
+            from_bus,
+            to_t,
+            branch_section_id,
+            branch_flt,
+            branch_num,
+            branch_total,
+            accum_br,
+            has_ocp,
+        ) = {
+            let cd = store.ckt_elem(r).cd();
+            (
+                cd.terminals[cd.from_terminal - 1].bus_ref,
+                cd.to_terminal,
+                cd.branch_section_id,
+                cd.branch_flt_rate,
+                cd.branch_num_customers,
+                cd.branch_total_customers,
+                cd.accumulated_br_flt_rate,
+                cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+            )
+        };
+        // CalcCustInterrupts.
+        ckt.buses[from_bus].bus_cust_interrupts +=
+            ckt.buses[from_bus].bus_num_interrupt * branch_total as f64;
+
+        if branch_section_id <= 0 {
+            continue;
+        }
+        let to_bus = store.ckt_elem(r).cd().terminals[to_t - 1].bus_ref;
+        let to_num_int = ckt.buses[to_bus].bus_num_interrupt;
+        let s = &mut sections[branch_section_id as usize];
+        s.n_customers += branch_num;
+        s.n_branches += 1;
+        s.sum_branch_flt_rates += to_num_int * branch_flt;
+        s.sum_flt_rates_x_repair_hrs += to_num_int * branch_flt * rel.hrs_to_repair;
+        if has_ocp {
+            // TODO(WP7): GetOCPDeviceType returns fuse=1/recloser=2/relay=3 from
+            // the control device at this branch. The Relay/Recloser/Fuse classes
+            // land in Phase 7; until then `has_ocp` is never set so this whole
+            // block is unreachable and the hardcoded 0 cannot be observed.
+            s.ocp_device_type = 0;
+            s.seq_index = 0;
+            s.total_customers = branch_total;
+            s.sect_fault_rate = accum_br;
+        }
+    }
+
+    // Average interruption duration per section (idx 0 excluded).
+    for s in sections.iter_mut().skip(1) {
+        s.average_repair_time = s.sum_flt_rates_x_repair_hrs / s.sum_branch_flt_rates;
+    }
+
+    // Bus interruption durations.
+    for b in ckt.buses.iter_mut() {
+        if b.bus_section_id > 0 {
+            b.bus_int_duration =
+                source_int_dur + sections[b.bus_section_id as usize].average_repair_time;
+        }
+    }
+
+    // SAIFI / SAIFIkW / CustInterrupts from the load list.
+    let mut saifi_kw = 0.0;
+    let mut cust_interrupts = 0.0;
+    let mut dbl_ncusts = 0.0;
+    let mut dbl_kw = 0.0;
+    for &load_ref in &load_list {
+        let (num_cust, rel_w, kw_base, pbus) = {
+            let load = store
+                .obj(load_ref)
+                .as_any()
+                .downcast_ref::<Load>()
+                .expect("load_list holds Load objects");
+            (
+                load.num_customers as f64,
+                load.rel_weighting,
+                load.kw_base,
+                load.cd().terminals[0].bus_ref,
+            )
+        };
+        let bus_num_int = ckt.buses[pbus].bus_num_interrupt;
+        let bus_total_num = ckt.buses[pbus].bus_total_num_customers;
+        let bus_int_dur = ckt.buses[pbus].bus_int_duration;
+        cust_interrupts += num_cust * rel_w * bus_num_int;
+        saifi_kw += kw_base * rel_w * bus_num_int;
+        dbl_ncusts += num_cust * rel_w;
+        dbl_kw += kw_base * rel_w;
+        ckt.buses[pbus].bus_cust_durations =
+            (bus_total_num as f64 + num_cust) * rel_w * bus_int_dur * bus_num_int;
+    }
+
+    // SAIDI from sections (idx 0 ignored).
+    let mut saidi = 0.0;
+    for s in sections.iter().skip(1) {
+        saidi += s.sect_fault_rate * s.average_repair_time * s.total_customers as f64;
+    }
+
+    let mut saifi = 0.0;
+    let mut caidi = 0.0;
+    if dbl_ncusts > 0.0 {
+        saifi = cust_interrupts / dbl_ncusts;
+        saidi /= dbl_ncusts;
+    }
+    if saifi > 0.0 {
+        caidi = saidi / saifi;
+    }
+    if dbl_kw > 0.0 {
+        saifi_kw /= dbl_kw;
+    }
+
+    downcast_meter(store, meter_ref).set_reliability_results(
+        saifi,
+        saifi_kw,
+        saidi,
+        caidi,
+        cust_interrupts,
+    );
+    Ok(())
+}
