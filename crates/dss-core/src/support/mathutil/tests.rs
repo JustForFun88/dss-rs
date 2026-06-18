@@ -1,4 +1,3 @@
-
 use super::*;
 
 const J: Complex64 = Complex64::new(0.0, 1.0);

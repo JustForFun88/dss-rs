@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn c(re: f64, im: f64) -> Complex64 {
