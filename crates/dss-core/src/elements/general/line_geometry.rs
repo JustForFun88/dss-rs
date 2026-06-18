@@ -203,13 +203,18 @@ impl LineGeometryObj {
     /// swap.
     fn change_line_constants_type(&mut self, new_choice: ConductorChoice) {
         let n = self.fnconds.max(0) as usize;
-        let need_new = match self.active_index() {
-            Some(a) => new_choice != self.fphase_choice[a],
-            None => self
+        // Pascal `needNew`: TRUE when the active conductor's choice changed, OR
+        // the engine is NIL / sized for a different conductor count. Pascal's
+        // `if … else if …` (both arms set TRUE) is a boolean OR — the second
+        // clause is *not* skipped when the active conductor's choice is unchanged,
+        // so the engine self-heals if it ever falls out of sync with `FNConds`.
+        let need_new = self
+            .active_index()
+            .is_some_and(|a| new_choice != self.fphase_choice[a])
+            || self
                 .fline_data
                 .as_ref()
-                .is_none_or(|ld| ld.num_conductors() != n),
-        };
+                .is_none_or(|ld| ld.num_conductors() != n);
         if need_new {
             // Pascal's `case` allocates only for the three concrete kinds; an
             // `Unknown` request leaves `FLineData` untouched (never reached in
@@ -1097,7 +1102,7 @@ mod tests {
     // proving the object→engine wiring (units, radius/GMR/Rdc/Rac, cable extras,
     // Nphases, Reduce) is correct end to end.
 
-    use crate::elements::general::conductor_data::{CnDataObj, cn_data};
+    use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, cn_data, ts_data};
     use crate::support::cmatrix::CMatrix;
     use crate::support::line_constants::DERI;
 
@@ -1162,6 +1167,32 @@ mod tests {
             ("diastrand", "0.001"),
             ("gmrstrand", "0.0004"),
             ("rstrand", "0.002"),
+        ] {
+            scalar(&cls, &mut obj, n, v);
+        }
+        obj
+    }
+
+    fn build_si_ts() -> TsDataObj {
+        let enums = EnumRegistry::new();
+        let cls = ts_data::class_props(&enums);
+        let mut obj = TsDataObj::new("ts");
+        // Same core conductor + insulation/shield data as the engine `build_ts`.
+        for (n, v) in &[
+            ("runits", "m"),
+            ("gmrunits", "m"),
+            ("radunits", "m"),
+            ("rdc", "0.0001"),
+            ("rac", "0.000105"),
+            ("radius", "0.005"),
+            ("gmrac", "0.004"),
+            ("epsr", "2.3"),
+            ("inslayer", "0.004"),
+            ("diains", "0.022"),
+            ("diacable", "0.030"),
+            ("diashield", "0.025"),
+            ("tapelayer", "0.0002"),
+            ("tapelap", "20"),
         ] {
             scalar(&cls, &mut obj, n, v);
         }
@@ -1299,6 +1330,45 @@ mod tests {
     }
 
     #[test]
+    fn matrices_ts_cable_match_oracle() {
+        // 3 buried tape-shield cables (h = -1.2 m, x = 0/0.1/0.2 m), DERI —
+        // exercises the TS param transfer (DiaShield/TapeLayer/TapeLap,
+        // EpsR/InsLayer/DiaIns/DiaCable). Engine `ts_cable_deri_3cond`.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let ts = build_si_ts();
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
+            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut g, "tscable", &ts);
+            scalar(&cls, &mut g, "x", x);
+            scalar(&cls, &mut g, "h", "-1.2");
+            scalar(&cls, &mut g, "units", "m");
+        }
+
+        let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
+        let z_ref = [
+            (4.675825330004e-04, 4.983304721750e-04),
+            (3.583518060982e-04, 2.468927740652e-04),
+            (3.436688380811e-04, 2.058672035803e-04),
+            (3.583518060982e-04, 2.468927740652e-04),
+            (4.783159246306e-04, 4.782357442920e-04),
+            (3.583518060982e-04, 2.468927740652e-04),
+            (3.436688380811e-04, 2.058672035803e-04),
+            (3.583518060982e-04, 2.468927740652e-04),
+            (4.675825330004e-04, 4.983304721750e-04),
+        ];
+        assert_z(&z, &z_ref, 3);
+
+        // Coaxial insulation capacitance: diagonal only, off-diagonals zero.
+        let yc = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc");
+        assert_close(yc.get(0, 0).im / W60, 2.830890564838e-01 * 1e-9, "C[0][0]");
+        assert_close(yc.get(0, 1).im, 0.0, "C[0][1]");
+    }
+
+    #[test]
     fn update_uninitialized_conductor_errors() {
         // A conductor slot left NIL is the Pascal "WireData is not correctly
         // initialized" hard error.
@@ -1341,6 +1411,73 @@ mod tests {
         }
         let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
         assert!(err.contains("occupy the same space"), "{err}");
+    }
+
+    #[test]
+    fn make_like_cn_cable_recomputes() {
+        // Pascal `MakeLike` rebuilds an *overhead* engine then runs
+        // UpdateLineGeometryData, which `EInvalidCast`s for a cable source. We
+        // clone the source engine instead, so `like=` a CN geometry does not
+        // crash and reproduces the source's matrix (the documented divergence).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let cn = build_si_cn();
+        let mut src = LineGeometryObj::new("src");
+        scalar(&cls, &mut src, "nconds", "3");
+        scalar(&cls, &mut src, "nphases", "3");
+        for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
+            scalar(&cls, &mut src, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut src, "cncable", &cn);
+            scalar(&cls, &mut src, "x", x);
+            scalar(&cls, &mut src, "h", "-1.2");
+            scalar(&cls, &mut src, "units", "m");
+        }
+        let z_src = src.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("src z");
+
+        let mut dst = LineGeometryObj::new("dst");
+        dst.make_like(&src);
+        // No crash (the Pascal bug averted), and the cloned CN engine reproduces
+        // the matrix on first use (`data_changed` forces the recompute).
+        let z_dst = dst.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("dst z");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(z_dst.get(i, j).re, z_src.get(i, j).re, "Z.re");
+                assert_close(z_dst.get(i, j).im, z_src.get(i, j).im, "Z.im");
+            }
+        }
+    }
+
+    #[test]
+    fn z_matrix_recomputes_on_frequency_change() {
+        // Guard against a hardcoded 60 Hz: the engine recalcs when `f` changes,
+        // so Z at 120 Hz must differ from Z at 60 Hz, and returning to 60 Hz must
+        // reproduce the original (the recompute keys off frequency).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let w = build_si_wire();
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        for (k, x) in ["0", "1", "2"].iter().enumerate() {
+            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut g, "wire", &w);
+            scalar(&cls, &mut g, "x", x);
+            scalar(&cls, &mut g, "h", "10");
+            scalar(&cls, &mut g, "units", "m");
+        }
+        let z60 = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z60");
+        let z120 = g.z_matrix(120.0, 1.0, M_UNIT, DERI).expect("z120");
+        // Series reactance rises with frequency (≈ ×2 here) — proves `f` reached
+        // the engine and triggered a recompute rather than returning a cached Z.
+        assert!(
+            z120.get(0, 0).im > z60.get(0, 0).im * 1.5,
+            "reactance must rise with frequency: {:.6e} vs {:.6e}",
+            z120.get(0, 0).im,
+            z60.get(0, 0).im
+        );
+        let z60b = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z60b");
+        assert_close(z60b.get(0, 0).im, z60.get(0, 0).im, "Z60 reproduced");
+        assert_close(z60b.get(0, 0).re, z60.get(0, 0).re, "Z60 reproduced (re)");
     }
 
     #[test]

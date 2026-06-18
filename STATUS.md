@@ -434,7 +434,8 @@ machine — ✅ done, gate-green, committed.**
   un-pinned for now (their CN/TS *data* paths are covered via the scalar
   scenarios). Empirically probed against the oracle (`/audit-tests` follow-up).
 **WP7.1 step 2c-ii — `LineGeometry` matrix wiring (`UpdateLineGeometryData`/
-`CalcMatrices`) — ✅ done, gate-green, uncommitted.**
+`CalcMatrices`) — ✅ done, gate-green, committed `0258911` (+ audit-code
+follow-up, gate-green).**
 - `line_geometry.rs` now holds a real `FLineData: Option<LineConstants>` Carson
   engine (replacing the placeholder `fline_kind` tracker). Ported:
   - `change_line_constants_type` — the Pascal `needNew` allocate/swap (kind ≠ the
@@ -477,6 +478,22 @@ machine — ✅ done, gate-green, committed.**
   (`update_uninitialized_conductor_errors`, `update_conductors_in_same_space_
   errors`). `LineConstants` gained `#[derive(Clone)]`. dss-core lib **362 → 367**.
   Full three-command gate green.
+- **Audit-code follow-up (committed separately):** (1) `change_line_constants_type`
+  `needNew` restored to Pascal's exact boolean **OR** (choice-changed *or*
+  engine-NIL/wrong-count) — previously a `match` that skipped the NIL/count clause
+  when the active choice was unchanged; behaviourally identical under the realloc
+  invariant, now a literal 1:1 port that self-heals if the invariant is ever broken.
+  (2) Test coverage closed for the paths 2c-ii added but left unexercised:
+  `matrices_ts_cable_match_oracle` (the **TS** object→engine transfer — DiaShield/
+  TapeLayer/TapeLap — vs the engine `ts_cable_deri_3cond` reference),
+  `make_like_cn_cable_recomputes` (pins the documented MakeLike clone divergence:
+  `like=` a CN geometry does not crash and reproduces the source Z), and
+  `z_matrix_recomputes_on_frequency_change` (guards `f` forwarding / the engine's
+  `f != FFrequency` recompute branch — all prior matrix tests used 60 Hz only).
+  dss-core lib **367 → 370**. Gate green. *(Not addressed: the `Get_Zmatrix`/
+  `Get_YCmatrix` pre-existing-`SolutionAbort` NIL gate — it needs the solution
+  handle the geometry object lacks; correctly belongs to the step-3 `Line`
+  consumer and is tracked there.)*
 - **Still open (tracked):** the step-2c-i plural-cable `cncables=`/`tscables=`
   active-conductor divergence (above) — independent of the matrix wiring.
 - **Next — step 3:** un-`NOT_PORTED` Line's geometry fetch path
