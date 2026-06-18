@@ -1,4 +1,10 @@
 use super::*;
+
+use num_complex::Complex64;
+
+use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::obj::base::DssObject;
 use crate::solution::SolveMode;
 
 fn test_sys() -> SysCtx {
@@ -79,7 +85,7 @@ fn recalc_without_transformer_records_error_124() {
 // --- Sample / DoPendingAction (WP5.5) ---
 
 use crate::elements::pd::transformer::ControlledTransformer;
-use crate::solution::{CTRLSTATIC, ControlQueue, EventLog};
+use crate::solution::{CTRLSTATIC, ControlQueue, EVENTDRIVEN, EventLog};
 
 /// A lightweight `ControlledTransformer` returning canned winding voltages
 /// and per-winding tap data, so the regulator decision logic is testable
