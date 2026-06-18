@@ -1,14 +1,20 @@
-//! Port of `PDElements/Line.pas` — `TLineObj`, Phase 3 paths: symmetrical
-//! components (R1/X1/R0/X0/C1/C0/B1/B0) and the direct matrix specification
-//! (rmatrix/xmatrix/cmatrix). LineCode/geometry/spacing arrive in Phase 4+.
+//! Port of `PDElements/Line.pas` — `TLineObj`. Impedance sources: symmetrical
+//! components (R1/X1/R0/X0/C1/C0/B1/B0), the direct matrix specification
+//! (rmatrix/xmatrix/cmatrix), the LineCode catalog (Phase 4), and the
+//! `LineGeometry` Carson path (`geometry=`, WP7.1 step 3a). The `spacing=`/
+//! `wires=`/`cncables=`/`tscables=` forms remain `NOT_PORTED` (step 3b).
 //!
-//! `Z`/`Yc` hold ohms (resp. susceptance) **per unit length** at base
-//! frequency; `CalcYPrim` applies length, units and frequency corrections.
+//! For the sym/matrix/linecode sources `Z`/`Yc` hold ohms (resp. susceptance)
+//! **per unit length** at base frequency and `CalcYPrim` applies length, units
+//! and frequency corrections. For the geometry source `Z`/`Yc` are already the
+//! **total** matrices (the geometry's `Zmatrix[f, len, units]` folds length and
+//! units in), so `CalcYPrim` inverts/embeds them directly.
 
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_code::LineCodeObj;
+use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
@@ -108,7 +114,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("rho"),
-        PropDef::object_ref("geometry").flags(PropFlags::NOT_PORTED),
+        PropDef::object_ref_class("LineGeometry", "geometry"),
         PropDef::mapped_string_enum("units", enums.units),
         PropDef::object_ref("spacing").flags(PropFlags::NOT_PORTED),
         PropDef::object_ref("wires").flags(PropFlags::NOT_PORTED),
@@ -172,6 +178,17 @@ pub struct Line {
     pub rho: f64,
     pub earth_model: i32,
     pub line_type: i32,
+    /// Pascal `LineGeometryObj` — the snapshot-cloned geometry a `geometry=`
+    /// reference attaches (the WP4.2 `FetchLineCode` pattern). `Some` activates
+    /// the Carson matrix path in [`Line::calc_yprim`], driving `Z`/`Yc` from the
+    /// geometry instead of the sym/linecode data.
+    pub geometry_obj: Option<LineGeometryObj>,
+    /// The resolved geometry object's name (the `geometry=` dump value).
+    pub geometry_name: String,
+    /// Pascal `FZFrequency`: the frequency the geometry `Z`/`Yc` were last built
+    /// for (`-1` = not yet computed), so [`Line::make_z_from_geometry`] rebuilds
+    /// only on a frequency change (the geometry matrices fold in length + units).
+    pub fz_frequency: f64,
     /// Per-unit-length series impedance at base frequency.
     pub z: Option<CMatrix>,
     /// Per-unit-length shunt susceptance at base frequency.
@@ -223,6 +240,9 @@ impl Line {
             rho,
             earth_model: 3, // DSS.DefaultEarthModel = DERI
             line_type: 1,   // OH line
+            geometry_obj: None,
+            geometry_name: String::new(),
+            fz_frequency: -1.0,
             z: None,
             yc: None,
             norm_amps: 400.0,
@@ -373,6 +393,96 @@ impl Line {
 
         self.line_type = code.fline_type();
     }
+
+    /// Pascal `TLineObj.KillGeometrySpecified`: drop the geometry reference and
+    /// clear its set-order mark; reset `FZFrequency` so a later geometry/spacing
+    /// rebuild is forced. A no-op when no geometry is attached.
+    fn kill_geometry_specified(&mut self) {
+        if self.geometry_obj.is_none() {
+            return;
+        }
+        self.geometry_obj = None;
+        self.geometry_name = String::new();
+        self.cd.obj.clear_seq(prop::GEOMETRY);
+        self.fz_frequency = -1.0;
+    }
+
+    /// Pascal `TLineObj.FetchGeometryCode`: adopt a resolved `LineGeometry` as
+    /// the impedance source. Snapshot-clones it (the WP4.2 `FetchLineCode`
+    /// pattern), copies the ratings/line-type, sizes the Line to the geometry's
+    /// effective conductor count, and switches off the sym-component model.
+    fn fetch_geometry_code(&mut self, geom: &LineGeometryObj) {
+        use prop::*;
+
+        self.kill_line_code_specified();
+        // KillSpacingSpecified is the WP7.1 step-3b spacing path; no spacing can
+        // be attached yet (the props are still NOT_PORTED).
+
+        self.fz_frequency = -1.0; // Init to signify not computed
+
+        // Own a private copy so the per-Line `rho`/cached matrices don't mutate
+        // the shared catalog object (Pascal mutates the shared object — the
+        // upstream "weird" TODO at Line.pas:776; cloning is the faithful Rust
+        // equivalent under the snapshot-clone borrow model).
+        let mut geom = geom.clone();
+
+        // If `rho=` was set on this Line *before* `geometry=`, push it into the
+        // geometry now (the symmetric after-case is handled in `side_effects`).
+        if self.cd.obj.prp_specified(RHO) {
+            geom.set_rho_earth(self.rho);
+        }
+
+        self.norm_amps = geom.norm_amps();
+        self.emerg_amps = geom.emerg_amps();
+
+        // Zero the set-order marks of everything the geometry now supplies, so
+        // `Save`/`?` reflect the geometry (non-NoPropertyTracking branch).
+        for p in [
+            LINECODE, R1, X1, R0, X0, C1, C0, B1, B0, SEASONS, RATINGS, NORMAMPS, EMERGAMPS,
+        ] {
+            self.cd.obj.clear_seq(p);
+        }
+
+        // FNPhases := geometry.Nconds (reduce-aware); NConds := FNPhases forces
+        // reallocation of terminal info + Yorder.
+        self.cd.nphases = geom.nconds().max(0) as usize;
+        let n = self.cd.nphases;
+        self.cd.set_nconds(n);
+
+        self.num_amp_ratings = geom.num_amp_ratings();
+        self.amp_ratings = geom.amp_ratings().to_vec();
+        self.line_type = geom.line_type();
+
+        self.sym_components_model = false;
+        self.sym_components_changed = false;
+
+        self.geometry_obj = Some(geom);
+        self.cd.yprim_invalid = true;
+    }
+
+    /// Pascal `TLineObj.FMakeZFromGeometry` (Line.pas:1929): build the total
+    /// `Z`/`Yc` (length + units already folded in) from the attached geometry at
+    /// frequency `f`, recomputing only when `f` differs from the last build. The
+    /// geometry's `ActiveEarthModel` is this Line's `FEarthModel`. Returns the
+    /// geometry's error (Pascal raises `ELineGeometryProblem` + `SolutionAbort`).
+    fn make_z_from_geometry(&mut self, f: f64) -> Result<(), String> {
+        if f == self.fz_frequency {
+            return Ok(()); // already done for this frequency
+        }
+        let len = self.len;
+        let units = self.length_units.code();
+        let earth_model = self.earth_model;
+        let geom = self
+            .geometry_obj
+            .as_mut()
+            .expect("make_z_from_geometry called without a geometry");
+        let z = geom.z_matrix(f, len, units, earth_model)?;
+        let yc = geom.yc_matrix(f, len, units, earth_model)?;
+        self.z = Some(z);
+        self.yc = Some(yc);
+        self.fz_frequency = f;
+        Ok(())
+    }
 }
 
 impl CktElement for Line {
@@ -442,56 +552,83 @@ impl CktElement for Line {
         (pos, neg, zero)
     }
 
-    /// Pascal `TLineObj.CalcYPrim` (sym-component and matrix paths; the
-    /// long-line correction and the <0.51 Hz GIC conversion are Phase 7+).
+    /// Pascal `TLineObj.CalcYPrim` (sym-component, matrix and geometry paths;
+    /// the long-line correction and the <0.51 Hz GIC conversion are Phase 7+).
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
 
-        if self.sym_components_changed {
-            // Catch inadvertent user error when C1/C0 were never specified:
-            // adjust the kft-based defaults for the new length units.
-            if !self.cap_specified {
-                self.c1 /= convert_line_units(LineUnits::Kft, self.length_units);
-                self.c0 /= convert_line_units(LineUnits::Kft, self.length_units);
-                self.cap_specified = true;
+        // Build Z, Yc and the to-be-inverted Zinv. Two paths:
+        //  - geometry: `FMakeZFromGeometry` makes the *total* Z/Yc (length and
+        //    units already folded into the geometry's `Zmatrix[f, len, units]`),
+        //    so Zinv = Z directly and the shunt needs no length/freq scaling.
+        //  - sym/linecode: Z/Yc are per-unit-length at base frequency; scale by
+        //    length/frequency and the earth-return Rg/Xg before inverting.
+        let geometry_path = self.geometry_obj.is_some();
+        let mut length_multiplier = 1.0;
+        let mut freq_multiplier = 1.0;
+
+        let mut zinv = if geometry_path {
+            // Pascal `FMakeZFromGeometry(Solution.Frequency)`.
+            if let Err(msg) = self.make_z_from_geometry(sys.frequency) {
+                // Pascal: the geometry getter raised `ELineGeometryProblem` and
+                // set `SolutionAbort`, so `CalcYPrim` exits without building
+                // YPrim. `CalcYPrim` has no solve-time abort channel here, so
+                // record the message and leave YPrim unbuilt — the solve cannot
+                // converge with the resulting isolated bus. TODO: thread
+                // `SolutionAbort` once a solve-time error sink exists.
+                self.cd.obj.push_error(msg);
+                return;
             }
-            self.recalc(sys.positive_sequence);
-        }
+            self.cd.yprim_freq = sys.frequency;
+            self.z.as_ref().expect("make_z_from_geometry set Z").clone()
+        } else {
+            if self.sym_components_changed {
+                // Catch inadvertent user error when C1/C0 were never specified:
+                // adjust the kft-based defaults for the new length units.
+                if !self.cap_specified {
+                    self.c1 /= convert_line_units(LineUnits::Kft, self.length_units);
+                    self.c0 /= convert_line_units(LineUnits::Kft, self.length_units);
+                    self.cap_specified = true;
+                }
+                self.recalc(sys.positive_sequence);
+            }
+
+            // Z is from line data (per unit length, base frequency).
+            length_multiplier = self.len / self.units_convert;
+            self.cd.yprim_freq = sys.frequency;
+            freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
+
+            // Put in series RL, corrected for length and frequency: Rg increases
+            // with frequency, Xg is modified by ln of sqrt(1/f).
+            let xgmod = if self.xg != 0.0 {
+                0.5 * self.kxg * freq_multiplier.ln()
+            } else {
+                0.0
+            };
+
+            let z = self.z.as_ref().expect("recalc ran in the constructor");
+            let mut zinv = CMatrix::new(nphases);
+            for i in 0..nphases {
+                for j in 0..nphases {
+                    let zv = z.get(i, j);
+                    zinv.set(
+                        i,
+                        j,
+                        Complex64::new(
+                            (zv.re + self.rg * (freq_multiplier - 1.0)) * length_multiplier,
+                            (zv.im - xgmod) * length_multiplier * freq_multiplier,
+                        ),
+                    );
+                }
+            }
+            zinv
+        };
 
         // ClearYPrim
         let mut yp_series = CMatrix::new(yorder);
         let mut yp_shunt = CMatrix::new(yorder);
         let mut yprim = CMatrix::new(yorder);
-
-        // Z is from line data (per unit length, base frequency).
-        let length_multiplier = self.len / self.units_convert;
-        self.cd.yprim_freq = sys.frequency;
-        let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
-
-        // Put in series RL, corrected for length and frequency: Rg increases
-        // with frequency, Xg is modified by ln of sqrt(1/f).
-        let xgmod = if self.xg != 0.0 {
-            0.5 * self.kxg * freq_multiplier.ln()
-        } else {
-            0.0
-        };
-
-        let z = self.z.as_ref().expect("recalc ran in the constructor");
-        let mut zinv = CMatrix::new(nphases);
-        for i in 0..nphases {
-            for j in 0..nphases {
-                let zv = z.get(i, j);
-                zinv.set(
-                    i,
-                    j,
-                    Complex64::new(
-                        (zv.re + self.rg * (freq_multiplier - 1.0)) * length_multiplier,
-                        (zv.im - xgmod) * length_multiplier * freq_multiplier,
-                    ),
-                );
-            }
-        }
 
         if zinv.invert().is_err() {
             // Pascal error 183: put in tiny series conductance.
@@ -529,13 +666,16 @@ impl CktElement for Line {
 
         // Shunt: half the capacitive admittance at each end (skip for GIC).
         if sys.frequency > 0.51 {
-            let yc = self.yc.as_ref().expect("recalc ran in the constructor");
+            let yc = self.yc.as_ref().expect("Z/Yc built above");
             for j in 0..nphases {
                 for i in 0..nphases {
-                    let value = Complex64::new(
-                        0.0,
-                        yc.get(i, j).im * length_multiplier * freq_multiplier / 2.0,
-                    );
+                    let ycv = yc.get(i, j);
+                    let value = if geometry_path {
+                        // Already total (length + frequency folded in); halve it.
+                        Complex64::new(ycv.re / 2.0, ycv.im / 2.0)
+                    } else {
+                        Complex64::new(0.0, ycv.im * length_multiplier * freq_multiplier / 2.0)
+                    };
                     yp_shunt.add(i, j, value);
                     yp_shunt.add(i + nphases, j + nphases, value);
                 }
@@ -699,6 +839,17 @@ impl DssObject for Line {
                     self.fetch_line_code(code);
                 }
             }
+            prop::GEOMETRY => {
+                // Pascal stores the pointer then `PropertySideEffects` calls
+                // `FetchGeometryCode`; the resolved view is only available here
+                // (parse time), so fetch immediately (the `linecode` pattern).
+                self.geometry_name = name;
+                if let Some((_, obj)) = resolved
+                    && let Some(geom) = obj.as_any().downcast_ref::<LineGeometryObj>()
+                {
+                    self.fetch_geometry_code(geom);
+                }
+            }
             _ => unreachable!("Line has no resolved object-ref property {idx}"),
         }
     }
@@ -707,8 +858,9 @@ impl DssObject for Line {
         use prop::*;
         match idx {
             LINECODE => self.line_code_name.clone(),
-            // Unported scalar refs render as the oracle's empty value.
-            GEOMETRY | SPACING => String::new(),
+            GEOMETRY => self.geometry_name.clone(),
+            // Unported scalar ref renders as the oracle's empty value.
+            SPACING => String::new(),
             // wires/cncables/tscables are array refs in Pascal; their empty
             // dump is `[]` (NOT_PORTED — they only need to round-trip empty).
             WIRES | CNCABLES | TSCABLES => "[]".to_string(),
@@ -844,7 +996,7 @@ impl DssObject for Line {
             }
             PHASES => {
                 if self.cd.nphases as i32 != prev_int {
-                    if self.sym_components_model {
+                    if self.geometry_obj.is_none() && self.sym_components_model {
                         let n = self.cd.nphases;
                         self.cd.set_nconds(n); // force reallocation of terminal info
                         // Note: Pascal reads ActiveCircuit.PositiveSequence
@@ -852,13 +1004,16 @@ impl DssObject for Line {
                         // (positive-sequence circuits revisit in CalcYPrim).
                         self.recalc(false);
                     } else {
-                        // Ignore change of nphases if a matrix model is used.
+                        // Ignore change of nphases if a matrix or geometry model
+                        // is in force (Pascal also logs 18101; the message is a
+                        // pre-existing matrix-path gap, deferred uniformly here).
                         self.cd.nphases = prev_int.max(0) as usize;
                     }
                 }
             }
             R1 | X1 | R0 | X0 | C1 | C0 | B1 | B0 => {
                 self.kill_line_code_specified();
+                self.kill_geometry_specified();
                 self.reset_length_units();
                 self.sym_components_changed = true;
                 self.sym_components_model = true;
@@ -870,12 +1025,14 @@ impl DssObject for Line {
                     self.cd.obj.clear_seq(p);
                 }
                 self.reset_length_units();
+                self.kill_geometry_specified();
             }
             SWITCH => {
                 if self.is_switch {
                     self.sym_components_changed = true;
                     self.cd.yprim_invalid = true;
                     self.kill_line_code_specified();
+                    self.kill_geometry_specified();
                     self.r1 = 1.0;
                     self.x1 = 1.0;
                     self.r0 = 1.0;
@@ -901,6 +1058,17 @@ impl DssObject for Line {
                     .resize(self.num_amp_ratings.max(0) as usize, 0.0);
             }
             _ => {}
+        }
+
+        // Pascal (Line.pas:772): a `rho=` while a geometry is attached pushes the
+        // earth resistivity into the geometry (the YPrim invalidation below forces
+        // the rebuild). `FZFrequency` is deliberately *not* reset — matching the
+        // upstream side effect, which leaves it to the next frequency change.
+        if idx == RHO {
+            let rho = self.rho;
+            if let Some(g) = self.geometry_obj.as_mut() {
+                g.set_rho_earth(rho);
+            }
         }
 
         // Yprim invalidation on anything that changes impedance values.
@@ -966,6 +1134,9 @@ impl DssObject for Line {
         self.rho = other.rho;
         self.earth_model = other.earth_model;
         self.line_type = other.line_type;
+        self.geometry_obj = other.geometry_obj.clone();
+        self.geometry_name = other.geometry_name.clone();
+        self.fz_frequency = other.fz_frequency;
         self.norm_amps = other.norm_amps;
         self.emerg_amps = other.emerg_amps;
         self.fault_rate = other.fault_rate;
@@ -977,5 +1148,226 @@ impl DssObject for Line {
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod geometry_tests {
+    //! WP7.1 step 3a — the `geometry=` Carson path. These drive a `Line` through
+    //! the property engine, attach a `LineGeometry`, and assert the resulting
+    //! `Z`/`Yc`/`YPrim` against the **same dss-python oracle reference**
+    //! (`deri_full_3cond`) the line-constants and LineGeometry matrix unit tests
+    //! pin — proving `FetchGeometryCode` + `FMakeZFromGeometry` forward
+    //! `f`/`len`/`units`/`earth_model` and embed the total matrices correctly.
+    use super::*;
+    use crate::elements::general::conductor_data::{WireDataObj, wire_data};
+    use crate::elements::general::line_geometry::{self, LineGeometryObj};
+    use crate::obj::dss_enum::EnumRegistry;
+    use crate::obj::props::{ClassProps, PropEngine};
+    use crate::solution::SolveMode;
+    use dss_parser::{Parser, ParserVars};
+
+    const M_UNIT: i32 = 4; // LineUnits::Meter code
+    const DERI: i32 = 3; // EarthModel::Deri code
+
+    fn assert_close(got: f64, want: f64, what: &str) {
+        let tol = 1e-8 * want.abs().max(1e-12);
+        assert!(
+            (got - want).abs() <= tol,
+            "{what}: got {got:.12e}, want {want:.12e}"
+        );
+    }
+
+    /// Apply a scalar property edit through the property engine (object refs go
+    /// through [`set_ref`]). Asserts no deferred error was raised.
+    fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
+        let enums = EnumRegistry::new();
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(obj, idx, value, &mut eng).unwrap();
+        errors.extend(obj.data_mut().take_errors());
+        assert!(errors.is_empty(), "edit {name}={value}: {errors:?}");
+    }
+
+    /// Mirror the executive's `edit_property` for a single (resolved) object
+    /// reference: set the reference, record the set order, run side effects.
+    fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &dyn DssObject) {
+        let idx = cls.property_index(name).expect("known property");
+        let r = ElemRef { cls: 0, idx: 0 };
+        obj.set_object_ref(idx, target.data().name().to_string(), Some((r, target)));
+        obj.data_mut().set_as_next_seq(idx);
+        obj.side_effects(idx, 0);
+    }
+
+    fn test_sys() -> SysCtx {
+        SysCtx {
+            frequency: 60.0,
+            fundamental: 60.0,
+            is_harmonic_model: false,
+            is_dynamic_model: false,
+            load_model: 1,
+            mode: SolveMode::Snapshot,
+            load_multiplier: 1.0,
+            gen_multiplier: 1.0,
+            generator_dispatch_reference: 0.0,
+            price_signal: 25.0,
+            default_growth_factor: 1.0,
+            year: 0,
+            dbl_hour: 0.0,
+            solution_count: 0,
+            loads_need_updating: false,
+            neglect_load_y: false,
+            long_line_correction: false,
+            positive_sequence: false,
+        }
+    }
+
+    /// The canonical WP7.1 3-phase overhead geometry (the `deri_full_3cond`
+    /// reference): `build_si_wire` at x = 0/1/2 m, h = 10 m, driven through the
+    /// LineGeometry editing path.
+    fn build_overhead_geometry() -> LineGeometryObj {
+        let enums = EnumRegistry::new();
+        let wcls = wire_data::class_props(&enums);
+        let mut w = WireDataObj::new("w");
+        for (n, v) in &[
+            ("runits", "m"),
+            ("gmrunits", "m"),
+            ("radunits", "m"),
+            ("rac", "0.0003"),
+            ("gmrac", "0.005"),
+            ("radius", "0.01"),
+        ] {
+            scalar(&wcls, &mut w, n, v);
+        }
+        let gcls = line_geometry::class_props(&enums);
+        let mut g = LineGeometryObj::new("geo1");
+        scalar(&gcls, &mut g, "nconds", "3");
+        scalar(&gcls, &mut g, "nphases", "3");
+        for (k, x) in ["0", "1", "2"].iter().enumerate() {
+            scalar(&gcls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&gcls, &mut g, "wire", &w);
+            scalar(&gcls, &mut g, "x", x);
+            scalar(&gcls, &mut g, "h", "10");
+            scalar(&gcls, &mut g, "units", "m");
+        }
+        g
+    }
+
+    #[test]
+    fn geometry_path_builds_oracle_z_and_yc() {
+        let enums = EnumRegistry::new();
+        let lcls = class_props(&enums);
+
+        let mut geom = build_overhead_geometry();
+        // Oracle reference (the `deri_full_3cond` total matrices at 1 m): the
+        // identical numbers the line_constants + LineGeometry unit tests pin.
+        let z_ref = geom.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_ref");
+        let yc_ref = geom.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc_ref");
+
+        let mut line = Line::new("l1");
+        scalar(&lcls, &mut line, "length", "1");
+        scalar(&lcls, &mut line, "units", "m");
+        set_ref(&lcls, &mut line, "geometry", &geom);
+
+        // FetchGeometryCode adopted the geometry.
+        assert_eq!(line.geometry_name, "geo1");
+        assert_eq!(line.cd.nphases, 3);
+        assert_eq!(line.cd.nconds, 3);
+        assert!(!line.sym_components_model);
+        assert_eq!(line.line_type, geom.line_type());
+        assert_eq!(line.norm_amps, geom.norm_amps());
+        assert_eq!(line.emerg_amps, geom.emerg_amps());
+
+        line.calc_yprim(&test_sys());
+
+        // The geometry's TOTAL Z/Yc flowed into the Line (entry by entry) — the
+        // sym branch would have produced a completely different matrix.
+        let z = line.z.as_ref().expect("z");
+        let yc = line.yc.as_ref().expect("yc");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(z.get(i, j).re, z_ref.get(i, j).re, "Z.re");
+                assert_close(z.get(i, j).im, z_ref.get(i, j).im, "Z.im");
+                assert_close(yc.get(i, j).re, yc_ref.get(i, j).re, "Yc.re");
+                assert_close(yc.get(i, j).im, yc_ref.get(i, j).im, "Yc.im");
+            }
+        }
+        // Oracle anchor: Z[0][0] is the `deri_full_3cond` diagonal (length 1 m).
+        assert_close(z.get(0, 0).re, 3.525947626277e-04, "Z00.re");
+        assert_close(z.get(0, 0).im, 9.150978496084e-04, "Z00.im");
+
+        // YPrim series embeds Zinv = Z^-1 in the 2-terminal Kron pattern: the
+        // off-diagonal block [i][j+n] = -Zinv[i][j] (no CAP_EPSILON there).
+        let mut zinv = z.clone();
+        zinv.invert().expect("Z invertible");
+        let yps = line.cd.yprim_series.as_ref().expect("yprim_series");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(yps.get(i, j + 3).re, -zinv.get(i, j).re, "Yps.re");
+                assert_close(yps.get(i, j + 3).im, -zinv.get(i, j).im, "Yps.im");
+            }
+        }
+        // YPrim shunt = half the total Yc at the near-end block (already total —
+        // not rescaled by length/frequency, unlike the sym path).
+        let ypsh = line.cd.yprim_shunt.as_ref().expect("yprim_shunt");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(ypsh.get(i, j).im, yc_ref.get(i, j).im / 2.0, "Ypsh.im");
+            }
+        }
+    }
+
+    #[test]
+    fn geometry_length_units_scale_the_total_z() {
+        // `length`/`units` feed `Zmatrix[f, len, units]`, so a 2 km line is the
+        // 1 m total × 1000 × 2 (guards the object→engine forward of len/units —
+        // a hardcoded 1.0/meters or swapped arg would fail here).
+        let enums = EnumRegistry::new();
+        let lcls = class_props(&enums);
+        let mut geom = build_overhead_geometry();
+        let z_ref = geom.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_ref");
+        let factor = 1000.0 * 2.0; // from_per_meter(km) * length
+
+        let mut line = Line::new("l1");
+        scalar(&lcls, &mut line, "length", "2");
+        scalar(&lcls, &mut line, "units", "km");
+        set_ref(&lcls, &mut line, "geometry", &geom);
+        line.calc_yprim(&test_sys());
+
+        let z = line.z.as_ref().expect("z");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(z.get(i, j).re, z_ref.get(i, j).re * factor, "Zkm.re");
+                assert_close(z.get(i, j).im, z_ref.get(i, j).im * factor, "Zkm.im");
+            }
+        }
+    }
+
+    #[test]
+    fn sym_scalar_detaches_geometry() {
+        // A sym-component edit after `geometry=` runs Pascal KillGeometrySpecified:
+        // the geometry is dropped and the sym model takes over.
+        let enums = EnumRegistry::new();
+        let lcls = class_props(&enums);
+        let geom = build_overhead_geometry();
+        let mut line = Line::new("l1");
+        set_ref(&lcls, &mut line, "geometry", &geom);
+        assert!(line.geometry_obj.is_some());
+
+        scalar(&lcls, &mut line, "r1", "0.1");
+        assert!(line.geometry_obj.is_none());
+        assert_eq!(line.geometry_name, "");
+        assert!(line.sym_components_model);
+        assert!(line.sym_components_changed);
+        assert_eq!(line.fz_frequency, -1.0);
     }
 }
