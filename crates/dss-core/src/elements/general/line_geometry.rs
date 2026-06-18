@@ -1104,10 +1104,13 @@ mod tests {
 
     use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, cn_data, ts_data};
     use crate::support::cmatrix::CMatrix;
-    use crate::support::line_constants::DERI;
+    use crate::support::line_constants::{DERI, SIMPLE_CARSON};
 
     const M_UNIT: i32 = 4; // LineUnits::Meter code
-    /// Truncated `Twopi * 60` — the engine's `Fw` at 60 Hz (matches the oracle).
+    const KM_UNIT: i32 = 3; // LineUnits::Km code (from_per_meter = 1000)
+    /// Truncated `Twopi * 60` — *exactly* the engine's `Fw` at 60 Hz (the engine
+    /// uses the same truncated `TWOPI = 6.283185307`), so dividing `Im(Yc)` by
+    /// `W60` here reuses the engine's own omega, not an independent `2*pi`.
     #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, mirrors the engine
     const W60: f64 = 6.283185307 * 60.0;
 
@@ -1199,10 +1202,10 @@ mod tests {
         obj
     }
 
-    #[test]
-    fn matrices_overhead_match_oracle() {
-        // 3-phase overhead at x = 0/1/2 m, h = 10 m, DERI earth model — matches
-        // the engine `deri_full_3cond` reference (Z) and `C3_NF` (capacitance).
+    /// The canonical WP7.1 3-phase overhead geometry: `build_si_wire` at
+    /// x = 0/1/2 m, h = 10 m — the `deri_full_3cond` / `C3_NF` reference geometry,
+    /// driven entirely through the object editing path (nconds/cond/wire/x/h/units).
+    fn build_overhead_3() -> LineGeometryObj {
         let enums = EnumRegistry::new();
         let cls = class_props(&enums);
         let w = build_si_wire();
@@ -1216,6 +1219,14 @@ mod tests {
             scalar(&cls, &mut g, "h", "10");
             scalar(&cls, &mut g, "units", "m");
         }
+        g
+    }
+
+    #[test]
+    fn matrices_overhead_match_oracle() {
+        // 3-phase overhead at x = 0/1/2 m, h = 10 m, DERI earth model — matches
+        // the engine `deri_full_3cond` reference (Z) and `C3_NF` (capacitance).
+        let mut g = build_overhead_3();
 
         let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
         let z_ref = [
@@ -1255,6 +1266,50 @@ mod tests {
     }
 
     #[test]
+    fn matrices_overhead_km_scaled() {
+        // The `length`/`units` args must scale the per-meter base: Z/Yc at
+        // (length = 2, units = km) = the unit-length-meter result × 1000 × 2.
+        // Guards the object→engine forward of `length`/`units` — a hardcoded 1.0,
+        // a hardcoded meters, or a swapped length/units arg would all fail here.
+        let mut g = build_overhead_3();
+        let factor = 1000.0 * 2.0; // from_per_meter(km) * length
+
+        let z_m = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_m");
+        let z_km = g.z_matrix(60.0, 2.0, KM_UNIT, DERI).expect("z_km");
+        let yc_m = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc_m");
+        let yc_km = g.yc_matrix(60.0, 2.0, KM_UNIT, DERI).expect("yc_km");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(z_km.get(i, j).re, z_m.get(i, j).re * factor, "Zkm.re");
+                assert_close(z_km.get(i, j).im, z_m.get(i, j).im * factor, "Zkm.im");
+                assert_close(yc_km.get(i, j).re, yc_m.get(i, j).re * factor, "Yckm.re");
+                assert_close(yc_km.get(i, j).im, yc_m.get(i, j).im * factor, "Yckm.im");
+            }
+        }
+    }
+
+    #[test]
+    fn matrices_overhead_simple_carson() {
+        // The `earth_model` arg must reach the engine: the same geometry under
+        // SIMPLE_CARSON yields the engine `simple_carson_full_3cond` reference,
+        // distinct from the DERI matrix (a hardcoded earth model would fail this).
+        let mut g = build_overhead_3();
+        let z = g.z_matrix(60.0, 1.0, M_UNIT, SIMPLE_CARSON).expect("z");
+        let z_ref = [
+            (3.592176235097e-04, 9.080731425744e-04),
+            (5.921762350974e-05, 5.085894441415e-04),
+            (5.921762350974e-05, 4.563273805293e-04),
+            (5.921762350974e-05, 5.085894441415e-04),
+            (3.592176235097e-04, 9.080731425744e-04),
+            (5.921762350974e-05, 5.085894441415e-04),
+            (5.921762350974e-05, 4.563273805293e-04),
+            (5.921762350974e-05, 5.085894441415e-04),
+            (3.592176235097e-04, 9.080731425744e-04),
+        ];
+        assert_z(&z, &z_ref, 3);
+    }
+
+    #[test]
     fn matrices_reduce_neutral_to_phases() {
         // 3 phases + 1 neutral at (1, 12); `reduce=y` Krons the neutral out, so
         // z_matrix returns the reduced 3×3 (engine `deri_reduce_4cond_to_3`).
@@ -1288,6 +1343,30 @@ mod tests {
             (3.770208623296e-04, 7.019407348531e-04),
         ];
         assert_z(&z, &z_ref, 3);
+
+        // The reduced *shunt* Yc must also survive the Kron reduction through the
+        // object path (engine `deri_reduce_4cond_to_3` capacitance reference).
+        let yc = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc");
+        let c_ref_nf = [
+            9.210099265515e-03,
+            -2.642486857248e-03,
+            -1.299578853311e-03,
+            -2.642486857248e-03,
+            9.872415813254e-03,
+            -2.642486857248e-03,
+            -1.299578853311e-03,
+            -2.642486857248e-03,
+            9.210099265515e-03,
+        ];
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(
+                    yc.get(i, j).im / W60,
+                    c_ref_nf[i * 3 + j] * 1e-9,
+                    &format!("Cr[{i}][{j}]"),
+                );
+            }
+        }
     }
 
     #[test]
@@ -1449,35 +1528,45 @@ mod tests {
 
     #[test]
     fn z_matrix_recomputes_on_frequency_change() {
-        // Guard against a hardcoded 60 Hz: the engine recalcs when `f` changes,
-        // so Z at 120 Hz must differ from Z at 60 Hz, and returning to 60 Hz must
-        // reproduce the original (the recompute keys off frequency).
-        let enums = EnumRegistry::new();
-        let cls = class_props(&enums);
-        let w = build_si_wire();
-        let mut g = LineGeometryObj::new("g1");
-        scalar(&cls, &mut g, "nconds", "3");
-        scalar(&cls, &mut g, "nphases", "3");
-        for (k, x) in ["0", "1", "2"].iter().enumerate() {
-            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-            set_ref(&cls, &mut g, "wire", &w);
-            scalar(&cls, &mut g, "x", x);
-            scalar(&cls, &mut g, "h", "10");
-            scalar(&cls, &mut g, "units", "m");
-        }
+        // `f` must reach the engine through the object path and trigger a
+        // recompute. Pin both endpoints to the oracle: Z at 60 Hz matches
+        // `deri_full_3cond`; Z at 5 kHz matches `overhead_high_freq_radius_branch`
+        // (the f >= 1 kHz radius / internal-reactance branch — an order-of-
+        // magnitude-larger matrix, so a cached or hardcoded 60 Hz Z cannot pass).
+        // Returning to 60 Hz must reproduce the original (recompute keys off `f`).
+        let mut g = build_overhead_3();
+
         let z60 = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z60");
-        let z120 = g.z_matrix(120.0, 1.0, M_UNIT, DERI).expect("z120");
-        // Series reactance rises with frequency (≈ ×2 here) — proves `f` reached
-        // the engine and triggered a recompute rather than returning a cached Z.
-        assert!(
-            z120.get(0, 0).im > z60.get(0, 0).im * 1.5,
-            "reactance must rise with frequency: {:.6e} vs {:.6e}",
-            z120.get(0, 0).im,
-            z60.get(0, 0).im
-        );
+        let z60_ref = [
+            (3.525947626277e-04, 9.150978496084e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (5.807470316267e-05, 4.633520928126e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (3.525947626277e-04, 9.150978496084e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (5.807470316267e-05, 4.633520928126e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (3.525947626277e-04, 9.150978496084e-04),
+        ];
+        assert_z(&z60, &z60_ref, 3);
+
+        let z5000 = g.z_matrix(5000.0, 1.0, M_UNIT, DERI).expect("z5000");
+        let z5000_ref = [
+            (4.923757922619e-03, 5.945699655942e-02),
+            (4.164436672700e-03, 2.984975434922e-02),
+            (4.163753358720e-03, 2.549475346052e-02),
+            (4.164436672700e-03, 2.984975434922e-02),
+            (4.923757922619e-03, 5.945699655942e-02),
+            (4.164436672700e-03, 2.984975434922e-02),
+            (4.163753358720e-03, 2.549475346052e-02),
+            (4.164436672700e-03, 2.984975434922e-02),
+            (4.923757922619e-03, 5.945699655942e-02),
+        ];
+        assert_z(&z5000, &z5000_ref, 3);
+
+        // Returning to 60 Hz reproduces the original (the recompute keys off `f`).
         let z60b = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z60b");
-        assert_close(z60b.get(0, 0).im, z60.get(0, 0).im, "Z60 reproduced");
-        assert_close(z60b.get(0, 0).re, z60.get(0, 0).re, "Z60 reproduced (re)");
+        assert_z(&z60b, &z60_ref, 3);
     }
 
     #[test]

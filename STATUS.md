@@ -494,6 +494,20 @@ follow-up, gate-green).**
   `Get_YCmatrix` pre-existing-`SolutionAbort` NIL gate — it needs the solution
   handle the geometry object lacks; correctly belongs to the step-3 `Line`
   consumer and is tracked there.)*
+- **Audit-tests follow-up (`/audit-tests` step 2c-ii, uncommitted, gate-green):**
+  strengthened the matrix unit tests where the object→engine *forwarding* of the
+  `z_matrix`/`yc_matrix` args was under-exercised — every prior matrix test used
+  `length = 1`, `units = m`, `earth_model = DERI`, so only `f` was proven to reach
+  the engine. Added `matrices_overhead_km_scaled` (length = 2 / units = km ⇒ Z/Yc =
+  the per-meter result × 1000 × 2 — catches a hardcoded 1.0/meters or a swapped
+  length/units arg) and `matrices_overhead_simple_carson` (pins the engine
+  `simple_carson_full_3cond` reference — proves `earth_model` is forwarded, not
+  hardcoded); extended `matrices_reduce_neutral_to_phases` with the reduced-**Yc**
+  assertion (engine `deri_reduce_4cond_to_3` capacitance, previously Z-only); and
+  replaced the soft `z_matrix_recomputes_on_frequency_change` `>1.5×` inequality
+  with an oracle-pinned 5 kHz recompute (engine `overhead_high_freq_radius_branch`)
+  plus the return-to-60 reproduction. Factored the 4× duplicated overhead build
+  into a `build_overhead_3()` helper. dss-core lib **370 → 372**. Gate green.
 - **Still open (tracked):** the step-2c-i plural-cable `cncables=`/`tscables=`
   active-conductor divergence (above) — independent of the matrix wiring.
 - **Next — step 3:** un-`NOT_PORTED` Line's geometry fetch path
