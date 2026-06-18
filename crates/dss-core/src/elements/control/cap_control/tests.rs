@@ -1,5 +1,11 @@
 use super::*;
 
+use num_complex::Complex64;
+
+use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::obj::base::DssObject;
+
 #[test]
 fn default_shape_is_3ph_1term() {
     let cc = CapControl::new("cc1");
