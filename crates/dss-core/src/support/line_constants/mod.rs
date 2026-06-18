@@ -9,6 +9,9 @@
 //! Indices are 0-based here (Pascal used 1..FNumConds); the ground-node
 //! convention is unaffected — these are conductor indices.
 
+#[cfg(test)]
+mod tests;
+
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::LineUnits;
 use crate::support::mathutil::{bessel_i0, bessel_i1};
@@ -550,6 +553,3 @@ impl LineConstants {
         None
     }
 }
-
-#[cfg(test)]
-mod tests;
