@@ -29,10 +29,11 @@ basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see the 
 `phase-7-extended-elements` cut from `main`; **WP7.1 step 1 done** (the Carson
 line-constants engine `support/line_constants/`), **step 2a done** (the
 conductor catalog `WireData`/`CNData`/`TSData`), **step 2b done**
-(`LineSpacing`) **and step 2c-i done** (the `LineGeometry` object + edit state
-machine + props/`MakeLike`; the matrix wiring `UpdateLineGeometryData` is step
-2c-ii), all oracle-pinned and gate-green — see §1e; **WP7.1 step 2c-ii next**
-(`LineGeometry` `CalcMatrices` → the Carson engine).
+(`LineSpacing`), **step 2c-i done** (the `LineGeometry` object + edit state
+machine + props/`MakeLike`) **and step 2c-ii done** (the matrix wiring —
+`UpdateLineGeometryData`/`CalcMatrices` driving the Carson engine, Z/Yc pinned
+to the oracle), all gate-green — see §1e; **WP7.1 step 3 next** (un-`NOT_PORTED`
+Line's geometry fetch path + `CalcMatrices(BaseFrequency)`).
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -73,7 +74,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 2c-ii `LineGeometry` matrices next) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 2c-ii `LineGeometry` matrices done; step 3 Line geometry-fetch path next) |
 
 ### Gate state (all green)
 ```
@@ -432,13 +433,56 @@ machine — ✅ done, gate-green, committed.**
   guessed/hacked and no failing golden was added; the plural-cable forms stay
   un-pinned for now (their CN/TS *data* paths are covered via the scalar
   scenarios). Empirically probed against the oracle (`/audit-tests` follow-up).
-- **Deferred to step 2c-ii:** `UpdateLineGeometryData(f)`/`CalcMatrices` driving
-  the `support::line_constants` Carson engine to cache `Zmatrix`/`YCmatrix`/
-  `Rho` (the object tracks `data_changed` staleness + the engine `fline_kind`
-  for it). `LineSpacing` has no `DataChanged` flag, so the geometry tracks its
-  own staleness. Then step 3 un-`NOT_PORTED` Line's geometry fetch path
-  (`RecalcElementData` `CalcMatrices(BaseFrequency)`), step 4 the corpus feeder
-  + targeted golden gate.
+**WP7.1 step 2c-ii — `LineGeometry` matrix wiring (`UpdateLineGeometryData`/
+`CalcMatrices`) — ✅ done, gate-green, uncommitted.**
+- `line_geometry.rs` now holds a real `FLineData: Option<LineConstants>` Carson
+  engine (replacing the placeholder `fline_kind` tracker). Ported:
+  - `change_line_constants_type` — the Pascal `needNew` allocate/swap (kind ≠ the
+    active conductor's choice, or `FLineData` absent / wrong conductor count),
+    preserving `Nphases`/`RhoEarth` across the swap; allocates only the three
+    concrete kinds (an `Unknown` request leaves the engine, as Pascal).
+  - `realloc_conductors` (the `nconds` side effect) now rebuilds a fresh overhead
+    engine sized `FNConds` (Pascal's per-conductor `ChangeLineConstantsType`
+    loop), `None` when `NConds=0` (Pascal NIL).
+  - the `nphases` side effect clamps `FLineData.Nphases` to `min(NPhases, NConds)`
+    (the previously-deferred clamp; `UpdateLineGeometryData` later re-sets it
+    unclamped, as upstream).
+  - `update_line_geometry_data(f, earth_model)` — pushes every conductor's
+    geometry into the engine (X/Y in `FUnits`, radius/capradius/GMR/Rdc/Rac, and
+    the CN/TS cable extras), sets `Nphases`, clears `data_changed`, runs
+    `ConductorsInSameSpace` → `Calc(f, earth_model)` → `Reduce` (if `FReduce`).
+    Returns `Err` for the two Pascal abort paths: a NIL conductor slot
+    (`raise Exception` "not correctly initialized") and a failed geometry check
+    (`ELineGeometryProblem`/`SolutionAbort`).
+  - `z_matrix`/`yc_matrix`/`rho_earth`/`set_rho_earth` — the `Get_Zmatrix`/
+    `Get_YCmatrix`/`Get_/Set_RhoEarth` accessors (recompute when `data_changed`),
+    the public surface step 3's Line consumes.
+- **Conductor catalog** (`conductor_data.rs`): new `ConductorGeom`/`CableGeom`
+  + `geom()` on each of `WireData`/`CNData`/`TSData` + a `conductor_geom(&dyn)`
+  dispatch — the engine inputs Pascal reads off `FWireData[i]` (in the object's
+  own unit codes; the engine converts).
+- **`MakeLike` divergence (documented):** Pascal rebuilds an overhead engine then
+  runs `UpdateLineGeometryData`, which for a *cable* source raises `EInvalidCast`
+  (FLineData overhead, conductors CN/TS). We instead **clone the source engine**
+  so the kind matches and defer the recompute (`data_changed=true`); observable
+  props are unchanged (no matrix props are dumped), so `props_roundtrip` is
+  unaffected. Not a `TODO(compat)` (no golden pins it; it averts an upstream
+  crash on an untested path).
+- Oracle-pinned: 3 new inline matrix tests drive the full object path
+  (`nconds`/`cond`/`wire`/`x`/`h`/`units`) and assert Z/Yc against the **same
+  dss-python references** the Carson-engine unit tests pin —
+  `matrices_overhead_match_oracle` (3-phase OH, DERI, Z + full C),
+  `matrices_reduce_neutral_to_phases` (4→3 Kron reduce), `matrices_cn_cable_
+  match_oracle` (CN cable param transfer) — plus 2 error-path tests
+  (`update_uninitialized_conductor_errors`, `update_conductors_in_same_space_
+  errors`). `LineConstants` gained `#[derive(Clone)]`. dss-core lib **362 → 367**.
+  Full three-command gate green.
+- **Still open (tracked):** the step-2c-i plural-cable `cncables=`/`tscables=`
+  active-conductor divergence (above) — independent of the matrix wiring.
+- **Next — step 3:** un-`NOT_PORTED` Line's geometry fetch path
+  (`RecalcElementData` `CalcMatrices(BaseFrequency)` → `geom.z_matrix`/`yc_matrix`
+  with the solution's `ActiveEarthModel`), then step 4 the corpus feeder +
+  targeted golden gate.
 
 ---
 
@@ -624,7 +668,7 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 7 in progress, WP7.1 step 2c-ii (`LineGeometry` matrices) next
+## 7. Current frontier — Phase 7 in progress, WP7.1 step 3 (Line geometry-fetch path) next
 
 Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
 to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
@@ -635,10 +679,14 @@ everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
 Carson line-constants engine, `support/line_constants/`) and step 2a (the
 conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`), step 2b
-(`LineSpacing`, `line_spacing.rs`) and step 2c-i (`LineGeometry` object + edit
-state machine, `line_geometry.rs`) are done, gate-green and committed — see
-§1e**; **WP7.1 step 2c-ii (`UpdateLineGeometryData`/`CalcMatrices` — the Carson
-`Zmatrix`/`YCmatrix` cache) is next.** Execute
+(`LineSpacing`, `line_spacing.rs`), step 2c-i (`LineGeometry` object + edit
+state machine, `line_geometry.rs`) and step 2c-ii
+(`UpdateLineGeometryData`/`CalcMatrices` — the Carson `Zmatrix`/`YCmatrix` cache
+driving `support/line_constants/`, Z/Yc pinned to the oracle) are done and
+gate-green — see §1e** (steps 1–2c-i committed; 2c-ii uncommitted); **WP7.1
+step 3 (un-`NOT_PORTED` Line's `geometry`/`spacing`/`wires`/`cncables`/
+`tscables` fetch path + `RecalcElementData` `CalcMatrices(BaseFrequency)`) is
+next.** Execute
 the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
 independently-gated sub-blocks ordered risk-ascending: line constants →
 protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see

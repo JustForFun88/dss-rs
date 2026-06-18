@@ -12,18 +12,23 @@
 //!
 //! Referenced conductor/spacing objects are resolved and **snapshot-cloned** at
 //! edit time (the WP4.2 `FetchLineCode` pattern), so the geometry owns the data
-//! it needs. `UpdateLineGeometryData`/`CalcMatrices` — which drives a
-//! `support::line_constants` engine to cache `Zmatrix`/`YCmatrix` — lands in the
-//! next sub-step (WP7.1 step 2c-ii); this step ports the object, the full edit
-//! state machine, the side-effect web, and `MakeLike`, and tracks the staleness
-//! (`data_changed`) and engine-kind state that step will consume.
+//! it needs. The held [`LineConstants`] engine (`FLineData`) is allocated/swapped
+//! by [`LineGeometryObj::change_line_constants_type`] to track the active
+//! conductor model; [`LineGeometryObj::update_line_geometry_data`] pushes every
+//! conductor's geometry into it and runs the Carson `Calc` (plus a Kron `Reduce`
+//! when `FReduce`), caching `Zmatrix`/`YCmatrix`. The [`LineGeometryObj::z_matrix`]
+//! / [`LineGeometryObj::yc_matrix`] accessors recompute on demand when the
+//! geometry is stale (`data_changed`); a `Line` consumes them in WP7.1 step 3.
 
-use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, WireDataObj};
+use crate::elements::general::conductor_data::{
+    CableGeom, CnDataObj, ConductorGeom, TsDataObj, WireDataObj, conductor_geom,
+};
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::ElemRef;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
-use crate::support::line_constants::LineConstantsKind;
+use crate::support::cmatrix::CMatrix;
+use crate::support::line_constants::LineConstants;
 
 /// Pascal `LineUnits.UNITS_FT` — the `ft` ordinal; the value `FLastUnit` resets
 /// to and the default coordinate unit.
@@ -56,27 +61,16 @@ define_properties! {
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);
 }
 
-/// Pascal `ConductorChoice`: the per-conductor model a conductor uses. Drives
-/// the `LineConstants` engine kind (`UpdateLineGeometryData`, step 2c-ii) and the
-/// `wires=`/`wire=` side-effect routing.
+/// Pascal `ConductorChoice`: the per-conductor model a conductor uses. Selects
+/// the [`LineConstants`] engine kind allocated by
+/// [`LineGeometryObj::change_line_constants_type`] and routes the
+/// `wires=`/`wire=` side effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConductorChoice {
     Unknown,
     Overhead,
     ConcentricNeutral,
     TapeShield,
-}
-
-impl ConductorChoice {
-    /// The `LineConstants` engine kind for this choice (`Unknown` defaults to
-    /// overhead — it is only ever resolved to a concrete kind before use).
-    fn kind(self) -> LineConstantsKind {
-        match self {
-            ConductorChoice::ConcentricNeutral => LineConstantsKind::ConcentricNeutral,
-            ConductorChoice::TapeShield => LineConstantsKind::TapeShield,
-            _ => LineConstantsKind::Overhead,
-        }
-    }
 }
 
 /// `TLineGeometryObj`. Pascal stores the per-conductor data as 1-based
@@ -96,13 +90,14 @@ pub struct LineGeometryObj {
     funits: Vec<i32>,
     flast_unit: i32,
     freduce: bool,
-    /// The `LineConstants` engine kind the conductor edits selected (Pascal
-    /// `FLineData`'s class, set by `ChangeLineConstantsType`). Consumed by the
-    /// step 2c-ii `UpdateLineGeometryData`.
-    fline_kind: LineConstantsKind,
-    /// Pascal `DataChanged`: set by any geometry-affecting edit so the (step
-    /// 2c-ii) matrix calc knows to recompute. `LineSpacing` has no such flag, so
-    /// the geometry tracks its own staleness.
+    /// Pascal `FLineData`: the Carson engine, allocated/swapped by
+    /// [`Self::change_line_constants_type`] to match the active conductor model
+    /// and filled by [`Self::update_line_geometry_data`]. `None` until the first
+    /// conductor exists (Pascal NIL when `FNConds = 0`).
+    fline_data: Option<LineConstants>,
+    /// Pascal `DataChanged`: set by any geometry-affecting edit so the matrix
+    /// calc knows to recompute. `LineSpacing` has no such flag, so the geometry
+    /// tracks its own staleness.
     data_changed: bool,
     norm_amps: f64,
     emerg_amps: f64,
@@ -131,7 +126,7 @@ impl Clone for LineGeometryObj {
             funits: self.funits.clone(),
             flast_unit: self.flast_unit,
             freduce: self.freduce,
-            fline_kind: self.fline_kind,
+            fline_data: self.fline_data.clone(),
             data_changed: self.data_changed,
             norm_amps: self.norm_amps,
             emerg_amps: self.emerg_amps,
@@ -160,7 +155,7 @@ impl LineGeometryObj {
             funits: Vec::new(),
             flast_unit: UNITS_FT,
             freduce: false,
-            fline_kind: LineConstantsKind::Overhead,
+            fline_data: None,
             data_changed: true,
             norm_amps: 0.0,
             emerg_amps: 0.0,
@@ -196,15 +191,43 @@ impl LineGeometryObj {
         self.funits = vec![-1; n];
         self.flast_unit = UNITS_FT;
         self.factive_cond = 1;
-        self.fline_kind = LineConstantsKind::Overhead;
+        // Pascal frees the old `FLineData` and rebuilds it via the per-conductor
+        // `ChangeLineConstantsType(Overhead)` loop — net effect a fresh overhead
+        // engine sized `FNConds` (and NIL when there are no conductors).
+        self.fline_data = (n >= 1).then(|| LineConstants::new(n));
     }
 
     /// Pascal `ChangeLineConstantsType`: select the conductor model for the
-    /// active conductor (and the engine kind it implies). We defer the actual
-    /// `TLineConstants` allocation to `UpdateLineGeometryData` (step 2c-ii) and
-    /// only track the resulting per-conductor choice and engine kind.
+    /// active conductor and (re)allocate the `FLineData` engine when the kind or
+    /// conductor count requires it, preserving `Nphases`/`RhoEarth` across the
+    /// swap.
     fn change_line_constants_type(&mut self, new_choice: ConductorChoice) {
-        self.fline_kind = new_choice.kind();
+        let n = self.fnconds.max(0) as usize;
+        let need_new = match self.active_index() {
+            Some(a) => new_choice != self.fphase_choice[a],
+            None => self
+                .fline_data
+                .as_ref()
+                .is_none_or(|ld| ld.num_conductors() != n),
+        };
+        if need_new {
+            // Pascal's `case` allocates only for the three concrete kinds; an
+            // `Unknown` request leaves `FLineData` untouched (never reached in
+            // practice — the callers always pass a concrete choice).
+            let fresh = match new_choice {
+                ConductorChoice::Overhead => Some(LineConstants::new(n)),
+                ConductorChoice::ConcentricNeutral => Some(LineConstants::new_cn(n)),
+                ConductorChoice::TapeShield => Some(LineConstants::new_ts(n)),
+                ConductorChoice::Unknown => None,
+            };
+            if let Some(mut ld) = fresh {
+                if let Some(old) = &self.fline_data {
+                    ld.set_nphases(old.nphases());
+                    ld.set_rho_earth(old.rho_earth());
+                }
+                self.fline_data = Some(ld);
+            }
+        }
         if let Some(a) = self.active_index() {
             self.fphase_choice[a] = new_choice;
         }
@@ -296,6 +319,158 @@ impl LineGeometryObj {
         if crat.len() > 1 && self.amp_ratings.len() == 1 {
             let n = self.num_amp_ratings.max(0) as usize;
             self.amp_ratings = crat.into_iter().take(n).collect();
+        }
+    }
+
+    /// Pascal `UpdateLineGeometryData(f)` (LineGeometry.pas:918-982): push every
+    /// conductor's geometry into the `FLineData` engine, set `Nphases`, then run
+    /// the Carson `Calc` (and a Kron `Reduce` when `FReduce`). `earth_model` is
+    /// Pascal's `DSS.ActiveEarthModel`, supplied by the solution.
+    ///
+    /// Returns `Err` for the two Pascal abort paths: a NIL conductor slot
+    /// (`raise Exception`, "WireData is not correctly initialized") and a failed
+    /// geometry check (`ELineGeometryProblem` + `SolutionAbort`).
+    pub fn update_line_geometry_data(&mut self, f: f64, earth_model: i32) -> Result<(), String> {
+        let n = self.fnconds.max(0) as usize;
+
+        // Pascal reads each `FWireData[i]`'s fields directly; gather them first
+        // (immutable borrows) so the engine fill below can borrow `FLineData`.
+        let mut geoms: Vec<ConductorGeom> = Vec::with_capacity(n);
+        for i in 0..n {
+            let g = self
+                .fwiredata
+                .get(i)
+                .and_then(|o| o.as_ref())
+                .and_then(|o| conductor_geom(o.as_ref()))
+                .ok_or_else(|| {
+                    format!(
+                        "LineGeometry.{}: WireData is not correctly initialized. \
+                         Check the object definition.",
+                        self.data.name()
+                    )
+                })?;
+            geoms.push(g);
+        }
+
+        // `FNConds = 0` ⇒ no engine (Pascal's loop never runs, `FLineData` NIL).
+        let Some(eng) = self.fline_data.as_mut() else {
+            return Ok(());
+        };
+
+        for (i, g) in geoms.iter().enumerate() {
+            eng.set_x(i, self.funits[i], self.fx[i]);
+            eng.set_y(i, self.funits[i], self.fy[i]);
+            eng.set_radius(i, g.radius_units, g.radius);
+            eng.set_capradius(i, g.radius_units, g.cap_radius);
+            eng.set_gmr(i, g.gmr_units, g.gmr);
+            eng.set_rdc(i, g.res_units, g.rdc);
+            eng.set_rac(i, g.res_units, g.rac);
+            match &g.cable {
+                Some(CableGeom::Cn {
+                    eps_r,
+                    ins_layer,
+                    dia_ins,
+                    dia_cable,
+                    k_strand,
+                    dia_strand,
+                    gmr_strand,
+                    r_strand,
+                }) => {
+                    eng.set_eps_r(i, *eps_r);
+                    eng.set_ins_layer(i, g.radius_units, *ins_layer);
+                    eng.set_dia_ins(i, g.radius_units, *dia_ins);
+                    eng.set_dia_cable(i, g.radius_units, *dia_cable);
+                    eng.set_k_strand(i, *k_strand);
+                    eng.set_dia_strand(i, g.radius_units, *dia_strand);
+                    eng.set_gmr_strand(i, g.gmr_units, *gmr_strand);
+                    eng.set_r_strand(i, g.res_units, *r_strand);
+                }
+                Some(CableGeom::Ts {
+                    eps_r,
+                    ins_layer,
+                    dia_ins,
+                    dia_cable,
+                    dia_shield,
+                    tape_layer,
+                    tape_lap,
+                }) => {
+                    eng.set_eps_r(i, *eps_r);
+                    eng.set_ins_layer(i, g.radius_units, *ins_layer);
+                    eng.set_dia_ins(i, g.radius_units, *dia_ins);
+                    eng.set_dia_cable(i, g.radius_units, *dia_cable);
+                    eng.set_dia_shield(i, g.radius_units, *dia_shield);
+                    eng.set_tape_layer(i, g.radius_units, *tape_layer);
+                    eng.set_tape_lap(i, *tape_lap);
+                }
+                None => {}
+            }
+        }
+
+        // Pascal sets `FLineData.Nphases := FNphases` here, unclamped (the
+        // `nphases` side effect's `> FNConds` clamp is transient).
+        eng.set_nphases(self.fnphases.max(0) as usize);
+        self.data_changed = false;
+
+        // Before the calc, reject bad conductor definitions (Pascal raises
+        // `ELineGeometryProblem` and sets `SolutionAbort`).
+        if let Some(msg) = eng.conductors_in_same_space() {
+            return Err(format!("Error in LineGeometry.{}: {msg}", self.data.name()));
+        }
+        eng.calc(f, earth_model);
+        if self.freduce {
+            eng.reduce();
+        }
+        Ok(())
+    }
+
+    /// Pascal `Get_Zmatrix[f, Lngth, Units]` (LineGeometry.pas:782-790):
+    /// recompute when stale, then the engine's length/units-scaled series Z.
+    pub fn z_matrix(
+        &mut self,
+        f: f64,
+        length: f64,
+        units: i32,
+        earth_model: i32,
+    ) -> Result<CMatrix, String> {
+        if self.data_changed {
+            self.update_line_geometry_data(f, earth_model)?;
+        }
+        let eng = self
+            .fline_data
+            .as_mut()
+            .ok_or_else(|| format!("LineGeometry.{}: no conductors defined.", self.data.name()))?;
+        Ok(eng.z_matrix(f, length, units, earth_model))
+    }
+
+    /// Pascal `Get_YCmatrix[f, Lngth, Units]` (LineGeometry.pas:772-780):
+    /// recompute when stale, then the engine's length/units-scaled shunt Yc.
+    pub fn yc_matrix(
+        &mut self,
+        f: f64,
+        length: f64,
+        units: i32,
+        earth_model: i32,
+    ) -> Result<CMatrix, String> {
+        if self.data_changed {
+            self.update_line_geometry_data(f, earth_model)?;
+        }
+        let eng = self
+            .fline_data
+            .as_ref()
+            .ok_or_else(|| format!("LineGeometry.{}: no conductors defined.", self.data.name()))?;
+        Ok(eng.yc_matrix(length, units))
+    }
+
+    /// Pascal `Get_RhoEarth` (`FLineData.rhoearth`; the engine default 100 when
+    /// there is no engine yet).
+    pub fn rho_earth(&self) -> f64 {
+        self.fline_data.as_ref().map_or(100.0, |ld| ld.rho_earth())
+    }
+
+    /// Pascal `Set_RhoEarth` (`FLineData.RhoEarth := Value`).
+    pub fn set_rho_earth(&mut self, value: f64) {
+        if let Some(ld) = self.fline_data.as_mut() {
+            ld.set_rho_earth(value);
         }
     }
 }
@@ -470,10 +645,16 @@ impl DssObject for LineGeometryObj {
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         // Pascal `TLineGeometryObj.PropertySideEffects`, in the same three case
-        // blocks. The `FLineData.Nphases` clamp (the `nphases` arm) and the
-        // matrix recompute land with `UpdateLineGeometryData` (step 2c-ii); here
-        // `nphases` only stores the value (already done in `set_i32`).
+        // blocks.
         match idx {
+            prop::NPHASES => {
+                // Mirror `FLineData.Nphases := FNphases`, clamped to `FNConds`.
+                // (UpdateLineGeometryData later re-sets it unclamped before Calc.)
+                if let Some(ld) = self.fline_data.as_mut() {
+                    let np = self.fnphases.min(self.fnconds).max(0);
+                    ld.set_nphases(np as usize);
+                }
+            }
             prop::COND => {
                 // sticky unit: a fresh conductor inherits the last-used unit
                 if let Some(a) = self.active_index()
@@ -582,10 +763,13 @@ impl DssObject for LineGeometryObj {
             self.norm_amps = o.norm_amps;
             self.emerg_amps = o.emerg_amps;
             self.freduce = o.freduce;
-            self.fline_kind = o.fline_kind;
-            // Pascal also calls UpdateLineGeometryData(freq) here; the matrix
-            // recompute is deferred to step 2c-ii (data_changed=true keeps it
-            // stale until then).
+            // Pascal's `NConds := Other.NWires` rebuilds an *overhead* engine via
+            // the nconds side effect and then runs `UpdateLineGeometryData`; for a
+            // cable source that trailing update raises `EInvalidCast` (FLineData is
+            // overhead but the conductors are CN/TS). We instead clone the source
+            // engine so the kind matches the copied conductors and defer the
+            // recompute (`data_changed = true` keeps it stale until first use).
+            self.fline_data = o.fline_data.clone();
         }
     }
 
@@ -903,6 +1087,260 @@ mod tests {
         assert_eq!(get(&cls, &g, "ratings"), "[ 400 450 500 550]");
         assert_eq!(get(&cls, &g, "normamps"), "530");
         assert_eq!(get(&cls, &g, "emergamps"), "795");
+    }
+
+    // ----- matrix wiring (UpdateLineGeometryData / CalcMatrices) -------------
+    //
+    // These drive the full LineGeometry object path (nconds/cond/wire/x/h/units)
+    // and assert the resulting Z/Yc against the *same* dss-python oracle
+    // references the Carson-engine unit tests pin (support/line_constants/tests),
+    // proving the object→engine wiring (units, radius/GMR/Rdc/Rac, cable extras,
+    // Nphases, Reduce) is correct end to end.
+
+    use crate::elements::general::conductor_data::{CnDataObj, cn_data};
+    use crate::support::cmatrix::CMatrix;
+    use crate::support::line_constants::DERI;
+
+    const M_UNIT: i32 = 4; // LineUnits::Meter code
+    /// Truncated `Twopi * 60` — the engine's `Fw` at 60 Hz (matches the oracle).
+    #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, mirrors the engine
+    const W60: f64 = 6.283185307 * 60.0;
+
+    fn assert_close(got: f64, want: f64, what: &str) {
+        let tol = 1e-8 * want.abs().max(1e-12);
+        assert!(
+            (got - want).abs() <= tol,
+            "{what}: got {got:.12e}, want {want:.12e}"
+        );
+    }
+
+    fn assert_z(z: &CMatrix, z_ref: &[(f64, f64)], n: usize) {
+        for i in 0..n {
+            for j in 0..n {
+                let (re, im) = z_ref[i * n + j];
+                let g = z.get(i, j);
+                assert_close(g.re, re, &format!("Z[{i}][{j}].re"));
+                assert_close(g.im, im, &format!("Z[{i}][{j}].im"));
+            }
+        }
+    }
+
+    /// The shared 3-wire overhead wire (SI): rac = 3e-4 ohm/m, gmr = 0.005 m,
+    /// radius = 0.01 m. Rdc defaults from Rac (/1.02); capradius from radius.
+    fn build_si_wire() -> WireDataObj {
+        build_wire(
+            "w",
+            &[
+                ("runits", "m"),
+                ("gmrunits", "m"),
+                ("radunits", "m"),
+                ("rac", "0.0003"),
+                ("gmrac", "0.005"),
+                ("radius", "0.01"),
+            ],
+        )
+    }
+
+    fn build_si_cn() -> CnDataObj {
+        let enums = EnumRegistry::new();
+        let cls = cn_data::class_props(&enums);
+        let mut obj = CnDataObj::new("cn");
+        // Same core conductor + insulation/strand data as the engine `build_cn`.
+        for (n, v) in &[
+            ("runits", "m"),
+            ("gmrunits", "m"),
+            ("radunits", "m"),
+            ("rdc", "0.0001"),
+            ("rac", "0.000105"),
+            ("radius", "0.005"),
+            ("gmrac", "0.004"),
+            ("epsr", "2.3"),
+            ("inslayer", "0.004"),
+            ("diains", "0.022"),
+            ("diacable", "0.030"),
+            ("k", "16"),
+            ("diastrand", "0.001"),
+            ("gmrstrand", "0.0004"),
+            ("rstrand", "0.002"),
+        ] {
+            scalar(&cls, &mut obj, n, v);
+        }
+        obj
+    }
+
+    #[test]
+    fn matrices_overhead_match_oracle() {
+        // 3-phase overhead at x = 0/1/2 m, h = 10 m, DERI earth model — matches
+        // the engine `deri_full_3cond` reference (Z) and `C3_NF` (capacitance).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let w = build_si_wire();
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        for (k, x) in ["0", "1", "2"].iter().enumerate() {
+            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut g, "wire", &w);
+            scalar(&cls, &mut g, "x", x);
+            scalar(&cls, &mut g, "h", "10");
+            scalar(&cls, &mut g, "units", "m");
+        }
+
+        let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
+        let z_ref = [
+            (3.525947626277e-04, 9.150978496084e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (5.807470316267e-05, 4.633520928126e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (3.525947626277e-04, 9.150978496084e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (5.807470316267e-05, 4.633520928126e-04),
+            (5.807483299046e-05, 5.156141524879e-04),
+            (3.525947626277e-04, 9.150978496084e-04),
+        ];
+        assert_z(&z, &z_ref, 3);
+
+        let yc = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc");
+        let c_ref_nf = [
+            8.941431489720e-03,
+            -2.907193315935e-03,
+            -1.568246629107e-03,
+            -2.907193315935e-03,
+            9.611612264845e-03,
+            -2.907193315935e-03,
+            -1.568246629107e-03,
+            -2.907193315935e-03,
+            8.941431489720e-03,
+        ];
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_close(
+                    yc.get(i, j).im / W60,
+                    c_ref_nf[i * 3 + j] * 1e-9,
+                    &format!("C[{i}][{j}]"),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn matrices_reduce_neutral_to_phases() {
+        // 3 phases + 1 neutral at (1, 12); `reduce=y` Krons the neutral out, so
+        // z_matrix returns the reduced 3×3 (engine `deri_reduce_4cond_to_3`).
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let w = build_si_wire();
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "4");
+        scalar(&cls, &mut g, "nphases", "3");
+        scalar(&cls, &mut g, "reduce", "y");
+        let coords = [("0", "10"), ("1", "10"), ("2", "10"), ("1", "12")];
+        for (k, (x, h)) in coords.iter().enumerate() {
+            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut g, "wire", &w);
+            scalar(&cls, &mut g, "x", x);
+            scalar(&cls, &mut g, "h", h);
+            scalar(&cls, &mut g, "units", "m");
+        }
+
+        let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
+        assert_eq!(z.order(), 3);
+        let z_ref = [
+            (3.770208623296e-04, 7.019407348531e-04),
+            (8.343915794981e-05, 2.986360481570e-04),
+            (8.250080286461e-05, 2.501949780572e-04),
+            (8.343915794981e-05, 2.986360481570e-04),
+            (3.789232335261e-04, 6.942314211641e-04),
+            (8.343915794981e-05, 2.986360481570e-04),
+            (8.250080286461e-05, 2.501949780572e-04),
+            (8.343915794981e-05, 2.986360481570e-04),
+            (3.770208623296e-04, 7.019407348531e-04),
+        ];
+        assert_z(&z, &z_ref, 3);
+    }
+
+    #[test]
+    fn matrices_cn_cable_match_oracle() {
+        // 3 buried concentric-neutral cables (h = -1.2 m, x = 0/0.1/0.2 m), DERI
+        // — exercises the CN param transfer (k/DiaStrand/GMRStrand/RStrand,
+        // EpsR/InsLayer/DiaIns/DiaCable). Engine `cn_cable_deri_3cond`.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let cn = build_si_cn();
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
+            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut g, "cncable", &cn);
+            scalar(&cls, &mut g, "x", x);
+            scalar(&cls, &mut g, "h", "-1.2");
+            scalar(&cls, &mut g, "units", "m");
+        }
+
+        let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
+        let z_ref = [
+            (1.957766526264e-04, 1.402105660670e-04),
+            (2.071515058850e-05, -1.736794561581e-05),
+            (7.705339488750e-06, -1.452216497679e-05),
+            (2.071515058850e-05, -1.736794561581e-05),
+            (1.844408315520e-04, 1.418811316531e-04),
+            (2.071515058850e-05, -1.736794561581e-05),
+            (7.705339488750e-06, -1.452216497679e-05),
+            (2.071515058850e-05, -1.736794561581e-05),
+            (1.957766526264e-04, 1.402105660670e-04),
+        ];
+        assert_z(&z, &z_ref, 3);
+
+        // Coaxial insulation capacitance: diagonal only, off-diagonals zero.
+        let yc = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc");
+        assert_close(yc.get(0, 0).im / W60, 2.830890564838e-01 * 1e-9, "C[0][0]");
+        assert_close(yc.get(0, 1).im, 0.0, "C[0][1]");
+    }
+
+    #[test]
+    fn update_uninitialized_conductor_errors() {
+        // A conductor slot left NIL is the Pascal "WireData is not correctly
+        // initialized" hard error.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let w = build_si_wire();
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        scalar(&cls, &mut g, "cond", "1");
+        set_ref(&cls, &mut g, "wire", &w); // only conductor 1 set
+        let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
+        assert!(err.contains("not correctly initialized"), "{err}");
+    }
+
+    #[test]
+    fn update_conductors_in_same_space_errors() {
+        // Two fat conductors (radius 0.5 m) only 0.2 m apart overlap — the Pascal
+        // ELineGeometryProblem / SolutionAbort path.
+        let enums = EnumRegistry::new();
+        let cls = class_props(&enums);
+        let w = build_wire(
+            "fat",
+            &[
+                ("runits", "m"),
+                ("gmrunits", "m"),
+                ("radunits", "m"),
+                ("radius", "0.5"),
+            ],
+        );
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "2");
+        scalar(&cls, &mut g, "nphases", "2");
+        for (k, x) in ["0", "0.2"].iter().enumerate() {
+            scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+            set_ref(&cls, &mut g, "wire", &w);
+            scalar(&cls, &mut g, "x", x);
+            scalar(&cls, &mut g, "h", "10");
+            scalar(&cls, &mut g, "units", "m");
+        }
+        let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
+        assert!(err.contains("occupy the same space"), "{err}");
     }
 
     #[test]

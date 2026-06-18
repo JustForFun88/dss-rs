@@ -61,6 +61,7 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 /// Pascal `TLineConstants`: the conductor coordinate/parameter arrays plus the
 /// computed `Z`/`Yc` matrices. Conductor parameters are stored internally in
 /// meters / ohms-per-meter (the setters convert from the supplied units).
+#[derive(Clone)]
 pub struct LineConstants {
     kind: LineConstantsKind,
     num_conds: usize,
