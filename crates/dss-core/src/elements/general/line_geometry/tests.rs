@@ -1,5 +1,8 @@
 use super::*;
+use crate::elements::general::conductor_data::WireDataObj;
 use crate::elements::general::conductor_data::wire_data;
+use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::elements::traits::ElemRef;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
