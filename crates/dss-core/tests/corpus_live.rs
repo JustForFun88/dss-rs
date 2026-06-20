@@ -8,12 +8,12 @@
 //!
 //! The oracle runs as a one-shot subprocess per case (`oracle_server.py`): the
 //! gate writes a JSON request, closes stdin, and drains the JSON response (with a
-//! per-case timeout). Because the oracle needs the pinned dss-python at runtime —
-//! which most environments lack — this gate is **opt-in**: `corpus_live_solvable_
-//! cases_match_oracle` runs only when `DSS_LIVE_ORACLE=1` and otherwise prints a
-//! skip note and passes, so `cargo test --workspace` stays green everywhere.
-//! `corpus_live_classify` (`DSS_LIVE_CLASSIFY=1`) probes the candidate manifest
-//! and writes `tmp/classify_report.json` for `tools/corpus/apply_classify.py`.
+//! per-case timeout). `corpus_live_solvable_cases_match_oracle` runs
+//! unconditionally as part of `cargo test` — the pinned dss-python oracle (see
+//! tools/golden/PIN.txt) must be installed; without it the test fails rather than
+//! skipping. `corpus_live_classify` (`DSS_LIVE_CLASSIFY=1`) probes the candidate
+//! manifest and writes `tmp/classify_report.json` for
+//! `tools/corpus/apply_classify.py`.
 //!
 //! Scope: this gate compares the full assembled **electrical** model (the Y / V /
 //! current mandate, no exceptions) plus every element's powers and the discrete
@@ -238,12 +238,6 @@ impl Oracle {
 // ---------------------------------------------------------------------------
 // Case runner: both engines, full per-step comparison.
 // ---------------------------------------------------------------------------
-
-fn live_enabled() -> bool {
-    std::env::var("DSS_LIVE_ORACLE")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-}
 
 fn manifests_dir() -> PathBuf {
     [
@@ -490,10 +484,6 @@ fn solvable_now_has_multistep_depth() {
 
 #[test]
 fn corpus_live_solvable_cases_match_oracle() {
-    if !live_enabled() {
-        eprintln!("SKIPPED corpus_live: set DSS_LIVE_ORACLE=1 (with the pinned oracle) to run");
-        return;
-    }
     let oracle = Oracle::new();
     oracle.ping();
     let cases = load_solvable();

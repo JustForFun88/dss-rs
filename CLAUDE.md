@@ -36,13 +36,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Those three commands are the **mandatory, oracle-free** gate. There is also an
-**opt-in** live oracle-comparison gate (`crates/dss-core/tests/corpus_live.rs`,
-enabled with `DSS_LIVE_ORACLE=1`; auto-skips otherwise) that compiles + solves
-the vendored corpus `tests/corpus/electricdss-tst` on both the Rust engine and
-the pinned oracle and compares the full model live — run it manually with the
-pinned oracle; it is **not** part of the mandatory gate above. New tests read
-feeders from that vendored corpus, never from `.inputs/` at runtime.
+Those three commands are the mandatory gate. The live oracle-comparison gate
+(`crates/dss-core/tests/corpus_live.rs`) is now part of `cargo test` and runs
+**unconditionally** (no `DSS_LIVE_ORACLE` env gate): it compiles + solves the
+vendored corpus `tests/corpus/electricdss-tst` on both the Rust engine and the
+pinned oracle and compares the full model live. The pinned dss-python oracle
+(`tools/golden/PIN.txt`) must therefore be installed to run `cargo test` — without
+it `corpus_live_solvable_cases_match_oracle` fails rather than skipping. New tests
+read feeders from that vendored corpus, never from `.inputs/` at runtime.
 
 ## Conventions
 
