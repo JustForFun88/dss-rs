@@ -2,12 +2,78 @@
 //! `Calc`/`Reduce`) and the on-demand `Get_Zmatrix`/`Get_YCmatrix` accessors,
 //! plus the `RhoEarth` getter/setter.
 
-use crate::elements::general::conductor_data::{CableGeom, ConductorGeom, conductor_geom};
+use crate::elements::general::conductor_data::{
+    CableGeom, CnDataObj, ConductorGeom, TsDataObj, conductor_geom,
+};
+use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::obj::base::DssObject;
 use crate::support::cmatrix::CMatrix;
 
-use super::LineGeometryObj;
+use super::{ConductorChoice, LineGeometryObj};
 
 impl LineGeometryObj {
+    /// Pascal `TLineGeometryObj.LoadSpacingAndWires` (LineGeometry.pas): build a
+    /// throwaway geometry from a `LineSpacing` plus the resolved conductor list —
+    /// the path `TLineObj.FMakeZFromSpacing` drives. Sizes the geometry to the
+    /// spacing's wire count, copies the coordinates/units, picks the conductor
+    /// model from the wire kinds, then runs the Carson `Calc` at `f`/`earth_model`.
+    ///
+    /// `earth_model` is the consuming Line's `FEarthModel` (Pascal sets
+    /// `DSS.ActiveEarthModel := FEarthModel` around the matrix read; computing here
+    /// under that model makes the later `z_matrix`/`yc_matrix` scale-only reads
+    /// reproduce it). `wires[i]` is conductor `i+1` (the Line's `LineWireData`).
+    pub fn load_spacing_and_wires(
+        &mut self,
+        spc: &LineSpacingObj,
+        wires: &[Option<Box<dyn DssObject>>],
+        f: f64,
+        earth_model: i32,
+    ) -> Result<(), String> {
+        // `NConds := Spc.NWires` runs the nconds side effect (full reset/realloc).
+        self.fnconds = spc.nwires();
+        self.realloc_conductors();
+        self.fnphases = spc.nphases();
+        self.line_spacing_obj = Some(Box::new(spc.clone()));
+        if self.fnconds > self.fnphases {
+            self.freduce = true;
+        }
+
+        let n = self.fnconds.max(0) as usize;
+        // Pick the conductor model: any CN ⇒ ConcentricNeutral, any TS ⇒
+        // TapeShield (TS wins if both present, mirroring Pascal's sequential ifs),
+        // else Overhead.
+        let mut new_choice = ConductorChoice::Overhead;
+        for o in wires.iter().take(n).flatten() {
+            let any = o.as_any();
+            if any.is::<CnDataObj>() {
+                new_choice = ConductorChoice::ConcentricNeutral;
+            }
+            if any.is::<TsDataObj>() {
+                new_choice = ConductorChoice::TapeShield;
+            }
+        }
+        self.change_line_constants_type(new_choice);
+
+        let units = spc.spacing_units();
+        let xs = spc.xcoord();
+        let hs = spc.ycoord();
+        for i in 0..n {
+            self.fwiredata[i] = wires[i].as_ref().map(|o| o.clone_box());
+            self.fx[i] = xs[i];
+            self.fy[i] = hs[i];
+            self.funits[i] = units;
+        }
+        self.data_changed = true;
+        // NormAmps/EmergAmps := Wires[1].* (conductor 1).
+        if let Some(o) = wires.first().and_then(|o| o.as_ref()) {
+            let (cn, ce) = conductor_norm_emerg(o.as_ref());
+            self.norm_amps = cn;
+            self.emerg_amps = ce;
+        }
+
+        self.update_line_geometry_data(f, earth_model)
+    }
+
     /// Pascal `UpdateLineGeometryData(f)` (LineGeometry.pas:918-982): push every
     /// conductor's geometry into the `FLineData` engine, set `Nphases`, then run
     /// the Carson `Calc` (and a Kron `Reduce` when `FReduce`). `earth_model` is
@@ -163,5 +229,24 @@ impl LineGeometryObj {
         if let Some(ld) = self.fline_data.as_mut() {
             ld.set_rho_earth(value);
         }
+    }
+}
+
+/// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),
+/// whichever concrete catalog type it is.
+fn conductor_norm_emerg(o: &dyn DssObject) -> (f64, f64) {
+    use crate::elements::general::conductor_data::WireDataObj;
+    let any = o.as_any();
+    if let Some(w) = any.downcast_ref::<WireDataObj>() {
+        let (n, e, _, _) = w.amps();
+        (n, e)
+    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
+        let (n, e, _, _) = c.amps();
+        (n, e)
+    } else if let Some(t) = any.downcast_ref::<TsDataObj>() {
+        let (n, e, _, _) = t.amps();
+        (n, e)
+    } else {
+        (0.0, 0.0)
     }
 }

@@ -4,12 +4,13 @@
 
 use crate::elements::general::line_code::LineCodeObj;
 use crate::elements::general::line_geometry::LineGeometryObj;
+use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
 
-use super::Line;
+use super::{ConductorChoice, Line};
 
 impl DssObject for Line {
     fn data(&self) -> &DssObjData {
@@ -167,8 +168,43 @@ impl DssObject for Line {
                     self.fetch_geometry_code(geom);
                 }
             }
+            super::prop::SPACING => {
+                // Pascal stores the `LineSpacingObj` pointer; `FetchLineSpacing`
+                // runs from `PropertySideEffects(spacing)`. Snapshot-clone it here
+                // (the resolved view is parse-time only); `side_effects` fetches.
+                self.line_spacing_obj = resolved
+                    .and_then(|(_, o)| o.as_any().downcast_ref::<LineSpacingObj>())
+                    .cloned();
+            }
             _ => unreachable!("Line has no resolved object-ref property {idx}"),
         }
+    }
+
+    /// `wires=`/`cncables=`/`tscables=` — the `DSSObjectReferenceArrayProperty`
+    /// forms. `wires=` runs the `SetWires` state machine (overhead/buried-neutral);
+    /// `cncables=`/`tscables=` use Pascal's generic array fill (the side effect
+    /// sets the conductor model).
+    fn set_object_ref_array(&mut self, idx: usize, refs: &[(String, ElemRef, &dyn DssObject)]) {
+        use super::prop::*;
+        match idx {
+            WIRES => self.set_wires(refs),
+            CNCABLES | TSCABLES => self.set_cables(refs),
+            _ => unreachable!("Line has no object-ref-array property {idx}"),
+        }
+    }
+    fn get_object_ref_names(&self, idx: usize) -> Vec<String> {
+        debug_assert!(matches!(
+            idx,
+            super::prop::WIRES | super::prop::CNCABLES | super::prop::TSCABLES
+        ));
+        self.line_wire_data
+            .iter()
+            .map(|o| {
+                o.as_ref()
+                    .map(|o| o.data().name().to_string())
+                    .unwrap_or_default()
+            })
+            .collect()
     }
 
     fn get_string(&self, idx: usize) -> String {
@@ -176,11 +212,14 @@ impl DssObject for Line {
         match idx {
             LINECODE => self.line_code_name.clone(),
             GEOMETRY => self.geometry_name.clone(),
-            // Unported scalar ref renders as the oracle's empty value.
-            SPACING => String::new(),
-            // wires/cncables/tscables are array refs in Pascal; their empty
-            // dump is `[]` (NOT_PORTED — they only need to round-trip empty).
-            WIRES | CNCABLES | TSCABLES => "[]".to_string(),
+            // The `spacing=` scalar ref dumps the spacing object's name ("" = NIL).
+            // (wires/cncables/tscables are array refs — dumped via
+            // `get_object_ref_names`, not here.)
+            SPACING => self
+                .line_spacing_obj
+                .as_ref()
+                .map(|s| s.data().name().to_string())
+                .unwrap_or_default(),
             _ => unreachable!("Line has no string property {idx}"),
         }
     }
@@ -249,12 +288,11 @@ impl DssObject for Line {
             }
             RMATRIX | XMATRIX => {
                 if getter {
-                    // Pascal `GetZmatScale`: a geometry (later: spacing) line
-                    // stores the *total* `Z` (length folded in), so the
-                    // per-unit-length getter divides by `Len`; the sym/matrix line
-                    // stores per-unit-length and divides by `units_convert`.
-                    // (Spacing joins this branch in WP7.1 step 3b.)
-                    if self.geometry_obj.is_some() {
+                    // Pascal `GetZmatScale`: a geometry or spacing line stores the
+                    // *total* `Z` (length folded in), so the per-unit-length getter
+                    // divides by `Len`; the sym/matrix line stores per-unit-length
+                    // and divides by `units_convert`.
+                    if self.geometry_obj.is_some() || self.spacing_specified() {
                         self.len
                     } else {
                         self.units_convert
@@ -266,9 +304,10 @@ impl DssObject for Line {
             CMATRIX => {
                 let base = two_pi * self.cd.base_frequency * 1.0e-9;
                 if getter {
-                    // Pascal `GetYCScale`: total `Yc` on a geometry line, so the
-                    // getter divides the base scale by `Len`; else `units_convert`.
-                    let unit = if self.geometry_obj.is_some() {
+                    // Pascal `GetYCScale`: total `Yc` on a geometry/spacing line,
+                    // so the getter divides the base scale by `Len`; else
+                    // `units_convert`.
+                    let unit = if self.geometry_obj.is_some() || self.spacing_specified() {
                         self.len
                     } else {
                         self.units_convert
@@ -356,6 +395,7 @@ impl DssObject for Line {
             R1 | X1 | R0 | X0 | C1 | C0 | B1 | B0 => {
                 self.kill_line_code_specified();
                 self.kill_geometry_specified();
+                self.kill_spacing_specified();
                 self.reset_length_units();
                 self.sym_components_changed = true;
                 self.sym_components_model = true;
@@ -368,6 +408,7 @@ impl DssObject for Line {
                 }
                 self.reset_length_units();
                 self.kill_geometry_specified();
+                self.kill_spacing_specified();
             }
             SWITCH => {
                 if self.is_switch {
@@ -375,6 +416,7 @@ impl DssObject for Line {
                     self.cd.yprim_invalid = true;
                     self.kill_line_code_specified();
                     self.kill_geometry_specified();
+                    self.kill_spacing_specified();
                     self.r1 = 1.0;
                     self.x1 = 1.0;
                     self.r0 = 1.0;
@@ -399,7 +441,48 @@ impl DssObject for Line {
                 self.amp_ratings
                     .resize(self.num_amp_ratings.max(0) as usize, 0.0);
             }
+            // Pascal block 1 (Line.pas:599-610): a cable form drops linecode/
+            // geometry and selects the conductor model, so a following `wires=`
+            // appends bare neutrals after the cable phases.
+            CNCABLES => {
+                self.kill_line_code_specified();
+                self.kill_geometry_specified();
+                self.fphase_choice = ConductorChoice::ConcentricNeutral;
+            }
+            TSCABLES => {
+                self.kill_line_code_specified();
+                self.kill_geometry_specified();
+                self.fphase_choice = ConductorChoice::TapeShield;
+            }
             _ => {}
+        }
+
+        // Pascal block 2 (Line.pas:716-746): the spacing/wires/cncables/tscables
+        // group. `spacing=` fetches first; once both the spacing and the wire
+        // array exist, switch to the spacing impedance model and clear the marks
+        // it supersedes.
+        if matches!(idx, SPACING | WIRES | CNCABLES | TSCABLES) {
+            if idx == SPACING {
+                self.fetch_line_spacing();
+            }
+            if self.spacing_specified() {
+                self.sym_components_model = false;
+                self.sym_components_changed = false;
+                self.kill_geometry_specified();
+                self.got_ratings_after_spacing_conds = false;
+                for p in [
+                    SEASONS, RATINGS, NORMAMPS, EMERGAMPS, R1, X1, R0, X0, C1, C0, B1, B0,
+                ] {
+                    self.cd.obj.clear_seq(p);
+                }
+            }
+            self.cd.yprim_invalid = true;
+        }
+
+        // Pascal block 3 (Line.pas:781-785): ratings/amps specified *after* the
+        // spacing conductors must not be overwritten by `FMakeZFromSpacing`.
+        if matches!(idx, SEASONS | RATINGS | NORMAMPS | EMERGAMPS) {
+            self.got_ratings_after_spacing_conds = true;
         }
 
         // Pascal (Line.pas:772): a `rho=` while a geometry is attached pushes the
@@ -481,6 +564,14 @@ impl DssObject for Line {
         self.geometry_obj = other.geometry_obj.clone();
         self.geometry_name = other.geometry_name.clone();
         self.fz_frequency = other.fz_frequency;
+        self.line_spacing_obj = other.line_spacing_obj.clone();
+        self.line_wire_data = other
+            .line_wire_data
+            .iter()
+            .map(|o| o.as_ref().map(|b| b.clone_box()))
+            .collect();
+        self.fphase_choice = other.fphase_choice;
+        self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
         self.norm_amps = other.norm_amps;
         self.emerg_amps = other.emerg_amps;
         self.fault_rate = other.fault_rate;
