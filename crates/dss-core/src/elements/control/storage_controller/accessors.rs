@@ -1,0 +1,407 @@
+//! The `CktElement` and `DssObject` trait impls for `StorageController`: typed
+//! property accessors, `element=`/shape resolution, `PropertySideEffects`,
+//! `EndEdit`, and `MakeLike`.
+
+use num_complex::Complex64;
+
+use crate::elements::control::control_elem::RefSnapshot;
+use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::obj::base::{DssObjData, DssObject};
+
+use super::{CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, MODE_FOLLOW, StorageController, prop};
+
+impl CktElement for StorageController {
+    fn cd(&self) -> &crate::elements::ckt::CktElementData {
+        &self.ccd.cd
+    }
+    fn cd_mut(&mut self) -> &mut crate::elements::ckt::CktElementData {
+        &mut self.ccd.cd
+    }
+
+    fn recalc_element_data(&mut self, _sys: &SysCtx) {
+        self.recalc();
+    }
+
+    /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
+    fn calc_yprim(&mut self, _sys: &SysCtx) {}
+
+    /// Pascal `TControlElem.GetCurrents`: always zero.
+    fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
+        curr.fill(Complex64::ZERO);
+    }
+}
+
+impl DssObject for StorageController {
+    fn data(&self) -> &DssObjData {
+        &self.ccd.cd.obj
+    }
+    fn data_mut(&mut self) -> &mut DssObjData {
+        &mut self.ccd.cd.obj
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
+        Some(self)
+    }
+    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
+        Some(self)
+    }
+
+    fn get_f64(&self, idx: usize) -> f64 {
+        use prop::*;
+        match idx {
+            KW_TARGET => self.f_kw_target,
+            KW_TARGET_LOW => self.f_kw_target_low,
+            PCT_KW_BAND => self.f_pct_kw_band,
+            KW_BAND => self.f_kw_band,
+            PCT_KW_BAND_LOW => self.f_pct_kw_band_low,
+            KW_BAND_LOW => self.f_kw_band_low,
+            TIME_DISCHARGE_TRIGGER => self.discharge_trigger_time,
+            TIME_CHARGE_TRIGGER => self.charge_trigger_time,
+            PCT_RATE_KW => self.pct_kw_rate,
+            PCT_RATE_CHARGE => self.pct_charge_rate,
+            PCT_RESERVE => self.pct_fleet_reserve,
+            KW_NEED => self.kw_needed,
+            T_UP => self.up_ramp_time,
+            T_FLAT => self.flat_time,
+            T_DN => self.dn_ramp_time,
+            KW_THRESHOLD => self.f_kw_threshold,
+            DISP_FACTOR => self.disp_factor,
+            RESET_LEVEL => self.reset_level,
+            BASE_FREQ => self.ccd.cd.base_frequency,
+            _ => unreachable!("StorageController has no double property {idx}"),
+        }
+    }
+    fn set_f64(&mut self, idx: usize, value: f64) {
+        use prop::*;
+        match idx {
+            KW_TARGET => self.f_kw_target = value,
+            KW_TARGET_LOW => self.f_kw_target_low = value,
+            PCT_KW_BAND => self.f_pct_kw_band = value,
+            KW_BAND => self.f_kw_band = value,
+            PCT_KW_BAND_LOW => self.f_pct_kw_band_low = value,
+            KW_BAND_LOW => self.f_kw_band_low = value,
+            TIME_DISCHARGE_TRIGGER => self.discharge_trigger_time = value,
+            TIME_CHARGE_TRIGGER => self.charge_trigger_time = value,
+            PCT_RATE_KW => self.pct_kw_rate = value,
+            PCT_RATE_CHARGE => self.pct_charge_rate = value,
+            PCT_RESERVE => self.pct_fleet_reserve = value,
+            // kWNeed is SilentReadOnly — writes are ignored.
+            KW_NEED => {}
+            T_UP => self.up_ramp_time = value,
+            T_FLAT => self.flat_time = value,
+            T_DN => self.dn_ramp_time = value,
+            KW_THRESHOLD => self.f_kw_threshold = value,
+            DISP_FACTOR => self.disp_factor = value,
+            RESET_LEVEL => self.reset_level = value,
+            BASE_FREQ => self.ccd.cd.base_frequency = value,
+            _ => unreachable!("StorageController has no double property {idx}"),
+        }
+    }
+
+    fn get_i32(&self, idx: usize) -> i32 {
+        use prop::*;
+        match idx {
+            TERMINAL => self.ccd.element_terminal,
+            MON_PHASE => self.f_mon_phase,
+            MODE_DISCHARGE => self.discharge_mode,
+            MODE_CHARGE => self.charge_mode,
+            INHIBIT_TIME => self.inhibit_hrs,
+            SEASONS => self.seasons,
+            _ => unreachable!("StorageController has no integer property {idx}"),
+        }
+    }
+    fn set_i32(&mut self, idx: usize, value: i32) {
+        use prop::*;
+        match idx {
+            TERMINAL => self.ccd.element_terminal = value,
+            MON_PHASE => self.f_mon_phase = value,
+            MODE_DISCHARGE => self.discharge_mode = value,
+            MODE_CHARGE => self.charge_mode = value,
+            INHIBIT_TIME => self.inhibit_hrs = value,
+            SEASONS => self.seasons = value,
+            _ => unreachable!("StorageController has no integer property {idx}"),
+        }
+    }
+
+    fn get_bool(&self, idx: usize) -> bool {
+        match idx {
+            prop::EVENT_LOG => self.ccd.show_event_log,
+            prop::ENABLED => self.ccd.cd.enabled,
+            _ => unreachable!("StorageController has no boolean property {idx}"),
+        }
+    }
+    fn set_bool(&mut self, idx: usize, value: bool) {
+        match idx {
+            prop::EVENT_LOG => self.ccd.show_event_log = value,
+            prop::ENABLED => self.ccd.cd.enabled = value,
+            _ => unreachable!("StorageController has no boolean property {idx}"),
+        }
+    }
+
+    fn get_string(&self, idx: usize) -> String {
+        use prop::*;
+        match idx {
+            ELEMENT => self.monitored_full_name.clone(),
+            YEARLY => self.yearly_shape.clone(),
+            DAILY => self.daily_shape.clone(),
+            DUTY => self.duty_shape.clone(),
+            // Read-only fleet aggregates (see module doc): always ''.
+            KWH_TOTAL | KW_TOTAL | KWH_ACTUAL | KW_ACTUAL => String::new(),
+            _ => unreachable!("StorageController has no string property {idx}"),
+        }
+    }
+    fn set_string(&mut self, idx: usize, _value: String) {
+        match idx {
+            // SilentReadOnly fleet aggregates — writes are ignored.
+            prop::KWH_TOTAL | prop::KW_TOTAL | prop::KWH_ACTUAL | prop::KW_ACTUAL => {}
+            _ => unreachable!("StorageController has no writable string property {idx}"),
+        }
+    }
+
+    fn get_string_list(&self, idx: usize) -> Vec<String> {
+        match idx {
+            prop::ELEMENT_LIST => self.storage_name_list.clone(),
+            _ => unreachable!("StorageController has no string-list property {idx}"),
+        }
+    }
+    fn set_string_list(&mut self, idx: usize, value: Vec<String>) {
+        match idx {
+            prop::ELEMENT_LIST => self.storage_name_list = value,
+            _ => unreachable!("StorageController has no string-list property {idx}"),
+        }
+    }
+
+    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+        use prop::*;
+        match idx {
+            // Pascal `FWeights` is NIL until an ElementList allocates it; a NIL
+            // array dumps as "" (not "[]"), so report empty as absent.
+            WEIGHTS => (!self.weights.is_empty()).then_some(self.weights.as_slice()),
+            SEASON_TARGETS => Some(self.season_targets.as_slice()),
+            SEASON_TARGETS_LOW => Some(self.season_targets_low.as_slice()),
+            _ => unreachable!("StorageController has no double-array property {idx}"),
+        }
+    }
+    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+        use prop::*;
+        match idx {
+            WEIGHTS => self.weights = value,
+            SEASON_TARGETS => self.season_targets = value,
+            SEASON_TARGETS_LOW => self.season_targets_low = value,
+            _ => unreachable!("StorageController has no double-array property {idx}"),
+        }
+    }
+    /// Pascal `Weights` IndirectCount: the element count comes from the
+    /// ElementList (`PropertyOffset3 = @FStorageNameList`).
+    fn array_size(&self, idx: usize) -> usize {
+        match idx {
+            prop::WEIGHTS => self.storage_name_list.len(),
+            _ => unreachable!("StorageController has no function-sized array {idx}"),
+        }
+    }
+
+    /// `element=`/`yearly=`/`daily=`/`duty=` resolution.
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(ElemRef, &dyn DssObject)>,
+    ) {
+        use prop::*;
+        match idx {
+            ELEMENT => {
+                self.monitored_full_name = name.clone();
+                match resolved {
+                    Some((r, obj)) => {
+                        self.ccd.monitored_element = Some(r);
+                        let elem = obj
+                            .as_ckt_element()
+                            .expect("element= resolves against circuit classes");
+                        self.mon_snap = Some(RefSnapshot::capture(name, elem));
+                    }
+                    None => {
+                        self.ccd.monitored_element = None;
+                        self.mon_snap = None;
+                    }
+                }
+            }
+            // The shapes feed only the NOT_PORTED loadshape-dispatch mode; keep
+            // the resolved name for the dump.
+            YEARLY => self.yearly_shape = name,
+            DAILY => self.daily_shape = name,
+            DUTY => self.duty_shape = name,
+            _ => unreachable!("StorageController has no object-ref property {idx}"),
+        }
+    }
+
+    fn set_bus_name(&mut self, terminal: usize, value: &str) {
+        self.ccd.cd.set_bus(terminal, value);
+    }
+    fn get_bus_name(&self, terminal: usize) -> String {
+        self.ccd.cd.get_bus(terminal).to_string()
+    }
+
+    /// Pascal `TStorageControllerObj.PropertySideEffects`.
+    fn side_effects(&mut self, idx: usize, _prev_int: i32) {
+        use prop::*;
+        match idx {
+            KW_TARGET => {
+                let casemult = if self.discharge_mode == CURRENT_PEAKSHAVE {
+                    1000.0
+                } else {
+                    1.0
+                };
+                self.f_kw_threshold = self.f_kw_target * 0.75 * casemult;
+                self.half_kw_band = self.f_pct_kw_band / 200.0 * self.f_kw_target * casemult;
+                self.f_kw_band = 2.0 * self.half_kw_band;
+                self.f_pct_kw_band = self.f_kw_band / self.f_kw_target * 100.0; // sync
+            }
+            PCT_KW_BAND => {
+                let casemult = if self.discharge_mode == CURRENT_PEAKSHAVE {
+                    1000.0
+                } else {
+                    1.0
+                };
+                self.half_kw_band = self.f_pct_kw_band / 200.0 * self.f_kw_target * casemult;
+                self.f_kw_band = 2.0 * self.half_kw_band;
+                self.f_kw_band_specified = false;
+            }
+            KW_BAND => {
+                let casemult = if self.discharge_mode == CURRENT_PEAKSHAVE {
+                    1000.0
+                } else {
+                    1.0
+                };
+                self.half_kw_band = self.f_kw_band / 2.0 * casemult;
+                self.f_pct_kw_band = self.f_kw_band / self.f_kw_target * 100.0; // sync
+                self.f_kw_band_specified = true;
+            }
+            KW_TARGET_LOW | PCT_KW_BAND_LOW => {
+                let casemult = if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+                    1000.0
+                } else {
+                    1.0
+                };
+                self.half_kw_band_low =
+                    self.f_pct_kw_band_low / 200.0 * self.f_kw_target_low * casemult;
+                self.f_kw_band_low = self.half_kw_band_low * 2.0;
+            }
+            KW_BAND_LOW => {
+                let casemult = if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+                    1000.0
+                } else {
+                    1.0
+                };
+                self.half_kw_band_low = self.f_kw_band_low / 2.0 * casemult;
+                // TODO(compat): Pascal writes FpctkWBand (not FpctkWBandLow)
+                // here (StorageController.pas l.544) — an upstream typo; the
+                // clean fix targets FpctkWBandLow.
+                self.f_pct_kw_band = self.f_kw_band_low / self.f_kw_target * 100.0;
+            }
+            MODE_DISCHARGE => {
+                if self.discharge_mode == MODE_FOLLOW {
+                    self.discharge_trigger_time = 12.0; // Noon
+                }
+            }
+            MON_PHASE => {
+                if self.f_mon_phase > self.ccd.cd.nphases as i32 {
+                    self.ccd.cd.obj.push_error(format!(
+                        "Error: Monitored phase ({}) must be less than or equal to number of phases ({}). ",
+                        self.f_mon_phase, self.ccd.cd.nphases
+                    ));
+                    self.f_mon_phase = 1;
+                }
+            }
+            ELEMENT_LIST => {
+                // Levelize the list.
+                self.fleet_list_changed = true;
+                self.element_list_specified = true;
+                self.fleet_size = self.storage_name_list.len() as i32;
+                self.weights = vec![1.0; self.fleet_size.max(0) as usize];
+            }
+            SEASONS => {
+                let n = self.seasons.max(0) as usize;
+                self.season_targets.resize(n, 0.0);
+                self.season_targets_low.resize(n, 0.0);
+            }
+            DISP_FACTOR => {
+                if self.disp_factor <= 0.0 || self.disp_factor > 1.0 {
+                    self.disp_factor = 1.0;
+                }
+            }
+            INHIBIT_TIME => self.inhibit_hrs = self.inhibit_hrs.max(1),
+            _ => {}
+        }
+    }
+
+    /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
+    fn end_edit(&mut self) {
+        self.recalc();
+    }
+
+    /// Pascal `TStorageControllerObj.MakeLike` — copies essentially every
+    /// dispatch setting (unlike GenDispatcher's terminal-only copy).
+    fn make_like(&mut self, other: &dyn DssObject) {
+        let Some(other) = other.as_any().downcast_ref::<StorageController>() else {
+            return;
+        };
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.f_mon_phase = other.f_mon_phase;
+
+        self.f_kw_target = other.f_kw_target;
+        self.f_kw_target_low = other.f_kw_target_low;
+        self.f_kw_threshold = other.f_kw_threshold;
+        self.disp_factor = other.disp_factor;
+        self.f_pct_kw_band = other.f_pct_kw_band;
+        self.f_kw_band = other.f_kw_band;
+        self.f_pct_kw_band_low = other.f_pct_kw_band_low;
+        self.f_kw_band_low = other.f_kw_band_low;
+        self.reset_level = other.reset_level;
+        self.f_kw_band_specified = other.f_kw_band_specified;
+
+        self.storage_name_list = other.storage_name_list.clone();
+        self.fleet_size = self.storage_name_list.len() as i32;
+        if self.fleet_size > 0 {
+            self.weights = other.weights.clone();
+        }
+
+        self.discharge_mode = other.discharge_mode;
+        self.charge_mode = other.charge_mode;
+        self.discharge_trigger_time = other.discharge_trigger_time;
+        self.charge_trigger_time = other.charge_trigger_time;
+        self.pct_kw_rate = other.pct_kw_rate;
+        self.pct_charge_rate = other.pct_charge_rate;
+        self.pct_fleet_reserve = other.pct_fleet_reserve;
+        self.yearly_shape = other.yearly_shape.clone();
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.ccd.show_event_log = other.ccd.show_event_log;
+        self.inhibit_hrs = other.inhibit_hrs;
+        self.up_ramp_time = other.up_ramp_time;
+        self.flat_time = other.flat_time;
+        self.dn_ramp_time = other.dn_ramp_time;
+
+        self.seasons = other.seasons;
+        if self.seasons > 1 {
+            self.season_targets = other.season_targets.clone();
+            self.season_targets_low = other.season_targets_low.clone();
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn DssObject> {
+        Box::new(self.clone())
+    }
+}
