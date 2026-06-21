@@ -776,8 +776,9 @@ PHASE7_PLAN §0).
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
   `StorageController` behavior — the WP6.8 StorageController is a parse-only
-  skeleton (empty fleet → 37201); `solution/meters.rs::is_zone_pce` carries a
-  `TODO(WP7)` to add PVSystem/Storage to the zone allow-list once they exist.
+  skeleton (empty fleet → 37201); `solution/meters/zones/build.rs::is_zone_pce`
+  carries a `TODO(WP7)` to add PVSystem/Storage to the zone allow-list once they
+  exist.
 - **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — until one sets
   `Flg.HasOCPDevice`, `RelCalc` aborts with #52902 (oracle-faithful) and the
   ported SAIFI/SAIDI/section math below the abort stays dormant

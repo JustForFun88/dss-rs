@@ -218,7 +218,7 @@ snapshot-clone pattern). **Storage carries integrated state** (`kWhStored`/
 `%stored`, charge/idle/discharge state machine) advanced by `UpdateStorage` in
 the time-step cleanup hook (Phase-6 hook exists). Both feed:
 
-- the EnergyMeter zone allow-list — flip `solution/meters.rs::is_zone_pce`'s
+- the EnergyMeter zone allow-list — flip `solution/meters/zones/build.rs::is_zone_pce`'s
   `TODO(WP7)` to admit PVSystem/Storage once they exist;
 - the StorageController fleet — the WP6.8 skeleton's `MakeFleetList` (empty →
   37201) gets a real fleet; port the dispatch modes (PeakShave/Follow/Support/
@@ -395,7 +395,7 @@ Steps:
    `SetNominalPVSystem`, P-T-V curves (XYcurve) + irradiance/temperature shapes
    (snapshot-clone), `CalcYPrim`, `DoConstantPQPV` + inverter clamp, registers +
    `TakeSample`. Inline tests vs oracle (per-model, transcribed).
-3. Flip `solution/meters.rs::is_zone_pce` `TODO(WP7)` to admit PVSystem.
+3. Flip `solution/meters/zones/build.rs::is_zone_pce` `TODO(WP7)` to admit PVSystem.
 4. Gate: `Test/PVSystem*` corpus migration + targeted golden
    `phase7/pvsystem*.json` (snapshot + daily); voltages/powers 1e-6, inverter
    state exact; `props.json`.
