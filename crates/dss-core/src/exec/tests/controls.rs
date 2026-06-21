@@ -33,6 +33,35 @@ fn control_loop_regulates_two_bus_to_oracle_tap() {
     );
 }
 
+/// WP7.1 step 4: a *direct* `Transformer.X.Taps=` edit moves the winding tap
+/// without going through the regulator, so the control's parse-time tap snapshot
+/// goes stale. Pascal `Get_TapNum` reads the live transformer
+/// `PresentTap[TapWinding]`; the executive `regcontrol_tap_numbers` view must
+/// too — else the reported tap number stays 0. Reproduces the IEEE13 geometry
+/// scripts' manual-tap + `controlmode=off` epilogue (oracle reports +10, not 0).
+#[test]
+fn regcontrol_tap_number_reads_live_transformer_after_manual_tap() {
+    let mut dss = Dss::new();
+    reg_two_bus(&mut dss, "winding=2 vreg=122 band=2 ptratio=20");
+    // Position winding-2 at +10 taps (1.0625 = 1.0 + 10·0.00625) and freeze
+    // controls so nothing moves it back.
+    dss.command("Transformer.t1.Taps=[1.0 1.0625]");
+    dss.command("Set controlmode=OFF");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        dss.regcontrol_tap_numbers(),
+        vec![("r1".to_string(), 10)],
+        "TapNumber must reflect the live winding tap, not the stale snapshot",
+    );
+    let taps = dss.transformer_taps();
+    assert!(
+        (taps[0].1[1] - 1.0625).abs() < 1e-12,
+        "tap={}",
+        taps[0].1[1]
+    );
+}
+
 /// WP5.7 step 5: a control that cannot settle within `maxcontroliter`
 /// stops with the 485 warning and aborts the solution. Oracle probe:
 /// `maxcontroliter=2` + `maxtapchange=1` → iterations=4, tap=1.00625,

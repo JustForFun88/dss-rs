@@ -313,16 +313,23 @@ impl Dss {
         let mut out = Vec::new();
         for &r in &ckt.controls {
             let obj = &self.classes[r.cls].objects[r.idx];
-            if obj
-                .as_any()
-                .downcast_ref::<reg_control::RegControl>()
-                .is_some()
-            {
-                out.push((
-                    obj.data().name().to_string(),
-                    obj.get_i32(reg_control::prop::TAPNUM),
-                ));
-            }
+            let Some(rc) = obj.as_any().downcast_ref::<reg_control::RegControl>() else {
+                continue;
+            };
+            // Pascal `Get_TapNum` reads the controlled transformer's *live*
+            // `PresentTap[TapWinding]`; resolve it here so a direct
+            // `Transformer.X.Taps=` edit (which bypasses the control's snapshot)
+            // is reflected. Fall back to the cached `TapNum` if unresolved.
+            let num = rc
+                .controlled_ref()
+                .and_then(|tref| {
+                    self.classes[tref.cls].objects[tref.idx]
+                        .as_any()
+                        .downcast_ref::<transformer::Transformer>()
+                        .map(|tr| rc.tap_num_live(tr))
+                })
+                .unwrap_or_else(|| obj.get_i32(reg_control::prop::TAPNUM));
+            out.push((obj.data().name().to_string(), num));
         }
         out
     }

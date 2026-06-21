@@ -7,10 +7,12 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-21 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`): **WP7.1 step 3b done** (Line `spacing=`/`wires=`/
-`cncables=`/`tscables=` Carson path, gate-green), **step 4 next** (the geometry/
-spacing corpus feeder + targeted golden). The last merged phase was **Phase 6
+Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
+`phase-7-extended-elements`): **WP7.1 step 4 done** (geometry/spacing corpus
+feeder migration: **+15** oracle-verified geometry/cable feeders into
+`solvable_now` (17→32), unblocked by porting **`Set EarthModel`** + fixing the
+**RegControl live-`TapNum`** read + a **`Show` no-op** stub; the live gate stays
+clean via oracle hardening). **WP7.1 next: step 5 / phase-exit.** The last merged phase was **Phase 6
 (WP6.1–WP6.10), MERGED to `main`** (`--no-ff` merge `b98223a`, gate green at
 merge; `main` not pushed to origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
 `d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
@@ -40,8 +42,8 @@ to the oracle), **step 3a done** (Line's `geometry=` Carson path —
 **and step 3b done** (Line's `spacing`/`wires`/`cncables`/`tscables` path —
 `FetchLineSpacing`/`SetWires`/`LoadSpacingAndWires`/`FMakeZFromSpacing`,
 incl. the buried-neutral form, Z/Yc pinned to the oracle),
-all gate-green — see §1e; **WP7.1 step 4 next** (the geometry/spacing corpus
-feeder migration + targeted golden `phase7/line_geometry*.json`).
+**and step 4 done** (geometry/spacing corpus feeder migration — see §1e),
+all gate-green — see §1e; **WP7.1 next: step 5 / phase-exit prep**.
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -82,7 +84,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 3b Line `spacing`/`wires`/`cncables`/`tscables` Carson path done; step 4 corpus feeder + golden next) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 4 geometry/spacing corpus feeder migration done — +15 oracle-verified feeders to `solvable_now`, via `Set EarthModel` + RegControl live-`TapNum` fix + `Show` no-op; step 5 / phase-exit next) |
 
 ### Gate state (all green)
 ```
@@ -677,9 +679,53 @@ done, gate-green, committed (`c2a81d0` + audit follow-ups `5eda50a`/`4aeda24`).*
   does exactly this (`if k < NWires`), so the port was already faithful. Pinned by
   `cncables_excess_count_drops_extras`. dss-core lib **388 → 389**. No open
   step-3b tails remain.
-- **Next — step 4:** the geometry/spacing corpus feeder migration
-  (`unsupported_class={LineSpacing,WireData,LineGeometry,…}` → `solvable_now`) +
-  targeted golden `phase7/line_geometry*.json`.
+**WP7.1 step 4 — geometry/spacing corpus feeder migration — ✅ done, gate-green.**
+Rather than blanket-staging the 64 `WireData`/`LineGeometry`/`LineSpacing`/
+`CNData`/`TSData`-tagged feeders into `needs_investigation`, each blocker was
+diagnosed; two were **real port gaps** and fixed:
+- **`Set EarthModel=` was not ported** (line-constants relevant). Added
+  `DSS.DefaultEarthModel` (`exec/mod.rs`/`construct.rs`, init DERI=3), the
+  `Set EarthModel=Carson|FullCarson|Deri` option (`set_cmd.rs`/`tables.rs` ord 81,
+  Pascal `ExecOptions.pas:630`), and the copy into each new `TLineObj.FEarthModel`
+  at creation (`command.rs add_object`, Pascal `Line.pas:998`), per-line
+  `earthmodel=` still overriding. Unblocked all `4Bus-*`. Test
+  `set_earthmodel_seeds_new_line_default`.
+- **RegControl `TapNum` read a stale snapshot.** A direct `Transformer.X.Taps=`
+  edit (the IEEE13 geometry scripts' manual-tap + `controlmode=off` epilogue)
+  moves the winding tap without going through the control, so the parse-time
+  `tap_snap` went stale and `regcontrol_tap_numbers()` reported 0 instead of the
+  oracle's 10. Pascal `Get_TapNum` reads the **live** `PresentTap[TapWinding]`;
+  the exec view now does too (`RegControl::tap_num_live`/`controlled_ref`,
+  `view.rs`). Unblocked the IEEE13 geometry/spacing variants. Test
+  `regcontrol_tap_number_reads_live_transformer_after_manual_tap`.
+- **`Show` no-op stub** (`command.rs`/`tables.rs` ord 8): `Show` is Phase 8
+  (`ShowResults.pas`, reporting) and never alters the electrical solution, so it
+  is stubbed like `Plot`/`Panel` (user-approved). Feeders no longer hard-error on
+  it.
+- **Oracle hardening** (`tools/oracle/oracle_server.py`): `Show`/`Export` fire the
+  OS editor (notepad) and write report files into the corpus. Added
+  `AllowEditor=False` (suppress the editor) + a `_CorpusGuard` (snapshot the case
+  dir, delete created files + restore overwritten ones after each run). The live
+  gate now stays byte-clean even when a case contains `Show`.
+- **Result:** **+15** geometry/cable feeders **oracle-verified** (full live
+  model) and promoted to `solvable_now` (**17→32**): the 5 `IEEE13_*`
+  geometry/spacing/cable variants, `TextTsCable750MCM`, the 5 `4Bus-*` +
+  `4Bus-YYD`, `NEVMASTER`, `epri_dpv/M1`, and `ADiakoptics/ckt24/zone_2`. Gate
+  time ~20s. dss-core lib **389 → 391**.
+- **Deferred (honestly tagged), not regressions:** **11** feeders solve on Rust
+  (Show no-op) and matched the oracle in a one-off probe but are kept **out of the
+  always-on gate** because the oracle runs their active `Show`/`Export` (Phase 8)
+  — `Show LineConstants` writes a transient `LineConstantsCode.dss` that races the
+  `corpus_manifest` bijection (`skipped_unsupported`, tag `unsupported_command=Show`,
+  promote when Show is ported). **3** large EPRI/ADiakoptics feeders differ ~1e-5
+  on one line's power in a big mesh (all canonical geometry/cable feeders match
+  exactly) → `needs_investigation`. **2** Stevenson cases: the **oracle itself**
+  doesn't converge → `needs_investigation`. **3** ShortCircuit cases use
+  `solve mode=faultstudy` (not ported) → `unsupported_mode=faultstudy`. The
+  remaining `WireData`-tagged feeders were re-tagged with their **real** current
+  blockers (`PVSystem`/`InvControl`, `var`, `MakeBusList`/`GISCoords`, `Fault`/
+  `Relay`/`Recloser`/`vccs`, file-backed arrays) — the stale geometry-class tags
+  are gone.
 
 ---
 

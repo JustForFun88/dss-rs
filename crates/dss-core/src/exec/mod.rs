@@ -81,6 +81,9 @@ pub struct Dss {
     circuit: Option<Circuit>,
     /// `DSS.DefaultBaseFreq` (`Set DefaultBaseFrequency=`).
     default_base_freq: f64,
+    /// `DSS.DefaultEarthModel` (`Set EarthModel=`); default `DERI` (3). Copied
+    /// into each `TLineObj.FEarthModel` at creation (Pascal `Line.pas:998`).
+    default_earth_model: i32,
     /// `DSS.MaxAllocationIterations` (`Set NumAllocIterations=`); default 2.
     max_allocation_iterations: i32,
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.

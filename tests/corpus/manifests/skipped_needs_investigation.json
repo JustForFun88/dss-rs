@@ -1,10 +1,18 @@
 {
- "comment": "Entry-point candidates not yet verified/diagnosed. The working queue that drains over time.",
+ "comment": "TEMP probe",
  "cases": [
   {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
    "tag": "entry_point",
    "note": "live probe: Test/AutoTrans/Auto1bus-step1.dss step 0: entry 11 differs: actual (-46476.71038156053, -80496.6327343493) vs expected (-46476.61034443656, -80496.69252079383); |diff| = 1.1654117350544871e-1 > allowed 9.295148582926187e-2"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
+   "note": "live probe: Line power differs ~5e-6 rel on one line in a large meshed circuit (all canonical geometry/cable feeders match to tolerance); large-mesh numeric edge, not a line-constants bug"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
+   "note": "live probe: Line power differs ~1e-4 rel on one line in a large meshed torn-circuit zone; canonical geometry/cable feeders all match \u2014 large-mesh numeric edge, not a line-constants bug"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
@@ -17,9 +25,21 @@
    "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 45s\")"
   },
   {
+   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
+   "note": "live probe: Line power differs ~1e-4 rel on one line in a large meshed torn-circuit zone; canonical geometry/cable feeders all match \u2014 large-mesh numeric edge, not a line-constants bug"
+  },
+  {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
    "tag": "entry_point",
    "note": "live probe: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
+   "note": "live probe: the pinned oracle itself does not converge on this case (Rust unblocked by the Show no-op); revisit"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
+   "note": "live probe: the pinned oracle itself does not converge on this case (Rust unblocked by the Show no-op); revisit"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",

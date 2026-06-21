@@ -7,6 +7,31 @@
    "n_steps": 1
   },
   {
+   "path": "Test/IEEE13_Assets.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/IEEE13_LineAndCableSpacing.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/IEEE13_LineGeometry.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/IEEE13_LineSpacing.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/IEEE13_SpacingGeometry.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Test/LoadTest.DSS",
    "kind": "feeder",
    "n_steps": 1
@@ -27,12 +52,22 @@
    "n_steps": 1
   },
   {
+   "path": "Test/TextTsCable750MCM.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Test/XYCurvetest.dss",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -58,6 +93,11 @@
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -257,6 +297,36 @@
    "check_meters_monitors": true
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
    "kind": "large",
    "post": [
@@ -266,6 +336,11 @@
    "selected_elements": [
     "line.ln5815900-1"
    ]
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
+   "kind": "feeder",
+   "n_steps": 1
   }
  ]
 }

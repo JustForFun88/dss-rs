@@ -322,6 +322,26 @@ fn line_singular_matrix_aborts_solve() {
     );
 }
 
+/// WP7.1 step 4: `Set EarthModel=` sets the context default (`DSS.DefaultEarthModel`,
+/// Pascal ExecOptions.pas:630) that each subsequently created line copies into
+/// `FEarthModel` (Line.pas:998); a per-line `earthmodel=` still overrides it, and
+/// a line created before the `Set` keeps the prior default (DERI). Unblocks the
+/// 4Bus-* / Cable* corpus feeders.
+#[test]
+fn set_earthmodel_seeds_new_line_default() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.em basekv=12.47 phases=3");
+    // A line created before the Set keeps the default DERI.
+    dss.command("New line.l0 bus1=a bus2=b");
+    dss.command("Set earthmodel=Carson");
+    dss.command("New line.l1 bus1=b bus2=c");
+    dss.command("New line.l2 bus1=c bus2=d earthmodel=Deri"); // per-line override
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.l0.earthmodel"), "Deri");
+    assert_eq!(query(&mut dss, "line.l1.earthmodel"), "Carson");
+    assert_eq!(query(&mut dss, "line.l2.earthmodel"), "Deri");
+}
+
 /// Audit follow-up: changing the phase count on a matrix/geometry model is
 /// illegal (Pascal Line.pas:639-644). The count is reverted and 18101 is logged
 /// (a `DoSimpleMsg`, so the solution is NOT aborted). Confirmed live:

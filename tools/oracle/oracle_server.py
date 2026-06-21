@@ -34,6 +34,7 @@ Usage (normally spawned by the Rust gate; manual smoke test):
 from __future__ import annotations
 
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -123,6 +124,63 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
+# OpenDSS `Show`/`Export`/`Save` write report files into the compiled case's
+# directory (`OutputDirectory := DataDirectory := <case dir>` in
+# `DSSGlobals.SetDataPath`, which `Compile` calls). The live gate only compares
+# the in-memory model, so those files are pure pollution of the vendored corpus.
+# Setting `DataPath` before `Compile` does NOT help — `Compile` resets it to the
+# case dir. So snapshot the case dir and restore it after each run instead.
+_RESTORE_MAX = 2 * 1024 * 1024  # buffer files up to 2 MiB for overwrite-restore
+
+
+class _CorpusGuard:
+    """Restore the case's directory after a run: delete any file the run
+    created, and rewrite any small pre-existing file it overwrote. Large files
+    (> `_RESTORE_MAX`) are not buffered — OpenDSS only writes small text reports,
+    never the multi-MiB data files (loadshape CSVs, etc.)."""
+
+    def __init__(self, case_path: str):
+        self.dir = os.path.dirname(os.path.abspath(case_path))
+        self.names: set[str] = set()
+        self.buf: dict[str, bytes] = {}
+
+    def __enter__(self) -> "_CorpusGuard":
+        try:
+            for name in os.listdir(self.dir):
+                p = os.path.join(self.dir, name)
+                if not os.path.isfile(p):
+                    continue
+                self.names.add(name)
+                if os.path.getsize(p) <= _RESTORE_MAX:
+                    with open(p, "rb") as fh:
+                        self.buf[name] = fh.read()
+        except OSError:
+            pass
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        try:
+            current = set(os.listdir(self.dir))
+        except OSError:
+            return False
+        for name in current - self.names:  # created by the run
+            try:
+                os.remove(os.path.join(self.dir, name))
+            except OSError:
+                pass
+        for name, data in self.buf.items():  # overwritten by the run
+            p = os.path.join(self.dir, name)
+            try:
+                with open(p, "rb") as fh:
+                    if fh.read() == data:
+                        continue
+                with open(p, "wb") as fh:
+                    fh.write(data)
+            except OSError:
+                pass
+        return False
+
+
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
     per-step model (the shape `harness::*` / corpus_live.rs deserialize)."""
@@ -137,40 +195,41 @@ def run_case(d, req: dict) -> dict:
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
 
-    d.Text.Command = "clear"
-    d.Text.Command = f'Compile "{case_path}"'
-    for c in post:
-        d.Text.Command = c
-
-    ckt = d.ActiveCircuit
     node_order = None
     checkpoints = []
-    for _ in range(n_steps):
-        d.Text.Command = "solve"
-        sol = ckt.Solution
-        if node_order is None:
-            node_order = list(ckt.YNodeOrder)
-        varray = list(ckt.YNodeVarray)
-        disc = gc.capture_discrete(ckt)
-        checkpoints.append(
-            {
-                "dbl_hour": float(sol.dblHour),
-                "iterations": int(sol.Iterations),
-                "converged": bool(sol.Converged),
-                "v_re": varray[0::2],
-                "v_im": varray[1::2],
-                "y": gc.capture_system_y(d) if full_csc else None,
-                "y_fingerprint": gc.capture_fingerprint(d),
-                "yprims": [gc.capture_yprim(ckt, nm) for nm in selected],
-                "elements": capture_all_elements(ckt),
-                "injection": gc.capture_injection(d),
-                "transformers": disc["transformers"],
-                "regcontrols": disc["regcontrols"],
-                "capacitors": disc["capacitors"],
-                "monitors": capture_all_monitors(ckt) if check_mm else [],
-                "meters": capture_all_meters(ckt) if check_mm else [],
-            }
-        )
+    with _CorpusGuard(case_path):
+        d.Text.Command = "clear"
+        d.Text.Command = f'Compile "{case_path}"'
+        for c in post:
+            d.Text.Command = c
+
+        ckt = d.ActiveCircuit
+        for _ in range(n_steps):
+            d.Text.Command = "solve"
+            sol = ckt.Solution
+            if node_order is None:
+                node_order = list(ckt.YNodeOrder)
+            varray = list(ckt.YNodeVarray)
+            disc = gc.capture_discrete(ckt)
+            checkpoints.append(
+                {
+                    "dbl_hour": float(sol.dblHour),
+                    "iterations": int(sol.Iterations),
+                    "converged": bool(sol.Converged),
+                    "v_re": varray[0::2],
+                    "v_im": varray[1::2],
+                    "y": gc.capture_system_y(d) if full_csc else None,
+                    "y_fingerprint": gc.capture_fingerprint(d),
+                    "yprims": [gc.capture_yprim(ckt, nm) for nm in selected],
+                    "elements": capture_all_elements(ckt),
+                    "injection": gc.capture_injection(d),
+                    "transformers": disc["transformers"],
+                    "regcontrols": disc["regcontrols"],
+                    "capacitors": disc["capacitors"],
+                    "monitors": capture_all_monitors(ckt) if check_mm else [],
+                    "meters": capture_all_meters(ckt) if check_mm else [],
+                }
+            )
     return {"node_order": node_order, "n_steps": n_steps, "checkpoints": checkpoints}
 
 
@@ -179,6 +238,14 @@ def main() -> None:
     from dss import DSS as d
 
     d.AllowForms = False
+    # `Show`/`Export`/`FileEdit` call `FireOffEditor`, which opens the report in
+    # the OS editor (notepad on Windows) — disruptive when the gate runs cases
+    # that contain `Show`. `AllowForms=False` does NOT suppress it; `AllowEditor`
+    # does. (Pair with `_CorpusGuard`, which deletes the report files themselves.)
+    try:
+        d.AllowEditor = False
+    except Exception:  # older dss-python without the attribute
+        pass
     log(f"oracle_server ready: {oracle}")
 
     # NB: read with readline(), not `for line in sys.stdin` — the latter reads

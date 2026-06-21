@@ -23,23 +23,23 @@
   },
   {
    "path": "Test/BundleDemo.DSS",
-   "tag": "unsupported_class=LineGeometry,Wiredata",
-   "note": "Test/BundleDemo.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"LineGeometry\\\" not found.\", \"Unknown parameter \\\"cond\\\" (value \\\"1\\\") for object \\\"Vsource.source\\\"\", \"Unknown p"
+   "tag": "unsupported_class=Fault; unsupported_command=Show",
+   "note": "Command \"Show\" is not ported yet."
   },
   {
    "path": "Test/CableParameters.dss",
-   "tag": "unsupported_class=TSData,WireData",
-   "note": "Test/CableParameters.dss: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"TSData\\\" not found.\", \"Unknown parameter \\\"EpsR\\\" (value \\\"2.3\\\") for object \\\"Vsource.source\\\"\", \"Unknown para"
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/Cable_constants.DSS",
-   "tag": "unsupported_class=CNDATA",
-   "note": "Test/Cable_constants.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"CNDATA\\\" not found.\", \"Unknown parameter \\\"InsLayer\\\" (value \\\"0.220\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"DiaIns\\\" (value \\\"1.06\\\") for object \\"
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/CapControlFollow.dss",
-   "tag": "unsupported_class=LineSpacing,WireData",
-   "note": "Test/CapControlFollow.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object "
+   "tag": "unsupported_command=BatchEdit",
+   "note": "Command \"BatchEdit\" is not ported yet."
   },
   {
    "path": "Test/DistanceRelayTest.DSS",
@@ -52,49 +52,24 @@
    "note": "Test/Dynamic_Kundur.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Unknown solution mode. (not ported in"
   },
   {
-   "path": "Test/IEEE13_Assets.dss",
-   "tag": "unsupported_class=TSData,WireData",
-   "note": "Test/IEEE13_Assets.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"TSDat"
-  },
-  {
    "path": "Test/IEEE13_CDPSM.dss",
    "tag": "unsupported_class=Fuse,PVSystem,Recloser,Relay,Storage",
    "note": "Test/IEEE13_CDPSM.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Relay\\\" not found.\", \"New Command: Object Type \\\"Fuse\\\" not found.\", \"New Command: Object Type \\\"Recloser\\\" not found.\", \"New Command: Object Type \\\"PVSystem\\\" not found.\", \"New Command: Object Type \\\"Storage\\\" not"
   },
   {
-   "path": "Test/IEEE13_LineAndCableSpacing.dss",
-   "tag": "unsupported_class=LineSpacing,WireData",
-   "note": "Test/IEEE13_LineAndCableSpacing.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Comman"
-  },
-  {
-   "path": "Test/IEEE13_LineGeometry.dss",
-   "tag": "unsupported_class=LineGeometry,WireData",
-   "note": "Test/IEEE13_LineGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"LineGeometry\\\" not found.\", \"Unknown parameter \\\"co"
-  },
-  {
-   "path": "Test/IEEE13_LineSpacing.dss",
-   "tag": "unsupported_class=LineSpacing,WireData",
-   "note": "Test/IEEE13_LineSpacing.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Objec"
-  },
-  {
-   "path": "Test/IEEE13_SpacingGeometry.dss",
-   "tag": "unsupported_class=LineSpacing,WireData",
-   "note": "Test/IEEE13_SpacingGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: O"
-  },
-  {
    "path": "Test/IEEELineGeometry.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Test/IEEELineGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"Wi"
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/MultiCircuitTest.DSS",
-   "tag": "unsupported_class=LINEGEOMETRY,Wiredata",
-   "note": "Test/MultiCircuitTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"LINEGEOMETRY\\\" not found.\", \"Unknown parameter \\\"cond\\\" (value \\\"1\\\") for object \\\"Vsource.source\\\"\", \"Unk"
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/ODRegTest.dss",
    "tag": "unsupported_command=Show",
-   "note": "Test/ODRegTest.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/PVSystemTest-Duty.dss",
@@ -139,22 +114,17 @@
   {
    "path": "Test/TestAuto.dss",
    "tag": "unsupported_command=Show",
-   "note": "Test/TestAuto.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/TestDDRegulator.dss",
    "tag": "unsupported_command=Show",
-   "note": "Test/TestDDRegulator.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Test/TextTsCable750MCM.dss",
-   "tag": "unsupported_class=tsdata",
-   "note": "Test/TextTsCable750MCM.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"tsdata\\\" not found.\", \"Unknown parameter \\\"diains\\\" (value \\\"0.01739 2 *\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"diacable\\\" (value \\\"0.0197 2 *\\\") for object \\\"Vsource.source\\\"\", \"Unknown param"
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/TriplexLineCodeCalc.DSS",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Test/TriplexLineCodeCalc.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\"
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Test/YgD-Test.dss",
@@ -163,23 +133,18 @@
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"N"
+   "tag": "unsupported_command=Plot; unsupported_feature=file-backed-arrays",
+   "note": "file-backed numeric arrays (\"file=\") are not supported yet"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\","
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "file-backed numeric arrays (\"file=\") are not supported yet"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not "
+   "tag": "unsupported_command=Show,SolveAll",
+   "note": "Unknown parameter \"CPU\" for Set Command"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
@@ -197,24 +162,14 @@
    "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is "
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
-   "tag": "unsupported_class=LineGeometry,wireData",
-   "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"wireData\\\" not found.\", \"New Command: Object Type \\\"wireData\\\" not found.\", \"New Command: Object Type \\\"wireData\\\" not found.\", \"New Command: Object Type \\\"wireData\\\" not fou"
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireDa"
+   "tag": "unsupported_command=GISCoords,MakeBusList",
+   "note": "Command \"MakeBusList\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Objec"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\"
+   "tag": "unsupported_command=GISCoords,MakeBusList",
+   "note": "Command \"GISCoords\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
@@ -243,33 +198,23 @@
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Ty"
+   "tag": "unsupported_command=GISCoords,MakeBusList",
+   "note": "Command \"MakeBusList\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Com"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Ob"
+   "tag": "unsupported_command=GISCoords,MakeBusList",
+   "note": "Command \"GISCoords\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
+   "tag": "unsupported_command=GISCoords,MakeBusList",
+   "note": "Command \"MakeBusList\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireD"
+   "tag": "unsupported_command=GISCoords,MakeBusList",
+   "note": "Command \"GISCoords\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
@@ -293,8 +238,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",
-   "tag": "unsupported_class=TSData,WireData",
-   "note": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command"
+   "tag": "unsupported_command=Export,Uuids",
+   "note": "Command \"Uuids\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
@@ -303,23 +248,23 @@
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
-   "tag": "unsupported_class=CNData,LineSpacing,WireData",
-   "note": "Version8/Distrib/Examples/DOCTechNote/1_1.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
+   "tag": "unsupported_class=Fault,relay; unsupported_command=BatchEdit,Close,Show,var",
+   "note": "Command \"Close\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
-   "tag": "unsupported_class=CNData,LineSpacing,WireData",
-   "note": "Version8/Distrib/Examples/DOCTechNote/1_2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
+   "tag": "unsupported_class=Fault,relay; unsupported_command=BatchEdit,Close,Show,var",
+   "note": "Command \"Close\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
-   "tag": "unsupported_class=CNData,LineSpacing,WireData",
-   "note": "Version8/Distrib/Examples/DOCTechNote/2_1.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
+   "tag": "unsupported_class=relay; unsupported_command=BatchEdit,Close,Open,Show,var",
+   "note": "Command \"Close\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
-   "tag": "unsupported_class=CNData,LineSpacing,WireData",
-   "note": "Version8/Distrib/Examples/DOCTechNote/2_2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \""
+   "tag": "unsupported_class=Fault,Relay,relay; unsupported_command=BatchEdit,Close,Show,var",
+   "note": "Command \"Close\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS",
@@ -453,58 +398,58 @@
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\\" (v"
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runit"
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\\" "
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\\" "
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\"
+   "tag": "unsupported_class=InvControl,PVSystem",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Run"
+   "tag": "unsupported_class=InvControl,PVSystem",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter"
+   "tag": "unsupported_class=InvControl,PVSystem",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Ru"
+   "tag": "unsupported_class=InvControl,PVSystem",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runits\\"
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Runi"
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
-   "tag": "unsupported_class=Wiredata",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"Unknown parameter \\\"normamps\\\" (value \\\"530\\\") for object \\\"Vsource.source\\\"\", \"Unknown parameter \\\"Run"
+   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
+   "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
@@ -883,38 +828,38 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
-   "tag": "unsupported_class=WireData; unsupported_command=var",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" "
+   "tag": "unsupported_command=var",
+   "note": "Command \"var\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
-   "tag": "unsupported_class=WireData; unsupported_command=var",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
+   "tag": "unsupported_command=var",
+   "note": "Command \"var\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
-   "tag": "unsupported_class=WireData; unsupported_command=var",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
+   "tag": "unsupported_command=var",
+   "note": "Command \"var\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
-   "tag": "unsupported_class=WireData; unsupported_command=var",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" n"
+   "tag": "unsupported_command=var",
+   "note": "Command \"var\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
-   "tag": "unsupported_class=WireData; unsupported_command=var",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" "
+   "tag": "unsupported_command=var",
+   "note": "Command \"var\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
-   "tag": "unsupported_class=WireData; unsupported_command=var",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not f"
+   "tag": "unsupported_command=var",
+   "note": "Command \"var\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireDat"
+   "tag": "unsupported_option=TotalTime; unsupported_feature=file-backed-arrays",
+   "note": "file-backed numeric arrays (\"sngfile=\") are not supported yet"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -1038,18 +983,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"Wir"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
-   "tag": "unsupported_command=Show",
-   "note": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
-   "tag": "unsupported_command=Show",
-   "note": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "tag": "unsupported_class=Storage; unsupported_command=CloseDI,Plot; unsupported_feature=file-backed-arrays",
+   "note": "file-backed numeric arrays (\"file=\") are not supported yet"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
@@ -1143,8 +1078,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
-   "tag": "unsupported_class=LineSpacing,WireData",
-   "note": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New C"
+   "tag": "unsupported_class=Fault,Fuse,Recloser,Relay,vccs",
+   "note": "New Command: Object Type \"vccs\" not found."
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWDyn.dss",
@@ -1232,36 +1167,6 @@
    "note": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"New C"
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
-   "tag": "unsupported_class=linegeometry,wiredata",
-   "note": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
-   "tag": "unsupported_class=linegeometry,wiredata",
-   "note": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not "
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
-   "tag": "unsupported_class=linegeometry,wiredata",
-   "note": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found.\", \"Unknown parameter \\\"cond\\\" (value \\\"1\\\")"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
-   "tag": "unsupported_class=linegeometry,wiredata",
-   "note": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
-   "tag": "unsupported_class=linegeometry,wiredata",
-   "note": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"wiredata\\\" not found.\", \"New Command: Object Type \\\"linegeometry\\\" not found."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
-   "tag": "unsupported_class=LineGeometry,Wiredata",
-   "note": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"LineGeometry\\\" not foun"
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
    "tag": "unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\"]"
@@ -1283,13 +1188,13 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
-   "tag": "unsupported_class=LineSpacing,WireData",
-   "note": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not f"
+   "tag": "unsupported_class=Fault,Fuse,Recloser,Relay; unsupported_command=Open",
+   "note": "New Command: Object Type \"Recloser\" not found."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS",
    "tag": "unsupported_command=Show",
-   "note": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
@@ -1303,8 +1208,8 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
-   "tag": "unsupported_class=CNData,LineSpacing,WireData",
-   "note": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"WireD"
+   "tag": "unsupported_command=Close",
+   "note": "Command \"Close\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
@@ -1313,23 +1218,18 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss",
-   "tag": "unsupported_class=CNData,LineSpacing,WireData",
-   "note": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Object Type \\\"LineSpacing\\\" not found.\", \"New Command: Objec"
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LineCodes/IEEELineGeometry.dss",
-   "tag": "unsupported_class=WireData",
-   "note": "Version8/Distrib/IEEETestCases/LineCodes/IEEELineGeometry.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not found.\", \"New Command: Object Type \\\"WireData\\\" not fou"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
-   "tag": "unsupported_class=Linegeometry,Wiredata",
-   "note": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\","
+   "tag": "unsupported_command=Show",
+   "note": "Rust compiles+solves it (Show is a no-op stub) and it matched the oracle in a one-off classify probe, but it is kept out of the always-on live gate: the oracle executes the script's `Show` verbatim (Phase 8 reporting), which writes report files into the corpus and (for `Show LineConstants`) a transient `LineConstantsCode.dss` that races the corpus_manifest bijection. Promote when Show is ported (Phase 8)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
-   "tag": "unsupported_class=Linegeometry,Wiredata",
-   "note": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \"New Command: Object Type \\\"Wiredata\\\" not found.\", \""
+   "tag": "unsupported_command=Export,Select,Show",
+   "note": "Command \"Show\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS",
@@ -1338,18 +1238,18 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
-   "tag": "unsupported_command=Show",
-   "note": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "tag": "unsupported_mode=faultstudy",
+   "note": "Rust engine errors after compile: Unknown solution mode (faultstudy, not ported in Phase 5)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss",
-   "tag": "unsupported_command=Show",
-   "note": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "tag": "unsupported_mode=faultstudy",
+   "note": "Rust engine errors after compile: Unknown solution mode (faultstudy, not ported in Phase 5)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
-   "tag": "unsupported_command=Show",
-   "note": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Show\\\" is not ported yet.\"]"
+   "tag": "unsupported_mode=faultstudy",
+   "note": "Rust engine errors after compile: Unknown solution mode (faultstudy, not ported in Phase 5)"
   }
  ]
 }
