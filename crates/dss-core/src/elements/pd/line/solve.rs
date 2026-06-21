@@ -175,15 +175,17 @@ impl CktElement for Line {
             // Pascal `FMakeZFromGeometry(Solution.Frequency)`.
             if let Err(msg) = self.make_z_from_geometry(sys.frequency) {
                 // Pascal: the geometry getter raised `ELineGeometryProblem` and
-                // set `SolutionAbort`, so `CalcYPrim` exits without building
-                // YPrim. `CalcYPrim` has no solve-time abort channel here, so
-                // record the message and leave YPrim unbuilt — the solve cannot
-                // converge with the resulting isolated bus. TODO: thread
-                // `SolutionAbort` once a solve-time error sink exists.
+                // set `SolutionAbort`, so `CalcYPrim` exits without building YPrim.
+                // Record the message as a deferred error; the Y-build loop
+                // (`build_y_matrix`) drains it, surfaces it, and sets
+                // `solution_abort` — the faithful equivalent of the upstream
+                // `SolutionAbort` + `Exit`.
                 self.cd.obj.push_error(msg);
                 return;
             }
-            self.cd.yprim_freq = sys.frequency;
+            // Pascal leaves `FYprimFreq` untouched in the geometry branch (it is
+            // set only in the per-unit-length else-block); this path uses no
+            // `freq_multiplier`, so leave it likewise.
             self.z.as_ref().expect("make_z_from_geometry set Z").clone()
         } else {
             if self.sym_components_changed {

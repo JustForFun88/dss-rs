@@ -249,7 +249,16 @@ impl DssObject for Line {
             }
             RMATRIX | XMATRIX => {
                 if getter {
-                    self.units_convert // no geometry/spacing in Phase 3
+                    // Pascal `GetZmatScale`: a geometry (later: spacing) line
+                    // stores the *total* `Z` (length folded in), so the
+                    // per-unit-length getter divides by `Len`; the sym/matrix line
+                    // stores per-unit-length and divides by `units_convert`.
+                    // (Spacing joins this branch in WP7.1 step 3b.)
+                    if self.geometry_obj.is_some() {
+                        self.len
+                    } else {
+                        self.units_convert
+                    }
                 } else {
                     1.0
                 }
@@ -257,7 +266,14 @@ impl DssObject for Line {
             CMATRIX => {
                 let base = two_pi * self.cd.base_frequency * 1.0e-9;
                 if getter {
-                    base * self.units_convert
+                    // Pascal `GetYCScale`: total `Yc` on a geometry line, so the
+                    // getter divides the base scale by `Len`; else `units_convert`.
+                    let unit = if self.geometry_obj.is_some() {
+                        self.len
+                    } else {
+                        self.units_convert
+                    };
+                    base * unit
                 } else {
                     base
                 }
@@ -378,13 +394,16 @@ impl DssObject for Line {
         }
 
         // Pascal (Line.pas:772): a `rho=` while a geometry is attached pushes the
-        // earth resistivity into the geometry (the YPrim invalidation below forces
-        // the rebuild). `FZFrequency` is deliberately *not* reset — matching the
-        // upstream side effect, which leaves it to the next frequency change.
+        // earth resistivity into the geometry and invalidates YPrim to force the
+        // rebuild. *Without* a geometry, `rho=` only updates `Kxg` (above) — Pascal
+        // does NOT invalidate YPrim there, so neither do we (hence RHO is absent
+        // from the unconditional list below). `FZFrequency` is deliberately *not*
+        // reset — left to the next frequency change.
         if idx == RHO {
             let rho = self.rho;
             if let Some(g) = self.geometry_obj.as_mut() {
                 g.set_rho_earth(rho);
+                self.cd.yprim_invalid = true;
             }
         }
 
@@ -405,7 +424,6 @@ impl DssObject for Line {
                 | CMATRIX
                 | RG
                 | XG
-                | RHO
         ) {
             self.cd.yprim_invalid = true;
         }

@@ -95,10 +95,13 @@ impl LineGeometryObj {
         // Pascal sets `FLineData.Nphases := FNphases` here, unclamped (the
         // `nphases` side effect's `> FNConds` clamp is transient).
         eng.set_nphases(self.fnphases.max(0) as usize);
-        self.data_changed = false;
 
         // Before the calc, reject bad conductor definitions (Pascal raises
-        // `ELineGeometryProblem` and sets `SolutionAbort`).
+        // `ELineGeometryProblem` and sets `SolutionAbort`). Leave `data_changed`
+        // SET on this error path (Pascal clears it at line 968 before the check,
+        // but its exception immediately halts the whole solve; the Result-based
+        // port returns instead, so we must keep the geometry "dirty" or a later
+        // rebuild would read the never-computed matrices and silently succeed).
         if let Some(msg) = eng.conductors_in_same_space() {
             return Err(format!("Error in LineGeometry.{}: {msg}", self.data.name()));
         }
@@ -106,6 +109,8 @@ impl LineGeometryObj {
         if self.freduce {
             eng.reduce();
         }
+        // Cleared only on a successful build (see the error path above).
+        self.data_changed = false;
         Ok(())
     }
 

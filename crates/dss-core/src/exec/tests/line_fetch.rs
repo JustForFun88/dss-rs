@@ -162,3 +162,89 @@ fn line_geometry_specified_resolves_and_solves() {
     let ckt = dss.circuit().unwrap();
     assert!(ckt.solution.converged_flag, "geometry line should converge");
 }
+
+/// WP7.1 step 3a follow-up: `rmatrix`/`xmatrix` on a geometry line must report the
+/// **per-unit-length** matrix — Pascal `GetZmatScale` divides the stored *total*
+/// `Z` by `Len` (the geometry folds length+units in). Regression guard for the
+/// getter's geometry branch (the pre-fix getter divided by `units_convert` = 1.0
+/// and echoed the total, off by a factor of `Len`).
+#[test]
+fn line_geometry_rmatrix_is_per_unit_length() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.geo basekv=12.47 phases=3");
+    dss.command(
+        "New WireData.w runits=m gmrunits=m radunits=m \
+             rac=0.0003 gmrac=0.005 radius=0.01 normamps=400",
+    );
+    dss.command(
+        "New LineGeometry.geo1 nconds=3 nphases=3 \
+             cond=1 wire=w x=0 h=10 units=m cond=2 wire=w x=1 h=10 cond=3 wire=w x=2 h=10",
+    );
+    // length = 2 km, so the total Z (= per-metre × 1000 × 2) and Len (= 2) diverge:
+    // the getter must divide by Len, yielding the per-km matrix.
+    dss.command("New Line.l1 bus1=sourcebus bus2=b2 phases=3 geometry=geo1 length=2 units=km");
+    dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Set controlmode=off");
+    // Solve so `CalcYPrim` runs `FMakeZFromGeometry`, populating the line's total Z.
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // First (= [0][0]) entry of each matrix query. The oracle per-metre diagonal is
+    // (3.525947626277e-4 + j 9.150978496084e-4) ohm/m, so the per-km getter value
+    // is that × 1000 — NOT × 2000 (the total), which the pre-fix getter returned.
+    let first = |s: &str| -> f64 {
+        s.trim()
+            .trim_start_matches('[')
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    let rm = query(&mut dss, "Line.l1.rmatrix");
+    let xm = query(&mut dss, "Line.l1.xmatrix");
+    assert!(
+        (first(&rm) - 3.525947626277e-04 * 1000.0).abs() < 1e-7,
+        "rmatrix[0][0] should be per-unit-length (per km): {rm}"
+    );
+    assert!(
+        (first(&xm) - 9.150978496084e-04 * 1000.0).abs() < 1e-7,
+        "xmatrix[0][0] should be per-unit-length (per km): {xm}"
+    );
+}
+
+/// WP7.1 step 3a follow-up: a geometry whose conductors share a position makes
+/// `CalcYPrim` (via `FMakeZFromGeometry`) hit the Pascal `ELineGeometryProblem`.
+/// The Y-build must surface the queued message and set `solution_abort` — the
+/// faithful equivalent of Pascal's `SolutionAbort` + `Exit`.
+#[test]
+fn line_geometry_conductors_in_same_space_aborts_solve() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.geo basekv=12.47 phases=3");
+    dss.command(
+        "New WireData.w runits=m gmrunits=m radunits=m \
+             rac=0.0003 gmrac=0.005 radius=0.01 normamps=400",
+    );
+    // cond 1 and 2 occupy the same (x, h) — conductors-in-same-space.
+    dss.command(
+        "New LineGeometry.bad nconds=3 nphases=3 \
+             cond=1 wire=w x=0 h=10 units=m cond=2 wire=w x=0 h=10 cond=3 wire=w x=2 h=10",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=b2 phases=3 geometry=bad length=1 units=km");
+    dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+
+    assert!(
+        dss.circuit().unwrap().solution.solution_abort,
+        "a geometry Zmatrix error must abort the solution"
+    );
+    assert!(
+        dss.errors().iter().any(|e| e.contains("LineGeometry")),
+        "the geometry error must be surfaced: {:?}",
+        dss.errors()
+    );
+}
