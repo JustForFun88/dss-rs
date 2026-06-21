@@ -67,8 +67,18 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
    "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
+   "kind": "large",
    "n_steps": 1
   },
   {
@@ -99,6 +109,11 @@
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
    "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
+   "kind": "large",
    "n_steps": 1
   },
   {

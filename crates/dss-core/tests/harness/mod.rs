@@ -539,6 +539,56 @@ pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tol, ctx: &str) {
     );
 }
 
+/// Compare terminal powers (kW/kvar) per conductor with a **voltage-scaled**
+/// absolute floor, the image of the current floor through `P = V·conj(I)`.
+///
+/// A tolerated terminal-current error `abs_floor` (amps) maps to a power error of
+/// `|V_terminal|·abs_floor` (VA) — so comparing power to a *flat* `abs_floor` kW
+/// floor while comparing current to a flat `abs_floor` A floor is internally
+/// inconsistent (they agree only at |V| = 1 V). Near-zero-impedance connector
+/// lines (1.5 m `BUSBAR` segments, `switch=y`; |Yprim| ~ 1e6) make this bite: the
+/// through-current `I = Yprim·(V1−V2)` is a catastrophic cancellation whose
+/// ~1e-8-rel voltage roundoff (faer vs KLU on an ill-conditioned Y, cond ~ 1e7)
+/// surfaces as a ~3e-6-rel current/power error. The current's own `abs_floor`
+/// absorbs it; a flat kW power floor does not. So the power abs floor is
+/// `abs_floor · max(1, |V_kv|)` with `|V_kv| = |P_kW| / |I_A|` (the terminal
+/// voltage in kV, recovered from the captured power and current — self-consistent
+/// under positive-sequence ×3, where `|P|` and the accepted `δP` scale together).
+/// `max(1, …)` never tightens below the established floor. See
+/// tests/TOLERANCE_NOTES.md.
+fn assert_power_close(actual: &[f64], exp: &ElementCap, rel: f64, abs_floor: f64, what: &str) {
+    let (p_kw, p_kvar) = (&exp.p_kw, &exp.p_kvar);
+    let (i_re, i_im) = (&exp.i_re, &exp.i_im);
+    assert_eq!(
+        actual.len(),
+        2 * p_kw.len(),
+        "{what}: power length mismatch ({} vs {})",
+        actual.len(),
+        2 * p_kw.len()
+    );
+    assert_eq!(p_kw.len(), p_kvar.len(), "{what}: kW/kvar length mismatch");
+    assert_eq!(
+        p_kw.len(),
+        i_re.len(),
+        "{what}: power/current length mismatch"
+    );
+    for k in 0..p_kw.len() {
+        let (ar, ai) = (actual[2 * k], actual[2 * k + 1]);
+        let (er, ei) = (p_kw[k], p_kvar[k]);
+        let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
+        let p_mag = (er * er + ei * ei).sqrt();
+        let i_mag = (i_re[k] * i_re[k] + i_im[k] * i_im[k]).sqrt();
+        // |V_kv| = |P_kW| / |I_A| (terminal kV); the power error is |V|·(δI).
+        let vkv = if i_mag > 1e-12 { p_mag / i_mag } else { 1.0 };
+        let allowed = abs_floor * vkv.max(1.0) + rel * p_mag;
+        assert!(
+            diff <= allowed,
+            "{what}: conductor {k} differs: actual ({ar}, {ai}) vs expected ({er}, {ei}); \
+             |diff| = {diff:e} > allowed {allowed:e} (|V| = {vkv:.4} kV)",
+        );
+    }
+}
+
 /// Compare one element's terminal currents and powers against a capture.
 pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tol, ctx: &str) {
     let snap = snaps
@@ -557,14 +607,13 @@ pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tol, c
         tol.i_abs,
         &format!("{ctx} {} currents", exp.name),
     );
-    let mut ep = Vec::with_capacity(2 * exp.p_kw.len());
-    for (kw, kvar) in exp.p_kw.iter().zip(&exp.p_kvar) {
-        ep.push(*kw);
-        ep.push(*kvar);
-    }
-    assert_complex_close(
+    // Powers use a terminal-voltage-scaled abs floor (see `assert_power_close`):
+    // `P = V·conj(I)` so the power floor must be the current floor times |V|, or
+    // high-voltage near-cancellation through-power (switch/busbar connectors)
+    // fails on solver roundoff the current floor already absorbs.
+    assert_power_close(
         &snap.powers,
-        &ep,
+        exp,
         tol.i_rel,
         tol.i_abs,
         &format!("{ctx} {} powers", exp.name),

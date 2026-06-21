@@ -55,6 +55,34 @@ Field-specific points:
   quantities; 1e-6-rel voltage agreement caps their absolute agreement at the
   µA / fraction-of-a-watt scale. Same rationale as the Phase-4/5 feeder gate.
 
+- **Power abs floor is voltage-scaled: `i_abs · max(1, |V_kv|)`
+  (`assert_power_close`).** Terminal power is `P = V·conj(I)`, so a tolerated
+  terminal-current error `i_abs` (amps) maps to a power error of `|V|·i_abs` (VA).
+  A *flat* `i_abs` kW power floor next to a flat `i_abs` A current floor is
+  internally inconsistent — they agree only at |V| = 1 V — so above a few kV a
+  current that passes its own floor can push the derived power past a flat kW
+  floor. This is not hypothetical: large meshed circuits with near-zero-impedance
+  connector lines (1.5 m `BUSBAR` segments and `switch=y` lines, |Yprim| ~ 1e6)
+  carry a through-current `I = Yprim·(V1−V2)` that is a catastrophic cancellation
+  of two large terms; the ~1e-8-rel node-voltage roundoff that any backward-stable
+  solver leaves on such an ill-conditioned Y (cond ~ 1e7 — faer here vs the
+  oracle's KLU, *unimprovable*: tightening the solve tolerance to 1e-9 / 12
+  iterations leaves it unchanged) amplifies through that cancellation to ~3e-6 rel
+  in the current, hence identically in `P = V·conj(I)`. The current's own 1e-4 A
+  floor absorbs it (~5–7e-5 A); a flat 1e-4 kW power floor cannot (~5e-4 kW at
+  7.2 kV). So the power floor is the **image of the current floor through the
+  terminal voltage**: `|V_kv| = |P_kW| / |I_A|`, recovered from the captured power
+  and current (self-consistent under positive-sequence ×3, where `|P|` and the
+  accepted `δP` scale together), and `max(1, |V_kv|)` never tightens below the
+  established floor. This forgives only power error that is the exact image of an
+  already-accepted current error — the Yprim (compared at 1e-6), node voltages
+  (1e-6), and currents (1e-4 A) all still pin a real regression independently, so
+  a genuine power bug shows up in one of those first. It unblocked three large
+  EPRI / ADiakoptics cases — `EPRITestCircuits/ckt5`,
+  `ADiakoptics/EPRI_Ckt5-G/.../zone_2`, `ADiakoptics/TnDSystem/.../zone_2` — whose
+  Yprim is *bit-identical* to the oracle and whose only divergence was this
+  connector-line cancellation.
+
 - **Large feeders use the Y fingerprint, not the full CSC.** Storing the full
   assembled-Y CSC every step does not scale (the golden would balloon), so large
   feeders pin a compact fingerprint (`nnz`, Frobenius norm, complex trace,
