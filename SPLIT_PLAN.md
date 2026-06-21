@@ -1,9 +1,13 @@
 # SPLIT_PLAN — module-splitting plan (read-organization only, zero behavior change)
 
-> **Status:** proposal, not yet executed. Pure code-organization refactor under
-> **PORTING_PLAN §1.4** (*"later phases may freely refactor earlier code; the
-> regression test suite is the only contract"*). No numeric behavior changes; no
-> goldens regenerated; `TODO(compat)`/`NOT_PORTED` markers preserved **verbatim**.
+> **Status:** ALL SPLITS EXECUTED & gate-green. Splits A/B (committed) plus the
+> two §5 splits — `obj/dss_enum/registry.rs` → `registry/` and
+> `solution/meters/zones.rs` → `zones/` — the latter two done **ahead of their
+> triggers at explicit user request (2026-06-21)**. Pure code-organization
+> refactor under **PORTING_PLAN §1.4** (*"later phases may freely refactor earlier
+> code; the regression test suite is the only contract"*). No numeric behavior
+> changes; no goldens regenerated; `TODO(compat)`/`NOT_PORTED` markers preserved
+> **verbatim**.
 >
 > **Companion review:** the findings this plan acts on are in the split-review
 > reconciled against `PHASE7_PLAN.md` / `PORTING_PLAN.md` / `STATUS.md`. Only the
@@ -229,16 +233,19 @@ Net ADDED ≈ empty.
 
 ---
 
-## 5. Deferred (valid splits, wrong time) — do NOT execute until the trigger
+## 5. Formerly-deferred splits — EXECUTED 2026-06-21 (ahead of trigger, at user request)
 
-| Target | Lines | Why deferred | Trigger to revisit |
-|---|---|---|---|
-| `obj/dss_enum/registry.rs` | 454 | `EnumRegistry::new()` is one ~470-line constructor appended to **every phase**; Phase 7 adds protection/DER/dynamics enums to it. Splitting `new()` into by-domain helpers (`register_pd`/`register_pc`/`register_control`/…) is a *moving target* mid-phase. | At a **phase boundary** (e.g. WP7.10 / Phase 7 exit), when the enum set is momentarily stable. |
-| `solution/meters/zones.rs` | 546 | Dominated by the ~329-line `make_meter_zone_lists`. Valid `zones/{mod,build,flags}` split (mirrors the existing `sampling/` dir), **but** WP7.2/7.3 will flip the `is_zone_pce` `TODO(WP7)` (at `zones.rs:156`) to admit PVSystem/Storage. | After **WP7.2/7.3** land the `is_zone_pce` change. |
+Both were originally deferred to a phase/WP boundary (Phase 7 is mid-flight). The
+user asked to do them now; each was executed under the **same §2/§3 procedure** and
+is gate-green (full three-command gate + live-oracle corpus, dss-core lib 376).
 
-When revisited, both follow the **same** §2/§3 procedure (the `zones.rs` split is
-a directory conversion identical in shape to Split A's mechanics; `registry.rs`
-is an intra-file extraction of `new()` into private helper fns in sibling files).
+| Target (was) | Now | Result |
+|---|---|---|
+| `obj/dss_enum/registry.rs` (488 ln) | `obj/dss_enum/registry/{mod,pd,pc,control,general,solution}.rs` | `new()` threads one `push` closure through five by-domain `register()` helpers, each returning the `EnumId`s it allocated. Ids are **local** (push order irrelevant — `EnumId` is an opaque handle, grep-confirmed), so the regroup is behavior-neutral. §2a REMOVED empty; the 32 `DssEnum::new` calls, the 18 special-flag mutations, and all 190 enum/variant string literals are byte-identical; ADDED is only struct/fn/field scaffolding. |
+| `solution/meters/zones.rs` (585 ln) | `solution/meters/zones/{mod,build,flags}.rs` | Pure relocation (mirrors `sampling/`): `mod` keeps `DoResetMeterZones`/`ResetMeterZonesAll`, `flags` the `SetHas{Meter,Sensor}Flag` passes, `build` the `MakeMeterZoneLists` walk + predicates + `TotalUpDownstreamCustomers`. `downcast_meter` reached via `super::super` (the `sampling/allocate.rs` precedent). §2a REMOVED **and** ADDED both empty. The `is_zone_pce` `TODO(WP7)` (now in `zones/build.rs`) is preserved **verbatim** for WP7.2/7.3. |
+
+The earlier `registry.rs` "intra-file extraction" sketch became a directory split
+(`registry/`) — the cleaner outcome; `zones.rs` was the planned directory conversion.
 
 ---
 
@@ -280,6 +287,8 @@ These are mid-edit in the in-progress Phase-7 line-constants work
 2. **Split B** (`xy_curve` + `accessors.rs`): snapshot → move `impl DssObject` →
    fix `tests.rs` `DssObject` import → **§2a verify** → **§3 gate** → stop.
    *(Optional commit on request.)*
-3. **Deferred** (§5): only when their triggers fire.
+3. **Formerly-deferred** (§5): **executed 2026-06-21** at user request, ahead of
+   their triggers — `registry.rs` → `registry/` and `zones.rs` → `zones/`, both
+   §2/§3-verified and gate-green. (Originally: only when their triggers fire.)
 
 Each numbered step is a stop-and-confirm checkpoint per the project's WP cadence.
