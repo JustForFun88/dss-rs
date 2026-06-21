@@ -62,6 +62,11 @@ impl LineSpacingObj {
     pub fn nwires(&self) -> i32 {
         self.fnconds
     }
+    /// Pascal `NPhases` (= `FNphases`): the phase count `TLineObj.FetchLineSpacing`
+    /// adopts and `SetWires` uses to place buried neutrals.
+    pub fn nphases(&self) -> i32 {
+        self.nphases
+    }
     /// Pascal `Xcoord`/`Ycoord` arrays (length `FNConds`) and `Units` — read by
     /// `TLineGeometryObj`'s `spacing=` side effect.
     pub fn xcoord(&self) -> &[f64] {

@@ -8,11 +8,11 @@
 > frontier.
 
 Last updated: 2026-06-21 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`): **WP7.1 step 3a done** (Line `geometry=` Carson
-path, gate-green, committed), **step 3b next** (the `spacing`/`wires`/`cncables`/
-`tscables` path). The last merged phase was **Phase 6 (WP6.1–WP6.10), MERGED to
-`main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
-origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
+`phase-7-extended-elements`): **WP7.1 step 3b done** (Line `spacing=`/`wires=`/
+`cncables=`/`tscables=` Carson path, gate-green), **step 4 next** (the geometry/
+spacing corpus feeder + targeted golden). The last merged phase was **Phase 6
+(WP6.1–WP6.10), MERGED to `main`** (`--no-ff` merge `b98223a`, gate green at
+merge; `main` not pushed to origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
 `d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
 `19a5493`/`593420f`, WP6.10 phase-exit `207b9cb`, and the post-exit live-gate
 deepening + audit hardening through `cc6d2e2`. Phase 5 had merged earlier
@@ -35,10 +35,13 @@ conductor catalog `WireData`/`CNData`/`TSData`), **step 2b done**
 (`LineSpacing`), **step 2c-i done** (the `LineGeometry` object + edit state
 machine + props/`MakeLike`), **step 2c-ii done** (the matrix wiring —
 `UpdateLineGeometryData`/`CalcMatrices` driving the Carson engine, Z/Yc pinned
-to the oracle) **and step 3a done** (Line's `geometry=` Carson path —
-`FetchGeometryCode`/`FMakeZFromGeometry`, Z/Yc/YPrim pinned to the oracle),
-all gate-green — see §1e; **WP7.1 step 3b next** (the `spacing`/`wires`/
-`cncables`/`tscables` path: `FetchLineSpacing`/`SetWires`/`FMakeZFromSpacing`).
+to the oracle), **step 3a done** (Line's `geometry=` Carson path —
+`FetchGeometryCode`/`FMakeZFromGeometry`, Z/Yc/YPrim pinned to the oracle)
+**and step 3b done** (Line's `spacing`/`wires`/`cncables`/`tscables` path —
+`FetchLineSpacing`/`SetWires`/`LoadSpacingAndWires`/`FMakeZFromSpacing`,
+incl. the buried-neutral form, Z/Yc pinned to the oracle),
+all gate-green — see §1e; **WP7.1 step 4 next** (the geometry/spacing corpus
+feeder migration + targeted golden `phase7/line_geometry*.json`).
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -79,7 +82,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 3a Line `geometry=` Carson path done; step 3b spacing/wires/cncables/tscables next) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 3b Line `spacing`/`wires`/`cncables`/`tscables` Carson path done; step 4 corpus feeder + golden next) |
 
 ### Gate state (all green)
 ```
@@ -593,10 +596,57 @@ follow-up, gate-green).**
   (full parse → `LineGeometry` foreign-class resolve → solve; `r1` hidden = `----`).
   dss-core lib **372 → 376** (+ 4 audit follow-up tests → **380**). Full
   three-command gate green.
-- **Next — step 3b:** the `spacing=`/`wires=`/`cncables=`/`tscables=` path
-  (`FetchLineSpacing` + a `SetWires` state machine on `Line` + `LoadSpacingAndWires`
-  on `LineGeometry` + `FMakeZFromSpacing`), then step 4 the corpus feeder +
-  targeted golden `phase7/line_geometry*.json` gate.
+**WP7.1 step 3b — Line `spacing=`/`wires=`/`cncables=`/`tscables=` Carson path
+(`FetchLineSpacing`/`SetWires`/`LoadSpacingAndWires`/`FMakeZFromSpacing`) — ✅
+done, gate-green, uncommitted.**
+- `line/mod.rs`: un-`NOT_PORTED` the four props — `spacing` (scalar
+  `object_ref_class("LineSpacing")`), `wires`/`cncables`/`tscables` (array
+  `object_ref_array` over WireData/CNData/TSData). New `Line` fields
+  `line_spacing_obj: Option<LineSpacingObj>`, `line_wire_data:
+  Vec<Option<Box<dyn DssObject>>>` (Pascal `LineWireData`), `fphase_choice:
+  ConductorChoice` (`FPhaseChoice`), `got_ratings_after_spacing_conds`. The
+  trait-object `Vec` forces a **manual `Clone`/`Debug`** (the `LineGeometryObj`
+  precedent — the derive is gone).
+- Ported verbatim: **`FetchLineSpacing`** (Line.pas:1853 — drop linecode/geometry,
+  `NPhases := spacing.NPhases`, allocate the empty `NWires`-slot wire array);
+  **`SetWires`** (Line.pas:803 — overhead `istart=1` when `FPhaseChoice=Unknown`,
+  else bare neutrals at `istart=NPhases+1`; count-validate `(NWires-istart+1)`;
+  seed `NormAmps`/`EmergAmps`/ratings from the wires); **`KillSpacingSpecified`**
+  (Line.pas:2042) wired into `FetchLineCode`/`FetchGeometryCode` and the
+  sym/matrix/switch side effects; **`SpacingSpecified`**; the
+  `spacing`/`wires`/`cncables`/`tscables` `PropertySideEffects` (the three Pascal
+  case blocks — cable forms pick the model, the common block switches off the sym
+  model + clears the superseded marks, ratings-after-conds latch). **`LoadSpacingAndWires`**
+  (LineGeometry.pas) added on `LineGeometryObj`: builds a throwaway geometry from
+  the spacing + conductors, picks OH/CN/TS from the wire kinds, runs the Carson
+  calc. **`FMakeZFromSpacing`** (Line.pas:1964): the `pGeo` temp-geometry path →
+  **total** `Z`/`Yc` (length+units folded in), so `CalcYPrim` reuses the geometry
+  branch (`total_z_path = geometry || spacing_specified`); the `rmatrix`/`cmatrix`
+  per-unit-length getters and the `Yc/2` shunt likewise.
+- **Routing decision (probed):** the `wires=` prop runs the `SetWires` state
+  machine (with the buried-neutral `istart`); `cncables=`/`tscables=` use Pascal's
+  *generic* `DSSObjectReferenceArrayProperty` fill (`set_cables`, fill from
+  conductor 1, no `istart`), with the side effect setting `FPhaseChoice`. Routing
+  the cables through `SetWires` would break the buried-neutral case
+  (`cncables=[3] wires=[1 bare neutral]`, NWires=4/NPhases=3) — confirmed against
+  the oracle.
+- **Gate:** `probe_line_spacing_phase7.py` builds each form **both** ways in the
+  oracle (`geometry=` vs `spacing=`+`wires=`/`cncables=`) and confirms they agree
+  **exactly** (maxdiff 0) for overhead, CN, and CN+bare-neutral. 5 inline tests
+  pin the spacing `Z`/`Yc` to the **same `deri_full_3cond`/CN oracle anchors** the
+  step-3a + line_geometry tests use (overhead `Z00`+`Yc00`, CN `Z00`, buried-
+  neutral `Z00`) and assert entry-by-entry equality with the equivalent geometry:
+  `spacing_wires_match_geometry_and_oracle`, `spacing_cncables_match_geometry`,
+  `spacing_buried_neutral_via_cncables_then_wires` (validates the `istart` offset
+  + 4→3 Kron reduce), `set_wires_wrong_count_errors` (18102 count error),
+  `sym_scalar_detaches_spacing` (`KillSpacingSpecified`). dss-core lib **380 →
+  385**. Full three-command gate green.
+- **Also fixed (faithfulness):** `FetchLineCode` now calls
+  `KillSpacing`/`KillGeometry` (Line.pas:590-591 tail — a `linecode=` supersedes a
+  prior spacing/geometry; was a latent step-3a gap).
+- **Next — step 4:** the geometry/spacing corpus feeder migration
+  (`unsupported_class={LineSpacing,WireData,LineGeometry,…}` → `solvable_now`) +
+  targeted golden `phase7/line_geometry*.json`.
 
 ---
 

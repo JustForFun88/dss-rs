@@ -6,12 +6,13 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
 use crate::support::mathutil::SymComp;
 
-use super::Line;
+use super::{Line, prop};
 
 /// Pascal `CAP_EPSILON` (Line.pas): "5 kvar of capacitive reactance at
 /// 345 kV to avoid open line problem", added to the series Yprim diagonal.
@@ -80,6 +81,50 @@ impl Line {
             .expect("make_z_from_geometry called without a geometry");
         let z = geom.z_matrix(f, len, units, earth_model)?;
         let yc = geom.yc_matrix(f, len, units, earth_model)?;
+        self.z = Some(z);
+        self.yc = Some(yc);
+        self.fz_frequency = f;
+        Ok(())
+    }
+
+    /// Pascal `TLineObj.FMakeZFromSpacing` (Line.pas:1964): build the total
+    /// `Z`/`Yc` from the attached `LineSpacing` + wire list via a throwaway
+    /// `LineGeometry` (Pascal `pGeo`), recomputing only on a frequency change.
+    /// Length + units are folded into the geometry's `Zmatrix[f, len, units]`, so
+    /// the result is total (like the geometry path). Returns the geometry's error
+    /// (Pascal raises `ELineGeometryProblem` + `SolutionAbort`).
+    fn make_z_from_spacing(&mut self, f: f64) -> Result<(), String> {
+        if f == self.fz_frequency {
+            return Ok(()); // already done for this frequency
+        }
+        let len = self.len;
+        let units = self.length_units.code();
+        let earth_model = self.earth_model;
+
+        // Pascal builds a temporary `TLineGeometryObj` named after the Line and
+        // loads the spacing + conductors into it (`LoadSpacingAndWires` runs the
+        // Carson calc under this Line's `FEarthModel`).
+        let mut pgeo = LineGeometryObj::new(self.cd.obj.name().to_string());
+        {
+            let spc = self
+                .line_spacing_obj
+                .as_ref()
+                .expect("make_z_from_spacing called without a spacing");
+            pgeo.load_spacing_and_wires(spc, &self.line_wire_data, f, earth_model)?;
+        }
+        // A `rho=` on the Line overrides the geometry's earth resistivity.
+        if self.cd.obj.prp_specified(prop::RHO) {
+            pgeo.set_rho_earth(self.rho);
+        }
+        // Unless ratings were specified *after* the spacing conductors, seed the
+        // Line's amps from the temporary geometry (which took them from wire 1).
+        if !self.got_ratings_after_spacing_conds {
+            self.norm_amps = pgeo.norm_amps();
+            self.emerg_amps = pgeo.emerg_amps();
+        }
+
+        let z = pgeo.z_matrix(f, len, units, earth_model)?;
+        let yc = pgeo.yc_matrix(f, len, units, earth_model)?;
         self.z = Some(z);
         self.yc = Some(yc);
         self.fz_frequency = f;
@@ -177,13 +222,23 @@ impl CktElement for Line {
         //    so Zinv = Z directly and the shunt needs no length/freq scaling.
         //  - sym/linecode: Z/Yc are per-unit-length at base frequency; scale by
         //    length/frequency and the earth-return Rg/Xg before inverting.
+        // The geometry and spacing paths both produce a *total* Z/Yc (length +
+        // units folded in by the geometry's `Zmatrix[f, len, units]`); the
+        // sym/linecode path produces per-unit-length data scaled below.
         let geometry_path = self.geometry_obj.is_some();
+        let spacing_path = self.spacing_specified();
+        let total_z_path = geometry_path || spacing_path;
         let mut length_multiplier = 1.0;
         let mut freq_multiplier = 1.0;
 
-        let mut zinv = if geometry_path {
-            // Pascal `FMakeZFromGeometry(Solution.Frequency)`.
-            if let Err(msg) = self.make_z_from_geometry(sys.frequency) {
+        let mut zinv = if total_z_path {
+            // Pascal `FMakeZFromGeometry`/`FMakeZFromSpacing(Solution.Frequency)`.
+            let res = if geometry_path {
+                self.make_z_from_geometry(sys.frequency)
+            } else {
+                self.make_z_from_spacing(sys.frequency)
+            };
+            if let Err(msg) = res {
                 // Pascal: the geometry getter raised `ELineGeometryProblem` and
                 // set `SolutionAbort`, so `CalcYPrim` exits without building YPrim.
                 // Record the message as a deferred error; the Y-build loop
@@ -193,10 +248,10 @@ impl CktElement for Line {
                 self.cd.obj.push_error(msg);
                 return;
             }
-            // Pascal leaves `FYprimFreq` untouched in the geometry branch (it is
-            // set only in the per-unit-length else-block); this path uses no
+            // Pascal leaves `FYprimFreq` untouched in these branches (it is set
+            // only in the per-unit-length else-block); they use no
             // `freq_multiplier`, so leave it likewise.
-            self.z.as_ref().expect("make_z_from_geometry set Z").clone()
+            self.z.as_ref().expect("make_z_from_* set Z").clone()
         } else {
             if self.sym_components_changed {
                 // Catch inadvertent user error when C1/C0 were never specified:
@@ -291,7 +346,7 @@ impl CktElement for Line {
             for j in 0..nphases {
                 for i in 0..nphases {
                     let ycv = yc.get(i, j);
-                    let value = if geometry_path {
+                    let value = if total_z_path {
                         // Already total (length + frequency folded in); halve it.
                         Complex64::new(ycv.re / 2.0, ycv.im / 2.0)
                     } else {
