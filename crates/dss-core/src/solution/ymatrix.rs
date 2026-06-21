@@ -97,10 +97,23 @@ pub fn build_y_matrix(
             },
         );
     }
+    let mut yprim_errors: Vec<String> = Vec::new();
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
         elem.calc_yprim(&sys);
         elem.cd_mut().yprim_invalid = false;
+        // A `CalcYPrim` that aborts (e.g. a `LineGeometry` Zmatrix error) queues a
+        // deferred message instead of building YPrim; collect it below.
+        yprim_errors.extend(elem.cd_mut().obj.take_errors());
+    }
+    if !yprim_errors.is_empty() {
+        // Pascal: the geometry getter raised `ELineGeometryProblem` and set
+        // `SolutionAbort`, and `CalcYPrim` exited. The trait has no direct abort
+        // channel, so surface the queued message(s) and abort the solution here
+        // (the parse path already drained every other deferred error, so anything
+        // collected above came from `CalcYPrim`).
+        env.errors.extend(yprim_errors);
+        ckt.solution.solution_abort = true;
     }
     ckt.solution.frequency_changed = false;
 

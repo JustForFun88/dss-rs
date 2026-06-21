@@ -542,11 +542,23 @@ follow-up, gate-green).**
   (`nconds` reduce-aware = Pascal `Get_Nconds`; `norm_amps`/`emerg_amps`/
   `num_amp_ratings`/`amp_ratings`/`line_type`) + a manual `Debug` (it owns
   `Box<dyn DssObject>` conductor slots and `Line` derives `Debug`).
-- **Deferred F2 partially lands here:** a geometry `Zmatrix` error
-  (`ELineGeometryProblem`/NIL conductor) is recorded via `push_error` and
-  `CalcYPrim` returns without building YPrim — Pascal sets `SolutionAbort` + Exits.
-  Threading the real solve-abort needs a `CalcYPrim` error sink the trait lacks
-  (no valid feeder hits it). Tracked with a `TODO` at the call site.
+- **Deferred F2 now lands (audit follow-up):** a geometry `Zmatrix` error
+  (`ELineGeometryProblem`/NIL conductor) is recorded via `push_error`; the Y-build
+  loop (`ymatrix::build_y_matrix`) drains the queued message into `env.errors` and
+  sets `solution_abort` — the faithful equivalent of Pascal `SolutionAbort` + Exit
+  (the trait still has no direct abort channel, so the drain is the sink). To keep
+  the abort robust across re-solves, `update_line_geometry_data` now clears
+  `data_changed` only on a *successful* calc (Pascal clears it before the check but
+  relies on the exception halting the solve outright). Test:
+  `line_geometry_conductors_in_same_space_aborts_solve`.
+- **Audit follow-ups (matrix getter / rho / FYprimFreq):** `GetZmatScale`/
+  `GetYCScale` (the `rmatrix`/`xmatrix`/`cmatrix` getter) now divide the stored
+  *total* matrix by `Len` when a geometry is attached (Pascal Line.pas:261-283) —
+  previously echoed the total (off by `Len`); test
+  `line_geometry_rmatrix_is_per_unit_length`. A `rho=` without a geometry no longer
+  invalidates YPrim (Pascal invalidates only when a geometry is present,
+  Line.pas:772-780). The geometry branch no longer writes `FYprimFreq` (Pascal sets
+  it only in the per-unit-length path).
 - Oracle-pinned: 3 inline `geometry_tests` drive a `Line` through the property
   engine + a `build_overhead_3` geometry and assert `Z`/`Yc` == the geometry's
   total matrices entry-by-entry, anchored to the `deri_full_3cond` diagonal, plus
