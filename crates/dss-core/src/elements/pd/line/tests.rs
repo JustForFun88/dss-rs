@@ -549,3 +549,20 @@ fn sym_scalar_detaches_spacing() {
     assert_eq!(line.fphase_choice, ConductorChoice::Unknown);
     assert!(line.sym_components_model);
 }
+
+#[test]
+fn cncables_without_spacing_errors() {
+    // `cncables=` before any `spacing=` leaves `LineWireData` unallocated — Pascal's
+    // generic array fill raises error 402 (probe-confirmed). It must not silently
+    // no-op into the sym model.
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let c = build_cn();
+    let mut line = Line::new("l1");
+    let errs = try_ref_array(&lcls, &mut line, "cncables", &[&c, &c, &c]);
+    assert!(
+        errs.iter().any(|e| e.contains("No objects are expected")),
+        "expected error 402, got {errs:?}"
+    );
+    assert!(line.line_wire_data.is_empty());
+}
