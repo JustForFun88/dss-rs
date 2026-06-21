@@ -163,11 +163,12 @@ fn line_geometry_specified_resolves_and_solves() {
     assert!(ckt.solution.converged_flag, "geometry line should converge");
 }
 
-/// WP7.1 step 3a follow-up: `rmatrix`/`xmatrix` on a geometry line must report the
-/// **per-unit-length** matrix — Pascal `GetZmatScale` divides the stored *total*
-/// `Z` by `Len` (the geometry folds length+units in). Regression guard for the
-/// getter's geometry branch (the pre-fix getter divided by `units_convert` = 1.0
-/// and echoed the total, off by a factor of `Len`).
+/// WP7.1 step 3a follow-up: `rmatrix`/`xmatrix`/`cmatrix` on a geometry line must
+/// report the **per-unit-length** matrix — Pascal `GetZmatScale`/`GetYCScale`
+/// divide the stored *total* `Z`/`Yc` by `Len` (the geometry folds length+units
+/// in). Regression guard for both getter geometry branches (the pre-fix getter
+/// divided by `units_convert` = 1.0 and echoed the total, off by a factor of
+/// `Len`).
 #[test]
 fn line_geometry_rmatrix_is_per_unit_length() {
     let mut dss = Dss::new();
@@ -213,6 +214,16 @@ fn line_geometry_rmatrix_is_per_unit_length() {
         (first(&xm) - 9.150978496084e-04 * 1000.0).abs() < 1e-7,
         "xmatrix[0][0] should be per-unit-length (per km): {xm}"
     );
+    // cmatrix is reported in nF per unit length (Pascal `GetYCScale`): the oracle
+    // per-metre C diagonal is 8.941431489720e-3 nF/m (the `C3_NF` reference), so
+    // the per-km getter value is that × 1000 — NOT × 2000 (the stored total). The
+    // base-frequency omega cancels between the stored susceptance and the getter
+    // scale, so this anchor is exact regardless of the two-pi truncation.
+    let cm = query(&mut dss, "Line.l1.cmatrix");
+    assert!(
+        (first(&cm) - 8.941431489720e-03 * 1000.0).abs() < 1e-6,
+        "cmatrix[0][0] should be per-unit-length (per km): {cm}"
+    );
 }
 
 /// WP7.1 step 3a follow-up: a geometry whose conductors share a position makes
@@ -243,8 +254,11 @@ fn line_geometry_conductors_in_same_space_aborts_solve() {
         "a geometry Zmatrix error must abort the solution"
     );
     assert!(
-        dss.errors().iter().any(|e| e.contains("LineGeometry")),
-        "the geometry error must be surfaced: {:?}",
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("occupy the same space")),
+        "the specific geometry failure (Pascal LineConstants.pas:287, \
+         `Conductors %d and %d occupy the same space.`) must be surfaced: {:?}",
         dss.errors()
     );
 }
