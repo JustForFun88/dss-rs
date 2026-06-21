@@ -7,7 +7,10 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-14, **Phase 6 COMPLETE (WP6.1–WP6.10) and MERGED to
+Last updated: 2026-06-21 — **Phase 7 IN PROGRESS** (branch
+`phase-7-extended-elements`): **WP7.1 step 3a done** (Line `geometry=` Carson
+path, gate-green, committed), **step 3b next** (the `spacing`/`wires`/`cncables`/
+`tscables` path). The last merged phase was **Phase 6 (WP6.1–WP6.10), MERGED to
 `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
 origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
 `d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
@@ -218,6 +221,9 @@ The full work-package logs for the completed, merged phases live under
 `docs/phase-records/` to keep this handoff lean. They are frozen history,
 superseded only by the code and tests:
 
+- **Phase 3** — the vertical-slice file-by-file map (circuit model / element base /
+  solution / executive / property engine) — still the architectural reference §2
+  points to. → [`docs/phase-records/phase-3.md`](docs/phase-records/phase-3.md)
 - **Phase 4** — PD elements (Transformer/Capacitor/Reactor), catalog objects
   (LineCode/XfmrCode/GrowthShape), the Line→LineCode fetch path, parse-only
   RegControl/CapControl, the `define_properties!` macro, and the controls-off
@@ -236,8 +242,11 @@ superseded only by the code and tests:
 
 ## 1e. Phase 7 record (branch `phase-7-extended-elements`) — IN PROGRESS
 
-Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small step
-→ full gate → update this file → stop for confirmation.
+Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence — the full
+ritual in `PHASE7_PLAN.md §0`, run autonomously per step: gate green → update this
+file + commit → `/audit-code <step scope>` → fix + commit → `/audit-tests <step
+scope>` → fix + commit → **full `STATUS.md` review + sync + archive-cleanup** +
+commit → **then** stop for confirmation.
 
 **WP7.1 step 1 — Carson line-constants engine (all 4 specializations) — ✅ done, gate-green, committed.**
 - `src/support/line_constants/` — `mod.rs` (`LineConstants` = Pascal
@@ -591,57 +600,12 @@ follow-up, gate-green).**
 
 ---
 
-## 2. What Phase 3 built (file-by-file map — still the architectural reference)
+## 2. What Phase 3 built (file-by-file map) — archived
 
-### Circuit model (`src/circuit/`)
-- `bus.rs` — slim `Bus` (`TDSSBus`): `nodes`/`ref_no` allocation lists,
-  `kv_base`, coords, `allocate_bus_state`.
-- `circuit.rs` — `Circuit` (`TDSSCircuit` subset): `add_ckt_element` (device
-  list + per-kind `Vec<ElemRef>` lists + 1-based handle), `add_bus`
-  (find-or-create + the "Caution: Magic" node_buffer→global-ref rewrite),
-  `process_bus_defs`, `reprocess_bus_defs`, `set_bus_name_redefined`,
-  `node_name(i)` (= oracle `YNodeOrder` format), `losses` (now skips shunt).
-- `terminal.rs` — `Terminal` (`TPowerTerminal`).
-
-### Element base (`src/elements/`)
-- `ckt.rs` — `CktElementData` (`TDSSCktElement` fields + realloc semantics,
-  `set_bus`/`get_bus`, `compute_vterminal`, `do_yprim_calcs` open-conductor
-  Kron, signal flags `signal_bus_name_redefined`/`yprim_invalid`).
-- `traits.rs` — `CktElement` trait (+ `is_shunt` since Phase 4), `ElemRef`,
-  `ElemStore`, `SysCtx`, `InjCtx`.
-- `pc/vsource/mod.rs`, `pc/load/mod.rs` — full Phase 3 ports (all 8 load models,
-  compensation currents).
-- `pd/line/mod.rs` — sym + matrix paths + LineCode fetch (Phase 4).
-- `pd/{transformer,capacitor,reactor,winding}.rs`,
-  `general/{line_code,xfmr_code,growth_shape}.rs`,
-  `control/{control_elem,reg_control,cap_control}.rs` — Phase 4 ([record](docs/phase-records/phase-4.md)).
-
-### Solution (`src/solution/`)
-- `solution.rs` — `solve` → `solve_snap` (control loop; `controlmode=off` ⇒
-  `control_actions_done` immediately) → `solve_circuit` → `do_pflow_solution`
-  → `do_normal_solution`; `converged`, `solve_system`, `set_voltage_bases`.
-- `ymatrix.rs` — `build_y_matrix`: reprocess buses when redefined → recalc
-  invalid Yprims → stamp enabled elements (skips `yprim: None`, i.e. control
-  elements) → `allocate_vi` → `initialize_node_vbase`.
-
-### Executive (`src/exec/mod.rs`)
-- Full Pascal command/option name lists; `command()` = `ProcessCommand` (incl.
-  error-301 circuit gate and the property-reference fallback);
-  `New circuit.x` → default Vsource; `AddObject`; `Set`/`Get`; `Solve`;
-  `Redirect`/`Compile` (block-comment semantics, dir following);
-  `edit_active` (split-borrow `ForeignClasses` view, deferred-error drain,
-  signal-flag propagation, **deferred `RefAction` application** since Phase 4);
-  `snapshot_elements`/`total_power`/`losses` public gate API (Phase 4).
-
-### Property engine (`src/obj/`)
-- `props/mod.rs` — `PropType` (Double/Integer/Boolean/String/MakeLike/arrays/
-  matrices/Bus/Complex/Enabled/ObjectRef/struct-array family), `PropFlags`
-  (incl. `NOT_PORTED`, `CONDITIONAL_VALUE`, `SCALED_BY_FUNCTION`), parse/dump
-  paths, `ForeignClassesView` (+ `find_full`), **`define_properties!`**.
-- `base/mod.rs` — `DssObjData` (PrpSequence, deferred errors), `DssObject` trait
-  (typed accessors, `set_object_ref`, struct-array hooks, `side_effects`,
-  `end_edit`, `make_like`, **`take_ref_actions`/`apply_ref_action`**).
-- `dss_enum/mod.rs` — `TDSSEnum` + registry (17 enums).
+The Phase-3 vertical-slice **file-by-file architectural map** moved to
+[`docs/phase-records/phase-3.md`](docs/phase-records/phase-3.md) (2026-06-21) to
+keep this handoff lean. It is still the architectural reference §3/§4/§5 below
+build on — only its location changed.
 
 ---
 
@@ -775,31 +739,14 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 7 in progress, WP7.1 step 3b (Line spacing/wires path) next
+## 7. Phase 7 — inherited deferrals & architecture in place
 
-Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
-to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
-origin). The work landed on branch `phase-6-meters-topology` (WP6.10 phase-exit
-`207b9cb`, the post-exit live-gate deepening + audit hardening through `cc6d2e2`;
-everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
-**Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
-the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
-Carson line-constants engine, `support/line_constants/`) and step 2a (the
-conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data/mod.rs`), step 2b
-(`LineSpacing`, `line_spacing/mod.rs`), step 2c-i (`LineGeometry` object + edit
-state machine, `line_geometry/mod.rs`), step 2c-ii
-(`UpdateLineGeometryData`/`CalcMatrices` — the Carson `Zmatrix`/`YCmatrix` cache
-driving `support/line_constants/`, Z/Yc pinned to the oracle) and step 3a
-(un-`NOT_PORTED` Line's `geometry=` fetch path — `FetchGeometryCode` +
-`FMakeZFromGeometry` in `CalcYPrim`, Z/Yc/YPrim pinned to the oracle) are done
-and gate-green — see §1e** (steps 1–2c-ii committed; 3a uncommitted); **WP7.1
-step 3b (the remaining `spacing`/`wires`/`cncables`/`tscables` forms:
-`FetchLineSpacing` + a `Line.SetWires` state machine + `FMakeZFromSpacing`),
-then step 4 the geometry corpus feeder + targeted golden, is next.** Execute
-the rest per the plan (PORTING_PLAN.md §Phase 7, the largest phase ~18%, six
-independently-gated sub-blocks ordered risk-ascending: line constants →
-protection → DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder` — see
-PHASE7_PLAN §0).
+> **The current frontier** (active step, branch, what's next, commit state) lives
+> in the header up top and in **§1e** — not restated here, to avoid the two drifting
+> apart. This section is the stable Phase-7 reference: what the phase inherits and
+> what is already wired for it. Execute per `PHASE7_PLAN.md §0` (six
+> independently-gated sub-blocks, risk-ascending: line constants → protection →
+> DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder`).
 
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
