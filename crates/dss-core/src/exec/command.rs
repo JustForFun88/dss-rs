@@ -60,6 +60,15 @@ impl Dss {
             cmd::COMMENT | cmd::HELP | cmd::QUIT | cmd::PANEL | cmd::ABOUT | cmd::COMHELP => {
                 return; // no-ops (comment / GUI-only commands)
             }
+            cmd::SHOW => {
+                // Pascal `DoShowCmd` (ShowResults.pas) is Phase 8
+                // (reporting/exports/Save): it only writes report files and never
+                // alters the electrical solution, so it is stubbed as a no-op here
+                // (like Plot/Panel). The live oracle gate compares the assembled
+                // model, not report text, so this is faithful for the gate and
+                // admits the `Show LineConstants` geometry/cable feeders.
+                return;
+            }
             cmd::CLEAR | cmd::CLEAR_ALL => {
                 self.do_clear_cmd();
                 return;
@@ -291,6 +300,17 @@ impl Dss {
         cls.objects.push(obj);
         cls.active = Some(idx);
 
+        // Pascal `TLineObj.Create` copies the context default earth model into
+        // `FEarthModel` (Line.pas:998); a later `EarthModel=` edit can override
+        // it. Applied before `edit_active` so the property still wins.
+        if let Some(line) = self.classes[ci].objects[idx]
+            .as_any_mut()
+            .downcast_mut::<line::Line>()
+        {
+            line.earth_model = self.default_earth_model;
+        }
+
+        let cls = &mut self.classes[ci];
         let kind = cls.kind.expect("circuit element class has a kind");
         let ckt = self.circuit.as_mut().expect("checked above");
         let elem = self.classes[ci].objects[idx]

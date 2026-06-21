@@ -287,6 +287,36 @@ impl RegControl {
         ((tap - (max_tap + min_tap) / 2.0) / inc).round_ties_even() as i32
     }
 
+    /// The controlled transformer's [`ElemRef`](crate::elements::traits::ElemRef),
+    /// if `transformer=` resolved — lets the executive view read the *live* tap.
+    pub(crate) fn controlled_ref(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
+    /// Pascal `Get_TapNum` evaluated against the **live** controlled transformer
+    /// rather than the parse-time `tap_snap`. A direct `Transformer.X.Taps=`
+    /// edit moves the transformer winding tap without going through this control,
+    /// so the cached snapshot (resynced only on a control action) goes stale;
+    /// Pascal always reads `PresentTap[TapWinding]` live. The executive
+    /// `regcontrol_tap_numbers` view uses this so `TapNumber` matches the oracle
+    /// after a manual tap set (e.g. the IEEE13 geometry scripts).
+    pub(crate) fn tap_num_live(
+        &self,
+        tr: &dyn crate::elements::pd::transformer::ControlledTransformer,
+    ) -> i32 {
+        let w = self.tap_winding;
+        if self.ccd.controlled_element.is_none() || w < 1 {
+            return 0;
+        }
+        let inc = tr.tap_increment(w as usize);
+        if inc == 0.0 {
+            return 0; // NumTaps = 0 winding; Pascal would divide by zero
+        }
+        let mid = (tr.max_tap(w as usize) + tr.min_tap(w as usize)) / 2.0;
+        // TODO(compat): FPC `Round` ties-to-even (see `get_tap_num`).
+        ((tr.present_tap(w as usize) - mid) / inc).round_ties_even() as i32
+    }
+
     /// Pascal `Set_TapNum`: position the controlled winding's tap at
     /// `mid-tap + value · increment`. The transformer write is deferred (see
     /// [`RefAction`]); the local tap snapshot applies the identical clamp so a

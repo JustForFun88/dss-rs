@@ -141,6 +141,7 @@ pub(crate) mod cmd {
     pub const MORE: usize = 3;
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
+    pub const SHOW: usize = 8;
     pub const SOLVE: usize = 9;
     pub const RESET: usize = 13;
     pub const SAMPLE: usize = 26;
@@ -349,6 +350,7 @@ pub(crate) mod opt {
     pub const ALLOCATION_FACTORS: usize = 48;
     pub const CASE_NAME: usize = 63;
     pub const LOG: usize = 66;
+    pub const EARTH_MODEL: usize = 81;
     pub const NUM_ALLOC_ITERATIONS: usize = 72;
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
     pub const NEGLECT_LOAD_Y: usize = 95;

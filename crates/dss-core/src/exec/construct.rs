@@ -156,6 +156,7 @@ impl Dss {
             last_result: String::new(),
             circuit: None,
             default_base_freq: 60.0,
+            default_earth_model: 3, // DERI (Pascal `DSSClass.pas:1284`)
             max_allocation_iterations: 2,
             current_dir: std::env::current_dir().unwrap_or_default(),
             in_redirect: false,

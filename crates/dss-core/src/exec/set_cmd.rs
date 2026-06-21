@@ -22,6 +22,7 @@ impl Dss {
                 enums,
                 errors,
                 default_base_freq,
+                default_earth_model,
                 max_allocation_iterations,
                 current_dir,
                 ..
@@ -321,6 +322,14 @@ impl Dss {
                             *default_base_freq = v;
                             ckt.fundamental = v;
                             ckt.solution.set_frequency(v);
+                        }
+                    }
+                    opt::EARTH_MODEL => {
+                        // Pascal `ExecOptions.pas:630`: `Set EarthModel=` sets the
+                        // context default copied into each new `TLineObj.FEarthModel`.
+                        match enums.get(enums.earth_model).string_to_ordinal(&param) {
+                            Ok(v) => *default_earth_model = v,
+                            Err(e) => errors.push(e.to_string()),
                         }
                     }
                     opt::NEGLECT_LOAD_Y => ckt.neglect_load_y = interpret_yes_no(&param),
