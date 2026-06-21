@@ -1,4 +1,5 @@
 use super::*;
+use crate::obj::base::DssObject;
 use crate::obj::props::PropEngine;
 use dss_parser::{Parser, ParserVars};
 
