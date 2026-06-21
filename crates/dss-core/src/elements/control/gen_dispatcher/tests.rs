@@ -1,4 +1,5 @@
 use super::*;
+use crate::obj::base::DssObject;
 
 #[test]
 fn default_shape_and_defaults() {
