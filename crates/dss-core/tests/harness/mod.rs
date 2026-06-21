@@ -556,7 +556,7 @@ pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tol, ctx: &str) {
 /// under positive-sequence ×3, where `|P|` and the accepted `δP` scale together).
 /// `max(1, …)` never tightens below the established floor. See
 /// tests/TOLERANCE_NOTES.md.
-fn assert_power_close(actual: &[f64], exp: &ElementCap, rel: f64, abs_floor: f64, what: &str) {
+pub fn assert_power_close(actual: &[f64], exp: &ElementCap, rel: f64, abs_floor: f64, what: &str) {
     let (p_kw, p_kvar) = (&exp.p_kw, &exp.p_kvar);
     let (i_re, i_im) = (&exp.i_re, &exp.i_im);
     assert_eq!(

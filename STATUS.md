@@ -12,7 +12,13 @@ Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
 feeder migration: **+15** oracle-verified geometry/cable feeders into
 `solvable_now` (17→32), unblocked by porting **`Set EarthModel`** + fixing the
 **RegControl live-`TapNum`** read + a **`Show` no-op** stub; the live gate stays
-clean via oracle hardening). **WP7.1 next: step 5 / phase-exit.** The last merged phase was **Phase 6
+clean via oracle hardening). **Follow-up (`c7c6649`):** root-caused + resolved the
+3 large EPRI/ADiakoptics power divergences — near-zero-impedance connector-line
+(`switch=y` / 1.5 m `BUSBAR`, |Yprim|~1e6) cancellation amplifying faer-vs-KLU
+roundoff on an ill-conditioned Y; fixed with a **voltage-scaled power floor**
+(`assert_power_close`, the current-floor image through `P=V·conj(I)`), so
+`solvable_now` **32→35** and `needs_investigation` 12→9. **WP7.1 next: step 5 /
+phase-exit.** The last merged phase was **Phase 6
 (WP6.1–WP6.10), MERGED to `main`** (`--no-ff` merge `b98223a`, gate green at
 merge; `main` not pushed to origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
 `d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
@@ -717,15 +723,51 @@ diagnosed; two were **real port gaps** and fixed:
   always-on gate** because the oracle runs their active `Show`/`Export` (Phase 8)
   — `Show LineConstants` writes a transient `LineConstantsCode.dss` that races the
   `corpus_manifest` bijection (`skipped_unsupported`, tag `unsupported_command=Show`,
-  promote when Show is ported). **3** large EPRI/ADiakoptics feeders differ ~1e-5
-  on one line's power in a big mesh (all canonical geometry/cable feeders match
-  exactly) → `needs_investigation`. **2** Stevenson cases: the **oracle itself**
-  doesn't converge → `needs_investigation`. **3** ShortCircuit cases use
+  promote when Show is ported). **3** large EPRI/ADiakoptics feeders differed
+  ~1e-5 on one connector line's power in a big mesh (all canonical geometry/cable
+  feeders matched exactly) → were `needs_investigation`, **since root-caused and
+  resolved** (see step-4 follow-up below). **2** Stevenson cases: the **oracle
+  itself** doesn't converge → `needs_investigation`. **3** ShortCircuit cases use
   `solve mode=faultstudy` (not ported) → `unsupported_mode=faultstudy`. The
   remaining `WireData`-tagged feeders were re-tagged with their **real** current
   blockers (`PVSystem`/`InvControl`, `var`, `MakeBusList`/`GISCoords`, `Fault`/
   `Relay`/`Recloser`/`vccs`, file-backed arrays) — the stale geometry-class tags
   are gone.
+
+### 1e-follow-up — 3 EPRI/ADiakoptics power divergences resolved (`c7c6649`)
+
+The 3 large meshed cases deferred above (`EPRITestCircuits/ckt5`,
+`ADiakoptics/EPRI_Ckt5-G/.../zone_2`, `ADiakoptics/TnDSystem/.../zone_2`)
+diverged from the oracle on **one connector line's power** at ~3.6e-6 rel.
+Diagnosed (full per-element V/I/P/YPrim probe of both engines) — **not a
+line-constants bug**:
+- The offenders are **near-zero-impedance connectors**: 1.5 m `BUSBAR` segments
+  and `switch=y` lines, |Yprim| ≈ 4.6e6. Their through-current
+  `I = Yprim·(V1−V2)` is a **catastrophic cancellation** of two large terms.
+- Those huge admittances make the system Y **ill-conditioned** (cond ≈ 1e7), so
+  any backward-stable solver leaves ~4e-8 rel roundoff on node voltages (faer
+  here vs the oracle's KLU). Proven a **floor, not premature convergence**:
+  tightening the solve to 1e-9 / 12 iterations leaves it unchanged. That 4e-8
+  amplifies through the cancellation to ~3.6e-6 rel in the current, hence
+  identically in `P = V·conj(I)`.
+- **Port faithful:** the line YPrim is **bit-identical** to the oracle
+  (max|d|=0), V matches to 4e-8 (25× tighter than the gate's 1e-6), currents
+  match, and Pascal `TLineObj` has no special power/current path (switch
+  constants `r1=x1=r0=x0=1, c1=1.1e-9, c0=1e-9, len=1e-3` match Line.pas:689-694
+  byte-for-byte).
+- **The gate flagged only the power** because the harness floors were
+  inconsistent: a flat 1e-4 A current floor absorbs the ~7e-5 A error, a flat
+  1e-4 kW power floor doesn't (same error is `|V|·δI` ≈ 5e-4 kW at 7.2 kV).
+- **Fix:** `assert_power_close` (`harness/mod.rs`) — the power abs floor is the
+  **image of the current floor through the terminal voltage**,
+  `i_abs·max(1, |V_kv|)`, `|V_kv| = |P|/|I|` (self-consistent under
+  positive-sequence ×3). Forgives only power error that is the exact image of an
+  already-accepted current error; YPrim/V/current (all at unchanged 1e-6 / 1e-4
+  A) still pin a real regression independently. Documented in
+  `tests/TOLERANCE_NOTES.md`; contract pinned by `harness_power_floor.rs` (3 unit
+  tests). Both audits (code + tests) returned faithful/clean. `solvable_now`
+  **32→35**, `needs_investigation` 12→9; full gate green (corpus_live 35 cases,
+  lib 392, all golden gates unaffected).
 
 ---
 
