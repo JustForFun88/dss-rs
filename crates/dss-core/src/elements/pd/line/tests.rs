@@ -152,6 +152,19 @@ fn geometry_path_builds_oracle_z_and_yc() {
     // Oracle anchor: Z[0][0] is the `deri_full_3cond` diagonal (length 1 m).
     assert_close(z.get(0, 0).re, 3.525947626277e-04, "Z00.re");
     assert_close(z.get(0, 0).im, 9.150978496084e-04, "Z00.im");
+    // Independent oracle anchor for Yc[0][0] too, so the shunt is pinned to a
+    // hardcoded reference and not merely compared against `yc_matrix`'s own
+    // output: the `C3_NF` capacitance diagonal is 8.941431489720e-3 nF/m — the
+    // same value `line_geometry::tests::matrices_overhead_match_oracle` pins —
+    // and Yc is purely capacitive, so B = omega * C at the base frequency (omega
+    // reuses the engine's truncated two-pi, exactly as that oracle test's `W60`).
+    #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, mirrors the engine
+    let omega = 6.283185307 * 60.0;
+    assert_close(
+        yc.get(0, 0).im,
+        8.941431489720e-03 * 1.0e-9 * omega,
+        "Yc00.im",
+    );
 
     // YPrim series embeds Zinv = Z^-1 in the 2-terminal Kron pattern: the
     // off-diagonal block [i][j+n] = -Zinv[i][j] (no CAP_EPSILON there).
