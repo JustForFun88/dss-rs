@@ -248,3 +248,53 @@ fn line_geometry_conductors_in_same_space_aborts_solve() {
         dss.errors()
     );
 }
+
+/// Audit follow-up: a singular series impedance hits Pascal error 183
+/// (`TLineObj.CalcYPrim`, Line.pas:1300). `DoErrorMsg` sets `SolutionAbort`
+/// unconditionally, so the solve aborts under the oracle default
+/// (`EARLY_ABORT = True`) — it does NOT silently embed `epsilon·I` and continue.
+/// Confirmed live: dss-python raises `(#183) ... Aborting solution.`.
+#[test]
+fn line_singular_matrix_aborts_solve() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.sing basekv=1 phases=1 bus1=src");
+    // Zero series impedance ⇒ singular Z ⇒ matrix-inversion error in CalcYPrim.
+    dss.command("New Line.l1 bus1=src bus2=b phases=1 rmatrix=[0] xmatrix=[0] cmatrix=[0]");
+    dss.command("Solve");
+
+    assert!(
+        dss.circuit().unwrap().solution.solution_abort,
+        "a singular line impedance must abort the solution"
+    );
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("Matrix Inversion Error for Line")),
+        "the matrix-inversion error must be surfaced: {:?}",
+        dss.errors()
+    );
+}
+
+/// Audit follow-up: changing the phase count on a matrix/geometry model is
+/// illegal (Pascal Line.pas:639-644). The count is reverted and 18101 is logged
+/// (a `DoSimpleMsg`, so the solution is NOT aborted). Confirmed live:
+/// `(#18101) Illegal change of number of phases for "Line.l1"`.
+#[test]
+fn line_illegal_phase_change_reverts_and_logs() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.p basekv=1 phases=1 bus1=src");
+    // rmatrix ⇒ SymComponentsModel=false (a matrix model).
+    dss.command("New Line.l1 bus1=src bus2=b phases=1 rmatrix=[0.1] xmatrix=[0.1] cmatrix=[3]");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    dss.command("Edit Line.l1 phases=3");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e == "Illegal change of number of phases for \"Line.l1\""),
+        "expected the 18101 message, got {:?}",
+        dss.errors()
+    );
+    // The illegal change was rejected: the phase count stays at 1.
+    assert_eq!(query(&mut dss, "Line.l1.phases"), "1");
+}
