@@ -658,6 +658,20 @@ done, gate-green, uncommitted.**
   `ActiveEarthModel` (CN mixed-earth-model probe: global Carson + line Deri ⇒ Deri
   Z, identical to the geometry path); `AllowAllConductors` is JSON-only; and
   `GetZmatScale`/`GetYCScale` include `SpacingSpecified` (Line.pas:261-283).
+- **Audit-tests follow-up (`/audit-tests` step 3b):** two coverage gaps closed.
+  (1) The **tape-shield form had zero executable coverage** (no test wrote
+  `tscables=`, so the `TapeShield`/`TsDataObj` arms were dead — the same gap the
+  step-2c-i test audit caught for LineGeometry): added inline
+  `spacing_tscables_match_geometry`, oracle-pinned (`Z00 = 4.675825330004e-04`,
+  probed). (2) The inline `spacing_*` tests call `set_object_ref_array` **directly**,
+  bypassing the executive's `wires=[…]` array parse and never querying the
+  `spacing`/`wires` dumps (the new `get_string`/`get_object_ref_names` accessors):
+  added the full-pipeline exec test `line_spacing_specified_resolves_and_solves`
+  (`exec/tests/line_fetch.rs` — `New Line … spacing=s wires=[w w w]` → solve, with
+  `?spacing`="s" / `?wires`="[w, w, w]" round-trip), the step-3a
+  `line_geometry_specified_resolves_and_solves` parallel. dss-core lib **386 →
+  388**. (Left as the audit-code Question: `cncables`/`tscables` count > NWires —
+  a degenerate input with no oracle evidence either way.)
 - **Next — step 4:** the geometry/spacing corpus feeder migration
   (`unsupported_class={LineSpacing,WireData,LineGeometry,…}` → `solvable_now`) +
   targeted golden `phase7/line_geometry*.json`.

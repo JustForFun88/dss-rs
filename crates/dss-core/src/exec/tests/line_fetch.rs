@@ -163,6 +163,39 @@ fn line_geometry_specified_resolves_and_solves() {
     assert!(ckt.solution.converged_flag, "geometry line should converge");
 }
 
+/// WP7.1 step 3b: a `spacing=`+`wires=` Line resolves the `LineSpacing` and the
+/// conductor array end to end through the executive (parse → foreign-class
+/// resolve → `FetchLineSpacing`/`SetWires` → `FMakeZFromSpacing`) and solves —
+/// the full pipeline the inline `spacing_*` tests bypass (they call
+/// `set_object_ref_array` directly). Also pins the `spacing`/`wires` dump
+/// round-trip (`get_string`/`get_object_ref_names`), which no inline test covers.
+#[test]
+fn line_spacing_specified_resolves_and_solves() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.sp basekv=12.47 phases=3");
+    dss.command(
+        "New WireData.w runits=m gmrunits=m radunits=m \
+             rac=0.0003 gmrac=0.005 radius=0.01 normamps=400",
+    );
+    dss.command("New LineSpacing.s nconds=3 nphases=3 x=[0 1 2] h=[10 10 10] units=m");
+    dss.command("New Line.l1 bus1=sourcebus bus2=b2 spacing=s wires=[w w w] length=1 units=m");
+    dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Set controlmode=off");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // The Line resolved the spacing + conductors and switched off the sym model.
+    assert_eq!(query(&mut dss, "Line.l1.spacing"), "s");
+    assert_eq!(query(&mut dss, "Line.l1.wires"), "[w, w, w]");
+    assert_eq!(query(&mut dss, "Line.l1.phases"), "3");
+    assert_eq!(query(&mut dss, "Line.l1.r1"), "----");
+
+    let ckt = dss.circuit().unwrap();
+    assert!(ckt.solution.converged_flag, "spacing line should converge");
+}
+
 /// WP7.1 step 3a follow-up: `rmatrix`/`xmatrix`/`cmatrix` on a geometry line must
 /// report the **per-unit-length** matrix — Pascal `GetZmatScale`/`GetYCScale`
 /// divide the stored *total* `Z`/`Yc` by `Len` (the geometry folds length+units
