@@ -49,7 +49,7 @@ read feeders from that vendored corpus, never from `.inputs/` at runtime.
 
 - **Module layout:** keep files focused; when a module grows large or mixes
   concerns, split it into a directory module (`foo/mod.rs` + concern submodules
-  like `accessors`/`edit`/`solve`/`compute`) via `SPLIT_PLAN.md`'s byte-faithful
+  like `accessors`/`edit`/`solve`/`compute`) via `SPLITTING_RULES.md`'s byte-faithful
   protocol (no behavior change; the test suite is the contract). Unit tests stay
   inline as `#[cfg(test)]` modules, extracted to a sibling `tests.rs` only when the
   file is large; the `#[cfg(test)] mod tests;` declaration goes right after the
