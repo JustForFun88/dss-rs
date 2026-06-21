@@ -23,6 +23,9 @@
 //!   `CalcYPrim`) and the `impl CktElement`.
 //! - `accessors.rs` — the `impl DssObject` property surface and side effects.
 
+#[cfg(test)]
+mod tests;
+
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
@@ -32,8 +35,6 @@ use crate::util::sqrt3;
 
 mod accessors;
 mod solve;
-#[cfg(test)]
-mod tests;
 
 /// 1-based property ordinals (Pascal `TReactorProp` + class tails).
 pub mod prop {

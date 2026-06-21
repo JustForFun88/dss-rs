@@ -18,6 +18,9 @@
 //! - [`accessors`]: the `CktElement` / `ControlledTransformer` / `DssObject`
 //!   trait impls.
 
+#[cfg(test)]
+mod tests;
+
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
@@ -28,8 +31,6 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
 
 mod accessors;
-#[cfg(test)]
-mod tests;
 mod windings;
 mod yterminal;
 

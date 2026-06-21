@@ -15,12 +15,12 @@
 //! [`CktElement`](crate::elements::traits::CktElement)/[`DssObject`](crate::obj::base::DssObject)
 //! trait impls.
 
+#[cfg(test)]
+mod tests;
+
 mod accessors;
 mod nominal;
 mod solve;
-
-#[cfg(test)]
-mod tests;
 
 use num_complex::Complex64;
 

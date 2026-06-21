@@ -36,11 +36,11 @@
 //! algorithm (`MakeGenList`/`Sample`/`RecalcElementData`) is in [`compute`], and
 //! the `CktElement`/`DssObject` trait impls in [`accessors`].
 
-mod accessors;
-mod compute;
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;
+mod compute;
 
 use num_complex::Complex64;
 

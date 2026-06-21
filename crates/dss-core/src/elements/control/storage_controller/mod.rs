@@ -46,11 +46,11 @@
 //! `RecalcElementData`) is in [`compute`], and the `CktElement`/`DssObject`
 //! trait impls in [`accessors`].
 
-mod accessors;
-mod compute;
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;
+mod compute;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
 use crate::obj::dss_enum::EnumRegistry;
