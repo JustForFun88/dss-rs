@@ -78,6 +78,22 @@
 > existing `Phase 7 WPx.y step …: <audit-code|audit-tests> follow-up — <what>`
 > shape already in the history.
 >
+> **Who runs the steps — default: you, in the main loop.** The ritual is about
+> staying in the loop and owning the result, so the gate, every `STATUS.md` edit,
+> every fix, every commit, and the final report are done by **you directly** — they
+> need the conversation context, the probe-the-oracle / Pascal-as-spec discipline,
+> and ownership of the numerics. Do **not** hand these to a fresh agent: it would
+> re-derive context and lacks the PIN / `TODO(compat)` rules, which is exactly how
+> silent degradation slips in. The **one** worthwhile delegation is the read-heavy
+> *discovery* half of the audits (steps 3–4) on a **large WP**, where the diff +
+> prior-code + Pascal reads would bloat the main context: run `/audit-code` and
+> `/audit-tests` as **forks** (they inherit this context — a fresh general-purpose
+> agent does not), optionally the two in parallel since code vs tests are
+> independent scopes, and take back only the findings report. **You still settle
+> each finding against the oracle, fix it, and commit.** For a small sub-step, skip
+> the fork and invoke the audit skills inline — the fork is overhead that only pays
+> off at WP scale.
+>
 > **On Pascal line references:** this plan is written just-in-time, before the
 > per-WP deep read. It cites Pascal **units and procedure/identifier names**
 > (stable across the codebase) plus verified file sizes; **exact line numbers are
