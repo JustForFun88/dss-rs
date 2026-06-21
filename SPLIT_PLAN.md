@@ -265,11 +265,21 @@ These are mid-edit in the in-progress Phase-7 line-constants work
 
 ## 7. Explicitly out of scope (keep as-is — not drift)
 
-- **Inline `#[cfg(test)]` test modules** (`control_queue.rs`, `ckt_tree.rs`,
-  `dss-parser/src/rpn.rs`, …): inline tests are the **documented convention**
-  (CLAUDE.md *"Unit tests inline as `#[cfg(test)]` modules"*; PORTING_PLAN §4).
-  The separate `tests.rs` files are a size-driven accommodation for large element
-  dirs, **not** a target everything should converge to. No extraction.
+- **Inline `#[cfg(test)]` test modules:** inline tests are the **documented
+  convention** (CLAUDE.md *"Unit tests inline as `#[cfg(test)]` modules"*;
+  PORTING_PLAN §4); the separate `tests.rs` files are a **size-driven**
+  accommodation, **not** a target everything must converge to. The convention
+  stands — but **applied 2026-06-21** (user request) to the five **large**
+  single-file modules (≥~430 ln), the same threshold that drove the element-dir
+  `tests.rs`: `dss-parser/src/rpn.rs` (596), `obj/base.rs` (477),
+  `circuit/ckt_tree.rs` (475), `dss-sparse/src/lib.rs` (465) and
+  `solution/control_queue.rs` (434) had their inline `mod tests {…}` block
+  extracted to a sibling `tests.rs` (each `foo.rs` → `foo/{mod,tests}.rs`; the
+  crate-root `lib.rs` → `lib.rs` + `src/tests.rs`). Same-depth move, so the test
+  block's `use super::*;` is unchanged and byte-faithful (§2a REMOVED = only the
+  wrapper `}`; impl + test bodies byte-identical). The **small** single-file
+  modules (`winding.rs` 118, `event_log.rs` 112, `vars.rs` 183, `util.rs` 351, …)
+  **keep inline tests** — extraction there is pure overhead.
 - **`energymeter`/`monitor` having no `tests.rs`:** intentional — tested via the
   golden/corpus gates + `exec/tests` (confirmed by `STATUS.md`/`PHASE7_PLAN.md`).
 - **Tier-2 cohesive files** (`circuit/circuit.rs`, `obj/base.rs`,
