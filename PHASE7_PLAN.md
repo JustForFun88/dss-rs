@@ -14,10 +14,69 @@
 > **live corpus gate** (`corpus_live.rs` + manifests) without re-explaining them.
 >
 > **Stop-and-confirm cadence (same as PHASE4_PLAN §0.8 / PHASE6_PLAN §0):** after
-> each small step (a WP or a self-contained sub-step), run the full gate, **update
-> `STATUS.md`**, then stop and wait for the user's explicit confirmation before the
-> next step — unless the user has explicitly authorized executing multiple WPs in
-> one pass.
+> each small step (a WP or a self-contained sub-step), run the full per-step ritual
+> below, then stop and wait for the user's explicit confirmation before the next
+> step — unless the user has explicitly authorized executing multiple WPs in one
+> pass. **Run the whole ritual autonomously — do not pause between its sub-steps to
+> ask permission; the single stop point is at the very end.**
+>
+> **Per-step ritual (do every step, in order, without being told):**
+> 1. **Gate green.** The standard three-command gate (`cargo fmt --all --check`;
+>    `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test
+>    --workspace`) all pass. The third command runs **all golden tests** as part of
+>    the workspace suite (`crates/dss-core/tests/golden_*.rs` — feeders,
+>    feeders_controls, phase5, phase6, checkpoints, ieee8500, reliability,
+>    allocation, gendispatcher, autoadd_reduce, slice, smoke — plus `props_roundtrip`
+>    and the always-on `corpus_*`); **every** golden must pass, no `#[ignore]`, no
+>    name-filter that could green on zero matched tests. This is a hard requirement,
+>    not advisory — a red golden blocks the commit (CLAUDE.md green-gate rule,
+>    PHASE7_PLAN.md §1).
+> 2. **Update `STATUS.md`** for the step (the §1e record + the §1 frontier/table),
+>    then **commit** the step (gate-green code + STATUS together).
+> 3. **`/audit-code <scope>`** — scope it to *this step's just-landed commit(s)*,
+>    not the whole branch: pass the step's commit range (`<first-sha>^..HEAD`) or
+>    the step label (e.g. `WP7.1 step 3b`). Settle every finding against the pinned
+>    oracle, **fix** what is real, update `STATUS.md` with an *audit-code follow-up*
+>    note, and **commit** the fixes. (Re-run the gate before committing.)
+> 4. **`/audit-tests <scope>`** — same scope (the step's commits / label). Fix every
+>    real finding, add an *audit-tests follow-up* note to `STATUS.md`, and **commit**.
+>    (Re-run the gate before committing.)
+> 5. **`STATUS.md` full review + sync + cleanup.** Read **the whole of `STATUS.md`
+>    end to end** (not just the section the step touched) and bring it back into a
+>    lean, consistent state:
+>    - **Sync:** fix anything the step made stale — the `Last updated:` line (today's
+>      date + current step), the §1 phase table, the header frontier paragraph, and
+>      §1e so they all agree on the active step / commit state / what's next (no two
+>      places disagreeing, no "uncommitted" left after a commit).
+>    - **Archive the dead weight:** move anything **no longer load-bearing for
+>      executing the remaining plan** — long-completed/merged-phase logs, file-by-file
+>      maps of finished phases, content fully superseded by `docs/phase-records/` —
+>      out to `docs/phase-records/phase-N.md` (the established pattern: an `Archived
+>      from STATUS.md (moved <date>)` header; leave a one-line pointer in `STATUS.md`,
+>      add it to the §1b–1d archive index). **Do not** archive what the remaining
+>      plan still reads: live gate descriptions, §3/§4/§5 (the records back-reference
+>      them by number — preserve the numbering), the empirical oracle facts, run/
+>      regenerate instructions, or the active §1e Phase-7 record.
+>    - **Dedup:** collapse any paragraph that merely restates the frontier/another
+>      section into a one-line pointer.
+>    - **Commit** the sync+cleanup (a `docs:` commit; re-run the gate first since
+>      docs-only — `cargo fmt`/`clippy`/`test` must still be green). If nothing is
+>      stale or archivable this step, say so and skip the commit (no empty commits).
+> 6. **Only now stop** and wait for confirmation. **The final report to the user at
+>    this stop point is written in Russian** (the working language of this project) —
+>    a short summary of what the step landed, what the two audits found and how it
+>    was resolved, the gate/golden status, the `STATUS.md` sync/cleanup done, and
+>    what the next step is. (Code, identifiers, commit messages, and `STATUS.md` stay
+>    in English as before; only the conversational summary is Russian.)
+>
+> Notes: a finding that is *surfaced but deliberately not fixed* (needs
+> investigation / upstream divergence) is **recorded in `STATUS.md`**, not silently
+> dropped — the step-2c-i plural-cable note is the template. If an audit finds
+> nothing, say so and skip its fix-commit (no empty commits). The audits are
+> **read-only** (they may write throwaway probes in a temp location and remove
+> them); all edits are yours to make in the fix steps. Commit messages follow the
+> existing `Phase 7 WPx.y step …: <audit-code|audit-tests> follow-up — <what>`
+> shape already in the history.
 >
 > **On Pascal line references:** this plan is written just-in-time, before the
 > per-WP deep read. It cites Pascal **units and procedure/identifier names**
