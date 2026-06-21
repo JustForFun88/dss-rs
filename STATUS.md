@@ -670,8 +670,13 @@ done, gate-green, committed (`c2a81d0` + audit follow-ups `5eda50a`/`4aeda24`).*
   (`exec/tests/line_fetch.rs` — `New Line … spacing=s wires=[w w w]` → solve, with
   `?spacing`="s" / `?wires`="[w, w, w]" round-trip), the step-3a
   `line_geometry_specified_resolves_and_solves` parallel. dss-core lib **386 →
-  388**. (Left as the audit-code Question: `cncables`/`tscables` count > NWires —
-  a degenerate input with no oracle evidence either way.)
+  388**.
+- **Audit Question settled (cncables/tscables count > NWires):** probed — the
+  oracle fills the `NWires` slots and **silently drops the extras** (`cncables=[4]`
+  on a 3-wire spacing solves identically to `cncables=[3]`); `set_cables` already
+  does exactly this (`if k < NWires`), so the port was already faithful. Pinned by
+  `cncables_excess_count_drops_extras`. dss-core lib **388 → 389**. No open
+  step-3b tails remain.
 - **Next — step 4:** the geometry/spacing corpus feeder migration
   (`unsupported_class={LineSpacing,WireData,LineGeometry,…}` → `solvable_now`) +
   targeted golden `phase7/line_geometry*.json`.
