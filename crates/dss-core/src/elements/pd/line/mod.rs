@@ -17,6 +17,9 @@
 //!   `GetSeqLosses`) and the `impl CktElement`.
 //! - `accessors.rs` — the `impl DssObject` property surface.
 
+#[cfg(test)]
+mod tests;
+
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::traits::ElemRef;
@@ -28,8 +31,6 @@ use crate::support::line_units::LineUnits;
 mod accessors;
 mod code;
 mod solve;
-#[cfg(test)]
-mod tests;
 
 /// 1-based property ordinals (Pascal `TLineProp` + class tails).
 pub mod prop {

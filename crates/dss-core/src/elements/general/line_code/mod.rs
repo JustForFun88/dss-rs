@@ -15,11 +15,11 @@
 //! algorithms (`CalcMatricesFromZ1Z0`/`Set_NumPhases`/`DoKronReduction`) are in
 //! [`compute`], and the `DssObject` trait impl in [`accessors`].
 
-mod accessors;
-mod compute;
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;
+mod compute;
 
 use crate::obj::base::DssObjData;
 use crate::obj::dss_enum::EnumRegistry;

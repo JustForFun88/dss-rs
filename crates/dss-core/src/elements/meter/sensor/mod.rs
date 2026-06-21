@@ -23,11 +23,11 @@
 //! `RotatePhases`/`TakeSample`/WLS errors) are in [`compute`], and the
 //! `CktElement`/`DssObject` trait impls in [`accessors`].
 
-mod accessors;
-mod compute;
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;
+mod compute;
 
 use crate::elements::meter::meter_element::MeterElementData;
 use crate::elements::traits::ElemRef;

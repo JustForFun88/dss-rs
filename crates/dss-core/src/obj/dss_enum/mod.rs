@@ -11,11 +11,11 @@
 //! (`EnumRegistry::new`/`get`) in [`registry`]; this module keeps the registry
 //! struct and the `EnumId` alias.
 
-mod enum_def;
-mod registry;
-
 #[cfg(test)]
 mod tests;
+
+mod enum_def;
+mod registry;
 
 pub use enum_def::DssEnum;
 

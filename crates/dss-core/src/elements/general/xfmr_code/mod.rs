@@ -15,10 +15,10 @@
 //! struct arrays, `PropertySideEffects`, `EndEdit`, `MakeLike`) is in
 //! [`accessors`].
 
-mod accessors;
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;
 
 use crate::elements::pd::winding::Winding;
 use crate::obj::base::DssObjData;

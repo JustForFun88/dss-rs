@@ -13,6 +13,9 @@
 //!   (`GetVterminalForSource`, the loadshape multipliers, `GetInjCurrents`).
 //! - `accessors.rs` — the `impl DssObject` property surface and side effects.
 
+#[cfg(test)]
+mod tests;
+
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
@@ -25,8 +28,6 @@ use crate::support::cmatrix::CMatrix;
 mod accessors;
 mod solve;
 mod source;
-#[cfg(test)]
-mod tests;
 
 /// 1-based property ordinals (Pascal `TVsourceProp` + the class tails).
 pub mod prop {

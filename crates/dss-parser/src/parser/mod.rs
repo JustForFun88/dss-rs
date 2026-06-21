@@ -23,6 +23,9 @@
 //! - `structures` — `ParseAsBusName`/`ParseAsVector`/`ParseAsMatrix`/
 //!   `ParseAsSymMatrix`.
 
+#[cfg(test)]
+mod tests;
+
 use crate::rpn::RPNCalculator;
 
 mod convert;
@@ -30,9 +33,6 @@ mod error;
 mod scanner;
 mod structures;
 mod value;
-
-#[cfg(test)]
-mod tests;
 
 pub use convert::{val_f64, val_i32};
 pub use error::ParserError;

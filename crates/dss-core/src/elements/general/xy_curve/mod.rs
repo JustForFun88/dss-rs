@@ -11,10 +11,10 @@
 //! the `Points` *getter* by reading it back; the setter is ported faithfully and
 //! covered by a Rust-only unit test.
 
-mod accessors;
-
 #[cfg(test)]
 mod tests;
+
+mod accessors;
 
 use crate::obj::base::DssObjData;
 use crate::obj::props::{PropDef, PropFlags, define_properties};

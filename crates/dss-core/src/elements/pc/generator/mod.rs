@@ -16,6 +16,9 @@
 //! - [`registers`]: energy-meter registers, fuel and the Model-3 DQDV control.
 //! - [`accessors`]: the `CktElement` / `DssObject` trait impls.
 
+#[cfg(test)]
+mod tests;
+
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
@@ -31,8 +34,6 @@ mod accessors;
 mod nominal;
 mod registers;
 mod solve;
-#[cfg(test)]
-mod tests;
 
 /// Pascal dispatch modes (`LOADMODE = 1`, `PRICEMODE = 2`; 0 = default).
 const LOADMODE: i32 = 1;

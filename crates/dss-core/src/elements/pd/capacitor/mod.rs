@@ -19,6 +19,9 @@
 //!   `CalcYPrim`) and the `impl CktElement`.
 //! - `accessors.rs` — the `impl DssObject` property surface and side effects.
 
+#[cfg(test)]
+mod tests;
+
 use crate::elements::ckt::CktElementData;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -27,8 +30,6 @@ use crate::util::sqrt3;
 mod accessors;
 mod solve;
 mod steps;
-#[cfg(test)]
-mod tests;
 
 pub use steps::ControlledCapacitor;
 
