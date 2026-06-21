@@ -19,6 +19,9 @@
 //! (RegControl EVENTDRIVEN re-arms a one-step tap change this way), exactly like
 //! the Pascal `Pop`-then-act loop.
 
+#[cfg(test)]
+mod tests;
+
 use crate::elements::traits::ElemRef;
 
 /// Pascal `TTimeRec`: an action time as whole hours plus seconds-within-hour.
@@ -268,6 +271,3 @@ impl ControlQueue {
         result
     }
 }
-
-#[cfg(test)]
-mod tests;

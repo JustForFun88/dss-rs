@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::f64::consts::PI;
 
 const MAX_STACK_SIZE: usize = 10;
@@ -151,6 +154,3 @@ impl Default for RPNCalculator {
         Self::new()
     }
 }
-
-#[cfg(test)]
-mod tests;
