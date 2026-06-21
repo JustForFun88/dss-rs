@@ -63,24 +63,24 @@ One big `dss-core` (not crate-per-Pascal-dir): the Pascal units are mutually rec
 ```
 dss-core/src/
   lib.rs        # pub struct Dss (= TDSSContext), public API
-  support/      # src/Shared: cmatrix.rs (TCMatrix), mathutil.rs (sym components),
-                #   hashlist.rs, line_units.rs, dynamics.rs, ckt_tree.rs, pstcalc.rs,
+  support/      # src/Shared: cmatrix/mod.rs (TCMatrix), mathutil/mod.rs (sym components),
+                #   hashlist/mod.rs, line_units/mod.rs, dynamics/mod.rs, ckt_tree/mod.rs, pstcalc.rs,
                 #   line_constants/ (Carson engine: oh, cn, ts, cable)
   obj/          # DSSObject/DSSClass/DSSObjectHelper replacement:
-                #   base.rs (DssObjData, CktElementData, PdElementData, PcElementData)
-                #   props.rs (PropDef, PropType, PropFlags, generic value parsing)
+                #   base/mod.rs (DssObjData, CktElementData, PdElementData, PcElementData)
+                #   props/mod.rs (PropDef, PropType, PropFlags, generic value parsing)
                 #   class_def.rs (per-class metadata registry, abbreviation matching)
                 #   macros.rs (define_properties! DSL)
   circuit/      # Circuit.pas, Bus.pas, Terminal.pas
   solution/     # Solution.pas, Ymatrix.pas, SolutionAlgs.pas, ControlQueue.pas
   elements/
-    pd/         # line.rs, transformer.rs, capacitor.rs, reactor.rs, autotrans.rs, fault.rs...
-    pc/         # vsource.rs, isource.rs, load.rs, generator.rs, pvsystem.rs, storage.rs...
+    pd/         # line/mod.rs, transformer/mod.rs, capacitor/mod.rs, reactor/mod.rs, autotrans.rs, fault.rs...
+    pc/         # vsource/mod.rs, isource.rs, load/mod.rs, generator/mod.rs, pvsystem.rs, storage.rs...
     control/    # regcontrol.rs, capcontrol.rs, relay.rs, invcontrol.rs...
-    meter/      # energymeter.rs, monitor.rs, sensor.rs, reduce.rs
-    general/    # loadshape.rs, linecode.rs, line_geometry.rs, wiredata.rs,
-                #   xfmrcode.rs, xycurve.rs, spectrum.rs, tcc_curve.rs,
-                #   growth_shape.rs...
+    meter/      # energymeter/mod.rs, monitor/mod.rs, sensor/mod.rs, reduce.rs
+    general/    # loadshape.rs, linecode.rs, line_geometry/mod.rs, wiredata.rs,
+                #   xfmrcode.rs, xycurve.rs, spectrum/mod.rs, tcc_curve/mod.rs,
+                #   growth_shape/mod.rs...
   exec/         # Executive.pas, ExecCommands.pas, ExecHelper.pas, ExecOptions.pas
   report/       # ShowResults.pas, ExportResults.pas, Show/ExportOptions, save.rs
   cim/          # ExportCIMXML.pas (Phase 9)
@@ -146,7 +146,7 @@ Pascal pokes fields via `ptruint(@obj.Field)` offsets — impossible in safe Rus
    rows, ported from DSSClass.pas — these drive generic parsing (arrays, matrices,
    interval units, object refs, mapped enums).
 3. The generic string/array parsing from `DSSObjectHelper.ParseObjPropertyValue` ported
-   **once** into `obj/props.rs`, producing typed `PropValue`.
+   **once** into `obj/props/mod.rs`, producing typed `PropValue`.
 4. Per-class `PropertyApi` impl: `set_value`/`get_value`/`side_effects` as match arms
    instead of pointer offsets — `PropertySideEffects` ported verbatim per class (this is
    where kW/PF/kvar/kVA interplay and other hidden behavior lives).
