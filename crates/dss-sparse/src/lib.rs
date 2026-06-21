@@ -9,6 +9,9 @@
 //! `faer::c64` is a type alias for `num_complex::Complex64`, so values flow
 //! between the engine and the solver without conversion.
 
+#[cfg(test)]
+mod tests;
+
 use faer::MatMut;
 use faer::linalg::solvers::Solve;
 use faer::prelude::Reborrow;
@@ -378,6 +381,3 @@ impl SparseSet {
         self.solve_one(b, x)
     }
 }
-
-#[cfg(test)]
-mod tests;

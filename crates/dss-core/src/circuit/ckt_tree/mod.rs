@@ -8,6 +8,9 @@
 //! verbatim because its visit order defines the EnergyMeter `SequenceList`,
 //! which is observable (reliability sweeps, zone dumps, reductions).
 
+#[cfg(test)]
+mod tests;
+
 use crate::circuit::Circuit;
 use crate::elements::traits::{ElemRef, ElemStore};
 
@@ -358,6 +361,3 @@ pub fn build_active_bus_adjacency_lists(ckt: &Circuit, store: &dyn ElemStore) ->
     }
     adj
 }
-
-#[cfg(test)]
-mod tests;

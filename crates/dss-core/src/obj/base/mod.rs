@@ -5,6 +5,9 @@
 //! ([`DssObject`]) that each class implements with `match idx` arms — the
 //! 1:1 stand-in for `SetObjDouble`/`GetObjInteger`/... pointer pokes.
 
+#[cfg(test)]
+mod tests;
+
 /// Shared object state every DSS object carries (`TDSSObject` fields that
 /// matter to the port so far): its name and the property set-order tracker.
 ///
@@ -453,6 +456,3 @@ pub trait DssObject {
     /// `MakeLike` source out of its arena without aliasing the target.
     fn clone_box(&self) -> Box<dyn DssObject>;
 }
-
-#[cfg(test)]
-mod tests;
