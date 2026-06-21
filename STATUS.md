@@ -88,7 +88,7 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 358, golden_feeders 1,
+cargo test --workspace      # dss-core lib 388, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_checkpoints 1,
                             # golden_ieee8500 1, golden_reliability 1,
@@ -526,7 +526,7 @@ follow-up, gate-green).**
   active-conductor divergence (above) — independent of the matrix wiring.
 
 **WP7.1 step 3a — Line `geometry=` Carson path (`FetchGeometryCode`/
-`FMakeZFromGeometry`) — ✅ done, gate-green, uncommitted.**
+`FMakeZFromGeometry`) — ✅ done, gate-green, committed.**
 - `line/mod.rs`: un-`NOT_PORTED` the **`geometry`** scalar ref
   (`object_ref_class("LineGeometry", "geometry")`); the other geometry forms
   (`spacing`/`wires`/`cncables`/`tscables`) stay `NOT_PORTED` for step 3b. New
@@ -598,7 +598,7 @@ follow-up, gate-green).**
   three-command gate green.
 **WP7.1 step 3b — Line `spacing=`/`wires=`/`cncables=`/`tscables=` Carson path
 (`FetchLineSpacing`/`SetWires`/`LoadSpacingAndWires`/`FMakeZFromSpacing`) — ✅
-done, gate-green, uncommitted.**
+done, gate-green, committed (`c2a81d0` + audit follow-ups `5eda50a`/`4aeda24`).**
 - `line/mod.rs`: un-`NOT_PORTED` the four props — `spacing` (scalar
   `object_ref_class("LineSpacing")`), `wires`/`cncables`/`tscables` (array
   `object_ref_array` over WireData/CNData/TSData). New `Line` fields
