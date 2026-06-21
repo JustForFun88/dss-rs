@@ -342,6 +342,25 @@ fn set_earthmodel_seeds_new_line_default() {
     assert_eq!(query(&mut dss, "line.l2.earthmodel"), "Deri");
 }
 
+/// WP7.1 step 4 audit follow-up: unlike a context-global such as
+/// `DefaultBaseFrequency`, `Set EarthModel=` requires a circuit — probed against
+/// the pinned oracle, which raises #301 ("You must create a new circuit object
+/// first") for a pre-circuit `Set earthmodel=`. So the option lives only in the
+/// circuit-ful `do_set_cmd`, not `do_set_cmd_no_circuit`; this pins that the
+/// no-circuit path is the faithful behavior (not an oversight to "fix").
+#[test]
+fn set_earthmodel_requires_a_circuit() {
+    let mut dss = Dss::new();
+    dss.command("Set earthmodel=Carson"); // no `New circuit` yet
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("You must create a new circuit object first")),
+        "pre-circuit Set EarthModel must raise the #301 message (oracle-confirmed), got {:?}",
+        dss.errors()
+    );
+}
+
 /// Audit follow-up: changing the phase count on a matrix/geometry model is
 /// illegal (Pascal Line.pas:639-644). The count is reverted and 18101 is logged
 /// (a `DoSimpleMsg`, so the solution is NOT aborted). Confirmed live:
