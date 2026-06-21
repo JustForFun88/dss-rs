@@ -337,10 +337,19 @@ impl DssObject for Line {
                         // (positive-sequence circuits revisit in CalcYPrim).
                         self.recalc(false);
                     } else {
-                        // Ignore change of nphases if a matrix or geometry model
-                        // is in force (Pascal also logs 18101; the message is a
-                        // pre-existing matrix-path gap, deferred uniformly here).
+                        // Pascal (Line.pas:639-644): changing the phase count is
+                        // illegal for a matrix or geometry model — revert
+                        // `nphases` and log 18101. It is a `DoSimpleMsg`, so it
+                        // does *not* set `SolutionAbort` (it only logs and, under
+                        // the default `EARLY_ABORT`, sets `Redirect_Abort`, which
+                        // we do not model). The executive drains this after the
+                        // edit (confirmed live: `Illegal change of number of
+                        // phases for "Line.<name>"`, code 18101).
                         self.cd.nphases = prev_int.max(0) as usize;
+                        self.cd.obj.push_error(format!(
+                            "Illegal change of number of phases for \"Line.{}\"",
+                            self.cd.obj.name()
+                        ));
                     }
                 }
             }

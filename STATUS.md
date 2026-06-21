@@ -530,9 +530,9 @@ follow-up, gate-green).**
   length+units already folded in); **`KillGeometrySpecified`**. `set_object_ref`
   fetches on resolve (the `linecode` pattern); the sym/matrix/switch side effects
   and a post-`geometry` `rho=` now drive `KillGeometrySpecified` / push `rho` into
-  the geometry; the `phases=` guard ignores a phase change under a geometry (as
-  under a matrix model — the 18101 message stays the pre-existing matrix-path gap).
-  `MakeLike` carries the three new fields.
+  the geometry; the `phases=` guard rejects a phase change under a geometry (as
+  under a matrix model — it reverts `nphases` and logs 18101; see the audit
+  follow-up below). `MakeLike` carries the three new fields.
 - **`CalcYPrim` split into two paths** (Pascal `CalcYPrim`): the geometry branch
   inverts the total `Z` directly (no length/freq/Rg/Xg scaling) and adds the
   **full** `Yc/2` shunt; the sym/linecode branch is byte-for-byte the old code
@@ -559,6 +559,21 @@ follow-up, gate-green).**
   invalidates YPrim (Pascal invalidates only when a geometry is present,
   Line.pas:772-780). The geometry branch no longer writes `FYprimFreq` (Pascal sets
   it only in the per-unit-length path).
+- **Audit follow-ups (18101 / singular-matrix abort) — the two deferred items,
+  settled live against the oracle and fixed.** (1) **18101:** an illegal `phases=`
+  change on a matrix/geometry model now logs `Illegal change of number of phases for
+  "Line.<name>"` (Pascal Line.pas:643, `DoSimpleMsg` — so it reverts `nphases` but
+  does *not* set `SolutionAbort`; `Redirect_Abort` is not modeled). Probe-confirmed
+  exact text/number. Test `line_illegal_phase_change_reverts_and_logs`. (2)
+  **Singular series Z (error 183):** `CalcYPrim` no longer silently embeds
+  `epsilon·I` and continues — it pushes a `Matrix Inversion Error for Line "…"`
+  message and exits, and the Y-build drain sets `solution_abort`. The probe showed
+  Pascal `DoErrorMsg` sets `SolutionAbort := True` *unconditionally*
+  (DSSGlobals.pas:265), so the solve aborts in **both** `EARLY_ABORT` modes (oracle
+  default = `True`, DSSGlobals.pas:781) and `BuildYMatrix` Exits before adding any
+  primitive — the embed was dead weight (NOT_PORTED). `calc_yprim` now does Pascal
+  `ClearYPrim` (Line.pas:1170) up front, so both abort paths leave the element
+  contributing nothing. Test `line_singular_matrix_aborts_solve`.
 - Oracle-pinned: 3 inline `geometry_tests` drive a `Line` through the property
   engine + a `build_overhead_3` geometry and assert `Z`/`Yc` == the geometry's
   total matrices entry-by-entry, anchored to the `deri_full_3cond` diagonal, plus
@@ -567,7 +582,8 @@ follow-up, gate-green).**
   1000 × 2); and `sym_scalar_detaches_geometry` (an `r1=` after `geometry=` runs
   `KillGeometrySpecified`). + 1 exec test `line_geometry_specified_resolves_and_solves`
   (full parse → `LineGeometry` foreign-class resolve → solve; `r1` hidden = `----`).
-  dss-core lib **372 → 376**. Full three-command gate green.
+  dss-core lib **372 → 376** (+ 4 audit follow-up tests → **380**). Full
+  three-command gate green.
 - **Next — step 3b:** the `spacing=`/`wires=`/`cncables=`/`tscables=` path
   (`FetchLineSpacing` + a `SetWires` state machine on `Line` + `LoadSpacingAndWires`
   on `LineGeometry` + `FMakeZFromSpacing`), then step 4 the corpus feeder +

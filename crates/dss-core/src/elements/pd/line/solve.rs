@@ -10,7 +10,6 @@ use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
 use crate::support::mathutil::SymComp;
-use crate::util::EPSILON;
 
 use super::Line;
 
@@ -161,6 +160,17 @@ impl CktElement for Line {
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
 
+        // Pascal `ClearYPrim` (Line.pas:1170, body at l.2061): zero out both the
+        // Series and Shunt YPrims up front, so every early-exit below (a geometry
+        // build error, or the singular-matrix abort) leaves this element
+        // contributing nothing to Y. Pascal zeroes member matrices of order
+        // `Yorder`; adding a zero primitive equals adding none, so we model the
+        // cleared state as `None` (which `BuildYMatrix` skips). The success path
+        // overwrites all three at the end.
+        self.cd.yprim_series = None;
+        self.cd.yprim_shunt = None;
+        self.cd.yprim = None;
+
         // Build Z, Yc and the to-be-inverted Zinv. Two paths:
         //  - geometry: `FMakeZFromGeometry` makes the *total* Z/Yc (length and
         //    units already folded into the geometry's `Zmatrix[f, len, units]`),
@@ -230,35 +240,41 @@ impl CktElement for Line {
             zinv
         };
 
-        // ClearYPrim
+        // Build buffers; assigned to the element's YPrim only on success.
         let mut yp_series = CMatrix::new(yorder);
         let mut yp_shunt = CMatrix::new(yorder);
         let mut yprim = CMatrix::new(yorder);
 
         if zinv.invert().is_err() {
-            // Pascal error 183: put in tiny series conductance.
-            zinv.clear();
-            for i in 0..nphases {
-                zinv.set(i, i, Complex64::new(EPSILON, 0.0));
-            }
-            for i in 0..nphases {
-                for j in 0..nphases {
-                    let value = zinv.get(i, j);
-                    yp_series.set(i, j, value);
-                    yp_series.set(i + nphases, j + nphases, value);
-                    yp_series.set(i, j + nphases, -value);
-                    yp_series.set(j + nphases, i, -value);
-                }
-            }
-        } else {
-            for i in 0..nphases {
-                for j in 0..nphases {
-                    let value = zinv.get(i, j);
-                    yp_series.set(i, j, value);
-                    yp_series.set(i + nphases, j + nphases, value);
-                    yp_series.set(i, j + nphases, -value);
-                    yp_series.set(j + nphases, i, -value);
-                }
+            // Pascal error 183 (TLineObj.CalcYPrim, Line.pas:1300): a singular
+            // series impedance. `DoErrorMsg` sets `SolutionAbort := True`
+            // *unconditionally* (DSSGlobals.pas:265), so the solve aborts in
+            // both `DSS_CAPI_EARLY_ABORT` modes — and `BuildYMatrix` then Exits
+            // on `SolutionAbort` before adding any primitive. The oracle default
+            // is `EARLY_ABORT = True` (DSSGlobals.pas:781: env <> '0'), whose
+            // branch emits "Aborting solution." and exits without building YPrim
+            // (confirmed live: both modes raise the #183 "Y matrix build aborted"
+            // exception).
+            //
+            // NOT_PORTED: the `EARLY_ABORT = False` branch (DoErrorMsg "Replaced
+            // with tiny conductance." then embed `epsilon·I`) is dead weight —
+            // that YPrim is discarded by the abort — so we model only the abort.
+            // YPrim was already cleared above (Pascal `ClearYPrim`). Record the
+            // message; the Y-build loop drains it and sets `solution_abort`.
+            self.cd.obj.push_error(format!(
+                "Matrix Inversion Error for Line \"{}\". \
+                 Invalid impedance specified. Aborting solution.",
+                self.cd.obj.name()
+            ));
+            return;
+        }
+        for i in 0..nphases {
+            for j in 0..nphases {
+                let value = zinv.get(i, j);
+                yp_series.set(i, j, value);
+                yp_series.set(i + nphases, j + nphases, value);
+                yp_series.set(i, j + nphases, -value);
+                yp_series.set(j + nphases, i, -value);
             }
         }
 
