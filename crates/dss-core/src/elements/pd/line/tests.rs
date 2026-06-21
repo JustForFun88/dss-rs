@@ -451,6 +451,75 @@ fn spacing_cncables_match_geometry() {
     );
 }
 
+/// The shared TS cable `ts1` (the `probe_line_constants_phase7.py` TS reference).
+fn build_ts() -> crate::elements::general::conductor_data::TsDataObj {
+    use crate::elements::general::conductor_data::{TsDataObj, ts_data};
+    let enums = EnumRegistry::new();
+    let tcls = ts_data::class_props(&enums);
+    let mut t = TsDataObj::new("ts1");
+    for (n, v) in &[
+        ("runits", "m"),
+        ("radunits", "m"),
+        ("gmrunits", "m"),
+        ("Rdc", "1.0e-4"),
+        ("Rac", "1.05e-4"),
+        ("GMRac", "0.004"),
+        ("radius", "0.005"),
+        ("capradius", "0.005"),
+        ("EpsR", "2.3"),
+        ("InsLayer", "0.004"),
+        ("DiaIns", "0.022"),
+        ("DiaCable", "0.030"),
+        ("DiaShield", "0.025"),
+        ("TapeLayer", "0.0002"),
+        ("TapeLap", "20.0"),
+    ] {
+        scalar(&tcls, &mut t, n, v);
+    }
+    t
+}
+
+#[test]
+fn spacing_tscables_match_geometry() {
+    // The TapeShield form (the only conductor model with zero coverage otherwise):
+    // tscables= over a spacing must equal the equivalent tscable= geometry.
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let gcls = line_geometry::class_props(&enums);
+
+    let t = build_ts();
+    let mut geom = LineGeometryObj::new("gts");
+    scalar(&gcls, &mut geom, "nconds", "3");
+    scalar(&gcls, &mut geom, "nphases", "3");
+    scalar(&gcls, &mut geom, "reduce", "no");
+    for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
+        scalar(&gcls, &mut geom, "cond", &(k + 1).to_string());
+        set_ref(&gcls, &mut geom, "tscable", &t);
+        scalar(&gcls, &mut geom, "x", x);
+        scalar(&gcls, &mut geom, "h", "-1.2");
+        scalar(&gcls, &mut geom, "units", "m");
+    }
+    let z_ref = geom.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_ref");
+    let yc_ref = geom.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc_ref");
+
+    let s = build_spacing("sts", 3, 3, &["0", "0.1", "0.2"], &["-1.2", "-1.2", "-1.2"]);
+    let mut line = Line::new("l1");
+    scalar(&lcls, &mut line, "length", "1");
+    scalar(&lcls, &mut line, "units", "m");
+    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref_array(&lcls, &mut line, "tscables", &[&t, &t, &t]);
+
+    assert_eq!(line.fphase_choice, ConductorChoice::TapeShield);
+    line.calc_yprim(&test_sys());
+    assert_zyc_match(
+        &line,
+        &z_ref,
+        &yc_ref,
+        (4.675825330004e-04, 4.983304721750e-04),
+        3,
+    );
+}
+
 #[test]
 fn spacing_buried_neutral_via_cncables_then_wires() {
     // NWires=4, NPhases=3: 3 CN phases (`cncables=`) + 1 bare overhead neutral
