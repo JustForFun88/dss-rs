@@ -1,0 +1,164 @@
+use super::common::*;
+use crate::exec::*;
+
+#[test]
+fn line_fetches_sym_linecode() {
+    // Oracle (dss-python 0.15.7): linecode in mi, line length 2000 ft.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command(
+        "New linecode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=3 c0=1 \
+             units=mi normamps=500 emergamps=700",
+    );
+    dss.command("New line.l1 bus1=a bus2=b linecode=mtx601 length=2000 units=ft");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.l1.linecode"), "mtx601");
+    assert_eq!(query(&mut dss, "line.l1.normamps"), "500");
+    assert_eq!(query(&mut dss, "line.l1.emergamps"), "700");
+    assert_eq!(query(&mut dss, "line.l1.units"), "ft");
+    // r1 getter divides by FUnitsConvert = ConvertLineUnits(mi, ft) = 5280.
+    assert!((query_f64(&mut dss, "line.l1.r1") - 0.1 / 5280.0).abs() < 1e-12);
+    // Unported scalar/array refs render like the oracle.
+    assert_eq!(query(&mut dss, "line.l1.geometry"), "");
+    assert_eq!(query(&mut dss, "line.l1.wires"), "[]");
+}
+
+#[test]
+fn load_and_vsource_resolve_shape_refs() {
+    // WP5.3: the shape refs became resolved `object_ref_class` props. The
+    // ObjectRef getter renders the resolved object's name, and an unset
+    // `yearly` is seeded from `daily` (Pascal `YearlyShapeObj := DailyShapeObj`).
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src");
+    dss.command("New loadshape.d1 npts=2 interval=1 mult=(0.4 0.8)");
+    dss.command("New growthshape.g1 npts=2 year=(1 2) mult=(1.02 1.05)");
+    dss.command("New load.la bus1=src phases=3 kv=12.47 kw=100 pf=1 daily=d1 growth=g1");
+    dss.command("New vsource.v2 bus1=src basekv=12.47 daily=d1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "load.la.daily"), "d1");
+    assert_eq!(query(&mut dss, "load.la.yearly"), "d1"); // seeded from daily
+    assert_eq!(query(&mut dss, "load.la.growth"), "g1");
+    assert_eq!(query(&mut dss, "vsource.v2.daily"), "d1");
+    assert_eq!(query(&mut dss, "vsource.v2.yearly"), "d1");
+
+    // A missing shape is the Pascal 401 ("object not found") and leaves the
+    // reference empty — the edit continues.
+    dss.command("New load.lb bus1=src daily=nope");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("not found")),
+        "expected a not-found error, got {:?}",
+        dss.errors()
+    );
+}
+
+#[test]
+fn line_fetches_matrix_linecode() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command(
+        "New linecode.mx nphases=2 rmatrix=[0.1 | 0.05 0.1] \
+             xmatrix=[0.2 | 0.07 0.2] cmatrix=[3 | -1 3] units=mi",
+    );
+    dss.command("New line.l3 bus1=a.1.2 bus2=b.1.2 linecode=mx length=1 units=mi");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.l3.phases"), "2");
+    assert_eq!(query(&mut dss, "line.l3.rmatrix"), "[0.1 |0.05 0.1 ]");
+    // Matrix model hides the sym scalars (CONDITIONAL_VALUE).
+    assert_eq!(query(&mut dss, "line.l3.r1"), "----");
+}
+
+#[test]
+fn line_linecode_then_r1_override_keeps_fetched_matrix() {
+    // Oracle: r1=0.5 overrides the scalar, but the dumped rmatrix still
+    // reflects the code's Z (recalc is deferred to CalcYPrim).
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New linecode.mtx601 nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 units=mi");
+    dss.command("New line.l4 bus1=a bus2=b linecode=mtx601 r1=0.5 length=1 units=mi");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "line.l4.r1"), "0.5");
+    // Zs.re = (2*0.1 + 0.3)/3 = 0.5/3, units_convert reset to 1 by r1.
+    let rm = query(&mut dss, "line.l4.rmatrix");
+    let first: f64 = rm
+        .trim_start_matches('[')
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((first - 0.5 / 3.0).abs() < 1e-9, "{rm}");
+}
+
+#[test]
+fn line_unknown_linecode_errors_and_continues() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New line.l5 bus1=a bus2=b linecode=nosuch r1=0.1 length=1");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e == "Line.l5.LineCode: LineCode object \"nosuch\" not found."),
+        "{:?}",
+        dss.errors()
+    );
+    // The edit continued: r1=0.1 was applied, phases stayed default.
+    assert_eq!(query(&mut dss, "line.l5.r1"), "0.1");
+    assert_eq!(query(&mut dss, "line.l5.phases"), "3");
+}
+
+#[test]
+fn line_geometry_undefined_wire_in_array_aborts() {
+    // Pascal `DSSObjectReferenceArrayProperty` Exits on the first unresolved
+    // token: the "not found" is logged and the write function (SetWires)
+    // never runs, so nothing is stored and no spurious "Unexpected number"
+    // count error fires.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New WireData.acsr Rdc=0.0526 GMRac=0.0244 GMRunits=ft radius=0.0306 radunits=ft normamps=530 Runits=ft");
+    dss.command("New LineGeometry.g1 nconds=3 nphases=3 wires=[acsr bad acsr]");
+    let errs = dss.errors();
+    assert!(
+        errs.iter().any(|e| e.contains("object \"bad\" not found")),
+        "{errs:?}"
+    );
+    assert!(
+        !errs.iter().any(|e| e.contains("Unexpected number")),
+        "{errs:?}"
+    );
+    // Exit before the write function: no conductors were stored.
+    assert_eq!(query(&mut dss, "LineGeometry.g1.wires"), "[, , ]");
+}
+
+/// WP7.1 step 3a: a `geometry=`-specified Line resolves the `LineGeometry`
+/// class end to end (parse → foreign-class resolve → `FetchGeometryCode`),
+/// adopts the geometry's conductor count, and solves through the Carson
+/// matrix path — the full pipeline the inline `geometry_tests` bypass.
+#[test]
+fn line_geometry_specified_resolves_and_solves() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.geo basekv=12.47 phases=3");
+    dss.command(
+        "New WireData.w runits=m gmrunits=m radunits=m \
+             rac=0.0003 gmrac=0.005 radius=0.01 normamps=400",
+    );
+    dss.command(
+        "New LineGeometry.geo1 nconds=3 nphases=3 \
+             cond=1 wire=w x=0 h=10 units=m cond=2 wire=w x=1 h=10 cond=3 wire=w x=2 h=10",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=b2 phases=3 geometry=geo1 length=1 units=km");
+    dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Set controlmode=off");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // The Line resolved the geometry and took its conductor count + type.
+    assert_eq!(query(&mut dss, "Line.l1.geometry"), "geo1");
+    assert_eq!(query(&mut dss, "Line.l1.phases"), "3");
+    // The sym scalars are hidden (`----`) — a matrix/geometry model is active.
+    assert_eq!(query(&mut dss, "Line.l1.r1"), "----");
+
+    let ckt = dss.circuit().unwrap();
+    assert!(ckt.solution.converged_flag, "geometry line should converge");
+}
