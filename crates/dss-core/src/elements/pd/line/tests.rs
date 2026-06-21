@@ -620,6 +620,32 @@ fn sym_scalar_detaches_spacing() {
 }
 
 #[test]
+fn cncables_excess_count_drops_extras() {
+    // `cncables=` with MORE cables than the spacing has wires: the oracle fills
+    // the NWires slots and silently drops the extras (probed — `cncables=[4]` on a
+    // 3-wire spacing solves identically to `cncables=[3]`). `set_cables` fills only
+    // `k < NWires`, so the result equals the well-formed CN case.
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let c = build_cn();
+    let s = build_spacing("scn", 3, 3, &["0", "0.1", "0.2"], &["-1.2", "-1.2", "-1.2"]);
+    let mut line = Line::new("l1");
+    scalar(&lcls, &mut line, "length", "1");
+    scalar(&lcls, &mut line, "units", "m");
+    set_ref(&lcls, &mut line, "spacing", &s);
+    // Four cables for a three-wire spacing — the fourth is dropped, no error.
+    set_ref_array(&lcls, &mut line, "cncables", &[&c, &c, &c, &c]);
+    assert_eq!(line.line_wire_data.len(), 3);
+    assert!(line.line_wire_data.iter().all(|w| w.is_some()));
+
+    line.calc_yprim(&test_sys());
+    let z = line.z.as_ref().expect("z");
+    // Same CN diagonal as the well-formed `spacing_cncables_match_geometry` case.
+    assert_close(z.get(0, 0).re, 1.957766526264e-04, "Z00.re");
+    assert_close(z.get(0, 0).im, 1.402105660670e-04, "Z00.im");
+}
+
+#[test]
 fn cncables_without_spacing_errors() {
     // `cncables=` before any `spacing=` leaves `LineWireData` unallocated — Pascal's
     // generic array fill raises error 402 (probe-confirmed). It must not silently
