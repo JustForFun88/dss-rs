@@ -249,8 +249,8 @@ Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small ste
   inheritance: a `LineConstantsKind` enum (Overhead/ConcentricNeutral/TapeShield)
   on the one struct switches `Calc`/`ConductorsInSameSpace`; the cable arrays are
   allocated only for the cable kinds (`new`/`new_cn`/`new_ts` constructors). Pure
-  math engine beside the other `support/` helpers; reuses `support/cmatrix.rs`
-  (Kron, invert), `support/line_units.rs`, `support/mathutil.rs`
+  math engine beside the other `support/` helpers; reuses `support/cmatrix/mod.rs`
+  (Kron, invert), `support/line_units/mod.rs`, `support/mathutil/mod.rs`
   (`bessel_i0`/`bessel_i1` for the DERI skin-effect `Zint`). 0-based indices.
 - Ported verbatim: base `Calc(f, EarthModel)` (self/mutual Z, the P→invert→Yc
   path), `Get_Zint` (SimpleCarson/FullCarson no-skin vs DERI Bessel skin effect),
@@ -299,7 +299,7 @@ Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence: small ste
 
 **WP7.1 step 2a — conductor catalog (`WireData`/`CNData`/`TSData`) — ✅ done,
 gate-green, committed.**
-- `src/elements/general/conductor_data.rs` (new) — port of Pascal
+- `src/elements/general/conductor_data/mod.rs` (new) — port of Pascal
   `General/{ConductorData,WireData,CNData,TSData,CableData}.pas`. Pascal's type
   hierarchy is `TConductorDataObj → TWireDataObj` and `TConductorDataObj →
   TCableDataObj → TCNDataObj/TTSDataObj`; Rust has no inheritance, so the shared
@@ -340,7 +340,7 @@ gate-green, committed.**
   LineGeometry data-flow.
 
 **WP7.1 step 2b — `LineSpacing` (`TLineSpacingObj`) — ✅ done, gate-green, committed (`620cf89`).**
-- `src/elements/general/line_spacing.rs` (new) — port of Pascal
+- `src/elements/general/line_spacing/mod.rs` (new) — port of Pascal
   `General/LineSpacing.pas`. A `DSS_OBJECT` catalog class: 5 props (`nconds`
   [SuppressJSON], `nphases`, `x`, `h` [both `DoubleVArray` sized by `FNConds`
   via `PropertyOffset2 = @FNConds`], `units` [mapped string enum]). Registered
@@ -363,14 +363,14 @@ gate-green, committed.**
 - **Audit-tests follow-up (`/audit-tests` step 2b, `b5d5201`):** rounded the units
   golden out to **all 9 `LineUnits` ordinals** — added `linespacing_units_{in,cm,mm}`
   (the only Minor finding; the per-class plumbing was already covered by 6
-  ordinals + the full mapping by `dss_enum.rs`). Regenerated with the pinned
+  ordinals + the full mapping by `dss_enum/mod.rs`). Regenerated with the pinned
   oracle; only `linespacing.json` changed (11 → 14). The two Rust-only invariant
   tests (`nconds_grow_*`, negative-`nconds`) needed no change — documented
   divergences with no oracle to pin. Gate green.
 
 **WP7.1 step 2c-i — `LineGeometry` (`TLineGeometryObj`) object + edit state
 machine — ✅ done, gate-green, committed.**
-- `src/elements/general/line_geometry.rs` (new) — port of Pascal
+- `src/elements/general/line_geometry/mod.rs` (new) — port of Pascal
   `General/LineGeometry.pas` (the object, props, side-effect web, `MakeLike`).
   19 props via `define_properties!` in the exact oracle order
   (`nconds`/`nphases`/`cond`/`wire`/`x`/`h`/`units`/`normamps`/`emergamps`/
@@ -438,7 +438,7 @@ machine — ✅ done, gate-green, committed.**
 **WP7.1 step 2c-ii — `LineGeometry` matrix wiring (`UpdateLineGeometryData`/
 `CalcMatrices`) — ✅ done, gate-green, committed `0258911` (+ audit-code
 follow-up, gate-green).**
-- `line_geometry.rs` now holds a real `FLineData: Option<LineConstants>` Carson
+- `line_geometry/mod.rs` now holds a real `FLineData: Option<LineConstants>` Carson
   engine (replacing the placeholder `fline_kind` tracker). Ported:
   - `change_line_constants_type` — the Pascal `needNew` allocate/swap (kind ≠ the
     active conductor's choice, or `FLineData` absent / wrong conductor count),
@@ -460,7 +460,7 @@ follow-up, gate-green).**
   - `z_matrix`/`yc_matrix`/`rho_earth`/`set_rho_earth` — the `Get_Zmatrix`/
     `Get_YCmatrix`/`Get_/Set_RhoEarth` accessors (recompute when `data_changed`),
     the public surface step 3's Line consumes.
-- **Conductor catalog** (`conductor_data.rs`): new `ConductorGeom`/`CableGeom`
+- **Conductor catalog** (`conductor_data/mod.rs`): new `ConductorGeom`/`CableGeom`
   + `geom()` on each of `WireData`/`CNData`/`TSData` + a `conductor_geom(&dyn)`
   dispatch — the engine inputs Pascal reads off `FWireData[i]` (in the object's
   own unit codes; the engine converts).
@@ -515,7 +515,7 @@ follow-up, gate-green).**
 
 **WP7.1 step 3a — Line `geometry=` Carson path (`FetchGeometryCode`/
 `FMakeZFromGeometry`) — ✅ done, gate-green, uncommitted.**
-- `line.rs`: un-`NOT_PORTED` the **`geometry`** scalar ref
+- `line/mod.rs`: un-`NOT_PORTED` the **`geometry`** scalar ref
   (`object_ref_class("LineGeometry", "geometry")`); the other geometry forms
   (`spacing`/`wires`/`cncables`/`tscables`) stay `NOT_PORTED` for step 3b. New
   fields `geometry_obj: Option<LineGeometryObj>` (snapshot-cloned at resolve time,
@@ -581,9 +581,9 @@ follow-up, gate-green).**
   Kron, signal flags `signal_bus_name_redefined`/`yprim_invalid`).
 - `traits.rs` — `CktElement` trait (+ `is_shunt` since Phase 4), `ElemRef`,
   `ElemStore`, `SysCtx`, `InjCtx`.
-- `pc/vsource.rs`, `pc/load.rs` — full Phase 3 ports (all 8 load models,
+- `pc/vsource/mod.rs`, `pc/load/mod.rs` — full Phase 3 ports (all 8 load models,
   compensation currents).
-- `pd/line.rs` — sym + matrix paths + LineCode fetch (Phase 4).
+- `pd/line/mod.rs` — sym + matrix paths + LineCode fetch (Phase 4).
 - `pd/{transformer,capacitor,reactor,winding}.rs`,
   `general/{line_code,xfmr_code,growth_shape}.rs`,
   `control/{control_elem,reg_control,cap_control}.rs` — Phase 4 ([record](docs/phase-records/phase-4.md)).
@@ -606,14 +606,14 @@ follow-up, gate-green).**
   `snapshot_elements`/`total_power`/`losses` public gate API (Phase 4).
 
 ### Property engine (`src/obj/`)
-- `props.rs` — `PropType` (Double/Integer/Boolean/String/MakeLike/arrays/
+- `props/mod.rs` — `PropType` (Double/Integer/Boolean/String/MakeLike/arrays/
   matrices/Bus/Complex/Enabled/ObjectRef/struct-array family), `PropFlags`
   (incl. `NOT_PORTED`, `CONDITIONAL_VALUE`, `SCALED_BY_FUNCTION`), parse/dump
   paths, `ForeignClassesView` (+ `find_full`), **`define_properties!`**.
-- `base.rs` — `DssObjData` (PrpSequence, deferred errors), `DssObject` trait
+- `base/mod.rs` — `DssObjData` (PrpSequence, deferred errors), `DssObject` trait
   (typed accessors, `set_object_ref`, struct-array hooks, `side_effects`,
   `end_edit`, `make_like`, **`take_ref_actions`/`apply_ref_action`**).
-- `dss_enum.rs` — `TDSSEnum` + registry (17 enums).
+- `dss_enum/mod.rs` — `TDSSEnum` + registry (17 enums).
 
 ---
 
@@ -757,9 +757,9 @@ everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
 **Phase 7 is now in progress:** `PHASE7_PLAN.md` is written (WP7.1–WP7.10) and
 the branch `phase-7-extended-elements` is cut from `main`. **WP7.1 step 1 (the
 Carson line-constants engine, `support/line_constants/`) and step 2a (the
-conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data.rs`), step 2b
-(`LineSpacing`, `line_spacing.rs`), step 2c-i (`LineGeometry` object + edit
-state machine, `line_geometry.rs`), step 2c-ii
+conductor catalog `WireData`/`CNData`/`TSData`, `conductor_data/mod.rs`), step 2b
+(`LineSpacing`, `line_spacing/mod.rs`), step 2c-i (`LineGeometry` object + edit
+state machine, `line_geometry/mod.rs`), step 2c-ii
 (`UpdateLineGeometryData`/`CalcMatrices` — the Carson `Zmatrix`/`YCmatrix` cache
 driving `support/line_constants/`, Z/Yc pinned to the oracle) and step 3a
 (un-`NOT_PORTED` Line's `geometry=` fetch path — `FetchGeometryCode` +
@@ -798,7 +798,7 @@ PHASE7_PLAN §0).
 **Architecture already in place for Phase 7:** the control loop dispatches
 through `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut`; the
 meter/monitor `sample_all_monitors_and_meters`/`end_of_time_step_cleanup` hooks
-have real bodies; the zone-build dispatcher (`solution/meters.rs`) fires from
+have real bodies; the zone-build dispatcher (`solution/meters/mod.rs`) fires from
 `build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
 reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
 register core and all demand-interval/phase-voltage/`Show`/`Export` files.

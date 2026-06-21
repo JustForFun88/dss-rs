@@ -131,8 +131,8 @@ shunt Yc of a multi-conductor line from geometry via **Carson's equations**;
 `OHLineConstants`/`CNLineConstants`/`TSLineConstants`/`CableConstants` specialize
 it for overhead, concentric-neutral, tape-shield, and bare cable. Port into a new
 **`src/support/line_constants/`** module — a pure Carson math engine beside the
-other `support/` math helpers (`cmatrix.rs`/`mathutil.rs`), reusing
-`support/cmatrix.rs`'s Kron (the catalog *classes* live under `elements/general/`):
+other `support/` math helpers (`cmatrix/mod.rs`/`mathutil/mod.rs`), reusing
+`support/cmatrix/mod.rs`'s Kron (the catalog *classes* live under `elements/general/`):
 
 - `mod.rs` — `LineConstants` base: the conductor coordinate arrays (X/Y/radius/
   GMR/Rdc/R60/`NormAmps`), `Get_Zint` (internal impedance / skin effect — the
@@ -140,27 +140,27 @@ other `support/` math helpers (`cmatrix.rs`/`mathutil.rs`), reusing
   the **Carson earth-return** term selected by `EarthModel` (Carson / FullCarson /
   Deri — the enum already exists on Line from Phase 4), `Calc(freq)` →
   `Zmatrix`/`YCmatrix`, and the `Kron`-reduce-to-phase-conductors path (reuse
-  `support/cmatrix.rs`'s Kron, which already carries the unchecked-pivot
+  `support/cmatrix/mod.rs`'s Kron, which already carries the unchecked-pivot
   `TODO(compat)`). **Frequency is a parameter** (`Calc(f)`): power flow uses the
   base frequency; harmonics (WP7.6) re-`Calc` per harmonic.
 - `oh.rs`/`cn.rs`/`ts.rs`/`cable.rs` — the four specializations.
 
 New catalog classes under `src/elements/general/`:
 
-- `conductor_data.rs` — `ConductorData` base (`TConductorData`: Rdc, R60/Rac,
+- `conductor_data/mod.rs` — `ConductorData` base (`TConductorData`: Rdc, R60/Rac,
   GMR, radius, diameter, `NormAmps`/`EmergAmps`, unit reconciliation via the
   existing `LineUnits`) with **`WireData`**, **`CNData`** (concentric neutral:
   `DiaCable`/`DiaStrand`/`kStrand`/`RStrand`/`GmrStrand`), **`TSData`** (tape
   shield: `DiaShield`/`TapeLayer`/`TapeLap`) as the concrete classes; `CableData`
   is the shared cable base for CN/TS.
-- `line_spacing.rs` — `LineSpacing` (`TLineSpacingObj`: per-conductor X/H arrays,
+- `line_spacing/mod.rs` — `LineSpacing` (`TLineSpacingObj`: per-conductor X/H arrays,
   `nconds`/`nphases`, units).
-- `line_geometry.rs` — `LineGeometry` (`TLineGeometryObj`, 1019 lines: the
+- `line_geometry/mod.rs` — `LineGeometry` (`TLineGeometryObj`, 1019 lines: the
   `cond=`/`wire=`/`cncable=`/`tscable=`/`spacing=`/`x=`/`h=` editing state
   machine, `NConds`/`NPhases`/`reduce`, `AssignFrequency`, `CalcMatrices` →
   drives a `LineConstants` engine and caches `Zmatrix`/`YCmatrix`/`Rho`).
 
-Then un-`NOT_PORTED` Line's geometry path (`elements/pd/line.rs`): the
+Then un-`NOT_PORTED` Line's geometry path (`elements/pd/line/mod.rs`): the
 `FetchGeometryCode`/`FetchLineSpacing`/`FetchWireList`/`FetchCNCableList`/
 `FetchTSCableList` resolvers (the snapshot-clone ObjectRef pattern, WP4.2/WP5.3)
 copy the geometry/spacing/conductor objects into the Line, and `RecalcElementData`
@@ -187,7 +187,7 @@ distance 21/TD21, generic) — port the dispatch verbatim; gate event-log equali
 
 **Activate the Phase-6 reliability path:** Relay/Recloser/Fuse/SwtControl set
 `Flg.HasOCPDevice` and implement `GetOCPDeviceType` (currently inlined to `0`
-with `TODO(WP7)` in `solution/meters.rs`); the SAIFI/SAIDI/section logic in
+with `TODO(WP7)` in `solution/meters/mod.rs`); the SAIFI/SAIDI/section logic in
 `CalcReliabilityIndices` (ported verbatim in Phase 6 but unreachable — `RelCalc`
 aborts #52902 when no OCP device exists) becomes live. The WP7.2 reliability gate
 re-runs the Phase-6 `meter_zone_micro` extended with an OCP device.
@@ -256,7 +256,7 @@ mode" error; `set_mode` already carries the `OK_for_Harmonics` guard
 ### 2.5 Dynamics: DynaVars integration loop + per-element state machinery
 
 `SolveMode::Dynamic` currently errors; `set_mode`'s `OK_for_Dynamics` guard and
-`support/dynamics.rs` (DynaVars: `h`, `t`, `IntegrationMethod`, `iteration`)
+`support/dynamics/mod.rs` (DynaVars: `h`, `t`, `IntegrationMethod`, `iteration`)
 exist. Port `SolutionAlgs.SolveDynamic`: the predictor/corrector step loop
 (`SolveDynamicStep`/`IterativeSolution`) over `DynaVars.h` with the integration
 method (Euler/Trapezoidal/Gear), driving:
@@ -338,10 +338,10 @@ Steps:
    `EarthModel`, `Get_Zint` skin effect, `Calc(freq)` → Z/Yc, Kron reduce) +
    `oh`/`cn`/`ts`/`cable` specializations. Unit tests vs oracle-probed Z/Yc on a
    known 3-wire overhead geometry (transcribe `LineGeometry.Zmatrix`/`YCmatrix`).
-2. `conductor_data.rs` (ConductorData base + WireData/CNData/TSData; CableData
-   base), `line_spacing.rs`, `line_geometry.rs` — props via `define_properties!`,
+2. `conductor_data/mod.rs` (ConductorData base + WireData/CNData/TSData; CableData
+   base), `line_spacing/mod.rs`, `line_geometry/mod.rs` — props via `define_properties!`,
    edit state machines, `MakeLike`; `props.json` scenarios.
-3. `line.rs`: un-`NOT_PORTED` `geometry`/`spacing`/`wires`/`cncables`/`tscables`;
+3. `line/mod.rs`: un-`NOT_PORTED` `geometry`/`spacing`/`wires`/`cncables`/`tscables`;
    the fetch resolvers + `RecalcElementData` `CalcMatrices(BaseFrequency)`.
 4. Gate: the geometry/wiredata corpus feeder (probe-selected) matches the oracle
    (§1 focused gate 1); migrate the `unsupported_class={WireData,LineGeometry,…}`
@@ -412,7 +412,7 @@ Steps:
    discharge **state machine** + integrated `kWhStored`/`%stored` advanced in the
    time-step cleanup hook (`UpdateStorage`), `DoConstantPQStorage`, dispatch by
    `%charge`/`%discharge`/shape, registers + `TakeSample`.
-2. `control/storage_controller.rs` — replace the skeleton: real `MakeFleetList`
+2. `control/storage_controller/mod.rs` — replace the skeleton: real `MakeFleetList`
    (now non-empty), the dispatch modes (PeakShave/Follow/Support/Schedule/Time/…),
    `Sample`/`DoPendingAction` on the control sweep; remove the empty-fleet 37201
    `NOT_PORTED` path.
@@ -449,7 +449,7 @@ Generator, PVSystem, Storage); `General/Spectrum.pas` (object done);
 `Common/Solution.pas` `Frequency`/`HarmonicList`.
 
 Steps:
-1. `solution/solution.rs`: wire `SolveMode::Harmonic`/`HarmonicT` →
+1. `solution/solution/mod.rs`: wire `SolveMode::Harmonic`/`HarmonicT` →
    `solve_harmonic` (frequency sweep over the harmonic list; capture the
    fundamental first); resolve the `harmonic = 1.0 // TODO(phase7)`.
 2. Per-element `InitHarmonics` + harmonic Norton injection from `Spectrum`;
@@ -470,7 +470,7 @@ support); per-element `InitStateVars`/`IntegrateStates`/`CalcDynamic`/`StateVars
 `PCElements/DynEqPCE.pas` (the `DynamicExp` object itself: WP7.3 step 0).
 
 Steps:
-1. `solution/solution.rs`: `SolveMode::Dynamic` → `solve_dynamic` (the
+1. `solution/solution/mod.rs`: `SolveMode::Dynamic` → `solve_dynamic` (the
    predictor/corrector step loop over `DynaVars.h`; integration method dispatch).
 2. Generator/Storage/PVSystem dynamics state machinery (the Phase-6-deferred
    §2.5 set) + Monitor mode 3 real sample body.
