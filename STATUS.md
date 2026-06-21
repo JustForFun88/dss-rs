@@ -644,6 +644,20 @@ done, gate-green, uncommitted.**
 - **Also fixed (faithfulness):** `FetchLineCode` now calls
   `KillSpacing`/`KillGeometry` (Line.pas:590-591 tail — a `linecode=` supersedes a
   prior spacing/geometry; was a latent step-3a gap).
+- **Audit-code follow-up (`/audit-code` step 3b):** one Major finding fixed —
+  `cncables=`/`tscables=` *before* any `spacing=` left `LineWireData` unallocated
+  and **silently no-op'd into the sym model**; the oracle raises error 402 (`No
+  objects are expected!`) at that generic-array fill (probe-confirmed), so
+  `set_cables` now reproduces 402 instead of swallowing it (`set_wires` already had
+  the parallel 18102 guard). Test `cncables_without_spacing_errors`. dss-core lib
+  **385 → 386**. The audit also *settled four divergence risks against the live
+  oracle and found the port already faithful* (no change): cncables/tscables use a
+  partial fill from conductor 1 with **no** count-#406 check (a NIL slot aborts at
+  solve with the exact "WireData is not correctly initialized" text — matched);
+  the spacing path uses the **line's** `FEarthModel`, not the ambient
+  `ActiveEarthModel` (CN mixed-earth-model probe: global Carson + line Deri ⇒ Deri
+  Z, identical to the geometry path); `AllowAllConductors` is JSON-only; and
+  `GetZmatScale`/`GetYCScale` include `SpacingSpecified` (Line.pas:261-283).
 - **Next — step 4:** the geometry/spacing corpus feeder migration
   (`unsupported_class={LineSpacing,WireData,LineGeometry,…}` → `solvable_now`) +
   targeted golden `phase7/line_geometry*.json`.

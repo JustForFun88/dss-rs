@@ -188,7 +188,8 @@ impl DssObject for Line {
         use super::prop::*;
         match idx {
             WIRES => self.set_wires(refs),
-            CNCABLES | TSCABLES => self.set_cables(refs),
+            CNCABLES => self.set_cables("CNCables", refs),
+            TSCABLES => self.set_cables("TSCables", refs),
             _ => unreachable!("Line has no object-ref-array property {idx}"),
         }
     }

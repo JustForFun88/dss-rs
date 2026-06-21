@@ -280,9 +280,23 @@ impl Line {
     /// Pascal's generic `DSSObjectReferenceArrayProperty` fill for the
     /// `cncables=`/`tscables=` forms (no `WriteByFunction`, unlike `wires=`): write
     /// the resolved cables straight into `LineWireData` from conductor 1, with no
-    /// `istart`/count gymnastics. `FPhaseChoice` is set by the side effect, so a
-    /// following `wires=` appends bare neutrals after the cable phases.
-    pub(super) fn set_cables(&mut self, refs: &[(String, ElemRef, &dyn DssObject)]) {
+    /// `istart` gymnastics. `FPhaseChoice` is set by the side effect, so a following
+    /// `wires=` appends bare neutrals after the cable phases. `prop` is the display
+    /// name for the no-spacing error (`CNCables`/`TSCables`).
+    ///
+    /// A missing/too-short wire array is left partly NIL — the solve-time
+    /// `LoadSpacingAndWires` reports the "not correctly initialized" abort exactly
+    /// as upstream (probe-confirmed); but with *no* spacing at all (`FWireDataSize <
+    /// 1`) the generic fill raises Pascal error 402 up front, so reproduce that.
+    pub(super) fn set_cables(&mut self, prop: &str, refs: &[(String, ElemRef, &dyn DssObject)]) {
+        if self.line_wire_data.is_empty() {
+            self.cd.obj.push_error(format!(
+                "Line.{}.{prop}: No objects are expected! \
+                 Check if the order of property assignments is correct.",
+                self.cd.obj.name()
+            ));
+            return;
+        }
         for (k, r) in refs.iter().enumerate() {
             if k < self.line_wire_data.len() {
                 self.line_wire_data[k] = Some(r.2.clone_box());
