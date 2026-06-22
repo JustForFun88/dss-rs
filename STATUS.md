@@ -8,83 +8,39 @@
 > frontier.
 
 Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`): **WP7.1 step 4 done** (geometry/spacing corpus
-feeder migration: **+15** oracle-verified geometry/cable feeders into
-`solvable_now` (17→32), unblocked by porting **`Set EarthModel`** + fixing the
-**RegControl live-`TapNum`** read + a **`Show` no-op** stub; the live gate stays
-clean via oracle hardening). **Follow-up (`c7c6649`):** root-caused + resolved the
-3 large EPRI/ADiakoptics power divergences — near-zero-impedance connector-line
-(`switch=y` / 1.5 m `BUSBAR`, |Yprim|~1e6) cancellation amplifying faer-vs-KLU
-roundoff on an ill-conditioned Y; fixed with a **voltage-scaled power floor**
-(`assert_power_close`, the current-floor image through `P=V·conj(I)`), so
-`solvable_now` **32→35** and `needs_investigation` 12→9. **WP7.1 step 5 done**
-(the §1 tier-1 targeted golden `phase7/line_geometry*.json` — `gen_phase7.py` +
-`golden_phase7.rs`, 4 scenarios pinning the Carson geometry/spacing/cable Line
-**YPrim** offline, the focused regression guard the live gate doesn't replace;
-§1e), so **WP7.1 is complete; next = WP7.2 (Protection)**. (Also this session: a
-`#![allow(clippy::collapsible_match)]` in `dss-core` (`d85d026`) — clippy 0.1.96,
-now on stable, mis-fires that lint on the byte-faithful `match prop { CONST => if
-cond {..} }` port idiom; the gate runs on **stable**, per CI.) The last merged
-phase was **Phase 6
-(WP6.1–WP6.10), MERGED to `main`** (`--no-ff` merge `b98223a`, gate green at
-merge; `main` not pushed to origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
-`d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
-`19a5493`/`593420f`, WP6.10 phase-exit `207b9cb`, and the post-exit live-gate
-deepening + audit hardening through `cc6d2e2`. Phase 5 had merged earlier
-(`10d3550`).
-Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/
-Generator, 8500-node gate). **The phase gate passes: the unmodified IEEE
-8500-Node master (+ `Energymeter.m1` + a 24-step daily run) converges in 67
-iterations with `YNodeOrder` exact (8531 nodes), node voltages / total power /
-losses at 1e-6 rel, all 12 RegControl tap numbers + 10 capacitor states exact,
-and all 67 EnergyMeter registers at 1e-4 rel.** All WPs done: **WP6.1 (topology
-foundations), WP6.2 (Generator), WP6.3 (MeterElement + Monitor), WP6.4
-(EnergyMeter + zone build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6
-(reliability: fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation),
-WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
-basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see the [Phase 6 record](docs/phase-records/phase-6.md).
-**Phase 7 IN PROGRESS** — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch
-`phase-7-extended-elements` cut from `main`; **WP7.1 step 1 done** (the Carson
-line-constants engine `support/line_constants/`), **step 2a done** (the
-conductor catalog `WireData`/`CNData`/`TSData`), **step 2b done**
-(`LineSpacing`), **step 2c-i done** (the `LineGeometry` object + edit state
-machine + props/`MakeLike`), **step 2c-ii done** (the matrix wiring —
-`UpdateLineGeometryData`/`CalcMatrices` driving the Carson engine, Z/Yc pinned
-to the oracle), **step 3a done** (Line's `geometry=` Carson path —
-`FetchGeometryCode`/`FMakeZFromGeometry`, Z/Yc/YPrim pinned to the oracle)
-**and step 3b done** (Line's `spacing`/`wires`/`cncables`/`tscables` path —
-`FetchLineSpacing`/`SetWires`/`LoadSpacingAndWires`/`FMakeZFromSpacing`,
-incl. the buried-neutral form, Z/Yc pinned to the oracle),
-**and step 4 done** (geometry/spacing corpus feeder migration — see §1e),
-**and step 5 done** (the §1 tier-1 targeted golden `phase7/line_geometry*.json`
-pinning the Carson Line YPrim offline — see §1e),
-all gate-green — see §1e; **WP7.1 complete; next = WP7.2 (Protection)**.
-Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
-§Phase 7, the largest phase ~18%.
+`phase-7-extended-elements`): **WP7.1 COMPLETE (steps 1–5); next = WP7.2
+(Protection)**. WP7.1 landed the Carson line-constants engine
+(`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
+`LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
+`tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
+feeders into `solvable_now` (**17→35**); and (step 5) added the §1 tier-1
+**targeted golden** `phase7/line_geometry*.json` (`gen_phase7.py` +
+`golden_phase7.rs`, **5 scenarios** pinning the Carson geometry/spacing/cable Line
+**YPrim** offline — the focused regression guard the live gate doesn't replace).
+Full per-step detail in **§1e**.
 
-Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
-the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
-(controls ACTIVE) compile, solve and match the Phase-0 goldens** — iteration
-counts exact (ieee13: 11), final taps / RegControl tap numbers / capacitor
-states, node voltages and per-element powers/currents at 1e-6 rel, and every
-element's full property dump (numeric skeleton). **The ieee34mod1 stretch goal
-also passes.** The `phase5.json` command-replay gate (daily/duty/event-log/
-capcontrol scenarios) matches the oracle — the 24-hour tap-change trajectory is
-event-log-identical. See the [Phase 5 record](docs/phase-records/phase-5.md).
+**This session also:** (1) resolved the 3 large EPRI/ADiakoptics power
+divergences (`c7c6649`/`6d3b9ac` — a **voltage-scaled power floor**,
+`assert_power_close`, the current-floor image through `P=V·conj(I)`; `solvable_now`
+32→35; §1e-follow-up); (2) added `#![allow(clippy::collapsible_match)]` to
+`dss-core` (`d85d026`) — clippy 0.1.96, now on stable, mis-fires that lint on the
+byte-faithful `match prop { CONST => if cond {..} }` port idiom (its autofix even
+drops `else` branches). **The gate runs on `stable`** (`cargo +stable …`), matching
+CI (`dtolnay/rust-toolchain@stable`) — there is no nightly toolchain dependency.
 
-Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
-elements (Transformer/Capacitor/Reactor), catalog objects
-(LineCode/XfmrCode/GrowthShape), the Line→LineCode fetch path, parse-only
-RegControl/CapControl, the `define_properties!` macro (bounded scope), and the
-**phase gate: the IEEE13/IEEE37/IEEE123 controls-off feeders solve and match
-the oracle** (exact iteration counts + node order; voltages, per-element
-powers/currents, total power and losses at 1e-6 rel). Merged to `main`
-(`5f27a25`); developed on branch `phase-4-pd-elements`.
+Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
+§Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
+**Phase 6** (WP6.1–WP6.10 — meters/monitors/topology/Generator + the 8500-node gate
++ the live corpus gate; `--no-ff` `b98223a`, `main` not pushed to origin)
+→ [record](docs/phase-records/phase-6.md); **Phase 5** (`10d3550`), **Phase 4**
+(`5f27a25`). Their full logs and the per-WP detail live under
+`docs/phase-records/` (§1b–1d indexes them) and the §1 table below.
 
-> **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the
-> full gate → update this file → **stop and wait for explicit user
-> confirmation** before the next step. (WP4.7–4.10 were executed in one pass on
-> explicit user instruction.)
+> **Working cadence:** finish one small step → run the full gate → update this
+> file → **stop and wait for explicit user confirmation** before the next step.
+> The full per-step ritual (gate, STATUS sync, the two audits) is
+> **`PHASE7_PLAN.md §0`**, run per **§1e**. (Earlier phases sometimes executed
+> several WPs in one pass on explicit user instruction.)
 
 ---
 
