@@ -17,8 +17,15 @@ clean via oracle hardening). **Follow-up (`c7c6649`):** root-caused + resolved t
 (`switch=y` / 1.5 m `BUSBAR`, |Yprim|~1e6) cancellation amplifying faer-vs-KLU
 roundoff on an ill-conditioned Y; fixed with a **voltage-scaled power floor**
 (`assert_power_close`, the current-floor image through `P=V·conj(I)`), so
-`solvable_now` **32→35** and `needs_investigation` 12→9. **WP7.1 next: step 5 /
-phase-exit.** The last merged phase was **Phase 6
+`solvable_now` **32→35** and `needs_investigation` 12→9. **WP7.1 step 5 done**
+(the §1 tier-1 targeted golden `phase7/line_geometry*.json` — `gen_phase7.py` +
+`golden_phase7.rs`, 4 scenarios pinning the Carson geometry/spacing/cable Line
+**YPrim** offline, the focused regression guard the live gate doesn't replace;
+§1e), so **WP7.1 is complete; next = WP7.2 (Protection)**. (Also this session: a
+`#![allow(clippy::collapsible_match)]` in `dss-core` (`d85d026`) — clippy 0.1.96,
+now on stable, mis-fires that lint on the byte-faithful `match prop { CONST => if
+cond {..} }` port idiom; the gate runs on **stable**, per CI.) The last merged
+phase was **Phase 6
 (WP6.1–WP6.10), MERGED to `main`** (`--no-ff` merge `b98223a`, gate green at
 merge; `main` not pushed to origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
 `d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
@@ -49,7 +56,9 @@ to the oracle), **step 3a done** (Line's `geometry=` Carson path —
 `FetchLineSpacing`/`SetWires`/`LoadSpacingAndWires`/`FMakeZFromSpacing`,
 incl. the buried-neutral form, Z/Yc pinned to the oracle),
 **and step 4 done** (geometry/spacing corpus feeder migration — see §1e),
-all gate-green — see §1e; **WP7.1 next: step 5 / phase-exit prep**.
+**and step 5 done** (the §1 tier-1 targeted golden `phase7/line_geometry*.json`
+pinning the Carson Line YPrim offline — see §1e),
+all gate-green — see §1e; **WP7.1 complete; next = WP7.2 (Protection)**.
 Phase 7 = DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
 §Phase 7, the largest phase ~18%.
 
@@ -90,23 +99,26 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; WP7.1 in progress (step 4 geometry/spacing corpus feeder migration done — +15 oracle-verified feeders to `solvable_now`, via `Set EarthModel` + RegControl live-`TapNum` fix + `Show` no-op; step 5 / phase-exit next) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done** (steps 1–5: Carson line constants + `WireData`/`CNData`/`TSData`/`LineSpacing`/`LineGeometry` catalog + Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` fetch + corpus migration to `solvable_now` 17→35 + the targeted golden `phase7/line_geometry*.json`); **next = WP7.2 (Protection)** |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 388, golden_feeders 1,
+cargo test --workspace      # dss-core lib 392, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
-                            # golden_phase6 1, golden_checkpoints 1,
-                            # golden_ieee8500 1, golden_reliability 1,
-                            # golden_allocation 1, golden_gendispatcher 1,
-                            # golden_autoadd_reduce 1, golden_slice 2,
-                            # golden_smoke 3, props_roundtrip 1,
+                            # golden_phase6 1, golden_phase7 1,
+                            # golden_checkpoints 1, golden_ieee8500 1,
+                            # golden_reliability 1, golden_allocation 1,
+                            # golden_gendispatcher 1, golden_autoadd_reduce 1,
+                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # corpus_manifest 1, corpus_live 3
-                            #   (solvable_now_has_multistep_depth always-on;
-                            #    solvable + classify auto-skip w/o
-                            #    DSS_LIVE_ORACLE / DSS_LIVE_CLASSIFY),
+                            #   (corpus_live_solvable_cases_match_oracle +
+                            #    solvable_now_has_multistep_depth run
+                            #    UNCONDITIONALLY — the pinned oracle MUST be
+                            #    installed (it fails, not skips, without it);
+                            #    only corpus_live_classify is opt-in, via
+                            #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
                             # dss-parser 62+1, dss-sparse 5
 ```
 
@@ -768,6 +780,39 @@ line-constants bug**:
   tests). Both audits (code + tests) returned faithful/clean. `solvable_now`
   **32→35**, `needs_investigation` 12→9; full gate green (corpus_live 35 cases,
   lib 392, all golden gates unaffected).
+
+### 1e WP7.1 step 5 — targeted golden (`phase7/line_geometry*.json`) — ✅ done, gate-green
+
+The §1 two-tier gate's **tier-1 targeted golden** for WP7.1 — the *focused*
+regression guard the live corpus gate does **not** replace: it is committed (pins
+the Carson numbers in git, visible in a diff) and runs **offline** (no oracle
+install needed to catch a regression), whereas
+`corpus_live_solvable_cases_match_oracle` consults the oracle live and *fails*
+without it. The deliverable PHASE7_PLAN §1 / §3-WP7.1-step-4 names but the step-4
+commit (`d418eba`, live-corpus migration only) had left unbuilt.
+- `tools/golden/gen_phase7.py` → `tests/golden/phase7/<scenario>.json` (schema 1,
+  command-replay like phase5/6; reuses `gen_checkpoints.capture_yprim` /
+  `capture_element` / `check_pin`, so the YPrim layout is identical to the
+  checkpoint + live gates — column-major, re/im split). Driven by
+  `crates/dss-core/tests/golden_phase7.rs` (runs **every** `*.json` in the dir; a
+  `for must in [...]` guard pins that all four paths stay represented, so an edit
+  can't silently drop a path's coverage).
+- Each scenario builds a small circuit (`circuit` source → geometry `Line` →
+  3-phase `Load`), solves once, and pins: converged + iteration count + node
+  order exact, node voltages 1e-6 rel, the **Line YPrim entry-by-entry** (the
+  Carson Z/Yc — the new math under test, §1 focused gate 1), and every element's
+  terminal currents/powers (the voltage-scaled `assert_power_close` floor).
+- 4 scenarios from the oracle-verified probe decks
+  (`probe_line_constants_phase7.py` / `probe_line_spacing_phase7.py`):
+  `line_geometry` (3-phase overhead `geometry=`, no reduce), `line_geometry_reduce`
+  (3 phases + a neutral, `reduce=yes` — the Kron reduce path), `line_spacing`
+  (`spacing=` + `wires=`), `cable_cn` (CN cable `geometry=`+`cncable=`).
+  `line_geometry` and `line_spacing` capture a **bit-identical** Line YPrim — the
+  geometry and spacing paths agree (as `probe_line_spacing_phase7.py` showed
+  maxdiff 0), now pinned offline.
+- Gate: `golden_phase7` 1; full three-command gate green on **stable**
+  (`cargo +stable …`, matching CI). dss-core lib stays 392 (integration test, not
+  a lib unit test). **WP7.1 complete; next = WP7.2 (Protection).**
 
 ---
 
