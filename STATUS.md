@@ -911,6 +911,24 @@ simplest control of the WP7.2 set — no TCC/sensing — so it lands the generic
   partial-open test** (proven: re-introducing the change-gate makes each test
   fail). dss-core lib **418→420** (SwtControl 18 + a CapControl partial-open test;
   net of the `reset_control_side` test reshape). Gate green.
+- **Forward guard for WP7.2 step 2b (Recloser/Relay/Fuse) — `system_y_changed`
+  discipline + required tests:** a protection *trip* opens the controlled
+  element's conductors, so every `DoPendingAction`/reset that forces conductors
+  (`set_terminal_closed`/`Closed[0] := …`) must raise `system_y_changed`
+  **unconditionally** (or via an *exact* per-conductor check), **never** via an
+  all-or-nothing `terminal_all_phases_closed`/`is_closed` aggregate — the
+  `build_y_matrix` trigger is gated solely on `system_y_changed`, so a
+  partially-open terminal otherwise slips a real change past the rebuild → stale Y
+  (the step-2a Reset dirty edge, `d0addb4`). **Each protection device must ship a
+  partial-open fail-on-regression test** modeled on
+  `reset_with_partial_open_*` (SwtControl/CapControl). The verified sweep found no
+  *other* current sites (every existing `system_y_changed` write is unconditional
+  or gated on an exact check — scalar tap `v != putap`, `add_step`/`subtract_step`,
+  fault `Is_ON` toggle, direct `yprim_invalid` propagation); per-phase open is a
+  single shared base path (`apply_yprim_open_conductor_calcs`), and a winding tap
+  is scalar (per-phase regulation = separate single-phase regulators). The
+  unported `open`/`close` exec commands must likewise set the flag when ported.
+  Recorded in PHASE7_PLAN §3 WP7.2 step 2.
 - **Audit-tests follow-up:** the audit found two genuinely-untested new paths and
   one under-pinned guard; added 3 tests (dss-core lib **415→418**): an executive
   `reset_restores_switch_to_normal_via_dispatch` (the dispatch `Reset` element-force
