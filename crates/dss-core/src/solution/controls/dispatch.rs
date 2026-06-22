@@ -9,6 +9,7 @@ use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
+use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::storage_controller::StorageController;
 use crate::elements::control::swt_control::SwtControl;
@@ -43,6 +44,14 @@ enum ControlKind {
     /// blows one controlled phase; `Reset` restores the normal state. The
     /// monitored element is often the controlled element itself.
     Fuse {
+        controlled: Option<ElemRef>,
+        monitored: Option<ElemRef>,
+    },
+    /// Recloser: overcurrent recloser. `Sample` reads the monitored currents and
+    /// the controlled terminal state; `Action` (OPEN/CLOSE/RESET) trips/recloses
+    /// the whole controlled terminal; `Reset` restores the normal state. Like the
+    /// Fuse, the monitored element is often the controlled element itself.
+    Recloser {
         controlled: Option<ElemRef>,
         monitored: Option<ElemRef>,
     },
@@ -103,6 +112,14 @@ pub(super) fn dispatch_control(
                     monitored: fu.ccd.monitored_element,
                 },
                 format!("Fuse.{}", fu.ccd.cd.obj.name()),
+            )
+        } else if let Some(rec) = obj.as_any().downcast_ref::<Recloser>() {
+            (
+                ControlKind::Recloser {
+                    controlled: rec.ccd.controlled_element,
+                    monitored: rec.ccd.monitored_element,
+                },
+                format!("Recloser.{}", rec.ccd.cd.obj.name()),
             )
         } else if let Some(gd) = obj.as_any().downcast_ref::<GenDispatcher>() {
             (
@@ -363,6 +380,112 @@ pub(super) fn dispatch_control(
                         && fuse.reset_with(ctrl)
                     {
                         *ctx.system_y_changed = true;
+                    }
+                }
+            }
+        }
+        ControlKind::Recloser {
+            controlled,
+            monitored,
+        } => {
+            match op {
+                ControlOp::Sample => {
+                    let Some(target) = controlled else {
+                        return Err(abort(ctx.errors, &full_name, "Switched element not set"));
+                    };
+                    let Some(mon) = monitored else {
+                        return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
+                    };
+                    if mon == target {
+                        // The monitored role only *reads* solved state, so an
+                        // owned clone of the controlled element stands in for the
+                        // second live borrow (currents recompute from node_v).
+                        let mut mon_clone = store.obj(target).clone_box();
+                        let (cobj, tobj) = store.pair_mut(r, target);
+                        let rec = cobj
+                            .as_any_mut()
+                            .downcast_mut::<Recloser>()
+                            .expect("kind matched above");
+                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Switched element is not a circuit element",
+                            ));
+                        };
+                        let mon_elem = mon_clone
+                            .as_ckt_element_mut()
+                            .expect("controlled element is a circuit element");
+                        rec.sample(ctrl, mon_elem, &mut ctx);
+                    } else {
+                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
+                        let rec = cobj
+                            .as_any_mut()
+                            .downcast_mut::<Recloser>()
+                            .expect("kind matched above");
+                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Switched element is not a circuit element",
+                            ));
+                        };
+                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Monitored element is not a circuit element",
+                            ));
+                        };
+                        rec.sample(ctrl, mon_elem, &mut ctx);
+                    }
+                }
+                ControlOp::Action { code } => {
+                    let Some(target) = controlled else {
+                        return Err(abort(ctx.errors, &full_name, "Switched element not set"));
+                    };
+                    let (cobj, tobj) = store.pair_mut(r, target);
+                    let rec = cobj
+                        .as_any_mut()
+                        .downcast_mut::<Recloser>()
+                        .expect("kind matched above");
+                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        return Err(abort(
+                            ctx.errors,
+                            &full_name,
+                            "Switched element is not a circuit element",
+                        ));
+                    };
+                    // The queue `code` carries CTRL_OPEN/CTRL_CLOSE/CTRL_RESET.
+                    rec.do_pending_action(code, ctrl, &mut ctx);
+                }
+                ControlOp::Reset => {
+                    // Pascal `Reset` restores the present state and forces the
+                    // controlled terminal back to `NormalState` (no lock guard,
+                    // unlike SwtControl).
+                    match controlled {
+                        Some(target) => {
+                            let (cobj, tobj) = store.pair_mut(r, target);
+                            let rec = cobj
+                                .as_any_mut()
+                                .downcast_mut::<Recloser>()
+                                .expect("kind matched above");
+                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                                if rec.reset_with(ctrl) {
+                                    *ctx.system_y_changed = true;
+                                }
+                            } else {
+                                rec.reset_control_side();
+                            }
+                        }
+                        None => {
+                            let rec = store
+                                .obj_mut(r)
+                                .as_any_mut()
+                                .downcast_mut::<Recloser>()
+                                .expect("kind matched above");
+                            rec.reset_control_side();
+                        }
                     }
                 }
             }

@@ -14,6 +14,8 @@ pub(super) struct ControlEnums {
     pub(super) swt_control_state: EnumId,
     pub(super) fuse_action: EnumId,
     pub(super) fuse_state: EnumId,
+    pub(super) recloser_action: EnumId,
+    pub(super) recloser_state: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
@@ -124,6 +126,26 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["closed", "open"],
         &[2, 1],
     ));
+    // Recloser.pas TRecloser.Create: ActionEnum / StateEnum. EControlAction
+    // ordinals (CTRL_CLOSE=2, CTRL_OPEN=1); both carry a third `trip` spelling
+    // that maps to CTRL_OPEN (so Action/State/Normal render close/open — the
+    // reverse-lookup of ordinal 1 picks the first name, `open`, not `trip`).
+    let recloser_action = push(DssEnum::new(
+        "Recloser: Action",
+        false,
+        1,
+        1,
+        &["close", "open", "trip"],
+        &[2, 1, 1],
+    ));
+    let recloser_state = push(DssEnum::new(
+        "Recloser: State",
+        false,
+        1,
+        1,
+        &["closed", "open", "trip"],
+        &[2, 1, 1],
+    ));
     ControlEnums {
         reg_control_phase,
         mon_phase,
@@ -134,5 +156,7 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         swt_control_state,
         fuse_action,
         fuse_state,
+        recloser_action,
+        recloser_state,
     }
 }

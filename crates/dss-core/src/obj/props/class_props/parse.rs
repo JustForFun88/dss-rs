@@ -310,6 +310,30 @@ impl ClassProps {
                 obj.set_f64_array(idx, buf);
                 Ok(0)
             }
+            PropType::DoubleVArray if pd.flags.contains(PropFlags::ARRAY_MAX_SIZE) => {
+                // Pascal `DoubleVArrayProperty` + `ArrayMaxSize` (DSSObjectHelper
+                // l.637): `ParseAsVector(maxSize, array)` reads up to `max`
+                // values and `integerPtr^ := <count supplied>`. The object owns
+                // the count (`set_f64_array` sets it from the supplied length);
+                // the dump renders `array_size` of the fixed-`max` buffer. We
+                // pass the supplied values (clamped to `max` for memory safety —
+                // the Pascal >max path reads uninitialized memory, an unpinnable
+                // garbage edge), so the object's count never exceeds the buffer.
+                let max = pd.size_prop;
+                let mut buf = vec![0.0; max];
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(&format!("[{value}]"));
+                eng.parser.next_param(eng.vars);
+                let count = eng.parser.parse_as_vector(eng.vars, &mut buf, false)?;
+                if pd.scale != 1.0 {
+                    for v in &mut buf {
+                        *v *= pd.scale;
+                    }
+                }
+                buf.truncate(count.min(max));
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
             PropType::DoubleVArray => {
                 // Pascal `DoubleVArrayProperty` + `SizeIsFunction`: the object
                 // computes the element count (e.g. XSCArray = XscSize).

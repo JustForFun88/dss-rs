@@ -25,7 +25,7 @@ pub(crate) use dss_parser::{Parser, ParserVars};
 
 pub(crate) use crate::circuit::{Circuit, ElemKind};
 pub(crate) use crate::elements::control::{
-    cap_control, gen_dispatcher, reg_control, storage_controller, swt_control,
+    cap_control, gen_dispatcher, recloser, reg_control, storage_controller, swt_control,
 };
 pub(crate) use crate::elements::general::{
     conductor_data, growth_shape, line_code, line_geometry, line_spacing, load_shape, price_shape,

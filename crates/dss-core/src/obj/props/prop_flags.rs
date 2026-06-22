@@ -34,6 +34,13 @@ impl PropFlags {
     /// [`DssObject::prop_conditional`](crate::obj::base::DssObject::prop_conditional)
     /// returns false (display-only; parsing is unaffected).
     pub const CONDITIONAL_VALUE: Self = Self(1 << 11);
+    /// Pascal `ArrayMaxSize`: a `DoubleVArray` whose parse reads **up to**
+    /// `PropDef::size_prop` values (`PropertyOffset3` in Pascal) — not a fixed
+    /// count. The parser sets the object's own element count to however many
+    /// were supplied (`integerPtr^ := ParseAsVector(...)`), and the dump renders
+    /// [`DssObject::array_size`](crate::obj::base::DssObject::array_size) of
+    /// them. Used by Recloser/Relay `RecloseIntervals`.
+    pub const ARRAY_MAX_SIZE: Self = Self(1 << 12);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

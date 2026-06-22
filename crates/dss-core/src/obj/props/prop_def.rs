@@ -181,6 +181,20 @@ impl PropDef {
     pub fn double_v_array(name: &'static str) -> Self {
         Self::base(name, PropType::DoubleVArray)
     }
+    /// `DoubleVArrayProperty` with Pascal `ArrayMaxSize`: the parse reads **up
+    /// to** `max` values (`PropertyOffset3`) and the object updates its own
+    /// element count; the dump renders
+    /// [`DssObject::array_size`](crate::obj::base::DssObject::array_size). e.g. a
+    /// Recloser `RecloseIntervals`. The `NonNegative` Pascal flag on these is
+    /// JSON-schema-only (the text parse accepts negatives — probed), so it is
+    /// not reproduced here.
+    pub fn double_v_array_max(name: &'static str, max: usize) -> Self {
+        Self {
+            size_prop: max,
+            flags: PropFlags::ARRAY_MAX_SIZE,
+            ..Self::base(name, PropType::DoubleVArray)
+        }
+    }
     /// `DoubleDArrayProperty` (interleaved `(x, y)` point list), e.g. an
     /// XYcurve `Points`.
     pub fn double_points(name: &'static str) -> Self {

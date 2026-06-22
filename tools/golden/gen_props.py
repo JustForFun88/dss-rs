@@ -1098,6 +1098,89 @@ SCENARIOS = [
             "New Fuse.f1 like=base",
         ],
     },
+    # --- Recloser (Controls/Recloser.pas; a TControlElem) ------------------
+    # Action/State map onto FPresentState (close/open/trip), Normal onto
+    # NormalState; the first State/Action defaults Normal. Shots aliases
+    # NumReclose with a -1 offset; RecloseIntervals (ArrayMaxSize=4) also sets
+    # NumReclose to its count. PhaseFast/PhaseDelayed default to the built-in
+    # `a`/`d` curves; the ground curves default to NIL. MonitoredObj defaults
+    # SwitchedObj to the same element.
+    {
+        "name": "recloser_default",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Recloser.r1 monitoredobj=line.l1 monitoredterm=1",
+        ],
+    },
+    {
+        # Full spec with explicit ground curves, a distinct switched element, all
+        # trips/insts/time-dials, and a 2-shot reclose sequence.
+        "name": "recloser_full",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.3 x1=0.6 length=1",
+            "New TCC_Curve.pf npts=2 c_array=[1,10] t_array=[1,0.1]",
+            "New TCC_Curve.pd npts=2 c_array=[1,10] t_array=[2,0.2]",
+            "New Recloser.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l2 "
+            "switchedterm=1 numfast=2 phasefast=pf phasedelayed=pd groundfast=pf "
+            "grounddelayed=pd phasetrip=800 groundtrip=400 phaseinst=2000 "
+            "groundinst=1500 reset=20 shots=3 recloseintervals=(0.5 1.5) delay=0.1 "
+            "tdphfast=1.2 tdgrfast=1.1 tdphdelayed=1.3 tdgrdelayed=1.4",
+        ],
+    },
+    {
+        # shots=2 then RecloseIntervals=(1 3): the array write wins, so
+        # NumReclose=2 ⇒ Shots dumps 3 and RecloseIntervals dumps 2 elements.
+        "name": "recloser_shots_then_intervals",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Recloser.r1 monitoredobj=line.l1 shots=2 recloseintervals=(1.0 3.0)",
+        ],
+    },
+    {
+        # shots=1 ⇒ NumReclose=0 ⇒ RecloseIntervals dumps the empty '[]'.
+        "name": "recloser_one_shot",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Recloser.r1 monitoredobj=line.l1 shots=1",
+        ],
+    },
+    {
+        # state=open drives FPresentState and defaults NormalState (NormalStateSet
+        # was false): Action=open, Normal=open, State=open.
+        "name": "recloser_state_open",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Recloser.r1 monitoredobj=line.l1 state=open",
+        ],
+    },
+    {
+        # normal=trip (trip aliases open) only sets NormalState: Normal=open,
+        # State=closed, Action=close (FPresentState untouched).
+        "name": "recloser_normal_trip",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Recloser.r1 monitoredobj=line.l1 normal=trip",
+        ],
+    },
+    {
+        # MakeLike copies the trips/curves/shots/intervals/normal state, but NOT
+        # DelayTime or the TD* time dials (Pascal omits them → Create defaults).
+        "name": "recloser_makelike",
+        "target": "Recloser.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Recloser.base monitoredobj=line.l1 numfast=2 phasetrip=700 shots=2 "
+            "recloseintervals=(0.5 1) normal=open reset=22 delay=0.3 tdphfast=1.5",
+            "New Recloser.r1 like=base",
+        ],
+    },
     {
         "name": "generator_default",
         "target": "Generator.g1",

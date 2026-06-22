@@ -94,6 +94,10 @@ pub struct EnumRegistry {
     pub fuse_action: EnumId,
     /// 'Fuse: State' (fuse.pas `StateEnum`).
     pub fuse_state: EnumId,
+    /// 'Recloser: Action' (Recloser.pas `ActionEnum`).
+    pub recloser_action: EnumId,
+    /// 'Recloser: State' (Recloser.pas `StateEnum`).
+    pub recloser_state: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
 }

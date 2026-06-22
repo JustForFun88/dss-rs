@@ -69,6 +69,8 @@ impl EnumRegistry {
             swt_control_state: control.swt_control_state,
             fuse_action: control.fuse_action,
             fuse_state: control.fuse_state,
+            recloser_action: control.recloser_action,
+            recloser_state: control.recloser_state,
             add_type: solution.add_type,
         }
     }
