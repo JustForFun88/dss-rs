@@ -179,6 +179,19 @@ fn do_pending_lock_then_open_is_blocked() {
 }
 
 #[test]
+fn do_pending_sets_controlled_active_terminal_even_for_lock() {
+    // Pascal sets ControlledElement.ActiveTerminalIdx := ElementTerminal before
+    // the case — for every code, including LOCK (which touches no conductor).
+    let mut sw = SwtControl::new("sw1");
+    sw.ccd.element_terminal = 2;
+    let mut ms = MockSwitch::new(3); // 2 terminals
+    let mut sc = Scratch::new();
+    sw.do_pending_action(CTRL_LOCK, &mut ms, &mut sc.ctx(0, 0.0));
+    assert!(sw.locked);
+    assert_eq!(ms.cd.active_terminal, 1); // terminal 2, 0-based
+}
+
+#[test]
 fn lock_side_effect_queues_lock_command_pushed_on_sample() {
     let mut sw = SwtControl::new("sw1");
     sw.locked = true;

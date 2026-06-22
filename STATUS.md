@@ -71,7 +71,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 420, golden_feeders 1,
+cargo test --workspace      # dss-core lib 421, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -893,11 +893,18 @@ simplest control of the WP7.2 set — no TCC/sensing — so it lands the generic
   `unsupported_class={Fault,Fuse,Recloser,Relay,SwtControl}` set once the protection
   block is complete (PHASE7_PLAN §3 WP7.2 step 4), alongside the targeted
   `phase7/protection*.json` golden.
-- **Audit-code follow-up:** two of the three surfaced notes are non-load-bearing
-  (the typed `GetState` accessor is unreachable in this CAPI-less port — the `?`
-  dump uses `CurrentAction` on both engines; LOCK/UNLOCK skip the no-op
-  `ActiveTerminalIdx` set). The third — *Reset gated `system_y_changed` on an
-  all-or-nothing change check* — was promoted to a **real fix** on review: Pascal
+- **Audit-code follow-up:** of the three surfaced notes, one is a non-bug kept
+  as-is (the typed `GetState` accessor is unreachable in this CAPI-less port — the
+  `?` dump faithfully returns `CurrentAction` on **both** engines, so reading the
+  live `Closed[0]` instead would *diverge* from the oracle; the live semantics
+  belong to the unported typed getter / a future report path). The
+  `ActiveTerminalIdx` note was **fixed** for literalness — `DoPendingAction` now
+  sets the controlled element's `active_terminal := ElementTerminal` before the
+  case (for every code, incl. LOCK/UNLOCK), as Pascal does (behaviorally inert —
+  nothing reads it after a lock — but a 1:1 port; covered by
+  `do_pending_sets_controlled_active_terminal_even_for_lock`). The third — *Reset
+  gated `system_y_changed` on an all-or-nothing change check* — was promoted to a
+  **real fix** on review: Pascal
   `Reset` does `Closed[0] := …` unconditionally, and the change-gated version
   could miss a real Y change on a **partially-open** terminal (one phase closed,
   the rest open ⇒ `terminal_all_phases_closed` reads false ⇒ `was == want` ⇒ the

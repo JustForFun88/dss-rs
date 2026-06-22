@@ -205,7 +205,12 @@ impl SwtControl {
         ctrl: &mut dyn CktElement,
         ctx: &mut CtrlCtx,
     ) {
-        let term = self.ccd.element_terminal as usize;
+        let term = self.ccd.element_terminal.max(1) as usize;
+        // Pascal sets `ControlledElement.ActiveTerminalIdx := ElementTerminal`
+        // before the `case` — for *every* code, incl. LOCK/UNLOCK.
+        if term <= ctrl.cd().nterms {
+            ctrl.cd_mut().active_terminal = term - 1;
+        }
         match code {
             CTRL_LOCK => self.locked = true,
             CTRL_UNLOCK => self.locked = false,
