@@ -124,6 +124,16 @@ pub enum RefAction {
         winding: usize,
         tap: f64,
     },
+    /// SwtControl `State=`: force every phase conductor of the controlled
+    /// element's 1-based `terminal` open/closed (Pascal `State`'s side effect
+    /// `ControlledElement.Closed[0] := …`). Applied generically through the
+    /// target's [`CktElement`](crate::elements::traits::CktElement) base, since
+    /// the switched element can be any circuit element.
+    SetSwitchClosed {
+        target: crate::elements::traits::ElemRef,
+        terminal: usize,
+        closed: bool,
+    },
 }
 
 impl RefAction {
@@ -131,6 +141,7 @@ impl RefAction {
     pub fn target(&self) -> crate::elements::traits::ElemRef {
         match self {
             RefAction::SetTransformerTap { target, .. } => *target,
+            RefAction::SetSwitchClosed { target, .. } => *target,
         }
     }
 }

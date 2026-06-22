@@ -18,10 +18,14 @@ use crate::solution::{ControlQueue, EventLog};
 
 /// Action codes shared across controls (`Controls/ControlElem.pas`
 /// `EControlAction`). RegControl uses its own `ACTION_TAPCHANGE`/`ACTION_REVERSE`
-/// ordinals; CapControl drives steps through `CTRL_OPEN`/`CTRL_CLOSE`.
+/// ordinals; CapControl drives steps through `CTRL_OPEN`/`CTRL_CLOSE`; SwtControl
+/// additionally uses `CTRL_LOCK`/`CTRL_UNLOCK`.
 pub const CTRL_NONE: i32 = 0;
 pub const CTRL_OPEN: i32 = 1;
 pub const CTRL_CLOSE: i32 = 2;
+pub const CTRL_RESET: i32 = 3;
+pub const CTRL_LOCK: i32 = 4;
+pub const CTRL_UNLOCK: i32 = 5;
 
 /// Scalar/queue/event context handed to a control's `Sample` and
 /// `DoPendingAction` (PHASE5_PLAN §2.1) — the disjoint-borrow stand-in for the

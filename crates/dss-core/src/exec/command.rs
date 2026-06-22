@@ -519,7 +519,20 @@ impl Dss {
         for action in &ref_actions {
             let target = action.target();
             let tgt = &mut classes[target.cls].objects[target.idx];
-            tgt.apply_ref_action(action);
+            // `SetSwitchClosed` acts on the generic CktElement base (any
+            // switched element), so it is applied here rather than through the
+            // per-class `apply_ref_action`; the transformer-tap variant stays
+            // class-specific.
+            if let crate::obj::base::RefAction::SetSwitchClosed {
+                terminal, closed, ..
+            } = action
+            {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    elem.cd_mut().set_terminal_closed(*terminal, *closed);
+                }
+            } else {
+                tgt.apply_ref_action(action);
+            }
             // Propagate the target's flags too (a tap change invalidates the
             // transformer's Yprim exactly like a direct `Tap=` edit).
             if let Some(ckt) = circuit.as_mut()

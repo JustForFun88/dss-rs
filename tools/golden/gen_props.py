@@ -945,6 +945,77 @@ SCENARIOS = [
             "New StorageController.sc1 like=base element=Line.l2",
         ],
     },
+    # --- SwtControl (WP7.2 step 2a) ---------------------------------------
+    # Action/Normal/State all map onto the one CurrentAction field; the text
+    # dump renders it (Action=close/open, Normal/State=closed/open) — GetState is
+    # not used by the `?` dump (probed). Action/Normal/State are ConditionalReadOnly
+    # on Locked (a write while locked is ignored). Every scenario defines the
+    # switched Line first (SwtControl without SwitchedObj raises 387).
+    {
+        "name": "swtcontrol_default",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1",
+        ],
+    },
+    {
+        "name": "swtcontrol_action_open",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 action=open",
+        ],
+    },
+    {
+        # Normal= sets NormalState := CurrentAction; the dump shows Action=open
+        # too (the shared CurrentAction field).
+        "name": "swtcontrol_normal_open",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 normal=open",
+        ],
+    },
+    {
+        # State= forces the controlled element open (deferred RefAction in Rust)
+        # and dumps State=open via the shared field.
+        "name": "swtcontrol_state_open",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 state=open",
+        ],
+    },
+    {
+        "name": "swtcontrol_lock_delay",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 lock=yes delay=30",
+        ],
+    },
+    {
+        # lock=yes BEFORE action=open: the ConditionalReadOnly guard ignores the
+        # action (Action stays close), proving the locked read-only path.
+        "name": "swtcontrol_locked_then_action",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 lock=yes action=open",
+        ],
+    },
+    {
+        # MakeLike copies CurrentAction/NormalState/PresentState/TimeDelay/Locked.
+        "name": "swtcontrol_makelike",
+        "target": "SwtControl.sw1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+            "New SwtControl.base switchedobj=line.l1 switchedterm=1 action=open "
+            "normal=open delay=45 lock=yes",
+            "New SwtControl.sw1 like=base",
+        ],
+    },
     {
         "name": "generator_default",
         "target": "Generator.g1",

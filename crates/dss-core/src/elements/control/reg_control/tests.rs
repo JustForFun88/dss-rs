@@ -65,7 +65,9 @@ fn tapnum_maps_tap_to_integer_and_back() {
     assert_eq!(rc.get_tap_num(), 5);
     let actions = rc.take_ref_actions();
     assert_eq!(actions.len(), 1);
-    let RefAction::SetTransformerTap { winding, tap, .. } = &actions[0];
+    let RefAction::SetTransformerTap { winding, tap, .. } = &actions[0] else {
+        panic!("expected SetTransformerTap, got {:?}", actions[0]);
+    };
     assert_eq!(*winding, 2);
     assert!((tap - 1.03125).abs() < 1e-12);
 

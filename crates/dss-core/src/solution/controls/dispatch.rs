@@ -11,6 +11,7 @@ use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::storage_controller::StorageController;
+use crate::elements::control::swt_control::SwtControl;
 use crate::elements::pc::generator::Generator;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
@@ -29,6 +30,12 @@ enum ControlKind {
     Cap {
         controlled: Option<ElemRef>,
         monitored: Option<ElemRef>,
+    },
+    /// SwtControl: a manual switch over a generic controlled element. `Sample`
+    /// reads no monitored element (only the control's own queued action), so the
+    /// controlled element is borrowed only for `Action`/`Reset`.
+    Swt {
+        controlled: Option<ElemRef>,
     },
     GenDispatch {
         monitored: Option<ElemRef>,
@@ -72,6 +79,13 @@ pub(super) fn dispatch_control(
                     monitored: cc.ccd.monitored_element,
                 },
                 format!("CapControl.{}", cc.ccd.cd.obj.name()),
+            )
+        } else if let Some(sw) = obj.as_any().downcast_ref::<SwtControl>() {
+            (
+                ControlKind::Swt {
+                    controlled: sw.ccd.controlled_element,
+                },
+                format!("SwtControl.{}", sw.ccd.cd.obj.name()),
             )
         } else if let Some(gd) = obj.as_any().downcast_ref::<GenDispatcher>() {
             (
@@ -191,6 +205,68 @@ pub(super) fn dispatch_control(
         // Handled (and returned) above, before the CtrlCtx was built.
         ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
         ControlKind::StorageSkeleton => unreachable!("StorageController handled above"),
+        ControlKind::Swt { controlled } => {
+            match op {
+                ControlOp::Sample => {
+                    // SwtControl.Sample reads no controlled/monitored element.
+                    let sw = store
+                        .obj_mut(r)
+                        .as_any_mut()
+                        .downcast_mut::<SwtControl>()
+                        .expect("kind matched above");
+                    sw.sample(&mut ctx);
+                }
+                ControlOp::Action { code } => {
+                    let Some(target) = controlled else {
+                        return Err(abort(ctx.errors, &full_name, "Switched element not set"));
+                    };
+                    let (cobj, tobj) = store.pair_mut(r, target);
+                    let sw = cobj
+                        .as_any_mut()
+                        .downcast_mut::<SwtControl>()
+                        .expect("kind matched above");
+                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        return Err(abort(
+                            ctx.errors,
+                            &full_name,
+                            "Switched element is not a circuit element",
+                        ));
+                    };
+                    sw.do_pending_action(code, ctrl, &mut ctx);
+                }
+                ControlOp::Reset => {
+                    // Pascal `Reset` restores the commanded state and forces the
+                    // switched element back to `NormalState` (when not locked).
+                    match controlled {
+                        Some(target) => {
+                            let (cobj, tobj) = store.pair_mut(r, target);
+                            let sw = cobj
+                                .as_any_mut()
+                                .downcast_mut::<SwtControl>()
+                                .expect("kind matched above");
+                            let term = sw.ccd.element_terminal.max(1) as usize;
+                            if let Some(want) = sw.reset_control_side()
+                                && let Some(ctrl) = tobj.as_ckt_element_mut()
+                            {
+                                let was = ctrl.cd().terminal_all_phases_closed(term);
+                                ctrl.cd_mut().set_terminal_closed(term, want);
+                                if was != want {
+                                    *ctx.system_y_changed = true;
+                                }
+                            }
+                        }
+                        None => {
+                            let sw = store
+                                .obj_mut(r)
+                                .as_any_mut()
+                                .downcast_mut::<SwtControl>()
+                                .expect("kind matched above");
+                            sw.reset_control_side();
+                        }
+                    }
+                }
+            }
+        }
         ControlKind::Reg { controlled } => {
             let Some(target) = controlled else {
                 return Err(abort(ctx.errors, &full_name, "Transformer element not set"));
