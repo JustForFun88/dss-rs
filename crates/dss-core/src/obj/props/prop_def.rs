@@ -203,6 +203,16 @@ impl PropDef {
             ..Self::base(name, PropType::EnumArrayOnStruct)
         }
     }
+    /// `MappedStringEnumArrayProperty` with `SizeIsFunction`: a mapped-enum array
+    /// whose element count is computed by the object
+    /// ([`DssObject::array_size`](crate::obj::base::DssObject::array_size)) — e.g.
+    /// a Fuse `State`/`Normal`.
+    pub fn mapped_string_enum_array(name: &'static str, enum_id: EnumId) -> Self {
+        Self {
+            enum_id: Some(enum_id),
+            ..Self::base(name, PropType::MappedStringEnumArray)
+        }
+    }
     /// `BusOnStructArrayProperty` (transformer `bus`): the active winding's bus.
     pub fn bus_on_struct(name: &'static str) -> Self {
         Self::base(name, PropType::BusOnStruct)

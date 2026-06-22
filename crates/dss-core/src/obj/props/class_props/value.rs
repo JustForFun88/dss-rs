@@ -119,6 +119,20 @@ impl ClassProps {
                 s.push(']');
                 s
             }
+            PropType::MappedStringEnumArray => {
+                // Pascal: `[` + `OrdinalToString, ` per entry + `]`, over the
+                // function-computed element count (`GetFuseStateSize`).
+                let enum_id = pd.enum_id.expect("enum-array property needs an enum");
+                let en = enums.get(enum_id);
+                let n = obj.array_size(idx);
+                let mut s = String::from("[");
+                for &ord in obj.get_enum_array(idx).iter().take(n) {
+                    s.push_str(&en.ordinal_to_string(ord));
+                    s.push_str(", ");
+                }
+                s.push(']');
+                s
+            }
             PropType::StringList => {
                 // Pascal `StringListToString`: `[a, b, c]`; empty list → "".
                 let list = obj.get_string_list(idx);

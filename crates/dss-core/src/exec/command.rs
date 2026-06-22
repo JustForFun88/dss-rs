@@ -467,6 +467,27 @@ impl Dss {
             param = parser.make_string(vars);
         }
 
+        // Pascal `TFuseObj.Create` resolves `FuseCurve := Find('tlink')` in the
+        // constructor; our constructor cannot reach the registry, so resolve the
+        // (default or explicit) curve name here through the same foreign view the
+        // property edits use, cloning it into the Fuse for solve-time GetTCCTime.
+        if let Some(name) = objects[oi]
+            .as_any()
+            .downcast_ref::<fuse::Fuse>()
+            .map(|f| f.fuse_curve_name().to_string())
+        {
+            let curve = (!name.is_empty())
+                .then(|| {
+                    foreign.find("TCC_Curve", &name).and_then(|(_, o)| {
+                        o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
+                    })
+                })
+                .flatten();
+            if let Some(f) = objects[oi].as_any_mut().downcast_mut::<fuse::Fuse>() {
+                f.set_fuse_curve_obj(curve);
+            }
+        }
+
         // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it
@@ -519,19 +540,29 @@ impl Dss {
         for action in &ref_actions {
             let target = action.target();
             let tgt = &mut classes[target.cls].objects[target.idx];
-            // `SetSwitchClosed` acts on the generic CktElement base (any
-            // switched element), so it is applied here rather than through the
-            // per-class `apply_ref_action`; the transformer-tap variant stays
-            // class-specific.
-            if let crate::obj::base::RefAction::SetSwitchClosed {
-                terminal, closed, ..
-            } = action
-            {
-                if let Some(elem) = tgt.as_ckt_element_mut() {
-                    elem.cd_mut().set_terminal_closed(*terminal, *closed);
+            // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
+            // CktElement base (any switched element), so they are applied here
+            // rather than through the per-class `apply_ref_action`; the
+            // transformer-tap variant stays class-specific.
+            match action {
+                crate::obj::base::RefAction::SetSwitchClosed {
+                    terminal, closed, ..
+                } => {
+                    if let Some(elem) = tgt.as_ckt_element_mut() {
+                        elem.cd_mut().set_terminal_closed(*terminal, *closed);
+                    }
                 }
-            } else {
-                tgt.apply_ref_action(action);
+                crate::obj::base::RefAction::SetConductorsClosed {
+                    terminal, closed, ..
+                } => {
+                    if let Some(elem) = tgt.as_ckt_element_mut() {
+                        let cd = elem.cd_mut();
+                        for (i, &c) in closed.iter().enumerate() {
+                            cd.set_conductor_closed(*terminal, i + 1, c);
+                        }
+                    }
+                }
+                _ => tgt.apply_ref_action(action),
             }
             // Propagate the target's flags too (a tap change invalidates the
             // transformer's Yprim exactly like a direct `Tap=` edit).

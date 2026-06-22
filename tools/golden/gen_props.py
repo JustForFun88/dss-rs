@@ -1016,6 +1016,88 @@ SCENARIOS = [
             "New SwtControl.sw1 like=base",
         ],
     },
+    # --- Fuse (PDElements/fuse.pas; a per-phase TControlElem) ---
+    # Normal/State are per-phase enum arrays sized by ControlledElement.NPhases,
+    # dumped `[closed, closed, closed, ]`. MonitoredObj defaults SwitchedObj to the
+    # same element; FuseCurve defaults to the built-in `tlink`. Action dumps empty.
+    {
+        "name": "fuse_default",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Fuse.f1 monitoredobj=line.l1 monitoredterm=1",
+        ],
+    },
+    {
+        # 1-phase monitored element → single-element state arrays `[closed, ]`.
+        "name": "fuse_1phase",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=1 r1=0.3 x1=0.6 length=1",
+            "New Fuse.f1 monitoredobj=line.l1",
+        ],
+    },
+    {
+        # action=open (deprecated) sets all phases open, and (NormalStateSet was
+        # false) copies them to Normal too.
+        "name": "fuse_action_open",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Fuse.f1 monitoredobj=line.l1 action=open",
+        ],
+    },
+    {
+        # state=[open,open,open] forces the controlled element open (deferred
+        # RefAction in Rust) and copies State→Normal (NormalStateSet was false).
+        "name": "fuse_state_all_open",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Fuse.f1 monitoredobj=line.l1 state=[open,open,open]",
+        ],
+    },
+    {
+        # A short state array sets only the leading phase (`[open, closed, closed, ]`).
+        "name": "fuse_state_partial",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Fuse.f1 monitoredobj=line.l1 state=[open]",
+        ],
+    },
+    {
+        # normal= sets the reset target per phase; State stays the default closed.
+        "name": "fuse_normal_partial",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Fuse.f1 monitoredobj=line.l1 normal=[open,closed,open]",
+        ],
+    },
+    {
+        # Explicit fuse link + rating + delay + a distinct switched element.
+        "name": "fuse_curve_rated_switched",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.3 x1=0.6 length=1",
+            "New TCC_Curve.tc npts=2 c_array=[1,10] t_array=[1,0.1]",
+            "New Fuse.f1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l2 "
+            "switchedterm=1 fusecurve=tc ratedcurrent=20 delay=0.5",
+        ],
+    },
+    {
+        # MakeLike copies the references, rating, and per-phase states (but not
+        # DelayTime — Pascal omits it).
+        "name": "fuse_makelike",
+        "target": "Fuse.f1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Fuse.base monitoredobj=line.l1 ratedcurrent=15 normal=[open,closed,open]",
+            "New Fuse.f1 like=base",
+        ],
+    },
     {
         "name": "generator_default",
         "target": "Generator.g1",

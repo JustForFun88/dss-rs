@@ -12,6 +12,8 @@ pub(super) struct ControlEnums {
     pub(super) storage_ctrl_charge_mode: EnumId,
     pub(super) swt_control_action: EnumId,
     pub(super) swt_control_state: EnumId,
+    pub(super) fuse_action: EnumId,
+    pub(super) fuse_state: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
@@ -103,6 +105,25 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["closed", "open"],
         &[2, 1],
     ));
+    // fuse.pas TFuse.Create: ActionEnum / StateEnum. EControlAction ordinals
+    // (CTRL_CLOSE=2, CTRL_OPEN=1); Action renders close/open, State/Normal render
+    // closed/open.
+    let fuse_action = push(DssEnum::new(
+        "Fuse: Action",
+        false,
+        1,
+        1,
+        &["close", "open"],
+        &[2, 1],
+    ));
+    let fuse_state = push(DssEnum::new(
+        "Fuse: State",
+        false,
+        1,
+        1,
+        &["closed", "open"],
+        &[2, 1],
+    ));
     ControlEnums {
         reg_control_phase,
         mon_phase,
@@ -111,5 +132,7 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         storage_ctrl_charge_mode,
         swt_control_action,
         swt_control_state,
+        fuse_action,
+        fuse_state,
     }
 }

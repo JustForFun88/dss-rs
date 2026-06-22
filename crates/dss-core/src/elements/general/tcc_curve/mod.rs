@@ -38,6 +38,11 @@ pub struct TccCurveObj {
     /// (`CalcLogPoints`). Not dumped; used by the protection elements later.
     log_c: Option<Vec<f64>>,
     log_t: Option<Vec<f64>>,
+    /// `LastValueAccessed` — the 1-based sequential-access hunt cache for
+    /// `GetTCCTime`. A pure optimization for a monotonically-increasing curve
+    /// (the only kind in practice), so the per-owner copy a protection element
+    /// holds yields identical results to Pascal's per-curve field.
+    last_value_accessed: usize,
 }
 
 impl TccCurveObj {
@@ -49,11 +54,70 @@ impl TccCurveObj {
             t_values: None,
             log_c: None,
             log_t: None,
+            last_value_accessed: 1,
         }
     }
 
     pub fn npts(&self) -> i32 {
         self.npts
+    }
+
+    /// Pascal `TTCC_CurveObj.GetTCCtime`: the operating time for a multiple-of-
+    /// pickup current value, by **log-log interpolation** between the bracketing
+    /// points. Returns `-1.0` ("no operation") when `c_value` is below the first
+    /// point. Ported loop-for-loop, including the `LastValueAccessed` hunt cache
+    /// (starts the scan from the previous bracket, restarting at point 1 when the
+    /// current dropped below it).
+    pub fn get_tcc_time(&mut self, c_value: f64) -> f64 {
+        let (Some(c), Some(t), Some(lc), Some(lt)) = (
+            self.c_values.as_deref(),
+            self.t_values.as_deref(),
+            self.log_c.as_deref(),
+            self.log_t.as_deref(),
+        ) else {
+            return -1.0;
+        };
+        let n = self.npts.max(0) as usize;
+        if n == 0 {
+            return -1.0;
+        }
+
+        // If current is less than the first point, no operation.
+        if c_value < c[0] {
+            return -1.0;
+        }
+        if n == 1 {
+            return t[0];
+        }
+
+        // Start from the previously-accessed bracket (1-based, like Pascal).
+        if c[self.last_value_accessed - 1] > c_value {
+            self.last_value_accessed = 1; // start over from the beginning
+        }
+        for i in (self.last_value_accessed + 1)..=n {
+            // 1-based `i` indexes arrays at `i - 1`.
+            if c[i - 1] == c_value {
+                self.last_value_accessed = i; // direct hit
+                return t[i - 1];
+            }
+            if c[i - 1] > c_value {
+                // Log-log interpolation between point `i-1` and `i`.
+                self.last_value_accessed = i - 1;
+                let log_test = if c_value > 0.0 {
+                    c_value.ln()
+                } else {
+                    0.001_f64.ln()
+                };
+                let lo = self.last_value_accessed - 1; // 0-based of `i-1`
+                let hi = i - 1; // 0-based of `i`
+                return (lt[lo] + (log_test - lc[lo]) / (lc[hi] - lc[lo]) * (lt[hi] - lt[lo]))
+                    .exp();
+            }
+        }
+
+        // Fell through the loop: use the last value.
+        self.last_value_accessed = n - 1;
+        t[n - 1]
     }
 }
 

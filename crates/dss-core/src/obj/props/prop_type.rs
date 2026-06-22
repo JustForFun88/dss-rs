@@ -22,6 +22,13 @@ pub enum PropType {
     DoubleSymMatrix,
     MappedStringEnum,
     MappedIntEnum,
+    /// `MappedStringEnumArrayProperty` with `SizeIsFunction`: a dynamic array of
+    /// mapped enums whose element count is computed by the object
+    /// ([`DssObject::array_size`](crate::obj::base::DssObject::array_size)) — e.g.
+    /// a Fuse `State`/`Normal` over `min(FUSEMAXDIM, NPhases)`. A short input
+    /// sets only the leading elements (the rest keep their prior value). Rendered
+    /// `[s1, s2, ]` (trailing comma-space, like the on-struct variant).
+    MappedStringEnumArray,
     /// `StringEnumActionProperty`: the parsed value maps to an enum ordinal and
     /// immediately triggers an action
     /// ([`DssObject::do_action`](crate::obj::base::DssObject::do_action)) — e.g.

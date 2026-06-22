@@ -6,6 +6,7 @@
 
 pub mod capacitor;
 pub mod fault;
+pub mod fuse;
 pub mod line;
 pub mod reactor;
 pub mod transformer;
@@ -13,6 +14,7 @@ pub mod winding;
 
 pub use capacitor::Capacitor;
 pub use fault::Fault;
+pub use fuse::Fuse;
 pub use line::Line;
 pub use reactor::Reactor;
 pub use transformer::Transformer;

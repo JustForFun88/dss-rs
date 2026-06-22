@@ -90,6 +90,10 @@ pub struct EnumRegistry {
     pub swt_control_action: EnumId,
     /// 'SwtControl: State' (SwtControl.pas `StateEnum`).
     pub swt_control_state: EnumId,
+    /// 'Fuse: Action' (fuse.pas `ActionEnum`).
+    pub fuse_action: EnumId,
+    /// 'Fuse: State' (fuse.pas `StateEnum`).
+    pub fuse_state: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
 }

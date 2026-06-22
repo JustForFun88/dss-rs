@@ -9,8 +9,8 @@
 
 Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) IN PROGRESS —
-step 1 done** (the `Fault` element) **+ step 2a done** (the `SwtControl` switch
-control). WP7.1 landed the Carson line-constants engine
+step 1 done** (the `Fault` element)**, step 2a done** (the `SwtControl` switch
+control)**, step 2b done** (the `Fuse` per-phase TCC protection). WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -27,8 +27,16 @@ control on the WP5.7 control sweep (`Sample`/`DoPendingAction` open/close a
 controlled element's terminal + event log), with the generic
 `CktElementData::set_terminal_closed` conductor-open machinery and a
 `RefAction::SetSwitchClosed` for the `State=` parse-time force; `props.json`
-`swtcontrol.json` (7 scenarios) + 14 oracle-pinned tests. Full per-step detail
-in **§1e**.
+`swtcontrol.json` (7 scenarios) + 14 oracle-pinned tests.
+**WP7.2 step 2b** landed `Fuse` (`pd/fuse/`): the first **TCC/sensing**
+protection device — a per-phase fuse that evaluates `TCC_Curve.GetTCCTime`
+(newly ported) on the monitored current and blows individual controlled
+conductors via per-phase control-queue actions. New shared machinery:
+`TccCurveObj::get_tcc_time` (log-log interpolation), per-conductor
+`CktElementData::set_conductor_closed`, `RefAction::SetConductorsClosed`, and a
+`PropType::MappedStringEnumArray` for the per-phase `Normal`/`State` arrays;
+`props.json` `fuse.json` (8 scenarios) + 20 oracle-pinned tests. Full per-step
+detail in **§1e**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -65,7 +73,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a done**; **next = WP7.2 step 2b (Fuse/Recloser/Relay)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b done** (Fault, SwtControl, Fuse); **next = WP7.2 step 2c (Recloser)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
@@ -943,6 +951,80 @@ simplest control of the WP7.2 set — no TCC/sensing — so it lands the generic
   restores_with_force` (the `Reset=yes`/DoReset unlock + restore + deferred force),
   and `locked_ignores_normal_and_state_writes` (the ConditionalReadOnly guard on
   Normal/State, previously pinned only for Action). Gate green.
+
+### 1e WP7.2 step 2b — the `Fuse` per-phase TCC protection (`pd/fuse/`) — ✅ done, gate-green
+
+The first **TCC/sensing** protection device (`PDElements/fuse.pas`, `TFuseObj`):
+a per-phase fuse on the WP5.7 control sweep that, despite living in the Pascal
+`PDElements/` tree, is a `TControlElem` (zero Yprim/current). It monitors one
+element's terminal currents and **blows individual phases** of the controlled
+element when a phase current stays above the `FuseCurve` pickup. Each phase has
+its own link state, arm flag, and queue action — so it lands the
+sensing/TCC/per-phase machinery Recloser (2c) and Relay (2d) reuse.
+- `crates/dss-core/src/elements/pd/fuse/{mod,accessors,tests}.rs`: `Sample`
+  reads `MonitoredElement.GetCurrents` and, per closed phase, evaluates
+  `FuseCurve.GetTCCTime(Cmag / RatedCurrent)`, arming/disarming a per-phase
+  `ControlQueue` action at `TripTime + Delay`; `DoPendingAction(phase)` opens
+  that one conductor and logs `Phase N Blown`; `Reset` restores each phase to
+  `Normal`. Registered with the protection controls (Pascal `DSSClassDefs`
+  Relay/Recloser/Fuse), `ElemKind::Control`; dispatch (`ControlKind::Fuse`)
+  borrows the control + controlled + monitored (the default fuse monitors its
+  own controlled element — the same-element clone path, like CapControl).
+- **`TCC_Curve.GetTCCTime` ported** (`tcc_curve/mod.rs`): the log-log
+  interpolation over the (already-precomputed) `log_c`/`log_t` arrays, including
+  the `LastValueAccessed` hunt cache (now a per-owner field — identical results
+  to Pascal's per-curve field for the monotonic curves that are the only kind in
+  practice). Unit-tested against the built-in `tlink` curve (Python reference).
+- **New shared machinery (Recloser/Relay will reuse):** per-conductor
+  `CktElementData::set_conductor_closed`/`conductor_closed` (Pascal
+  `Set_/Get_ConductorClosed(index>0)` — a single phase, vs step-2a's
+  whole-terminal `set_terminal_closed`); `RefAction::SetConductorsClosed` (the
+  per-phase `State=`/`Action=` parse-time force, applied generically by the
+  executive through the CktElement base); and a new property type
+  `PropType::MappedStringEnumArray` (a `SizeIsFunction` mapped-enum array sized
+  by `DssObject::array_size`, dumped `[s1, s2, ]`) for the per-phase
+  `Normal`/`State`, with `get_enum_array`/`set_enum_array` base hooks.
+- **`FuseCurve` default `tlink`:** Pascal's constructor does
+  `Find('tlink')`; our constructor cannot reach the registry, so the executive
+  resolves the (default or explicit) curve name through the same `foreign` view
+  the property edits use — cloning the `TccCurveObj` into the Fuse for
+  solve-time `GetTCCTime`, after the edit loop in `command.rs`. The built-in
+  `tlink`/`klink`/… curves already exist (`CreateDefaultDSSItems`).
+- **Property quirks settled against the oracle** (probed, `fuse.json`):
+  `MonitoredObj` defaults `SwitchedObj` to the same element (and `MonitoredTerm`
+  → `SwitchedTerm`); `Normal`/`State` are per-phase enum arrays sized by
+  `ControlledElement.NPhases`, dumped `[closed, closed, closed, ]` (a short
+  input sets only the leading phases — `state=[open]` opens only phase 1);
+  `State=` forces the controlled conductors **per phase** at parse time;
+  `Action` (deprecated close/open) sets all phases then runs the State side
+  effect and dumps empty; `MakeLike` copies the refs/rating/states but **not**
+  `DelayTime` or `NormalStateSet` (Pascal omits them).
+- Two `Fuse` enums registered (`fuse_action` close/open, `fuse_state`
+  closed/open; EControlAction ordinals CTRL_CLOSE=2/CTRL_OPEN=1).
+- Gates (all oracle-probed): `props.json` `fuse.json` (8 scenarios — default,
+  1-phase, action=open, state all/partial, normal partial, explicit
+  curve+rating+switched, makelike) via `gen_props.py`; **20 inline tests** — 8
+  Fuse (Sample arm/disarm, per-phase blow + `PHASE N BLOWN` event, disarmed
+  no-op, Reset, the `state=[open]` partial force, MakeLike) incl. a partial-open
+  `reset_with` fail-on-regression guard + 3 executive tests (per-phase parse
+  force, default `tlink` resolution, end-to-end overcurrent blow), and 4
+  `TccCurveObj::get_tcc_time` tests. dss-core lib **421→435**; full
+  three-command gate green on **stable** (incl. the always-on `corpus_live`).
+- **`system_y_changed` discipline (the step-2a guard):** the per-phase blow
+  (`DoPendingAction`) and `reset_with` raise `system_y_changed` **unconditionally**
+  on a conductor flip (never gated on an aggregate); `reset_with` carries a
+  **partial-open fail-on-regression test** as required by the step-2b guard.
+- **`HasOCPDevice` / recalc-Closed-resync deferred to WP7.2 step 3** (the
+  reliability activation, as PHASE7_PLAN §3 sections it): the Fuse's
+  `RecalcElementData` would `Include(ControlledElement.Flags, HasOCPDevice)` and
+  resync the controlled `Closed[i]`, both reaching the controlled element which
+  `recalc` cannot see; they land with `GetOCPDeviceType` in step 3 (the
+  parse-time `State=` force already drives the element). Noted in `fuse/mod.rs`.
+- **Corpus migration blocked on co-occurring classes:** every Fuse-using corpus
+  case is also tagged `unsupported_class=…Recloser,Relay,PVSystem,Storage…`
+  (e.g. `Test/IEEE13_CDPSM.dss`), so none can migrate to `solvable_now` until
+  Recloser/Relay (2c/2d) and the DER block land — migration stays at the WP7.2
+  gate (step 4), with the targeted `phase7/protection*.json` golden.
 
 ---
 

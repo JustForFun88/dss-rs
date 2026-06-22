@@ -344,6 +344,30 @@ impl CktElementData {
         }
     }
 
+    /// Pascal `ActiveTerminalIdx := terminal; Set_ConductorClosed(index, value)`
+    /// for a **single** 1-based phase conductor (`index > 0`): set only that
+    /// conductor of `terminal` and mark YPrim invalid. Used by the Fuse, which
+    /// blows individual phases (`ControlledElement.Closed[i] := …`). Out-of-range
+    /// terminals/conductors are ignored, matching Pascal's index guards.
+    pub fn set_conductor_closed(&mut self, terminal: usize, conductor: usize, value: bool) {
+        if terminal >= 1 && terminal <= self.nterms && conductor >= 1 && conductor <= self.nphases {
+            self.active_terminal = terminal - 1;
+            self.terminals[terminal - 1].conductors_closed[conductor - 1] = value;
+            self.yprim_invalid = true;
+        }
+    }
+
+    /// Pascal `Get_ConductorClosed(index)` for a **single** 1-based phase
+    /// conductor of `terminal`: `true` iff that conductor is closed. An
+    /// out-of-range terminal/conductor reads as open (`false`).
+    pub fn conductor_closed(&self, terminal: usize, conductor: usize) -> bool {
+        if terminal >= 1 && terminal <= self.nterms && conductor >= 1 && conductor <= self.nphases {
+            self.terminals[terminal - 1].conductors_closed[conductor - 1]
+        } else {
+            false
+        }
+    }
+
     /// Pascal `Get_ConductorClosed(0)` with the active terminal set to the
     /// 1-based `terminal`: `true` iff every phase conductor of that terminal is
     /// closed. An out-of-range terminal reads as open (`false`).

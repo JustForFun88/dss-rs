@@ -1,0 +1,197 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "fuse",
+ "scenarios": [
+  {
+   "name": "fuse_default",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Fuse.f1 monitoredobj=line.l1 monitoredterm=1"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "1",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[closed, closed, closed, ]",
+    "State": "[closed, closed, closed, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_1phase",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=1 r1=0.3 x1=0.6 length=1",
+    "New Fuse.f1 monitoredobj=line.l1"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "1",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[closed, ]",
+    "State": "[closed, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_action_open",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Fuse.f1 monitoredobj=line.l1 action=open"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "1",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[open, open, open, ]",
+    "State": "[open, open, open, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_state_all_open",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Fuse.f1 monitoredobj=line.l1 state=[open,open,open]"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "1",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[open, open, open, ]",
+    "State": "[open, open, open, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_state_partial",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Fuse.f1 monitoredobj=line.l1 state=[open]"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "1",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[open, closed, closed, ]",
+    "State": "[open, closed, closed, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_normal_partial",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Fuse.f1 monitoredobj=line.l1 normal=[open,closed,open]"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "1",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[open, closed, open, ]",
+    "State": "[closed, closed, closed, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_curve_rated_switched",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.3 x1=0.6 length=1",
+    "New TCC_Curve.tc npts=2 c_array=[1,10] t_array=[1,0.1]",
+    "New Fuse.f1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l2 switchedterm=1 fusecurve=tc ratedcurrent=20 delay=0.5"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l2",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tc",
+    "RatedCurrent": "20",
+    "Delay": "0.5",
+    "Action": "",
+    "Normal": "[closed, closed, closed, ]",
+    "State": "[closed, closed, closed, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fuse_makelike",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    "New Fuse.base monitoredobj=line.l1 ratedcurrent=15 normal=[open,closed,open]",
+    "New Fuse.f1 like=base"
+   ],
+   "target": "Fuse.f1",
+   "properties": {
+    "MonitoredObj": "Line.l1",
+    "MonitoredTerm": "1",
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "FuseCurve": "tlink",
+    "RatedCurrent": "15",
+    "Delay": "0",
+    "Action": "",
+    "Normal": "[open, closed, open, ]",
+    "State": "[closed, closed, closed, ]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

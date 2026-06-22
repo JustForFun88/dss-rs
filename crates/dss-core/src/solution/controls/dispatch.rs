@@ -14,6 +14,7 @@ use crate::elements::control::storage_controller::StorageController;
 use crate::elements::control::swt_control::SwtControl;
 use crate::elements::pc::generator::Generator;
 use crate::elements::pd::capacitor::Capacitor;
+use crate::elements::pd::fuse::Fuse;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
 use crate::solution::control_queue::ControlQueue;
@@ -36,6 +37,14 @@ enum ControlKind {
     /// controlled element is borrowed only for `Action`/`Reset`.
     Swt {
         controlled: Option<ElemRef>,
+    },
+    /// Fuse: per-phase overcurrent protection. `Sample` reads the monitored
+    /// element's currents and the controlled element's conductor state; `Action`
+    /// blows one controlled phase; `Reset` restores the normal state. The
+    /// monitored element is often the controlled element itself.
+    Fuse {
+        controlled: Option<ElemRef>,
+        monitored: Option<ElemRef>,
     },
     GenDispatch {
         monitored: Option<ElemRef>,
@@ -86,6 +95,14 @@ pub(super) fn dispatch_control(
                     controlled: sw.ccd.controlled_element,
                 },
                 format!("SwtControl.{}", sw.ccd.cd.obj.name()),
+            )
+        } else if let Some(fu) = obj.as_any().downcast_ref::<Fuse>() {
+            (
+                ControlKind::Fuse {
+                    controlled: fu.ccd.controlled_element,
+                    monitored: fu.ccd.monitored_element,
+                },
+                format!("Fuse.{}", fu.ccd.cd.obj.name()),
             )
         } else if let Some(gd) = obj.as_any().downcast_ref::<GenDispatcher>() {
             (
@@ -260,6 +277,92 @@ pub(super) fn dispatch_control(
                                 .expect("kind matched above");
                             sw.reset_control_side();
                         }
+                    }
+                }
+            }
+        }
+        ControlKind::Fuse {
+            controlled,
+            monitored,
+        } => {
+            let Some(target) = controlled else {
+                return Err(abort(ctx.errors, &full_name, "Switched element not set"));
+            };
+            match op {
+                ControlOp::Sample => {
+                    let Some(mon) = monitored else {
+                        return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
+                    };
+                    if mon == target {
+                        // The monitored role only *reads* solved state, so an
+                        // owned clone of the controlled element stands in for the
+                        // second live borrow (currents recompute from node_v).
+                        let mut mon_clone = store.obj(target).clone_box();
+                        let (cobj, tobj) = store.pair_mut(r, target);
+                        let fuse = cobj
+                            .as_any_mut()
+                            .downcast_mut::<Fuse>()
+                            .expect("kind matched above");
+                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Switched element is not a circuit element",
+                            ));
+                        };
+                        let mon_elem = mon_clone
+                            .as_ckt_element_mut()
+                            .expect("controlled element is a circuit element");
+                        fuse.sample(ctrl, mon_elem, &mut ctx);
+                    } else {
+                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
+                        let fuse = cobj
+                            .as_any_mut()
+                            .downcast_mut::<Fuse>()
+                            .expect("kind matched above");
+                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Switched element is not a circuit element",
+                            ));
+                        };
+                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Monitored element is not a circuit element",
+                            ));
+                        };
+                        fuse.sample(ctrl, mon_elem, &mut ctx);
+                    }
+                }
+                ControlOp::Action { code } => {
+                    let (cobj, tobj) = store.pair_mut(r, target);
+                    let fuse = cobj
+                        .as_any_mut()
+                        .downcast_mut::<Fuse>()
+                        .expect("kind matched above");
+                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        return Err(abort(
+                            ctx.errors,
+                            &full_name,
+                            "Switched element is not a circuit element",
+                        ));
+                    };
+                    // The queue `code` carries the 1-based phase to blow.
+                    fuse.do_pending_action(code, ctrl, &mut ctx);
+                }
+                ControlOp::Reset => {
+                    let (cobj, tobj) = store.pair_mut(r, target);
+                    let fuse = cobj
+                        .as_any_mut()
+                        .downcast_mut::<Fuse>()
+                        .expect("kind matched above");
+                    if let Some(ctrl) = tobj.as_ckt_element_mut()
+                        && fuse.reset_with(ctrl)
+                    {
+                        *ctx.system_y_changed = true;
                     }
                 }
             }
