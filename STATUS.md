@@ -65,7 +65,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 400, golden_feeders 1,
+cargo test --workspace      # dss-core lib 401, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -817,13 +817,23 @@ input (WP7.9). Landed registered, snapshot-solvable, and pinned offline.
   `Gmatrix`, off=zero), a snapshot 3φ fault drawing **1342.808 A** (full-circuit),
   and a duty-mode temporary fault logging **`**APPLIED**`** at the probed step.
   `gen_props.py` `_NUM_RE` extended to zero the non-finite `Nan`/`Inf` the oracle's
-  garbage matrix getter can emit (3φ `GMatrix`). dss-core lib **392→400**; full
-  three-command gate green on **stable**.
+  garbage matrix getter can emit (3φ `GMatrix`). dss-core lib **392→400** (→401
+  with the audit-tests follow-up); full three-command gate green on **stable**.
 - **Corpus migration deferred to the WP7.2 gate (step 4):** the
   `unsupported_class={Fault,Fuse,Recloser,Relay,SwtControl}` cases migrate once the
-  protection set is complete (PHASE7_PLAN §3 WP7.2 step 4). Audits + a targeted
-  `phase7/protection*.json` golden are part of that gate; the two per-step audits
-  for this sub-step run next.
+  protection set is complete (PHASE7_PLAN §3 WP7.2 step 4). A targeted
+  `phase7/protection*.json` golden is part of that gate.
+- **Audit-code follow-up:** `MakeLike` was missing the `TPDElement` rating fields
+  (`NormAmps`/`EmergAmps`/`FaultRate`/`PctPerm`/`HrsToRepair`) that
+  `TPDElement.MakeLike` copies — added them; pinned by extending the
+  `fault_makelike` props scenario with `faultrate=0.5 pctperm=80 repair=4`.
+  (Verified clear: the `phases` side effect signals `bus_name_redefined` through
+  `set_nconds` — no divergence; `CalcYPrim`/`CheckStatus` checked against Pascal +
+  the oracle.)
+- **Audit-tests follow-up:** the temporary-fault coverage exercised only the
+  `**APPLIED**` path; added `temporary_fault_clears_below_minamps` (MinAmps above
+  the fault current → self-clear), pinning the `**CLEARED**` event from the oracle
+  probe. dss-core lib **400→401**. Gate green.
 
 ---
 

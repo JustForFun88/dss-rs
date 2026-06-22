@@ -536,6 +536,13 @@ impl DssObject for Fault {
         self.is_on = other.is_on;
         self.on_time = other.on_time;
         self.gmatrix = other.gmatrix.clone();
+
+        // TPDElement.MakeLike copies the rating fields.
+        self.norm_amps = other.norm_amps;
+        self.emerg_amps = other.emerg_amps;
+        self.fault_rate = other.fault_rate;
+        self.pct_perm = other.pct_perm;
+        self.hrs_to_repair = other.hrs_to_repair;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

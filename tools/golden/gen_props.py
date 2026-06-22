@@ -727,8 +727,11 @@ SCENARIOS = [
     {
         "name": "fault_makelike",
         "target": "Fault.f1",
+        # Set the TPDElement rating fields on the base so the dump pins that
+        # MakeLike copies them (faultrate/pctperm/repair).
         "commands": [
-            "New Fault.base bus1=b1 phases=3 r=3 minamps=8",
+            "New Fault.base bus1=b1 phases=3 r=3 minamps=8 "
+            "faultrate=0.5 pctperm=80 repair=4",
             "New Fault.f1 like=base",
         ],
         "zero_garbage": ["GMatrix"],
