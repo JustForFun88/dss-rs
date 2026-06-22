@@ -196,6 +196,22 @@ fn sample_disarms_when_current_drops_below_pickup() {
 }
 
 #[test]
+fn sample_divides_current_by_rated_current() {
+    // Pins the `Cmag / RatedCurrent` divisor: 5 A at rated 10 A is a 0.5 pu
+    // multiple — below the first curve point (c[0] = 1) → no operation. A dropped
+    // or inverted divisor would push the multiple ≥ 1 and (wrongly) arm.
+    let mut f = armed_fuse();
+    f.ccd.cd.nphases = 3;
+    f.rated_current = 10.0;
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut mon = MockLine::new(3, 5.0); // 5 A / 10 A = 0.5 pu < pickup
+    let mut sc = Scratch::new();
+    f.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(f.ready_to_blow[..3].iter().all(|&b| !b));
+    assert_eq!(sc.queue.queue_size(), 0);
+}
+
+#[test]
 fn do_pending_action_blows_one_phase_and_logs() {
     let mut f = armed_fuse();
     f.ccd.cd.nphases = 3;
@@ -212,12 +228,13 @@ fn do_pending_action_blows_one_phase_and_logs() {
     assert!(ctrl.cd.conductor_closed(1, 3));
     assert_eq!(f.h_action[1], 0); // handle cleared
     assert!(sc.y_changed); // conductor flip raises SystemYChanged
+    // The full normalized line (the event log uppercases the action and names the
+    // controlling element — Pascal AppendtoEventLog).
     assert!(
-        // The event log uppercases the action (Pascal AppendtoEventLog).
         sc.events
             .entries()
             .iter()
-            .any(|e| e.contains("PHASE 2 BLOWN")),
+            .any(|e| e.contains("Element=Fuse.f1, Action=PHASE 2 BLOWN")),
         "log = {:?}",
         sc.events.entries()
     );
@@ -254,27 +271,36 @@ fn reset_with_restores_each_phase_to_normal() {
     assert!(f.ready_to_blow[..3].iter().all(|&b| !b));
 }
 
-/// Fail-on-regression guard for the WP7.2 step-2a dirty edge: a partially-blown
-/// terminal (phase 0 closed, 1&2 open) reads `terminal_all_phases_closed = false`
-/// — the all-or-nothing aggregate. Resetting to a `Normal` that re-closes phase 0
-/// is a real Y change, so `reset_with` must report the rebuild unconditionally
-/// (never gated on the aggregate), or a stale system Y would be reused.
+/// Fail-on-regression guard for the WP7.2 step-2a dirty edge. The seed is chosen
+/// so the all-or-nothing aggregate `terminal_all_phases_closed` reads **the same
+/// (false) before and after** the reset, yet real phases flip — exactly where a
+/// reintroduced `was_all_closed != want_all_closed` gate would compute
+/// `false != false` and *skip* the rebuild, reusing a stale system Y:
+///   terminal `[open, closed, closed]` (aggregate false) →
+///   normal `[CLOSE, OPEN, CLOSE]` ⇒ `[closed, open, closed]` (aggregate still false),
+/// while phase 0 (open→closed) and phase 1 (closed→open) actually change.
+/// `reset_with` must report the rebuild unconditionally; reintroducing the
+/// aggregate gate makes this test fail (the earlier "all-closed target" seed did
+/// not — `was(false) != want(true)` matched the correct result).
 #[test]
 fn reset_with_partial_open_terminal_still_forces_rebuild() {
     let mut f = armed_fuse();
-    f.normal_state[..3].copy_from_slice(&[CTRL_CLOSE; 3]); // reset target = all closed
+    f.normal_state[..3].copy_from_slice(&[CTRL_CLOSE, CTRL_OPEN, CTRL_CLOSE]);
     let mut ctrl = MockLine::new(3, 0.0);
-    ctrl.cd.terminals[0].conductors_closed[0] = true; // phase 0 closed
-    ctrl.cd.terminals[0].conductors_closed[1] = false; // phases 1,2 blown
-    ctrl.cd.terminals[0].conductors_closed[2] = false;
-    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // the aggregate is already false
+    ctrl.cd.terminals[0].conductors_closed[0] = false; // phase 0 blown
+    ctrl.cd.terminals[0].conductors_closed[1] = true; // phase 1 closed
+    ctrl.cd.terminals[0].conductors_closed[2] = true; // phase 2 closed
+    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // aggregate false before
 
     let rebuild = f.reset_with(&mut ctrl);
     assert!(
         rebuild,
-        "reset must force a Y rebuild even from a partial-open terminal"
+        "reset must force a Y rebuild even when the aggregate is unchanged"
     );
-    assert!(ctrl.cd.conductor_closed(1, 2)); // the phases really were re-closed
+    // The aggregate is still false after, but real phases flipped.
+    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // aggregate false after too
+    assert!(ctrl.cd.conductor_closed(1, 1)); // phase 0: open → closed (the missed change)
+    assert!(!ctrl.cd.conductor_closed(1, 2)); // phase 1: closed → open
 }
 
 #[test]
@@ -367,6 +393,23 @@ fn default_state_arrays_dump_per_phase() {
     assert_eq!(dump(&mut dss, "FuseCurve"), "tlink");
     // SwitchedObj defaults to the monitored element.
     assert_eq!(dump(&mut dss, "SwitchedObj"), "Line.l1");
+}
+
+/// A fuse with no monitored/switched element raises Pascal error 405 ("CktElement
+/// for SwitchedObj is not set") at EndEdit (oracle-confirmed `#405`).
+#[test]
+fn bare_fuse_reports_missing_switched_element() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47");
+    dss.command("new fuse.f1");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("CktElement for SwitchedObj is not set")),
+        "errors = {:?}",
+        dss.errors()
+    );
 }
 
 /// `state=[open]` forces only the named controlled conductor open at parse time
