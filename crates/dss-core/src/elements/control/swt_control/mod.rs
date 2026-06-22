@@ -242,19 +242,45 @@ impl SwtControl {
         }
     }
 
-    /// Pascal `TSwtControlObj.Reset` control-side: restore the commanded state to
-    /// `NormalState`. Returns `Some(want_closed)` (the state to force the
-    /// switched element to) when not locked, `None` when locked (Reset is a
-    /// no-op while locked). The caller applies the element force.
-    pub(crate) fn reset_control_side(&mut self) -> Option<bool> {
+    /// Pascal `TSwtControlObj.Reset` control-side (present/current/armed),
+    /// guarded by `not Locked`. `true` when the reset ran (not locked) — the
+    /// caller applies the element force.
+    pub(crate) fn reset_control_side(&mut self) -> bool {
         if self.locked {
-            return None;
+            return false;
         }
         self.present_state = self.normal_state;
         self.current_action = self.present_state;
         self.armed = false;
-        // case NormalState of CTRL_OPEN: open; else close.
-        Some(self.normal_state != CTRL_OPEN)
+        true
+    }
+
+    /// The state the controlled element is forced to on Reset: Pascal `case
+    /// NormalState of CTRL_OPEN: open; else close` — closed for `CTRL_CLOSE`
+    /// **and** `CTRL_NONE` (the `else` branch).
+    fn reset_target_closed(&self) -> bool {
+        self.normal_state != CTRL_OPEN
+    }
+
+    /// Pascal `TSwtControlObj.Reset` (full): restore the control state and force
+    /// the switched element to `NormalState`. Returns whether a force was applied
+    /// (the caller raises `SystemYChanged`).
+    ///
+    /// The force is **unconditional** when not locked — Pascal's `Closed[0] := …`
+    /// raises `SystemYChanged` every time, and gating on an all-or-nothing change
+    /// check (`terminal_all_phases_closed`) would miss a real change on a
+    /// *partially*-open terminal (one phase closed, the rest open → "all closed"
+    /// reads false, so `was == want == open` and the flip of the closed phase
+    /// slips past the Y rebuild, leaving a stale system Y). Reset is rare, so the
+    /// occasional redundant rebuild is negligible.
+    pub(crate) fn reset_with(&mut self, ctrl: &mut dyn CktElement) -> bool {
+        if !self.reset_control_side() {
+            return false; // locked → no-op
+        }
+        let term = self.ccd.element_terminal.max(1) as usize;
+        ctrl.cd_mut()
+            .set_terminal_closed(term, self.reset_target_closed());
+        true
     }
 
     /// Pascal `DoReset` (the `Reset=` boolean-action property): force an unlock,
@@ -262,13 +288,13 @@ impl SwtControl {
     /// as a [`RefAction::SetSwitchClosed`].
     fn do_reset_action(&mut self) {
         self.locked = false;
-        if let Some(want) = self.reset_control_side()
+        if self.reset_control_side()
             && let Some(target) = self.ccd.controlled_element
         {
             self.pending_ref_actions.push(RefAction::SetSwitchClosed {
                 target,
                 terminal: self.ccd.element_terminal as usize,
-                closed: want,
+                closed: self.reset_target_closed(),
             });
         }
     }

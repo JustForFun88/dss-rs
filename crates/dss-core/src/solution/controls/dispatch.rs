@@ -244,15 +244,12 @@ pub(super) fn dispatch_control(
                                 .as_any_mut()
                                 .downcast_mut::<SwtControl>()
                                 .expect("kind matched above");
-                            let term = sw.ccd.element_terminal.max(1) as usize;
-                            if let Some(want) = sw.reset_control_side()
-                                && let Some(ctrl) = tobj.as_ckt_element_mut()
-                            {
-                                let was = ctrl.cd().terminal_all_phases_closed(term);
-                                ctrl.cd_mut().set_terminal_closed(term, want);
-                                if was != want {
+                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                                if sw.reset_with(ctrl) {
                                     *ctx.system_y_changed = true;
                                 }
+                            } else {
+                                sw.reset_control_side();
                             }
                         }
                         None => {

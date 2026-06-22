@@ -234,22 +234,59 @@ fn state_side_effect_sets_present_and_queues_force() {
 }
 
 #[test]
-fn reset_control_side_restores_normal_state() {
+fn reset_with_restores_normal_state_and_forces_element() {
     let mut sw = SwtControl::new("sw1");
     sw.normal_state = CTRL_CLOSE;
     sw.present_state = CTRL_OPEN;
     sw.current_action = CTRL_OPEN;
     sw.armed = true;
-    let want = sw.reset_control_side();
-    assert_eq!(want, Some(true)); // NormalState=CLOSE → force closed
+    let mut ms = MockSwitch::new(3);
+    ms.cd.set_terminal_closed(1, false); // start fully open
+    let rebuild = sw.reset_with(&mut ms);
+    assert!(rebuild); // a force was applied → caller raises SystemYChanged
+    assert!(ms.cd.terminal_all_phases_closed(1)); // forced closed (NormalState)
     assert_eq!(sw.present_state, CTRL_CLOSE);
     assert_eq!(sw.current_action, CTRL_CLOSE);
     assert!(!sw.armed);
-    // locked → Reset is a no-op.
+    // locked → Reset is a no-op, no rebuild, controlled element untouched.
     sw.locked = true;
     sw.present_state = CTRL_OPEN;
-    assert_eq!(sw.reset_control_side(), None);
+    let mut ms2 = MockSwitch::new(3);
+    assert!(!sw.reset_with(&mut ms2));
     assert_eq!(sw.present_state, CTRL_OPEN); // untouched
+    assert!(ms2.cd.terminal_all_phases_closed(1)); // not forced
+}
+
+/// Fail-on-regression guard for the partial-open dirty edge: the *old* Reset
+/// gated `system_y_changed` on `terminal_all_phases_closed(was) != want` — an
+/// all-or-nothing check. A **partially**-open terminal (phase 0 closed, 1&2
+/// open) reads `was = "all closed" = false`; resetting to `NormalState=OPEN`
+/// forces all phases open, flipping phase 0 — a real Y change — yet the old
+/// check computed `was == want == false` and skipped the rebuild, leaving a
+/// stale system Y (the Y build is gated solely on `system_y_changed`). The
+/// fixed `reset_with` reports the rebuild unconditionally.
+///
+/// (Reintroducing the `was != want` gate makes `reset_with` return `false`
+/// here, failing the `assert!(rebuild)` — this test would catch that.)
+#[test]
+fn reset_with_partial_open_terminal_still_forces_rebuild() {
+    let mut sw = SwtControl::new("sw1");
+    sw.normal_state = CTRL_OPEN; // reset target = open
+    let mut ms = MockSwitch::new(3);
+    ms.cd.terminals[0].conductors_closed[0] = true; // phase 0 still closed
+    ms.cd.terminals[0].conductors_closed[1] = false;
+    ms.cd.terminals[0].conductors_closed[2] = false;
+    // The old gate's premise — "are all phases closed?" — is already false,
+    // even though phase 0 IS closed: this is exactly where it misfires.
+    assert!(!ms.cd.terminal_all_phases_closed(1));
+
+    let rebuild = sw.reset_with(&mut ms);
+    assert!(
+        rebuild,
+        "reset must force a Y rebuild even from a partial-open terminal"
+    );
+    // The reset really flipped phase 0 closed→open — the change the old gate missed.
+    assert!(!ms.cd.terminals[0].conductors_closed[0]);
 }
 
 #[test]

@@ -403,3 +403,72 @@ fn pf_1to2_maps_leading_above_one() {
     let lead = pf_1to2(Complex64::new(80.0, -60.0)); // 0.8 leading → 1.2
     assert!((lead - 1.2).abs() < 1e-12);
 }
+
+/// A capacitor stub with *per-phase* conductor state, so the partial-open dirty
+/// edge in `reset_with` is representable (the production [`MockCap`] collapses
+/// the bank to a single bool and so cannot express a partially-closed terminal).
+struct MockPhaseCap {
+    conductors: [bool; 3],
+}
+impl ControlledCapacitor for MockPhaseCap {
+    fn full_name(&self) -> String {
+        "Capacitor.pc".into()
+    }
+    fn num_steps(&self) -> i32 {
+        1
+    }
+    fn available_steps(&self) -> i32 {
+        0
+    }
+    fn total_kvar(&self) -> f64 {
+        600.0
+    }
+    fn connection(&self) -> i32 {
+        0
+    }
+    fn is_closed(&self) -> bool {
+        self.conductors.iter().all(|&c| c) // "all phases closed?"
+    }
+    fn set_closed(&mut self, value: bool) {
+        self.conductors = [value; 3];
+    }
+    fn add_step(&mut self) -> bool {
+        false
+    }
+    fn subtract_step(&mut self) -> bool {
+        false
+    }
+}
+
+/// Fail-on-regression guard for the partial-open dirty edge in `reset_with` (the
+/// same one fixed for SwtControl). The *old* code gated `SystemYChanged` on
+/// `want != was_closed`, where `was_closed = is_closed()` is the all-or-nothing
+/// "are all phases closed?". A bank with phase 0 closed and 1&2 open reads
+/// `is_closed() = false`; with `InitialState = OPEN`, reset forces all phases
+/// open — flipping phase 0 (a real Y change) — yet the old check computed
+/// `want(false) == was(false)` and skipped the rebuild, leaving a stale system Y
+/// (the Y build is gated solely on `SystemYChanged`). Pascal `Reset` does
+/// `Closed[0] := FALSE` unconditionally; `reset_with` now reports the rebuild
+/// whenever a force is applied.
+///
+/// (Reintroducing the `want != was_closed` gate makes `reset_with` return
+/// `false` here, failing `assert!(rebuild)`.)
+#[test]
+fn reset_with_partial_open_bank_still_forces_rebuild() {
+    let mut cc = CapControl::new("cc");
+    cc.initial_state = CTRL_OPEN; // reset target = open
+    let mut cap = MockPhaseCap {
+        conductors: [true, false, false], // phase 0 still closed
+    };
+    // The old gate's premise — "all phases closed?" — is already false, even
+    // though phase 0 IS closed: exactly where it misfires.
+    assert!(!cap.is_closed());
+
+    let rebuild = cc.reset_with(&mut cap);
+    assert!(
+        rebuild,
+        "reset must force a Y rebuild even from a partial-open bank"
+    );
+    // The reset really flipped phase 0 closed→open — the change the old gate missed.
+    assert!(!cap.conductors[0]);
+}
