@@ -1,0 +1,189 @@
+"""Generate the Phase-7 WP7.1 targeted goldens (line-constants / geometry path)
+from the pinned oracle.
+
+Command-replay like the phase5/phase6 goldens, but each scenario ALSO pins the
+**Line's YPrim block entry-by-entry** — the Carson Z/Yc produced by the
+geometry/spacing/cable path is the new math under test (PHASE7_PLAN §1 focused
+gate 1: "the Line YPrim from the geometry path matches entry-by-entry"). Unlike
+the live corpus gate, this golden is committed, so it guards the geometry path
+offline (no oracle install needed to catch a regression) and pins the exact
+numbers in git.
+
+The Rust harness (`golden_phase7.rs`) replays the identical command list, solves
+once, and must match: converged flag + iteration count + node order exact, node
+voltages 1e-6 rel, the Line YPrim entry-by-entry, and every element's terminal
+currents/powers (the voltage-scaled power floor).
+
+The geometry/spacing/cable definitions are the oracle-verified decks from
+`probe_line_constants_phase7.py` / `probe_line_spacing_phase7.py` (the same wire /
+CN data the Carson-engine unit tests pin), wrapped in a small solvable circuit
+(source -> geometry line -> 3-phase load).
+
+Scenarios (one file each under tests/golden/phase7/):
+  - line_geometry: 3-phase overhead via `geometry=` (FetchGeometryCode /
+    FMakeZFromGeometry), DERI earth, no reduce.
+  - line_geometry_reduce: 3 phases + a neutral (nconds=4, reduce=yes) via
+    `geometry=` — exercises the Kron reduce in the geometry path.
+  - line_spacing: 3-phase overhead via `spacing=` + `wires=` (FetchLineSpacing /
+    SetWires / FMakeZFromSpacing).
+  - cable_cn: 3-phase concentric-neutral cable via `geometry=` + `cncable=`.
+
+Usage:
+    python tools/golden/gen_phase7.py                 # regenerate all
+    python tools/golden/gen_phase7.py line_spacing    # one scenario
+Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gen_checkpoints import capture_element, capture_yprim, check_pin  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase7"
+SCHEMA = 1
+
+LINE = "Line.l1"
+
+# A circuit + DERI earth; the line is created after `set earthmodel` so it
+# captures FEarthModel=Deri (Line.pas:998 — the WP7.1 step-4 `Set EarthModel`
+# path). Both engines default to Deri, but pinning it explicitly documents intent.
+HEAD = [
+    "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+    "set earthmodel=deri",
+]
+# SI overhead wire / neutral and CN cable — the oracle-verified probe data.
+WIRE = "new WireData.w Runits=m radunits=m gmrunits=m rac=0.0003 gmrac=0.005 radius=0.01"
+NEUTRAL = "new WireData.n Runits=m radunits=m gmrunits=m rac=0.0006 gmrac=0.003 radius=0.006"
+CN = [
+    "new CNData.cn1 Runits=m radunits=m gmrunits=m",
+    "~ Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005",
+    "~ EpsR=2.3 InsLayer=0.004 DiaIns=0.022 DiaCable=0.030",
+    "~ k=16 DiaStrand=0.001 GmrStrand=0.0004 Rstrand=2.0e-3",
+]
+LOAD = "new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=0.95 model=1"
+TAIL = ["set voltagebases=[12.47]", "calcvoltagebases"]
+
+
+def deck_line_geometry() -> list[str]:
+    return [
+        *HEAD,
+        WIRE,
+        "new LineGeometry.g nconds=3 nphases=3 reduce=no",
+        "~ cond=1 wire=w x=0 h=10 units=m",
+        "~ cond=2 wire=w x=1 h=10 units=m",
+        "~ cond=3 wire=w x=2 h=10 units=m",
+        "new Line.l1 bus1=src bus2=b geometry=g length=1 units=km phases=3",
+        LOAD,
+        *TAIL,
+    ]
+
+
+def deck_line_geometry_reduce() -> list[str]:
+    return [
+        *HEAD,
+        WIRE,
+        NEUTRAL,
+        "new LineGeometry.g nconds=4 nphases=3 reduce=yes",
+        "~ cond=1 wire=w x=-0.5 h=10 units=m",
+        "~ cond=2 wire=w x=0    h=10 units=m",
+        "~ cond=3 wire=w x=0.5  h=10 units=m",
+        "~ cond=4 wire=n x=0    h=8  units=m",
+        "new Line.l1 bus1=src bus2=b geometry=g length=1 units=km phases=3",
+        LOAD,
+        *TAIL,
+    ]
+
+
+def deck_line_spacing() -> list[str]:
+    return [
+        *HEAD,
+        WIRE,
+        "new LineSpacing.s nconds=3 nphases=3 x=[0 1 2] h=[10 10 10] units=m",
+        "new Line.l1 bus1=src bus2=b spacing=s wires=[w w w] length=1 units=km phases=3",
+        LOAD,
+        *TAIL,
+    ]
+
+
+def deck_cable_cn() -> list[str]:
+    return [
+        *HEAD,
+        *CN,
+        "new LineGeometry.g nconds=3 nphases=3 reduce=no",
+        "~ cond=1 cncable=cn1 x=0   h=-1.2 units=m",
+        "~ cond=2 cncable=cn1 x=0.1 h=-1.2 units=m",
+        "~ cond=3 cncable=cn1 x=0.2 h=-1.2 units=m",
+        "new Line.l1 bus1=src bus2=b geometry=g length=1 units=km phases=3",
+        LOAD,
+        *TAIL,
+    ]
+
+
+# name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
+# every *.json in the directory, so this is the single source of truth.
+SCENARIOS = {
+    "line_geometry": deck_line_geometry,
+    "line_geometry_reduce": deck_line_geometry_reduce,
+    "line_spacing": deck_line_spacing,
+    "cable_cn": deck_cable_cn,
+}
+
+
+def build(d, name: str, cmds: list[str]) -> dict:
+    d.Text.Command = "clear"
+    for c in cmds:
+        d.Text.Command = c
+    d.Text.Command = "solve"
+    ckt = d.ActiveCircuit
+    sol = ckt.Solution
+    if not bool(sol.Converged):
+        sys.exit(f"{name}: oracle did not converge — fix the deck")
+    varray = list(ckt.YNodeVarray)
+    elements = [capture_element(ckt, nm) for nm in ckt.AllElementNames]
+    return {
+        "name": name,
+        "commands": cmds,
+        "iterations": int(sol.Iterations),
+        "converged": True,
+        "node_order": list(ckt.YNodeOrder),
+        "v_re": varray[0::2],
+        "v_im": varray[1::2],
+        "line_yprim": capture_yprim(ckt, LINE),
+        "elements": elements,
+    }
+
+
+def main() -> None:
+    oracle = check_pin()
+    from dss import DSS as d
+
+    wanted = set(sys.argv[1:])
+    unknown = wanted - set(SCENARIOS)
+    if unknown:
+        sys.exit(f"unknown scenario(s): {sorted(unknown)}; known: {sorted(SCENARIOS)}")
+    names = [n for n in SCENARIOS if not wanted or n in wanted]
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        sc = build(d, name, SCENARIOS[name]())
+        path = OUT_DIR / f"{name}.json"
+        path.write_text(
+            json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
+        )
+        print(f"wrote {path.relative_to(REPO_ROOT)}")
+
+    # On a full regen, drop any stale scenario files no longer in the registry.
+    if not wanted:
+        for p in OUT_DIR.glob("*.json"):
+            if p.stem not in SCENARIOS:
+                p.unlink()
+                print(f"removed stale {p.relative_to(REPO_ROOT)}")
+
+
+if __name__ == "__main__":
+    main()
