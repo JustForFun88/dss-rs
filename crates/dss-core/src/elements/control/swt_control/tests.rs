@@ -253,6 +253,50 @@ fn reset_control_side_restores_normal_state() {
 }
 
 #[test]
+fn locked_ignores_normal_and_state_writes() {
+    // ConditionalReadOnly on Locked applies to Normal and State too (not just
+    // Action): a locked write is dropped and its side effect is skipped.
+    let mut sw = SwtControl::new("sw1");
+    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.locked = true;
+    // Normal: write rejected, NormalState untouched (stays CTRL_NONE).
+    sw.set_i32(prop::NORMAL, CTRL_OPEN);
+    sw.side_effects(prop::NORMAL, 0);
+    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert_eq!(sw.normal_state, CTRL_NONE);
+    // State: write rejected, no PresentState change and no deferred force queued.
+    sw.set_i32(prop::STATE, CTRL_OPEN);
+    sw.side_effects(prop::STATE, 0);
+    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert_eq!(sw.present_state, CTRL_CLOSE);
+    assert!(sw.take_ref_actions().is_empty());
+}
+
+#[test]
+fn reset_yes_unlocks_and_restores_with_force() {
+    // Pascal DoReset: Locked := FALSE, then Reset (restore + element force).
+    let mut sw = SwtControl::new("sw1");
+    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.locked = true;
+    sw.normal_state = CTRL_CLOSE;
+    sw.present_state = CTRL_OPEN;
+    sw.current_action = CTRL_OPEN;
+    sw.armed = true;
+    sw.set_bool(prop::RESET, true); // Reset=yes
+    assert!(!sw.locked); // unlocked first
+    assert_eq!(sw.present_state, CTRL_CLOSE);
+    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert!(!sw.armed);
+    // A deferred close-force on the controlled element was queued.
+    let actions = sw.take_ref_actions();
+    assert_eq!(actions.len(), 1);
+    match actions[0] {
+        crate::obj::base::RefAction::SetSwitchClosed { closed, .. } => assert!(closed),
+        _ => panic!("expected SetSwitchClosed"),
+    }
+}
+
+#[test]
 fn make_like_copies_switch_state() {
     let mut base = SwtControl::new("base");
     base.ccd.cd.nphases = 1;
@@ -359,4 +403,39 @@ fn state_open_forces_line_open_at_parse() {
         "state=open should force the line open at parse"
     );
     assert!(term1_max_current(&mut dss, "Line.l2") > 1.0);
+}
+
+/// `Reset` (DoResetControls) drives the dispatch Reset arm: it restores the
+/// switch to `NormalState` and re-forces the controlled element. With
+/// `normal=closed`, a line opened via `state=open` is re-closed by `reset`
+/// (oracle-probed: `reset` ⇒ l1 closed again).
+#[test]
+fn reset_restores_switch_to_normal_via_dispatch() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new line.l1 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+        "new line.l2 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1",
+        "new load.ld bus1=b phases=3 kv=12.47 kw=300",
+        "new swtcontrol.sw1 switchedobj=line.l1 switchedterm=1 normal=closed state=open",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "engine errors: {:?}", dss.errors());
+    assert!(
+        term1_max_current(&mut dss, "Line.l1") < 1.0,
+        "state=open should leave l1 open before reset"
+    );
+    // Reset restores to NormalState (closed) and re-forces the controlled line.
+    dss.command("reset");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "engine errors: {:?}", dss.errors());
+    assert!(
+        term1_max_current(&mut dss, "Line.l1") > 1.0,
+        "reset (normal=closed) should re-close the switched line"
+    );
 }
