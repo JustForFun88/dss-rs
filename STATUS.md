@@ -71,7 +71,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 415, golden_feeders 1,
+cargo test --workspace      # dss-core lib 418, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -885,14 +885,27 @@ simplest control of the WP7.2 set — no TCC/sensing — so it lands the generic
   `Reset`, `MakeLike`, plus two executive tests (a parallel-fed switch opening on
   `action=open` in a duty solve; `state=open` forcing the line open at parse). The
   event-log line format is `Element=SwtControl.sw1, Action=OPENED` (probe-confirmed
-  it logs without `Set Log=yes`). dss-core lib **401→415**; full three-command
-  gate green on **stable**.
+  it logs without `Set Log=yes`). dss-core lib **401→415** (→418 with the
+  audit-tests follow-up); full three-command gate green on **stable**.
 - **Corpus migration deferred to the WP7.2 gate (step 4):** the lone corpus
   SwtControl case (only bare `switchedobj=` appears — no `action`/`state`/`lock`
   usage across the corpus) migrates with the rest of the
   `unsupported_class={Fault,Fuse,Recloser,Relay,SwtControl}` set once the protection
   block is complete (PHASE7_PLAN §3 WP7.2 step 4), alongside the targeted
   `phase7/protection*.json` golden.
+- **Audit-code follow-up:** none — the port is faithful 1:1 to `SwtControl.pas`;
+  the three surfaced notes (the typed `GetState` accessor is unreachable in this
+  CAPI-less port — the `?` dump uses `CurrentAction` on both engines; Reset flags
+  `system_y_changed` only on an actual state change, matching the CapControl
+  `reset_with` precedent; LOCK/UNLOCK skip the no-op `ActiveTerminalIdx` set) are
+  all non-load-bearing and need no change.
+- **Audit-tests follow-up:** the audit found two genuinely-untested new paths and
+  one under-pinned guard; added 3 tests (dss-core lib **415→418**): an executive
+  `reset_restores_switch_to_normal_via_dispatch` (the dispatch `Reset` element-force
+  — `reset` re-closes a `state=open` line; oracle-probed), a `reset_yes_unlocks_and_
+  restores_with_force` (the `Reset=yes`/DoReset unlock + restore + deferred force),
+  and `locked_ignores_normal_and_state_writes` (the ConditionalReadOnly guard on
+  Normal/State, previously pinned only for Action). Gate green.
 
 ---
 
