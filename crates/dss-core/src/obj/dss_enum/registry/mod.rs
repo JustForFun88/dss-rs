@@ -67,6 +67,8 @@ impl EnumRegistry {
             storage_ctrl_charge_mode: control.storage_ctrl_charge_mode,
             swt_control_action: control.swt_control_action,
             swt_control_state: control.swt_control_state,
+            fuse_action: control.fuse_action,
+            fuse_state: control.fuse_state,
             add_type: solution.add_type,
         }
     }

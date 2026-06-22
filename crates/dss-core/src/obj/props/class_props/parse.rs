@@ -378,6 +378,31 @@ impl ClassProps {
                 obj.set_struct_i32_array(idx, &ords);
                 Ok(0)
             }
+            PropType::MappedStringEnumArray => {
+                // Pascal `MappedStringEnumArrayProperty` + `SizeIsFunction`: a
+                // list of enum strings up to the object-computed count
+                // (`GetFuseStateSize`). A short input sets only the leading
+                // elements; the rest keep their prior value.
+                let enum_id = pd.enum_id.expect("enum-array property needs an enum");
+                let count = obj.array_size(idx);
+                eng.parser.set_auto_increment(false);
+                eng.parser.set_cmd_string(value);
+                let mut ords = Vec::with_capacity(count);
+                for _ in 0..count {
+                    eng.parser.next_param(eng.vars);
+                    let token = eng.parser.make_string(eng.vars);
+                    if token.is_empty() {
+                        break;
+                    }
+                    let ord = eng
+                        .enums
+                        .get(enum_id)
+                        .string_to_ordinal(&token.to_lowercase())?;
+                    ords.push(ord);
+                }
+                obj.set_enum_array(idx, &ords);
+                Ok(0)
+            }
             PropType::BusOnStruct => {
                 obj.set_active_struct_bus(value);
                 Ok(0)

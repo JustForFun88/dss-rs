@@ -134,6 +134,18 @@ pub enum RefAction {
         terminal: usize,
         closed: bool,
     },
+    /// Fuse `State=`/`Action=`: force the controlled element's 1-based
+    /// `terminal` conductors **per phase** (Pascal `State`'s side effect
+    /// `for i := 1 to NPhases do Closed[i] := …`). `closed[i]` is the desired
+    /// state of phase conductor `i+1`; unlike [`Self::SetSwitchClosed`] (which
+    /// opens/closes the whole terminal) a Fuse can leave individual phases
+    /// blown. Applied generically through the target's
+    /// [`CktElement`](crate::elements::traits::CktElement) base.
+    SetConductorsClosed {
+        target: crate::elements::traits::ElemRef,
+        terminal: usize,
+        closed: Vec<bool>,
+    },
 }
 
 impl RefAction {
@@ -142,6 +154,7 @@ impl RefAction {
         match self {
             RefAction::SetTransformerTap { target, .. } => *target,
             RefAction::SetSwitchClosed { target, .. } => *target,
+            RefAction::SetConductorsClosed { target, .. } => *target,
         }
     }
 }
@@ -295,6 +308,17 @@ pub trait DssObject {
     fn set_struct_i32_array(&mut self, idx: usize, values: &[i32]) {
         let _ = values;
         unreachable!("set_struct_i32_array not implemented for property {idx}")
+    }
+    /// `MappedStringEnumArrayProperty` read (e.g. a Fuse `State`/`Normal`): the
+    /// per-phase enum ordinals (at least `array_size(idx)` long).
+    fn get_enum_array(&self, idx: usize) -> Vec<i32> {
+        unreachable!("get_enum_array not implemented for property {idx}")
+    }
+    /// `MappedStringEnumArrayProperty` write: ordinals for the leading elements
+    /// (a short list leaves the trailing elements unchanged).
+    fn set_enum_array(&mut self, idx: usize, values: &[i32]) {
+        let _ = values;
+        unreachable!("set_enum_array not implemented for property {idx}")
     }
 
     /// `BusProperty` write: `terminal` is 1-based (`PropertyOffset`); the

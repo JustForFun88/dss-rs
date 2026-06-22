@@ -96,6 +96,59 @@ fn abbreviations_and_order_independence() {
     assert_eq!(canonical, odd);
 }
 
+/// Build a `TccCurveObj` from explicit npts/c/t edits (for the trip-time tests).
+fn build_curve(npts: &str, c: &str, t: &str) -> TccCurveObj {
+    let cls = class_props(&EnumRegistry::new());
+    let mut obj = TccCurveObj::new("c");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let enums = EnumRegistry::new();
+    let mut errors = Vec::new();
+    for (n, v) in [("npts", npts), ("C_array", c), ("T_array", t)] {
+        let idx = cls.property_index(n).unwrap();
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, v, &mut eng).unwrap();
+    }
+    assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    obj
+}
+
+#[test]
+fn get_tcc_time_log_log_interpolates_tlink() {
+    // The built-in `tlink` curve (Executive.pas CreateDefaultDSSItems).
+    let mut tlink = build_curve("7", "2 2.1 3 4 6 22 50", "300 100 10.1 4 1.4 0.1 0.02");
+    // Below the first point: no operation.
+    assert_eq!(tlink.get_tcc_time(1.5), -1.0);
+    // First point (exact, via the interpolation branch with zero numerator).
+    assert!((tlink.get_tcc_time(2.0) - 300.0).abs() < 1e-9);
+    // Direct hits.
+    assert!((tlink.get_tcc_time(3.0) - 10.1).abs() < 1e-12);
+    assert!((tlink.get_tcc_time(22.0) - 0.1).abs() < 1e-12);
+    // Log-log interpolation between bracketing points (Python reference).
+    assert!((tlink.get_tcc_time(5.0) - 2.2446184565202234).abs() < 1e-12);
+    assert!((tlink.get_tcc_time(8.0) - 0.780471273839859).abs() < 1e-12);
+    // At/above the last point: the last value.
+    assert!((tlink.get_tcc_time(100.0) - 0.02).abs() < 1e-12);
+}
+
+#[test]
+fn get_tcc_time_single_point_and_empty() {
+    // Npts=1: always the single time (when at/above the point).
+    let mut one = build_curve("1", "2", "5");
+    assert_eq!(one.get_tcc_time(1.0), -1.0); // below the point
+    assert!((one.get_tcc_time(2.0) - 5.0).abs() < 1e-12);
+    assert!((one.get_tcc_time(50.0) - 5.0).abs() < 1e-12);
+    // Npts=0: never operates.
+    let mut empty = TccCurveObj::new("e");
+    assert_eq!(empty.get_tcc_time(99.0), -1.0);
+}
+
 #[test]
 fn log_points_track_c_array() {
     // CalcLogPoints side effect: log_c[i] = ln(c[i]).

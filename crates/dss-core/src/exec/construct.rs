@@ -124,10 +124,18 @@ impl Dss {
                 |name| Box::new(storage_controller::StorageController::new(name)),
                 ElemKind::Control,
             ),
+            // Fuse is a TControlElem (joins the control sweep) despite living in
+            // the Pascal PDElements tree; registered with the protection controls
+            // (Pascal DSSClassDefs.pas Relay/Recloser/Fuse — Relay/Recloser land
+            // in later WP7.2 sub-steps). Registration order does not affect node
+            // ordering, which follows element creation order.
+            DssClass::ckt_class(
+                fuse::class_props(&enums),
+                |name| Box::new(fuse::Fuse::new(name)),
+                ElemKind::Control,
+            ),
             // SwtControl is the last of the protection controls (Pascal
-            // DSSClassDefs.pas:249, after Relay/Recloser/Fuse — those land in
-            // later WP7.2 sub-steps; class registration order does not affect
-            // node ordering, which follows element creation order).
+            // DSSClassDefs.pas:249).
             DssClass::ckt_class(
                 swt_control::class_props(&enums),
                 |name| Box::new(swt_control::SwtControl::new(name)),
