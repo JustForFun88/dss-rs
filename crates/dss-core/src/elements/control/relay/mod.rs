@@ -313,6 +313,9 @@ pub struct Relay {
 
     /// `DebugTrace` (no trace file is written; round-tripped only).
     debug_trace: bool,
+    /// Latch so the deferred Generic/TD21 `NOT_PORTED` error is recorded only
+    /// once per object (not once per control iteration).
+    not_ported_logged: bool,
 
     /// Deferred parse-time element forces (the `RecalcElementData` Closed[0] sync).
     pending_ref_actions: Vec<RefAction>,
@@ -403,6 +406,7 @@ impl Relay {
             next_trip_time: -1.0,
             last_event_handle: 0,
             debug_trace: false,
+            not_ported_logged: false,
             pending_ref_actions: Vec::new(),
         }
     }
@@ -442,6 +446,11 @@ impl Relay {
                 self.num_reclose = 3;
             }
             ctype::VOLTAGE => {
+                // Pascal sets `RecloseIntervals[3]:=5.0; NumReclose:=1`. With
+                // NumReclose 1 the reclose reads `RecloseIntervals[OperationCount]`
+                // = `[1]` (the 0.5 constructor default), so this 5.0 is dead
+                // unless OperationCount reaches 3 — a faithful upstream quirk
+                // (`Relay.pas:573` vs `:2309`); do not "simplify" it away.
                 self.reclose_intervals[2] = 5.0;
                 self.num_reclose = 1;
             }
@@ -568,17 +577,30 @@ impl Relay {
             ctype::DOC => self.directional_overcurrent_logic(mon, ctx),
             // NOT_PORTED(WP7.7): the dynamics-coupled sub-types. Their property
             // surface parses + dumps; only the live sensing is deferred (no
-            // corpus case exercises them).
-            ctype::GENERIC => ctx.errors.push(format!(
-                "Relay \"{}\": Type=Generic Sample is NOT_PORTED (needs WP7.7 PC state variables).",
-                self.ccd.cd.obj.name()
-            )),
-            ctype::TD21 => ctx.errors.push(format!(
-                "Relay \"{}\": Type=TD21 Sample is NOT_PORTED (needs WP7.7 dynamics step).",
-                self.ccd.cd.obj.name()
-            )),
+            // corpus case exercises them). Recorded **once** per object so a
+            // converging run doesn't accrue a duplicate line per control
+            // iteration (audit-code follow-up).
+            ctype::GENERIC | ctype::TD21 => self.record_not_ported_once(ctx),
             _ => {}
         }
+    }
+
+    /// Push the deferred-sub-type `NOT_PORTED` error to `ctx.errors`, but only on
+    /// the first `Sample` (the `not_ported_logged` latch) — see the dispatch.
+    fn record_not_ported_once(&mut self, ctx: &mut CtrlCtx) {
+        if self.not_ported_logged {
+            return;
+        }
+        self.not_ported_logged = true;
+        let what = if self.control_type == ctype::GENERIC {
+            "Type=Generic (needs WP7.7 PC state variables)"
+        } else {
+            "Type=TD21 (needs WP7.7 dynamics step)"
+        };
+        ctx.errors.push(format!(
+            "Relay \"{}\": {what} Sample is NOT_PORTED.",
+            self.ccd.cd.obj.name()
+        ));
     }
 
     /// Pascal `TRelayObj.DoPendingAction`: execute a popped queue action — OPEN
