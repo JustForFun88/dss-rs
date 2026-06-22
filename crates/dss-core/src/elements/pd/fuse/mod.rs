@@ -256,6 +256,14 @@ impl Fuse {
     fn recalc(&mut self) {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
+            if self.ccd.cd.nphases > FUSEMAXDIM {
+                // Pascal `fuse.pas` DoSimpleMsg 404 (a warning; the per-phase
+                // arrays are FUSEMAXDIM-capped — see `fuse_state_size`).
+                self.ccd.cd.obj.push_error(format!(
+                    "Warning: Fuse {}: Number of phases > Max fuse dimension.",
+                    self.ccd.cd.obj.name()
+                ));
+            }
             if self.monitored_element_terminal > mon.nterms as i32 {
                 self.ccd.cd.obj.push_error(format!(
                     "Fuse: \"{}\": Terminal no. \"{}\" does not exist. Re-specify terminal no. (Error 404)",
