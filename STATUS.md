@@ -1035,7 +1035,18 @@ sensing/TCC/per-phase machinery Recloser (2c) and Relay (2d) reuse.
   at parse (the `State=`/`Action=` force already drives it) and rides with the
   step-3 `HasOCPDevice` work; `CondOffset` is confirmed vestigial in Pascal (Sample
   reads `cBuffer[i]`). Gate green.
-<!-- AUDIT_TESTS_NOTE_PLACEHOLDER -->
+- **Audit-tests follow-up:** the `/audit-tests` pass found the partial-open
+  `reset_with` guard ineffective — its "all-closed target" seed made a reintroduced
+  aggregate gate (`was != want`) compute the same result as the correct code, so it
+  could not fail on the regression it names. **Reseeded** it to terminal
+  `[open, closed, closed]` + `normal=[CLOSE,OPEN,CLOSE]` so the aggregate reads false
+  **both before and after** the reset while phases 0/1 actually flip (proven: the
+  reseeded test now fails when the aggregate gate is reintroduced; the old seed did
+  not). Also strengthened the event-log assertion to the full normalized line
+  (`Element=Fuse.f1, Action=PHASE N BLOWN`) and added two tests: a `RatedCurrent`
+  divisor trip (`5 A / 10 A = 0.5 pu` below pickup → no arm — pins `Cmag/RatedCurrent`
+  against a dropped/inverted divisor) and the missing-`SwitchedObj` error path
+  (Pascal `#405`, oracle-confirmed). dss-core lib **435→437**. Gate green.
 
 ---
 
