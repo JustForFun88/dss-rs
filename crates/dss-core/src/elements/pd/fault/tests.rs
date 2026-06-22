@@ -203,3 +203,36 @@ fn temporary_fault_applies_in_duty_mode() {
         dss.event_log()
     );
 }
+
+/// A temporary fault whose `MinAmps` exceeds its fault current self-clears the
+/// step after it applies: `**APPLIED**` then `**CLEARED**` (oracle-probed).
+#[test]
+fn temporary_fault_clears_below_minamps() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new line.l1 bus1=src bus2=b r1=0.3 x1=0.6 length=1",
+        // MinAmps above the ~1342 A fault current → FaultStillGoing is false.
+        "new fault.f phases=3 bus1=b r=5 ontime=0.5 temporary=yes minamps=99999",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "set mode=duty number=1 stepsize=1 hour=0",
+        "solve", // t -> 1, above ONtime: applies
+        "solve", // t -> 2: current below MinAmps -> self-clears
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "engine errors: {:?}", dss.errors());
+    let log = dss.event_log();
+    assert!(
+        log.iter()
+            .any(|s| s.contains("Element=Fault.f, Action=**APPLIED**")),
+        "expected **APPLIED**; log = {log:?}"
+    );
+    assert!(
+        log.iter()
+            .any(|s| s.contains("Element=Fault.f, Action=**CLEARED**")),
+        "expected **CLEARED**; log = {log:?}"
+    );
+}
