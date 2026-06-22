@@ -65,7 +65,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done** (Carson line constants + `WireData`/`CNData`/`TSData`/`LineSpacing`/`LineGeometry` catalog + Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` fetch + corpus migration to `solvable_now` 17→35 + the targeted golden `phase7/line_geometry*.json`); **WP7.2 (Protection) in progress — step 1 done** (the `Fault` element + `Check_Fault_Status`/`DoResetFaults` wiring) **+ step 2a done** (`SwtControl` switch control on the WP5.7 sweep); **next = WP7.2 step 2b (Fuse/Recloser/Relay — the TCC/sensing protection controls)** |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a done**; **next = WP7.2 step 2b (Fuse/Recloser/Relay)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
