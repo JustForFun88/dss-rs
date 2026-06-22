@@ -1,0 +1,167 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "fault",
+ "scenarios": [
+  {
+   "name": "fault_default",
+   "commands": [
+    "New Fault.f1"
+   ],
+   "target": "Fault.f1",
+   "properties": {
+    "Bus1": "f1_1",
+    "Bus2": "f1_1.0",
+    "Phases": "1",
+    "R": "0.0001",
+    "%StdDev": "0",
+    "GMatrix": "(0 )",
+    "OnTime": "0",
+    "Temporary": "No",
+    "MinAmps": "5",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fault_r",
+   "commands": [
+    "New Fault.f1 bus1=b1 phases=3 r=2.5"
+   ],
+   "target": "Fault.f1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "3",
+    "R": "2.5",
+    "%StdDev": "0",
+    "GMatrix": "(0 |0 0 |0 0 0 )",
+    "OnTime": "0",
+    "Temporary": "No",
+    "MinAmps": "5",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fault_bus2_series",
+   "commands": [
+    "New Fault.f1 bus1=b1 bus2=b2 phases=3 r=1"
+   ],
+   "target": "Fault.f1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b2",
+    "Phases": "3",
+    "R": "1",
+    "%StdDev": "0",
+    "GMatrix": "(0 |0 0 |0 0 0 )",
+    "OnTime": "0",
+    "Temporary": "No",
+    "MinAmps": "5",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fault_gmatrix",
+   "commands": [
+    "New Fault.f1 bus1=b1 phases=2 Gmatrix=(1 | 0.5 2)"
+   ],
+   "target": "Fault.f1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "2",
+    "R": "0.0001",
+    "%StdDev": "0",
+    "GMatrix": "(0 |0 0 )",
+    "OnTime": "0",
+    "Temporary": "No",
+    "MinAmps": "5",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fault_temporary",
+   "commands": [
+    "New Fault.f1 bus1=b1 phases=1 r=1 ontime=0.5 temporary=yes minamps=20 %stddev=5"
+   ],
+   "target": "Fault.f1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b1.0.0.0",
+    "Phases": "1",
+    "R": "1",
+    "%StdDev": "5",
+    "GMatrix": "(0 )",
+    "OnTime": "0.5",
+    "Temporary": "Yes",
+    "MinAmps": "20",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "fault_makelike",
+   "commands": [
+    "New Fault.base bus1=b1 phases=3 r=3 minamps=8",
+    "New Fault.f1 like=base"
+   ],
+   "target": "Fault.f1",
+   "properties": {
+    "Bus1": "f1_1",
+    "Bus2": "f1_1.0",
+    "Phases": "3",
+    "R": "3",
+    "%StdDev": "0",
+    "GMatrix": "(0 |0 0 |0 0 0 )",
+    "OnTime": "0",
+    "Temporary": "No",
+    "MinAmps": "8",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

@@ -96,8 +96,8 @@ impl Dss {
         let param = self.parser.make_string(&self.vars).to_uppercase();
         let b = param.as_bytes();
         // Decode the Pascal `case Param[1] of` dispatch into a set of targets.
-        let (do_monitors, do_meters, do_controls, do_eventlog) = if param.is_empty() {
-            (true, true, true, true)
+        let (do_monitors, do_meters, do_faults, do_controls, do_eventlog) = if param.is_empty() {
+            (true, true, true, true, true)
         } else {
             match b.first() {
                 Some(&b'M') => (
@@ -105,12 +105,14 @@ impl Dss {
                     b.get(1) == Some(&b'E'),
                     false,
                     false,
+                    false,
                 ),
-                Some(&b'C') => (false, false, true, false),
-                Some(&b'E') => (false, false, false, true),
-                // `F` (faults) / `K` (keep list) are later-phase classes; accept
-                // the selector without erroring so scripts don't abort.
-                Some(&b'F') | Some(&b'K') => (false, false, false, false),
+                Some(&b'F') => (false, false, true, false, false),
+                Some(&b'C') => (false, false, false, true, false),
+                Some(&b'E') => (false, false, false, false, true),
+                // `K` (keep list) is a later-phase class; accept the selector
+                // without erroring so scripts don't abort.
+                Some(&b'K') => (false, false, false, false, false),
                 _ => {
                     self.errors
                         .push(format!("Unknown argument to Reset Command: \"{param}\""));
@@ -139,6 +141,10 @@ impl Dss {
         }
         if do_meters {
             crate::solution::meters::reset_all_meters(ckt, env.store);
+        }
+        if do_faults {
+            // Pascal `DoResetFaults`: `Reset()` on every Fault.
+            crate::solution::faults::reset_faults(ckt, &mut env);
         }
         if do_controls {
             // Pascal `DoResetControls`: `Reset()` on every enabled control.

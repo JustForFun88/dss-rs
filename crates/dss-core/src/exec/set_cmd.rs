@@ -90,8 +90,8 @@ impl Dss {
                             && crate::solution::set_mode(ckt, SolveMode::from_ordinal(v), errors)
                         {
                             // Pascal `Set_Mode` tail: monitor/meter resets are
-                            // Phase 6 no-ops, there are no Fault elements yet
-                            // (Phase 7), and `DoResetControls` runs here.
+                            // Phase 6 no-ops; `DoResetFaults` and
+                            // `DoResetControls` run here.
                             let mut store = ClassStore { classes };
                             let mut env = SolveEnv {
                                 store: &mut store,
@@ -99,6 +99,7 @@ impl Dss {
                                 vars,
                                 errors,
                             };
+                            crate::solution::faults::reset_faults(ckt, &mut env);
                             if let Err(e) =
                                 crate::solution::controls::reset_all_controls(ckt, &mut env)
                             {

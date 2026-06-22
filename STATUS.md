@@ -8,8 +8,8 @@
 > frontier.
 
 Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`): **WP7.1 COMPLETE (steps 1–5); next = WP7.2
-(Protection)**. WP7.1 landed the Carson line-constants engine
+`phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) IN PROGRESS —
+step 1 done** (the `Fault` element). WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -17,6 +17,10 @@ feeders into `solvable_now` (**17→35**); and (step 5) added the §1 tier-1
 **targeted golden** `phase7/line_geometry*.json` (`gen_phase7.py` +
 `golden_phase7.rs`, **5 scenarios** pinning the Carson geometry/spacing/cable Line
 **YPrim** offline — the focused regression guard the live gate doesn't replace).
+**WP7.2 step 1** landed the `Fault` element (`pd/fault.rs`): an uncoupled
+conductance branch (`G=1/r` / `Gmatrix`), registered + on a new `Circuit.faults`
+list, with the `Check_Fault_Status`/`DoResetFaults` control-loop wiring now live
+(temporary-fault apply/clear); `props.json` `fault.json` + 8 oracle-pinned tests.
 Full per-step detail in **§1e**.
 
 **This session also:** (1) resolved the 3 large EPRI/ADiakoptics power
@@ -55,13 +59,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done** (steps 1–5: Carson line constants + `WireData`/`CNData`/`TSData`/`LineSpacing`/`LineGeometry` catalog + Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` fetch + corpus migration to `solvable_now` 17→35 + the targeted golden `phase7/line_geometry*.json`); **next = WP7.2 (Protection)** |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done** (Carson line constants + `WireData`/`CNData`/`TSData`/`LineSpacing`/`LineGeometry` catalog + Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` fetch + corpus migration to `solvable_now` 17→35 + the targeted golden `phase7/line_geometry*.json`); **WP7.2 (Protection) in progress — step 1 done** (the `Fault` element + `Check_Fault_Status`/`DoResetFaults` wiring); **next = WP7.2 step 2 (Fuse/Recloser/Relay/SwtControl controls)** |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 392, golden_feeders 1,
+cargo test --workspace      # dss-core lib 400, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -781,6 +785,45 @@ commit (`d418eba`, live-corpus migration only) had left unbuilt.
   confirmed the comparison is wired, not a no-op. `audit-code` was N/A (this step
   changed no implementation — only test infra, the `collapsible_match` allow, and
   docs). Gate green.
+
+### 1e WP7.2 step 1 — the `Fault` element (`pd/fault.rs`) — ✅ done, gate-green
+
+First step of WP7.2 (Protection): the `Fault` object (`PDElements/Fault.pas`,
+`TFaultObj`) — an uncoupled multi-phase **conductance** branch and the FaultStudy
+input (WP7.9). Landed registered, snapshot-solvable, and pinned offline.
+- `crates/dss-core/src/elements/pd/fault.rs` (+ `fault/tests.rs`): the element
+  (`define_properties!`-style `class_props`, struct, side effects, `MakeLike`),
+  `CalcYPrim` (SpecType 1 = single `G=1/r` diagonal; SpecType 2 = `Gmatrix`), and
+  the time-mode `CheckStatus`/`Reset`/`FaultStillGoing` (enable past `ONtime`,
+  temporary self-clear below `MinAmps`). `r` stores its inverse `G`
+  (`InverseValue`); `GMatrix` shares the oracle's DoubleSymMatrix garbage-getter
+  bug (rendered zeros, like Capacitor.CMatrix).
+- Class type `FAULTOBJECT or NON_PCPD_ELEM`: a `TPDElement` with a YPrim in the
+  system Y but **excluded** from `pd_elements` (Pascal `AddCktElement`) — added to
+  `ckt_elements` (so it stamps) + a new `Circuit.faults` list only. New
+  `ElemKind::Fault`; registered after Reactor (`construct.rs`, DSSClassDefs:222).
+- **Control-loop wiring** (the dormant Phase-7 placeholders, now live): a new
+  `solution/faults.rs` with `check_fault_status` (the control-iteration loop,
+  `power_flow.rs` — sets `system_y_changed` when a fault toggles `Is_ON`, per
+  Pascal `Set_YprimInvalid`→`SystemYChanged`) and `reset_faults` (`DoResetFaults`,
+  wired into the `Set mode=` tail and `Reset Faults` 'F' selector). Duty/event/time
+  modes set `control_mode = TIMEDRIVEN`, so `CheckStatus` fires; snapshot is
+  `CTRLSTATIC` (no-op).
+- **MonteFault** randomization (`Randomize` + `RandomMult` jitter) is deferred with
+  its solve loop to WP7.9; `CalcYPrim` keeps the Pascal `RandomMult = 1.0` guard
+  for every non-MonteFault mode, so the field is inert but faithful.
+- Gates (all oracle-probed): `props.json` `fault.json` (6 scenarios) via
+  `gen_props.py`; 8 inline tests pinning YPrim entry-by-entry (1φ `r`, 3φ `r`, 2φ
+  `Gmatrix`, off=zero), a snapshot 3φ fault drawing **1342.808 A** (full-circuit),
+  and a duty-mode temporary fault logging **`**APPLIED**`** at the probed step.
+  `gen_props.py` `_NUM_RE` extended to zero the non-finite `Nan`/`Inf` the oracle's
+  garbage matrix getter can emit (3φ `GMatrix`). dss-core lib **392→400**; full
+  three-command gate green on **stable**.
+- **Corpus migration deferred to the WP7.2 gate (step 4):** the
+  `unsupported_class={Fault,Fuse,Recloser,Relay,SwtControl}` cases migrate once the
+  protection set is complete (PHASE7_PLAN §3 WP7.2 step 4). Audits + a targeted
+  `phase7/protection*.json` golden are part of that gate; the two per-step audits
+  for this sub-step run next.
 
 ---
 

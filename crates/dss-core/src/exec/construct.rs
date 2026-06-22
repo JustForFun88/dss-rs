@@ -89,6 +89,12 @@ impl Dss {
                 |name| Box::new(reactor::Reactor::new(name)),
                 ElemKind::Reactor,
             ),
+            // Fault registers right after Reactor (Pascal DSSClassDefs.pas:222).
+            DssClass::ckt_class(
+                fault::class_props(&enums),
+                |name| Box::new(fault::Fault::new(name)),
+                ElemKind::Fault,
+            ),
             DssClass::ckt_class(
                 reg_control::class_props(&enums),
                 |name| Box::new(reg_control::RegControl::new(name)),

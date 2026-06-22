@@ -263,7 +263,7 @@ fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
                 );
             }
             crate::solution::controls::sample_do_control_actions(ckt, env)?;
-            // Check_Fault_Status: no Fault elements until Phase 7 — no-op.
+            crate::solution::faults::check_fault_status(ckt, env)?;
         } else {
             ckt.solution.control_actions_done = true; // Stop if failure to converge
         }

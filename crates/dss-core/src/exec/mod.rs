@@ -35,7 +35,7 @@ pub(crate) use crate::elements::meter::energymeter;
 pub(crate) use crate::elements::meter::monitor;
 pub(crate) use crate::elements::meter::sensor;
 pub(crate) use crate::elements::pc::{generator, load, vsource};
-pub(crate) use crate::elements::pd::{capacitor, line, reactor, transformer};
+pub(crate) use crate::elements::pd::{capacitor, fault, line, reactor, transformer};
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};
