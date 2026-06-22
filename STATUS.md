@@ -23,14 +23,13 @@ list, with the `Check_Fault_Status`/`DoResetFaults` control-loop wiring now live
 (temporary-fault apply/clear); `props.json` `fault.json` + 8 oracle-pinned tests.
 Full per-step detail in **§1e**.
 
-**This session also:** (1) resolved the 3 large EPRI/ADiakoptics power
-divergences (`c7c6649`/`6d3b9ac` — a **voltage-scaled power floor**,
-`assert_power_close`, the current-floor image through `P=V·conj(I)`; `solvable_now`
-32→35; §1e-follow-up); (2) added `#![allow(clippy::collapsible_match)]` to
-`dss-core` (`d85d026`) — clippy 0.1.96, now on stable, mis-fires that lint on the
-byte-faithful `match prop { CONST => if cond {..} }` port idiom (its autofix even
-drops `else` branches). **The gate runs on `stable`** (`cargo +stable …`), matching
-CI (`dtolnay/rust-toolchain@stable`) — there is no nightly toolchain dependency.
+**Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
+matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
+carries `#![allow(clippy::collapsible_match)]` (`d85d026`): clippy 0.1.96 (now on
+stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
+{..} }` port idiom, and its autofix even drops `else` branches. (The earlier
+WP7.1-session EPRI/ADiakoptics power-floor fix — `c7c6649`/`6d3b9ac`,
+`solvable_now` 32→35 — is in §1e-follow-up.)
 
 Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 §Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
