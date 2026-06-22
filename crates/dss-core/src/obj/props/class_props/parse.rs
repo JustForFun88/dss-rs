@@ -319,6 +319,12 @@ impl ClassProps {
                 // pass the supplied values (clamped to `max` for memory safety —
                 // the Pascal >max path reads uninitialized memory, an unpinnable
                 // garbage edge), so the object's count never exceeds the buffer.
+                // Pascal `AllowNone` (DSSObjectHelper.pas:592): the literal
+                // `NONE` clears the array (count 0). Length-4 + case-insensitive.
+                if pd.flags.contains(PropFlags::ALLOW_NONE) && value.eq_ignore_ascii_case("none") {
+                    obj.set_f64_array(idx, Vec::new());
+                    return Ok(0);
+                }
                 let max = pd.size_prop;
                 let mut buf = vec![0.0; max];
                 eng.parser.set_auto_increment(false);

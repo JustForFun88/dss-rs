@@ -41,6 +41,11 @@ impl PropFlags {
     /// [`DssObject::array_size`](crate::obj::base::DssObject::array_size) of
     /// them. Used by Recloser/Relay `RecloseIntervals`.
     pub const ARRAY_MAX_SIZE: Self = Self(1 << 12);
+    /// Pascal `AllowNone`: a `DoubleVArrayProperty` whose **dump renders
+    /// `[NONE]`** (not `[]`) when its element count is 0
+    /// (`DSSObjectHelper.pas:2274`), and whose parse accepts the literal `NONE`
+    /// to clear it. Used by Relay `RecloseIntervals` (`Type=DOC` ⇒ NumReclose 0).
+    pub const ALLOW_NONE: Self = Self(1 << 13);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

@@ -119,6 +119,71 @@ impl TccCurveObj {
         self.last_value_accessed = n - 1;
         t[n - 1]
     }
+
+    /// Pascal `TTCC_CurveObj.GetOVTime`: the over-voltage **definite-time**
+    /// operating time for a per-unit voltage `v_value`. Returns `-1.0` ("no op")
+    /// when `v_value` is at or below the first point. A plain forward scan to the
+    /// first point `≥ v_value` (no log-log interpolation, unlike
+    /// [`Self::get_tcc_time`]); mutates nothing, so the relay's clone shares the
+    /// curve read-only. Used by the over-voltage Relay branch.
+    pub fn get_ov_time(&self, v_value: f64) -> f64 {
+        let (Some(c), Some(t)) = (self.c_values.as_deref(), self.t_values.as_deref()) else {
+            return -1.0;
+        };
+        let n = self.npts.max(0) as usize;
+        if n == 0 {
+            return -1.0;
+        }
+        if v_value > c[0] {
+            if n == 1 {
+                return t[0];
+            }
+            // 1-based `i`: advance while `C[i] < v_value`, capped at Npts.
+            let mut i = 1usize;
+            while c[i - 1] < v_value {
+                i += 1;
+                if i > n {
+                    break;
+                }
+            }
+            // Pascal `T_Values[i - 1]` (1-based) = `t[i - 2]` (0-based); `i` is
+            // always ≥ 2 here (the first compare advanced it), so no underflow.
+            return t[i - 2];
+        }
+        -1.0
+    }
+
+    /// Pascal `TTCC_CurveObj.GetUVTime`: the under-voltage **definite-time**
+    /// operating time for a per-unit voltage `v_value`. Returns `-1.0` ("no op")
+    /// when `v_value` is at or above the last point. A plain backward scan to the
+    /// first point `≤ v_value`; mutates nothing. Used by the under-voltage Relay
+    /// branch.
+    pub fn get_uv_time(&self, v_value: f64) -> f64 {
+        let (Some(c), Some(t)) = (self.c_values.as_deref(), self.t_values.as_deref()) else {
+            return -1.0;
+        };
+        let n = self.npts.max(0) as usize;
+        if n == 0 {
+            return -1.0;
+        }
+        if v_value < c[n - 1] {
+            if n == 1 {
+                return t[0];
+            }
+            // 1-based `i`: retreat while `C[i] > v_value`, floored at 0.
+            let mut i = n;
+            while c[i - 1] > v_value {
+                i -= 1;
+                if i == 0 {
+                    break;
+                }
+            }
+            // Pascal `T_Values[i + 1]` (1-based) = `t[i]` (0-based); `i ≤ n-1`
+            // after the first retreat (and `t[0]` when it floored to 0).
+            return t[i];
+        }
+        -1.0
+    }
 }
 
 /// Pascal `ReAllocmem(arr, Sizeof(Double) * Npts)`: grow/shrink keeping the

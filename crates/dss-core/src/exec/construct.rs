@@ -124,10 +124,17 @@ impl Dss {
                 |name| Box::new(storage_controller::StorageController::new(name)),
                 ElemKind::Control,
             ),
+            // Relay is the most general protection control (Pascal
+            // DSSClassDefs.pas:240, before Recloser). Registration order does not
+            // affect node ordering, which follows element creation order.
+            DssClass::ckt_class(
+                relay::class_props(&enums),
+                |name| Box::new(relay::Relay::new(name)),
+                ElemKind::Control,
+            ),
             // Recloser is a protection control on the WP5.7 sweep (Pascal
-            // DSSClassDefs.pas:243, before Fuse). Relay (:240) lands in a later
-            // WP7.2 sub-step. Registration order does not affect node ordering,
-            // which follows element creation order.
+            // DSSClassDefs.pas:243, before Fuse). Registration order does not
+            // affect node ordering, which follows element creation order.
             DssClass::ckt_class(
                 recloser::class_props(&enums),
                 |name| Box::new(recloser::Recloser::new(name)),

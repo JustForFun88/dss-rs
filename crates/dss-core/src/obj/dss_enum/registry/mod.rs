@@ -71,6 +71,9 @@ impl EnumRegistry {
             fuse_state: control.fuse_state,
             recloser_action: control.recloser_action,
             recloser_state: control.recloser_state,
+            relay_type: control.relay_type,
+            relay_action: control.relay_action,
+            relay_state: control.relay_state,
             add_type: solution.add_type,
         }
     }

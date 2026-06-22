@@ -16,6 +16,9 @@ pub(super) struct ControlEnums {
     pub(super) fuse_state: EnumId,
     pub(super) recloser_action: EnumId,
     pub(super) recloser_state: EnumId,
+    pub(super) relay_type: EnumId,
+    pub(super) relay_action: EnumId,
+    pub(super) relay_state: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
@@ -146,6 +149,47 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["closed", "open", "trip"],
         &[2, 1, 1],
     ));
+    // Relay.pas TRelay.Create: RelayTypeEnum / ActionEnum / StateEnum. The type
+    // enum is non-sequential (its `46`/`47` ordinals skip `2`); `AltNamesValid`
+    // is false upstream, so only these primary spellings parse. CURRENT=0
+    // VOLTAGE=1 REVPOWER=3 NEGCURRENT=4 NEGVOLTAGE=5 GENERIC=6 DISTANCE=7 TD21=8
+    // DOC=9 (the `2` ordinal is deliberately unused upstream).
+    let relay_type = push(DssEnum::new(
+        "Relay: Type",
+        false,
+        1,
+        2,
+        &[
+            "Current",
+            "Voltage",
+            "ReversePower",
+            "46",
+            "47",
+            "Generic",
+            "Distance",
+            "TD21",
+            "DOC",
+        ],
+        &[0, 1, 3, 4, 5, 6, 7, 8, 9],
+    ));
+    // Action/State carry a third `trip` spelling that maps to CTRL_OPEN, exactly
+    // like the Recloser (the reverse-lookup of ordinal 1 picks `open`, not `trip`).
+    let relay_action = push(DssEnum::new(
+        "Relay: Action",
+        false,
+        1,
+        1,
+        &["close", "open", "trip"],
+        &[2, 1, 1],
+    ));
+    let relay_state = push(DssEnum::new(
+        "Relay: State",
+        false,
+        1,
+        1,
+        &["closed", "open", "trip"],
+        &[2, 1, 1],
+    ));
     ControlEnums {
         reg_control_phase,
         mon_phase,
@@ -158,5 +202,8 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         fuse_state,
         recloser_action,
         recloser_state,
+        relay_type,
+        relay_action,
+        relay_state,
     }
 }

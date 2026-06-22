@@ -150,6 +150,36 @@ fn get_tcc_time_single_point_and_empty() {
 }
 
 #[test]
+fn get_ov_time_definite_time_scan() {
+    // Over-voltage definite-time curve (pickup ascending in per-unit).
+    let ov = build_curve("3", "1.0 1.1 1.2", "10 5 1");
+    assert_eq!(ov.get_ov_time(1.0), -1.0); // at/below first point: no op
+    assert_eq!(ov.get_ov_time(0.5), -1.0);
+    assert!((ov.get_ov_time(1.05) - 10.0).abs() < 1e-12); // first bin
+    assert!((ov.get_ov_time(1.15) - 5.0).abs() < 1e-12); // second bin
+    assert!((ov.get_ov_time(1.25) - 1.0).abs() < 1e-12); // above last → last time
+    // Single point: any voltage above it returns the single time.
+    let one = build_curve("1", "1.0", "7");
+    assert_eq!(one.get_ov_time(0.5), -1.0);
+    assert!((one.get_ov_time(1.5) - 7.0).abs() < 1e-12);
+}
+
+#[test]
+fn get_uv_time_definite_time_scan() {
+    // Under-voltage definite-time curve (pickup ascending; scanned backward).
+    let uv = build_curve("3", "0.8 0.9 1.0", "10 5 1");
+    assert_eq!(uv.get_uv_time(1.0), -1.0); // at/above last point: no op
+    assert_eq!(uv.get_uv_time(1.5), -1.0);
+    assert!((uv.get_uv_time(0.95) - 1.0).abs() < 1e-12); // Pascal T_Values[i+1]
+    assert!((uv.get_uv_time(0.85) - 5.0).abs() < 1e-12);
+    assert!((uv.get_uv_time(0.75) - 10.0).abs() < 1e-12); // below first → first time
+    // Single point: any voltage below it returns the single time.
+    let one = build_curve("1", "1.0", "7");
+    assert_eq!(one.get_uv_time(1.5), -1.0);
+    assert!((one.get_uv_time(0.5) - 7.0).abs() < 1e-12);
+}
+
+#[test]
 fn log_points_track_c_array() {
     // CalcLogPoints side effect: log_c[i] = ln(c[i]).
     edit_and_dump(&[("npts", "2"), ("C_array", "1 100")]);

@@ -98,6 +98,12 @@ pub struct EnumRegistry {
     pub recloser_action: EnumId,
     /// 'Recloser: State' (Recloser.pas `StateEnum`).
     pub recloser_state: EnumId,
+    /// 'Relay: Type' (Relay.pas `RelayTypeEnum`).
+    pub relay_type: EnumId,
+    /// 'Relay: Action' (Relay.pas `ActionEnum`).
+    pub relay_action: EnumId,
+    /// 'Relay: State' (Relay.pas `StateEnum`).
+    pub relay_state: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
 }
