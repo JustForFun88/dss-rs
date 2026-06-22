@@ -27,6 +27,8 @@ Scenarios (one file each under tests/golden/phase7/):
   - line_spacing: 3-phase overhead via `spacing=` + `wires=` (FetchLineSpacing /
     SetWires / FMakeZFromSpacing).
   - cable_cn: 3-phase concentric-neutral cable via `geometry=` + `cncable=`.
+  - cable_ts: 3-phase tape-shield cable via `geometry=` + `tscable=` (the
+    TSData / TapeShield arm — CN/TS parity, the path twice flagged TS-zero-cov).
 
 Usage:
     python tools/golden/gen_phase7.py                 # regenerate all
@@ -64,6 +66,12 @@ CN = [
     "~ Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005",
     "~ EpsR=2.3 InsLayer=0.004 DiaIns=0.022 DiaCable=0.030",
     "~ k=16 DiaStrand=0.001 GmrStrand=0.0004 Rstrand=2.0e-3",
+]
+TS = [
+    "new TSData.ts1 Runits=m radunits=m gmrunits=m",
+    "~ Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005",
+    "~ EpsR=2.3 InsLayer=0.004 DiaIns=0.022 DiaCable=0.030",
+    "~ DiaShield=0.025 TapeLayer=0.0002 TapeLap=20.0",
 ]
 LOAD = "new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=0.95 model=1"
 TAIL = ["set voltagebases=[12.47]", "calcvoltagebases"]
@@ -124,6 +132,20 @@ def deck_cable_cn() -> list[str]:
     ]
 
 
+def deck_cable_ts() -> list[str]:
+    return [
+        *HEAD,
+        *TS,
+        "new LineGeometry.g nconds=3 nphases=3 reduce=no",
+        "~ cond=1 tscable=ts1 x=0   h=-1.2 units=m",
+        "~ cond=2 tscable=ts1 x=0.1 h=-1.2 units=m",
+        "~ cond=3 tscable=ts1 x=0.2 h=-1.2 units=m",
+        "new Line.l1 bus1=src bus2=b geometry=g length=1 units=km phases=3",
+        LOAD,
+        *TAIL,
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -131,6 +153,7 @@ SCENARIOS = {
     "line_geometry_reduce": deck_line_geometry_reduce,
     "line_spacing": deck_line_spacing,
     "cable_cn": deck_cable_cn,
+    "cable_ts": deck_cable_ts,
 }
 
 
