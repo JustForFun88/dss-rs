@@ -11,6 +11,7 @@ use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
+use crate::elements::control::relay::Relay;
 use crate::elements::control::storage_controller::StorageController;
 use crate::elements::control::swt_control::SwtControl;
 use crate::elements::pc::generator::Generator;
@@ -52,6 +53,13 @@ enum ControlKind {
     /// the whole controlled terminal; `Reset` restores the normal state. Like the
     /// Fuse, the monitored element is often the controlled element itself.
     Recloser {
+        controlled: Option<ElemRef>,
+        monitored: Option<ElemRef>,
+    },
+    /// Relay: the general protection control. Same borrow shape as the Recloser
+    /// (`Sample` reads the monitored element + controlled terminal; `Action`
+    /// trips/recloses the whole terminal; `Reset` restores the normal state).
+    Relay {
         controlled: Option<ElemRef>,
         monitored: Option<ElemRef>,
     },
@@ -120,6 +128,14 @@ pub(super) fn dispatch_control(
                     monitored: rec.ccd.monitored_element,
                 },
                 format!("Recloser.{}", rec.ccd.cd.obj.name()),
+            )
+        } else if let Some(rel) = obj.as_any().downcast_ref::<Relay>() {
+            (
+                ControlKind::Relay {
+                    controlled: rel.ccd.controlled_element,
+                    monitored: rel.ccd.monitored_element,
+                },
+                format!("Relay.{}", rel.ccd.cd.obj.name()),
             )
         } else if let Some(gd) = obj.as_any().downcast_ref::<GenDispatcher>() {
             (
@@ -485,6 +501,110 @@ pub(super) fn dispatch_control(
                                 .downcast_mut::<Recloser>()
                                 .expect("kind matched above");
                             rec.reset_control_side();
+                        }
+                    }
+                }
+            }
+        }
+        ControlKind::Relay {
+            controlled,
+            monitored,
+        } => {
+            match op {
+                ControlOp::Sample => {
+                    let Some(target) = controlled else {
+                        return Err(abort(ctx.errors, &full_name, "Switched element not set"));
+                    };
+                    let Some(mon) = monitored else {
+                        return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
+                    };
+                    if mon == target {
+                        // The monitored role only *reads* solved state, so an
+                        // owned clone of the controlled element stands in for the
+                        // second live borrow (currents recompute from node_v).
+                        let mut mon_clone = store.obj(target).clone_box();
+                        let (cobj, tobj) = store.pair_mut(r, target);
+                        let rel = cobj
+                            .as_any_mut()
+                            .downcast_mut::<Relay>()
+                            .expect("kind matched above");
+                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Switched element is not a circuit element",
+                            ));
+                        };
+                        let mon_elem = mon_clone
+                            .as_ckt_element_mut()
+                            .expect("controlled element is a circuit element");
+                        rel.sample(ctrl, mon_elem, &mut ctx);
+                    } else {
+                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
+                        let rel = cobj
+                            .as_any_mut()
+                            .downcast_mut::<Relay>()
+                            .expect("kind matched above");
+                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Switched element is not a circuit element",
+                            ));
+                        };
+                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                            return Err(abort(
+                                ctx.errors,
+                                &full_name,
+                                "Monitored element is not a circuit element",
+                            ));
+                        };
+                        rel.sample(ctrl, mon_elem, &mut ctx);
+                    }
+                }
+                ControlOp::Action { code } => {
+                    let Some(target) = controlled else {
+                        return Err(abort(ctx.errors, &full_name, "Switched element not set"));
+                    };
+                    let (cobj, tobj) = store.pair_mut(r, target);
+                    let rel = cobj
+                        .as_any_mut()
+                        .downcast_mut::<Relay>()
+                        .expect("kind matched above");
+                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        return Err(abort(
+                            ctx.errors,
+                            &full_name,
+                            "Switched element is not a circuit element",
+                        ));
+                    };
+                    // The queue `code` carries CTRL_OPEN/CTRL_CLOSE/CTRL_RESET.
+                    rel.do_pending_action(code, ctrl, &mut ctx);
+                }
+                ControlOp::Reset => {
+                    // Pascal `Reset()` logs "Resetting", restores the present
+                    // state, and re-forces the controlled terminal to NormalState
+                    // (raising SystemYChanged inside `reset_with`).
+                    match controlled {
+                        Some(target) => {
+                            let (cobj, tobj) = store.pair_mut(r, target);
+                            let rel = cobj
+                                .as_any_mut()
+                                .downcast_mut::<Relay>()
+                                .expect("kind matched above");
+                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                                rel.reset_with(ctrl, &mut ctx);
+                            } else {
+                                rel.reset_control_side();
+                            }
+                        }
+                        None => {
+                            let rel = store
+                                .obj_mut(r)
+                                .as_any_mut()
+                                .downcast_mut::<Relay>()
+                                .expect("kind matched above");
+                            rel.reset_control_side();
                         }
                     }
                 }

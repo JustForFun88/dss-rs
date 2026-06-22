@@ -7,11 +7,13 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
+Last updated: 2026-06-23 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) IN PROGRESS —
 step 1 done** (the `Fault` element)**, step 2a done** (the `SwtControl` switch
 control)**, step 2b done** (the `Fuse` per-phase TCC protection)**, step 2c done**
-(the `Recloser` overcurrent recloser); **next = WP7.2 step 2d (`Relay`)**. WP7.1 landed the Carson line-constants engine
+(the `Recloser` overcurrent recloser)**, step 2d done** (the `Relay` — all nine
+sub-types, Generic/TD21 logic deferred to WP7.7); **next = WP7.2 step 3
+(reliability activation)**. WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -43,7 +45,19 @@ pickup and recloses after an interval, up to `Shots` operations before lockout
 (fast then delayed curves). New engine machinery: `PropFlags::ARRAY_MAX_SIZE`
 (`RecloseIntervals`) and the integer-dump `VALUE_OFFSET` (`Shots` aliases
 `NumReclose−1`); `props.json` `recloser.json` (7 scenarios) + 26 oracle-pinned
-tests. Full per-step detail in **§1e**.
+tests.
+**WP7.2 step 2d** landed `Relay` (`control/relay/`): the general protection
+control — nine `Type=` sub-types over a shared 50-property surface and the same
+whole-terminal `Closed[0]` trip/reclose state machine. Seven sub-types ported
+live (`Current`/`Voltage`/`ReversePower`/`46`/`47`/`Distance`/`DOC`); the
+dynamics-coupled `Generic` (needs PC state `Variable[]`) and `TD21` (needs
+`DynaVars.h`/ring buffer) parse + dump but **defer their `Sample` logic to
+WP7.7** (a `NOT_PORTED` error if reached). New shared machinery:
+`TccCurveObj::get_ov_time`/`get_uv_time` (definite-time over/under-voltage scans)
+and `PropFlags::ALLOW_NONE` (a zero-count `DoubleVArray` dumps `[NONE]`).
+Unlike the Recloser, every Relay event-log line is gated on `ShowEventLog`, and
+`MakeLike` copies `DelayTime`/`BreakerTime`; `props.json` `relay.json` (9
+scenarios) + 27 oracle-pinned tests. Full per-step detail in **§1e**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -81,13 +95,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b + 2c done** (Fault, SwtControl, Fuse, Recloser); **next = WP7.2 step 2d (Relay)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b + 2c + 2d done** (Fault, SwtControl, Fuse, Recloser, Relay); **next = WP7.2 step 3 (reliability activation)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 463, golden_feeders 1,
+cargo test --workspace      # dss-core lib 492, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -258,8 +272,8 @@ header frontier paragraph summarizes the deliverable. In brief:
   source/binary reconciliation (full note in the archive).
 
 **WP7.2 (Protection) — 🚧 IN PROGRESS.** Steps **1 (`Fault`), 2a (`SwtControl`),
-2b (`Fuse`), 2c (`Recloser`) done + gate-green**; **next = step 2d (`Relay`)**, then
-step 3 (reliability activation) + step 4 (gate). Full per-step records (decisions,
+2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`) done + gate-green**; **next = step 3
+(reliability activation)** + step 4 (gate). Full per-step records (decisions,
 audits, gate detail) archived at
 [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). In brief:
 - **step 1 — `Fault` (`pd/fault.rs`):** an uncoupled multi-phase **conductance**
@@ -281,25 +295,48 @@ audits, gate detail) archived at
   to `Shots`, fast→delayed curves. New engine machinery `PropFlags::ARRAY_MAX_SIZE`
   (`RecloseIntervals`) + integer-dump `VALUE_OFFSET` (`Shots = NumReclose−1`);
   recloser enums; default `a`/`d` curves. `recloser.json` (7) + 26 inline.
+- **step 2d — `Relay` (`control/relay/`):** the general protection control
+  (`Relay.pas`, 2354 lines — the largest WP7.2 unit). Nine `Type=` sub-types over
+  one 50-property surface + the shared `Closed[0]` trip/reclose/reset machine.
+  Module split `mod.rs` (props/struct/recalc/Sample dispatch/DoPendingAction/Reset)
+  + `logic.rs` (the per-sub-type sensing) + `accessors.rs` + `tests.rs`. **Ported
+  live:** `Current` (overcurrent 50/51), `Voltage` (27/59 + voltage reclose),
+  `ReversePower` (32), `46`/`47` (neg-seq), `Distance` (21), `DOC` (directional
+  overcurrent — the dominant corpus type, with the `DOC_P1Blocking` forward-power
+  block + the circle/high-line/inner-zone decision tree ported verbatim).
+  **Deferred to WP7.7 (`NOT_PORTED` if `Sample` reached):** `Generic` (needs PC
+  state `Variable[]`) and `TD21` (needs `DynaVars.h`/`Frequency`/`IterationFlag`
+  + the per-cycle ring buffer) — both fully parse + dump. New shared machinery:
+  `TccCurveObj::get_ov_time`/`get_uv_time` (definite-time scans) and
+  `PropFlags::ALLOW_NONE` (zero-count `DoubleVArray` ⇒ `[NONE]`, the `Type=DOC`
+  ⇒ NumReclose 0 case). Relay-specific quirks vs the Recloser: event-log lines are
+  **gated on `ShowEventLog`** (`if ShowEventLog then AppendToEventLog`), the queue
+  `CTRL_RESET` runs the full `Reset()` (logs "Resetting" + re-forces the element),
+  and `MakeLike` **copies** `DelayTime`/`BreakerTime`. `relay.json` (9) + 27 inline.
 
-**Carry into step 2d (`Relay`) + step 3:**
-- **Dirty-edge discipline (verified against Pascal + oracle).** Every trip/close/
-  reset forces conductors via `Closed[]` → `TDSSCktElement.Set_ConductorClosed`
+**Carry into step 3 (reliability activation) + step 4 (gate):**
+- **Dirty-edge discipline (implemented across all four controls).** Every trip/
+  close/reset forces conductors via `Closed[]` → `TDSSCktElement.Set_ConductorClosed`
   (`CktElement.pas:287`) sets `YPrimInvalid := TRUE` → `SystemYChanged := TRUE`
-  (`:240`) **unconditionally**, no change-comparison. So each control must raise
+  (`:240`) **unconditionally**, no change-comparison. So each control raises
   `system_y_changed` **unconditionally** (or via an exact per-conductor check),
   **never** gated on a `terminal_all_phases_closed`/`is_closed` aggregate (a
   partial-open terminal otherwise slips a real change past the rebuild → stale Y),
   and **each ships a partial-open fail-on-regression test** (`d0addb4`/`d1f48231`).
   Relay forces via `Closed[0]` (`Relay.pas:962…`) — same rule.
-- **Reliability deferred to step 3.** SwtControl/Fuse/Recloser leave
+- **Reliability deferred to step 3.** SwtControl/Fuse/Recloser/Relay leave
   `Flg.HasOCPDevice`/`HasAutoOCPDevice` + the recalc-time `Closed` resync for step 3,
   which implements `GetOCPDeviceType` and activates the dormant Phase-6 `RelCalc`
-  SAIFI/SAIDI (the `meter_zone_micro` + OCP gate).
+  SAIFI/SAIDI (the `meter_zone_micro` + OCP gate). Relay's `RecalcElementData`
+  already does the `Include(Flg.HasOCPDevice)` in Pascal — wire it in step 3.
+- **Generic/TD21 Sample logic deferred to WP7.7** (dynamics): the relay parses +
+  dumps `Type=Generic`/`TD21` but the live sensing records a `NOT_PORTED` error.
 - **Corpus migration** of the `{Fault,Fuse,Recloser,Relay,SwtControl}` cases lands
   at the **step-4 gate**, with the targeted `phase7/protection*.json` golden +
-  normalized event-log-equality for a trip/reclose sequence.
-- dss-core lib **392 → 463** across steps 1–2c.
+  normalized event-log-equality for a trip/reclose sequence. The corpus relays are
+  `Type=Current` (definite-time `Delay`), `Type=DOC` (the 68 LV network-protector
+  cases), and `Type=Voltage`.
+- dss-core lib **392 → 492** across steps 1–2d.
 
 ---
 

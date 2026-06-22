@@ -1181,6 +1181,109 @@ SCENARIOS = [
             "New Recloser.r1 like=base",
         ],
     },
+    # --- Relay (Controls/Relay.pas; a TControlElem) ------------------------
+    # Nine sub-types via Type=; the property surface is shared. Action/State map
+    # onto FPresentState, Normal onto NormalState (first State/Action defaults
+    # it). Shots aliases NumReclose (-1 offset); RecloseIntervals (ArrayMaxSize=4)
+    # also sets NumReclose. Type sets per-type Delay + reclose-interval defaults.
+    # MonitoredObj defaults SwitchedObj to the same element.
+    {
+        "name": "relay_default",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.r1 monitoredobj=line.l1 monitoredterm=1 type=current",
+        ],
+    },
+    {
+        # Full overcurrent spec: explicit phase/ground curves, a distinct switched
+        # element, trips/insts/time-dials, a 2-shot reclose.
+        "name": "relay_overcurrent_full",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.3 x1=0.6 length=1",
+            "New TCC_Curve.pc npts=2 c_array=[1,10] t_array=[1,0.1]",
+            "New TCC_Curve.gc npts=2 c_array=[1,10] t_array=[2,0.2]",
+            "New Relay.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l2 "
+            "switchedterm=1 type=current phasecurve=pc groundcurve=gc phasetrip=800 "
+            "groundtrip=400 tdphase=1.2 tdground=1.1 phaseinst=2000 groundinst=1500 "
+            "reset=20 shots=3 recloseintervals=(0.5 1.5) breakertime=0.05 kvbase=12.47",
+        ],
+    },
+    {
+        # Voltage relay (27/59): kVBase + OV/UV curves. Type=voltage sets
+        # NumReclose=1 and RecloseIntervals[3]:=5.
+        "name": "relay_voltage",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New TCC_Curve.ov npts=2 c_array=[1.1,1.5] t_array=[5,0.1]",
+            "New TCC_Curve.uv npts=2 c_array=[0.5,0.9] t_array=[0.1,5]",
+            "New Relay.r1 monitoredobj=line.l1 type=voltage kvbase=12.47 "
+            "overvoltcurve=ov undervoltcurve=uv",
+        ],
+    },
+    {
+        # Directional overcurrent (DOC): the corpus shape (tilt-low 95, trip-low,
+        # delay=0, shots=1). Type=doc sets NumReclose=0.
+        "name": "relay_doc",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.r1 monitoredobj=line.l1 monitoredterm=1 type=doc "
+            "doc_tiltanglelow=95 doc_tripsettinglow=3500 delay=0 shots=1 normal=close",
+        ],
+    },
+    {
+        # Distance relay (21): the Z1/Z0/M reach settings + reverse.
+        "name": "relay_distance",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.r1 monitoredobj=line.l1 type=distance z1mag=0.8 z1ang=65 "
+            "z0mag=2.2 z0ang=70 mphase=0.75 mground=0.8 distreverse=yes",
+        ],
+    },
+    {
+        # 46 (neg-seq current): base/pct/isqt settings (PickupAmps46 is derived).
+        "name": "relay_46",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.r1 monitoredobj=line.l1 type=46 46baseamps=120 46%pickup=25 "
+            "46isqt=1.5",
+        ],
+    },
+    {
+        # state=open drives FPresentState and defaults NormalState.
+        "name": "relay_state_open",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.r1 monitoredobj=line.l1 state=open",
+        ],
+    },
+    {
+        # normal=trip (trip aliases open) only sets NormalState.
+        "name": "relay_normal_trip",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.r1 monitoredobj=line.l1 normal=trip",
+        ],
+    },
+    {
+        # MakeLike copies the full settings incl. DelayTime / BreakerTime.
+        "name": "relay_makelike",
+        "target": "Relay.r1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+            "New Relay.base monitoredobj=line.l1 type=current phasetrip=700 shots=2 "
+            "recloseintervals=(0.5 1) normal=open reset=22 delay=0.3 breakertime=0.04",
+            "New Relay.r1 like=base",
+        ],
+    },
     {
         "name": "generator_default",
         "target": "Generator.g1",

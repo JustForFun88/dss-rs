@@ -97,7 +97,14 @@ impl ClassProps {
                 get_dss_array_f64(pd.size_prop, obj.get_f64_array(idx), pd.scale)
             }
             PropType::DoubleVArray => {
-                get_dss_array_f64(obj.array_size(idx), obj.get_f64_array(idx), pd.scale)
+                let n = obj.array_size(idx);
+                // Pascal `AllowNone` + count 0 dumps `[NONE]`, not `[]`
+                // (DSSObjectHelper.pas:2274). Otherwise the normal array render.
+                if n == 0 && pd.flags.contains(PropFlags::ALLOW_NONE) {
+                    "[NONE]".to_string()
+                } else {
+                    get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)
+                }
             }
             PropType::DoublePoints => {
                 // Pascal `GetPoints`: interleaved `[x0 y0 x1 y1 ...]`, length
