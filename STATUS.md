@@ -1025,6 +1025,17 @@ sensing/TCC/per-phase machinery Recloser (2c) and Relay (2d) reuse.
   (e.g. `Test/IEEE13_CDPSM.dss`), so none can migrate to `solvable_now` until
   Recloser/Relay (2c/2d) and the DER block land — migration stays at the WP7.2
   gate (step 4), with the targeted `phase7/protection*.json` golden.
+- **Audit-code follow-up:** the `/audit-code` pass confirmed a faithful 1:1 port
+  (no Critical/Major); the one fixed finding was the dropped FUSEMAXDIM-overflow
+  **warning** (Pascal `fuse.pas` DoSimpleMsg 404 when the monitored element has
+  >6 phases) — now emitted in `recalc`. The other notes are kept as-is: the
+  per-phase arrays / `GetFuseStateSize` are deliberately `FUSEMAXDIM`-capped
+  (Pascal's own getter carries a documented invalid-access risk for >6 phases, and
+  such fuses don't exist in the corpus); the recalc `Closed[i]` resync is redundant
+  at parse (the `State=`/`Action=` force already drives it) and rides with the
+  step-3 `HasOCPDevice` work; `CondOffset` is confirmed vestigial in Pascal (Sample
+  reads `cBuffer[i]`). Gate green.
+<!-- AUDIT_TESTS_NOTE_PLACEHOLDER -->
 
 ---
 
