@@ -488,6 +488,38 @@ impl Dss {
             }
         }
 
+        // Same pattern for the Recloser's four TCC curves (PhaseFast/PhaseDelayed
+        // default to the built-in `a`/`d` in the constructor, which cannot reach
+        // the registry): resolve every non-empty name through the foreign view and
+        // clone the curves in for solve-time GetTCCTime.
+        if let Some(names) = objects[oi]
+            .as_any()
+            .downcast_ref::<recloser::Recloser>()
+            .map(|r| r.curve_names())
+        {
+            let resolve = |name: &str| -> Option<tcc_curve::TccCurveObj> {
+                (!name.is_empty())
+                    .then(|| {
+                        foreign.find("TCC_Curve", name).and_then(|(_, o)| {
+                            o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
+                        })
+                    })
+                    .flatten()
+            };
+            let curves = [
+                resolve(&names[0]),
+                resolve(&names[1]),
+                resolve(&names[2]),
+                resolve(&names[3]),
+            ];
+            if let Some(r) = objects[oi]
+                .as_any_mut()
+                .downcast_mut::<recloser::Recloser>()
+            {
+                r.set_resolved_curves(curves);
+            }
+        }
+
         // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it

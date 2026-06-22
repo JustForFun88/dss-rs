@@ -10,7 +10,8 @@
 Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) IN PROGRESS —
 step 1 done** (the `Fault` element)**, step 2a done** (the `SwtControl` switch
-control)**, step 2b done** (the `Fuse` per-phase TCC protection). WP7.1 landed the Carson line-constants engine
+control)**, step 2b done** (the `Fuse` per-phase TCC protection)**, step 2c done**
+(the `Recloser` overcurrent recloser); **next = WP7.2 step 2d (`Relay`)**. WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -35,8 +36,14 @@ conductors via per-phase control-queue actions. New shared machinery:
 `TccCurveObj::get_tcc_time` (log-log interpolation), per-conductor
 `CktElementData::set_conductor_closed`, `RefAction::SetConductorsClosed`, and a
 `PropType::MappedStringEnumArray` for the per-phase `Normal`/`State` arrays;
-`props.json` `fuse.json` (8 scenarios) + 20 oracle-pinned tests. Full per-step
-detail in **§1e**.
+`props.json` `fuse.json` (8 scenarios) + 20 oracle-pinned tests.
+**WP7.2 step 2c** landed `Recloser` (`control/recloser/`): an overcurrent
+recloser that trips the controlled element's whole terminal on a phase/ground TCC
+pickup and recloses after an interval, up to `Shots` operations before lockout
+(fast then delayed curves). New engine machinery: `PropFlags::ARRAY_MAX_SIZE`
+(`RecloseIntervals`) and the integer-dump `VALUE_OFFSET` (`Shots` aliases
+`NumReclose−1`); `props.json` `recloser.json` (7 scenarios) + 22 oracle-pinned
+tests. Full per-step detail in **§1e**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -73,13 +80,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b done** (Fault, SwtControl, Fuse); **next = WP7.2 step 2c (Recloser)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b + 2c done** (Fault, SwtControl, Fuse, Recloser); **next = WP7.2 step 2d (Relay)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 437, golden_feeders 1,
+cargo test --workspace      # dss-core lib 459, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -1047,6 +1054,67 @@ sensing/TCC/per-phase machinery Recloser (2c) and Relay (2d) reuse.
   divisor trip (`5 A / 10 A = 0.5 pu` below pickup → no arm — pins `Cmag/RatedCurrent`
   against a dropped/inverted divisor) and the missing-`SwitchedObj` error path
   (Pascal `#405`, oracle-confirmed). dss-core lib **435→437**. Gate green.
+
+### 1e WP7.2 step 2c — the `Recloser` overcurrent recloser (`control/recloser/`) — ✅ done, gate-green
+
+The second **TCC/sensing** protection device (`Controls/Recloser.pas`,
+`TRecloserObj`): an overcurrent recloser on the WP5.7 control sweep that monitors
+a PD terminal's currents, trips the controlled element's **whole terminal** open
+on a phase/ground TCC pickup, then **recloses** it after a configured interval —
+repeating up to `Shots` operations before locking out, the first `NumFast` on the
+*fast* curves and the rest on the *delayed* curves. Reuses the step-2b sensing
+machinery (`TccCurveObj::get_tcc_time`, the control-queue arm/disarm, the
+`SetSwitchClosed` whole-terminal force from step 2a).
+- `crates/dss-core/src/elements/control/recloser/{mod,accessors,tests}.rs`:
+  `Sample` reads `MonitoredElement.GetCurrents` and evaluates the ground-sum and
+  per-phase `GetTCCTime(Cmag / Trip)` (plus the inst-trip on operation 1),
+  arming an `OPEN` then a reclose `CLOSE` on the queue; `DoPendingAction(OPEN/
+  CLOSE/RESET)` flips the whole controlled terminal and advances/locks/resets the
+  operation count, logging `Opened, Fast`/`Opened, Delayed`/`Opened, Locked Out`/
+  `Closed` + `Phase`/`Ground Target`; `Reset` restores `NormalState`. Registered
+  **before Fuse** (Pascal `DSSClassDefs.pas:243`, Relay/Recloser/Fuse order;
+  Relay/2d still pending), `ElemKind::Control`; dispatch (`ControlKind::Recloser`)
+  borrows control + controlled + monitored with the same-element clone path the
+  Fuse uses.
+- **New engine machinery (Relay/2d reuses both):**
+  - `PropFlags::ARRAY_MAX_SIZE` + `PropDef::double_v_array_max(name, max)` — the
+    Pascal `DoubleVArrayProperty` + `ArrayMaxSize` parse (`ParseAsVector(maxSize,
+    array)`): reads **up to** `max` values, the object sets its own element count,
+    the dump renders `array_size` of a fixed buffer. Drives `RecloseIntervals`.
+  - the **integer-dump `VALUE_OFFSET`** (Pascal `GetObjInteger` subtracts the
+    offset) — `Shots` stores `NumReclose = Shots − 1` and dumps `NumReclose + 1`.
+- Two `Recloser` enums registered (`recloser_action` close/open/trip,
+  `recloser_state` closed/open/trip → ordinals 2/1/1; `trip` aliases `open`, so an
+  opened recloser dumps `open`). Default `PhaseFast`/`PhaseDelayed` resolve to the
+  built-in `a`/`d` curves (`CreateDefaultDSSItems`) via the same `command.rs`
+  `foreign`-view resolution the Fuse `tlink` uses (all four curves cloned in for
+  solve-time `GetTCCTime`).
+- **Property quirks settled against the oracle** (probed, `recloser.json`):
+  `Action`/`State` map onto `FPresentState`, `Normal` onto `NormalState`; the
+  first `State`/`Action` defaults `Normal` (`NormalStateSet`). `Shots` **and**
+  `RecloseIntervals=(…)` both set `NumReclose` (last write wins): `shots=2
+  recloseintervals=(1 3)` ⇒ Shots 3 / `[ 1 3]`, `shots=1` ⇒ NumReclose 0 ⇒ `[]`.
+  `RecalcElementData` syncs the controlled terminal to `FPresentState` (the
+  `SetSwitchClosed` RefAction — so `state=open` opens the line at parse). `MakeLike`
+  copies the trips/curves/shots/intervals/normal state but **not** `DelayTime` or
+  the TD* time dials (Pascal omits them).
+- **`HasOCPDevice`/`HasAutoOCPDevice` deferred to WP7.2 step 3** (as the Fuse —
+  the reliability flags reach the controlled element which `recalc` cannot see;
+  they land with `GetOCPDeviceType`). The whole-terminal Closed[0] sync **is**
+  done here (queued from recalc) — unlike the Fuse, the recloser has no parse-time
+  element force, so the recalc sync is its only path for `state=`.
+- Gates (all oracle-probed): `props.json` `recloser.json` (7 scenarios — default,
+  full+ground curves+switched, shots-then-intervals aliasing, one-shot empty
+  array, state=open, normal=trip, makelike) via `gen_props.py`; **22 inline
+  tests** (Sample arm/reclose/disarm, fast↔delayed + inst selection, ground-sum
+  trip, terminal-open skip; DoPendingAction trip/lockout/delayed/reclose/
+  reset; Reset closed/open; MakeLike-omits-time-dials; 4 executive tests — default
+  dump, shots/intervals aliasing, `state=open` forces the controlled terminal,
+  end-to-end overcurrent trip). dss-core lib **437→459**; full three-command gate
+  green on **stable** (incl. the always-on `corpus_live`).
+- **Corpus migration blocked (same as 2b):** Recloser-using corpus cases also tag
+  `Relay`/`PVSystem`/`Storage`, so migration stays at the WP7.2 gate (step 4)
+  with the targeted `phase7/protection*.json` golden.
 
 ---
 

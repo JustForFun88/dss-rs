@@ -27,7 +27,17 @@ impl ClassProps {
                 };
                 float_to_str_ex(get_obj_double(pd, obj, idx, scale))
             }
-            PropType::Integer => obj.get_i32(idx).to_string(),
+            PropType::Integer => {
+                // Pascal `GetObjInteger` (DSSObjectHelper l.4350) subtracts
+                // `PropertyValueOffset` on read — the inverse of the `+offset`
+                // the setter applies (e.g. Recloser `Shots` stores `NumReclose =
+                // Shots - 1` and dumps `NumReclose + 1`).
+                let mut v = obj.get_i32(idx);
+                if pd.flags.contains(PropFlags::VALUE_OFFSET) {
+                    v -= pd.value_offset.round_ties_even() as i32;
+                }
+                v.to_string()
+            }
             PropType::Boolean | PropType::Enabled => str_y_or_n(obj.get_bool(idx)).to_string(),
             PropType::String | PropType::ObjectRef => obj.get_string(idx),
             PropType::ObjectRefArray => {
