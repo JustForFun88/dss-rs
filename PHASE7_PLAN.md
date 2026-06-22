@@ -437,7 +437,15 @@ Steps:
    on the WP5.7 sweep: `Sample` (TCC/voltage/time/reverse-power/… logic per type)
    + `DoPendingAction` (OPEN/CLOSE the controlled terminal) + event-log lines.
    Relay's sub-type dispatch ported verbatim. Inline tests vs a mock monitored
-   element + the oracle.
+   element + the oracle. (SwtControl landed first as step 2a.)
+   - **`system_y_changed` guard (the step-2a Reset dirty edge, `d0addb4`):** any
+     trip/close that forces conductors — `set_terminal_closed(...)` /
+     `Closed[0] := …` — must raise `system_y_changed` **unconditionally** (or via
+     an *exact* per-conductor check), **never** gated on an all-or-nothing
+     aggregate like `terminal_all_phases_closed`/`is_closed`. The Y build is gated
+     solely on `system_y_changed` and a partially-open terminal otherwise slips a
+     real change past the rebuild → stale system Y. Use SwtControl's `reset_with`
+     (unconditional) as the template; carry a partial-open fail-on-regression test.
 3. **Activate reliability:** set `Flg.HasOCPDevice`; implement `GetOCPDeviceType`
    (replace the `TODO(WP7)` inlined 0); `RelCalc` no longer aborts when an OCP
    device is present — the Phase-6 SAIFI/SAIDI/section math goes live.
