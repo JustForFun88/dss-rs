@@ -9,7 +9,8 @@
 //!   - line_geometry: 3-phase overhead via `geometry=` (no reduce);
 //!   - line_geometry_reduce: 3 phases + a neutral, `reduce=yes` (Kron reduce);
 //!   - line_spacing: 3-phase overhead via `spacing=` + `wires=`;
-//!   - cable_cn: 3-phase concentric-neutral cable via `geometry=` + `cncable=`.
+//!   - cable_cn: 3-phase concentric-neutral cable via `geometry=` + `cncable=`;
+//!   - cable_ts: 3-phase tape-shield cable via `geometry=` + `tscable=`.
 //!
 //! Pins: converged + iteration count + node order exact, node voltages 1e-6 rel,
 //! the **Line YPrim entry-by-entry** (the Carson Z/Yc is the new math under
@@ -98,6 +99,7 @@ fn phase7_line_constants_scenarios_match_oracle() {
         "line_geometry_reduce",
         "line_spacing",
         "cable_cn",
+        "cable_ts",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

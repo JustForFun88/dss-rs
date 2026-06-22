@@ -802,17 +802,29 @@ commit (`d418eba`, live-corpus migration only) had left unbuilt.
   order exact, node voltages 1e-6 rel, the **Line YPrim entry-by-entry** (the
   Carson Z/Yc — the new math under test, §1 focused gate 1), and every element's
   terminal currents/powers (the voltage-scaled `assert_power_close` floor).
-- 4 scenarios from the oracle-verified probe decks
+- 5 scenarios from the oracle-verified probe decks
   (`probe_line_constants_phase7.py` / `probe_line_spacing_phase7.py`):
   `line_geometry` (3-phase overhead `geometry=`, no reduce), `line_geometry_reduce`
   (3 phases + a neutral, `reduce=yes` — the Kron reduce path), `line_spacing`
-  (`spacing=` + `wires=`), `cable_cn` (CN cable `geometry=`+`cncable=`).
-  `line_geometry` and `line_spacing` capture a **bit-identical** Line YPrim — the
-  geometry and spacing paths agree (as `probe_line_spacing_phase7.py` showed
-  maxdiff 0), now pinned offline.
+  (`spacing=` + `wires=`), `cable_cn` (CN cable `geometry=`+`cncable=`), `cable_ts`
+  (TS cable `geometry=`+`tscable=`). `line_geometry` and `line_spacing` capture a
+  **bit-identical** Line YPrim — the geometry and spacing paths agree (as
+  `probe_line_spacing_phase7.py` showed maxdiff 0), now pinned offline.
 - Gate: `golden_phase7` 1; full three-command gate green on **stable**
   (`cargo +stable …`, matching CI). dss-core lib stays 392 (integration test, not
   a lib unit test). **WP7.1 complete; next = WP7.2 (Protection).**
+- **Audit-tests follow-up (`/audit-tests` step 5):** the audit found the
+  **tape-shield form had no offline golden scenario** (only CN) — the same TS
+  asymmetry the step-2c-i (`2b54849`) and step-3b audits caught for the inline
+  tests, now in the targeted golden. (Not a true hole: inline tests pin the TS
+  Carson matrices and the live gate covers `TextTsCable750MCM` end-to-end; but the
+  offline golden lacked CN/TS parity.) Added `cable_ts` (geometry=`+`tscable=`,
+  mirroring `cable_cn`), regenerated → 5 scenarios; the `for must in […]` guard now
+  pins all five. A throwaway-probe proof (a perturbed YPrim entry → the gate fails
+  with a precise `Yprim[0,0] differs … |diff|=5.0e-1 > allowed 1.0e-3` delta)
+  confirmed the comparison is wired, not a no-op. `audit-code` was N/A (this step
+  changed no implementation — only test infra, the `collapsible_match` allow, and
+  docs). Gate green.
 
 ---
 
