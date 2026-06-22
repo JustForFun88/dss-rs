@@ -9,7 +9,8 @@
 
 Last updated: 2026-06-22 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) IN PROGRESS —
-step 1 done** (the `Fault` element). WP7.1 landed the Carson line-constants engine
+step 1 done** (the `Fault` element) **+ step 2a done** (the `SwtControl` switch
+control). WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -21,7 +22,13 @@ feeders into `solvable_now` (**17→35**); and (step 5) added the §1 tier-1
 conductance branch (`G=1/r` / `Gmatrix`), registered + on a new `Circuit.faults`
 list, with the `Check_Fault_Status`/`DoResetFaults` control-loop wiring now live
 (temporary-fault apply/clear); `props.json` `fault.json` + 8 oracle-pinned tests.
-Full per-step detail in **§1e**.
+**WP7.2 step 2a** landed `SwtControl` (`control/swt_control/`): a manual switch
+control on the WP5.7 control sweep (`Sample`/`DoPendingAction` open/close a
+controlled element's terminal + event log), with the generic
+`CktElementData::set_terminal_closed` conductor-open machinery and a
+`RefAction::SetSwitchClosed` for the `State=` parse-time force; `props.json`
+`swtcontrol.json` (7 scenarios) + 14 oracle-pinned tests. Full per-step detail
+in **§1e**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -58,13 +65,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done** (Carson line constants + `WireData`/`CNData`/`TSData`/`LineSpacing`/`LineGeometry` catalog + Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` fetch + corpus migration to `solvable_now` 17→35 + the targeted golden `phase7/line_geometry*.json`); **WP7.2 (Protection) in progress — step 1 done** (the `Fault` element + `Check_Fault_Status`/`DoResetFaults` wiring); **next = WP7.2 step 2 (Fuse/Recloser/Relay/SwtControl controls)** |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` written (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done** (Carson line constants + `WireData`/`CNData`/`TSData`/`LineSpacing`/`LineGeometry` catalog + Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` fetch + corpus migration to `solvable_now` 17→35 + the targeted golden `phase7/line_geometry*.json`); **WP7.2 (Protection) in progress — step 1 done** (the `Fault` element + `Check_Fault_Status`/`DoResetFaults` wiring) **+ step 2a done** (`SwtControl` switch control on the WP5.7 sweep); **next = WP7.2 step 2b (Fuse/Recloser/Relay — the TCC/sensing protection controls)** |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 401, golden_feeders 1,
+cargo test --workspace      # dss-core lib 415, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -833,6 +840,59 @@ input (WP7.9). Landed registered, snapshot-solvable, and pinned offline.
   `**APPLIED**` path; added `temporary_fault_clears_below_minamps` (MinAmps above
   the fault current → self-clear), pinning the `**CLEARED**` event from the oracle
   probe. dss-core lib **400→401**. Gate green.
+
+### 1e WP7.2 step 2a — the `SwtControl` switch control (`control/swt_control/`) — ✅ done, gate-green
+
+The first protection **control** (`Controls/SwtControl.pas`, `TSwtControlObj`): a
+manual/automatic **switch** that opens or closes every phase conductor of a
+controlled element's terminal after a time delay, and can be *locked*. The
+simplest control of the WP7.2 set — no TCC/sensing — so it lands the generic
+"control opens/closes a controlled PD terminal" machinery the protection devices
+(Fuse/Recloser/Relay, step 2b) reuse.
+- `crates/dss-core/src/elements/control/swt_control/{mod,accessors,tests}.rs`: the
+  element on the WP5.7 control sweep — `Sample` (queue the pending lock/switch
+  action; reads **no** monitored quantity), `DoPendingAction` (lock/unlock or
+  open/close all phases of the switched terminal + `Opened`/`Closed` event log),
+  `Reset` (restore to `NormalState`). Registered after StorageController (Pascal
+  `DSSClassDefs.pas:249`); `ElemKind::Control`, joins `ckt.controls`.
+- **Generic conductor-open machinery:** new `CktElementData::set_terminal_closed`
+  / `terminal_all_phases_closed` (Pascal `Set_/Get_ConductorClosed(0)` with the
+  active terminal = the switch terminal) — opens/closes a *generic* controlled
+  element (Line, etc.), marking `yprim_invalid` (the open-conductor Kron reduce in
+  the existing `do_yprim_calcs` does the rest). The control-loop dispatch
+  (`solution/controls/dispatch.rs`) gained `ControlKind::Swt`: `Sample` borrows
+  only the control; `Action`/`Reset` borrow the control + the controlled element
+  via `pair_mut` + `as_ckt_element_mut` (generic — any switched class).
+- **Property quirks settled against the oracle** (probed, `swtcontrol.json`):
+  `Action`/`Normal`/`State` all map onto the one `CurrentAction` field — the text
+  `?` dump renders it (Action `close`/`open`, Normal/State `closed`/`open`); the
+  `State` read-function `GetState` is **not** used by the dump (proved: `action=open`
+  leaves the line *closed* yet `State` dumps `open`). They are `ConditionalReadOnly`
+  on `Locked` — a write while locked is **ignored** (`lock=yes action=open` ⇒
+  `Action=close`; parse-order sensitive). `State=` additionally forces the
+  controlled element to that state at parse time, deferred as a new
+  `RefAction::SetSwitchClosed` (applied generically by the executive through the
+  CktElement base, since the switched element can be any class) — the established
+  RegControl-`TapNum` deferred-write pattern.
+- Two `SwtControl` enums registered (`swt_control_action` close/open,
+  `swt_control_state` closed/open; EControlAction ordinals CTRL_CLOSE=2/CTRL_OPEN=1),
+  plus CTRL_RESET/CTRL_LOCK/CTRL_UNLOCK added to the shared `EControlAction` set.
+- Gates (all oracle-probed): `props.json` `swtcontrol.json` (7 scenarios —
+  default, action/normal/state=open, lock+delay, the locked-read-only path, and
+  makelike) via `gen_props.py`; **14 inline tests** — `Sample` arm/no-arm,
+  `DoPendingAction` open/close (terminal flipped + `OPENED`/`CLOSED` event), the
+  lock-blocks-open and locked-read-only paths, the `State=` deferred-force queue,
+  `Reset`, `MakeLike`, plus two executive tests (a parallel-fed switch opening on
+  `action=open` in a duty solve; `state=open` forcing the line open at parse). The
+  event-log line format is `Element=SwtControl.sw1, Action=OPENED` (probe-confirmed
+  it logs without `Set Log=yes`). dss-core lib **401→415**; full three-command
+  gate green on **stable**.
+- **Corpus migration deferred to the WP7.2 gate (step 4):** the lone corpus
+  SwtControl case (only bare `switchedobj=` appears — no `action`/`state`/`lock`
+  usage across the corpus) migrates with the rest of the
+  `unsupported_class={Fault,Fuse,Recloser,Relay,SwtControl}` set once the protection
+  block is complete (PHASE7_PLAN §3 WP7.2 step 4), alongside the targeted
+  `phase7/protection*.json` golden.
 
 ---
 

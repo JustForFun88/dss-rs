@@ -326,6 +326,36 @@ impl CktElementData {
             .all(|t| t.conductors_closed.iter().all(|&c| c))
     }
 
+    /// Pascal `ActiveTerminalIdx := terminal; Set_ConductorClosed(0, value)`:
+    /// open/close **every phase conductor** of the 1-based `terminal` (the
+    /// `Closed[0]` "all conductors" branch) and mark YPrim invalid (Pascal's
+    /// `Set_ConductorClosed` raises the global `SystemYChanged`; the caller
+    /// propagates `yprim_invalid`). Used by SwtControl (and the protection
+    /// devices) to switch a controlled element's terminal. Out-of-range
+    /// terminals are ignored, matching Pascal's index guards.
+    pub fn set_terminal_closed(&mut self, terminal: usize, value: bool) {
+        if terminal >= 1 && terminal <= self.nterms {
+            self.active_terminal = terminal - 1;
+            let t = &mut self.terminals[terminal - 1];
+            for i in 0..self.nphases {
+                t.conductors_closed[i] = value;
+            }
+            self.yprim_invalid = true;
+        }
+    }
+
+    /// Pascal `Get_ConductorClosed(0)` with the active terminal set to the
+    /// 1-based `terminal`: `true` iff every phase conductor of that terminal is
+    /// closed. An out-of-range terminal reads as open (`false`).
+    pub fn terminal_all_phases_closed(&self, terminal: usize) -> bool {
+        if terminal >= 1 && terminal <= self.nterms {
+            let t = &self.terminals[terminal - 1];
+            (0..self.nphases).all(|i| t.conductors_closed[i])
+        } else {
+            false
+        }
+    }
+
     /// Pascal `TDSSCktElement.DoYprimCalcs`: Kron-reduce rows/columns of open
     /// conductors out of `ymatrix`, then zero them and pin a tiny epsilon on
     /// the diagonal; finally add epsilon to all remaining diagonals so no bus

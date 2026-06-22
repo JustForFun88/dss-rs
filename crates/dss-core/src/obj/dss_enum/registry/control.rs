@@ -10,6 +10,8 @@ pub(super) struct ControlEnums {
     pub(super) cap_control_type: EnumId,
     pub(super) storage_ctrl_discharge_mode: EnumId,
     pub(super) storage_ctrl_charge_mode: EnumId,
+    pub(super) swt_control_action: EnumId,
+    pub(super) swt_control_state: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
@@ -81,11 +83,33 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["Loadshape", "Time", "PeakshaveLow", "I-PeakshaveLow"],
         &[2, 4, 7, 9],
     ));
+    // SwtControl.pas TSwtControl.Create: ActionEnum / StateEnum. Both map onto
+    // the control's `CurrentAction` field; the ordinals are EControlAction
+    // (CTRL_CLOSE=2, CTRL_OPEN=1). Action renders close/open, State renders
+    // closed/open; both default to CTRL_CLOSE.
+    let swt_control_action = push(DssEnum::new(
+        "SwtControl: Action",
+        false,
+        1,
+        1,
+        &["close", "open"],
+        &[2, 1],
+    ));
+    let swt_control_state = push(DssEnum::new(
+        "SwtControl: State",
+        false,
+        1,
+        1,
+        &["closed", "open"],
+        &[2, 1],
+    ));
     ControlEnums {
         reg_control_phase,
         mon_phase,
         cap_control_type,
         storage_ctrl_discharge_mode,
         storage_ctrl_charge_mode,
+        swt_control_action,
+        swt_control_state,
     }
 }

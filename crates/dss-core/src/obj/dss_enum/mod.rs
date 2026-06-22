@@ -86,6 +86,10 @@ pub struct EnumRegistry {
     pub storage_ctrl_discharge_mode: EnumId,
     /// 'StorageController: Charge Mode' (StorageController.pas `ChargeModeEnum`).
     pub storage_ctrl_charge_mode: EnumId,
+    /// 'SwtControl: Action' (SwtControl.pas `ActionEnum`).
+    pub swt_control_action: EnumId,
+    /// 'SwtControl: State' (SwtControl.pas `StateEnum`).
+    pub swt_control_state: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
 }

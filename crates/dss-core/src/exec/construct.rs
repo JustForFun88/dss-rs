@@ -124,6 +124,15 @@ impl Dss {
                 |name| Box::new(storage_controller::StorageController::new(name)),
                 ElemKind::Control,
             ),
+            // SwtControl is the last of the protection controls (Pascal
+            // DSSClassDefs.pas:249, after Relay/Recloser/Fuse — those land in
+            // later WP7.2 sub-steps; class registration order does not affect
+            // node ordering, which follows element creation order).
+            DssClass::ckt_class(
+                swt_control::class_props(&enums),
+                |name| Box::new(swt_control::SwtControl::new(name)),
+                ElemKind::Control,
+            ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
             DssClass::ckt_class(
                 monitor::class_props(&enums),
