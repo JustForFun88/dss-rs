@@ -48,6 +48,7 @@ pub enum ElemKind {
     Transformer,
     Capacitor,
     Reactor,
+    Fault,
     Control,
     Generator,
     Meter,
@@ -81,6 +82,10 @@ pub struct Circuit {
     pub transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
     pub reactors: Vec<ElemRef>,
+    /// Fault elements (`FAULTOBJECT or NON_PCPD_ELEM`): a YPrim that stamps into
+    /// the system Y, but *excluded* from `pd_elements` (Pascal `AddCktElement`);
+    /// only this list (walked by `Check_Fault_Status` / `DoResetFaults`).
+    pub faults: Vec<ElemRef>,
     pub generators: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
@@ -195,6 +200,7 @@ impl Circuit {
             transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
             reactors: Vec::new(),
+            faults: Vec::new(),
             generators: Vec::new(),
             controls: Vec::new(),
             monitors: Vec::new(),
@@ -278,6 +284,9 @@ impl Circuit {
                 self.pd_elements.push(r);
                 self.reactors.push(r);
             }
+            // Fault is NON_PCPD: stamped via ckt_elements but kept off pd_elements
+            // (Pascal `AddCktElement`). Only the Faults list tracks it.
+            ElemKind::Fault => self.faults.push(r),
             ElemKind::Generator => {
                 self.pc_elements.push(r);
                 self.generators.push(r);

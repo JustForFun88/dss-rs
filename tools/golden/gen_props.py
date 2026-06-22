@@ -28,8 +28,10 @@ import re
 import sys
 from pathlib import Path
 
-# Matches one numeric token (int/float/scientific) for garbage canonicalization.
-_NUM_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
+# Matches one token to zero out during garbage canonicalization: a numeric
+# (int/float/scientific) value, or the non-finite `Nan`/`Inf` the oracle's
+# uninitialized-memory matrix getter can emit (e.g. Fault.GMatrix at 3 phases).
+_NUM_RE = re.compile(r"(?i:nan|[-+]?inf)|[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "props"
@@ -684,6 +686,52 @@ SCENARIOS = [
             "New Reactor.r1 like=base",
         ],
         "zero_garbage": ["RMatrix", "XMatrix"],
+    },
+    # --- Fault (WP7.2) ---
+    # `R` stores its inverse `G` (InverseValue); `GMatrix` shares the oracle's
+    # DoubleSymMatrixProperty garbage-getter bug (zeroed via `zero_garbage`, like
+    # Capacitor.CMatrix / Reactor.RMatrix).
+    {
+        "name": "fault_default",
+        "target": "Fault.f1",
+        "commands": ["New Fault.f1"],
+        "zero_garbage": ["GMatrix"],
+    },
+    {
+        "name": "fault_r",
+        "target": "Fault.f1",
+        "commands": ["New Fault.f1 bus1=b1 phases=3 r=2.5"],
+        "zero_garbage": ["GMatrix"],
+    },
+    {
+        "name": "fault_bus2_series",
+        "target": "Fault.f1",
+        "commands": ["New Fault.f1 bus1=b1 bus2=b2 phases=3 r=1"],
+        "zero_garbage": ["GMatrix"],
+    },
+    {
+        "name": "fault_gmatrix",
+        "target": "Fault.f1",
+        "commands": ["New Fault.f1 bus1=b1 phases=2 Gmatrix=(1 | 0.5 2)"],
+        "zero_garbage": ["GMatrix"],
+    },
+    {
+        "name": "fault_temporary",
+        "target": "Fault.f1",
+        "commands": [
+            "New Fault.f1 bus1=b1 phases=1 r=1 ontime=0.5 temporary=yes "
+            "minamps=20 %stddev=5",
+        ],
+        "zero_garbage": ["GMatrix"],
+    },
+    {
+        "name": "fault_makelike",
+        "target": "Fault.f1",
+        "commands": [
+            "New Fault.base bus1=b1 phases=3 r=3 minamps=8",
+            "New Fault.f1 like=base",
+        ],
+        "zero_garbage": ["GMatrix"],
     },
     # --- RegControl / CapControl (WP4.7, parse-only) ---
     # Every scenario defines the referenced transformer/capacitor/line first;
