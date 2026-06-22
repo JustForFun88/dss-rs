@@ -8,6 +8,7 @@ use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::exec::Dss;
 use crate::obj::base::DssObject;
+use crate::solution::control_queue::TimeRec;
 use crate::solution::{ControlQueue, EventLog, SolveMode};
 
 fn test_sys() -> SysCtx {
@@ -186,6 +187,33 @@ fn sample_arms_open_then_reclose_on_overcurrent() {
     assert!(r.phase_target);
     // An OPEN action plus a reclose CLOSE (operation_count 1 ≤ NumReclose 3).
     assert_eq!(sc.queue.queue_size(), 2);
+}
+
+/// Pins the *times* of the queued OPEN and reclose CLOSE — the arithmetic
+/// `queue_size` can't see: `TripTime = TDPhFast · GetTCCTime(10) = 2·0.1 = 0.2`,
+/// the OPEN at `TripTime + DelayTime = 0.25`, and the reclose at
+/// `+ RecloseIntervals[OperationCount-1] = +0.5 = 0.75`. A dropped `+DelayTime`,
+/// a missing time-dial, or an off-by-one on the interval index (reading
+/// `RecloseIntervals[1]=2.0` instead of `[0]=0.5`) all shift these.
+#[test]
+fn sample_queues_trip_and_reclose_at_correct_times() {
+    let mut r = armed_recloser();
+    r.delay_time = 0.05; // added to every trip time
+    r.td_ph_fast = 2.0; // time-dial multiplier
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut mon = MockLine::new(3, 10.0); // ratio 10 → GetTCCTime = 0.1
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    let far = TimeRec {
+        hour: 999,
+        sec: 0.0,
+    };
+    let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
+    assert_eq!(open.code, CTRL_OPEN);
+    assert!((t_open - 0.25).abs() < 1e-9, "open time = {t_open}");
+    let (close, t_close) = sc.queue.pop_time(far, false).unwrap();
+    assert_eq!(close.code, CTRL_CLOSE);
+    assert!((t_close - 0.75).abs() < 1e-9, "reclose time = {t_close}");
 }
 
 #[test]
@@ -447,6 +475,94 @@ fn reset_with_open_normal_state_locks_out() {
     assert_eq!(r.operation_count, r.num_reclose + 1);
 }
 
+/// Fail-on-regression guard for the WP7.2 step-2a Reset dirty edge (`d0addb4`,
+/// the rule recorded in `d1f48231`): `reset_with` must raise the Y-rebuild flag
+/// (return `true`) **unconditionally**, never gated on an all-or-nothing
+/// `terminal_all_phases_closed` aggregate. The seed is chosen so the aggregate
+/// reads the same (false) before and after, yet a real phase flips: terminal
+/// `[closed, open, open]` (aggregate false) with `normal=OPEN` ⇒ `[open, open,
+/// open]` (aggregate still false), while phase 0 (closed→open) actually changes.
+/// A reintroduced `was_all_closed != want_all_closed` gate would compute
+/// `false != false` and *skip* the rebuild, reusing a stale system Y.
+#[test]
+fn reset_with_partial_open_terminal_still_forces_rebuild() {
+    let mut r = armed_recloser();
+    r.normal_state = CTRL_OPEN;
+    let mut ctrl = MockLine::new(3, 0.0);
+    ctrl.cd.terminals[0].conductors_closed[0] = true; // phase 0 closed
+    ctrl.cd.terminals[0].conductors_closed[1] = false; // phase 1 open
+    ctrl.cd.terminals[0].conductors_closed[2] = false; // phase 2 open
+    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // aggregate false before
+
+    let rebuild = r.reset_with(&mut ctrl);
+    assert!(
+        rebuild,
+        "reset must force a Y rebuild even when the aggregate is unchanged"
+    );
+    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // aggregate false after too
+    assert!(!ctrl.cd.conductor_closed(1, 1)); // phase 0: closed → open (the missed change)
+}
+
+/// `DoPendingAction(OPEN)` is a no-op when the terminal is already open
+/// (`FPresentState = CTRL_OPEN`), and `DoPendingAction(CLOSE)` is a no-op when
+/// already closed — the Pascal `case FPresentState of CTRL_CLOSE:` / `CTRL_OPEN:`
+/// guards. Dropping either guard would flip the terminal (and raise the rebuild
+/// flag) spuriously.
+#[test]
+fn do_pending_open_close_are_wrong_state_no_ops() {
+    // OPEN when already open.
+    {
+        let mut r = armed_recloser();
+        r.present_state = CTRL_OPEN;
+        r.armed_for_open = true;
+        let mut ctrl = MockLine::new(3, 0.0);
+        ctrl.cd.set_terminal_closed(1, false); // already open
+        let mut sc = Scratch::new();
+        r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.0));
+        assert!(!ctrl.cd.terminal_all_phases_closed(1)); // unchanged
+        assert!(!sc.y_changed);
+        assert_eq!(sc.events.entries().len(), 0);
+    }
+    // CLOSE when already closed.
+    {
+        let mut r = armed_recloser();
+        r.present_state = CTRL_CLOSE;
+        r.armed_for_close = true;
+        let mut ctrl = MockLine::new(3, 0.0); // closed
+        let mut sc = Scratch::new();
+        r.do_pending_action(CTRL_CLOSE, &mut ctrl, &mut sc.ctx(0, 0.0));
+        assert!(ctrl.cd.terminal_all_phases_closed(1)); // unchanged
+        assert!(!sc.y_changed);
+        assert_eq!(sc.events.entries().len(), 0);
+    }
+}
+
+/// A ground trip logs `Ground Target` on the open (the `' '`-element line), the
+/// ground-path analog of the phase-target check in
+/// [`do_pending_open_trips_logs_fast_and_target`].
+#[test]
+fn do_pending_open_logs_ground_target() {
+    let mut r = armed_recloser();
+    r.phase_fast = None; // isolate the ground path
+    r.phase_delayed = None;
+    r.ground_fast = Some(build_tcc("2", "1 10", "1 0.1"));
+    r.ground_trip = 1.0;
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut sc = Scratch::new();
+    {
+        let mut mon = MockLine::new(3, 10.0); // residual sum 30 A → ground trip
+        r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    }
+    assert!(r.ground_target);
+    r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.1));
+    assert!(
+        log_has(&sc, "GROUND TARGET"),
+        "log = {:?}",
+        sc.events.entries()
+    );
+    assert!(!log_has(&sc, "PHASE TARGET"));
+}
+
 #[test]
 fn make_like_copies_recloser_state_not_time_dials() {
     let mut base = Recloser::new("base");
@@ -460,6 +576,10 @@ fn make_like_copies_recloser_state_not_time_dials() {
     base.normal_state_set = true;
     base.delay_time = 0.9; // NOT copied
     base.td_ph_fast = 1.5; // NOT copied
+    // The resolved curve clones (Pascal copies the pointers) must carry over, or
+    // a `like=` recloser would silently never trip.
+    base.phase_fast = Some(build_tcc("2", "1 10", "1 0.1"));
+    base.ground_fast = Some(build_tcc("2", "5 50", "2 0.2"));
 
     let mut r = Recloser::new("r1");
     r.make_like(&base);
@@ -471,6 +591,10 @@ fn make_like_copies_recloser_state_not_time_dials() {
     assert_eq!(r.reclose_intervals[..2], [0.5, 1.0]);
     assert_eq!(r.normal_state, CTRL_OPEN);
     assert!(r.normal_state_set);
+    // The curve clones copied (a like= recloser still trips).
+    assert!(r.phase_fast.is_some());
+    assert!(r.ground_fast.is_some());
+    assert!(r.phase_delayed.is_none()); // base's was None → stays None
     // Pascal MakeLike omits DelayTime and the TD* dials → Create defaults.
     assert_eq!(r.delay_time, 0.0);
     assert_eq!(r.td_ph_fast, 1.0);
@@ -582,9 +706,18 @@ fn recloser_trips_overloaded_line() {
     }
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
     assert!(
-        dss.event_log().iter().any(|s| s.contains("OPENED")),
-        "expected a trip; log = {:?}",
+        dss.event_log().iter().any(|s| s.contains("OPENED, FAST")),
+        "expected a fast trip; log = {:?}",
         dss.event_log()
+    );
+    // The trip must actually open the controlled line, not just log it (the Fuse
+    // precedent `fuse_blows_phases_on_overcurrent`): a regression that logs but
+    // never flips the terminal — or a spurious immediate reclose — would pass a
+    // log-only check. The line stays open through the run (the reclose interval
+    // outlasts the 5 steps).
+    assert!(
+        line_term1_max_current(&mut dss, "Line.l1") < 1.0,
+        "the tripped recloser should open the line"
     );
 }
 

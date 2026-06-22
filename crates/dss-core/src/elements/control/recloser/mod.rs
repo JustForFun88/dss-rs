@@ -243,8 +243,12 @@ impl Recloser {
             ground_inst: 0.0,
             reset_time: 15.0,
             num_reclose: 3, // Shots default 4 ⇒ NumReclose 3
-            // Pascal sets [1..3] and leaves [4] uninitialized; that slot is dead
-            // (read only for OperationCount ≤ NumReclose), so 0.0 is safe.
+            // Pascal sets [1..3] and leaves [4] uninitialized. For the default
+            // (and any sane `Shots ≤ 4`) the 4th slot is dead — `Sample` reads
+            // `reclose_intervals[OperationCount-1]` only for `OperationCount ≤
+            // NumReclose ≤ 3`. A larger `Shots` would read it, but Pascal's slot
+            // is uninitialized memory there too (the oracle dumps `Nan`), so no
+            // golden pins it; `0.0` is the safe defined choice.
             reclose_intervals: [0.5, 2.0, 2.0, 0.0],
             delay_time: 0.0,
             td_ph_fast: 1.0,

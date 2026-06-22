@@ -42,7 +42,7 @@ recloser that trips the controlled element's whole terminal on a phase/ground TC
 pickup and recloses after an interval, up to `Shots` operations before lockout
 (fast then delayed curves). New engine machinery: `PropFlags::ARRAY_MAX_SIZE`
 (`RecloseIntervals`) and the integer-dump `VALUE_OFFSET` (`Shots` aliases
-`NumReclose−1`); `props.json` `recloser.json` (7 scenarios) + 22 oracle-pinned
+`NumReclose−1`); `props.json` `recloser.json` (7 scenarios) + 26 oracle-pinned
 tests. Full per-step detail in **§1e**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
@@ -86,7 +86,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 459, golden_feeders 1,
+cargo test --workspace      # dss-core lib 463, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -1115,6 +1115,35 @@ machinery (`TccCurveObj::get_tcc_time`, the control-queue arm/disarm, the
 - **Corpus migration blocked (same as 2b):** Recloser-using corpus cases also tag
   `Relay`/`PVSystem`/`Storage`, so migration stays at the WP7.2 gate (step 4)
   with the targeted `phase7/protection*.json` golden.
+- **Audit-code follow-up (`/audit-code` step 2c):** the pass confirmed a faithful
+  1:1 port — **no Critical/Major**. `Sample`/`DoPendingAction`/`RecalcElementData`/
+  `Reset`/`MakeLike` and the two engine pieces (`ARRAY_MAX_SIZE`, integer-dump
+  `VALUE_OFFSET`) all match Pascal line-for-line; `reset_with` raises
+  `system_y_changed` unconditionally (the step-2a dirty-edge discipline). The only
+  fix was a **doc-comment clarity tweak** (`reclose_intervals[4]` is dead only for
+  the default `Shots ≤ 4`; a larger `Shots` reads it, but Pascal's slot is
+  uninitialized there too — the oracle dumps `Nan`, so `0.0` is the safe defined
+  choice, probe-confirmed). The MakeLike whole-array copy vs Pascal's
+  `[1..NumReclose]` and the NIL-element generic-abort text are unpinnable/degenerate
+  (documented, no change). Gate green.
+- **Audit-tests follow-up (`/audit-tests` step 2c):** closed the two Major test
+  gaps the audit flagged plus the mandated dirty-edge guard. (1) **No trip *time*
+  was pinned** — every Sample assertion was `queue_size`-only, so a dropped
+  `+DelayTime`, a missing time-dial, or an interval-index off-by-one passed: added
+  `sample_queues_trip_and_reclose_at_correct_times`, which `pop_time`s the OPEN and
+  reclose CLOSE and asserts `TripTime = TDPhFast·GetTCCTime = 0.2`, OPEN at `+Delay
+  = 0.25`, reclose at `+RecloseIntervals[0] = 0.75`. (2) The **end-to-end test
+  under-asserted** (log substring only) — strengthened to `OPENED, FAST` **and**
+  `line_term1_max_current(Line.l1) < 1.0` (the line actually opens, the Fuse
+  precedent). (3) Added the **partial-open `reset_with` fail-on-regression guard**
+  the WP7.2 step-2a rule (`d0addb4`/`d1f48231`) mandates for every protection
+  control — seed `[closed, open, open]` + `normal=OPEN` ⇒ aggregate false before
+  **and** after while phase 0 flips, so a reintroduced `was != want` aggregate gate
+  fails it. Plus three Minor gaps: the `GROUND TARGET` event line, the OPEN-when-open
+  / CLOSE-when-closed no-op guards, and the MakeLike curve-clone copy (a `like=`
+  recloser still trips). dss-core lib **459→463**. Gate green. *(The trip/reclose
+  **sequence**-level event-log-equality + final-state golden remains the planned
+  step-4 `phase7/protection*.json` gate.)*
 
 ---
 
