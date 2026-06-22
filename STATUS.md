@@ -313,6 +313,10 @@ audits, gate detail) archived at
   **gated on `ShowEventLog`** (`if ShowEventLog then AppendToEventLog`), the queue
   `CTRL_RESET` runs the full `Reset()` (logs "Resetting" + re-forces the element),
   and `MakeLike` **copies** `DelayTime`/`BreakerTime`. `relay.json` (9) + 27 inline.
+  *audit-code follow-up:* verdict faithful, no Critical/Major; tidied the
+  Generic/TD21 `NOT_PORTED` log to fire **once** per object (a `not_ported_logged`
+  latch, not once per control iteration), and pinned the dead `Type=Voltage`
+  `RecloseIntervals[3]=5.0` upstream quirk with a "don't simplify" comment.
 
 **Carry into step 3 (reliability activation) + step 4 (gate):**
 - **Dirty-edge discipline (implemented across all four controls).** Every trip/
