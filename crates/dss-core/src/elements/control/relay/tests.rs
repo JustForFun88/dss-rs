@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, RefSnapshot};
+use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, RefSnapshot};
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::exec::Dss;
@@ -409,6 +409,42 @@ fn do_pending_open_close_are_wrong_state_no_ops() {
     }
 }
 
+/// The queue-driven `DoPendingAction(CTRL_RESET)` entry (gated `ArmedForClose &&
+/// !LockedOut`): logs "Reset", then runs the full `Reset()` — re-forces the
+/// element to NormalState (raising SystemYChanged) and logs "Resetting".
+#[test]
+fn do_pending_reset_runs_full_reset_when_armed() {
+    let mut r = armed_relay();
+    r.armed_for_close = true;
+    r.locked_out = false;
+    r.normal_state = CTRL_CLOSE;
+    r.present_state = CTRL_OPEN;
+    r.operation_count = 3;
+    let mut ctrl = MockElem::new(3);
+    ctrl.cd.set_terminal_closed(1, false); // open
+    let mut sc = Scratch::new();
+    r.do_pending_action(CTRL_RESET, &mut ctrl, &mut sc.ctx(0, 0.0));
+    assert!(ctrl.cd.terminal_all_phases_closed(1)); // re-forced closed
+    assert_eq!(r.present_state, CTRL_CLOSE);
+    assert_eq!(r.operation_count, 1);
+    assert!(sc.y_changed);
+    assert!(log_has(&sc, "RESETTING"));
+}
+
+#[test]
+fn do_pending_reset_skipped_when_not_armed_for_close() {
+    let mut r = armed_relay();
+    r.armed_for_close = false; // the gate fails
+    r.present_state = CTRL_OPEN;
+    let mut ctrl = MockElem::new(3);
+    ctrl.cd.set_terminal_closed(1, false);
+    let mut sc = Scratch::new();
+    r.do_pending_action(CTRL_RESET, &mut ctrl, &mut sc.ctx(0, 0.0));
+    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // untouched
+    assert!(!sc.y_changed);
+    assert_eq!(sc.events.entries().len(), 0);
+}
+
 // --- Reset ------------------------------------------------------------------
 
 #[test]
@@ -516,6 +552,26 @@ fn neg_seq46_trips_on_unbalanced_current() {
     assert_eq!(r.relay_target, "-Seq Curr");
 }
 
+#[test]
+fn neg_seq47_trips_on_unbalanced_voltage() {
+    let mut r = armed_relay();
+    r.control_type = ctype::NEGVOLTAGE;
+    r.pickup_volts47 = 100.0;
+    // Single-phase voltage ⇒ |V2| = |Va|/3 = 1000/3 ≈ 333 ≥ pickup 100.
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![
+        Complex64::new(1000.0, 0.0),
+        Complex64::ZERO,
+        Complex64::ZERO,
+    ];
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open);
+    assert_eq!(r.operation_count, r.num_reclose + 1); // one-shot lockout
+    assert_eq!(r.relay_target, "-Seq V");
+}
+
 // --- Voltage (27/59) --------------------------------------------------------
 
 #[test]
@@ -549,6 +605,25 @@ fn voltage_under_voltage_trips() {
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     assert!(r.armed_for_open);
     assert_eq!(r.relay_target, "UV");
+}
+
+/// Present state OPEN: once the voltage recovers above 0.9 pu the relay arms a
+/// reclose (the `VoltageLogic` `else` branch), queuing a CLOSE.
+#[test]
+fn voltage_recloses_when_voltage_recovers() {
+    let mut r = armed_relay();
+    r.control_type = ctype::VOLTAGE;
+    r.vbase = 1000.0;
+    r.operation_count = 1; // ≤ num_reclose
+    let mut ctrl = MockElem::new(3);
+    ctrl.cd.set_terminal_closed(1, false); // present_state OPEN
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(1000.0, 0.0); 3]; // 1.0 pu > 0.9 ⇒ reclose
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert_eq!(r.present_state, CTRL_OPEN);
+    assert!(r.armed_for_close);
+    assert_eq!(sc.queue.queue_size(), 1); // a single reclose CLOSE
 }
 
 // --- DOC directional decision tree ------------------------------------------
@@ -586,6 +661,115 @@ fn doc_p1_blocking_blocks_on_forward_power() {
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     assert!(!r.armed_for_open);
     assert_eq!(sc.queue.queue_size(), 0);
+}
+
+/// Full DOC sample path on a 3-phase element: reverse net-balanced power gets
+/// past the `DOC_P1Blocking` block, the voltage-referenced angle shift
+/// (`cdang(I) − cdang(V)`) puts the current on the trip side of the default
+/// (90°, trip-low 0) characteristic, and an OPEN is queued.
+#[test]
+fn doc_reverse_power_trips_through_full_sample() {
+    let mut r = Relay::new("r1");
+    r.control_type = ctype::DOC; // default characteristic (tilt 90, trip-low 0)
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    // Balanced positive-sequence voltages; currents 180° out ⇒ reverse power.
+    let v = |deg: f64| Complex64::from_polar(1000.0, f64::to_radians(deg));
+    mon.vph = vec![v(0.0), v(-120.0), v(120.0)];
+    mon.iph = vec![v(180.0), v(60.0), v(-60.0)]; // = -vph
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(
+        r.armed_for_open,
+        "reverse power should trip the DOC element"
+    );
+    assert_eq!(r.relay_target, "DOC");
+    assert!(sc.queue.queue_size() >= 1); // at least the OPEN
+}
+
+/// 3-phase forward net-balanced power blocks the DOC element (the
+/// `Phase2SymComp` `GetControlPower` branch, complementing the 1-phase block).
+#[test]
+fn doc_three_phase_forward_power_blocks() {
+    let mut r = Relay::new("r1");
+    r.control_type = ctype::DOC;
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    let v = |deg: f64| Complex64::from_polar(1000.0, f64::to_radians(deg));
+    mon.vph = vec![v(0.0), v(-120.0), v(120.0)];
+    mon.iph = mon.vph.clone(); // in-phase ⇒ forward power ⇒ blocked
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(!r.armed_for_open);
+    assert_eq!(sc.queue.queue_size(), 0);
+}
+
+// --- Distance (21) ----------------------------------------------------------
+
+/// A distance relay with a purely-resistive reach (`Z1=1∠0`, `Z0=Z1` ⇒ `K0=0`,
+/// `Mground=Mphase=1`), set up directly (recalc would derive the same).
+fn distance_relay() -> Relay {
+    let mut r = Relay::new("r1");
+    r.control_type = ctype::DISTANCE;
+    r.dist_z1 = Complex64::new(1.0, 0.0);
+    r.dist_z0 = Complex64::new(1.0, 0.0);
+    r.dist_k0 = Complex64::ZERO; // (Z0-Z1)/3 / Z1
+    r.mground = 1.0;
+    r.mphase = 1.0;
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r
+}
+
+#[test]
+fn distance_trips_when_loop_impedance_in_reach() {
+    let mut r = distance_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    // Zloop = V/I = 0.5/1.0 = 0.5+j0 ⇒ inside the (1+j0) reach.
+    mon.vph = vec![Complex64::new(0.5, 0.0); 3];
+    mon.iph = vec![Complex64::new(1.0, 0.0); 3];
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open);
+    assert!(
+        r.relay_target.starts_with("21 "),
+        "target = {}",
+        r.relay_target
+    );
+    assert!(r.relay_target.contains("G1"));
+}
+
+#[test]
+fn distance_no_trip_when_out_of_reach() {
+    let mut r = distance_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    // Zloop = 2.0/1.0 = 2+j0 ⇒ beyond the (1+j0) reach.
+    mon.vph = vec![Complex64::new(2.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(1.0, 0.0); 3];
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(!r.armed_for_open);
+}
+
+/// `DistReverse` negates the monitored currents, flipping a forward in-reach
+/// fault out of the positive-resistance characteristic ⇒ no trip.
+#[test]
+fn distance_reverse_negates_current() {
+    let mut r = distance_relay();
+    r.dist_reverse = true;
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(0.5, 0.0); 3];
+    mon.iph = vec![Complex64::new(1.0, 0.0); 3]; // negated ⇒ Zloop.re < 0 ⇒ out
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(
+        !r.armed_for_open,
+        "reverse negation should drop the forward fault"
+    );
 }
 
 // --- Deferred sub-types record NOT_PORTED -----------------------------------
@@ -733,6 +917,24 @@ fn relay_trips_overloaded_line() {
         line_term1_max_current(&mut dss, "Line.l1") < 1.0,
         "the tripped relay should open the line"
     );
+}
+
+/// `recloseintervals=NONE` (the AllowNone parse) clears the array ⇒ NumReclose
+/// 0, Shots dumps 1, and RecloseIntervals dumps `[NONE]` (not `[]`).
+#[test]
+fn recloseintervals_none_clears_the_array() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.t basekv=12.47",
+        "new line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+        "new relay.r1 monitoredobj=line.l1 recloseintervals=NONE",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+    assert_eq!(dump(&mut dss, "RecloseIntervals"), "[NONE]");
+    assert_eq!(dump(&mut dss, "Shots"), "1");
 }
 
 /// Terminal-1 max current magnitude of a snapshot element (re/im interleaved).
