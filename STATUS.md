@@ -71,7 +71,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 418, golden_feeders 1,
+cargo test --workspace      # dss-core lib 420, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -893,12 +893,24 @@ simplest control of the WP7.2 set — no TCC/sensing — so it lands the generic
   `unsupported_class={Fault,Fuse,Recloser,Relay,SwtControl}` set once the protection
   block is complete (PHASE7_PLAN §3 WP7.2 step 4), alongside the targeted
   `phase7/protection*.json` golden.
-- **Audit-code follow-up:** none — the port is faithful 1:1 to `SwtControl.pas`;
-  the three surfaced notes (the typed `GetState` accessor is unreachable in this
-  CAPI-less port — the `?` dump uses `CurrentAction` on both engines; Reset flags
-  `system_y_changed` only on an actual state change, matching the CapControl
-  `reset_with` precedent; LOCK/UNLOCK skip the no-op `ActiveTerminalIdx` set) are
-  all non-load-bearing and need no change.
+- **Audit-code follow-up:** two of the three surfaced notes are non-load-bearing
+  (the typed `GetState` accessor is unreachable in this CAPI-less port — the `?`
+  dump uses `CurrentAction` on both engines; LOCK/UNLOCK skip the no-op
+  `ActiveTerminalIdx` set). The third — *Reset gated `system_y_changed` on an
+  all-or-nothing change check* — was promoted to a **real fix** on review: Pascal
+  `Reset` does `Closed[0] := …` unconditionally, and the change-gated version
+  could miss a real Y change on a **partially-open** terminal (one phase closed,
+  the rest open ⇒ `terminal_all_phases_closed` reads false ⇒ `was == want` ⇒ the
+  rebuild is skipped ⇒ stale system Y, since `build_y_matrix` is gated solely on
+  `system_y_changed`). Refactored the SwtControl Reset into a `reset_with(ctrl)`
+  method (mirroring `CapControl::reset_with`) that raises `system_y_changed`
+  unconditionally when a force is applied; **fixed the same dirty edge in
+  `CapControl::reset_with`** (`want_closed.is_some()`, was
+  `is_some_and(want != was)`). `RegControl::Reset` is clean (touches no element —
+  just `PendingTapChange=0; Armed=FALSE`). Both fixes carry a **fail-on-regression
+  partial-open test** (proven: re-introducing the change-gate makes each test
+  fail). dss-core lib **418→420** (SwtControl 18 + a CapControl partial-open test;
+  net of the `reset_control_side` test reshape). Gate green.
 - **Audit-tests follow-up:** the audit found two genuinely-untested new paths and
   one under-pinned guard; added 3 tests (dss-core lib **415→418**): an executive
   `reset_restores_switch_to_normal_via_dispatch` (the dispatch `Reset` element-force

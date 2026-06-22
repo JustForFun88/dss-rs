@@ -227,10 +227,16 @@ impl CapControl {
 
     /// The full Pascal `Reset` (the `DoResetControls` path): restore the
     /// control state *and* drive the bank back to `InitialState`. Returns
-    /// whether the bank's switch state changed (the caller raises
-    /// `SystemYChanged`, Pascal's `Set_ConductorClosed` side effect).
+    /// whether a force was applied (the caller raises `SystemYChanged`).
+    ///
+    /// Pascal `Reset` does `ControlledElement.Closed[0] := …` (`CapControl.pas`)
+    /// for an `InitialState` of OPEN/CLOSE, which raises `SystemYChanged`
+    /// **unconditionally** (the `case` has no else for `CTRL_NONE`). We mirror
+    /// that — return `true` whenever a force was applied, **not** gated on an
+    /// all-or-nothing change check (`is_closed()` reads "all phases closed", so a
+    /// partially-open bank could otherwise slip a real change past the Y
+    /// rebuild). Reset is rare, so a redundant rebuild is negligible.
     pub(crate) fn reset_with(&mut self, cap: &mut dyn ControlledCapacitor) -> bool {
-        let was_closed = cap.is_closed();
         let want_closed = match self.initial_state {
             CTRL_OPEN => Some(false),
             CTRL_CLOSE => Some(true),
@@ -240,7 +246,7 @@ impl CapControl {
             cap.set_closed(want);
         }
         self.reset();
-        want_closed.is_some_and(|want| want != was_closed)
+        want_closed.is_some()
     }
 
     /// Pascal `Set_PendingChange` (also mirrors to `DblTraceParameter`).
