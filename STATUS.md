@@ -101,7 +101,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 492, golden_feeders 1,
+cargo test --workspace      # dss-core lib 502, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -317,6 +317,12 @@ audits, gate detail) archived at
   Generic/TD21 `NOT_PORTED` log to fire **once** per object (a `not_ported_logged`
   latch, not once per control iteration), and pinned the dead `Type=Voltage`
   `RecloseIntervals[3]=5.0` upstream quirk with a "don't simplify" comment.
+  *audit-tests follow-up:* filled the ported-but-untested gaps (no oracle backstop
+  until the step-4 corpus gate) — Distance (in/out-of-reach + `DistReverse`
+  negation), DOC end-to-end through `Sample` (3-phase reverse-power trip +
+  forward-power block via the `Phase2SymComp` path), `NegSeq47`, the Voltage
+  reclose branch, the queue-driven `DoPendingAction(CTRL_RESET)` entry, and the
+  `recloseintervals=NONE` parse; **27 → 37 inline**, lib **492 → 502**.
 
 **Carry into step 3 (reliability activation) + step 4 (gate):**
 - **Dirty-edge discipline (implemented across all four controls).** Every trip/
@@ -340,7 +346,7 @@ audits, gate detail) archived at
   normalized event-log-equality for a trip/reclose sequence. The corpus relays are
   `Type=Current` (definite-time `Delay`), `Type=DOC` (the 68 LV network-protector
   cases), and `Type=Voltage`.
-- dss-core lib **392 → 492** across steps 1–2d.
+- dss-core lib **392 → 502** across steps 1–2d (incl. the two audit follow-ups).
 
 ---
 
