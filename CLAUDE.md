@@ -62,3 +62,7 @@ read feeders from that vendored corpus, never from `.inputs/` at runtime.
 - Case-insensitive identifiers via lowercase-normalized keys (THashList semantics).
 - New behavior questions are settled empirically against the oracle (see
   `tools/golden/probe_val.py` for the pattern), not by guessing FPC semantics.
+- **Commit messages: keep them short.** A concise subject line plus, only if
+  needed, 1–3 short bullets — not half a page. State *what changed and why* in a
+  sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
+  the commit body. Don't restate the diff.
