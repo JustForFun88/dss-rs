@@ -13,11 +13,17 @@ steps 1–4 done** (the `Fault` element, the `SwtControl`/`Fuse`/`Recloser`/`Rel
 controls, reliability activation, and **step 4** = the protection gate + corpus
 migration: the targeted `phase7_protection/*.json` trip/reclose golden, the ported
 `Open`/`Close` exec verbs, and `civanlar`/`IEEE_519` migrated into `solvable_now`,
-35→37); **WP7.3 (DER A) IN PROGRESS — step 0 (`DynamicExp` object) done** (the
-`general/dynamic_exp.rs` catalog object + its RPN differential-equation compiler
-(`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
-`props/dynamicexp.json` (9 scenarios) + 13 interpreter unit tests; lib 514→527).
-**next = WP7.3 step 1 (`pc/inv_based_pce.rs` — the `InvBasedPceData` base)**.
+35→37); **WP7.3 (DER A) IN PROGRESS — steps 0 + 1 done.** Step 0 (`DynamicExp` object):
+the `general/dynamic_exp.rs` catalog object + its RPN differential-equation
+compiler (`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
+`props/dynamicexp.json` (9 scenarios) + 13 interpreter unit tests; lib 514→527.
+**Step 1 (`pc/inv_based_pce.rs` — the `InvBasedPceData` base):** the shared
+inverter base (`TInvBasedPCE` + the `DynEqPCE` `DynamicEq`/`DynOut` fields) — the
+data record, the `InvDynamicVars` scalar sub-record, the `InvBasedPce` virtual
+trait, and the power-flow shared methods (`StickCurrInTerminalArray`/
+`Get_Presentkvar`/`UsingCIMDynamics`); 6 spec-pinned unit tests; lib 527→533.
+**next = WP7.3 step 2 (`pc/pvsystem.rs` — `TPVsystemObj` on the Generator
+template)**.
 WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
@@ -100,13 +106,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE — steps 1 + 2a + 2b + 2c + 2d + 3 + 4 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation, protection gate + corpus migration); **WP7.3 (DER A) — step 0 (`DynamicExp`) done**; **next = WP7.3 step 1 (`InvBasedPceData` base)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE — steps 1 + 2a + 2b + 2c + 2d + 3 + 4 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation, protection gate + corpus migration); **WP7.3 (DER A) — steps 0 (`DynamicExp`) + 1 (`InvBasedPceData` base) done**; **next = WP7.3 step 2 (`pc/pvsystem.rs`)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 527, golden_feeders 1,
+cargo test --workspace      # dss-core lib 533, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -356,8 +362,33 @@ header frontier paragraph summarizes the deliverable. In brief:
   end-to-end operator-dispatch test (sqr/inv/ln/exp/`^`/swap) **and** a guard pinning
   the substring tie-break that makes `sqrt`/`atan2` dead opcodes (`sqr`/`atan` shadow
   them — verbatim Pascal quirk). lib **514 → 527**.
-- **next:** step 1 — `pc/inv_based_pce.rs` (`InvBasedPceData` + trait), then step 2
-  (`pc/pvsystem.rs`), step 3 (zone allow-list), step 4 (gate + corpus).
+- **step 1 — `InvBasedPceData` (`pc/inv_based_pce.rs`):** the shared
+  inverter-based PC-element base (`PCElements/InvBasedPCE.pas`, `TInvBasedPCE`) plus
+  the `DynamicEq`/`DynOut` fields its parent `PCElements/DynEqPCE.pas` contributes.
+  An **abstract base** — not New-able (`CreateDSSClasses` never registers it; not in
+  `construct.rs`); PVSystem (step 2) and Storage (WP7.4) embed it the way Generator
+  flattens `GenVars`, and dispatch the virtuals through the `InvBasedPce` trait.
+  Lands: the `InvBasedPceData` data record; the `InvDynamicVars` **scalar**
+  sub-record (`Shared/InvDynamics.pas` `TInvDynamicVars` — only the scalars, which
+  back the PVSystem/Storage props `kVDC`/`kP`/`PITol`/`SafeVoltage`/`AmpLimit`/
+  `AmpLimitGain`/`SafeMode`, so they must exist before those classes); the
+  `InvBasedPce` virtual trait (`IsPVSystem`/`IsStorage`/`GetPFPriority`, base
+  `False`); and the three power-flow shared methods —
+  `StickCurrInTerminalArray` (wye/delta current routing, same sign convention as
+  Generator), `Get_Presentkvar` (`Qnominalperphase·0.001·Fnphases`),
+  `UsingCIMDynamics` (`VW|VV|WV|AVR|DRC`, WPMode deliberately excluded). **Deferred
+  to WP7.7 (dynamics/GFM):** the `TInvDynamicVars` per-phase arrays + every method
+  (`SolveDynamicStep`/`SolveModulation`/`CalcGFM*`/`InitDynArrays`/`Get_/Set_InvDyn*`),
+  the `PICtrl` PI-controller array, `CheckAmpsLimit`, the GFM `GetCurrents`
+  override, and the `DynEqPCE` dynamics memory (`DynamicEqVals`/`DynamicEqPair`/
+  `UserDynInit`). Gate: **6 spec-pinned unit tests** (base `Create` defaults,
+  `Get_Presentkvar` scaling, `UsingCIMDynamics` WPMode exclusion, wye/delta
+  `StickCurr` routing, the trait default/override via a mock implementor) — spec-
+  pinned (Pascal is the spec) since the oracle exposes none of these helpers outside
+  a full PVSystem/Storage solve (numeric pinning arrives with PVSystem, step 2).
+  *Self-contained: no solve-loop change, no class registration.* lib **527 → 533**.
+- **next:** step 2 — `pc/pvsystem.rs` (`TPVsystemObj` on the Generator template),
+  then step 3 (zone allow-list `is_zone_pce`), step 4 (gate + corpus migration).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
