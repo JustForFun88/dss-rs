@@ -130,7 +130,7 @@ depend on the temporary `.inputs/electricdss-tst`.
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
 - **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
-  be installed).** For each of the **37** `solvable_now` cases the gate
+  be installed).** For each of the **44** `solvable_now` cases the gate
   compiles+solves on the Rust engine and on the pinned dss-python oracle
   (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
@@ -288,7 +288,7 @@ header frontier paragraph summarizes the deliverable. In brief:
   protection/`Open` regression), parked in `needs_investigation`. lib **502 → 514**
   across steps 2d–4.
 
-**WP7.3 (DER A: DynamicExp + InvBasedPCE + PVSystem) — 🚧 IN PROGRESS.**
+**WP7.3 (DER A: DynamicExp + InvBasedPCE + PVSystem) — ✅ COMPLETE.**
 - **step 0 — `DynamicExp` (`general/dynamic_exp.rs`):** the user-defined
   differential-equation catalog object (`General/DynamicExp.pas`), a `DSS_OBJECT`
   registered before Generator/PVSystem/Storage (Pascal "before Generator,
