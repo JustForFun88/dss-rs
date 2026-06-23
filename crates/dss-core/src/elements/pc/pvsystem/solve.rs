@@ -199,9 +199,13 @@ impl PVSystem {
     }
 
     /// Pascal `CalcPVSystemModelContribution`: dispatch the power-flow model.
-    /// The dynamics (`DoDynamicMode`), harmonic (`DoHarmonicMode`) and
-    /// grid-forming (`DoGFM_Mode`) contributions are WP7.6/7.7 and are not
-    /// reachable from a power-flow solve.
+    /// The dynamics (`DoDynamicMode`) and harmonic (`DoHarmonicMode`)
+    /// contributions are genuinely unreachable from a power-flow solve (those
+    /// solve modes still error before any element runs) and land in WP7.6/7.7.
+    /// The grid-forming (`DoGFM_Mode`) contribution is **also** WP7.7, but
+    /// `ControlMode=GFM` is a settable per-element property, so it *is* reachable
+    /// — guarded with an explicit "not ported" error rather than silently running
+    /// the regular PQ model (which would give plausible-but-wrong numbers).
     pub(super) fn calc_pvsystem_model_contribution(
         &mut self,
         sys: &SysCtx,
@@ -209,6 +213,18 @@ impl PVSystem {
         errors: &mut Vec<String>,
     ) {
         self.cd.iterminal_updated = false;
+        if self.base.gfm_mode {
+            // Pascal `if GFM_Mode then DoGFM_Mode(); Exit;` — DoGFM_Mode /
+            // CalcGFMYprim are WP7.7 (dynamics). Init InjCurrent from Yprim like
+            // the user-model path, then surface a clear unported error.
+            self.calc_yprim_contribution(node_v);
+            errors.push(format!(
+                "PVSystem.{}: grid-forming inverter mode (ControlMode=GFM) is not \
+                 ported yet (Phase 7 WP7.7).",
+                self.cd.obj.name()
+            ));
+            return;
+        }
         match self.base.voltage_model {
             1 => self.do_constant_pq(sys, node_v),
             2 => self.do_constant_z(sys, node_v),
