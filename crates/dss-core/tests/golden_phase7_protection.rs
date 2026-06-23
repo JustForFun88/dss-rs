@@ -177,6 +177,24 @@ fn run_scenario(sc: &Scenario, tol: &harness::Tol) {
     // Final element currents/powers — pins the controlled line's open/closed state
     // (a held-open line carries ~0 A; a reclosed line carries full load current).
     let snaps = dss.snapshot_elements();
+    // Assert the element name sets match exactly (no dropped *or* extra element),
+    // like the live gate (corpus_live.rs) — `compare_element` alone only catches a
+    // dropped element.
+    let rust_names: std::collections::BTreeSet<String> =
+        snaps.iter().map(|s| s.name.to_lowercase()).collect();
+    let oracle_names: std::collections::BTreeSet<String> = sc
+        .final_elements
+        .iter()
+        .map(|e| e.name.to_lowercase())
+        .collect();
+    assert_eq!(
+        rust_names,
+        oracle_names,
+        "{}: element name sets differ (Rust∖oracle={:?}, oracle∖Rust={:?})",
+        sc.name,
+        rust_names.difference(&oracle_names).collect::<Vec<_>>(),
+        oracle_names.difference(&rust_names).collect::<Vec<_>>(),
+    );
     for ec in &sc.final_elements {
         compare_element(&snaps, ec, tol, &format!("{} final", sc.name));
     }
