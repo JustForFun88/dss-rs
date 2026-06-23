@@ -24,51 +24,13 @@ trait, and the power-flow shared methods (`StickCurrInTerminalArray`/
 `Get_Presentkvar`/`UsingCIMDynamics`); 7 spec-pinned unit tests; lib 527→534.
 **next = WP7.3 step 2 (`pc/pvsystem.rs` — `TPVsystemObj` on the Generator
 template)**.
-WP7.1 landed the Carson line-constants engine
-(`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
-`LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
-`tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
-feeders into `solvable_now` (**17→35**); and (step 5) added the §1 tier-1
-**targeted golden** `phase7/line_geometry*.json` (`gen_phase7.py` +
-`golden_phase7.rs`, **5 scenarios** pinning the Carson geometry/spacing/cable Line
-**YPrim** offline — the focused regression guard the live gate doesn't replace).
-**WP7.2 step 1** landed the `Fault` element (`pd/fault.rs`): an uncoupled
-conductance branch (`G=1/r` / `Gmatrix`), registered + on a new `Circuit.faults`
-list, with the `Check_Fault_Status`/`DoResetFaults` control-loop wiring now live
-(temporary-fault apply/clear); `props.json` `fault.json` + 8 oracle-pinned tests.
-**WP7.2 step 2a** landed `SwtControl` (`control/swt_control/`): a manual switch
-control on the WP5.7 control sweep (`Sample`/`DoPendingAction` open/close a
-controlled element's terminal + event log), with the generic
-`CktElementData::set_terminal_closed` conductor-open machinery and a
-`RefAction::SetSwitchClosed` for the `State=` parse-time force; `props.json`
-`swtcontrol.json` (7 scenarios) + 14 oracle-pinned tests.
-**WP7.2 step 2b** landed `Fuse` (`pd/fuse/`): the first **TCC/sensing**
-protection device — a per-phase fuse that evaluates `TCC_Curve.GetTCCTime`
-(newly ported) on the monitored current and blows individual controlled
-conductors via per-phase control-queue actions. New shared machinery:
-`TccCurveObj::get_tcc_time` (log-log interpolation), per-conductor
-`CktElementData::set_conductor_closed`, `RefAction::SetConductorsClosed`, and a
-`PropType::MappedStringEnumArray` for the per-phase `Normal`/`State` arrays;
-`props.json` `fuse.json` (8 scenarios) + 20 oracle-pinned tests.
-**WP7.2 step 2c** landed `Recloser` (`control/recloser/`): an overcurrent
-recloser that trips the controlled element's whole terminal on a phase/ground TCC
-pickup and recloses after an interval, up to `Shots` operations before lockout
-(fast then delayed curves). New engine machinery: `PropFlags::ARRAY_MAX_SIZE`
-(`RecloseIntervals`) and the integer-dump `VALUE_OFFSET` (`Shots` aliases
-`NumReclose−1`); `props.json` `recloser.json` (7 scenarios) + 26 oracle-pinned
-tests.
-**WP7.2 step 2d** landed `Relay` (`control/relay/`): the general protection
-control — nine `Type=` sub-types over a shared 50-property surface and the same
-whole-terminal `Closed[0]` trip/reclose state machine. Seven sub-types ported
-live (`Current`/`Voltage`/`ReversePower`/`46`/`47`/`Distance`/`DOC`); the
-dynamics-coupled `Generic` (needs PC state `Variable[]`) and `TD21` (needs
-`DynaVars.h`/ring buffer) parse + dump but **defer their `Sample` logic to
-WP7.7** (a `NOT_PORTED` error if reached). New shared machinery:
-`TccCurveObj::get_ov_time`/`get_uv_time` (definite-time over/under-voltage scans)
-and `PropFlags::ALLOW_NONE` (a zero-count `DoubleVArray` dumps `[NONE]`).
-Unlike the Recloser, every Relay event-log line is gated on `ShowEventLog`, and
-`MakeLike` copies `DelayTime`/`BreakerTime`; `props.json` `relay.json` (9
-scenarios) + 27 oracle-pinned tests. Full per-step detail in **§1e**.
+**WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
+per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
+`TSData`/`LineSpacing`/`LineGeometry` catalog + Line's geometry/spacing path and
+its golden; `Fault`/`SwtControl`/`Fuse`/`Recloser`/`Relay` + reliability
+activation + the protection gate) lives in **§1e** (per-step summaries) and the
+archives [`phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md) /
+[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **37**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
