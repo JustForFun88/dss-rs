@@ -817,11 +817,6 @@
    "note": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\") for object"
   },
   {
-   "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
-   "tag": "unsupported_class=Swtcontrol",
-   "note": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"New Command: Object Type \\\"Swtcontrol\\\" not found.\"]"
-  },
-  {
    "path": "Version8/Distrib/Examples/Matlab/pst.dss",
    "tag": "unsupported_class=isource",
    "note": "Version8/Distrib/Examples/Matlab/pst.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"LoadShape.pst: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"New Command: Object Type \\\"isource\\\" not found.\"]"
@@ -1122,11 +1117,6 @@
    "note": "Version8/Distrib/Examples/WampServer/testcommandline.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Invalid inline m"
   },
   {
-   "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
-   "tag": "unsupported_class=swtcontrol",
-   "note": "Version8/Distrib/Examples/civinlar model/civanlar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"swtcontrol\\\" not found.\", \"New Command: Object Type \\\"swtcontrol\\\" not found.\", \"New Command: Object Type \\\"swtcontrol\\\" not found.\", \"New Command: Object Type \\\"swtcontrol\\\" not fou"
-  },
-  {
    "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
    "tag": "unsupported_unknown",
    "note": "Version8/Distrib/Examples/civinlar model/regulator.dss: Rust engine errors after compile: [\"LoadShape.ldc_2007: LoadShape has no data to be normalized. Check for previous errors. (61107)\"]"
@@ -1185,11 +1175,6 @@
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss",
    "tag": "unsupported_command=Export,Show",
    "note": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported y"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
-   "tag": "unsupported_class=Fault,Fuse,Recloser,Relay; unsupported_command=Open",
-   "note": "New Command: Object Type \"Recloser\" not found."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS",

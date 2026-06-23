@@ -16,6 +16,7 @@ mod energymeter_zones;
 mod lifecycle;
 mod line_fetch;
 mod monitors;
+mod open_close;
 mod reduce;
 mod reliability;
 mod solve;
