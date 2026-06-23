@@ -122,6 +122,8 @@ impl Dss {
         match pointer {
             cmd::EDIT => self.do_edit_cmd(),
             cmd::MORE | cmd::M | cmd::TILDE => self.edit_active(),
+            cmd::OPEN => self.do_open_close_cmd(false),
+            cmd::CLOSE => self.do_open_close_cmd(true),
             cmd::SOLVE => self.do_set_cmd(1), // Solve = Set + DoSolveCmd
             cmd::SET => self.do_set_cmd(0),
             cmd::QUERY => self.do_query_cmd(),
@@ -242,6 +244,98 @@ impl Dss {
         if self.classes[ci].set_active(&obj_name) {
             self.edit_active();
         }
+    }
+
+    /// Pascal `DoOpenCmd`/`DoCloseCmd` (ExecHelper.pas:1451/1484): open
+    /// (`close=false`) or close (`close=true`) a terminal — and optionally a
+    /// single conductor — of a circuit element.
+    ///
+    /// Syntax: `Open class.name term=xx cond=xx`. A `cond` of 0 (omitted) opens
+    /// the **whole** terminal (`Closed[0]`); `cond>0` opens just that 1-based
+    /// conductor. `Closed[...] := …` raises `YPrimInvalid` →
+    /// `SystemYChanged` unconditionally (the step-2a dirty-edge rule), so the
+    /// next `BuildYMatrix` rebuilds with the conductor open. Editing `circuit` is
+    /// a no-op, exactly as Pascal.
+    ///
+    /// Pascal additionally calls `SetActiveBus(StripExtension(Getbus(...)))` to
+    /// make the switched terminal's bus active; no ported command consumes an
+    /// active bus, so that inert side effect is not reproduced (revisit when the
+    /// bus-context verbs land).
+    fn do_open_close_cmd(&mut self, close: bool) {
+        let verb = if close { "Close" } else { "Open" };
+        // Pascal `SetActiveCktElement` resolves the leading `class.name` to an
+        // active circuit element (None on any failure — unknown class / object /
+        // a non-element / the `circuit` object). Its own diagnostics (253/254)
+        // are emitted there; the outer DoOpenCmd/DoCloseCmd adds 259/260 below.
+        let resolved = self.set_active_ckt_element(verb);
+        let Some(ci) = resolved else {
+            self.errors.push(format!(
+                "Error in {verb} Command: Circuit Element not found."
+            ));
+            return;
+        };
+        // `term` then `cond` (Pascal `NextParam; IntValue` — empty => 0). A
+        // non-positive index maps to 0/out-of-range, which the setters' guards
+        // ignore exactly as Pascal's index guards do.
+        self.parser.next_param(&self.vars);
+        let terminal = self.parser.make_integer(&self.vars).unwrap_or(0).max(0) as usize;
+        self.parser.next_param(&self.vars);
+        let conductor = self.parser.make_integer(&self.vars).unwrap_or(0).max(0) as usize;
+
+        let idx = self.classes[ci]
+            .active
+            .expect("set_active set the active index");
+        let dirty = {
+            let cd = self.classes[ci].objects[idx]
+                .as_ckt_element_mut()
+                .expect("set_active_ckt_element returned a circuit element")
+                .cd_mut();
+            // Pascal `ActiveTerminalIdx := Terminal; Closed[Conductor] := …`
+            // (cond 0 => the whole terminal). `Closed[…]` raises YPrimInvalid.
+            if conductor == 0 {
+                cd.set_terminal_closed(terminal, close);
+            } else {
+                cd.set_conductor_closed(terminal, conductor, close);
+            }
+            cd.yprim_invalid && cd.enabled
+        };
+        // …which propagates to SystemYChanged unconditionally (the step-2a
+        // dirty-edge rule), so the next BuildYMatrix rebuilds with the change.
+        if dirty && let Some(ckt) = self.circuit.as_mut() {
+            ckt.solution.system_y_changed = true;
+        }
+    }
+
+    /// Pascal `TExecHelper.SetActiveCktElement`: read the leading `class.name`,
+    /// set it active, and return its class index iff it is a real circuit
+    /// element. Returns `None` (with the matching Pascal diagnostic) for the
+    /// `circuit` object, an unknown class (253), an unknown object, or a
+    /// non-circuit object (254).
+    fn set_active_ckt_element(&mut self, verb: &str) -> Option<usize> {
+        let (obj_class, obj_name) = self.get_obj_class_and_name();
+        if obj_class.eq_ignore_ascii_case("circuit") {
+            return None; // Pascal: do nothing (retval stays 0)
+        }
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+            self.errors.push(format!(
+                "Error in {verb} Command: Object Type \"{obj_class}\" not found."
+            ));
+            return None;
+        };
+        self.active_class = Some(ci);
+        if !self.classes[ci].set_active(&obj_name) {
+            return None;
+        }
+        let idx = self.classes[ci]
+            .active
+            .expect("set_active set the active index");
+        if self.classes[ci].objects[idx].as_ckt_element().is_none() {
+            self.errors.push(format!(
+                "Error in {verb}: Object not a circuit Element. {obj_class}.{obj_name}"
+            ));
+            return None;
+        }
+        Some(ci)
     }
 
     /// Pascal `AddObject`: create the object (or make the existing one

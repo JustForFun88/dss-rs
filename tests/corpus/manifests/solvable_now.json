@@ -62,13 +62,13 @@
    "n_steps": 1
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
-   "kind": "feeder",
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
+   "kind": "large",
    "n_steps": 1
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
-   "kind": "large",
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
+   "kind": "feeder",
    "n_steps": 1
   },
   {
@@ -107,17 +107,27 @@
    "n_steps": 1
   },
   {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
    "kind": "large",
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/VSConverter/SG2012.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
    "kind": "feeder",
    "n_steps": 1
   },

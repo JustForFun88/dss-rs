@@ -9,12 +9,12 @@
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
    "tag": "entry_point",
-   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 45s\")"
+   "note": "live probe: oracle case D:/Rust/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 90s\")"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS",
    "tag": "wrapper",
-   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 45s\")"
+   "note": "live probe: oracle case D:/Rust/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 90s\")"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
@@ -23,16 +23,21 @@
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
-   "note": "live probe: the pinned oracle itself does not converge on this case (Rust unblocked by the Show no-op); revisit"
+   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss step 0: oracle did not converge"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
-   "note": "live probe: the pinned oracle itself does not converge on this case (Rust unblocked by the Show no-op); revisit"
+   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
    "tag": "entry_point",
    "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
+   "tag": "entry_point",
+   "note": "WP7.2 step4: protection + Open now let this Fault/Fuse/Recloser/Relay feeder compile, but the live system-Y diverges ~3e-5 rel at a line node (entry 23: actual (173.211,-299.998) vs expected (173.203,-299.996), |diff|=8.0e-3 > allowed 3.5e-4). A WP7.1 Carson line-constants precision divergence on this feeder's linegeometry/linespacing/wiredata, NOT a protection/Open regression — the Open command is oracle-verified on Line + Transformer terminals (exec::tests::open_close) and protection controls have no YPrim. Tracked for the WP7.1 / Phase-7 geometry precision follow-up."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
@@ -42,7 +47,7 @@
   {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
    "tag": "entry_point",
-   "note": "live probe: oracle produced no JSON response\n--- stdout ---\n{\"ok\":true,\"result\":{\"node_order\":[\"SOURCEBUS.1\",\"SOURCEBUS.2\",\"SOURCEBUS.3\",\"SX2000404A.2\",\"SX2000404A.1\",\"SX2000405A.2\",\"SX2000405A.1\",\"SX2000402A.1\",\"SX2000402A.2\",\"SX2000403A.2\",\"SX2000403A.1\",\"SX2804272B.1\",\"SX2804272B.2\",\"SX2001309A.2\",\"SX2001309"
+   "note": "live probe: oracle produced no JSON response — the 9500-node model's response exceeds the one-shot transport buffer (pre-existing, unrelated to WP7.2 protection); revisit with a streamed/larger-buffer oracle transport."
   }
  ]
 }

@@ -8,14 +8,13 @@
 > frontier.
 
 Last updated: 2026-06-23 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) IN PROGRESS —
-step 1 done** (the `Fault` element)**, step 2a done** (the `SwtControl` switch
-control)**, step 2b done** (the `Fuse` per-phase TCC protection)**, step 2c done**
-(the `Recloser` overcurrent recloser)**, step 2d done** (the `Relay` — all nine
-sub-types, Generic/TD21 logic deferred to WP7.7)**, step 3 done** (reliability
-activation — Relay/Recloser/Fuse set `Flg.HasOCPDevice`, `GetOCPDeviceType` is
-live, the dormant Phase-6 `RelCalc` SAIFI/SAIDI now runs on a protected zone);
-**next = WP7.2 step 4 (protection gate + corpus migration)**. WP7.1 landed the Carson line-constants engine
+`phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE —
+steps 1–4 done** (the `Fault` element, the `SwtControl`/`Fuse`/`Recloser`/`Relay`
+controls, reliability activation, and **step 4** = the protection gate + corpus
+migration: the targeted `phase7_protection/*.json` trip/reclose golden, the ported
+`Open`/`Close` exec verbs, and `civanlar`/`IEEE_519` migrated into `solvable_now`,
+35→37); **next = WP7.3 (DER A: DynamicExp object + InvBasedPCE base + PVSystem)**.
+WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -97,15 +96,16 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b + 2c + 2d + 3 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation); **next = WP7.2 step 4 (protection gate + corpus migration)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE — steps 1 + 2a + 2b + 2c + 2d + 3 + 4 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation, protection gate + corpus migration); **next = WP7.3 (DER A: DynamicExp + InvBasedPCE + PVSystem)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 509, golden_feeders 1,
+cargo test --workspace      # dss-core lib 513, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
+                            # golden_phase7_protection 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -159,9 +159,10 @@ depend on the temporary `.inputs/electricdss-tst`.
   `not_an_entry_point`). `corpus_manifest.rs` enforces the bijection — no silent
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
-- **Live comparison (`DSS_LIVE_ORACLE=1`; runs in the `live-oracle` CI job).**
-  For each of the **17** `solvable_now` cases the gate compiles+solves on the Rust
-  engine and on the pinned dss-python oracle (`tools/oracle/oracle_server.py`, a
+- **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
+  be installed).** For each of the **37** `solvable_now` cases the gate
+  compiles+solves on the Rust engine and on the pinned dss-python oracle
+  (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
   node order, **full** system Y (entry-by-entry, no fingerprint substitution),
   node voltages, **every** element's currents/powers, selected YPrim blocks (a
@@ -273,10 +274,11 @@ header frontier paragraph summarizes the deliverable. In brief:
   CN/TS *data* paths are covered, so the plural forms stay un-pinned pending that
   source/binary reconciliation (full note in the archive).
 
-**WP7.2 (Protection) — 🚧 IN PROGRESS.** Steps **1 (`Fault`), 2a (`SwtControl`),
-2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`), 3 (reliability activation) done +
-gate-green**; **next = step 4 (protection gate + corpus migration)**. Full
-per-step records (decisions, audits, gate detail) archived at
+**WP7.2 (Protection) — ✅ COMPLETE.** Steps **1 (`Fault`), 2a (`SwtControl`),
+2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`), 3 (reliability activation), 4
+(protection gate + corpus migration) done + gate-green**; **next = WP7.3 (DER A:
+DynamicExp object + InvBasedPCE base + PVSystem)**. Full per-step records
+(decisions, audits, gate detail) for steps 1–2c archived at
 [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). In brief:
 - **step 1 — `Fault` (`pd/fault.rs`):** an uncoupled multi-phase **conductance**
   branch (`G=1/r` / `Gmatrix`) + the FaultStudy input (WP7.9). New `ElemKind::Fault`
@@ -371,31 +373,78 @@ per-step records (decisions, audits, gate detail) archived at
   Known untestable-without-an-accessor: section `SeqIndex`/`OCPDeviceType` (no
   meter getter; would need the step-4 golden). **lib 506 → 509**.
 
-**Carry into step 4 (protection gate + corpus migration):**
-- **Dirty-edge discipline (implemented across all four controls).** Every trip/
-  close/reset forces conductors via `Closed[]` → `TDSSCktElement.Set_ConductorClosed`
-  (`CktElement.pas:287`) sets `YPrimInvalid := TRUE` → `SystemYChanged := TRUE`
-  (`:240`) **unconditionally**, no change-comparison. So each control raises
-  `system_y_changed` **unconditionally** (or via an exact per-conductor check),
-  **never** gated on a `terminal_all_phases_closed`/`is_closed` aggregate (a
-  partial-open terminal otherwise slips a real change past the rebuild → stale Y),
-  and **each ships a partial-open fail-on-regression test** (`d0addb4`/`d1f48231`).
-  Relay forces via `Closed[0]` (`Relay.pas:962…`) — same rule.
-- **Reliability — done (step 3).** OCP flags + `GetOCPDeviceType` + the live
-  `RelCalc` SAIFI/SAIDI are in. The single-int `ocp_device_type` + single-flag
-  model is exact for the realistic one-OCP-per-element case; the move/re-enable
-  reassignment edge (a control redefined onto a different element, leaving the old
-  element's flag stale) is **not** un-set — consistent with the existing
-  controlled-element force model (the `SetSwitchClosed`/`SetConductorsClosed`
-  forces likewise never un-force a previous target). Not exercised by any gate.
-- **Generic/TD21 Sample logic deferred to WP7.7** (dynamics): the relay parses +
-  dumps `Type=Generic`/`TD21` but the live sensing records a `NOT_PORTED` error.
-- **Corpus migration** of the `{Fault,Fuse,Recloser,Relay,SwtControl}` cases lands
-  at the **step-4 gate**, with the targeted `phase7/protection*.json` golden +
-  normalized event-log-equality for a trip/reclose sequence. The corpus relays are
-  `Type=Current` (definite-time `Delay`), `Type=DOC` (the 68 LV network-protector
-  cases), and `Type=Voltage`.
-- dss-core lib **392 → 509** across steps 1–3 (incl. the audit follow-ups).
+- **step 4 — protection gate + corpus migration:** the WP7.2 exit gate (two
+  tiers, the established Phase-7 pattern).
+  - **Targeted golden `phase7_protection/*.json`** (`gen_phase7_protection.py` +
+    `golden_phase7_protection.rs`, **5 scenarios**): a fault + protection
+    **trip/reclose sequence** driven through the **ported** `mode=duty
+    controlmode=time` control sweep (the corpus relay demos use the unported
+    dynamics mode → WP7.7, so the golden uses duty), pinning per-step `dblHour` +
+    iteration count + node voltages (the feeder collapses to ~0 on every step the
+    line is held open — the voltage trajectory encodes the discrete state), the
+    **event log line-for-line** (normalized — FAST/DELAYED/LOCKED OUT/CLOSED/PHASE
+    TARGET/BLOWN/RESETTING), and every element's final-step currents/powers (a
+    held-open line carries ~0 A, a reclosed line full load — the final
+    switch/recloser/fuse state pinned exactly). Scenarios: `recloser_temp`
+    (temporary fault → FAST trip → self-clear → reclose), `recloser_perm`
+    (permanent → FAST → reclose → DELAYED → reclose → LOCKED OUT — NumFast /
+    RecloseIntervals / Shots / lockout), `relay_current` (`Type=Current`,
+    `eventlog=yes` → RESETTING + OPENED ON PH & LOCKED OUT), `fuse_blow` (per-phase
+    tlink fuse → PHASE 3/2/1 BLOWN), `swt_manual` (a mid-run `edit swtcontrol.x
+    action=open` — the corpus civanlar pattern). The Rust engine reproduced every
+    oracle sequence **exactly on the first run** — strong end-to-end validation of
+    the steps 1–3 ports through a multi-step control sweep.
+  - **`Open`/`Close` exec verbs ported** (`command.rs::do_open_close_cmd`, Pascal
+    `DoOpenCmd`/`DoCloseCmd` ExecHelper.pas:1451/1484; `cmd::OPEN`=17/`CLOSE`=18):
+    `Open class.name term cond` forces a terminal (cond 0 ⇒ whole terminal via
+    `set_terminal_closed`; cond>0 ⇒ one conductor via `set_conductor_closed`) and
+    raises `system_y_changed` (the step-2a dirty edge), reusing the protection
+    switching machinery; `set_active_ckt_element` mirrors the Pascal helper
+    (253/254/259 diagnostics). Pascal's `SetActiveBus` side effect is inert here
+    (no ported verb reads an active bus). **4 oracle-pinned tests** (`exec/tests/
+    open_close.rs`): Line whole-terminal open/close round-trip (24.384 A ↔ 0),
+    single-conductor open ([24.377, 0, 24.401]), **transformer winding** open
+    (the DG_Prot_Fdr pattern — load 500 kW ↔ 0), and the #259 error path.
+  - **Corpus migration:** the protection-only-blocked cases were probed live via
+    `DSS_LIVE_CLASSIFY=1 corpus_live_classify` + `apply_classify.py`. **`civanlar`
+    (SwtControl) + `IEEE_519` (SwtControl) migrated into `solvable_now` (35→37)**;
+    `COVERAGE.md` refreshed (37 = 11.0% of entry points). Most protection corpus
+    cases stay skipped because they embed *unported* commands/modes — Phase-8
+    `Show`/`Export`/`Plot`/`BatchEdit` and the WP7.7 `dynamics` solve mode (the
+    Distance/TD21 relay demos, the DOCTechNote/HarmonicsTMode feeders) — not the
+    protection classes, which are all ported now.
+  - **Tracked-open (needs_investigation): `DG_Prot_Fdr.dss`** — the canonical
+    Fault/Fuse/Recloser/Relay feeder now compiles (protection + `Open` landed it),
+    but the live **system Y diverges ~3e-5 rel at a line node** (entry 23,
+    |diff|=8.0e-3 > allowed 3.5e-4). This is a **WP7.1 Carson line-constants
+    precision divergence** on the feeder's `linegeometry`/`linespacing`/`wiredata`,
+    **not** a protection/`Open` regression — `Open` is oracle-verified on Line +
+    Transformer terminals and protection controls carry no YPrim. Parked for the
+    WP7.1 / Phase-7 geometry-precision follow-up (the plural-cable note's family).
+  - dss-core lib **509 → 513** (the 4 `open_close` tests); golden suite +1
+    (`golden_phase7_protection`). Full three-command gate green on **stable**.
+
+**Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
+- **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
+  trip/close/reset/Open forces conductors via `Closed[]` →
+  `TDSSCktElement.Set_ConductorClosed` (`CktElement.pas:287`) sets `YPrimInvalid :=
+  TRUE` → `SystemYChanged := TRUE` (`:240`) **unconditionally**, no
+  change-comparison. So each raises `system_y_changed` **unconditionally** (or via
+  an exact per-conductor check), **never** gated on a
+  `terminal_all_phases_closed`/`is_closed` aggregate (a partial-open terminal
+  otherwise slips a real change past the rebuild → stale Y); each control ships a
+  partial-open fail-on-regression test (`d0addb4`/`d1f48231`), and the `Open` verb
+  carries the Line/transformer round-trip guards.
+- **Reliability (step 3).** OCP flags + `GetOCPDeviceType` + the live `RelCalc`
+  SAIFI/SAIDI are in. The single-int `ocp_device_type` + single-flag model is exact
+  for the realistic one-OCP-per-element case; the move/re-enable reassignment edge
+  (a control redefined onto a different element, leaving the old element's flag
+  stale) is **not** un-set — consistent with the existing controlled-element force
+  model (the `SetSwitchClosed`/`SetConductorsClosed`/`Open` forces likewise never
+  un-force a previous target). Not exercised by any gate.
+- **Generic/TD21 Relay Sample logic deferred to WP7.7** (dynamics): the relay
+  parses + dumps `Type=Generic`/`TD21` but the live sensing records a `NOT_PORTED`
+  error. The corpus Distance/TD21 relay demos also need the dynamics solve mode.
 
 ---
 
@@ -553,13 +602,16 @@ this environment; the `py` launcher is broken — use `python` directly.
   skeleton (empty fleet → 37201); `solution/meters/zones/build.rs::is_zone_pce`
   carries a `TODO(WP7)` to add PVSystem/Storage to the zone allow-list once they
   exist.
-- **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — until one sets
-  `Flg.HasOCPDevice`, `RelCalc` aborts with #52902 (oracle-faithful) and the
-  ported SAIFI/SAIDI/section math below the abort stays dormant
-  (`GetOCPDeviceType` inlined to 0, `TODO(WP7)`).
+- **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — ✅ **done
+  (WP7.2)**: all five classes ported on the control sweep, the `Open`/`Close` exec
+  verbs landed, and an enabled Relay/Recloser/Fuse sets `Flg.HasOCPDevice` so
+  `RelCalc` no longer aborts (#52902) and `GetOCPDeviceType` is live — the
+  SAIFI/SAIDI/section math runs on a protected zone.
 - **Line constants** `WireData/CNData/TSData/CableData/LineSpacing/LineGeometry`
-  + Carson — Line's `geometry`/`spacing`/`wires`/`cncables`/`tscables` are
-  `NOT_PORTED` (round-trip empty only).
+  + Carson — ✅ **done (WP7.1)**: Line's
+  `geometry`/`spacing`/`wires`/`cncables`/`tscables` resolve and drive the Carson
+  Z/Yc (one plural-cable reset + the `DG_Prot_Fdr` ~3e-5 line-Y precision case
+  tracked-open, §1e).
 - **Dynamics & harmonics** (Generator/Storage `DoDynamicMode`/`DoHarmonicMode`,
   state vars beyond names/count) + `MakePosSequence` everywhere; Monitor modes
   3/4/7/8/10/12 build their header but defer the sample body; Transformer GIC
