@@ -17,6 +17,7 @@ mod lifecycle;
 mod line_fetch;
 mod monitors;
 mod open_close;
+mod pvsystem;
 mod reduce;
 mod reliability;
 mod solve;

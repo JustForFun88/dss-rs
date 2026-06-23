@@ -403,7 +403,22 @@ header frontier paragraph summarizes the deliverable. In brief:
   difference — the kvar-clamp path is validated by the sibling
   `CurrentkvarLimite` cases that pass at full tolerance; conditioning, not a
   logic bug — diagnosed in the manifest note). lib **534 → 539**.
-  *audit-code / audit-tests: pending.*
+  *audit-code:* faithful port (the intricate `ComputeInverterPower` clamp cascade,
+  `SetNominalDEROutput`, `CalcYPrimMatrix`, `DoConstantPQ`/`Z`, `MakeLike`, the
+  side-effects all match Pascal + the oracle goldens). Fixed one real
+  silent-degradation: **`ControlMode=GFM`** is a settable property (round-trips)
+  but its solve behavior (`DoGFM_Mode`/`CalcGFMYprim`) is WP7.7 — the model dispatch
+  ignored `gfm_mode` and silently ran the regular PQ model (plausible-but-wrong
+  numbers). Now a **pre-solve guard** (`solution/dispatch.rs`) aborts the solve with
+  an explicit "not ported (WP7.7)" error + `solution_abort` (the
+  deferral-is-never-a-silent-fallback convention), plus a defensive
+  contribution-path guard mirroring the user-model path; 2 exec tests pin it (the
+  clean snapshot solve + the GFM error). Surfaced-not-fixed (recorded, both **exact
+  Generator parity**, not new): the GENERALTIME arm ignores `ActiveLoadShapeClass`
+  (`SysCtx` carries no class — shared with `generator/nominal.rs`); and
+  `Set_ConductorClosed` is not wired (`pv_system_obj_switch_open` never set, like
+  Generator's `gen_switch_open`). lib **539 → 541**.
+  *audit-tests: pending.*
 - **next:** **WP7.3 (DER A) COMPLETE** → **WP7.4 (DER B): `pc/storage.rs`
   (`TStorageObj` on the inverter base — the charge/idle/discharge state machine +
   integrated `%stored`) + the real `StorageController` fleet/dispatch.**
