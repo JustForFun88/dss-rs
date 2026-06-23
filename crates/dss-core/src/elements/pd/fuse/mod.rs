@@ -246,13 +246,12 @@ impl Fuse {
     /// Pascal `TFuseObj.RecalcElementData` (parse-time subset): take the phase
     /// count from the monitored element and attach the control's terminal to the
     /// monitored bus. With no monitored/switched element, Pascal raises 404/405;
-    /// the per-phase arm/handle reset matches Pascal.
-    ///
-    /// **Deferred to WP7.2 step 3 (reliability activation):** `Include(
-    /// ControlledElement.Flags, Flg.HasOCPDevice)` and the recalc-time
-    /// `ControlledElement.Closed[i]` resync (the parse-time `State=` force
-    /// already drives the element). Both reach the controlled element, which
-    /// `recalc` cannot see here; they land with `GetOCPDeviceType` in step 3.
+    /// the per-phase arm/handle reset matches Pascal. An enabled fuse marks its
+    /// controlled element with the `Flg.HasOCPDevice` reliability flag (the Fuse
+    /// is not auto-reclosing, so it sets *only* `HasOCPDevice`, never
+    /// `HasAutoOCPDevice`) and resyncs the controlled element's per-phase
+    /// `Closed[i]` to `FPresentState` — both deferred as [`RefAction`]s since
+    /// `recalc` holds no mutable view of the controlled element.
     fn recalc(&mut self) {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
@@ -289,9 +288,31 @@ impl Fuse {
             ));
             return;
         }
+        // Mark the controlled element as an OCP device for the reliability sweep
+        // (Pascal `if Enabled then Include(...Flg.HasOCPDevice)`), then resync the
+        // controlled element's per-phase Closed[i] to FPresentState.
+        self.queue_ocp_flag();
+        self.queue_state_force();
         // Disarm every phase (Pascal resets hAction/ReadyToBlow).
         self.h_action = [0; FUSEMAXDIM];
         self.ready_to_blow = [false; FUSEMAXDIM];
+    }
+
+    /// Queue the `RecalcElementData` reliability flag: mark the controlled
+    /// element as carrying an OCP device (Pascal `Include(ControlledElement
+    /// .Flags, Flg.HasOCPDevice)`). Only an enabled fuse sets it; the Fuse is
+    /// **not** auto-reclosing, so it never sets `HasAutoOCPDevice` and reports
+    /// `GetOCPDeviceType` ordinal 1.
+    fn queue_ocp_flag(&mut self) {
+        if let Some(target) = self.ccd.controlled_element
+            && self.ccd.cd.enabled
+        {
+            self.pending_ref_actions.push(RefAction::SetOcpDevice {
+                target,
+                device_type: 1,
+                auto: false,
+            });
+        }
     }
 
     /// Pascal `TFuseObj.Sample`: for each monitored phase, refresh the live link

@@ -474,15 +474,32 @@ impl Relay {
         }
     }
 
+    /// Queue the `RecalcElementData` reliability flag: mark the controlled
+    /// element as carrying an OCP device (Pascal `Include(ControlledElement
+    /// .Flags, Flg.HasOCPDevice/HasAutoOCPDevice)`). Only an enabled relay sets
+    /// it; the Relay is an auto-reclosing device, so it sets `HasAutoOCPDevice`
+    /// too and reports `GetOCPDeviceType` ordinal 3.
+    fn queue_ocp_flag(&mut self) {
+        if let Some(target) = self.ccd.controlled_element
+            && self.ccd.cd.enabled
+        {
+            self.pending_ref_actions.push(RefAction::SetOcpDevice {
+                target,
+                device_type: 3,
+                auto: true,
+            });
+        }
+    }
+
     /// Pascal `TRelayObj.RecalcElementData`: take the phase count + bus from the
     /// monitored element, compute the derived pickups (`PickupAmps46`, `Vbase`,
     /// `PickupVolts47`, the distance impedances), and sync the controlled element
-    /// to `FPresentState`.
+    /// to `FPresentState`. An enabled relay also marks its controlled element
+    /// with the `Flg.HasOCPDevice`/`HasAutoOCPDevice` reliability flags
+    /// (WP7.2 step 3, via [`Self::queue_ocp_flag`]).
     ///
-    /// **Deferred to WP7.2 step 3 (reliability):** the `Flg.HasOCPDevice`/
-    /// `HasAutoOCPDevice` includes (they reach the controlled element). **Deferred
-    /// to WP7.7:** the `Generic` `LookupVariable` resolution (the Generic logic
-    /// itself is deferred).
+    /// **Deferred to WP7.7:** the `Generic` `LookupVariable` resolution (the
+    /// Generic logic itself is deferred).
     fn recalc(&mut self) {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
@@ -506,9 +523,10 @@ impl Relay {
             }
         }
 
-        // Sync the controlled element to the present state (OCP flags deferred to
-        // step 3). Pascal errors 387 if no controlled element is set.
+        // Sync the controlled element to the present state and (when enabled)
+        // mark it as an OCP device. Pascal errors 387 if no controlled element.
         if self.ccd.controlled_element.is_some() {
+            self.queue_ocp_flag();
             if self.present_state == CTRL_CLOSE {
                 self.locked_out = false;
                 self.operation_count = 1;

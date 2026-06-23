@@ -161,6 +161,13 @@ pub struct CktElementData {
     pub accumulated_miles_downstream: f64,
     /// `BranchSectionID`: feeder section this branch belongs to.
     pub branch_section_id: i32,
+    /// `GetOCPDeviceType` ordinal of the over-current-protection control at the
+    /// head of this branch's section: 0=none, 1=Fuse, 2=Recloser, 3=Relay. Set
+    /// when an enabled Relay/Recloser/Fuse resolves its controlled element (the
+    /// first OCP control registered wins, matching Pascal `GetOCPDeviceType`'s
+    /// `ControlElementList` scan, which stops at the first match). Read only by
+    /// the reliability sweep when `HAS_OCP_DEVICE` is set.
+    pub ocp_device_type: i32,
 }
 
 impl CktElementData {
@@ -209,6 +216,7 @@ impl CktElementData {
             accumulated_br_flt_rate: 0.0,
             accumulated_miles_downstream: 0.0,
             branch_section_id: 0,
+            ocp_device_type: 0,
         }
     }
 

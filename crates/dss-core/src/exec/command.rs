@@ -624,6 +624,27 @@ impl Dss {
                         }
                     }
                 }
+                // OCP-device flags for the reliability sweep (Pascal
+                // `Include(ControlledElement.Flags, Flg.HasOCPDevice)` in the
+                // control's RecalcElementData). The first OCP control registered
+                // wins the `GetOCPDeviceType` ordinal, mirroring the Pascal scan
+                // that stops at the first Fuse/Recloser/Relay in the list.
+                crate::obj::base::RefAction::SetOcpDevice {
+                    device_type, auto, ..
+                } => {
+                    if let Some(elem) = tgt.as_ckt_element_mut() {
+                        let cd = elem.cd_mut();
+                        cd.flags
+                            .include(crate::elements::ckt::ElemFlags::HAS_OCP_DEVICE);
+                        if *auto {
+                            cd.flags
+                                .include(crate::elements::ckt::ElemFlags::HAS_AUTO_OCP_DEVICE);
+                        }
+                        if cd.ocp_device_type == 0 {
+                            cd.ocp_device_type = *device_type;
+                        }
+                    }
+                }
                 _ => tgt.apply_ref_action(action),
             }
             // Propagate the target's flags too (a tap change invalidates the
