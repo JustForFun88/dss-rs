@@ -109,6 +109,69 @@ fn pi_and_constant_operators() {
 }
 
 #[test]
+fn operator_dispatch_reachable_ops() {
+    // Exercise the InterpretDiffEq opcode→cmds mapping *and* the SolveEq cmds→RPN
+    // dispatch end-to-end for a spread of operators the Kundur expression doesn't
+    // reach (unary + binary + stack ops). Expected values are exact (no tolerance).
+    // sqr (-11): w² ; w=4 → 16
+    let o = compile(&["w"], "w dt = w sqr");
+    assert_eq!(o.cmds, vec![0, -50, 0, -11]);
+    let mut m = [[4.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 16.0);
+    // inv (-13): 1/w ; w=4 → 0.25
+    let o = compile(&["w"], "w dt = w inv");
+    assert_eq!(o.cmds, vec![0, -50, 0, -13]);
+    let mut m = [[4.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 0.25);
+    // ln (-14): ln(w) ; w=1 → 0
+    let o = compile(&["w"], "w dt = w ln");
+    assert_eq!(o.cmds, vec![0, -50, 0, -14]);
+    let mut m = [[1.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 0.0);
+    // exp (-15): e^w ; w=0 → 1
+    let o = compile(&["w"], "w dt = w exp");
+    assert_eq!(o.cmds, vec![0, -50, 0, -15]);
+    let mut m = [[0.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 1.0);
+    // ^ (-28): w^3 ; w=2 → 8 (the `3` is harvested as a constant)
+    let o = compile(&["w"], "w dt = w 3 ^");
+    assert_eq!(o.cmds, vec![0, -50, 0, 50000, -28]);
+    assert_eq!(o.var_consts, vec![3.0]);
+    let mut m = [[2.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 8.0);
+    // swap (-26) then / (-5): swap flips the operands → b/a (without swap it is a/b);
+    // vars w/a/b, a=2 b=8 → 4
+    let o = compile(&["w", "a", "b"], "w dt = a b swap /");
+    assert_eq!(o.cmds, vec![0, -50, 1, 2, -26, -5]);
+    let mut m = [[0.0, 0.0], [2.0, 0.0], [8.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 4.0);
+}
+
+#[test]
+fn substring_tiebreak_makes_sqrt_and_atan2_unreachable() {
+    // Pascal `Get_Closer_Op` keeps the smallest position and, on a tie, the
+    // earlier opcode index — so `sqr` (idx 11) always shadows `sqrt` (12) and
+    // `atan` (22) shadows `atan2` (23) at the same position. The longer forms are
+    // therefore dead opcodes the compiler can never emit; we port the quirk
+    // verbatim. `w sqrt` compiles to `sqr` (-11), the trailing `t` swallowed by
+    // the multi-char advance.
+    let o = compile(&["w"], "w dt = w sqrt");
+    assert_eq!(o.cmds, vec![0, -50, 0, -11]); // sqr, never -12 (sqrt)
+    let mut m = [[3.0, 0.0]];
+    o.solve_eq(&mut m);
+    assert_eq!(m[0][1], 9.0); // w² — confirms it ran sqr, not sqrt
+    // `a atan2` → `atan` (-22), never -23.
+    let o = compile(&["w", "a"], "w dt = a atan2");
+    assert_eq!(o.cmds, vec![0, -50, 1, -22]); // atan, never -23 (atan2)
+}
+
+#[test]
 fn unknown_variable_clears_expression() {
     let mut o = compile(&["a", "b"], "a dt = zzz");
     assert_eq!(o.get_string(EXPRESSION), ""); // cleared on error
