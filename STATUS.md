@@ -12,8 +12,10 @@ Last updated: 2026-06-23 — **Phase 7 IN PROGRESS** (branch
 step 1 done** (the `Fault` element)**, step 2a done** (the `SwtControl` switch
 control)**, step 2b done** (the `Fuse` per-phase TCC protection)**, step 2c done**
 (the `Recloser` overcurrent recloser)**, step 2d done** (the `Relay` — all nine
-sub-types, Generic/TD21 logic deferred to WP7.7); **next = WP7.2 step 3
-(reliability activation)**. WP7.1 landed the Carson line-constants engine
+sub-types, Generic/TD21 logic deferred to WP7.7)**, step 3 done** (reliability
+activation — Relay/Recloser/Fuse set `Flg.HasOCPDevice`, `GetOCPDeviceType` is
+live, the dormant Phase-6 `RelCalc` SAIFI/SAIDI now runs on a protected zone);
+**next = WP7.2 step 4 (protection gate + corpus migration)**. WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
 `tscables` fetch path (all oracle-pinned); migrated the geometry/cable corpus
@@ -95,13 +97,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b + 2c + 2d done** (Fault, SwtControl, Fuse, Recloser, Relay); **next = WP7.2 step 3 (reliability activation)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) in progress — steps 1 + 2a + 2b + 2c + 2d + 3 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation); **next = WP7.2 step 4 (protection gate + corpus migration)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 502, golden_feeders 1,
+cargo test --workspace      # dss-core lib 506, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -272,9 +274,9 @@ header frontier paragraph summarizes the deliverable. In brief:
   source/binary reconciliation (full note in the archive).
 
 **WP7.2 (Protection) — 🚧 IN PROGRESS.** Steps **1 (`Fault`), 2a (`SwtControl`),
-2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`) done + gate-green**; **next = step 3
-(reliability activation)** + step 4 (gate). Full per-step records (decisions,
-audits, gate detail) archived at
+2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`), 3 (reliability activation) done +
+gate-green**; **next = step 4 (protection gate + corpus migration)**. Full
+per-step records (decisions, audits, gate detail) archived at
 [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). In brief:
 - **step 1 — `Fault` (`pd/fault.rs`):** an uncoupled multi-phase **conductance**
   branch (`G=1/r` / `Gmatrix`) + the FaultStudy input (WP7.9). New `ElemKind::Fault`
@@ -323,8 +325,26 @@ audits, gate detail) archived at
   forward-power block via the `Phase2SymComp` path), `NegSeq47`, the Voltage
   reclose branch, the queue-driven `DoPendingAction(CTRL_RESET)` entry, and the
   `recloseintervals=NONE` parse; **27 → 37 inline**, lib **492 → 502**.
+- **step 3 — reliability activation (OCP devices):** an enabled Relay/Recloser/Fuse
+  now marks its controlled element with `Flg.HasOCPDevice` (Pascal
+  `RecalcElementData`'s `Include(...)`), deferred as a new
+  `RefAction::SetOcpDevice` queued from each control's `recalc` (the property
+  engine holds no mutable view of the controlled element; the executive applies
+  it). Relay/Recloser are auto-reclosing → also set `HasAutoOCPDevice`; the Fuse
+  sets only `HasOCPDevice`. `GetOCPDeviceType` (1=Fuse/2=Recloser/3=Relay) is
+  recorded as a new `CktElementData.ocp_device_type` when the flag is set
+  (first-registered OCP control wins, matching the Pascal `ControlElementList`
+  scan that stops at the first match); the reliability sweep reads it +
+  `SeqIndex` (the 1-based `SequenceList` index) into the section record. The Fuse
+  `recalc` also now does the deferred per-phase `Closed[i]` resync. The dormant
+  Phase-6 `RelCalc` SAIFI/SAIDI/section math goes **live**: a protected zone no
+  longer aborts #52902. Tests: `exec/tests/reliability.rs` +4 — per-class flags +
+  `GetOCPDeviceType` ordinal, disabled-control sets-no-flag, and oracle-pinned
+  SAIFI/SAIDI/SAIFIkW/CustInterrupts/CAIDI for a head-line and a downstream-line
+  recloser (`tools/golden/probe_reliability.py`). **lib 502 → 506** (the +4 land
+  in the `exec::tests::reliability` module).
 
-**Carry into step 3 (reliability activation) + step 4 (gate):**
+**Carry into step 4 (protection gate + corpus migration):**
 - **Dirty-edge discipline (implemented across all four controls).** Every trip/
   close/reset forces conductors via `Closed[]` → `TDSSCktElement.Set_ConductorClosed`
   (`CktElement.pas:287`) sets `YPrimInvalid := TRUE` → `SystemYChanged := TRUE`
@@ -334,11 +354,13 @@ audits, gate detail) archived at
   partial-open terminal otherwise slips a real change past the rebuild → stale Y),
   and **each ships a partial-open fail-on-regression test** (`d0addb4`/`d1f48231`).
   Relay forces via `Closed[0]` (`Relay.pas:962…`) — same rule.
-- **Reliability deferred to step 3.** SwtControl/Fuse/Recloser/Relay leave
-  `Flg.HasOCPDevice`/`HasAutoOCPDevice` + the recalc-time `Closed` resync for step 3,
-  which implements `GetOCPDeviceType` and activates the dormant Phase-6 `RelCalc`
-  SAIFI/SAIDI (the `meter_zone_micro` + OCP gate). Relay's `RecalcElementData`
-  already does the `Include(Flg.HasOCPDevice)` in Pascal — wire it in step 3.
+- **Reliability — done (step 3).** OCP flags + `GetOCPDeviceType` + the live
+  `RelCalc` SAIFI/SAIDI are in. The single-int `ocp_device_type` + single-flag
+  model is exact for the realistic one-OCP-per-element case; the move/re-enable
+  reassignment edge (a control redefined onto a different element, leaving the old
+  element's flag stale) is **not** un-set — consistent with the existing
+  controlled-element force model (the `SetSwitchClosed`/`SetConductorsClosed`
+  forces likewise never un-force a previous target). Not exercised by any gate.
 - **Generic/TD21 Sample logic deferred to WP7.7** (dynamics): the relay parses +
   dumps `Type=Generic`/`TD21` but the live sensing records a `NOT_PORTED` error.
 - **Corpus migration** of the `{Fault,Fuse,Recloser,Relay,SwtControl}` cases lands
@@ -346,7 +368,7 @@ audits, gate detail) archived at
   normalized event-log-equality for a trip/reclose sequence. The corpus relays are
   `Type=Current` (definite-time `Delay`), `Type=DOC` (the 68 LV network-protector
   cases), and `Type=Voltage`.
-- dss-core lib **392 → 502** across steps 1–2d (incl. the two audit follow-ups).
+- dss-core lib **392 → 506** across steps 1–3 (incl. the audit follow-ups).
 
 ---
 

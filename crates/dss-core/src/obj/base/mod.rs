@@ -146,6 +146,21 @@ pub enum RefAction {
         terminal: usize,
         closed: Vec<bool>,
     },
+    /// Relay/Recloser/Fuse `RecalcElementData`: mark the controlled element as
+    /// carrying an over-current-protection device for the EnergyMeter
+    /// reliability sweep (Pascal `Include(ControlledElement.Flags,
+    /// Flg.HasOCPDevice)`; Relay/Recloser also `HasAutoOCPDevice`). `device_type`
+    /// is the `GetOCPDeviceType` ordinal (1=Fuse, 2=Recloser, 3=Relay), recorded
+    /// so the section sweep can report it; `auto` distinguishes the
+    /// auto-reclosing Relay/Recloser (which set `HasAutoOCPDevice`) from the
+    /// Fuse (which does not). Only an *enabled* control queues this, matching the
+    /// Pascal `if Enabled then Include(...)` guard. Applied through the target's
+    /// [`CktElement`](crate::elements::traits::CktElement) base.
+    SetOcpDevice {
+        target: crate::elements::traits::ElemRef,
+        device_type: i32,
+        auto: bool,
+    },
 }
 
 impl RefAction {
@@ -155,6 +170,7 @@ impl RefAction {
             RefAction::SetTransformerTap { target, .. } => *target,
             RefAction::SetSwitchClosed { target, .. } => *target,
             RefAction::SetConductorsClosed { target, .. } => *target,
+            RefAction::SetOcpDevice { target, .. } => *target,
         }
     }
 }

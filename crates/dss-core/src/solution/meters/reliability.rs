@@ -69,10 +69,11 @@ pub(crate) fn calc_all_reliability_indices(
 /// the backward fault-rate sweep, the forward interruption sweep (which counts
 /// the feeder *sections* delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 ///
-/// OCP devices (Relay/Recloser/Fuse) are Phase 7, so `Flg.HasOCPDevice` is never
-/// set: `SectionCount` stays 0 and the sweep aborts with error 52902 exactly as
-/// the oracle does. The section/SAIFI math below the abort is ported 1:1 but is
-/// dormant until those classes exist.
+/// A zone with no OCP device (no enabled Relay/Recloser/Fuse on any branch) has
+/// `SectionCount == 0` and the sweep aborts with error 52902 exactly as the
+/// oracle does. Since WP7.2 step 3 those controls set `Flg.HasOCPDevice` on
+/// their controlled element, so a protected zone reaches the live section/SAIFI
+/// math below.
 fn calc_reliability_indices(
     meter_ref: ElemRef,
     assume_restoration: bool,
@@ -191,8 +192,11 @@ fn calc_reliability_indices(
     // Allocate + init the feeder-section array (indices 0..=section_count).
     let mut sections = vec![FeederSection::default(); section_count as usize + 1];
 
-    // Backward sweep: N·FaultRates and section properties.
-    for &r in seq.iter().rev() {
+    // Backward sweep: N·FaultRates and section properties. `idx` is the Pascal
+    // 1-based `SequenceList` index (`for idx := Count downto 1`), recorded as the
+    // section's `SeqIndex`.
+    for idx in (1..=seq.len()).rev() {
+        let r = seq[idx - 1];
         let rel = store.ckt_elem(r).reliability_data();
         let (
             from_bus,
@@ -203,6 +207,7 @@ fn calc_reliability_indices(
             branch_total,
             accum_br,
             has_ocp,
+            ocp_type,
         ) = {
             let cd = store.ckt_elem(r).cd();
             (
@@ -214,6 +219,7 @@ fn calc_reliability_indices(
                 cd.branch_total_customers,
                 cd.accumulated_br_flt_rate,
                 cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+                cd.ocp_device_type,
             )
         };
         // CalcCustInterrupts.
@@ -231,12 +237,11 @@ fn calc_reliability_indices(
         s.sum_branch_flt_rates += to_num_int * branch_flt;
         s.sum_flt_rates_x_repair_hrs += to_num_int * branch_flt * rel.hrs_to_repair;
         if has_ocp {
-            // TODO(WP7): GetOCPDeviceType returns fuse=1/recloser=2/relay=3 from
-            // the control device at this branch. The Relay/Recloser/Fuse classes
-            // land in Phase 7; until then `has_ocp` is never set so this whole
-            // block is unreachable and the hardcoded 0 cannot be observed.
-            s.ocp_device_type = 0;
-            s.seq_index = 0;
+            // Pascal `pSection.OCPDeviceType := GetOCPDeviceType(PD_Elem)` — the
+            // 1/2/3 ordinal recorded on the element when its Relay/Recloser/Fuse
+            // resolved (WP7.2 step 3). `SeqIndex` is the 1-based sequence index.
+            s.ocp_device_type = ocp_type;
+            s.seq_index = idx;
             s.total_customers = branch_total;
             s.sect_fault_rate = accum_br;
         }

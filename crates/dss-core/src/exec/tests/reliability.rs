@@ -1,3 +1,5 @@
+use crate::elements::ckt::{CktElementData, ElemFlags};
+use crate::elements::meter::energymeter::prop;
 use crate::exec::*;
 
 // --- WP6.6 reliability ------------------------------------------------
@@ -53,6 +55,64 @@ fn branching_reliability_feeder() -> Dss {
     dss.command("Solve mode=snap");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     dss
+}
+
+/// The two-section radial feeder of [`reliability_feeder`] with one OCP device
+/// inserted (`ocp` = a full `New recloser/relay/fuse …` command). The control
+/// monitors+switches its line, so the metered zone gets a real section.
+fn ocp_feeder(ocp: &str) -> Dss {
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command(
+        "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.2 pctperm=80 repair=4",
+    );
+    dss.command(
+        "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 \
+             faultrate=0.3 pctperm=90 repair=5",
+    );
+    dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+    dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+    dss.command(ocp);
+    dss.command("New energymeter.m1 element=line.l1 terminal=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve mode=snap");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss
+}
+
+/// Read an EnergyMeter reliability index by its 1-based property ordinal.
+fn meter_f64(dss: &Dss, name: &str, prop: usize) -> f64 {
+    for class in &dss.classes {
+        if !class.props.class_name().eq_ignore_ascii_case("energymeter") {
+            continue;
+        }
+        for obj in &class.objects {
+            if obj.data().name().eq_ignore_ascii_case(name) {
+                return obj.get_f64(prop);
+            }
+        }
+    }
+    panic!("meter {name} not found");
+}
+
+/// The shared circuit-element data of `full` (`class.name`), for flag asserts.
+fn elem_cd<'a>(dss: &'a Dss, full: &str) -> &'a CktElementData {
+    let (cls, name) = full.split_once('.').unwrap();
+    for class in &dss.classes {
+        if !class.props.class_name().eq_ignore_ascii_case(cls) {
+            continue;
+        }
+        for obj in &class.objects {
+            if obj.data().name().eq_ignore_ascii_case(name)
+                && let Some(e) = obj.as_ckt_element()
+            {
+                return e.cd();
+            }
+        }
+    }
+    panic!("element {full} not found");
 }
 
 fn bus_f64(dss: &Dss, bus: &str, f: impl Fn(&crate::circuit::bus::Bus) -> f64) -> f64 {
@@ -273,4 +333,119 @@ fn relcalc_assume_restoration_parsed() {
         "Relcalc yes must still abort without OCP devices, got {:?}",
         dss.errors()
     );
+}
+
+// --- WP7.2 step 3: OCP-device reliability activation ------------------
+
+/// A Relay/Recloser/Fuse marks its controlled element with `Flg.HasOCPDevice`
+/// (Pascal `RecalcElementData`), and the `GetOCPDeviceType` ordinal lands on
+/// the element (1=Fuse, 2=Recloser, 3=Relay). The auto-reclosing Relay/Recloser
+/// also set `HasAutoOCPDevice`; the Fuse never does.
+#[test]
+fn ocp_device_flags_and_type_per_class() {
+    for (ocp, dev_type, auto) in [
+        (
+            "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
+                 switchedobj=line.l1 switchedterm=1",
+            2,
+            true,
+        ),
+        (
+            "New relay.r1 type=current monitoredobj=line.l1 monitoredterm=1 \
+                 switchedobj=line.l1 switchedterm=1 phasetrip=1 delay=0.1",
+            3,
+            true,
+        ),
+        (
+            "New fuse.f1 monitoredobj=line.l1 monitoredterm=1 \
+                 switchedobj=line.l1 switchedterm=1",
+            1,
+            false,
+        ),
+    ] {
+        let dss = ocp_feeder(ocp);
+        let cd = elem_cd(&dss, "line.l1");
+        assert!(
+            cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
+            "HasOCPDevice for {ocp}"
+        );
+        assert_eq!(
+            cd.flags.contains(ElemFlags::HAS_AUTO_OCP_DEVICE),
+            auto,
+            "HasAutoOCPDevice for {ocp}"
+        );
+        assert_eq!(cd.ocp_device_type, dev_type, "GetOCPDeviceType for {ocp}");
+    }
+}
+
+/// A disabled OCP control sets no flag (Pascal `if Enabled then Include(...)`),
+/// so the zone stays section-less and `RelCalc` aborts exactly as with no
+/// device at all.
+#[test]
+fn disabled_ocp_device_sets_no_flag() {
+    let dss = ocp_feeder(
+        "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
+             switchedobj=line.l1 switchedterm=1 enabled=no",
+    );
+    let cd = elem_cd(&dss, "line.l1");
+    assert!(!cd.flags.contains(ElemFlags::HAS_OCP_DEVICE));
+    assert_eq!(cd.ocp_device_type, 0);
+}
+
+/// With an OCP device at the metered head line, `RelCalc` no longer aborts and
+/// produces SAIFI/SAIDI/SAIFIkW/CustInterrupts matching the pinned oracle
+/// (dss-python 0.15.7; see `tools/golden/probe_reliability.py`). The single
+/// section covers both branches → 35 customers; CAIDI = SAIDI / SAIFI.
+#[test]
+fn relcalc_head_recloser_matches_oracle() {
+    let mut dss = ocp_feeder(
+        "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
+             switchedobj=line.l1 switchedterm=1",
+    );
+    dss.command("Relcalc");
+    assert!(
+        !dss.errors().iter().any(|e| e.contains("Aborting")),
+        "RelCalc must not abort with an OCP device, got {:?}",
+        dss.errors()
+    );
+
+    let eps = 1e-9;
+    assert!((meter_f64(&dss, "m1", prop::SAIFI) - 0.43).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::SAIDI) - 1.99).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::SAIFI_KW) - 0.43).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::CUST_INTERRUPTS) - 15.05).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::CAIDI) - 1.99 / 0.43).abs() < eps);
+
+    // The whole metered zone is one section, headed by l1.
+    assert_eq!(branch_section_id(&dss, "line.l1"), 1);
+    assert_eq!(branch_section_id(&dss, "line.l2"), 1);
+}
+
+/// An OCP device on the *downstream* line `l2` covers only its 25 customers,
+/// so the indices drop (oracle: SAIFI 0.19285714…, SAIDI 0.96428571…,
+/// SAIFIkW 0.18, CustInterrupts 6.75; CAIDI = 5.0).
+#[test]
+fn relcalc_downstream_recloser_matches_oracle() {
+    let mut dss = ocp_feeder(
+        "New recloser.r1 monitoredobj=line.l2 monitoredterm=1 \
+             switchedobj=line.l2 switchedterm=1",
+    );
+    dss.command("Relcalc");
+    assert!(
+        !dss.errors().iter().any(|e| e.contains("Aborting")),
+        "RelCalc must not abort, got {:?}",
+        dss.errors()
+    );
+
+    let eps = 1e-9;
+    assert!((meter_f64(&dss, "m1", prop::SAIFI) - 0.192_857_142_857_142_87).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::SAIDI) - 0.964_285_714_285_714_3).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::SAIFI_KW) - 0.18).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::CUST_INTERRUPTS) - 6.75).abs() < eps);
+    assert!((meter_f64(&dss, "m1", prop::CAIDI) - 5.0).abs() < eps);
+
+    // Only l2 heads a section; l1 (upstream of the OCP) stays in section 0.
+    assert_eq!(branch_section_id(&dss, "line.l1"), 0);
+    assert_eq!(branch_section_id(&dss, "line.l2"), 1);
+    assert_eq!(elem_cd(&dss, "line.l2").ocp_device_type, 2);
 }

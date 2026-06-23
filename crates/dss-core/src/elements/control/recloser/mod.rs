@@ -29,10 +29,10 @@
 //!   defaults `SwitchedTerm`. `PhaseFast`/`PhaseDelayed` default to the built-in
 //!   TCC curves `a`/`d`; the ground curves default to NIL.
 //! - `RecalcElementData` syncs the controlled element's whole terminal to
-//!   `FPresentState` (deferred here as a [`RefAction::SetSwitchClosed`]); the
-//!   `Flg.HasOCPDevice`/`HasAutoOCPDevice` reliability flags are **deferred to
-//!   WP7.2 step 3** (the Fuse precedent — they reach the controlled element,
-//!   which `recalc` cannot, and land with `GetOCPDeviceType`).
+//!   `FPresentState` (deferred here as a [`RefAction::SetSwitchClosed`]) and,
+//!   when enabled, marks it with the `Flg.HasOCPDevice`/`HasAutoOCPDevice`
+//!   reliability flags (deferred as a [`RefAction::SetOcpDevice`] — they reach
+//!   the controlled element, which `recalc` cannot, and feed `GetOCPDeviceType`).
 //!
 //! Concern split mirrors the other controls: this file holds the property
 //! metadata, the [`Recloser`] struct, construction/`recalc`, and the
@@ -296,15 +296,31 @@ impl Recloser {
         }
     }
 
+    /// Queue the `RecalcElementData` reliability flag: mark the controlled
+    /// element as carrying an OCP device (Pascal `Include(ControlledElement
+    /// .Flags, Flg.HasOCPDevice/HasAutoOCPDevice)`). Only an enabled recloser
+    /// sets it; the recloser is an auto-reclosing device, so it sets
+    /// `HasAutoOCPDevice` too and reports `GetOCPDeviceType` ordinal 2.
+    fn queue_ocp_flag(&mut self) {
+        if let Some(target) = self.ccd.controlled_element
+            && self.ccd.cd.enabled
+        {
+            self.pending_ref_actions.push(RefAction::SetOcpDevice {
+                target,
+                device_type: 2,
+                auto: true,
+            });
+        }
+    }
+
     /// Pascal `TRecloserObj.RecalcElementData`: take the phase count from the
     /// monitored element, attach the control's terminal to the monitored bus, and
     /// sync the controlled element to `FPresentState`. Pascal does **not** error
     /// on NIL elements here (`//TODO`); only `Sample` raises on a NIL monitored
-    /// element. A bad monitored terminal raises 392 and aborts the recalc.
-    ///
-    /// **Deferred to WP7.2 step 3 (reliability activation):** the
-    /// `Flg.HasOCPDevice`/`HasAutoOCPDevice` includes — they reach the controlled
-    /// element (which `recalc` cannot see) and land with `GetOCPDeviceType`.
+    /// element. A bad monitored terminal raises 392 and aborts the recalc. An
+    /// enabled recloser also marks its controlled element with the
+    /// `Flg.HasOCPDevice`/`HasAutoOCPDevice` reliability flags (WP7.2 step 3, via
+    /// [`Self::queue_ocp_flag`]).
     fn recalc(&mut self) {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
@@ -326,10 +342,11 @@ impl Recloser {
             self.ccd.cd.set_bus(1, &bus);
         }
 
-        // Sync the controlled element to the present state (the OCP flags are
-        // deferred to step 3). Pascal runs this on every recalc when the
+        // Sync the controlled element to the present state and (when enabled)
+        // mark it as an OCP device. Pascal runs this on every recalc when the
         // controlled element is set.
         if self.ccd.controlled_element.is_some() {
+            self.queue_ocp_flag();
             if self.present_state == CTRL_CLOSE {
                 self.locked_out = false;
                 self.operation_count = 1;
