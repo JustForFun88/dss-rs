@@ -16,7 +16,7 @@ migration: the targeted `phase7_protection/*.json` trip/reclose golden, the port
 35→37); **WP7.3 (DER A) IN PROGRESS — step 0 (`DynamicExp` object) done** (the
 `general/dynamic_exp.rs` catalog object + its RPN differential-equation compiler
 (`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
-`props/dynamicexp.json` (9 scenarios) + 11 interpreter unit tests; lib 514→525).
+`props/dynamicexp.json` (9 scenarios) + 13 interpreter unit tests; lib 514→527).
 **next = WP7.3 step 1 (`pc/inv_based_pce.rs` — the `InvBasedPceData` base)**.
 WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
@@ -350,7 +350,11 @@ header frontier paragraph summarizes the deliverable. In brief:
   pinning it to the oracle). Surfaced-not-reproduced: on that error path Pascal's
   `SetLength(Cmds,+2)` leaves two zero `cmds` slots — unobservable (`cmds` on an
   errored expression is never evaluated; not a dumped property), so not reproduced.
-  lib **514 → 525**.
+  *audit-tests:* strong (exact `cmds` + numeric `SolveEq` + oracle props); closed
+  the one gap — `SolveEq`'s dispatch was exercised for only 5/22 opcodes. Added an
+  end-to-end operator-dispatch test (sqr/inv/ln/exp/`^`/swap) **and** a guard pinning
+  the substring tie-break that makes `sqrt`/`atan2` dead opcodes (`sqr`/`atan` shadow
+  them — verbatim Pascal quirk). lib **514 → 527**.
 - **next:** step 1 — `pc/inv_based_pce.rs` (`InvBasedPceData` + trait), then step 2
   (`pc/pvsystem.rs`), step 3 (zone allow-list), step 4 (gate + corpus).
 
