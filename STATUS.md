@@ -343,6 +343,20 @@ per-step records (decisions, audits, gate detail) archived at
   SAIFI/SAIDI/SAIFIkW/CustInterrupts/CAIDI for a head-line and a downstream-line
   recloser (`tools/golden/probe_reliability.py`). **lib 502 → 506** (the +4 land
   in the `exec::tests::reliability` module).
+  *audit-code follow-up:* verdict **faithful, no Critical/Major** — device-type
+  ordinals, the auto-vs-non-auto split, the enabled-gated `Include`, the 1-based
+  `SeqIndex`, and the Fuse `Closed[i]` resync all match Pascal; the observable
+  indices are oracle-pinned. Two Minor edge-gaps, both **unobservable** (the
+  section `OCPDeviceType`/`SeqIndex` are written but never read by the
+  SAIFI/SAIDI/CAIDI math — they surface only via the un-exported
+  `Meters_Get_OCPDeviceType`/`SectSeqIdx` C-API): (i) `GetOCPDeviceType` is
+  derived from *enabled* controls only, vs Pascal's `ControlElementList` scan
+  that ignores `Enabled` (diverges only for a disabled-first + enabled-second
+  pair of *different* OCP types on one element); (ii) no `Exclude` on
+  move/disable, so re-pointing or disabling a control leaves the old element's
+  flag stale (consistent with the existing `SetSwitchClosed`/`SetConductorsClosed`
+  forces, which likewise never un-force a prior target). Both are documented
+  deferrals — no code change.
 
 **Carry into step 4 (protection gate + corpus migration):**
 - **Dirty-edge discipline (implemented across all four controls).** Every trip/
