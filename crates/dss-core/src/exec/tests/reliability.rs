@@ -383,13 +383,165 @@ fn ocp_device_flags_and_type_per_class() {
 /// device at all.
 #[test]
 fn disabled_ocp_device_sets_no_flag() {
-    let dss = ocp_feeder(
+    let mut dss = ocp_feeder(
         "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
              switchedobj=line.l1 switchedterm=1 enabled=no",
     );
     let cd = elem_cd(&dss, "line.l1");
     assert!(!cd.flags.contains(ElemFlags::HAS_OCP_DEVICE));
     assert_eq!(cd.ocp_device_type, 0);
+
+    // The promised consequence: no section ⇒ RelCalc aborts (#52902).
+    dss.command("Relcalc");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("Aborting")),
+        "a disabled OCP device must still abort RelCalc, got {:?}",
+        dss.errors()
+    );
+}
+
+/// **Documented WP7.2-step-3 deferral.** The port ports Pascal's
+/// `if Enabled then Include(Flg.HasOCPDevice)` but **not** the unconditional
+/// `Exclude(PreviousControlledElement.Flags, …)` that precedes it. So disabling
+/// a control after it was enabled leaves the controlled element's flag *stale*
+/// (Pascal would clear it) — the same limitation the existing
+/// `SetSwitchClosed`/`SetConductorsClosed` forces carry (they never un-force a
+/// prior target). Pinned here so the gap is explicit, not silent; a future
+/// faithful fix flips this assertion deliberately.
+#[test]
+fn enable_then_disable_leaves_ocp_flag_stale() {
+    let mut dss = ocp_feeder(
+        "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
+             switchedobj=line.l1 switchedterm=1",
+    );
+    assert!(
+        elem_cd(&dss, "line.l1")
+            .flags
+            .contains(ElemFlags::HAS_OCP_DEVICE)
+    );
+    dss.command("edit recloser.r1 enabled=no");
+    // Stale — Pascal clears it; the port does not (documented deferral).
+    assert!(
+        elem_cd(&dss, "line.l1")
+            .flags
+            .contains(ElemFlags::HAS_OCP_DEVICE)
+    );
+}
+
+/// Two OCP controls switching the same line: `GetOCPDeviceType` reports the
+/// **first** one defined (Pascal scans `ControlElementList` and stops at the
+/// first Fuse/Recloser/Relay). Oracle `Meters.OCPDeviceType`: fuse-first ⇒ 1,
+/// recloser-first ⇒ 2 (`tools/golden/probe_reliability.py`). The recloser
+/// always contributes `HasAutoOCPDevice` regardless of order.
+#[test]
+fn ocp_device_type_first_registered_wins() {
+    let feeder = |first: &str, second: &str| -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+        dss.command(
+            "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.2 pctperm=80 repair=4",
+        );
+        dss.command(
+            "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.3 pctperm=90 repair=5",
+        );
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+        dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+        dss.command(first);
+        dss.command(second);
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    };
+    // High recloser pickups so the snapshot solve never trips the device.
+    let fuse = "New fuse.f1 monitoredobj=line.l1 monitoredterm=1 \
+                switchedobj=line.l1 switchedterm=1";
+    let rec = "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
+               switchedobj=line.l1 switchedterm=1 phasetrip=100000 groundtrip=100000";
+
+    let fuse_first = feeder(fuse, rec);
+    let cd = elem_cd(&fuse_first, "line.l1");
+    assert_eq!(cd.ocp_device_type, 1, "fuse defined first wins");
+    assert!(cd.flags.contains(ElemFlags::HAS_OCP_DEVICE));
+    assert!(
+        cd.flags.contains(ElemFlags::HAS_AUTO_OCP_DEVICE),
+        "the recloser still contributes HasAutoOCPDevice"
+    );
+
+    let rec_first = feeder(rec, fuse);
+    assert_eq!(
+        elem_cd(&rec_first, "line.l1").ocp_device_type,
+        2,
+        "recloser defined first wins"
+    );
+}
+
+/// `AssumeRestoration` changes the downstream auto-OCP interruption count
+/// (Pascal forward sweep: `if AssumeRestoration and HasAutoOCPDevice then
+/// Bus_Num_Interrupt := AccumulatedBrFltRate` *resets* instead of accumulating).
+/// A 3-section feeder with auto-reclosers on the head (l1) and a downstream line
+/// (l3) makes No vs Yes diverge in SAIFI/SAIFIkW/CustInterrupts; SAIDI is
+/// restoration-independent (section fault-rate × repair × customers). High
+/// pickups keep the snapshot solve from tripping. Oracle: dss-python 0.15.7
+/// (`tools/golden/probe_reliability.py`).
+#[test]
+fn relcalc_assume_restoration_changes_auto_ocp_interruptions() {
+    let build = |dss: &mut Dss| {
+        dss.command("New circuit.t basekv=12.47 bus1=src phases=3");
+        dss.command(
+            "New line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.2 pctperm=80 repair=4",
+        );
+        dss.command(
+            "New line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.3 pctperm=90 repair=5",
+        );
+        dss.command(
+            "New line.l3 bus1=b2 bus2=b3 length=1 units=mi r1=0.1 x1=0.1 \
+                 faultrate=0.5 pctperm=100 repair=6",
+        );
+        dss.command("New load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+        dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25");
+        dss.command("New load.ld3 bus1=b3 phases=3 kv=12.47 kw=150 numcust=7");
+        dss.command(
+            "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
+                 switchedobj=line.l1 switchedterm=1 phasetrip=100000 groundtrip=100000",
+        );
+        dss.command(
+            "New recloser.r2 monitoredobj=line.l3 monitoredterm=1 \
+                 switchedobj=line.l3 switchedterm=1 phasetrip=100000 groundtrip=100000",
+        );
+        dss.command("New energymeter.m1 element=line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve mode=snap");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    };
+    let eps = 1e-9;
+
+    let mut no = Dss::new();
+    build(&mut no);
+    no.command("Relcalc no");
+    assert!((meter_f64(&no, "m1", prop::SAIFI) - 0.513_333_333_333_333_4).abs() < eps);
+    assert!((meter_f64(&no, "m1", prop::SAIDI) - 2.49).abs() < eps);
+    assert!((meter_f64(&no, "m1", prop::SAIFI_KW) - 0.596_666_666_666_666_7).abs() < eps);
+    assert!((meter_f64(&no, "m1", prop::CUST_INTERRUPTS) - 21.56).abs() < eps);
+
+    let mut yes = Dss::new();
+    build(&mut yes);
+    yes.command("Relcalc yes");
+    // Restoration resets the downstream section count → lower SAIFI/CustInt.
+    assert!((meter_f64(&yes, "m1", prop::SAIFI) - 0.441_666_666_666_666_76).abs() < eps);
+    assert!((meter_f64(&yes, "m1", prop::SAIDI) - 2.49).abs() < eps);
+    assert!((meter_f64(&yes, "m1", prop::SAIFI_KW) - 0.453_333_333_333_333_4).abs() < eps);
+    assert!((meter_f64(&yes, "m1", prop::CUST_INTERRUPTS) - 18.55).abs() < eps);
+
+    // Both reclosers head a section; l3 reports recloser device type.
+    assert_eq!(elem_cd(&no, "line.l3").ocp_device_type, 2);
 }
 
 /// With an OCP device at the metered head line, `RelCalc` no longer aborts and
