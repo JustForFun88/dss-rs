@@ -239,6 +239,13 @@ lean. They are frozen history, superseded only by the code and tests:
   gate-green on the `phase-7-extended-elements` branch (not yet merged);** the live
   §1e keeps a step summary + the tracked-open plural-cable note.
   → [`docs/phase-records/phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md)
+- **Phase 7 WP7.2** (Protection) — Fault, SwtControl, Fuse, Recloser, Relay (9
+  sub-types), reliability activation (`HasOCPDevice` + live `RelCalc`), and the
+  step-4 gate (the `phase7_protection` trip/reclose golden, the `Open`/`Close` exec
+  verbs, the SwtControl corpus migration). **Complete + gate-green on the
+  `phase-7-extended-elements` branch (not yet merged);** the live §1e keeps a
+  per-step summary + the Phase-7 carry-forward rules + the `DG_Prot_Fdr` tracked-open.
+  → [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md)
 
 ---
 
@@ -278,169 +285,39 @@ header frontier paragraph summarizes the deliverable. In brief:
 2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`), 3 (reliability activation), 4
 (protection gate + corpus migration) done + gate-green**; **next = WP7.3 (DER A:
 DynamicExp object + InvBasedPCE base + PVSystem)**. Full per-step records
-(decisions, audits, gate detail) for steps 1–2c archived at
+(decisions, audits, gate detail) archived at
 [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). In brief:
 - **step 1 — `Fault` (`pd/fault.rs`):** an uncoupled multi-phase **conductance**
-  branch (`G=1/r` / `Gmatrix`) + the FaultStudy input (WP7.9). New `ElemKind::Fault`
-  + `Circuit.faults` (stamps Y, excluded from `pd_elements`); control-loop wiring
-  `solution/faults.rs` `check_fault_status`/`reset_faults` (the `Set mode=` / `Reset
-  Faults` path; raises `system_y_changed` on toggle). MonteFault → WP7.9.
-  `fault.json` (6) + 8 inline.
-- **step 2a — `SwtControl` (`control/swt_control/`):** a manual switch — the
-  **whole-terminal** force. New generic `CktElementData::set_terminal_closed` +
-  `RefAction::SetSwitchClosed` (the `State=` parse-time force). `swtcontrol.json`
-  (7) + 14 inline. **Origin of the dirty-edge rule (`d0addb4`)** — see below.
-- **step 2b — `Fuse` (`pd/fuse/`):** per-phase TCC. **`TccCurveObj::get_tcc_time`
-  ported** (log-log interp). New per-conductor `set_conductor_closed`/
-  `conductor_closed` + `RefAction::SetConductorsClosed` + `PropType::MappedStringEnumArray`
-  (per-phase `Normal`/`State`). Default `FuseCurve=tlink` resolved via the
-  `command.rs` foreign view. `fuse.json` (8) + 20 inline.
-- **step 2c — `Recloser` (`control/recloser/`):** whole-terminal trip + reclose up
-  to `Shots`, fast→delayed curves. New engine machinery `PropFlags::ARRAY_MAX_SIZE`
-  (`RecloseIntervals`) + integer-dump `VALUE_OFFSET` (`Shots = NumReclose−1`);
-  recloser enums; default `a`/`d` curves. `recloser.json` (7) + 26 inline.
-- **step 2d — `Relay` (`control/relay/`):** the general protection control
-  (`Relay.pas`, 2354 lines — the largest WP7.2 unit). Nine `Type=` sub-types over
-  one 50-property surface + the shared `Closed[0]` trip/reclose/reset machine.
-  Module split `mod.rs` (props/struct/recalc/Sample dispatch/DoPendingAction/Reset)
-  + `logic.rs` (the per-sub-type sensing) + `accessors.rs` + `tests.rs`. **Ported
-  live:** `Current` (overcurrent 50/51), `Voltage` (27/59 + voltage reclose),
-  `ReversePower` (32), `46`/`47` (neg-seq), `Distance` (21), `DOC` (directional
-  overcurrent — the dominant corpus type, with the `DOC_P1Blocking` forward-power
-  block + the circle/high-line/inner-zone decision tree ported verbatim).
-  **Deferred to WP7.7 (`NOT_PORTED` if `Sample` reached):** `Generic` (needs PC
-  state `Variable[]`) and `TD21` (needs `DynaVars.h`/`Frequency`/`IterationFlag`
-  + the per-cycle ring buffer) — both fully parse + dump. New shared machinery:
-  `TccCurveObj::get_ov_time`/`get_uv_time` (definite-time scans) and
-  `PropFlags::ALLOW_NONE` (zero-count `DoubleVArray` ⇒ `[NONE]`, the `Type=DOC`
-  ⇒ NumReclose 0 case). Relay-specific quirks vs the Recloser: event-log lines are
-  **gated on `ShowEventLog`** (`if ShowEventLog then AppendToEventLog`), the queue
-  `CTRL_RESET` runs the full `Reset()` (logs "Resetting" + re-forces the element),
-  and `MakeLike` **copies** `DelayTime`/`BreakerTime`. `relay.json` (9) + 27 inline.
-  *audit-code follow-up:* verdict faithful, no Critical/Major; tidied the
-  Generic/TD21 `NOT_PORTED` log to fire **once** per object (a `not_ported_logged`
-  latch, not once per control iteration), and pinned the dead `Type=Voltage`
-  `RecloseIntervals[3]=5.0` upstream quirk with a "don't simplify" comment.
-  *audit-tests follow-up:* filled the ported-but-untested gaps (no oracle backstop
-  until the step-4 corpus gate) — Distance (in/out-of-reach + `DistReverse`
-  negation), DOC end-to-end through `Sample` (3-phase reverse-power trip +
-  forward-power block via the `Phase2SymComp` path), `NegSeq47`, the Voltage
-  reclose branch, the queue-driven `DoPendingAction(CTRL_RESET)` entry, and the
-  `recloseintervals=NONE` parse; **27 → 37 inline**, lib **492 → 502**.
-- **step 3 — reliability activation (OCP devices):** an enabled Relay/Recloser/Fuse
-  now marks its controlled element with `Flg.HasOCPDevice` (Pascal
-  `RecalcElementData`'s `Include(...)`), deferred as a new
-  `RefAction::SetOcpDevice` queued from each control's `recalc` (the property
-  engine holds no mutable view of the controlled element; the executive applies
-  it). Relay/Recloser are auto-reclosing → also set `HasAutoOCPDevice`; the Fuse
-  sets only `HasOCPDevice`. `GetOCPDeviceType` (1=Fuse/2=Recloser/3=Relay) is
-  recorded as a new `CktElementData.ocp_device_type` when the flag is set
-  (first-registered OCP control wins, matching the Pascal `ControlElementList`
-  scan that stops at the first match); the reliability sweep reads it +
-  `SeqIndex` (the 1-based `SequenceList` index) into the section record. The Fuse
-  `recalc` also now does the deferred per-phase `Closed[i]` resync. The dormant
-  Phase-6 `RelCalc` SAIFI/SAIDI/section math goes **live**: a protected zone no
-  longer aborts #52902. Tests: `exec/tests/reliability.rs` +4 — per-class flags +
-  `GetOCPDeviceType` ordinal, disabled-control sets-no-flag, and oracle-pinned
-  SAIFI/SAIDI/SAIFIkW/CustInterrupts/CAIDI for a head-line and a downstream-line
-  recloser (`tools/golden/probe_reliability.py`). **lib 502 → 506** (the +4 land
-  in the `exec::tests::reliability` module).
-  *audit-code follow-up:* verdict **faithful, no Critical/Major** — device-type
-  ordinals, the auto-vs-non-auto split, the enabled-gated `Include`, the 1-based
-  `SeqIndex`, and the Fuse `Closed[i]` resync all match Pascal; the observable
-  indices are oracle-pinned. Two Minor edge-gaps, both **unobservable** (the
-  section `OCPDeviceType`/`SeqIndex` are written but never read by the
-  SAIFI/SAIDI/CAIDI math — they surface only via the un-exported
-  `Meters_Get_OCPDeviceType`/`SectSeqIdx` C-API): (i) `GetOCPDeviceType` is
-  derived from *enabled* controls only, vs Pascal's `ControlElementList` scan
-  that ignores `Enabled` (diverges only for a disabled-first + enabled-second
-  pair of *different* OCP types on one element); (ii) no `Exclude` on
-  move/disable, so re-pointing or disabling a control leaves the old element's
-  flag stale (consistent with the existing `SetSwitchClosed`/`SetConductorsClosed`
-  forces, which likewise never un-force a prior target). Both are documented
-  deferrals — no code change.
-  *audit-tests follow-up:* the four step-3 tests are genuine oracle-pinned
-  guards (re-probed, all constants exact); the gaps were in secondary paths.
-  Added: the `disabled_ocp_device_sets_no_flag` test now asserts the promised
-  `RelCalc` abort (was flag-absence only); `ocp_device_type_first_registered_wins`
-  (two OCP controls on one line — oracle `Meters.OCPDeviceType` 1 vs 2 by
-  definition order); `relcalc_assume_restoration_changes_auto_ocp_interruptions`
-  (a 3-section auto-recloser feeder that finally makes No vs Yes diverge —
-  SAIFI 0.5133→0.4417, CustInt 21.56→18.55, SAIDI 2.49 both, oracle-pinned,
-  closing the "auto-OCP restoration effect asserted by presence only" gap); and
-  `enable_then_disable_leaves_ocp_flag_stale` pins the documented move/disable
-  deferral so it is explicit, not silent. Probe extended with both new scenarios.
-  Known untestable-without-an-accessor: section `SeqIndex`/`OCPDeviceType` (no
-  meter getter; would need the step-4 golden). **lib 506 → 509**.
-
-- **step 4 — protection gate + corpus migration:** the WP7.2 exit gate (two
-  tiers, the established Phase-7 pattern).
-  - **Targeted golden `phase7_protection/*.json`** (`gen_phase7_protection.py` +
-    `golden_phase7_protection.rs`, **5 scenarios**): a fault + protection
-    **trip/reclose sequence** driven through the **ported** `mode=duty
-    controlmode=time` control sweep (the corpus relay demos use the unported
-    dynamics mode → WP7.7, so the golden uses duty), pinning per-step `dblHour` +
-    iteration count + node voltages (the feeder collapses to ~0 on every step the
-    line is held open — the voltage trajectory encodes the discrete state), the
-    **event log line-for-line** (normalized — FAST/DELAYED/LOCKED OUT/CLOSED/PHASE
-    TARGET/BLOWN/RESETTING), and every element's final-step currents/powers (a
-    held-open line carries ~0 A, a reclosed line full load — the final
-    switch/recloser/fuse state pinned exactly). Scenarios: `recloser_temp`
-    (temporary fault → FAST trip → self-clear → reclose), `recloser_perm`
-    (permanent → FAST → reclose → DELAYED → reclose → LOCKED OUT — NumFast /
-    RecloseIntervals / Shots / lockout), `relay_current` (`Type=Current`,
-    `eventlog=yes` → RESETTING + OPENED ON PH & LOCKED OUT), `fuse_blow` (per-phase
-    tlink fuse → PHASE 3/2/1 BLOWN), `swt_manual` (a mid-run `edit swtcontrol.x
-    action=open` — the corpus civanlar pattern). The Rust engine reproduced every
-    oracle sequence **exactly on the first run** — strong end-to-end validation of
-    the steps 1–3 ports through a multi-step control sweep.
-  - **`Open`/`Close` exec verbs ported** (`command.rs::do_open_close_cmd`, Pascal
-    `DoOpenCmd`/`DoCloseCmd` ExecHelper.pas:1451/1484; `cmd::OPEN`=17/`CLOSE`=18):
-    `Open class.name term cond` forces a terminal (cond 0 ⇒ whole terminal via
-    `set_terminal_closed`; cond>0 ⇒ one conductor via `set_conductor_closed`) and
-    raises `system_y_changed` (the step-2a dirty edge), reusing the protection
-    switching machinery; `set_active_ckt_element` mirrors the Pascal helper
-    (253/254/259 diagnostics). Pascal's `SetActiveBus` side effect is inert here
-    (no ported verb reads an active bus). **4 oracle-pinned tests** (`exec/tests/
-    open_close.rs`): Line whole-terminal open/close round-trip (24.384 A ↔ 0),
-    single-conductor open ([24.377, 0, 24.401]), **transformer winding** open
-    (the DG_Prot_Fdr pattern — load 500 kW ↔ 0), and the #259 error path.
-  - **Corpus migration:** the protection-only-blocked cases were probed live via
-    `DSS_LIVE_CLASSIFY=1 corpus_live_classify` + `apply_classify.py`. **`civanlar`
-    (SwtControl) + `IEEE_519` (SwtControl) migrated into `solvable_now` (35→37)**;
-    `COVERAGE.md` refreshed (37 = 11.0% of entry points). Most protection corpus
-    cases stay skipped because they embed *unported* commands/modes — Phase-8
-    `Show`/`Export`/`Plot`/`BatchEdit` and the WP7.7 `dynamics` solve mode (the
-    Distance/TD21 relay demos, the DOCTechNote/HarmonicsTMode feeders) — not the
-    protection classes, which are all ported now.
-  - **Tracked-open (needs_investigation): `DG_Prot_Fdr.dss`** — the canonical
-    Fault/Fuse/Recloser/Relay feeder now compiles (protection + `Open` landed it),
-    but the live **system Y diverges ~3e-5 rel at a line node** (entry 23,
-    |diff|=8.0e-3 > allowed 3.5e-4). This is a **WP7.1 Carson line-constants
-    precision divergence** on the feeder's `linegeometry`/`linespacing`/`wiredata`,
-    **not** a protection/`Open` regression — `Open` is oracle-verified on Line +
-    Transformer terminals and protection controls carry no YPrim. Parked for the
-    WP7.1 / Phase-7 geometry-precision follow-up (the plural-cable note's family).
-  - dss-core lib **509 → 513** (the 4 `open_close` tests); golden suite +1
-    (`golden_phase7_protection`). Full three-command gate green on **stable**.
-  - *audit-code follow-up:* verdict faithful, no Critical/Major. One Minor fixed:
-    `CktElementData::set_conductor_closed`/`conductor_closed` guarded `<= Nphases`,
-    but Pascal `Set_/Get_ConductorClosed(index>0)` guard `<= Fnconds`
-    (`CktElement.pas`) — so the new `Open`/`Close` single-conductor path silently
-    no-oped on a **neutral** conductor (`cond > Nphases`) that Pascal opens.
-    Relaxed both guards to `Nconds` (behaviour-preserving for the Fuse/parse-force
-    callers, which only pass `1..=Nphases`); pinned by a `ckt::tests`
-    conductor-guard unit test. The error-text "Circuit Element not found." omits
-    Pascal's `CRLF+CmdString` suffix — kept (matches the existing port convention,
-    e.g. `do_edit_cmd`). lib **513 → 514**.
-  - *audit-tests follow-up:* verdict — real oracle-pinned gates, no Critical/Major
-    (event log is **skeleton-exact** via `assert_value_matches_tol` — text must
-    match, not just numbers; iterations `assert_eq`; the dirty edge is implicitly
-    gated since a stale Y wouldn't collapse the feeder voltage; corpus migration
-    runs through the same full-model `run_and_compare`). One Minor strengthened:
-    `golden_phase7_protection` now asserts the **element name sets match exactly**
-    (Rust == oracle, like `corpus_live.rs`) so an *extra* Rust element is caught,
-    not just a dropped one (`compare_element` alone only catches the latter).
+  branch (`G=1/r` / `Gmatrix`) + the FaultStudy input (WP7.9); `ElemKind::Fault` +
+  `Circuit.faults`, `check_fault_status`/`reset_faults` control-loop wiring.
+- **step 2a — `SwtControl`:** a manual whole-terminal switch; lands the generic
+  `set_terminal_closed` + `RefAction::SetSwitchClosed` and the **dirty-edge rule**.
+- **step 2b — `Fuse` (`pd/fuse/`):** per-phase TCC; **`TccCurveObj::get_tcc_time`
+  ported**, per-conductor `set_conductor_closed`, `MappedStringEnumArray`.
+- **step 2c — `Recloser`:** whole-terminal trip + reclose to `Shots`, fast→delayed;
+  `PropFlags::ARRAY_MAX_SIZE` + integer-dump `VALUE_OFFSET`.
+- **step 2d — `Relay`:** the general control (`Relay.pas`, 9 `Type=` sub-types);
+  `Current`/`Voltage`/`ReversePower`/`46`/`47`/`Distance`/`DOC` live, `Generic`/`TD21`
+  parse+dump but defer `Sample` to WP7.7 (`NOT_PORTED`). `get_ov_time`/`get_uv_time`,
+  `PropFlags::ALLOW_NONE`; event log gated on `ShowEventLog`.
+- **step 3 — reliability activation:** enabled Relay/Recloser/Fuse set
+  `Flg.HasOCPDevice` (+ `HasAutoOCPDevice` for the auto-reclosers) via a deferred
+  `RefAction::SetOcpDevice`; `GetOCPDeviceType` live; the Phase-6 `RelCalc`
+  SAIFI/SAIDI/section math runs (no more #52902 abort on a protected zone).
+- **step 4 — protection gate + corpus migration:** the targeted golden
+  `phase7_protection/*.json` (`gen_phase7_protection.py` + `golden_phase7_protection.rs`,
+  **5 trip/reclose scenarios** — event log line-for-line + per-step + final-state vs
+  the pinned oracle, reproduced exactly first-run); the **`Open`/`Close` exec verbs**
+  ported (`do_open_close_cmd`, reusing the protection switching machinery; 4
+  oracle-pinned tests); **`civanlar` + `IEEE_519` (SwtControl) migrated into
+  `solvable_now` (35→37)**, `COVERAGE.md` refreshed. *audit-code:* faithful, fixed
+  the `set_/get_conductor_closed` guard (`Nphases` → `Nconds`, matching Pascal's
+  `Fnconds` — the new `Open` neutral-conductor path) + a unit test. *audit-tests:*
+  real oracle-pinned gates; strengthened the golden with element-name-set equality.
+  **Tracked-open:** `DG_Prot_Fdr.dss` compiles now but the live system Y diverges
+  ~3e-5 rel at a **line** node — a WP7.1 Carson line-constants precision item (not a
+  protection/`Open` regression), parked in `needs_investigation`. lib **502 → 514**
+  across steps 2d–4.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
