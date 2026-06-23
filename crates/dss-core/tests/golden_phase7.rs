@@ -103,6 +103,7 @@ fn phase7_targeted_scenarios_match_oracle() {
         "cable_ts",
         "pvsystem_snapshot",
         "pvsystem_curves",
+        "pvsystem_clamps",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

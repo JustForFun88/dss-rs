@@ -19,7 +19,8 @@ irradiance/temperature shapes + a real `DynamicEq` ref; registered as a zone PCE
 (`is_zone_pce`) with a Monitor mode-3 metered-kind fix. Gate: `props/pvsystem.json`
 (10 scenarios), goldens `phase7/pvsystem_{snapshot,curves}`, **corpus 37 → 44**
 (7 PVSystem cases migrated; InvControl/Export cases re-tagged; 2 near-ideal-source
-cases deferred). lib 514 (WP7.3 start) → **539**. **next = WP7.4 (DER B):
+cases deferred; +GFM guard + discrete-state goldens from the audits). lib 514
+(WP7.3 start) → **543**. **next = WP7.4 (DER B):
 `pc/storage.rs` + the real `StorageController`.**
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
 per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
@@ -71,7 +72,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 539, golden_feeders 1,
+cargo test --workspace      # dss-core lib 543, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -418,7 +419,23 @@ header frontier paragraph summarizes the deliverable. In brief:
   (`SysCtx` carries no class — shared with `generator/nominal.rs`); and
   `Set_ConductorClosed` is not wired (`pv_system_obj_switch_open` never set, like
   Generator's `gen_switch_open`). lib **539 → 541**.
-  *audit-tests: pending.*
+  *audit-tests:* the property + solve goldens are genuinely oracle-pinned (10 props
+  scenarios round-trip exactly; `pvsystem_{snapshot,curves}` pin V + element powers
+  at 1e-6) — but the plan's "inverter control discrete state exact" was guarded by a
+  unit assertion that **could not fail** (`kva_clamp_backs_off_kw` checked only an
+  upper bound — kw=0/kvar=0 passed it) and the Monitor mode-3 fix had **no fast
+  regression test**. Closed both: added golden **`phase7/pvsystem_clamps`** (3
+  PVSystems oracle-pinning the three discrete states at 1e-6 — non-priority kVA
+  back-off `kw=300,kvar=400`; cut-out `kw=0`; absorption-clamp + back-off
+  `kvar=-300,kw=400`), strengthened the unit test to pin `kw=300,kvar=400` exactly +
+  added `kvar_absorption_clamp_then_backoff`, and added an exec regression test
+  (`pvsystem_accepts_mode3_monitor`) for the mode-3 metered-kind fix. Corrected an
+  **overclaiming** deferral note: the passing `CurrentkvarLimite/kvarNEG` sibling
+  uses `kvar=+500` (generation), so it does **not** cover the absorption direction —
+  now independently pinned by `pvsystem_clamps` (pvc) + the unit test. Surfaced-not-
+  fixed (pre-existing, WP7.5): 11 combined-class cases still carry a stale
+  `unsupported_class=InvControl,PVSystem` tag (they need InvControl; a re-probe lands
+  with WP7.5). lib **541 → 543**.
 - **next:** **WP7.3 (DER A) COMPLETE** → **WP7.4 (DER B): `pc/storage.rs`
   (`TStorageObj` on the inverter base — the charge/idle/discharge state machine +
   integrated `%stored`) + the real `StorageController` fleet/dispatch.**
