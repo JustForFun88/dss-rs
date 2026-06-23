@@ -103,7 +103,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 506, golden_feeders 1,
+cargo test --workspace      # dss-core lib 509, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_checkpoints 1, golden_ieee8500 1,
@@ -357,6 +357,19 @@ per-step records (decisions, audits, gate detail) archived at
   flag stale (consistent with the existing `SetSwitchClosed`/`SetConductorsClosed`
   forces, which likewise never un-force a prior target). Both are documented
   deferrals — no code change.
+  *audit-tests follow-up:* the four step-3 tests are genuine oracle-pinned
+  guards (re-probed, all constants exact); the gaps were in secondary paths.
+  Added: the `disabled_ocp_device_sets_no_flag` test now asserts the promised
+  `RelCalc` abort (was flag-absence only); `ocp_device_type_first_registered_wins`
+  (two OCP controls on one line — oracle `Meters.OCPDeviceType` 1 vs 2 by
+  definition order); `relcalc_assume_restoration_changes_auto_ocp_interruptions`
+  (a 3-section auto-recloser feeder that finally makes No vs Yes diverge —
+  SAIFI 0.5133→0.4417, CustInt 21.56→18.55, SAIDI 2.49 both, oracle-pinned,
+  closing the "auto-OCP restoration effect asserted by presence only" gap); and
+  `enable_then_disable_leaves_ocp_flag_stale` pins the documented move/disable
+  deferral so it is explicit, not silent. Probe extended with both new scenarios.
+  Known untestable-without-an-accessor: section `SeqIndex`/`OCPDeviceType` (no
+  meter getter; would need the step-4 golden). **lib 506 → 509**.
 
 **Carry into step 4 (protection gate + corpus migration):**
 - **Dirty-edge discipline (implemented across all four controls).** Every trip/
@@ -382,7 +395,7 @@ per-step records (decisions, audits, gate detail) archived at
   normalized event-log-equality for a trip/reclose sequence. The corpus relays are
   `Type=Current` (definite-time `Delay`), `Type=DOC` (the 68 LV network-protector
   cases), and `Type=Voltage`.
-- dss-core lib **392 → 506** across steps 1–3 (incl. the audit follow-ups).
+- dss-core lib **392 → 509** across steps 1–3 (incl. the audit follow-ups).
 
 ---
 
