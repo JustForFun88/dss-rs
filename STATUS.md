@@ -102,7 +102,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 513, golden_feeders 1,
+cargo test --workspace      # dss-core lib 514, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -423,6 +423,16 @@ DynamicExp object + InvBasedPCE base + PVSystem)**. Full per-step records
     WP7.1 / Phase-7 geometry-precision follow-up (the plural-cable note's family).
   - dss-core lib **509 → 513** (the 4 `open_close` tests); golden suite +1
     (`golden_phase7_protection`). Full three-command gate green on **stable**.
+  - *audit-code follow-up:* verdict faithful, no Critical/Major. One Minor fixed:
+    `CktElementData::set_conductor_closed`/`conductor_closed` guarded `<= Nphases`,
+    but Pascal `Set_/Get_ConductorClosed(index>0)` guard `<= Fnconds`
+    (`CktElement.pas`) — so the new `Open`/`Close` single-conductor path silently
+    no-oped on a **neutral** conductor (`cond > Nphases`) that Pascal opens.
+    Relaxed both guards to `Nconds` (behaviour-preserving for the Fuse/parse-force
+    callers, which only pass `1..=Nphases`); pinned by a `ckt::tests`
+    conductor-guard unit test. The error-text "Circuit Element not found." omits
+    Pascal's `CRLF+CmdString` suffix — kept (matches the existing port convention,
+    e.g. `do_edit_cmd`). lib **513 → 514**.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
