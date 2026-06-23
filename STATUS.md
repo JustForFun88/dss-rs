@@ -106,7 +106,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 524, golden_feeders 1,
+cargo test --workspace      # dss-core lib 527, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -335,10 +335,11 @@ header frontier paragraph summarizes the deliverable. In brief:
   `VarIdx` (Pascal `SilentReadOnly`) / `Expression` (kept verbatim, cleared on a
   compile error) / `Domain` (`Time`/`dq`; parse default `dq`, field default `Time`).
   New enum `dynamic_exp_domain`; `MakeLike` is a no-op-with-error (Pascal 50099).
-  Gate: `props/dynamicexp.json` (8 oracle-pinned scenarios incl. the vendored Kundur
-  expression, the bad-expr clear, the `var`/MakeLike error paths) + **10 interpreter
-  unit tests** (cmds compilation + numeric `SolveEq` for the Kundur/π/trivial
-  expressions + the `Get_*`/`IsInitVal`/`Check_If_CalcValue` accessors). The
+  Gate: `props/dynamicexp.json` (**9** oracle-pinned scenarios incl. the vendored
+  Kundur expression, the bad-expr clear, the `var`/MakeLike/empty-`dt` error paths)
+  + **13 interpreter unit tests** (cmds compilation + numeric `SolveEq` for the
+  Kundur/π/trivial + operator-dispatch expressions + the
+  `Get_*`/`IsInitVal`/`Check_If_CalcValue` accessors). The
   evaluator's *numeric* oracle pinning comes with the dynamics solve (WP7.7); here it
   is spec-pinned (Pascal is the spec) since the oracle exposes no `cmds`/`SolveEq`
   outside a dynamics run. *Self-contained: no solve-loop change.*
