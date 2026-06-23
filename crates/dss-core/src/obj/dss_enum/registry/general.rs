@@ -12,6 +12,7 @@ pub(super) struct GeneralEnums {
     pub(super) price_shape_action: EnumId,
     pub(super) monitor_action: EnumId,
     pub(super) energy_meter_action: EnumId,
+    pub(super) dynamic_exp_domain: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> GeneralEnums {
@@ -94,6 +95,14 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> GeneralEnums 
         ],
         &[0, 1, 2, 3, 4, 5],
     ));
+    // DynamicExp.pas: DomainEnum (Time/dq → 0/1). The parse default is dq
+    // (`DomainEnum.DefaultValue := Ord(dq)`), so an unmatched/short domain
+    // string falls back to dq; the object field itself defaults to Time (the
+    // ctor sets `Domain := TDynDomain.Time`).
+    let mut dynamic_exp_domain =
+        DssEnum::new("DynamicExp: Domain", true, 1, 1, &["Time", "dq"], &[0, 1]);
+    dynamic_exp_domain.default_value = 1;
+    let dynamic_exp_domain = push(dynamic_exp_domain);
     GeneralEnums {
         units: units_id,
         load_shape_action,
@@ -102,5 +111,6 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> GeneralEnums 
         price_shape_action,
         monitor_action,
         energy_meter_action,
+        dynamic_exp_domain,
     }
 }

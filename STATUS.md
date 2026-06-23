@@ -13,7 +13,11 @@ steps 1–4 done** (the `Fault` element, the `SwtControl`/`Fuse`/`Recloser`/`Rel
 controls, reliability activation, and **step 4** = the protection gate + corpus
 migration: the targeted `phase7_protection/*.json` trip/reclose golden, the ported
 `Open`/`Close` exec verbs, and `civanlar`/`IEEE_519` migrated into `solvable_now`,
-35→37); **next = WP7.3 (DER A: DynamicExp object + InvBasedPCE base + PVSystem)**.
+35→37); **WP7.3 (DER A) IN PROGRESS — step 0 (`DynamicExp` object) done** (the
+`general/dynamic_exp.rs` catalog object + its RPN differential-equation compiler
+(`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
+`props/dynamicexp.json` (8 scenarios) + 10 interpreter unit tests; lib 514→524).
+**next = WP7.3 step 1 (`pc/inv_based_pce.rs` — the `InvBasedPceData` base)**.
 WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
 `LineGeometry` catalog, and Line's `geometry`/`spacing`/`wires`/`cncables`/
@@ -96,13 +100,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE — steps 1 + 2a + 2b + 2c + 2d + 3 + 4 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation, protection gate + corpus migration); **next = WP7.3 (DER A: DynamicExp + InvBasedPCE + PVSystem)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE — steps 1 + 2a + 2b + 2c + 2d + 3 + 4 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation, protection gate + corpus migration); **WP7.3 (DER A) — step 0 (`DynamicExp`) done**; **next = WP7.3 step 1 (`InvBasedPceData` base)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 514, golden_feeders 1,
+cargo test --workspace      # dss-core lib 524, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -283,8 +287,7 @@ header frontier paragraph summarizes the deliverable. In brief:
 
 **WP7.2 (Protection) — ✅ COMPLETE.** Steps **1 (`Fault`), 2a (`SwtControl`),
 2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`), 3 (reliability activation), 4
-(protection gate + corpus migration) done + gate-green**; **next = WP7.3 (DER A:
-DynamicExp object + InvBasedPCE base + PVSystem)**. Full per-step records
+(protection gate + corpus migration) done + gate-green**. Full per-step records
 (decisions, audits, gate detail) archived at
 [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). In brief:
 - **step 1 — `Fault` (`pd/fault.rs`):** an uncoupled multi-phase **conductance**
@@ -318,6 +321,29 @@ DynamicExp object + InvBasedPCE base + PVSystem)**. Full per-step records
   ~3e-5 rel at a **line** node — a WP7.1 Carson line-constants precision item (not a
   protection/`Open` regression), parked in `needs_investigation`. lib **502 → 514**
   across steps 2d–4.
+
+**WP7.3 (DER A: DynamicExp + InvBasedPCE + PVSystem) — 🚧 IN PROGRESS.**
+- **step 0 — `DynamicExp` (`general/dynamic_exp.rs`):** the user-defined
+  differential-equation catalog object (`General/DynamicExp.pas`), a `DSS_OBJECT`
+  registered before Generator/PVSystem/Storage (Pascal "before Generator,
+  PVsystem, Storage"). Lands the object **and its expression interpreter**: setting
+  `Expression` compiles the RPN diff-eq (`InterpretDiffEq`) into a flat `cmds`
+  automation array (operator codes + variable/constant slots), evaluated each step
+  by a stack machine (`SolveEq`) over a per-element `[value, derivative]` memory
+  space — both ported loop-for-loop on the done `RPNCalculator`. Props: `NVariables`
+  / `VarNames` (lowercased StringList) / `var` (active-var, drives `VarIdx`) /
+  `VarIdx` (Pascal `SilentReadOnly`) / `Expression` (kept verbatim, cleared on a
+  compile error) / `Domain` (`Time`/`dq`; parse default `dq`, field default `Time`).
+  New enum `dynamic_exp_domain`; `MakeLike` is a no-op-with-error (Pascal 50099).
+  Gate: `props/dynamicexp.json` (8 oracle-pinned scenarios incl. the vendored Kundur
+  expression, the bad-expr clear, the `var`/MakeLike error paths) + **10 interpreter
+  unit tests** (cmds compilation + numeric `SolveEq` for the Kundur/π/trivial
+  expressions + the `Get_*`/`IsInitVal`/`Check_If_CalcValue` accessors). The
+  evaluator's *numeric* oracle pinning comes with the dynamics solve (WP7.7); here it
+  is spec-pinned (Pascal is the spec) since the oracle exposes no `cmds`/`SolveEq`
+  outside a dynamics run. lib **514 → 524**. *Self-contained: no solve-loop change.*
+- **next:** step 1 — `pc/inv_based_pce.rs` (`InvBasedPceData` + trait), then step 2
+  (`pc/pvsystem.rs`), step 3 (zone allow-list), step 4 (gate + corpus).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

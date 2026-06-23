@@ -75,6 +75,7 @@ impl EnumRegistry {
             relay_action: control.relay_action,
             relay_state: control.relay_state,
             add_type: solution.add_type,
+            dynamic_exp_domain: general.dynamic_exp_domain,
         }
     }
 
