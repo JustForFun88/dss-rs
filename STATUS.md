@@ -21,7 +21,7 @@ compiler (`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
 inverter base (`TInvBasedPCE` + the `DynEqPCE` `DynamicEq`/`DynOut` fields) — the
 data record, the `InvDynamicVars` scalar sub-record, the `InvBasedPce` virtual
 trait, and the power-flow shared methods (`StickCurrInTerminalArray`/
-`Get_Presentkvar`/`UsingCIMDynamics`); 6 spec-pinned unit tests; lib 527→533.
+`Get_Presentkvar`/`UsingCIMDynamics`); 7 spec-pinned unit tests; lib 527→534.
 **next = WP7.3 step 2 (`pc/pvsystem.rs` — `TPVsystemObj` on the Generator
 template)**.
 WP7.1 landed the Carson line-constants engine
@@ -112,7 +112,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 533, golden_feeders 1,
+cargo test --workspace      # dss-core lib 534, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -386,7 +386,16 @@ header frontier paragraph summarizes the deliverable. In brief:
   `StickCurr` routing, the trait default/override via a mock implementor) — spec-
   pinned (Pascal is the spec) since the oracle exposes none of these helpers outside
   a full PVSystem/Storage solve (numeric pinning arrives with PVSystem, step 2).
-  *Self-contained: no solve-loop change, no class registration.* lib **527 → 533**.
+  *Self-contained: no solve-loop change, no class registration.* *audit-code:*
+  faithful + complete (all 55 `TInvBasedPCE` fields incl. the full 18-scalar
+  `TInvDynamicVars` set; `StickCurr` 1-based→0-based routing verified vs the
+  oracle-validated `Generator::stick_curr`; deferrals all dynamics/GFM →
+  plan-sanctioned WP7.7) — **no fix needed**. *audit-tests:* strong (exact values,
+  the WPMode edge, the delta wrap); closed one gap — the `StickCurr` tests seeded a
+  zero array, so they could not distinguish accumulate (`+=`/`-=`) from overwrite
+  (`=`). Added `stick_curr_wye_accumulates_neutral` (non-zero seed + two phase
+  currents stacked onto the wye neutral — the `+=`→`=` regression guard). lib
+  **527 → 534**.
 - **next:** step 2 — `pc/pvsystem.rs` (`TPVsystemObj` on the Generator template),
   then step 3 (zone allow-list `is_zone_pce`), step 4 (gate + corpus migration).
 

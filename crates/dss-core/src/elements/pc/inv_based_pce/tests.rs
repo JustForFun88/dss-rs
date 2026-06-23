@@ -81,6 +81,31 @@ fn stick_curr_wye_routes_to_neutral() {
     assert_eq!(arr[2], Complex64::ZERO);
 }
 
+/// Pascal uses `+=`/`-=`: the routine *accumulates* into the terminal array. In
+/// the real solve it is called once per phase into the same array, so the wye
+/// neutral must sum every phase's current. Pin accumulation (not overwrite) by
+/// seeding a non-zero array and stacking two phase currents — a `+=`→`=`
+/// regression on the neutral would corrupt the summed neutral current and this
+/// is the test that catches it.
+#[test]
+fn stick_curr_wye_accumulates_neutral() {
+    let d = InvBasedPceData::new(); // Connection::Wye
+    let nconds = 4; // 3-phase wye + neutral
+    let c0 = Complex64::new(2.0, -1.0);
+    let c1 = Complex64::new(-0.5, 3.0);
+    // Pre-seed non-zero so overwrite vs accumulate differ.
+    let seed = Complex64::new(10.0, 10.0);
+    let mut arr = vec![seed; nconds];
+
+    d.stick_curr_in_terminal_array(&mut arr, nconds, c0, 0);
+    d.stick_curr_in_terminal_array(&mut arr, nconds, c1, 1);
+
+    assert_eq!(arr[0], seed + c0); // phase A accumulated onto the seed
+    assert_eq!(arr[1], seed + c1); // phase B accumulated onto the seed
+    assert_eq!(arr[2], seed); // untouched phase
+    assert_eq!(arr[3], seed - c0 - c1); // neutral sums BOTH phases (the key check)
+}
+
 /// Pascal `StickCurrInTerminalArray`, delta: `arr[i] += curr; j := i + 1;
 /// if j > Fnconds then j := 1; arr[j] -= curr` — the return conductor wraps.
 #[test]
