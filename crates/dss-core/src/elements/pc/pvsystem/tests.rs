@@ -86,8 +86,13 @@ fn inverter_cuts_out_below_threshold() {
     assert_eq!(pv.base.kw_out, 0.0);
 }
 
-/// The kVA clamp (no PF/Watt priority): with a kvar request that would push the
-/// apparent power past the rating, kW is backed off so that kW² + kvar² = kVA².
+/// The non-priority kVA clamp: with kvar=400 requested (varMode=KVAR) on a
+/// kVA=500 inverter and full panel power (kw would be 500), apparent power
+/// 640 > 500 forces the no-priority back-off `kW_out := sqrt(kVA²−kvar²)` → kW =
+/// sqrt(500²−400²) = **300**, kvar **stays 400**. (Pinned exactly — not just an
+/// upper bound — so a regression that zeroed the output or backed off the wrong
+/// leg can't pass; the oracle pins the same state in golden `phase7/pvsystem_clamps`
+/// element `pva`.)
 #[test]
 fn kva_clamp_backs_off_kw() {
     let mut pv = PVSystem::new("pv1");
@@ -96,6 +101,40 @@ fn kva_clamp_backs_off_kw() {
     pv.set_f64(prop::KVAR, 400.0);
     pv.side_effects(prop::KVAR, 0);
     pv.recalc(&crate::elements::pc::generator::default_recalc_ctx());
-    let kva = (pv.base.kw_out.powi(2) + pv.base.kvar_out.powi(2)).sqrt();
-    assert!(kva <= pv.f_kva_rating + 1e-6, "kVA {kva} exceeds rating");
+    assert!(
+        (pv.base.kw_out - 300.0).abs() < 1e-9,
+        "kw_out = {}",
+        pv.base.kw_out
+    );
+    assert!(
+        (pv.base.kvar_out - 400.0).abs() < 1e-9,
+        "kvar_out = {}",
+        pv.base.kvar_out
+    );
+}
+
+/// The negative-kvar absorption clamp + back-off: kvar=−400 requested with
+/// `kvarMaxAbs`=300 clamps to kvar_out=−300 (absorption limit), then the kVA
+/// back-off sets kW = sqrt(500²−300²) = **400**. Pins the absorption direction
+/// (the `kvarNEG` corpus sibling that would cover it is deferred at ~4e-6;
+/// the oracle pins this state in golden `phase7/pvsystem_clamps` element `pvc`).
+#[test]
+fn kvar_absorption_clamp_then_backoff() {
+    let mut pv = PVSystem::new("pv1");
+    pv.set_i32(prop::CONN, 0);
+    pv.set_f64(prop::KVAR_MAX_ABS, 300.0);
+    pv.side_effects(prop::KVAR_MAX_ABS, 0);
+    pv.set_f64(prop::KVAR, -400.0);
+    pv.side_effects(prop::KVAR, 0);
+    pv.recalc(&crate::elements::pc::generator::default_recalc_ctx());
+    assert!(
+        (pv.base.kvar_out + 300.0).abs() < 1e-9,
+        "kvar_out = {}",
+        pv.base.kvar_out
+    );
+    assert!(
+        (pv.base.kw_out - 400.0).abs() < 1e-9,
+        "kw_out = {}",
+        pv.base.kw_out
+    );
 }

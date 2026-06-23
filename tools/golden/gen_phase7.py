@@ -181,6 +181,29 @@ def deck_pvsystem_curves() -> list[str]:
     ]
 
 
+def deck_pvsystem_clamps() -> list[str]:
+    # Pins the three discrete ComputeInverterPower states the plan calls out
+    # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
+    # through their terminal powers:
+    #  - pva: varMode=KVAR, kvar=400, kVA=500, no priority -> non-priority kVA
+    #    back-off (kw_out := sqrt(kVA^2 - kvar^2) = 300; kvar_out stays 400).
+    #  - pvb: irradiance 0.1 -> panel 50 kW < CutOutkW (20%*500=100) -> inverter
+    #    cuts OUT (kw_out = 0).
+    #  - pvc: kvar=-400, kvarMaxAbs=300 -> absorption clamp (kvar_out := -300),
+    #    then the negative-kvar kVA back-off (kw_out := sqrt(500^2-300^2) = 400).
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b  phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Line.lb bus1=src bus2=bb phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Line.lc bus1=src bus2=bc phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new PVSystem.pva bus1=b  phases=3 kV=12.47 kVA=500 Pmpp=500 kvar=400 irradiance=1.0",
+        "new PVSystem.pvb bus1=bb phases=3 kV=12.47 kVA=500 Pmpp=500 pf=1.0 irradiance=0.1",
+        "new PVSystem.pvc bus1=bc phases=3 kV=12.47 kVA=500 Pmpp=500 kvar=-400 "
+        "kvarMaxAbs=300 irradiance=1.0",
+        *PV_TAIL,
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -191,6 +214,7 @@ SCENARIOS = {
     "cable_ts": deck_cable_ts,
     "pvsystem_snapshot": deck_pvsystem_snapshot,
     "pvsystem_curves": deck_pvsystem_curves,
+    "pvsystem_clamps": deck_pvsystem_clamps,
 }
 
 
