@@ -146,6 +146,41 @@ def deck_cable_ts() -> list[str]:
     ]
 
 
+# --- WP7.3 step 2: PVSystem (the inverter PC-element injection) --------------
+# Source -> Line.l1 -> bus b; a PVSystem on b pushes power back to the source.
+# The gate is the PVSystem terminal currents/powers + the node voltages (the new
+# DoConstantPQPVsystemObj injection + the panel/inverter model); the Line.l1
+# YPrim is the sym-component path (already ported) and is pinned incidentally.
+PV_HEAD = [
+    "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+    "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+]
+PV_TAIL = ["set voltagebases=[12.47]", "calcvoltagebases"]
+
+
+def deck_pvsystem_snapshot() -> list[str]:
+    # Unity-PF, ideal inverter, full irradiance: kW_out = Pmpp, kvar_out = 0.
+    return [
+        *PV_HEAD,
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=500 Pmpp=500 pf=1.0 "
+        "irradiance=1.0",
+        *PV_TAIL,
+    ]
+
+
+def deck_pvsystem_curves() -> list[str]:
+    # Derated panel power (irradiance 0.9 + temperature 35 via P-TCurve) through
+    # an efficiency curve, at pf=0.95 (kvar output), with the kVA clamp live.
+    return [
+        *PV_HEAD,
+        "new XYcurve.eff npts=4 xarray=(0.1 0.2 0.4 1.0) yarray=(0.86 0.9 0.93 0.97)",
+        "new XYcurve.pt npts=4 xarray=(0 25 75 100) yarray=(1.2 1.0 0.8 0.6)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=500 Pmpp=500 pf=0.95 "
+        "EffCurve=eff P-TCurve=pt irradiance=0.9 Temperature=35",
+        *PV_TAIL,
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -154,6 +189,8 @@ SCENARIOS = {
     "line_spacing": deck_line_spacing,
     "cable_cn": deck_cable_cn,
     "cable_ts": deck_cable_ts,
+    "pvsystem_snapshot": deck_pvsystem_snapshot,
+    "pvsystem_curves": deck_pvsystem_curves,
 }
 
 

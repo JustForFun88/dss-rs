@@ -61,6 +61,8 @@ impl EnumRegistry {
             gen_disp_mode: pc.gen_disp_mode,
             gen_status: pc.gen_status,
             gen_model: pc.gen_model,
+            pvsystem_model: pc.pvsystem_model,
+            inv_control_mode: pc.inv_control_mode,
             monitor_action: general.monitor_action,
             energy_meter_action: general.energy_meter_action,
             storage_ctrl_discharge_mode: control.storage_ctrl_discharge_mode,

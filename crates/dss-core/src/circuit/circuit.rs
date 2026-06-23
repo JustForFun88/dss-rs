@@ -51,6 +51,7 @@ pub enum ElemKind {
     Fault,
     Control,
     Generator,
+    PVSystem,
     Meter,
     EnergyMeter,
     Sensor,
@@ -87,6 +88,8 @@ pub struct Circuit {
     /// only this list (walked by `Check_Fault_Status` / `DoResetFaults`).
     pub faults: Vec<ElemRef>,
     pub generators: Vec<ElemRef>,
+    /// PVSystem elements (Phase 7): PC elements; in `pc_elements` and this list.
+    pub pv_systems: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
@@ -202,6 +205,7 @@ impl Circuit {
             reactors: Vec::new(),
             faults: Vec::new(),
             generators: Vec::new(),
+            pv_systems: Vec::new(),
             controls: Vec::new(),
             monitors: Vec::new(),
             energy_meters: Vec::new(),
@@ -290,6 +294,10 @@ impl Circuit {
             ElemKind::Generator => {
                 self.pc_elements.push(r);
                 self.generators.push(r);
+            }
+            ElemKind::PVSystem => {
+                self.pc_elements.push(r);
+                self.pv_systems.push(r);
             }
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
