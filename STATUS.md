@@ -433,6 +433,14 @@ DynamicExp object + InvBasedPCE base + PVSystem)**. Full per-step records
     conductor-guard unit test. The error-text "Circuit Element not found." omits
     Pascal's `CRLF+CmdString` suffix — kept (matches the existing port convention,
     e.g. `do_edit_cmd`). lib **513 → 514**.
+  - *audit-tests follow-up:* verdict — real oracle-pinned gates, no Critical/Major
+    (event log is **skeleton-exact** via `assert_value_matches_tol` — text must
+    match, not just numbers; iterations `assert_eq`; the dirty edge is implicitly
+    gated since a stale Y wouldn't collapse the feeder voltage; corpus migration
+    runs through the same full-model `run_and_compare`). One Minor strengthened:
+    `golden_phase7_protection` now asserts the **element name sets match exactly**
+    (Rust == oracle, like `corpus_live.rs`) so an *extra* Rust element is caught,
+    not just a dropped one (`compare_element` alone only catches the latter).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
