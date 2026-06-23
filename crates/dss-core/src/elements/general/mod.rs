@@ -3,6 +3,7 @@
 //! of any circuit element.
 
 pub mod conductor_data;
+pub mod dynamic_exp;
 pub mod growth_shape;
 pub mod line_code;
 pub mod line_geometry;

@@ -59,6 +59,15 @@ impl Dss {
             DssClass::dss_object(line_geometry::class_props(&enums), |name| {
                 Box::new(line_geometry::LineGeometryObj::new(name))
             }),
+            // DynamicExp is a DSS_OBJECT registered before Generator/PVSystem/
+            // Storage (Pascal DSSClassDefs.pas:225 — "This needs to be before
+            // Generator, PVsystem, Storage"); since the Rust registry groups all
+            // DSS_OBJECT classes ahead of the circuit-element classes, placing it
+            // here satisfies that ordering. Registration order does not affect node
+            // ordering (it adds no nodes).
+            DssClass::dss_object(dynamic_exp::class_props(&enums), |name| {
+                Box::new(dynamic_exp::DynamicExpObj::new(name))
+            }),
             DssClass::ckt_class(
                 vsource::class_props(&enums),
                 |name| Box::new(vsource::VSource::new(name)),

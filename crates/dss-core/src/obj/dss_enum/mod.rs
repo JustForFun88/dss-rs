@@ -106,6 +106,8 @@ pub struct EnumRegistry {
     pub relay_state: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
+    /// 'DynamicExp: Domain' (DynamicExp.pas `DomainEnum`).
+    pub dynamic_exp_domain: EnumId,
 }
 
 /// Index of an enum inside the registry — what Pascal stored as a raw

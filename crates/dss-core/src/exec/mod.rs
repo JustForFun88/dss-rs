@@ -28,8 +28,8 @@ pub(crate) use crate::elements::control::{
     cap_control, gen_dispatcher, recloser, reg_control, relay, storage_controller, swt_control,
 };
 pub(crate) use crate::elements::general::{
-    conductor_data, growth_shape, line_code, line_geometry, line_spacing, load_shape, price_shape,
-    spectrum, tcc_curve, temp_shape, xfmr_code, xy_curve,
+    conductor_data, dynamic_exp, growth_shape, line_code, line_geometry, line_spacing, load_shape,
+    price_shape, spectrum, tcc_curve, temp_shape, xfmr_code, xy_curve,
 };
 pub(crate) use crate::elements::meter::energymeter;
 pub(crate) use crate::elements::meter::monitor;

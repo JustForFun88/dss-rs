@@ -1894,6 +1894,73 @@ SCENARIOS = [
             "cond=3 wire=acsr x=1 h=10",
         ],
     },
+    # --- DynamicExp (WP7.3 step 0) -----------------------------------------
+    # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
+    # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps
+    # `[a, b, ...]`; `var=` resolves VarIdx (the active-variable index). Domain
+    # defaults to Time (the field), even though the parse default is dq. MakeLike
+    # is not implemented (50099) — a `like=` object keeps ctor defaults.
+    {
+        "name": "dynamicexp_default",
+        "target": "DynamicExp.de",
+        "commands": ["New DynamicExp.de"],
+    },
+    {
+        # The vendored corpus expression (Dynamic_KundurDynExp.dss).
+        "name": "dynamicexp_full",
+        "target": "DynamicExp.de",
+        "commands": [
+            "New DynamicExp.de nvariables=6 varnames=[Speed Mass PShaft Pterm Damp theta] "
+            "expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed]",
+        ],
+    },
+    {
+        "name": "dynamicexp_domain_dq",
+        "target": "DynamicExp.de",
+        "commands": [
+            "New DynamicExp.de nvariables=2 varnames=[w th] domain=dq expression=[w dt = th]",
+        ],
+    },
+    {
+        # var=b activates the variable; VarIdx reads back its index (1).
+        "name": "dynamicexp_var_active",
+        "target": "DynamicExp.de",
+        "commands": [
+            "New DynamicExp.de nvariables=3 varnames=[a b c] var=b expression=[a dt = b]",
+        ],
+    },
+    {
+        # Abbreviated property names (nvar/varnames/expr/dom).
+        "name": "dynamicexp_abbrev",
+        "target": "DynamicExp.de",
+        "commands": ["New DynamicExp.de nvar=2 varnames=[a b] expr=[a dt = b] dom=dq"],
+    },
+    {
+        # An undefined variable on the RHS logs 50005/50003 and clears Expression.
+        "name": "dynamicexp_bad_expr",
+        "target": "DynamicExp.de",
+        "allow_errors": True,
+        "commands": ["New DynamicExp.de nvariables=2 varnames=[a b] expression=[a dt = zzz]"],
+    },
+    {
+        # var= referencing a missing variable logs 50001 and clears the active var.
+        "name": "dynamicexp_var_missing",
+        "target": "DynamicExp.de",
+        "allow_errors": True,
+        "commands": [
+            "New DynamicExp.de nvariables=2 varnames=[a b] var=zzz expression=[a dt = b]",
+        ],
+    },
+    {
+        # MakeLike is unimplemented (50099): the derived object keeps ctor defaults.
+        "name": "dynamicexp_makelike",
+        "target": "DynamicExp.de",
+        "allow_errors": True,
+        "commands": [
+            "New DynamicExp.base nvariables=2 varnames=[a b] expression=[a dt = b]",
+            "New DynamicExp.de like=base",
+        ],
+    },
 ]
 
 

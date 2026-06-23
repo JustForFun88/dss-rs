@@ -1,0 +1,142 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "dynamicexp",
+ "scenarios": [
+  {
+   "name": "dynamicexp_default",
+   "commands": [
+    "New DynamicExp.de"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "0",
+    "VarNames": "",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "",
+    "Domain": "Time",
+    "Like": ""
+   }
+  },
+  {
+   "name": "dynamicexp_full",
+   "commands": [
+    "New DynamicExp.de nvariables=6 varnames=[Speed Mass PShaft Pterm Damp theta] expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed]"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "6",
+    "VarNames": "[speed, mass, pshaft, pterm, damp, theta]",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed",
+    "Domain": "Time",
+    "Like": ""
+   }
+  },
+  {
+   "name": "dynamicexp_domain_dq",
+   "commands": [
+    "New DynamicExp.de nvariables=2 varnames=[w th] domain=dq expression=[w dt = th]"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "2",
+    "VarNames": "[w, th]",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "w dt = th",
+    "Domain": "dq",
+    "Like": ""
+   }
+  },
+  {
+   "name": "dynamicexp_var_active",
+   "commands": [
+    "New DynamicExp.de nvariables=3 varnames=[a b c] var=b expression=[a dt = b]"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "3",
+    "VarNames": "[a, b, c]",
+    "Var": "b",
+    "VarIdx": "1",
+    "Expression": "a dt = b",
+    "Domain": "Time",
+    "Like": ""
+   }
+  },
+  {
+   "name": "dynamicexp_abbrev",
+   "commands": [
+    "New DynamicExp.de nvar=2 varnames=[a b] expr=[a dt = b] dom=dq"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "2",
+    "VarNames": "[a, b]",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "a dt = b",
+    "Domain": "dq",
+    "Like": ""
+   }
+  },
+  {
+   "name": "dynamicexp_bad_expr",
+   "commands": [
+    "New DynamicExp.de nvariables=2 varnames=[a b] expression=[a dt = zzz]"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "2",
+    "VarNames": "[a, b]",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "",
+    "Domain": "Time",
+    "Like": ""
+   },
+   "allow_errors": true
+  },
+  {
+   "name": "dynamicexp_var_missing",
+   "commands": [
+    "New DynamicExp.de nvariables=2 varnames=[a b] var=zzz expression=[a dt = b]"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "2",
+    "VarNames": "[a, b]",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "a dt = b",
+    "Domain": "Time",
+    "Like": ""
+   },
+   "allow_errors": true
+  },
+  {
+   "name": "dynamicexp_makelike",
+   "commands": [
+    "New DynamicExp.base nvariables=2 varnames=[a b] expression=[a dt = b]",
+    "New DynamicExp.de like=base"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "0",
+    "VarNames": "",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": "",
+    "Domain": "Time",
+    "Like": ""
+   },
+   "allow_errors": true
+  }
+ ]
+}
