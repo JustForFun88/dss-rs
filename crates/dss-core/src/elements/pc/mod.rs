@@ -8,9 +8,11 @@
 pub mod generator;
 pub mod inv_based_pce;
 pub mod load;
+pub mod pvsystem;
 pub mod vsource;
 
 pub use generator::Generator;
 pub use inv_based_pce::{InvBasedPce, InvBasedPceData};
 pub use load::Load;
+pub use pvsystem::PVSystem;
 pub use vsource::VSource;

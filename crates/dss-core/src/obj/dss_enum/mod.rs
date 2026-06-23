@@ -79,6 +79,10 @@ pub struct EnumRegistry {
     pub gen_status: EnumId,
     /// 'Generator: Model' (generator.pas `GenModelEnum`).
     pub gen_model: EnumId,
+    /// 'PVSystem: Model' (PVsystem.pas `PVSystemModelEnum`).
+    pub pvsystem_model: EnumId,
+    /// 'Inverter Control Mode' (DSSClass.pas `InvControlModeEnum`; GFL/GFM).
+    pub inv_control_mode: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,

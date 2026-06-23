@@ -1338,6 +1338,93 @@ SCENARIOS = [
             "New Generator.g1 like=base bus1=gb2",
         ],
     },
+    # --- PVSystem (WP7.3 step 2) --------------------------------------------
+    {
+        "name": "pvsystem_default",
+        "target": "PVSystem.pv1",
+        "commands": ["New PVSystem.pv1 bus1=pvbus"],
+    },
+    {
+        "name": "pvsystem_pf",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=pvbus phases=3 kV=12.47 kVA=500 Pmpp=500 "
+            "pf=0.95 irradiance=0.9 Temperature=30",
+        ],
+    },
+    {
+        "name": "pvsystem_kvar_delta",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=pvbus phases=3 kV=0.48 conn=delta kVA=250 "
+            "Pmpp=200 kvar=50",
+        ],
+    },
+    {
+        "name": "pvsystem_cutinout_model",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=pvbus kV=12.47 kVA=500 Pmpp=500 %Cutin=30 "
+            "%Cutout=25 %R=40 %X=10 model=2 Vminpu=0.85 Vmaxpu=1.15 "
+            "balanced=yes LimitCurrent=yes %Pmpp=80",
+        ],
+    },
+    {
+        "name": "pvsystem_curves",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New XYcurve.effcurve npts=4 xarray=(0.1 0.2 0.4 1.0) "
+            "yarray=(0.86 0.9 0.93 0.97)",
+            "New XYcurve.pt npts=4 xarray=(0 25 75 100) yarray=(1.2 1.0 0.8 0.6)",
+            "New PVSystem.pv1 bus1=pvbus kV=12.47 kVA=500 Pmpp=500 "
+            "EffCurve=effcurve P-TCurve=pt irradiance=0.9 Temperature=30",
+        ],
+    },
+    {
+        "name": "pvsystem_shapes",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New LoadShape.irr npts=4 interval=1 mult=(0.2 0.6 0.9 1.0)",
+            "New TShape.temp npts=4 interval=1 temp=(20 25 35 30)",
+            "New PVSystem.pv1 bus1=pvbus kV=12.47 kVA=500 Pmpp=500 daily=irr "
+            "yearly=irr duty=irr Tdaily=temp Tyearly=temp Tduty=temp DutyStart=2",
+        ],
+    },
+    {
+        "name": "pvsystem_limits",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=pvbus kV=12.47 kVA=500 Pmpp=500 pf=0.9 "
+            "kvarMax=200 kvarMaxAbs=150 %PminNoVars=10 %PminkvarMax=20 "
+            "WattPriority=yes PFPriority=yes VarFollowInverter=yes",
+        ],
+    },
+    {
+        "name": "pvsystem_inverter_params",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=pvbus kV=12.47 kVA=500 Pmpp=500 kVDC=10 "
+            "Kp=0.02 PITol=2 SafeVoltage=85 AmpLimit=1.5 AmpLimitGain=0.7 class=3",
+        ],
+    },
+    {
+        "name": "pvsystem_dynexpr",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New DynamicExp.de nvariables=2 varnames=[it dit] domain=time "
+            "expression=[it dt = dit]",
+            "New PVSystem.pv1 bus1=pvbus kV=12.47 kVA=500 Pmpp=500 DynamicEq=de",
+        ],
+    },
+    {
+        "name": "pvsystem_makelike",
+        "target": "PVSystem.pv1",
+        "commands": [
+            "New PVSystem.base bus1=pb kV=12.47 kVA=400 Pmpp=350 pf=0.92 "
+            "conn=delta %R=30 %X=8 model=2",
+            "New PVSystem.pv1 like=base bus1=pb2",
+        ],
+    },
     {
         "name": "monitor_default",
         "target": "Monitor.m1",

@@ -89,17 +89,20 @@ fn load_scenarios() -> Vec<Scenario> {
 }
 
 #[test]
-fn phase7_line_constants_scenarios_match_oracle() {
+fn phase7_targeted_scenarios_match_oracle() {
     let scenarios = load_scenarios();
-    // Every path the WP7.1 Line fetch resolvers cover must stay represented, so a
-    // future edit can't silently drop a path's coverage (mirrors the count guards
-    // in golden_phase5/6 and corpus_live's depth guard).
+    // Every path these targeted goldens cover must stay represented, so a future
+    // edit can't silently drop a path's coverage (mirrors the count guards in
+    // golden_phase5/6 and corpus_live's depth guard): the WP7.1 Line fetch
+    // resolvers and the WP7.3 PVSystem injection / panel-inverter model.
     for must in [
         "line_geometry",
         "line_geometry_reduce",
         "line_spacing",
         "cable_cn",
         "cable_ts",
+        "pvsystem_snapshot",
+        "pvsystem_curves",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

@@ -7,30 +7,27 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-23 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE —
-steps 1–4 done** (the `Fault` element, the `SwtControl`/`Fuse`/`Recloser`/`Relay`
-controls, reliability activation, and **step 4** = the protection gate + corpus
-migration: the targeted `phase7_protection/*.json` trip/reclose golden, the ported
-`Open`/`Close` exec verbs, and `civanlar`/`IEEE_519` migrated into `solvable_now`,
-35→37); **WP7.3 (DER A) IN PROGRESS — steps 0 + 1 done.** Step 0 (`DynamicExp` object):
-the `general/dynamic_exp.rs` catalog object + its RPN differential-equation
-compiler (`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
-`props/dynamicexp.json` (9 scenarios) + 13 interpreter unit tests; lib 514→527.
-**Step 1 (`pc/inv_based_pce.rs` — the `InvBasedPceData` base):** the shared
-inverter base (`TInvBasedPCE` + the `DynEqPCE` `DynamicEq`/`DynOut` fields) — the
-data record, the `InvDynamicVars` scalar sub-record, the `InvBasedPce` virtual
-trait, and the power-flow shared methods (`StickCurrInTerminalArray`/
-`Get_Presentkvar`/`UsingCIMDynamics`); 7 spec-pinned unit tests; lib 527→534.
-**next = WP7.3 step 2 (`pc/pvsystem.rs` — `TPVsystemObj` on the Generator
-template)**.
+Last updated: 2026-06-24 — **Phase 7 IN PROGRESS** (branch
+`phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
+WP7.3 (DER A) COMPLETE.** WP7.3 = the `DynamicExp` object (step 0) + the
+`InvBasedPceData` inverter base (step 1) + **`PVSystem`** (steps 2–4): the
+photovoltaic PC element on the Generator template — the panel/inverter model
+(irradiance·shape·`Pmpp`·temp-derate → cut-in/out + efficiency curve + watt/var
+priority + kvar/`kVA` clamps), `SetNominalDEROutput`, `CalcYPrim`,
+`DoConstantPQ`/`DoConstantZ`, registers/`TakeSample`, the P-T-V curves (XYcurve) +
+irradiance/temperature shapes + a real `DynamicEq` ref; registered as a zone PCE
+(`is_zone_pce`) with a Monitor mode-3 metered-kind fix. Gate: `props/pvsystem.json`
+(10 scenarios), goldens `phase7/pvsystem_{snapshot,curves}`, **corpus 37 → 44**
+(7 PVSystem cases migrated; InvControl/Export cases re-tagged; 2 near-ideal-source
+cases deferred). lib 514 (WP7.3 start) → **539**. **next = WP7.4 (DER B):
+`pc/storage.rs` + the real `StorageController`.**
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
 per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
 `TSData`/`LineSpacing`/`LineGeometry` catalog + Line's geometry/spacing path and
 its golden; `Fault`/`SwtControl`/`Fuse`/`Recloser`/`Relay` + reliability
 activation + the protection gate) lives in **§1e** (per-step summaries) and the
 archives [`phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md) /
-[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **37**.
+[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **44**.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -68,13 +65,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE — steps 1 + 2a + 2b + 2c + 2d + 3 + 4 done** (Fault, SwtControl, Fuse, Recloser, Relay, reliability activation, protection gate + corpus migration); **WP7.3 (DER A) — steps 0 (`DynamicExp`) + 1 (`InvBasedPceData` base) done**; **next = WP7.3 step 2 (`pc/pvsystem.rs`)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE — steps 0 (`DynamicExp`) + 1 (`InvBasedPceData` base) + 2–4 (`PVSystem` + zone + gate + corpus 37→44) done**; **next = WP7.4 (DER B: Storage + StorageController)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 534, golden_feeders 1,
+cargo test --workspace      # dss-core lib 539, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -358,8 +355,58 @@ header frontier paragraph summarizes the deliverable. In brief:
   (`=`). Added `stick_curr_wye_accumulates_neutral` (non-zero seed + two phase
   currents stacked onto the wye neutral — the `+=`→`=` regression guard). lib
   **527 → 534**.
-- **next:** step 2 — `pc/pvsystem.rs` (`TPVsystemObj` on the Generator template),
-  then step 3 (zone allow-list `is_zone_pce`), step 4 (gate + corpus migration).
+- **step 2 — `PVSystem` (`pc/pvsystem/`) + steps 3–4 (zone + gate):** the
+  photovoltaic PC element (`PCElements/PVsystem.pas`, `TPVsystemObj`) on the
+  Generator injection template (WP6.2) with the step-1 `InvBasedPceData` base
+  embedded (flattened like `GenVars`); a directory module mirroring
+  `generator/` (`mod`/`nominal`/`solve`/`registers`/`accessors`/`tests`). Lands the
+  **power-flow** PVSystem: the PV-panel + inverter model `ComputePanelPower`
+  (irradiance·shape·`Pmpp`·temp-derate) → `ComputeInverterPower` (cut-in/cut-out,
+  efficiency curve, watt/var priority, the kvar + `kVA` clamps — ported
+  loop-for-loop, with a Pascal-faithful `Sign` that returns 0 at zero) →
+  `kWOut_Calc`; `SetNominalDEROutput` (= `SetNominalPVSystem`: shape/temperature
+  by solve mode → per-phase P/Q → `YEQ`/`YEQ_Min`/`YEQ_Max`/`PhaseCurrentLimit`);
+  `CalcYPrim`/`CalcYPrimMatrix`; `DoConstantPQPVsystemObj` (model 1, with the
+  current-limited + impedance-outside-band branches) / `DoConstantZPVsystemObj`
+  (model 2) + the `ForceBalanced` pos-seq path; energy-meter registers +
+  `TakeSample`. Curves/shapes resolve via the snapshot-clone ObjectRef pattern:
+  irradiance `daily`/`yearly`/`duty` (LoadShape), `Tdaily`/`Tyearly`/`Tduty`
+  (TShape), `EffCurve`/`P-TCurve` (XYcurve), and **`DynamicEq` as a real
+  `DynamicExp` ref** (step 0). Two new enums: `pvsystem_model`
+  (ConstantP_PF/ConstantY/UserModel) and `inv_control_mode` (GFL/GFM). **Step 3:**
+  `ElemKind::PVSystem` + a `pv_systems` circuit list; registered in `construct.rs`
+  after the protection controls (Pascal `PVSYSTEM_ELEMENT`); `is_zone_pce` admits
+  PVSystem (`EnergyMeter.pas:1911` — the zone walk still ignores it for
+  accumulation, matching Pascal "ignore other PC elements"). Also fixed a **real
+  bug** surfaced by the corpus probe: the Monitor mode-3 metered-kind detection
+  classified only Load/Generator as `PcElement`, so a `mode=3` monitor on a
+  PVSystem (Pascal: any `TPCElement`) errored "must be a power conversion element"
+  and left a singular Y — `Test/PVSystemTest.dss`; PVSystem now classifies as
+  `PcElement` (the mode-3 channel stays the Phase-6 empty stub, like Generator).
+  **Deferred (WP7.6/7.7, matching Generator):** the GFM mode
+  (`DoGFM_Mode`/`CalcGFMYprim`/`CheckOLInverter`), harmonics
+  (`DoHarmonicMode`/`InitHarmonics`), dynamics
+  (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the state-variable
+  interface `NumVariables`/`Get_/Set_Variable`/`VariableName`), the user-written
+  DLL model (model 3 → error 567, never ported), and `MakePosSequence`.
+  Gate: **`props/pvsystem.json`** (10 oracle-pinned scenarios — default, PF, kvar/
+  delta, cut-in/out + model 2, eff/P-T curves, all six shapes, the kvar/Pmin
+  limits, the inverter params, a `DynamicEq` ref, MakeLike — all round-trip
+  exactly); two targeted goldens **`phase7/pvsystem_{snapshot,curves}`** (voltages
+  + element powers 1e-6, the second exercising the eff curve + P-T derate + the
+  `kVA` clamp at pf=0.95); **corpus migration 37 → 44** (7 PVSystem cases:
+  EPRI `Master_withPV`, the 2 `CurrentkvarLimite` kvar/kvarNEG, the 4 ConstantPF
+  `SnapShot_PFP_*`), with the InvControl/Export/Plot cases re-tagged accurately
+  (→ `unsupported_class=InvControl` / `unsupported_command=Export`) and **2**
+  `varCapability` cases held in `needs_investigation` (live ~4e-6 mismatch:
+  near-ideal-source `Z=1e-8` amplifies a sub-1e-6 eff-curve interpolation
+  difference — the kvar-clamp path is validated by the sibling
+  `CurrentkvarLimite` cases that pass at full tolerance; conditioning, not a
+  logic bug — diagnosed in the manifest note). lib **534 → 539**.
+  *audit-code / audit-tests: pending.*
+- **next:** **WP7.3 (DER A) COMPLETE** → **WP7.4 (DER B): `pc/storage.rs`
+  (`TStorageObj` on the inverter base — the charge/idle/discharge state machine +
+  integrated `%stored`) + the real `StorageController` fleet/dispatch.**
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
