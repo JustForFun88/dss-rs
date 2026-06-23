@@ -116,6 +116,17 @@ fn unknown_variable_clears_expression() {
 }
 
 #[test]
+fn empty_operand_before_dt_is_recoverable_not_a_panic() {
+    // Pascal `vars[0]` on an empty preceding sub-expression raises a *catchable*
+    // EStringListError; the expression is left as written (the unwind skips the
+    // clear-on-error path). The Rust port must reproduce a recoverable error, not
+    // a panic (the oracle is pinned by props/dynamicexp.json::dynamicexp_empty_dt_operand).
+    let mut o = compile(&["a", "b"], " dt = b");
+    assert_eq!(o.get_string(EXPRESSION), " dt = b"); // not cleared
+    assert!(has_errors(&mut o)); // "List index (0) out of bounds" logged
+}
+
+#[test]
 fn var_active_resolves_index_and_missing_clears() {
     let mut o = DynamicExpObj::new("d");
     o.set_string_list(VARNAMES, vec!["a".into(), "b".into(), "c".into()]);

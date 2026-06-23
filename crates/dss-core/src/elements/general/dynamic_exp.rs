@@ -308,7 +308,18 @@ impl DynamicExpObj {
             match op_code {
                 0 => {
                     // `dt`: the preceding token is the equation's output variable.
-                    let idx = self.get_var_idx(&vars[0]);
+                    // Pascal accesses `vars[0]` directly; on an empty preceding
+                    // sub-expression that raises `EStringListError` ("List index
+                    // (0) out of bounds"), which the command processor catches —
+                    // the error is logged, the expression is left untouched (the
+                    // unwind skips the clear-on-error path), and processing
+                    // continues. Reproduce it as a recoverable error + early
+                    // return rather than a panic (probed against the oracle).
+                    let Some(out_var) = vars.first() else {
+                        self.data.push_error("List index (0) out of bounds");
+                        return;
+                    };
+                    let idx = self.get_var_idx(out_var);
                     if idx == CONST_CODE {
                         self.data.push_error(
                             "DynamicExp: the expression preceeding the \"dt\" operand has to be a \

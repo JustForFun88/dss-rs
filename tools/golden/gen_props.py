@@ -1961,6 +1961,17 @@ SCENARIOS = [
             "New DynamicExp.de like=base",
         ],
     },
+    {
+        # An empty operand before `dt` makes InterpretDiffEq access vars[0] on an
+        # empty list — Pascal raises EStringListError ("List index (0) out of
+        # bounds"), caught by the command processor: the error is logged and the
+        # expression is left as written (the unwind skips the clear-on-error
+        # path). The Rust port reproduces it as a recoverable error, not a panic.
+        "name": "dynamicexp_empty_dt_operand",
+        "target": "DynamicExp.de",
+        "allow_errors": True,
+        "commands": ["New DynamicExp.de nvariables=2 varnames=[a b] expression=[ dt = b]"],
+    },
 ]
 
 

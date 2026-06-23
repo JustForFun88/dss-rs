@@ -16,7 +16,7 @@ migration: the targeted `phase7_protection/*.json` trip/reclose golden, the port
 35→37); **WP7.3 (DER A) IN PROGRESS — step 0 (`DynamicExp` object) done** (the
 `general/dynamic_exp.rs` catalog object + its RPN differential-equation compiler
 (`InterpretDiffEq`) and stack evaluator (`SolveEq`), oracle-pinned via
-`props/dynamicexp.json` (8 scenarios) + 10 interpreter unit tests; lib 514→524).
+`props/dynamicexp.json` (9 scenarios) + 11 interpreter unit tests; lib 514→525).
 **next = WP7.3 step 1 (`pc/inv_based_pce.rs` — the `InvBasedPceData` base)**.
 WP7.1 landed the Carson line-constants engine
 (`support/line_constants/`), the `WireData`/`CNData`/`TSData`/`LineSpacing`/
@@ -341,7 +341,16 @@ header frontier paragraph summarizes the deliverable. In brief:
   expressions + the `Get_*`/`IsInitVal`/`Check_If_CalcValue` accessors). The
   evaluator's *numeric* oracle pinning comes with the dynamics solve (WP7.7); here it
   is spec-pinned (Pascal is the spec) since the oracle exposes no `cmds`/`SolveEq`
-  outside a dynamics run. lib **514 → 524**. *Self-contained: no solve-loop change.*
+  outside a dynamics run. *Self-contained: no solve-loop change.*
+  *audit-code:* faithful interpreter/evaluator port; fixed a **panic** — an empty
+  operand before `dt` (e.g. `expression=[ dt = b]`) hit `vars[0]` on an empty list
+  and aborted the process, where Pascal raises a *catchable* `EStringListError`
+  ("List index (0) out of bounds"), logs it, and leaves the expression as written.
+  Now a recoverable error (+ a `props/dynamicexp.json` scenario + a unit test
+  pinning it to the oracle). Surfaced-not-reproduced: on that error path Pascal's
+  `SetLength(Cmds,+2)` leaves two zero `cmds` slots — unobservable (`cmds` on an
+  errored expression is never evaluated; not a dumped property), so not reproduced.
+  lib **514 → 525**.
 - **next:** step 1 — `pc/inv_based_pce.rs` (`InvBasedPceData` + trait), then step 2
   (`pc/pvsystem.rs`), step 3 (zone allow-list), step 4 (gate + corpus).
 
