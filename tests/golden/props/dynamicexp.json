@@ -137,6 +137,23 @@
     "Like": ""
    },
    "allow_errors": true
+  },
+  {
+   "name": "dynamicexp_empty_dt_operand",
+   "commands": [
+    "New DynamicExp.de nvariables=2 varnames=[a b] expression=[ dt = b]"
+   ],
+   "target": "DynamicExp.de",
+   "properties": {
+    "NVariables": "2",
+    "VarNames": "[a, b]",
+    "Var": "",
+    "VarIdx": "-1",
+    "Expression": " dt = b",
+    "Domain": "Time",
+    "Like": ""
+   },
+   "allow_errors": true
   }
  ]
 }
