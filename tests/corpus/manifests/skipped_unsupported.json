@@ -868,13 +868,13 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for o"
+   "tag": "unsupported_class=InvControl; unsupported_command=BatchEdit",
+   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"InvControl\\\" not found.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Storag"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90"
+   "tag": "unsupported_class=InvControl; unsupported_command=BatchEdit",
+   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"InvControl\\\" not found.\", \"Command \\\"BatchEdit\\\" is not ported yet.\""
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",

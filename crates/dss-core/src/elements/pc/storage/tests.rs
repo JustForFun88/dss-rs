@@ -151,9 +151,13 @@ fn kwh_rated_side_effect_recharges() {
 }
 
 /// The discharging kVA clamp: with PF=0.8 requested (varMode=PF) on a kVA=25
-/// inverter discharging at 25 kW, apparent power exceeds 25 → Q priority backs
-/// off kW. kvar = 25·√(1/0.8²−1) clamps; the default Q-priority path sets
-/// `kW = √(kVA²−kvar²)`.
+/// inverter discharging at 25 kW, the desired kvar = 25·√(1/0.8²−1) = 18.75
+/// gives kVA √(25²+18.75²)=31.25 > 25, so the default Q-priority path backs off
+/// **kW** to √(25²−18.75²) = 16.5359… while **kvar stays 18.75**. Both legs are
+/// pinned exactly (not just the apparent power) so a regression that backs off
+/// the wrong leg — e.g. a PF-priority kW=20/kvar=15, which also lands on the
+/// kVA=25 circle with both legs positive — cannot pass. Oracle: `? kW`
+/// = 16.5359456941537, `? kvar` = 18.75.
 #[test]
 fn kva_clamp_backs_off_kw_on_pf() {
     let mut st = Storage::new("s1");
@@ -161,12 +165,16 @@ fn kva_clamp_backs_off_kw_on_pf() {
     st.set_f64(prop::PF, 0.8);
     st.side_effects(prop::PF, 0);
     st.recalc(&ctx());
-    // kvar_out = kw_out·√(1/0.8²−1)·sign(0.8) at kw=25 would be 18.75, giving
-    // kVA √(25²+18.75²)=31.25 > 25 → Q-priority back-off:
-    // kW = √(25²−kvar²). Pin the apparent power exactly at the rating.
-    let kva = (st.base.kw_out.powi(2) + st.base.kvar_out.powi(2)).sqrt();
-    assert!((kva - 25.0).abs() < 1e-6, "kVA = {kva}");
-    assert!(st.base.kw_out > 0.0 && st.base.kvar_out > 0.0);
+    assert!(
+        (st.base.kw_out - 16.535_945_694_153_7).abs() < 1e-9,
+        "kw_out = {}",
+        st.base.kw_out
+    );
+    assert!(
+        (st.base.kvar_out - 18.75).abs() < 1e-9,
+        "kvar_out = {}",
+        st.base.kvar_out
+    );
 }
 
 /// `ControlMode=GFM` round-trips but its solve behavior is WP7.7; `gfm_mode` is
