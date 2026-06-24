@@ -7,9 +7,10 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-24 — **Phase 7 IN PROGRESS** (branch
+Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
-WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE.**
+WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
+(`RollAvgWindow`) COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -26,8 +27,9 @@ fix), 11 mock-env `sample_*` unit tests (exact dispatch arithmetic) + 2 exec tes
 (the real control-sweep wiring: the fleet caps at `kWrated`, exact `kW`/`State`; +
 holds-target). **corpus stays 44** (the `StorageControllerTechNote`/`StoCtrl_*`
 feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 →
-**572** (incl. the audit follow-ups). **next = WP7.5 (DER C): `InvControl` +
-`ExpControl`.**
+**572** (incl. the audit follow-ups). **WP7.5 (DER C) step 1 = `RollAvgWindow`
+(the volt-var/DRC rolling-average helper) COMPLETE — lib 572 → 576; next =
+WP7.5 step 2: `InvControl`.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -74,13 +76,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**; **next = WP7.5 (DER C: `InvControl` + `ExpControl`)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**; **next = WP7.5 step 2: `InvControl`**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 572, golden_feeders 1,
+cargo test --workspace      # dss-core lib 576, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -622,7 +624,34 @@ tests}`):
   *and* Yeq to ~0). InvControl (WP7.5) dispatches kvar/kW setpoints, not discrete state, so
   like GenDispatcher it won't invalidate YPrim. Only Storage uses the new
   `InjCtx.system_y_changed`; it stays generic plumbing but needs no PVSystem/InvControl wiring.
-- **next:** WP7.5 (DER C) — `InvControl` + `ExpControl` + `RollAvgWindow`.
+
+**WP7.5 (DER C: InvControl + ExpControl) — 🚧 IN PROGRESS** (step 1 = the
+`RollAvgWindow` helper; steps 2–4 = `InvControl` / `ExpControl` / gate).
+
+**Step 1 — `RollAvgWindow` (`control/roll_avg_window.rs`).** Port of
+`Controls/RollAvgWindow.pas` (`TRollAvgWindow`, 105 lines) — the fixed-capacity
+FIFO of (value, time) samples with O(1) running sums that backs InvControl's
+volt-var / DRC **rolling-average voltage** (`FRollAvgWindow` + `FDRCRollAvgWindow`,
+fed `solnvoltage` + `DynaVars.h` each `Sample`). A plain helper struct (not a DSS
+object — no props, never New-able), two `VecDeque<f64>` queues + `add`/`set_length`/
+`avg_val`/`accum_sec` ported 1:1; latches `buffer_full` by count *or* the
+accumulated-time threshold, then evicts oldest-first; `bufferlength=0` forces stored
+values to 0 (times still recorded). **Reproduced verbatim (plain comment, not
+`TODO(compat)`):** Pascal's `Add` updates the *time* running-sum by subtracting
+`sampletime.front` read *after* the pop+push (the new front) — asymmetric with the
+*value* sum (which subtracts the pre-pop front) — so `runningsumsampletime` drifts
+from the true Σ. Harmless/unobservable: its only reader `AccumSec` is **dead in the
+upstream tree** (no caller anywhere in `dss_capi`), so no golden pins it — hence a
+documented faithful reproduction rather than a `TODO(compat)` (which is reserved for
+goldens-pinned numeric reproductions). **Gate:** 4 spec-pinned unit tests (empty
+read-zero; fill-by-count then evict; `bufferlength=0` value-zeroing; fill-by-time
+below capacity — each pinning the exact running-sum arithmetic incl. the asymmetric
+`accum_sec` value). Spec-pinned (Pascal is the spec): the oracle exposes no
+`RollAvgWindow` outside a full InvControl solve; its numeric oracle pinning arrives
+with InvControl (step 2). **Self-contained: no solve-loop change, no class
+registration, corpus stays 44.** lib **572 → 576**.
+- **next:** WP7.5 step 2 — `InvControl` (`Controls/InvControl.pas`, 3586 lines,
+  the single largest unit in the phase).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

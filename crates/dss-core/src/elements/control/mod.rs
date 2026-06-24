@@ -9,6 +9,7 @@ pub mod gen_dispatcher;
 pub mod recloser;
 pub mod reg_control;
 pub mod relay;
+pub mod roll_avg_window;
 pub mod storage_controller;
 pub mod swt_control;
 
@@ -18,5 +19,6 @@ pub use gen_dispatcher::GenDispatcher;
 pub use recloser::Recloser;
 pub use reg_control::RegControl;
 pub use relay::Relay;
+pub use roll_avg_window::RollAvgWindow;
 pub use storage_controller::StorageController;
 pub use swt_control::SwtControl;
