@@ -24,7 +24,8 @@ controller-driven **SOC trajectory** — fleet depleted to reserve → Idling, 1
 real control-sweep wiring: the fleet caps at `kWrated`, exact `kW`/`State`; +
 holds-target). **corpus stays 44** (the `StorageControllerTechNote`/`StoCtrl_*`
 feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 →
-**564**. **next = WP7.5 (DER C): `InvControl` + `ExpControl`.**
+**572** (incl. the audit follow-ups). **next = WP7.5 (DER C): `InvControl` +
+`ExpControl`.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -77,7 +78,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 564, golden_feeders 1,
+cargo test --workspace      # dss-core lib 572, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -570,6 +571,33 @@ tests}`):
   not the bus voltage). **Corpus: 0 net growth (stays 44)** — the
   `StorageControllerTechNote`/`StoCtrl_*` feeders embed `Export Eventlog`/`Export
   monitors` (Phase 8) or set `SeasonalRating` (NOT_PORTED). lib **557 → 564**.
+- **audit-code follow-up:** verdict faithful 1:1; fixed one substantive + one
+  cosmetic divergence. (1) **`GetControlPower` positive-sequence ×3** — Pascal's
+  `MonitoredElement.Power[]` (`Get_Power`) already applies the posseq ×3, and
+  `GetControlPower` applies it again (→ ×9 of a 1-phase / posseq-reduced monitored
+  element); the port summed the conductors manually (no internal ×3) → ×3, a 3×
+  dispatch divergence in posseq solves (ungated — no posseq StorageController
+  golden/corpus). Routed the `NPhases=1` branch through `terminal_power` so the
+  trailing ×3 double-applies, matching the oracle. (2) **named-missing 14403 emitted
+  twice per Sample** — `ensure_fleet` (Sample top) + the dispatch modes' redundant
+  `if FleetPointerList.Count = 0` both re-ran `MakeFleetList`; dropped the redundant
+  in-mode rebuild (the `FleetSize <= 0` guard still holds) → one 14403 per Sample.
+  Surfaced-not-fixed (upstream-faithful): the `if not FleetState = STORE_IDLING`
+  precedence bug (already a `TODO(compat)`); the lazy `ensure_fleet` timing
+  (plan-sanctioned, matches the oracle on the daily golden).
+- **audit-tests follow-up:** closed the untested-modes gap. Added 8 mock-env
+  `sample_*` tests for the dispatch paths the first pass missed — Support, Schedule
+  (the up-ramp rate math), I-Peakshave (the amps→kW path), Time-charge opt-2 (+ the
+  delayed RELEASE_INHIBIT push), `do_pending_action` (incl. the Follow-mode
+  no-clear), the cut-in/out + inverter-off override, LoadShape discharge, and the
+  ShowEventLog path (the plan's named event-log gate, asserted on the mock event
+  sink since an oracle event-log-equal is Export-blocked). Strengthened
+  `sample_named_missing_storage_errors_14403` to pin the single-emission fix
+  (count == 1). Surfaced-not-fixed: the daily golden's SOC endpoint
+  (depletion→reserve→Idle) is dispatch-magnitude-robust by construction — the
+  *exact* per-step magnitude is pinned by the mock `sample_*` tests + the
+  `kW`-property exec test, not the golden (an active-dispatch golden can't match at
+  1e-6, see above). lib **564 → 572**.
 - **next:** WP7.5 (DER C) — `InvControl` + `ExpControl` + `RollAvgWindow`.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
