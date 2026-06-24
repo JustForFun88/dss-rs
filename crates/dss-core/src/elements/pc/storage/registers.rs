@@ -133,7 +133,13 @@ impl Storage {
 
         match self.f_state {
             STORE_DISCHARGING => {
-                // GFM "delivering" check is WP7.7; non-GFM always updates.
+                // Pascal: `UpdateSt := TRUE; if GFM_Mode then UpdateSt :=
+                // CheckIfDelivering();` with an `else` recharge branch when the
+                // GFM inverter is absorbing. GFM is rejected at solve time
+                // (dispatch.rs guard), so `UpdateStorage` is never reached in
+                // GFM mode and `UpdateSt` is always TRUE here. The absorbing
+                // recharge branch (`CheckIfDelivering` false) is NOT_PORTED →
+                // WP7.7 (it lands with the GFM solve).
                 let dckw = self.dckw(sys, node_v);
                 let idle = self.kw_idling_losses(sys, node_v);
                 self.kwh_stored -= (dckw + idle) / self.discharge_eff * interval_hrs;
