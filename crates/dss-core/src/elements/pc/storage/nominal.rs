@@ -129,8 +129,9 @@ impl Storage {
     }
 
     /// Pascal `Set_StorageState`: decline a state change that would exceed the
-    /// kWh limits (set idling instead).
-    pub(super) fn set_storage_state(&mut self, value: i32) {
+    /// kWh limits (set idling instead). `pub(crate)` so the StorageController
+    /// fleet dispatch can drive `obj.StorageState`.
+    pub(crate) fn set_storage_state(&mut self, value: i32) {
         let saved = self.f_state;
         self.f_state = match value {
             STORE_CHARGING => {

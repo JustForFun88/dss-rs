@@ -5,6 +5,7 @@
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::RefSnapshot;
+use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -213,6 +214,8 @@ impl DssObject for StorageController {
         resolved: Option<(ElemRef, &dyn DssObject)>,
     ) {
         use prop::*;
+        let load_shape =
+            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
         match idx {
             ELEMENT => {
                 self.monitored_full_name = name.clone();
@@ -230,11 +233,21 @@ impl DssObject for StorageController {
                     }
                 }
             }
-            // The shapes feed only the NOT_PORTED loadshape-dispatch mode; keep
-            // the resolved name for the dump.
-            YEARLY => self.yearly_shape = name,
-            DAILY => self.daily_shape = name,
-            DUTY => self.duty_shape = name,
+            // The dispatch shapes feed `DoLoadShapeMode`; snapshot-clone the
+            // resolved LoadShapeObj (the WP4.2 `FetchLineCode` pattern), keeping
+            // the name for the dump.
+            YEARLY => {
+                self.yearly_shape = name;
+                self.yearly_shape_obj = load_shape();
+            }
+            DAILY => {
+                self.daily_shape = name;
+                self.daily_shape_obj = load_shape();
+            }
+            DUTY => {
+                self.duty_shape = name;
+                self.duty_shape_obj = load_shape();
+            }
             _ => unreachable!("StorageController has no object-ref property {idx}"),
         }
     }
@@ -388,6 +401,9 @@ impl DssObject for StorageController {
         self.yearly_shape = other.yearly_shape.clone();
         self.daily_shape = other.daily_shape.clone();
         self.duty_shape = other.duty_shape.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
         self.ccd.show_event_log = other.ccd.show_event_log;
         self.inhibit_hrs = other.inhibit_hrs;
         self.up_ramp_time = other.up_ramp_time;

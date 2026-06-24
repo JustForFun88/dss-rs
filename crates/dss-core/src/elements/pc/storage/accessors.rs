@@ -22,7 +22,8 @@ use super::{
 
 impl Storage {
     /// Pascal `Set_kW`: set the state + the dispatch percentage from a signed kW.
-    fn set_kw(&mut self, value: f64) {
+    /// `pub(crate)` so the StorageController fleet dispatch can drive `obj.kW`.
+    pub(crate) fn set_kw(&mut self, value: f64) {
         if value > 0.0 {
             self.f_state = STORE_DISCHARGING;
             self.pct_kw_out = value / self.kw_rating * 100.0;
