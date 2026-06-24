@@ -604,11 +604,14 @@ fn sample_named_missing_storage_errors_14403() {
     sc.side_effects(prop::ELEMENT_LIST, 0);
     let mut env = MockEnv::new(11_000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     sc.sample(&mut env);
-    assert!(
-        env.errors.iter().any(|e| e.contains("\"ghost\" not found")),
-        "{:?}",
-        env.errors
-    );
+    // Exactly one 14403 per Sample — `ensure_fleet` builds the fleet once; the
+    // dispatch modes no longer re-call `MakeFleetList` (so no double-emission).
+    let count = env
+        .errors
+        .iter()
+        .filter(|e| e.contains("\"ghost\" not found"))
+        .count();
+    assert_eq!(count, 1, "{:?}", env.errors);
     // The rebuild stays pending (FleetListChanged left set).
     assert!(sc.fleet_list_changed);
 }
@@ -622,4 +625,186 @@ fn reset_idles_the_fleet() {
     sc.reset(&mut env);
     assert_eq!(env.fleet[0].state, STORE_IDLING);
     assert_eq!(sc.fleet_state, STORE_IDLING);
+}
+
+/// A single-storage controller in the given discharge mode, watching one
+/// monitored line, fleet resolved at first Sample.
+fn controller_in_mode(discharge_mode: i32) -> StorageController {
+    let mut sc = StorageController::new("sc1");
+    sc.discharge_mode = discharge_mode;
+    sc.mon_snap = Some(RefSnapshot {
+        full_name: "line.l1".into(),
+        nphases: 3,
+        nterms: 2,
+        buses: vec!["b1".into(), "b2".into()],
+    });
+    sc.recalc();
+    sc
+}
+
+#[test]
+fn sample_support_mode_discharges_for_export() {
+    // Support keeps the load *above* the target: PDiff = S.re·0.001 + kWtarget.
+    // A net export of 3000 kW (S.re = −3e6) with a 4000 kW target → PDiff = +1000
+    // → discharge the storage by the deficit.
+    let mut sc = controller_in_mode(MODE_SUPPORT);
+    sc.set_f64(prop::KW_TARGET, 4000.0);
+    sc.side_effects(prop::KW_TARGET, 0);
+    let mut env = MockEnv::new(-3000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
+    sc.sample(&mut env);
+    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert!(
+        (env.fleet[0].present_kw - 1000.0).abs() < 1e-9,
+        "present_kw = {}",
+        env.fleet[0].present_kw
+    );
+}
+
+#[test]
+fn sample_schedule_mode_ramps_on_trigger() {
+    // Schedule: at 0.1 h past the discharge trigger (within the up-ramp 0.25 h),
+    // the rate ramps linearly: pctDischargeRate = min(pctkWRate, pctkWRate·tdiff/
+    // UpRampTime) = min(20, 20·0.1/0.25) = 8.
+    let mut sc = controller_in_mode(MODE_SCHEDULE);
+    sc.discharge_trigger_time = 6.0;
+    let mut env = MockEnv::new(0.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
+    env.time_of_day = 6.1;
+    sc.sample(&mut env);
+    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert!(
+        (env.fleet[0].pct_kw_out - 8.0).abs() < 1e-9,
+        "pct = {}",
+        env.fleet[0].pct_kw_out
+    );
+    assert!((sc.last_pct_discharge_rate - 8.0).abs() < 1e-9);
+    assert!(env.pushes.contains(&STORE_DISCHARGING));
+}
+
+#[test]
+fn sample_current_peakshave_converts_amps_to_kw() {
+    // I-Peakshave: the control signal is amps. kWtarget in kA (0.2), %kWBand·1000
+    // (HalfkWBand = 2/200·0.2·1000 = 2). Monitored 300 A → PDiff = 300 − 200 =
+    // 100 A; kWNeeded := PresentkV·√3·AmpsDiff = 12.47·√3·100 ≈ 2160 kW → the
+    // single battery caps at its 2000 kWrated.
+    let mut sc = StorageController::new("sc1");
+    sc.discharge_mode = CURRENT_PEAKSHAVE; // set before kWTarget so the side effect uses ×1000
+    sc.set_f64(prop::KW_TARGET, 0.2);
+    sc.side_effects(prop::KW_TARGET, 0);
+    sc.mon_snap = Some(RefSnapshot {
+        full_name: "line.l1".into(),
+        nphases: 3,
+        nterms: 2,
+        buses: vec!["b1".into(), "b2".into()],
+    });
+    sc.recalc();
+    let mut env = MockEnv::new(0.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
+    env.monitored_current = 300.0;
+    sc.sample(&mut env);
+    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert!(
+        (env.fleet[0].present_kw - 2000.0).abs() < 1e-9,
+        "present_kw = {}",
+        env.fleet[0].present_kw
+    );
+}
+
+#[test]
+fn sample_time_mode_charges_and_arms_release_inhibit() {
+    // Discharge PeakShave below target → in-band → charging allowed; charge mode
+    // Time with the charge trigger == time-of-day → set fleet to charge, inhibit
+    // discharge, push CHARGING + the delayed RELEASE_INHIBIT.
+    let mut sc = peakshave_controller(10_000.0);
+    sc.charge_mode = MODE_TIME;
+    sc.charge_trigger_time = 2.0;
+    let mut store = MockStorage::new("a", 2000.0, 500.0, 0.5); // not full → chargeable
+    store.kwh_stored = 250.0;
+    let mut env = MockEnv::new(2000.0, vec![store]); // below target → discharge in-band
+    env.time_of_day = 2.0;
+    sc.sample(&mut env);
+    assert_eq!(env.fleet[0].state, STORE_CHARGING);
+    assert!(sc.discharge_inhibited);
+    assert_eq!(env.release_inhibit_pushes, 1);
+    assert!(env.pushes.contains(&STORE_CHARGING));
+}
+
+#[test]
+fn do_pending_action_release_inhibit_clears_flag() {
+    // RELEASE_INHIBIT lifts the inhibit — but only when the discharge mode is not
+    // Follow (Pascal `and (DischargeMode <> MODEFOLLOW)`).
+    let mut sc = StorageController::new("sc1");
+    sc.discharge_mode = MODE_PEAKSHAVE;
+    sc.discharge_inhibited = true;
+    sc.do_pending_action(super::RELEASE_INHIBIT);
+    assert!(!sc.discharge_inhibited);
+
+    let mut follow = StorageController::new("sc2");
+    follow.discharge_mode = MODE_FOLLOW;
+    follow.discharge_inhibited = true;
+    follow.do_pending_action(super::RELEASE_INHIBIT);
+    assert!(
+        follow.discharge_inhibited,
+        "Follow mode must keep the inhibit"
+    );
+}
+
+#[test]
+fn sample_dispatch_below_cutout_with_inverter_off_overrides_to_idle() {
+    // A small overage wants a dispatch below the inverter cut-out, and the
+    // inverter is already OFF → the controller overrides the (just-set)
+    // discharging state back to idling instead of dispatching.
+    let mut sc = peakshave_controller(4000.0);
+    let mut store = MockStorage::new("a", 2000.0, 500.0, 0.7);
+    store.cut_in_kw_ac = 500.0;
+    store.cut_out_kw_ac = 500.0;
+    store.inverter_on = false;
+    // Monitored 4100 kW vs target 4000 → PDiff = +100 (> half-band 40) so the
+    // dispatch loop runs, but DispatchkW ≈ 100 < CutOut 500 with the inverter
+    // off → override to idling.
+    let mut env = MockEnv::new(4100.0, vec![store]);
+    sc.sample(&mut env);
+    assert_eq!(env.fleet[0].state, STORE_IDLING);
+    assert!(env.fleet[0].present_kw.abs() < 1e-9);
+}
+
+#[test]
+fn sample_loadshape_mode_discharges_without_shape() {
+    // LoadShape mode with no controller shape → LoadShapeMult = CDoubleOne
+    // (1 + j1) → Re > 0 → discharge at NewkWRate = Re·100 = 100%, forcing a
+    // power-flow update.
+    let mut sc = controller_in_mode(MODE_LOADSHAPE);
+    let mut env = MockEnv::new(0.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
+    env.mode = SolveMode::Daily;
+    sc.sample(&mut env);
+    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert!(
+        (sc.pct_kw_rate - 100.0).abs() < 1e-9,
+        "pct = {}",
+        sc.pct_kw_rate
+    );
+    assert!(env.loads_need_updating);
+    assert!(env.pushes.contains(&0)); // PushTimeOntoControlQueue(0)
+}
+
+#[test]
+fn sample_logs_event_when_eventlog_enabled() {
+    // With ShowEventLog on, a PeakShave discharge step appends the "Attempting to
+    // dispatch …" + per-storage "Requesting …" messages.
+    let mut sc = peakshave_controller(10_000.0);
+    sc.ccd.show_event_log = true;
+    let mut env = MockEnv::new(11_000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
+    sc.sample(&mut env);
+    assert!(
+        env.events
+            .iter()
+            .any(|e| e.contains("Attempting to dispatch")),
+        "events: {:?}",
+        env.events
+    );
+    assert!(
+        env.events
+            .iter()
+            .any(|e| e.contains("Requesting Storage.a")),
+        "events: {:?}",
+        env.events
+    );
 }
