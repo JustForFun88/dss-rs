@@ -119,6 +119,7 @@ fn phase7_targeted_scenarios_match_oracle() {
         "storage_clamps",
         "storage_daily",
         "storage_daily_charge",
+        "storagecontroller_peakshave",
         "storagecontroller_daily",
     ] {
         assert!(

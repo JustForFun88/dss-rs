@@ -31,6 +31,7 @@ fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
     let mut ctx = InjCtx {
         node_v: &sol.node_v,
         currents: &mut sol.currents,
+        system_y_changed: &mut sol.system_y_changed,
     };
     for &r in &ckt.sources {
         let elem = env.store.ckt_elem_mut(r);
@@ -47,6 +48,7 @@ fn get_pc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv) {
     let mut ctx = InjCtx {
         node_v: &sol.node_v,
         currents: &mut sol.currents,
+        system_y_changed: &mut sol.system_y_changed,
     };
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);

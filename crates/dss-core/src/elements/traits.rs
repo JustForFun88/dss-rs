@@ -112,6 +112,13 @@ pub struct SysCtx {
 pub struct InjCtx<'a> {
     pub node_v: &'a [Complex64],
     pub currents: &'a mut [Complex64],
+    /// `Solution.SystemYChanged`. A PC element that re-derives its nominal here
+    /// (Storage/PVSystem when `LoadsNeedUpdating`) can invalidate its own YPrim;
+    /// Pascal's `CktElement.set_YprimInvalid` raises `SystemYChanged` as a side
+    /// effect (CktElement.pas l.245), so the snapshot loop rebuilds Y right after
+    /// `GetPCInjCurr` (Solution.pas l.895). Reproduce that side effect by letting
+    /// the element raise this flag.
+    pub system_y_changed: &'a mut bool,
 }
 
 /// Per-element reliability inputs returned by [`CktElement::reliability_data`]

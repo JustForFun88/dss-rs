@@ -18,10 +18,12 @@ dispatch modes — `DoLoadFollowMode` (Peakshave/Follow/Support/I-Peakshave),
 `DoPendingAction` (RELEASE_INHIBIT) and `Reset`. The fleet reaches the monitored
 element + the Storage fleet through a `StorageDispatchEnv` over the store (the
 GenDispatcher pattern; the fleet + `SetFleetToExternal`/`SetAllFleetValues` resolve
-lazily on the first `Sample`). Gate: golden `phase7/storagecontroller_daily` (the
-controller-driven **SOC trajectory** — fleet depleted to reserve → Idling, 1e-6),
-11 mock-env `sample_*` unit tests (exact dispatch arithmetic) + 2 exec tests (the
-real control-sweep wiring: the fleet caps at `kWrated`, exact `kW`/`State`; +
+lazily on the first `Sample`). Gate: goldens `phase7/storagecontroller_daily` (the
+controller-driven **SOC trajectory** — fleet depleted to reserve → Idling, 1e-6)
+and `phase7/storagecontroller_peakshave` (the **active-dispatch snapshot** — fleet
+live at 2000 kW each, the converged electrical model at 1e-6 after the YPrim-rebuild
+fix), 11 mock-env `sample_*` unit tests (exact dispatch arithmetic) + 2 exec tests
+(the real control-sweep wiring: the fleet caps at `kWrated`, exact `kW`/`State`; +
 holds-target). **corpus stays 44** (the `StorageControllerTechNote`/`StoCtrl_*`
 feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 →
 **572** (incl. the audit follow-ups). **next = WP7.5 (DER C): `InvControl` +
@@ -564,13 +566,14 @@ tests}`):
   over the **real** control sweep — `storagecontroller_peakshave_dispatch` (an
   unreachable target → the fleet caps at `kWrated`, a unique converged point: exact
   `kW=2000`/`State=Discharging`) and `..._holds_target` (a reachable target → the
-  monitored line power pulled into the band). The active-dispatch *snapshot* golden
-  was dropped: a continuously-dispatched fleet settles only to within the power-flow
-  solver's own tolerance (the converged voltage residual ≈1.8e-6 > the golden 1e-6),
-  so the exact active dispatch is pinned by the unit + exec tests (the `kW` property,
-  not the bus voltage). **Corpus: 0 net growth (stays 44)** — the
-  `StorageControllerTechNote`/`StoCtrl_*` feeders embed `Export Eventlog`/`Export
-  monitors` (Phase 8) or set `SeasonalRating` (NOT_PORTED). lib **557 → 564**.
+  monitored line power pulled into the band); and golden
+  `phase7/storagecontroller_peakshave` (the same active-dispatch snapshot, the fleet
+  *live* at 2000 kW each — node voltages + the fleet terminal powers/currents +
+  Discharging state, all at 1e-6; see the YPrim-rebuild fix below). **Corpus: 0 net
+  growth (stays 44)** — the `StorageControllerTechNote`/`StoCtrl_*` feeders embed
+  `Export Eventlog`/`Export monitors` (Phase 8), set `SeasonalRating` (NOT_PORTED),
+  or run an inline 8760-step yearly DemandInterval report (`corpus_live` compiles the
+  master, so the inline run/Export executes). lib **557 → 564**.
 - **audit-code follow-up:** verdict faithful 1:1; fixed one substantive + one
   cosmetic divergence. (1) **`GetControlPower` positive-sequence ×3** — Pascal's
   `MonitoredElement.Power[]` (`Get_Power`) already applies the posseq ×3, and
@@ -593,11 +596,25 @@ tests}`):
   ShowEventLog path (the plan's named event-log gate, asserted on the mock event
   sink since an oracle event-log-equal is Export-blocked). Strengthened
   `sample_named_missing_storage_errors_14403` to pin the single-emission fix
-  (count == 1). Surfaced-not-fixed: the daily golden's SOC endpoint
-  (depletion→reserve→Idle) is dispatch-magnitude-robust by construction — the
-  *exact* per-step magnitude is pinned by the mock `sample_*` tests + the
-  `kW`-property exec test, not the golden (an active-dispatch golden can't match at
-  1e-6, see above). lib **564 → 572**.
+  (count == 1). lib **564 → 572**.
+- **YPrim-rebuild fix (post-audit follow-up).** The active-dispatch snapshot golden
+  had been dropped over a misdiagnosed "the fleet converges only to the solver
+  tolerance (≈1.8e-6 residual)". Root cause was a real porting bug: when the
+  controller dispatched a fleet member (idle→discharging), its Norton admittance
+  `Yeq` changed (~0.013 S) but the **system Y was never rebuilt**, so the solve ran a
+  stale *idle* YPrim against the *discharging* injection — an inconsistent Norton
+  model that drifted the converged point ~1.8e-6 *and* cost an extra iteration. Pascal
+  `set_YprimInvalid(TRUE)` raises `Solution.SystemYChanged` (CktElement.pas l.245), so
+  `SetNominalDEROutput`'s state-change YPrim invalidation makes `CheckControls` rebuild
+  Y before the next solve (Solution.pas l.1155) — and the solve loop rebuilds after
+  `GetPCInjCurr` (l.895). The port set `cd.yprim_invalid` but never propagated it to
+  `system_y_changed`. Restored that side effect at two points: the
+  `StorageController` dispatch env (the `Sample` path → `CheckControls` rebuild) and
+  `Storage::inj_currents` (the solve path, via a new `InjCtx.system_y_changed` — covers
+  the idle/`SetFleetToIdle` and daily time-series transitions). Result: the snapshot now
+  matches the oracle bit-for-bit (~1e-12, iterations 4=4); golden
+  `phase7/storagecontroller_peakshave` restored. (`InvControl`/PVSystem will need the
+  same `inj_currents` propagation in WP7.5 — the `InjCtx` plumbing is now generic.)
 - **next:** WP7.5 (DER C) — `InvControl` + `ExpControl` + `RollAvgWindow`.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**

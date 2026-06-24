@@ -255,6 +255,7 @@ pub(super) fn dispatch_control(
                 node_v,
                 event_log,
                 loads_need_updating,
+                system_y_changed,
                 int_hour,
                 t,
                 control_iteration,
@@ -271,6 +272,7 @@ pub(super) fn dispatch_control(
                 events: event_log,
                 errors,
                 loads_need_updating,
+                system_y_changed,
                 self_ref: r,
                 int_hour: *int_hour,
                 t: *t,
@@ -869,6 +871,7 @@ struct StorageDispEnv<'a> {
     events: &'a mut EventLog,
     errors: &'a mut Vec<String>,
     loads_need_updating: &'a mut bool,
+    system_y_changed: &'a mut bool,
     self_ref: ElemRef,
     int_hour: i32,
     t: f64,
@@ -1071,7 +1074,18 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     }
     fn set_nominal(&mut self, r: ElemRef) {
         let sys = self.sys;
-        Self::storage_mut(self.store, r).set_nominal_der_output(sys);
+        let st = Self::storage_mut(self.store, r);
+        st.set_nominal_der_output(sys);
+        // Pascal `SetNominalDEROutput` invalidates YPrim on a state change, and
+        // `set_YprimInvalid(TRUE)` raises `Solution.SystemYChanged` (CktElement.pas
+        // l.245). The controller calls this during `Sample`, so `CheckControls`
+        // rebuilds Y before the next solve (Solution.pas l.1155) — the fleet's new
+        // Yeq must be in the system Y, not just its injection (idle↔discharging Yeq
+        // differ ~0.013 S; a stale idle Yprim leaves the Norton model inconsistent).
+        let yprim_invalid = st.cd.yprim_invalid;
+        if yprim_invalid {
+            *self.system_y_changed = true;
+        }
     }
     fn present_kw(&self, r: ElemRef) -> f64 {
         Self::storage(self.store, r).present_kw()
