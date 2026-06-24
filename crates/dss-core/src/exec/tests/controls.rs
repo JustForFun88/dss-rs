@@ -209,27 +209,108 @@ fn gendispatcher_honors_monitored_terminal() {
     }
 }
 
-/// WP6.8 StorageController skeleton: a circuit carrying a StorageController
-/// (whose fleet is always empty in Phase 6) must still solve — the control
-/// sweep treats it as an inert no-op. The only logged error is the faithful
-/// 37201 ("No unassigned Storage Elements found") emitted at parse-time
-/// RecalcElementData, exactly as the oracle reports on a Storage-less circuit.
+/// A StorageController on a circuit with **no** Storage element resolves an
+/// empty fleet (lazily, at the first Sample) and solves as an inert no-op. The
+/// Pascal parse-time 37201 ("No unassigned Storage Elements") for a Storage-less
+/// circuit is NOT_PORTED (the fleet now resolves at Sample, like GenDispatcher's
+/// empty gen list — see the storage_controller module doc), so the circuit
+/// compiles and solves cleanly with no errors.
 #[test]
-fn storagecontroller_skeleton_solves_as_noop() {
+fn storagecontroller_empty_fleet_solves_as_noop() {
     let mut dss = Dss::new();
     dss.command("new circuit.a basekv=12.47 bus1=src phases=3");
     dss.command("new line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
     dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 kw=3000 pf=0.95");
     dss.command("new storagecontroller.sc1 element=line.l1 terminal=1");
-    // The 37201 is logged during the New command; everything after solves.
-    let errs: Vec<String> = dss.errors().to_vec();
-    assert_eq!(errs.len(), 1, "{errs:?}");
-    assert!(errs[0].contains("No unassigned Storage Elements found"));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
 
     dss.command("set voltagebases=[12.47]");
     dss.command("calcvoltagebases");
     dss.command("solve mode=snap");
-    // No *new* errors from the control loop; the circuit converged.
-    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
+    // No errors from the control loop; the circuit converged.
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     assert!(dss.circuit().unwrap().solution.converged_flag);
+}
+
+/// A small PeakShave deck with the **real** control sweep (not the mock env):
+/// the fleet's target is below what it can deliver, so each battery dispatches
+/// to its `kWrated` cap — a *unique*, path-insensitive converged dispatch. Pins
+/// the active discharge (`kW`/`State`) end-to-end through the dispatch wiring
+/// (this is the active-dispatch electrical pin the golden defers here, since the
+/// converged voltage only settles to the solver's own tolerance).
+#[test]
+fn storagecontroller_peakshave_dispatch() {
+    let mut dss = Dss::new();
+    for c in [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Load.ld bus1=b phases=3 kv=12.47 kw=6000 pf=1.0 model=1",
+        "new Storage.sa bus1=b phases=3 kV=12.47 kWrated=2000 kVA=2000 kWhrated=4000 \
+         %stored=80 %idlingkW=0 pf=1.0",
+        "new Storage.sb bus1=b phases=3 kV=12.47 kWrated=2000 kVA=2000 kWhrated=4000 \
+         %stored=80 %idlingkW=0 pf=1.0",
+        "new StorageController.sc element=Line.l1 terminal=1 modedis=peakshave \
+         monphase=avg kwtarget=2000 %reserve=20",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "set maxcontroliter=50",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(dss.circuit().unwrap().solution.converged_flag);
+
+    // Each battery dispatched to exactly its kWrated cap (Min(kWrating, …)).
+    for nm in ["sa", "sb"] {
+        dss.command(&format!("? storage.{nm}.kW"));
+        let kw: f64 = dss.result().parse().unwrap();
+        assert!((kw - 2000.0).abs() < 1e-9, "storage {nm} kW = {kw}");
+        dss.command(&format!("? storage.{nm}.State"));
+        assert_eq!(dss.result(), "Discharging", "storage {nm} state");
+    }
+}
+
+/// PeakShave with a *reachable* target: the controller drives the monitored line
+/// power into the target band. Pins the closed-loop "hold the target" behavior
+/// (the converged in-band point floats within the solver tolerance, so this
+/// checks the band, not an exact value).
+#[test]
+fn storagecontroller_peakshave_holds_target() {
+    let mut dss = Dss::new();
+    for c in [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Load.ld bus1=b phases=3 kv=12.47 kw=6000 pf=1.0 model=1",
+        "new Storage.sa bus1=b phases=3 kV=12.47 kWrated=3000 kVA=3000 kWhrated=6000 \
+         %stored=80 %idlingkW=0 pf=1.0",
+        "new StorageController.sc element=Line.l1 terminal=1 modedis=peakshave \
+         monphase=avg kwtarget=4000 %reserve=20",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "set maxcontroliter=50",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(dss.circuit().unwrap().solution.converged_flag);
+
+    // The monitored Line.l1 terminal-1 power is pulled into the band around the
+    // 4000 kW target (half-band = %kWBand/200·target = 2/200·4000 = 40 kW; allow
+    // the line loss + one in-band residual).
+    let snaps = dss.snapshot_elements();
+    let line = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case("Line.l1"))
+        .expect("Line.l1 snapshot");
+    // powers: kW/kvar interleaved per conductor; terminal-1 kW = conductors 0,2,4.
+    let line_kw = line.powers[0] + line.powers[2] + line.powers[4];
+    assert!(
+        (line_kw - 4000.0).abs() < 100.0,
+        "monitored line power {line_kw} not held near the 4000 kW target"
+    );
+    // The single battery is discharging (it has the headroom to hold the target).
+    dss.command("? storage.sa.State");
+    assert_eq!(dss.result(), "Discharging");
 }

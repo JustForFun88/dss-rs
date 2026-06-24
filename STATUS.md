@@ -9,20 +9,22 @@
 
 Last updated: 2026-06-24 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
-WP7.3 (DER A) COMPLETE; WP7.4 (DER B) — step 1 (Storage element) COMPLETE.**
-WP7.4 step 1 = the port of `PCElements/Storage.pas` (`TStorageObj`, the battery PC
-element) on the inverter base: the charge/idle/discharge **state machine** +
-**integrated `%stored`** advanced by `UpdateStorage` in the time-step cleanup,
-`ComputePresentkW`/`ComputeInverterPower`/`CheckStateTriggerLevel`, `CalcYPrim`
-(state-dependent `YeqDischarge`), `DoConstantPQ`/`DoConstantZ`, `ComputeDCkW` + the
-loss split, registers/`TakeSample`; registered as a zone PCE with the GFM guard +
-the Monitor mode-3 metered-kind fix + two new enums. Gate: `props/storage.json`
-(7 scenarios), goldens `phase7/storage_{snapshot,clamps,daily}` (the daily one pins
-the **SOC trajectory** — 200 kWh → 20 kWh reserve → Idling at 1e-6); **corpus stays
-44** (no Storage feeder unblocked by the element alone — all need Plot/Export/
-InvControl/StorageController; 10 probed candidates re-tagged to their real blocker).
-lib 543 → **557**. **next = WP7.4 step 2: the real `StorageController`
-(fleet/dispatch, replace the WP6.8 skeleton).**
+WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE.**
+WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
+replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
++ fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
+dispatch modes — `DoLoadFollowMode` (Peakshave/Follow/Support/I-Peakshave),
+`DoTimeMode`, `DoScheduleMode`, `DoLoadShapeMode`, `DoPeakShaveModeLow` — plus
+`DoPendingAction` (RELEASE_INHIBIT) and `Reset`. The fleet reaches the monitored
+element + the Storage fleet through a `StorageDispatchEnv` over the store (the
+GenDispatcher pattern; the fleet + `SetFleetToExternal`/`SetAllFleetValues` resolve
+lazily on the first `Sample`). Gate: golden `phase7/storagecontroller_daily` (the
+controller-driven **SOC trajectory** — fleet depleted to reserve → Idling, 1e-6),
+11 mock-env `sample_*` unit tests (exact dispatch arithmetic) + 2 exec tests (the
+real control-sweep wiring: the fleet caps at `kWrated`, exact `kW`/`State`; +
+holds-target). **corpus stays 44** (the `StorageControllerTechNote`/`StoCtrl_*`
+feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 →
+**564**. **next = WP7.5 (DER C): `InvControl` + `ExpControl`.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -69,13 +71,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B) step 1 (Storage element + zone + SOC gate) COMPLETE**; **next = WP7.4 step 2 (the real `StorageController`)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**; **next = WP7.5 (DER C: `InvControl` + `ExpControl`)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 557, golden_feeders 1,
+cargo test --workspace      # dss-core lib 564, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -443,8 +445,10 @@ header frontier paragraph summarizes the deliverable. In brief:
   (`TStorageObj` on the inverter base — the charge/idle/discharge state machine +
   integrated `%stored`) + the real `StorageController` fleet/dispatch.**
 
-**WP7.4 (DER B: Storage + StorageController) — 🚧 step 1 (Storage element)
-COMPLETE.** Port of `PCElements/Storage.pas` (`TStorageObj`, 3556 lines — the
+**WP7.4 (DER B: Storage + StorageController) — ✅ COMPLETE** (step 1 = the
+Storage element, step 2 = the real StorageController).
+
+**Step 1 — the Storage element.** Port of `PCElements/Storage.pas` (`TStorageObj`, 3556 lines — the
 largest PC element) as a directory module `pc/storage/` (mod/nominal/solve/
 registers/accessors/tests) on the Generator template, embedding the WP7.3 step-1
 `InvBasedPceData` the way PVSystem does. Adds the **charge/idle/discharge state
@@ -518,10 +522,55 @@ machine** (`FState` ∈ {−1,0,1}) and an **integrated state of charge**
   still carry a *superset* tag that includes the now-supported `Storage` alongside
   the real blocker (StorageController / BatchEdit / InvControl); they clear on the
   WP7.4-step-2 / WP7.5 re-probes (the bijection holds; `corpus_manifest` passes).
-- **next:** WP7.4 **step 2** — the real `StorageController` (replace the WP6.8
-  skeleton: a non-empty `MakeFleetList`, the dispatch modes
-  PeakShave/Follow/Support/Schedule/Time, `Sample`/`DoPendingAction` on the control
-  sweep), gated on `Test/Storage*`/`StorageControllerTechNote` event-log equality.
+**Step 2 — the real `StorageController`.** Port of
+`Controls/StorageController.pas` (2036 lines, the most complex control) replacing
+the WP6.8 parse-only skeleton (`control/storage_controller/{mod,compute,accessors,
+tests}`):
+- `MakeFleetList` (real resolution: a named list → 14403 on a missing member, an
+  empty list scans every enabled non-external Storage), the `SetFleet*` helpers
+  (`ToCharge/ToDischarge/ToIdle/kWRate/ChargeRate/External/DesiredState`), the fleet
+  kW/kWh aggregates, `GetControlPower`/`GetControlCurrent` (the `MonPhase`
+  AVG/MAX/MIN/specific-phase logic, ×3 positive-sequence), and **`Sample`'s dispatch
+  modes**: `DoLoadFollowMode` (Peakshave/Follow/Support/I-Peakshave — the
+  weighted-share discharge + the cut-in/out + out-of-oomph + ResetLevel recovery),
+  `DoTimeMode` (the trigger-time on + the RELEASE_INHIBIT delayed push),
+  `DoScheduleMode` (up/flat/down ramp), `DoLoadShapeMode`, `DoPeakShaveModeLow`
+  (the charge peakshave). `DoPendingAction` (RELEASE_INHIBIT) + `Reset` (idle the
+  fleet).
+- **Architecture (the GenDispatcher pattern):** the fleet is a *dynamic* set, so
+  `Sample`/`Reset` reach the monitored element + the Storage fleet through a
+  `StorageDispatchEnv` over the store (`dispatch.rs` clones the controller out,
+  builds the env over the store + `Solution` fields + queue, runs, copies back).
+  The fleet (`FleetPointerList`) + the `SetFleetToExternal`/`SetAllFleetValues` that
+  Pascal runs in `RecalcElementData` resolve **lazily on the first `Sample`** (the
+  architecture has no store access at parse-time `RecalcElementData`). Storage gained
+  `pub(crate)` `set_kw`/`set_storage_state`/`present_kv` for the fleet.
+- **TODO(compat):** the upstream `if not FleetState = STORE_IDLING` precedence bug
+  (`not` binds tighter than `=`, so `(not FleetState) = 0`, firing only when
+  FleetState = STORE_CHARGING) is reproduced verbatim in `DoLoadFollowMode` +
+  `DoPeakShaveModeLow`. **NOT_PORTED:** the seasonal-rating dynamic target
+  (`Get_DynamicTarget`, `DSS.SeasonalRating`/`SeasonSignal` — not in the engine;
+  `CtrlTarget` always takes the non-seasonal branch), `MakePosSequence`, and the
+  parse-time 37201 for a *Storage-less* circuit (the fleet resolves lazily at
+  `Sample`, so a default empty fleet is a silent no-op like GenDispatcher; a
+  *named-missing* element still errors 14403).
+- **Gate:** golden `phase7/storagecontroller_daily` (a 2-battery PeakShave fleet
+  holding a 6 MW load below a 4 MW target over a 4 h daily run — both deplete to the
+  reserve and flip to Idling; the controller-driven **SOC trajectory** endpoint
+  matched at 1e-6); 11 mock-env `sample_*` unit tests (the exact dispatch arithmetic:
+  PeakShave discharge/in-band/weighted-split, Time-trigger, PeakShaveLow charge,
+  out-of-oomph, named-missing 14403, reset, first-run external/values); 2 exec tests
+  over the **real** control sweep — `storagecontroller_peakshave_dispatch` (an
+  unreachable target → the fleet caps at `kWrated`, a unique converged point: exact
+  `kW=2000`/`State=Discharging`) and `..._holds_target` (a reachable target → the
+  monitored line power pulled into the band). The active-dispatch *snapshot* golden
+  was dropped: a continuously-dispatched fleet settles only to within the power-flow
+  solver's own tolerance (the converged voltage residual ≈1.8e-6 > the golden 1e-6),
+  so the exact active dispatch is pinned by the unit + exec tests (the `kW` property,
+  not the bus voltage). **Corpus: 0 net growth (stays 44)** — the
+  `StorageControllerTechNote`/`StoCtrl_*` feeders embed `Export Eventlog`/`Export
+  monitors` (Phase 8) or set `SeasonalRating` (NOT_PORTED). lib **557 → 564**.
+- **next:** WP7.5 (DER C) — `InvControl` + `ExpControl` + `RollAvgWindow`.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
@@ -697,10 +746,10 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
-  `StorageController` behavior — the WP6.8 StorageController is a parse-only
-  skeleton (empty fleet → 37201); `solution/meters/zones/build.rs::is_zone_pce`
-  carries a `TODO(WP7)` to add PVSystem/Storage to the zone allow-list once they
-  exist.
+  `StorageController` behavior — ✅ **`PVSystem` (WP7.3), `Storage` +
+  `StorageController` (WP7.4) done** (the WP6.8 StorageController parse-only skeleton
+  is replaced by the real fleet dispatch; `is_zone_pce` now admits Storage/PVSystem);
+  `InvControl`/`ExpControl` remain for **WP7.5**.
 - **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — ✅ **done
   (WP7.2)**: all five classes ported on the control sweep, the `Open`/`Close` exec
   verbs landed, and an enabled Relay/Recloser/Fuse sets `Flg.HasOCPDevice` so

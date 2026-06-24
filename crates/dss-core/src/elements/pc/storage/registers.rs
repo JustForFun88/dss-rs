@@ -50,6 +50,12 @@ impl Storage {
         self.base.get_present_kvar(self.cd.nphases)
     }
 
+    /// Pascal `Get_PresentkV` — the rated kV (`kVStorageBase`). Read by the
+    /// StorageController's current-mode (I-PeakShave) kW conversion.
+    pub fn present_kv(&self) -> f64 {
+        self.kv_storage_base
+    }
+
     /// Pascal `ComputeDCkW`: the actual DC-side kW used to update the SOC. With
     /// an ideal inverter (no efficiency curve) it is the signed AC terminal kW;
     /// with a curve it solves the efficiency relation for the DC power.
