@@ -613,8 +613,15 @@ tests}`):
   `Storage::inj_currents` (the solve path, via a new `InjCtx.system_y_changed` — covers
   the idle/`SetFleetToIdle` and daily time-series transitions). Result: the snapshot now
   matches the oracle bit-for-bit (~1e-12, iterations 4=4); golden
-  `phase7/storagecontroller_peakshave` restored. (`InvControl`/PVSystem will need the
-  same `inj_currents` propagation in WP7.5 — the `InjCtx` plumbing is now generic.)
+  `phase7/storagecontroller_peakshave` restored. Scope is **Storage-specific**: Storage's
+  YPrim is state-dependent (`YeqDischarge`) and `SetNominalDEROutput` invalidates it on a
+  state change. PVSystem does **not** — PVsystem.pas `SetNominalDEROutput` (l.1146) /
+  `ComputeInverterPower` (l.1351) never raise `YprimInvalid` on an inverter cut-in/out
+  (its setters are all parse/MakeLike/harmonics); verified empirically too (forcing a
+  rebuild on the toggle leaves `pvsystem_clamps` within 1e-6 — a cut-out drives injection
+  *and* Yeq to ~0). InvControl (WP7.5) dispatches kvar/kW setpoints, not discrete state, so
+  like GenDispatcher it won't invalidate YPrim. Only Storage uses the new
+  `InjCtx.system_y_changed`; it stays generic plumbing but needs no PVSystem/InvControl wiring.
 - **next:** WP7.5 (DER C) — `InvControl` + `ExpControl` + `RollAvgWindow`.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
