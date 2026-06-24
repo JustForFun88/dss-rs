@@ -459,10 +459,10 @@ impl StorageController {
     fn do_load_follow_mode(&mut self, env: &mut dyn StorageDispatchEnv) {
         let mut amps_diff = 0.0;
 
-        // If the list is not defined, go make one.
-        if self.fleet.is_empty() {
-            self.make_fleet_list(env);
-        }
+        // Pascal re-runs `MakeFleetList` here `if FleetPointerList.Count = 0`; the
+        // `ensure_fleet` at the top of `Sample` already builds (or re-attempts)
+        // the fleet, so re-calling it here would only double the named-missing
+        // 14403. The `FleetSize <= 0` guard (the default empty fleet) still holds.
         if self.fleet_size <= 0 {
             return;
         }
@@ -709,9 +709,7 @@ impl StorageController {
     fn do_peak_shave_mode_low(&mut self, env: &mut dyn StorageDispatchEnv) {
         let mut amps_diff = 0.0;
 
-        if self.fleet.is_empty() {
-            self.make_fleet_list(env);
-        }
+        // The fleet is built by `ensure_fleet` (Sample top); see DoLoadFollowMode.
         if self.fleet_size <= 0 {
             return;
         }

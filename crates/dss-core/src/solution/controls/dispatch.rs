@@ -902,27 +902,32 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     fn control_power(&mut self, mon_phase: i32, fnphases: usize) -> Complex64 {
         use crate::elements::control::storage_controller::{AVG, MAXPHASE, MINPHASE};
         let m = self.monitored_ref();
-        self.store
-            .ckt_elem_mut(m)
-            .compute_iterminal(self.sys, self.node_v);
-        let cd = self.store.ckt_elem(m).cd();
-        let nconds = cd.nconds;
-        let mon_nphases = cd.nphases;
-        let cond_offset = (self.element_terminal - 1) * nconds;
-        // Per-conductor power cBuffer[i] = V[i]·conj(I[i]) (0-based).
-        let pw = |i0: usize| -> Complex64 {
-            let n = cd.node_ref[i0];
-            if n > 0 {
-                self.node_v[n] * cd.iterminal[i0].conj()
-            } else {
-                Complex64::ZERO
-            }
-        };
+        let mon_nphases = self.store.ckt_elem(m).cd().nphases;
         let mut control_power = if mon_nphases == 1 {
-            // Just the total power of the terminal (also covers 1ph/2-conductor).
-            let k = (self.element_terminal - 1) * nconds;
-            (0..nconds).map(|i| pw(k + i)).sum()
+            // Pascal: `ControlPower := MonitoredElement.Power[ElementTerminal]`.
+            // `Get_Power` (terminal_power) ITSELF applies the positive-sequence
+            // ×3, so the trailing ×3 below double-applies (×9 of the 1-phase
+            // power) — the upstream behavior, reproduced faithfully. (For 1ph the
+            // power is taken directly; the per-MonPhase logic is the 3ph path.)
+            self.store
+                .ckt_elem_mut(m)
+                .terminal_power(self.sys, self.node_v, self.element_terminal)
         } else {
+            self.store
+                .ckt_elem_mut(m)
+                .compute_iterminal(self.sys, self.node_v);
+            let cd = self.store.ckt_elem(m).cd();
+            let nconds = cd.nconds;
+            let cond_offset = (self.element_terminal - 1) * nconds;
+            // Per-conductor power cBuffer[i] = V[i]·conj(I[i]) (0-based).
+            let pw = |i0: usize| -> Complex64 {
+                let n = cd.node_ref[i0];
+                if n > 0 {
+                    self.node_v[n] * cd.iterminal[i0].conj()
+                } else {
+                    Complex64::ZERO
+                }
+            };
             match mon_phase {
                 AVG => (0..nconds).map(|i| pw(cond_offset + i)).sum(),
                 MAXPHASE => {
