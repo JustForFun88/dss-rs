@@ -10,7 +10,7 @@
 Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
-(`RollAvgWindow`) COMPLETE.**
+(`RollAvgWindow`) COMPLETE (incl. audits).**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -28,7 +28,7 @@ fix), 11 mock-env `sample_*` unit tests (exact dispatch arithmetic) + 2 exec tes
 holds-target). **corpus stays 44** (the `StorageControllerTechNote`/`StoCtrl_*`
 feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 →
 **572** (incl. the audit follow-ups). **WP7.5 (DER C) step 1 = `RollAvgWindow`
-(the volt-var/DRC rolling-average helper) COMPLETE — lib 572 → 576; next =
+(the volt-var/DRC rolling-average helper) COMPLETE — lib 572 → 577; next =
 WP7.5 step 2: `InvControl`.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
@@ -82,7 +82,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 576, golden_feeders 1,
+cargo test --workspace      # dss-core lib 577, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -650,6 +650,21 @@ below capacity — each pinning the exact running-sum arithmetic incl. the asymm
 `RollAvgWindow` outside a full InvControl solve; its numeric oracle pinning arrives
 with InvControl (step 2). **Self-contained: no solve-loop change, no class
 registration, corpus stays 44.** lib **572 → 576**.
+- **audit-code follow-up:** verdict faithful 1:1 — every method maps line-for-line to
+  the Pascal; **no fix needed**. Confirmed the one judgment call (the `runningsumsampletime`
+  asymmetry documented with a plain comment, not `TODO(compat)`) is correct: its sole reader
+  `AccumSec` is **dead in the vendored tree** (`grep -rn AccumSec .inputs/dss_capi/src` →
+  definition only), so no golden pins the drift and `TODO(compat)` (reserved for
+  goldens-pinned reproductions) would be wrong. Verified the two `.front().unwrap()` are
+  panic-safe (the eviction branch is `!is_empty()`-guarded; the two queues move in lockstep)
+  and the `len() as i64 == buffer_length as i64` count-latch matches FPC's signed/unsigned
+  promotion for a negative `bufferlength`.
+- **audit-tests follow-up:** verdict strong (exact Pascal-derived literals, not
+  copied-from-output; the asymmetry quirk and both latch conditions decisively pinned).
+  Closed the one minor gap — the time-threshold latch is strict `>` (`sum == window` must
+  NOT latch), which no test sat exactly on. Added `time_threshold_is_strict_greater` (a
+  size-100 window, `sum-time == length == 3` stays open so the next add grows to `avg=15`;
+  a `>=` regression would evict to `20`). lib **576 → 577**.
 - **next:** WP7.5 step 2 — `InvControl` (`Controls/InvControl.pas`, 3586 lines,
   the single largest unit in the phase).
 

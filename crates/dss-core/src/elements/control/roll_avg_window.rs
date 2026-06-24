@@ -190,4 +190,18 @@ mod tests {
         // 7 - new_front(4) + 2 = 5.
         assert_eq!(w.accum_sec(), 5.0);
     }
+
+    /// The time-threshold latch is strict `>` (Pascal `runningsumsampletime >
+    /// VAvgWindowLengthSec`): a window whose accumulated time exactly equals the
+    /// length must NOT latch full. Capacity is large so the count never latches;
+    /// the second add then grows (else branch) rather than evicting — observable
+    /// via the size-2 average. A regression to `>=` would evict and read 20.0.
+    #[test]
+    fn time_threshold_is_strict_greater() {
+        let mut w = RollAvgWindow::new();
+        w.set_length(100); // capacity never reached
+        w.add(10.0, 3.0, 3.0); // sum-time 3, NOT > 3 -> stays open
+        w.add(20.0, 1.0, 3.0); // window still open -> grows to size 2
+        assert_eq!(w.avg_val(), 15.0); // (10+20)/2; an early `>=` latch -> 20.0
+    }
 }
