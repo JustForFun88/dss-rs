@@ -10,6 +10,7 @@ use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
 use crate::elements::pc::pvsystem::PVSystem;
+use crate::elements::pc::storage::Storage;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
@@ -27,12 +28,13 @@ fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
 /// Whether the element at `r` is one of the zone-eligible shunt PC element
 /// types (Pascal `PCElementType in {LOAD,GEN,PVSYSTEM,STORAGE,CAP,REACTOR}` —
 /// `EnergyMeter.pas:1911`). Shunt capacitors/reactors reach the PC adjacency
-/// list via `is_shunt()`. Storage joins this set in WP7.4.
+/// list via `is_shunt()`.
 fn is_zone_pce(store: &dyn ElemStore, r: ElemRef) -> bool {
     let any = store.obj(r).as_any();
     any.downcast_ref::<Load>().is_some()
         || any.downcast_ref::<Generator>().is_some()
         || any.downcast_ref::<PVSystem>().is_some()
+        || any.downcast_ref::<Storage>().is_some()
         || any.downcast_ref::<Capacitor>().is_some()
         || any.downcast_ref::<Reactor>().is_some()
 }

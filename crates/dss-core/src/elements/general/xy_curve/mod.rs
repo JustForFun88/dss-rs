@@ -146,6 +146,43 @@ impl XyCurveObj {
         Self::interpolate(xv, yv, n - 1, n - 2, x)
     }
 
+    /// Pascal `TXYcurveObj.GetCoefficients`: the `(a, b)` of the interpolated
+    /// line `a·X + b` for the given `X`. `(0, 0)` for an empty/single-point
+    /// curve; off either end the coefficients come from the nearest two points
+    /// (the same line `GetYValue` extrapolates along). Unlike `get_y_value`,
+    /// there is no exact-match shortcut (faithful to the Pascal). Mutates the
+    /// `LastValueAccessed` hunt cache.
+    pub fn get_coefficients(&mut self, x: f64) -> (f64, f64) {
+        let n = self.n();
+        if n <= 1 {
+            return (0.0, 0.0);
+        }
+        let (xv, yv) = (&self.x_values, &self.y_values);
+        // Restart the hunt if we are now to the left of the cached point.
+        if xv[self.last_value_accessed] > x {
+            self.last_value_accessed = 0;
+        }
+        // Off the left end: coefficients from the first two points.
+        if self.last_value_accessed == 0 && xv[0] > x {
+            let a = (yv[1] - yv[0]) / (xv[1] - xv[0]);
+            let b = yv[1] - a * xv[1];
+            return (a, b);
+        }
+        // In the middle of the arrays.
+        for i in (self.last_value_accessed + 1)..n {
+            if xv[i] > x {
+                self.last_value_accessed = i - 1;
+                let a = (yv[i] - yv[i - 1]) / (xv[i] - xv[i - 1]);
+                let b = yv[i] - a * xv[i];
+                return (a, b);
+            }
+        }
+        // Fell through: coefficients from the last two points.
+        let a = (yv[n - 1] - yv[n - 2]) / (xv[n - 1] - xv[n - 2]);
+        let b = yv[n - 1] - a * xv[n - 1];
+        (a, b)
+    }
+
     /// Pascal `TXYcurveObj.GetXValue`: interpolated `X` for the given `Y`, with
     /// end-extrapolation. Does not touch `LastValueAccessed` (matching Pascal).
     pub fn get_x_value(&self, y: f64) -> f64 {

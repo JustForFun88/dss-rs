@@ -1,6 +1,6 @@
 # Corpus coverage
 
-_Generated 2026-06-23 20:39:07 UTC by
+_Generated 2026-06-24 16:21:44 UTC by
 `tools/corpus/coverage_report.py`. Do not edit by hand._
 
 Live oracle-comparison coverage of the vendored `electricdss-tst` corpus

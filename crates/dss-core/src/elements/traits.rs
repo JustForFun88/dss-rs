@@ -98,6 +98,12 @@ pub struct SysCtx {
     pub neglect_load_y: bool,
     pub long_line_correction: bool,
     pub positive_sequence: bool,
+    /// `Solution.TimeOfDay()` (no epsilon) — wrapped hour-of-day (Storage
+    /// `CheckStateTriggerLevel` charge-time trigger).
+    pub time_of_day: f64,
+    /// `Solution.DynaVars.h` — the dynamics step size in seconds (Storage
+    /// charge-time tolerance window).
+    pub dyna_h: f64,
 }
 
 /// Mutable solve-state view for current injection: the node voltage vector

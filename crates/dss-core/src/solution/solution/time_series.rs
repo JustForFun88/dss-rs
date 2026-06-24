@@ -3,16 +3,33 @@
 //! `EndOfTimeStepCleanup`.
 
 use crate::circuit::Circuit;
+use crate::elements::pc::storage::Storage;
 
 use super::power_flow::solve_snap;
 use super::{SolveEnv, SolveResult, sys_ctx};
 
-/// Pascal `EndOfTimeStepCleanup` (`SolutionAlgs.pas` l.86): storage,
-/// InvControl and ExpControl updates (all Phase 7) plus the mode-5 monitor
-/// sampling (`MonitorClass.SampleAllMode5`, l.96 — captures the per-step
-/// timings).
+/// Pascal `EndOfTimeStepCleanup` (`SolutionAlgs.pas` l.86): the Storage SOC
+/// update (`StorageClass.UpdateAll`) — InvControl/ExpControl updates are WP7.5
+/// — plus the mode-5 monitor sampling (`MonitorClass.SampleAllMode5`, l.96 —
+/// captures the per-step timings).
 fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
+    update_all_storage(ckt, env);
     crate::solution::monitors::sample_all_monitors(ckt, env, true);
+}
+
+/// Pascal `TStorage.UpdateAll` (Storage.pas l.761): advance every enabled
+/// Storage element's state of charge by one time-step interval.
+fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let interval_hrs = ckt.solution.interval_hrs;
+    for r in ckt.storages.clone() {
+        let node_v = &ckt.solution.node_v;
+        if let Some(st) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Storage>()
+            && st.cd.enabled
+        {
+            st.update_storage(&sys, node_v, interval_hrs);
+        }
+    }
 }
 
 /// Pascal `MonitorClass.SampleAll` + (if `sample_meters`)

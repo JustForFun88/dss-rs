@@ -3,6 +3,7 @@
 
 use crate::circuit::Circuit;
 use crate::elements::pc::pvsystem::PVSystem;
+use crate::elements::pc::storage::Storage;
 use crate::solution::ymatrix::initialize_node_vbase;
 use crate::util::sqrt3;
 
@@ -45,6 +46,25 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         if let Some(name) = gfm_name {
             env.errors.push(format!(
                 "PVSystem.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
+                 ported yet (Phase 7 WP7.7)."
+            ));
+            ckt.solution.solution_abort = true;
+            return Ok(());
+        }
+    }
+    // Same guard for Storage `ControlMode=GFM` (DoGFM_Mode/CalcGFMYprim: WP7.7).
+    for r in ckt.storages.clone() {
+        let gfm_name = env
+            .store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<Storage>()
+            .and_then(|st| {
+                (st.cd.enabled && st.base.gfm_mode).then(|| st.cd.obj.name().to_string())
+            });
+        if let Some(name) = gfm_name {
+            env.errors.push(format!(
+                "Storage.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
                  ported yet (Phase 7 WP7.7)."
             ));
             ckt.solution.solution_abort = true;

@@ -49,6 +49,17 @@ struct Scenario {
     line_yprim: YPrim,
     /// Every element's terminal currents/powers, in the oracle's element order.
     elements: Vec<ElementCap>,
+    /// Each Storage element's integrated state of charge after the solve
+    /// (`kWhStored`/`%Stored`/`State`) — the WP7.4 SOC-trajectory pin.
+    #[serde(default)]
+    storage: Vec<StorageCap>,
+}
+
+/// One Storage's post-solve state readback (`? Storage.<name>.<prop>`).
+#[derive(Debug, Deserialize)]
+struct StorageCap {
+    name: String,
+    properties: std::collections::BTreeMap<String, String>,
 }
 
 /// Load every `*.json` scenario file from `tests/golden/phase7/`, sorted by file
@@ -104,6 +115,9 @@ fn phase7_targeted_scenarios_match_oracle() {
         "pvsystem_snapshot",
         "pvsystem_curves",
         "pvsystem_clamps",
+        "storage_snapshot",
+        "storage_clamps",
+        "storage_daily",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),
@@ -159,6 +173,24 @@ fn phase7_targeted_scenarios_match_oracle() {
         let snaps = dss.snapshot_elements();
         for ec in &sc.elements {
             compare_element(&snaps, ec, &tol, ctx);
+        }
+
+        // The integrated state of charge of every Storage element after the
+        // solve (the WP7.4 SOC-trajectory pin): read each property back through
+        // the `? ...` query, exactly like the oracle captured it.
+        for sct in &sc.storage {
+            for (prop, expected) in &sct.properties {
+                dss.command(&format!("? {}.{prop}", sct.name));
+                let actual = dss.result().to_string();
+                let label = format!("{ctx} {} {prop}", sct.name);
+                match (actual.parse::<f64>(), expected.parse::<f64>()) {
+                    (Ok(a), Ok(e)) => assert!(
+                        (a - e).abs() <= 1e-6 * e.abs().max(1.0),
+                        "{label}: {a} != {e}"
+                    ),
+                    _ => assert_eq!(&actual, expected, "{label}: state differs"),
+                }
+            }
         }
     }
 }

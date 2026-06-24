@@ -237,6 +237,18 @@ impl Solution {
         self.dbl_hour = self.int_hour as f64 + self.t / 3600.0;
     }
 
+    /// Pascal `TSolutionObj.TimeOfDay(useEpsilon=false)`: the hour `intHour`
+    /// wrapped into `0..24` plus `t/3600`, wrapped once more past 24:00.
+    pub fn time_of_day(&self) -> f64 {
+        let hour_of_day = if self.int_hour > 23 {
+            self.int_hour - (self.int_hour / 24) * 24
+        } else {
+            self.int_hour
+        };
+        let r = hour_of_day as f64 + self.t / 3600.0;
+        if r > 24.0 { r - 24.0 } else { r }
+    }
+
     /// Pascal `IncrementTime`: `t += h`, rolling whole hours into `intHour`.
     pub fn increment_time(&mut self) {
         self.t += self.h;
@@ -356,5 +368,7 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         neglect_load_y: ckt.neglect_load_y,
         long_line_correction: ckt.long_line_correction,
         positive_sequence: ckt.positive_sequence,
+        time_of_day: s.time_of_day(),
+        dyna_h: s.h,
     }
 }

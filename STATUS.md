@@ -9,19 +9,22 @@
 
 Last updated: 2026-06-24 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
-WP7.3 (DER A) COMPLETE.** WP7.3 = the `DynamicExp` object (step 0) + the
-`InvBasedPceData` inverter base (step 1) + **`PVSystem`** (steps 2–4): the
-photovoltaic PC element on the Generator template — the panel/inverter model
-(irradiance·shape·`Pmpp`·temp-derate → cut-in/out + efficiency curve + watt/var
-priority + kvar/`kVA` clamps), `SetNominalDEROutput`, `CalcYPrim`,
-`DoConstantPQ`/`DoConstantZ`, registers/`TakeSample`, the P-T-V curves (XYcurve) +
-irradiance/temperature shapes + a real `DynamicEq` ref; registered as a zone PCE
-(`is_zone_pce`) with a Monitor mode-3 metered-kind fix. Gate: `props/pvsystem.json`
-(10 scenarios), goldens `phase7/pvsystem_{snapshot,curves}`, **corpus 37 → 44**
-(7 PVSystem cases migrated; InvControl/Export cases re-tagged; 2 near-ideal-source
-cases deferred; +GFM guard + discrete-state goldens from the audits). lib 514
-(WP7.3 start) → **543**. **next = WP7.4 (DER B):
-`pc/storage.rs` + the real `StorageController`.**
+WP7.3 (DER A) COMPLETE; WP7.4 (DER B) — step 1 (Storage element) COMPLETE.**
+WP7.4 step 1 = the port of `PCElements/Storage.pas` (`TStorageObj`, the battery PC
+element) on the inverter base: the charge/idle/discharge **state machine** +
+**integrated `%stored`** advanced by `UpdateStorage` in the time-step cleanup,
+`ComputePresentkW`/`ComputeInverterPower`/`CheckStateTriggerLevel`, `CalcYPrim`
+(state-dependent `YeqDischarge`), `DoConstantPQ`/`DoConstantZ`, `ComputeDCkW` + the
+loss split, registers/`TakeSample`; registered as a zone PCE with the GFM guard +
+the Monitor mode-3 metered-kind fix + two new enums. Gate: `props/storage.json`
+(7 scenarios), goldens `phase7/storage_{snapshot,clamps,daily}` (the daily one pins
+the **SOC trajectory** — 200 kWh → 20 kWh reserve → Idling at 1e-6); **corpus stays
+44** (no Storage feeder unblocked by the element alone — all need Plot/Export/
+InvControl/StorageController; 10 probed candidates re-tagged to their real blocker).
+lib 543 → **557**. **next = WP7.4 step 2: the real `StorageController`
+(fleet/dispatch, replace the WP6.8 skeleton).**
+*(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
+its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
 per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
 `TSData`/`LineSpacing`/`LineGeometry` catalog + Line's geometry/spacing path and
@@ -66,13 +69,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE — steps 0 (`DynamicExp`) + 1 (`InvBasedPceData` base) + 2–4 (`PVSystem` + zone + gate + corpus 37→44) done**; **next = WP7.4 (DER B: Storage + StorageController)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B) step 1 (Storage element + zone + SOC gate) COMPLETE**; **next = WP7.4 step 2 (the real `StorageController`)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 543, golden_feeders 1,
+cargo test --workspace      # dss-core lib 557, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -439,6 +442,60 @@ header frontier paragraph summarizes the deliverable. In brief:
 - **next:** **WP7.3 (DER A) COMPLETE** → **WP7.4 (DER B): `pc/storage.rs`
   (`TStorageObj` on the inverter base — the charge/idle/discharge state machine +
   integrated `%stored`) + the real `StorageController` fleet/dispatch.**
+
+**WP7.4 (DER B: Storage + StorageController) — 🚧 step 1 (Storage element)
+COMPLETE.** Port of `PCElements/Storage.pas` (`TStorageObj`, 3556 lines — the
+largest PC element) as a directory module `pc/storage/` (mod/nominal/solve/
+registers/accessors/tests) on the Generator template, embedding the WP7.3 step-1
+`InvBasedPceData` the way PVSystem does. Adds the **charge/idle/discharge state
+machine** (`FState` ∈ {−1,0,1}) and an **integrated state of charge**
+(`kWhStored`/`%stored`) that the time-step cleanup hook advances. Scope = the
+**power-flow** Storage:
+- `ComputePresentkW` (state + dispatch → terminal kW: discharge `kWrating·%Discharge`,
+  charge `−kWrating·%Charge`, idle `−kWOutIdling`), `CheckStateTriggerLevel` (the
+  Follow / trigger-level / `ChargeTime`-of-day dispatch), `ComputeInverterPower`
+  (the idling-state branch + the cut-in/out-reflected-to-AC clamp cascade, ported
+  loop-for-loop), `kWOut_Calc` (the VW requesting/limiting regions).
+- `CalcYPrimMatrix` (state-dependent: charge `+YeqDischarge`, idle `0`, discharge
+  `−YeqDischarge`), `DoConstantPQStorageObj`/`DoConstantZStorageObj` + the inverter
+  clamp, daily/yearly/duty shapes (snapshot-clone), a real `DynamicEq` ref.
+- **The SOC integration:** `ComputeDCkW` (ideal-inverter signed terminal kW, or the
+  efficiency-curve `GetCoefficients`+`QuadSolver` solve — `XyCurveObj::get_coefficients`
+  ported alongside) + the loss split (idling/inverter/charge-discharge) +
+  `UpdateStorage` (the `(DCkW+idle)/eff·Δh` charge/discharge integration, the reserve/
+  full clamps and the state flip), wired into `EndOfTimeStepCleanup` (Pascal
+  `StorageClass.UpdateAll`) via a new `ckt.storages` list. Registers + `TakeSample`
+  (discharge-hours-only) mirror PVSystem.
+- Registration: `ElemKind::Storage` + the circuit list + `construct.rs` (after the
+  protection controls, before PVSystem; Pascal `Storage_ELEMENT`); two new enums
+  (`storage_state` Charging/Idling/Discharging, `storage_dispatch_mode`); `is_zone_pce`
+  admits Storage; the Monitor mode-3 metered-kind branch classifies Storage as
+  `PcElement` (mirrors the PVSystem fix); the `dispatch.rs` GFM pre-solve guard
+  rejects `ControlMode=GFM` (WP7.7) with an explicit error (no silent PQ fallback).
+  `SysCtx` gained `time_of_day`/`dyna_h` (the `ChargeTime` trigger).
+- **Deferred** (matching PVSystem): GFM solve (`DoGFM_Mode`/`CalcGFMYprim`), harmonic
+  injection, the dynamics state machinery + the state-variable interface
+  (`NumVariables`/`Get_Variable`/`VariableName`), the user-written `UserModel`/
+  `DynaModel` DLLs (never ported), `MakePosSequence` → WP7.6/7.7.
+- **Gate:** `props/storage.json` (7 scenarios, all round-trip exactly); goldens
+  `phase7/storage_{snapshot,clamps,daily}` — the snapshot/clamps pin the three
+  discrete states' terminal powers, and **`storage_daily` pins the integrated SOC
+  trajectory** (a 200 kWh battery discharging 6 h depletes to the 20 kWh reserve and
+  flips to Idling — `kWhStored`/`%Stored`/`State` read back via `? …` and matched at
+  1e-6, the WP7.4 "%stored/state trajectory exact over a daily run" gate); exec tests
+  (`storage_snapshot_solves_clean`, `storage_daily_run_depletes_soc` — the
+  EndOfTimeStepCleanup wiring guard, `storage_gfm_mode_errors_not_silent`,
+  `storage_accepts_mode3_monitor`). **Corpus: 0 net growth (stays 44).** No corpus
+  Storage feeder is unblocked by the element alone — all are gated behind `Plot`/
+  `Export` (Phase 8), `InvControl` (WP7.5), `StorageController` (step 2),
+  file-backed arrays, or oracle errors; the 10 probed candidates were
+  re-tagged to their **real** blocker (was stale `unsupported_class=Storage`). The
+  targeted golden is the focused gate; the live-corpus burn-down for Storage waits
+  on WP7.5 / step 2 / Phase 8. lib **543 → 557**.
+- **next:** WP7.4 **step 2** — the real `StorageController` (replace the WP6.8
+  skeleton: a non-empty `MakeFleetList`, the dispatch modes
+  PeakShave/Follow/Support/Schedule/Time, `Sample`/`DoPendingAction` on the control
+  sweep), gated on `Test/Storage*`/`StorageControllerTechNote` event-log equality.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

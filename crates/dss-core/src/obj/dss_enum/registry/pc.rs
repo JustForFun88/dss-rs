@@ -14,6 +14,8 @@ pub(super) struct PcEnums {
     pub(super) gen_model: EnumId,
     pub(super) pvsystem_model: EnumId,
     pub(super) inv_control_mode: EnumId,
+    pub(super) storage_state: EnumId,
+    pub(super) storage_dispatch_mode: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
@@ -126,6 +128,30 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
     icm.default_value = 0;
     let inv_control_mode = push(icm);
 
+    // Storage.pas TStorage.Create: `StateEnum` (DefaultValue 0 = Idling).
+    let mut sst = DssEnum::new(
+        "Storage: State",
+        true,
+        1,
+        1,
+        &["Charging", "Idling", "Discharging"],
+        &[-1, 0, 1],
+    );
+    sst.default_value = 0;
+    let storage_state = push(sst);
+
+    // Storage.pas TStorage.Create: `DispatchModeEnum` (DefaultValue 0 = Default).
+    let mut sdm = DssEnum::new(
+        "Storage: Dispatch Mode",
+        true,
+        1,
+        1,
+        &["Default", "LoadLevel", "Price", "External", "Follow"],
+        &[0, 1, 2, 3, 4],
+    );
+    sdm.default_value = 0;
+    let storage_dispatch_mode = push(sdm);
+
     PcEnums {
         connection,
         vsource_model,
@@ -136,5 +162,7 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         gen_model,
         pvsystem_model,
         inv_control_mode,
+        storage_state,
+        storage_dispatch_mode,
     }
 }
