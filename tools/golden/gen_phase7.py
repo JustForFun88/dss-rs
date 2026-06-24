@@ -202,21 +202,27 @@ def deck_storage_snapshot() -> list[str]:
 
 
 def deck_storage_clamps() -> list[str]:
-    # Three batteries pin the three discrete states via their terminal powers:
+    # Four batteries pin the discrete inverter states via their terminal powers:
     #  - sa: discharging at rated (kW_out = +250) into the feeder;
     #  - sb: charging at 40% (kW_out = -200) absorbing from the feeder;
-    #  - sc: idling (kW_out = -kWOutIdling, only the 1% idling loss).
+    #  - sc: idling (kW_out = -kWOutIdling, only the 1% idling loss);
+    #  - sd: discharging at pf=0.8 with kVA at the limit -> the Q-priority kVA
+    #    back-off (kvar stays 375, kW := sqrt(500^2 - 375^2) = 330.72), so the
+    #    oracle pins which leg backs off (not just the apparent power).
     return [
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
         "new Line.l1 bus1=src bus2=b  phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
         "new Line.lb bus1=src bus2=bb phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
         "new Line.lc bus1=src bus2=bc phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Line.ld bus1=src bus2=bd phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
         "new Storage.sa bus1=b  phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
         "state=discharging %discharge=50 pf=1.0",
         "new Storage.sb bus1=bb phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
         "%stored=50 state=charging %charge=40 pf=1.0",
         "new Storage.sc bus1=bc phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
         "state=idling pf=1.0",
+        "new Storage.sd bus1=bd phases=3 kV=12.47 kWrated=500 kVA=500 kWhrated=1000 "
+        "state=discharging %discharge=100 pf=0.8",
         *STORE_TAIL,
     ]
 
@@ -234,6 +240,23 @@ def deck_storage_daily() -> list[str]:
         "%EffDischarge=90 %EffCharge=90 pf=1.0",
         *STORE_TAIL,
         "set mode=daily number=6 stepsize=1h",
+    ]
+
+
+def deck_storage_daily_charge() -> list[str]:
+    # The charge half of the SOC integration (audit-tests follow-up: the daily
+    # discharge run covers depletion->reserve->idle; this covers the fill path).
+    # A 100 kW / 200 kWh battery starting at 20% (40 kWh) charging at 80% (80 kW):
+    # |DCkW|=80, idle=1 kW, ChargeEff=0.9 -> each 1-hour step adds (80-1)*0.9 =
+    # 71.1 kWh; from 40 kWh it tops out at the 200 kWh rating partway through the
+    # 4-hour run and flips to Idling (the kWhStored>kWhRating full-clamp).
+    return [
+        *STORE_HEAD,
+        "new Storage.s1 bus1=b phases=3 kV=12.47 kWrated=100 kWhrated=200 "
+        "%stored=20 state=charging %charge=80 %reserve=10 %IdlingkW=1 "
+        "%EffDischarge=90 %EffCharge=90 pf=1.0",
+        *STORE_TAIL,
+        "set mode=daily number=4 stepsize=1h",
     ]
 
 
@@ -274,6 +297,7 @@ SCENARIOS = {
     "storage_snapshot": deck_storage_snapshot,
     "storage_clamps": deck_storage_clamps,
     "storage_daily": deck_storage_daily,
+    "storage_daily_charge": deck_storage_daily_charge,
 }
 
 

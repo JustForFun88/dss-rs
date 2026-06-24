@@ -118,6 +118,7 @@ fn phase7_targeted_scenarios_match_oracle() {
         "storage_snapshot",
         "storage_clamps",
         "storage_daily",
+        "storage_daily_charge",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

@@ -492,6 +492,32 @@ machine** (`FState` ∈ {−1,0,1}) and an **integrated state of charge**
   re-tagged to their **real** blocker (was stale `unsupported_class=Storage`). The
   targeted golden is the focused gate; the live-corpus burn-down for Storage waits
   on WP7.5 / step 2 / Phase 8. lib **543 → 557**.
+- **audit-code follow-up:** verdict faithful 1:1 (no Critical/Major). Marked the
+  `UpdateStorage` GFM absorbing/recharge branch `NOT_PORTED → WP7.7` (it was an
+  implicit drop; GFM is rejected at solve time so the branch is unreachable in
+  power flow, but the marker makes the WP7.10 grep sweep catch it). Surfaced-not-
+  fixed (all upstream-faithful / pre-existing): `ComputeDCkW`'s `while (a≠ga AND
+  b≠gb) OR (N>9)` loop is ported verbatim — a latent non-termination only if an
+  `EffCurve` is non-monotonic enough to oscillate between segments (never for the
+  gated cases; the ideal path early-returns, monotonic curves converge exact-float
+  in 1–2 iters — matches the oracle, which would also hang); the `CalcYPrimMatrix`
+  harmonic branch is dead until WP7.6; Monitor mode-7 (the Storage monitor) is
+  header-only like PVSystem mode-3 (WP7.7, no gate uses it).
+- **audit-tests follow-up:** closed two real gaps. (1) the daily golden only
+  covered **discharge**→reserve→idle; added `phase7/storage_daily_charge` (a 20%
+  battery charging at 80 kW fills to the 200 kWh rating in 4 h and flips to Idling)
+  to oracle-pin the **charge** half of `UpdateStorage` (the fill branch + the
+  full-clamp + state flip). (2) the `kva_clamp_backs_off_kw_on_pf` unit test pinned
+  only the apparent power (a wrong-leg PF-priority regression `kw=20,kvar=15` also
+  sits on the kVA circle → passed); strengthened to pin `kw_out=16.5359…`,
+  `kvar_out=18.75` exactly (oracle-probed), and added a 4th battery `sd` (pf=0.8 at
+  the kVA limit) to `storage_clamps` so the Q-priority back-off legs (kW=330.72,
+  kvar=375) are oracle-pinned too. (3) re-probed the 2 *purely* stale
+  `unsupported_class=Storage` cases (`GFM_IEEE8500/Run_8500Node_GFMDaily{,SmallerPV}`)
+  → re-tagged to their real blocker. **Surfaced-not-fixed:** ~29 other Storage cases
+  still carry a *superset* tag that includes the now-supported `Storage` alongside
+  the real blocker (StorageController / BatchEdit / InvControl); they clear on the
+  WP7.4-step-2 / WP7.5 re-probes (the bijection holds; `corpus_manifest` passes).
 - **next:** WP7.4 **step 2** — the real `StorageController` (replace the WP6.8
   skeleton: a non-empty `MakeFleetList`, the dispatch modes
   PeakShave/Follow/Support/Schedule/Time, `Sample`/`DoPendingAction` on the control
