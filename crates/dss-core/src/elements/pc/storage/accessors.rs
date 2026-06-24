@@ -79,6 +79,14 @@ impl CktElement for Storage {
         }
         if sys.loads_need_updating {
             self.set_nominal_der_output(sys);
+            // Pascal `set_YprimInvalid(TRUE)` raises `Solution.SystemYChanged`
+            // (CktElement.pas l.245). `SetNominalDEROutput` invalidates YPrim on a
+            // state change (idle↔discharging Yeq differs), so signal the solve to
+            // rebuild Y after this `GetPCInjCurr` (Solution.pas l.895) — e.g. when a
+            // StorageController dispatches a fleet member mid-control-loop.
+            if self.cd.yprim_invalid {
+                *ctx.system_y_changed = true;
+            }
         }
         let mut errors = Vec::new();
         self.calc_inj_current_array(sys, ctx.node_v, &mut errors);

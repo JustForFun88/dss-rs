@@ -263,17 +263,40 @@ def deck_storage_daily_charge() -> list[str]:
 # --- WP7.4 step 2: StorageController (the fleet dispatch) -------------------
 # Source -> Line.l1 -> bus b carrying a Load; a 2-battery Storage fleet on b is
 # dispatched by a StorageController watching the Line.l1 terminal power. The gate
-# is the controller-driven SOC trajectory (the `storage` capture) plus the
-# final-step electrical model. The control loop exercises Sample/DoLoadFollowMode
-# (PeakShave) each step.
-#
-# The run is sized so the final step is *quiescent* (the fleet has depleted to
-# its reserve and idled): a PeakShave snapshot with the fleet actively dispatched
-# converges only to within the power-flow solver's own tolerance (the continuous
-# dispatch settles inside the band, not bit-identically), which is below the
-# golden's 1e-6 — so the active-dispatch electrical point is pinned exactly by
-# the unit tests (`sample_*`, exact arithmetic) and the exec gate
-# (`storagecontroller_peakshave_dispatch`, the exact `kW`/`State`), not here.
+# is the controller-driven electrical model + SOC trajectory. The control loop
+# exercises Sample/DoLoadFollowMode (PeakShave) each step.
+def deck_storagecontroller_peakshave() -> list[str]:
+    # PeakShave *snapshot* with the fleet actively dispatched: a 6 MW load on bus
+    # b; the 2-battery fleet (each kWrated 2000) holds Line.l1 at the 2000 kW
+    # target. Each battery's weighted share (½·(6000-2000) = 2000) equals its
+    # kWrated cap, so both dispatch to exactly 2000 kW (Discharging) and the line
+    # settles at the target — a deterministic active-dispatch endpoint. Pins the
+    # converged electrical model (node voltages, the fleet's terminal
+    # powers/currents, the discrete Discharging state) while the fleet is live.
+    #
+    # This snapshot converges bit-identically to the oracle: each control
+    # iteration's SetNominalDEROutput invalidates the dispatched member's YPrim,
+    # so the controller's Sample raises Solution.SystemYChanged and CheckControls
+    # rebuilds Y with the discharging Yeq before the next solve — the fleet's new
+    # admittance is in the system Y, not just its injection (Pascal CktElement.pas
+    # l.245 / Solution.pas l.1155). Without that rebuild the stale idle YPrim left
+    # the Norton model inconsistent and the converged point drifted ~1.8e-6.
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Load.ld bus1=b phases=3 kv=12.47 kw=6000 pf=1.0 model=1",
+        "new Storage.sa bus1=b phases=3 kV=12.47 kWrated=2000 kVA=2000 kWhrated=4000 "
+        "%stored=80 %idlingkW=0 pf=1.0",
+        "new Storage.sb bus1=b phases=3 kV=12.47 kWrated=2000 kVA=2000 kWhrated=4000 "
+        "%stored=80 %idlingkW=0 pf=1.0",
+        "new StorageController.sc element=Line.l1 terminal=1 modedis=peakshave "
+        "monphase=avg kwtarget=2000 %reserve=20",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "set maxcontroliter=50",
+    ]
+
+
 def deck_storagecontroller_daily() -> list[str]:
     # PeakShave daily run: the same fleet holding a constant 6 MW load below the
     # 4 MW target for 4 one-hour steps -> the batteries discharge each hour,
@@ -335,6 +358,7 @@ SCENARIOS = {
     "storage_clamps": deck_storage_clamps,
     "storage_daily": deck_storage_daily,
     "storage_daily_charge": deck_storage_daily_charge,
+    "storagecontroller_peakshave": deck_storagecontroller_peakshave,
     "storagecontroller_daily": deck_storagecontroller_daily,
 }
 
