@@ -1981,6 +1981,78 @@ SCENARIOS = [
             "cond=3 wire=acsr x=1 h=10",
         ],
     },
+    # --- Storage (WP7.4 step 1) --------------------------------------------
+    # `%Idlingkvar` is DeprecatedAndRemoved (dumps '' regardless); the State /
+    # %Stored / kW getters reflect the state machine. Defaults assume a fully
+    # charged, idling battery.
+    {
+        "name": "storage_default",
+        "target": "Storage.s1",
+        "commands": ["New Storage.s1 bus1=b kV=12.47"],
+    },
+    {
+        # Discharging at 50% of rated: State=Discharging, %Discharge=50.
+        "name": "storage_discharge",
+        "target": "Storage.s1",
+        "commands": [
+            "New Storage.s1 bus1=b kV=12.47 kWrated=500 kWhrated=1000 "
+            "state=discharging %discharge=50 pf=0.95",
+        ],
+    },
+    {
+        # Charging: drop %stored so it is not full, then charge at 40%.
+        "name": "storage_charge",
+        "target": "Storage.s1",
+        "commands": [
+            "New Storage.s1 bus1=b kV=12.47 kWrated=500 kWhrated=1000 "
+            "%stored=50 state=charging %charge=40",
+        ],
+    },
+    {
+        # kvar mode + the inverter limits (kvarMax/kvarMaxAbs/%Cutin/%Cutout).
+        "name": "storage_kvar_limits",
+        "target": "Storage.s1",
+        "commands": [
+            "New Storage.s1 bus1=b kV=12.47 kWrated=500 kVA=600 kWhrated=1000 "
+            "state=discharging kvar=200 kvarMax=300 kvarMaxAbs=250 "
+            "%Cutin=10 %Cutout=5 %PMinNoVars=5 %PMinkvarMax=20 "
+            "WattPriority=yes PFPriority=yes",
+        ],
+    },
+    {
+        # An efficiency curve + idling/charge/discharge efficiencies + reserve.
+        "name": "storage_effcurve",
+        "target": "Storage.s1",
+        "commands": [
+            "New XYcurve.eff npts=4 xarray=(0.1 0.2 0.4 1.0) yarray=(0.86 0.9 0.93 0.97)",
+            "New Storage.s1 bus1=b kV=12.47 kWrated=500 kWhrated=1000 "
+            "EffCurve=eff %EffCharge=95 %EffDischarge=92 %IdlingkW=2 %Reserve=15",
+        ],
+    },
+    {
+        # Follow-dispatch with daily shape + charge/discharge triggers.
+        "name": "storage_dispatch_shapes",
+        "target": "Storage.s1",
+        "commands": [
+            "New LoadShape.sd npts=4 interval=1 mult=(-1 0 0.5 1)",
+            "New Storage.s1 bus1=b kV=12.47 kWrated=500 kWhrated=1000 "
+            "dispmode=follow daily=sd DischargeTrigger=0.5 ChargeTrigger=0.2 "
+            "TimeChargeTrig=3 model=2 balanced=yes limitcurrent=yes "
+            "vminpu=0.85 vmaxpu=1.15 %R=1 %X=40",
+        ],
+    },
+    {
+        # MakeLike copies essentially every field (the derived object overrides
+        # only Bus1).
+        "name": "storage_makelike",
+        "target": "Storage.s1",
+        "commands": [
+            "New Storage.base bus1=b kV=12.47 kWrated=500 kWhrated=1000 "
+            "state=discharging %discharge=80 pf=0.9 %Reserve=25 "
+            "DischargeTrigger=0.6 dispmode=follow",
+            "New Storage.s1 like=base bus1=c",
+        ],
+    },
     # --- DynamicExp (WP7.3 step 0) -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps

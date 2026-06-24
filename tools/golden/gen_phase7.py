@@ -181,6 +181,62 @@ def deck_pvsystem_curves() -> list[str]:
     ]
 
 
+# --- WP7.4 step 1: Storage (the battery PC element + SOC integration) -------
+# Source -> Line.l1 -> bus b; a Storage on b discharges into / charges from the
+# feeder. The gate is the Storage terminal currents/powers + node voltages (the
+# DoConstantPQStorageObj injection + the state machine) AND the integrated SOC
+# (`kWhStored`/`%Stored`/`State`) after the solve (the `storage` capture below).
+STORE_HEAD = PV_HEAD
+STORE_TAIL = PV_TAIL
+
+
+def deck_storage_snapshot() -> list[str]:
+    # Discharging at 50% of a 500 kW battery into the feeder (snapshot: the SOC
+    # does not move — EndOfTimeStepCleanup runs only in time-series modes).
+    return [
+        *STORE_HEAD,
+        "new Storage.s1 bus1=b phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
+        "state=discharging %discharge=50 pf=0.98",
+        *STORE_TAIL,
+    ]
+
+
+def deck_storage_clamps() -> list[str]:
+    # Three batteries pin the three discrete states via their terminal powers:
+    #  - sa: discharging at rated (kW_out = +250) into the feeder;
+    #  - sb: charging at 40% (kW_out = -200) absorbing from the feeder;
+    #  - sc: idling (kW_out = -kWOutIdling, only the 1% idling loss).
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b  phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Line.lb bus1=src bus2=bb phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Line.lc bus1=src bus2=bc phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new Storage.sa bus1=b  phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
+        "state=discharging %discharge=50 pf=1.0",
+        "new Storage.sb bus1=bb phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
+        "%stored=50 state=charging %charge=40 pf=1.0",
+        "new Storage.sc bus1=bc phases=3 kV=12.47 kWrated=500 kWhrated=1000 "
+        "state=idling pf=1.0",
+        *STORE_TAIL,
+    ]
+
+
+def deck_storage_daily() -> list[str]:
+    # A 100 kW / 200 kWh battery discharging at 50% (50 kW) with 10% reserve
+    # (20 kWh). DCkW=50, idling loss=1 kW, DischargeEff=0.9 -> each 1-hour step
+    # removes (50+1)/0.9 = 56.67 kWh; from 200 kWh it hits the 20 kWh reserve
+    # partway through the 6-hour run and flips to Idling. Pins the integrated SOC
+    # trajectory endpoint (`kWhStored`/`%Stored`/`State`) + the final-step powers.
+    return [
+        *STORE_HEAD,
+        "new Storage.s1 bus1=b phases=3 kV=12.47 kWrated=100 kWhrated=200 "
+        "state=discharging %discharge=50 %reserve=10 %IdlingkW=1 "
+        "%EffDischarge=90 %EffCharge=90 pf=1.0",
+        *STORE_TAIL,
+        "set mode=daily number=6 stepsize=1h",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -215,6 +271,9 @@ SCENARIOS = {
     "pvsystem_snapshot": deck_pvsystem_snapshot,
     "pvsystem_curves": deck_pvsystem_curves,
     "pvsystem_clamps": deck_pvsystem_clamps,
+    "storage_snapshot": deck_storage_snapshot,
+    "storage_clamps": deck_storage_clamps,
+    "storage_daily": deck_storage_daily,
 }
 
 
@@ -229,6 +288,19 @@ def build(d, name: str, cmds: list[str]) -> dict:
         sys.exit(f"{name}: oracle did not converge — fix the deck")
     varray = list(ckt.YNodeVarray)
     elements = [capture_element(ckt, nm) for nm in ckt.AllElementNames]
+    # The integrated state of charge of every Storage element after the solve
+    # (Pascal `? Storage.<name>.<prop>`): pins the SOC trajectory endpoint of a
+    # daily run and the static state of a snapshot. Read via the property query
+    # so the Rust harness can replay it identically (`? ...` + result).
+    storage = []
+    for nm in ckt.AllElementNames:
+        if not nm.lower().startswith("storage."):
+            continue
+        props = {}
+        for p in ("kWhStored", "%Stored", "State"):
+            d.Text.Command = f"? {nm}.{p}"
+            props[p] = d.Text.Result
+        storage.append({"name": nm, "properties": props})
     return {
         "name": name,
         "commands": cmds,
@@ -239,6 +311,7 @@ def build(d, name: str, cmds: list[str]) -> dict:
         "v_im": varray[1::2],
         "line_yprim": capture_yprim(ckt, LINE),
         "elements": elements,
+        "storage": storage,
     }
 
 

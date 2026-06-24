@@ -31,6 +31,8 @@ fn test_sys() -> SysCtx {
         neglect_load_y: false,
         long_line_correction: false,
         positive_sequence: false,
+        time_of_day: 0.0,
+        dyna_h: 0.0,
     }
 }
 

@@ -758,18 +758,18 @@
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\""
+   "tag": "unsupported_class=InvControl",
+   "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"arGraHiV\\\" (value \\\"50\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"dynReacAvgWindowLen"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\") for object \\\"XYcur"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%charge\\\" (value \\\"100\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%discharge\\\" (value \\\"100\\\") for object"
+   "tag": "unsupported_class=InvControl; unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltWattCH_curve\\\" (value \\\"vw_curve_ch\\\") for object \\\"XYcurve.vw_curve_ch\\\"\", \"Command \\\"Export\\\" is not porte"
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/pst.dss",
@@ -878,8 +878,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"%EffCharge\\\" (value \\\"90\\\") for ob"
+   "tag": "unsupported_class=InvControl; unsupported_command=BatchEdit",
+   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"InvControl\\\" not found.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Storage"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
@@ -993,33 +993,33 @@
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for ob"
+   "tag": "unsupported_command=Plot",
+   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for obje"
+   "tag": "unsupported_command=Plot",
+   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"%stored\\\" (value \\\"50\\\") for object \\"
+   "tag": "unsupported_command=Plot",
+   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated\\\" (value \\\"500\\\") for "
+   "tag": "unsupported_command=Plot",
+   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhrated"
+   "tag": "unsupported_command=Plot",
+   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss",
-   "tag": "unsupported_class=Storage",
-   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown parameter \\\"effcurve\\\" (value \\\"Eff\\\") for object \\\"XYcurve.eff\\\"\", \"Unknown parameter \\\"kWhr"
+   "tag": "unsupported_command=Plot",
+   "note": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss: Rust engine errors after compile: [\"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",

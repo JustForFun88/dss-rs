@@ -52,6 +52,7 @@ pub enum ElemKind {
     Control,
     Generator,
     PVSystem,
+    Storage,
     Meter,
     EnergyMeter,
     Sensor,
@@ -90,6 +91,9 @@ pub struct Circuit {
     pub generators: Vec<ElemRef>,
     /// PVSystem elements (Phase 7): PC elements; in `pc_elements` and this list.
     pub pv_systems: Vec<ElemRef>,
+    /// Storage elements (Phase 7): PC elements; in `pc_elements` and this list.
+    /// Walked by `StorageClass.UpdateAll` in the time-step cleanup.
+    pub storages: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
@@ -206,6 +210,7 @@ impl Circuit {
             faults: Vec::new(),
             generators: Vec::new(),
             pv_systems: Vec::new(),
+            storages: Vec::new(),
             controls: Vec::new(),
             monitors: Vec::new(),
             energy_meters: Vec::new(),
@@ -298,6 +303,10 @@ impl Circuit {
             ElemKind::PVSystem => {
                 self.pc_elements.push(r);
                 self.pv_systems.push(r);
+            }
+            ElemKind::Storage => {
+                self.pc_elements.push(r);
+                self.storages.push(r);
             }
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).

@@ -19,12 +19,12 @@
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
    "tag": "live_mismatch_near_ideal_source",
-   "note": "WP7.3 step 2: PVSystem solves but Vsource current differs ~1.7e-4 abs (~4e-6 rel), just over the absolute floor. Source is near-ideal (Z0=Z1=[1e-8,1e-8]), which amplifies a sub-1e-6 efficiency-curve interpolation difference: the only delta vs the sibling CurrentkvarLimite/PV_currentkvarLimit_kvar.dss (which passes at full tolerance) is EffCurve=[1,1,1,1] (ideal) vs [0.9,0.92,0.95,1]. The kvarMax (generation) clamp is validated by that passing sibling and by golden phase7/pvsystem_clamps (pva) at 1e-6. Conditioning, not a logic bug."
+   "note": "live probe: Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss step 0 Vsource.source currents: entry 2 differs: actual (-13.38165283203125, 39.91229248046875) vs expected (-13.38153076171875, 39.91241455078125); |diff| = 1.7263349150062197e-4 > allowed 1.420"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss",
    "tag": "live_mismatch_near_ideal_source",
-   "note": "WP7.3 step 2: PVSystem solves but Vsource current differs ~1.9e-4 abs (~4e-6 rel), just over the absolute floor, on the near-ideal source (Z0=Z1=[1e-8,1e-8]) amplifying a sub-1e-6 eff-curve interpolation difference (EffCurve=[0.9..1] vs the ideal sibling). This case sets kvar=-500 (absorption, kvarMaxAbs=300) -- the absorption clamp is NOT covered by the passing CurrentkvarLimite/kvarNEG sibling (which uses kvar=+500, generation), but IS independently oracle-pinned at 1e-6 by golden phase7/pvsystem_clamps (pvc: kvar_out=-300, kw back-off=400) plus the kvar_absorption_clamp_then_backoff unit test. Conditioning, not a logic bug."
+   "note": "live probe: Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss step 0 Vsource.source currents: entry 0 differs: actual (41.2559814453125, 12.551025390625) vs expected (41.25579833984375, 12.55108642578125); |diff| = 1.9301011109426145e-4 > allowed 1.43122"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",

@@ -83,6 +83,10 @@ pub struct EnumRegistry {
     pub pvsystem_model: EnumId,
     /// 'Inverter Control Mode' (DSSClass.pas `InvControlModeEnum`; GFL/GFM).
     pub inv_control_mode: EnumId,
+    /// 'Storage: State' (Storage.pas `StateEnum`; Charging/Idling/Discharging).
+    pub storage_state: EnumId,
+    /// 'Storage: Dispatch Mode' (Storage.pas `DispatchModeEnum`).
+    pub storage_dispatch_mode: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,

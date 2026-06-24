@@ -165,10 +165,15 @@ impl Dss {
                 |name| Box::new(swt_control::SwtControl::new(name)),
                 ElemKind::Control,
             ),
-            // PVSystem registers after the protection controls, before InvControl
-            // (Pascal DSSClassDefs.pas:252 PVSYSTEM_ELEMENT). Storage (:234) is
-            // WP7.4, so it is skipped here. Registration order does not affect
-            // node ordering, which follows element creation order.
+            // Storage (Pascal DSSClassDefs.pas:234 Storage_ELEMENT) and PVSystem
+            // (:252 PVSYSTEM_ELEMENT) register after the protection controls,
+            // before InvControl. Registration order does not affect node
+            // ordering, which follows element creation order.
+            DssClass::ckt_class(
+                storage::class_props(&enums),
+                |name| Box::new(storage::Storage::new(name)),
+                ElemKind::Storage,
+            ),
             DssClass::ckt_class(
                 pvsystem::class_props(&enums),
                 |name| Box::new(pvsystem::PVSystem::new(name)),
