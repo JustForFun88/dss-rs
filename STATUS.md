@@ -45,8 +45,9 @@ mock-env tests; **corpus 44 → 50** (the 6 SnapShot volt-var cases live-matched
 the 7 Daily cases stay Export-blocked, Phase 8). WP7.5 step 2c = `InvControl`
 **VOLTWATT + the VV_VW combi** (`CalcPVWcurve_limitpu`/`Check_Plimits`/`Calc_PBase`/
 `CalcVoltWatt_watts` + the joint VV_VW `DoPendingAction`) COMPLETE — lib 593 →
-598, goldens `phase7/invcontrol_voltwatt` (the volt-watt kW limit, 13 iters) +
-`phase7/invcontrol_vv_vw` (the joint kW+kvar, the exact 34 iters) + 5 mock-env
+599, goldens `phase7/invcontrol_voltwatt` (the volt-watt kW limit, 13 iters) +
+`phase7/invcontrol_voltwatt_adaptive` (the adaptive delta-P path) +
+`phase7/invcontrol_vv_vw` (the joint kW+kvar, the exact 34 iters) + 6 mock-env
 tests; **corpus 50 → 74** (the 18 SnapShot volt-watt + 6 SnapShot VV_VW cases
 live-matched). Key fix: the **`FPendingChange` reset at the end of the
 `DoPendingAction` loop body** (Pascal l.1606) — the VV_VW double-push (volt-watt
@@ -107,7 +108,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 598, golden_feeders 1,
+cargo test --workspace      # dss-core lib 599, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -890,6 +891,47 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     `unsupported_class=InvControl`) migrate into `solvable_now` and match the oracle
     full-model live (the Daily volt-watt/VV_VW cases stay Export-blocked, Phase 8).
     lib **593 → 598**.
+  - **audit-code follow-up:** verdict faithful 1:1 (no Critical/Major) — every math
+    helper, both `Sample` triggers, and both `DoPendingAction` branches match the
+    Pascal line-for-line, incl. the subtle bits (VOLTWATT's inverter-off check
+    without `VarFollowInverter`; the no-`abs(PLimitVW)>0` guard in VV_VW's
+    `FVWOperation` reset; the `FPendingChange:=NONE` end-of-loop reset). **No code
+    fix needed.** Surfaced-not-fixed (all confirmed acceptable): (1) the Storage
+    VOLTWATT/VV_VW deferral is a *deliberate, loud* deferral (explicit error +
+    documented), not silent degradation — accepted vs the plan's "verbatim" wording;
+    (2) a missing/untied volt-watt curve `return Err`s (solve abort) where Pascal
+    `DoSimpleMsg(381)+exit` logs and continues with the DER uncontrolled — a
+    **pre-existing** pattern (step 2b does the same for `vvc_curve`), no gated case
+    hits it, tracked for a uniform fix; (3) Pascal's `LoadsNeedUpdating := TRUE`
+    (l.1605) has no Rust equivalent — a no-op in this architecture (`GetPCInjCurr`
+    recomputes PC injections every iteration; confirmed by the exact 13/34 iteration
+    pins); (4) `Calc_PBase`/`kw_out_desiredpu` moved from the Pascal `DoPendingAction`
+    header into the VW/VV_VW branches — numerically equivalent (read only by the VW
+    path) and sidesteps the deferred Storage DCkW read.
+  - **audit-tests follow-up:** verdict strong (the goldens are oracle-pinned and the
+    decks exercise the real behavior; the iteration-count pin caught the missing
+    `FPendingChange` reset — 45 vs 34; mock values are independent hand-derivations).
+    Closed the Major gap — the **adaptive `Change_deltaP_factor`** path (the
+    `DeltaP_factor` unset / `FLAGDELTAP` branch) had **zero** coverage: the
+    fixed-factor `invcontrol_voltwatt` golden + all 24 migrated corpus cases set
+    `DeltaP_factor` explicitly. Added the snapshot golden **`phase7/invcontrol_voltwatt_adaptive`**
+    (the same deck with `DeltaP_factor` *unset* → the adaptive bands run for all 13
+    iterations; matches the oracle bit-for-bit). Added `invcontrol_voltwatt` /
+    `_adaptive` / `vv_vw` to the `must` required-scenario guard (`golden_phase7.rs`),
+    and a VV_VW Storage-deferred mock (symmetry with the VOLTWATT one). lib **598 →
+    599**. **Surfaced-not-fixed — the daily adaptive volt-watt path is
+    *ill-conditioned*, not gated:** a *daily* (multi-step) run with `DeltaP_factor`
+    unset diverges from the oracle ~1e-5 at the limiting steps (3/5/7/8), while the
+    snapshot matches bit-for-bit and the non-limiting steps (1/2/4/6) match — the
+    adaptive band thresholds (`delta_v > 0.9·delta_v_old`) are *discrete* comparisons
+    on the *continuous* inter-iteration voltage delta, so cross-time-step state
+    seeding crosses a threshold differently between engines and amplifies a
+    sub-tolerance difference (the WP7.3 `varCapability` conditioning class, not a
+    logic bug — the band arithmetic is faithful and the snapshot-adaptive golden
+    pins it). The corpus Daily volt-watt cases are Export-blocked anyway (Phase 8).
+    (2) the `Check_Plimits` kVA/pctPmpp clamp arms have **live-only** coverage (the
+    10 `*kVAlimitation/kvarlimitation/varP/wattP/pmpp_greater_kva` corpus cases) — no
+    committed offline pin, mirroring the step-2b live-only kVA/kvar-clamp note.
 - **next:** WP7.5 step 2d — `InvControl` DRC + the VV_DRC combi mode
   (`CalcQDRC_desiredpu`/`CalcDRC_vars`/`CalcVVDRC_vars` + the DRC rolling-average
   window); then 2e (WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus), step 3

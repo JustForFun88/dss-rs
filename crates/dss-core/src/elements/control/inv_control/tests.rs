@@ -556,6 +556,34 @@ mod dispatch {
     }
 
     #[test]
+    fn vv_vw_storage_is_deferred_not_silent() {
+        // Symmetry with the VOLTWATT case: a Storage in the VV_VW combi also errors
+        // (the shared `guard_storage_vw`), never silently dispatching.
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
+        ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vw",
+            &[1.0, 1.02, 1.1],
+            &[1.0, 1.0, 0.0],
+        ));
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 1.0, 1.5],
+            &[1.0, 0.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        let mut der = MockDer::new("pv", 1.05, 600.0);
+        der.is_storage = true;
+        let mut env = MockEnv::new(vec![der]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("Storage VOLTWATT/VV_VW"),
+            "expected a Storage VV_VW NOT_PORTED error, got: {err}"
+        );
+    }
+
+    #[test]
     fn vv_vw_dispatches_both_kw_and_kvar() {
         // CombiMode=VV_VW over a PV at 1.05 pu: the single DoPendingAction sets BOTH
         // the volt-watt kW limit (curve y=0.625 → PLimitVW=498.75, as in the VW test)

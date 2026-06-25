@@ -390,6 +390,32 @@ def deck_invcontrol_voltwatt() -> list[str]:
     ]
 
 
+# A snapshot VOLTWATT run that leaves `DeltaP_factor` UNSET (→ FLAGDELTAP → the
+# adaptive `Change_deltaP_factor` damping, which the fixed-factor `invcontrol_voltwatt`
+# golden + every migrated corpus case bypass by setting it). Same weak line + 1000 kW
+# PV as the fixed-factor scenario; here the convergence runs the adaptive band logic
+# (0.9/0.8/0.2/0.1 thresholds, ±0.1/±0.05 steps) for all 13 iterations — the only
+# gate on the adaptive volt-watt path (the corpus cases all set DeltaP_factor).
+# NOTE a *daily* adaptive run is NOT gated: the adaptive band thresholds are discrete
+# comparisons on the continuous inter-iteration voltage delta, so cross-time-step
+# state seeding can cross a threshold differently between engines and amplify a
+# sub-tolerance difference into a ~1e-5 converged-state divergence at the limiting
+# steps (verified: the snapshot matches bit-for-bit; only the multi-step adaptive
+# path diverges) — conditioning, not a logic bug. See STATUS §1e.
+def deck_invcontrol_voltwatt_adaptive() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=8 units=km",
+        "new XYcurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.02 1.1)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=VOLTWATT voltage_curvex_ref=rated voltwatt_curve=vw "
+        "VoltwattYAxis=PMPPPU",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 # --- WP7.5 step 2c: InvControl VV_VW (the combined volt-var + volt-watt mode) --
 # The same weak line + 1000 kW PV; the InvControl runs CombiMode=VV_VW with both a
 # volt-var curve (absorb above nominal) and a volt-watt curve (limit kW above 1.02
@@ -458,6 +484,7 @@ SCENARIOS = {
     "invcontrol_voltvar": deck_invcontrol_voltvar,
     "invcontrol_voltvar_avg": deck_invcontrol_voltvar_avg,
     "invcontrol_voltwatt": deck_invcontrol_voltwatt,
+    "invcontrol_voltwatt_adaptive": deck_invcontrol_voltwatt_adaptive,
     "invcontrol_vv_vw": deck_invcontrol_vv_vw,
 }
 
