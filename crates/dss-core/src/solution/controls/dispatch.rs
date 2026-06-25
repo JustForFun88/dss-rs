@@ -1358,6 +1358,11 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 current_kvar_limit: pv.base.current_kvar_limit,
                 current_kvar_limit_neg: pv.base.current_kvar_limit_neg,
                 p_priority: pv.p_priority,
+                // volt-watt (Pascal UpdateDERParameters PVSystem branch):
+                dckw: pv.panel_kw,            // FDCkW := PVSystemVars.PanelkW
+                dckw_rated: pv.f_pmpp,        // FDCkWRated := Pmpp
+                pct_dckw_rated: pv.f_pu_pmpp, // FpctDCkWRated := puPmpp
+                eff_factor: pv.eff_factor,    // FEffFactor := PVSystemVars.EffFactor
             }
         } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
             DerSnap {
@@ -1376,6 +1381,14 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 current_kvar_limit: st.base.current_kvar_limit,
                 current_kvar_limit_neg: st.base.current_kvar_limit_neg,
                 p_priority: st.p_priority,
+                // volt-watt (Pascal UpdateDERParameters Storage branch). Used only
+                // by VOLTVAR for Storage (where they go unread); the Storage
+                // VOLTWATT/VV_VW dispatch is deferred (guarded at Sample), so the
+                // `FDCkW := 0.0` + live `TStorageObj.DCkW` split is not exercised.
+                dckw: 0.0,                       // FDCkW := 0.0 for Storage
+                dckw_rated: st.kw_rating,        // FDCkWRated := StorageVars.kWrating
+                pct_dckw_rated: st.pct_kw_rated, // FpctDCkWRated := StorageVars.pctkWrated
+                eff_factor: st.eff_factor,       // FEffFactor := Storagevars.EffFactor
             }
         } else {
             panic!("InvControl fleet entry is not a PVSystem or Storage");
@@ -1433,6 +1446,14 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.vv_mode = value;
         }
     }
+    fn der_set_vw_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.vw_mode = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.vw_mode = value;
+        }
+    }
     fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
@@ -1452,6 +1473,16 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.set_nominal_der_output(sys);
         }
     }
+    fn der_set_kw_requested(&mut self, r: ElemRef, p: f64) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            // Pascal `PresentkW` WRITE is `kWRequested` directly (no var-mode side
+            // effect, unlike `Set_Presentkvar`).
+            pv.kw_requested = p;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.kw_requested = p;
+        }
+    }
     fn der_present_kvar(&self, r: ElemRef) -> f64 {
         let obj = self.store.obj(r);
         if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
@@ -1462,17 +1493,29 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             0.0
         }
     }
+    fn der_present_kw(&self, r: ElemRef) -> f64 {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.present_kw()
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.present_kw()
+        } else {
+            0.0
+        }
+    }
     fn der_set_monitor_var(&mut self, r: ElemRef, kind: MonitorVar, value: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
             match kind {
                 MonitorVar::Vreg => pv.vreg = value,
                 MonitorVar::VvOperation => pv.vv_operation = value,
+                MonitorVar::VwOperation => pv.vw_operation = value,
             }
         } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
             match kind {
                 MonitorVar::Vreg => st.vreg = value,
                 MonitorVar::VvOperation => st.vv_operation = value,
+                MonitorVar::VwOperation => st.vw_operation = value,
             }
         }
     }

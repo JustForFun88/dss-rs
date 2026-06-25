@@ -502,36 +502,6 @@
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"RefRea"
   },
   {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown paramet"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unkn"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown paramet"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_cu"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_cu"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unkno"
-  },
-  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
    "tag": "unsupported_command=Export,Plot",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Co"
@@ -625,96 +595,6 @@
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss",
    "tag": "unsupported_class=InvControl",
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown pa"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown param"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown pa"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown paramete"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown param"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\","
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknow"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unk"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",

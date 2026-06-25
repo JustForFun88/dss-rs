@@ -369,6 +369,52 @@ def deck_invcontrol_voltvar_avg() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2c: InvControl VOLTWATT (the smart-inverter volt-watt dispatch) -
+# Source -> a weak Line.l1 -> bus b; a 1000 kW PV (1200 kVA) on b pushes the bus
+# voltage well above 1.02 pu. An InvControl in VOLTWATT mode reads the volt-watt
+# curve (y=1 below 1.02, ramping to 0 at 1.1) and limits the PV kW via the
+# delta-P convergence (`CalcVoltWatt_watts`), pulling the voltage back down. The
+# gate is the converged model + the PV terminal power (the controller-driven kW
+# limit) + the exact iteration / control-iteration count.
+def deck_invcontrol_voltwatt() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=8 units=km",
+        "new XYcurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.02 1.1)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=VOLTWATT voltage_curvex_ref=rated voltwatt_curve=vw "
+        "VoltwattYAxis=PMPPPU DeltaP_factor=0.45",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
+# --- WP7.5 step 2c: InvControl VV_VW (the combined volt-var + volt-watt mode) --
+# The same weak line + 1000 kW PV; the InvControl runs CombiMode=VV_VW with both a
+# volt-var curve (absorb above nominal) and a volt-watt curve (limit kW above 1.02
+# pu). The DoPendingAction runs the P limit *and* the Q set-point in one action
+# (CHANGEWATTVARLEVEL), so the gate pins the joint converged kW+kvar of the PV.
+def deck_invcontrol_vv_vw() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=8 units=km",
+        # vw limits from 1.0 pu so volt-watt stays engaged after the volt-var
+        # absorption pulls the voltage down (otherwise VV regulates below the vw
+        # threshold and VW would never operate).
+        "new XYcurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.005 1.1)",
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic combimode=VV_VW voltage_curvex_ref=rated vvc_curve1=vv "
+        "voltwatt_curve=vw deltaQ_factor=0.2 DeltaP_factor=0.45 "
+        "activePchangetolerance=0.0001 varchangetolerance=0.0001 "
+        "VoltwattYAxis=PMPPPU RefReactivePower=varmax",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -411,6 +457,8 @@ SCENARIOS = {
     "storagecontroller_daily": deck_storagecontroller_daily,
     "invcontrol_voltvar": deck_invcontrol_voltvar,
     "invcontrol_voltvar_avg": deck_invcontrol_voltvar_avg,
+    "invcontrol_voltwatt": deck_invcontrol_voltwatt,
+    "invcontrol_vv_vw": deck_invcontrol_vv_vw,
 }
 
 

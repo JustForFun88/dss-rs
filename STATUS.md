@@ -12,7 +12,8 @@ Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
 (`RollAvgWindow`) COMPLETE (incl. audits); WP7.5 step 2a (`InvControl`
 parse-only skeleton) COMPLETE (incl. audits); WP7.5 step 2b (`InvControl`
-VOLTVAR dispatch) COMPLETE.**
+VOLTVAR dispatch) COMPLETE; WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW
+dispatch) COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -41,8 +42,18 @@ COMPLETE — lib 585 → 593 (incl. the audit follow-ups), goldens
 `phase7/invcontrol_voltvar` (the converged model + the exact 18/9 iteration
 counts) + `phase7/invcontrol_voltvar_avg` (the daily rolling-average path) + 8
 mock-env tests; **corpus 44 → 50** (the 6 SnapShot volt-var cases live-matched;
-the 7 Daily cases stay Export-blocked, Phase 8). next = WP7.5 step 2c:
-`InvControl` VOLTWATT + VV_VW.**
+the 7 Daily cases stay Export-blocked, Phase 8). WP7.5 step 2c = `InvControl`
+**VOLTWATT + the VV_VW combi** (`CalcPVWcurve_limitpu`/`Check_Plimits`/`Calc_PBase`/
+`CalcVoltWatt_watts` + the joint VV_VW `DoPendingAction`) COMPLETE — lib 593 →
+598, goldens `phase7/invcontrol_voltwatt` (the volt-watt kW limit, 13 iters) +
+`phase7/invcontrol_vv_vw` (the joint kW+kvar, the exact 34 iters) + 5 mock-env
+tests; **corpus 50 → 74** (the 18 SnapShot volt-watt + 6 SnapShot VV_VW cases
+live-matched). Key fix: the **`FPendingChange` reset at the end of the
+`DoPendingAction` loop body** (Pascal l.1606) — the VV_VW double-push (volt-watt
+*and* volt-var triggers both queue `CHANGEWATTVARLEVEL`) must dispatch the DER
+once per control iteration, not once per queued action. **Storage VOLTWATT/VV_VW
+deferred** (explicit error; PVSystem is ported). next = WP7.5 step 2d: DRC /
+VV_DRC.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -51,8 +62,8 @@ per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
 its golden; `Fault`/`SwtControl`/`Fuse`/`Recloser`/`Relay` + reliability
 activation + the protection gate) lives in **§1e** (per-step summaries) and the
 archives [`phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md) /
-[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **50**
-(WP7.5 step 2b migrated the 6 SnapShot volt-var cases).
+[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **74**
+(WP7.5 step 2c migrated the 18 SnapShot volt-watt + 6 SnapShot VV_VW cases).
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -90,13 +101,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**; **next = WP7.5 step 2c: VOLTWATT + VV_VW**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**; **next = WP7.5 step 2d: DRC + VV_DRC**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 593, golden_feeders 1,
+cargo test --workspace      # dss-core lib 598, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -154,7 +165,7 @@ depend on the temporary `.inputs/electricdss-tst`.
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
 - **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
-  be installed).** For each of the **50** `solvable_now` cases the gate
+  be installed).** For each of the **74** `solvable_now` cases the gate
   compiles+solves on the Rust engine and on the pinned dss-python oracle
   (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
@@ -835,10 +846,54 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     `greater_kVA`/`varaval_kvarlimitation` corpus cases) but has no committed
     offline golden; the multi-DER fleet stays untested (every gated case is
     single-DER). lib **590 → 593**.
-- **next:** WP7.5 step 2c — `InvControl` VOLTWATT + the VV_VW combi mode
-  (`CalcPVWcurve_limitpu`/`CalcVoltWatt_watts`); then 2d (DRC / VV_DRC), 2e
-  (WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus), step 3 (`ExpControl`), step 4
-  (the gate).
+- **step 2c — the VOLTWATT + VV_VW dispatch (`control/inv_control/compute.rs`).**
+  Adds the **volt-watt** control: `Sample`'s VOLTWATT trigger (note the
+  inverter-off check is `FInverterON=FALSE` alone — no `VarFollowInverter`, unlike
+  the var modes) + the `DoPendingAction` `CHANGEWATTLEVEL` dispatch
+  (`CalcPVWcurve_limitpu` → the curve kW-limit; `Check_Plimits` → the var-priority
+  kVA + pctPmpp clamp; `Calc_PBase` from `VoltWattYAxis`; `CalcVoltWatt_watts` → the
+  delta-P convergence with `Change_deltaP_factor`); and the **VV_VW combi**: both a
+  volt-watt and a volt-var trigger in `Sample` (both queue `CHANGEWATTVARLEVEL`) and
+  the joint `DoPendingAction` that runs `CalcVoltWatt_watts` *and* `CalcVoltVar_vars`,
+  setting the DER's kW *and* kvar in one `SetNominalDEROutput`. `Sample`/
+  `do_pending_action` refactored into per-mode helpers (`sample_voltvar`/
+  `sample_voltwatt`/`sample_vv_vw`; `do_pending_voltvar`/`_voltwatt`/`_vv_vw`).
+  - **Key fix — the `FPendingChange` reset (Pascal l.1606).** Pascal resets
+    `FPendingChange := NONE` at the **end of every DER's `DoPendingAction` loop
+    body**, so the VV_VW **double-push** (the volt-watt *and* the volt-var trigger
+    both fire while the voltage is changing, queuing `CHANGEWATTVARLEVEL` twice) is
+    dispatched **once per control iteration**, not once per queued action — the
+    second popped action finds `FPendingChange = NONE` and is a no-op. The port
+    initially missed this reset and over-converged (45 iters vs the oracle's 34);
+    adding it makes `invcontrol_vv_vw` match the oracle bit-for-bit (34 iters, the
+    same converged kW+kvar). The reset is harmless for the single-push VOLTVAR/
+    VOLTWATT modes (Sample re-sets the pending change each iteration).
+  - **Storage VOLTWATT/VV_VW deferred (explicit error, never a silent skip):** the
+    Storage-specific volt-watt machinery (`TStorageObj.DCkW`/`StorageState`/
+    `FVWStateRequested` curve selection) is unverified by any gate, and a Storage
+    state flip during InvControl dispatch would not propagate `system_y_changed`
+    through the per-element env (the WP7.4 YPrim-rebuild bug class). PVSystem
+    volt-watt is fully ported + gated; a Storage in VOLTWATT/VV_VW errors at
+    `Sample` (`guard_storage_vw`). **NOT_PORTED (each an explicit error):** the
+    remaining modes (DRC/VV_DRC → 2d; WATTPF/WATTVAR/AVR → 2e; GFM/Exponential →
+    WP7.7), the `MonBus` path + LPF/RiseFall (→ 2e).
+  - **Gate:** targeted goldens `phase7/invcontrol_voltwatt` (a 1000 kW PV on a weak
+    line driving V > 1.02 pu → the volt-watt curve limits the kW; node voltages +
+    PV terminal power 1e-6 **and the exact 13 iters**) + `phase7/invcontrol_vv_vw`
+    (the same fleet with both curves, the vw curve limiting from 1.0 pu so **both**
+    functions engage — kW limited to ~978 *and* ~106 kvar absorbed; the exact **34
+    iters**, the double-push/pending-reset path) + **5 mock-env tests** (the
+    VOLTWATT curve→clamp→delta-P step pinned to `PLimitVW=498.75`, the no-limit
+    path, the Storage-deferred error, the VV_VW joint kW+kvar, and the
+    double-push-dispatches-once pending-reset guard). **Corpus 50 → 74:** the 18
+    SnapShot volt-watt + 6 SnapShot VV_VW cases (all PVSystem, tagged purely
+    `unsupported_class=InvControl`) migrate into `solvable_now` and match the oracle
+    full-model live (the Daily volt-watt/VV_VW cases stay Export-blocked, Phase 8).
+    lib **593 → 598**.
+- **next:** WP7.5 step 2d — `InvControl` DRC + the VV_DRC combi mode
+  (`CalcQDRC_desiredpu`/`CalcDRC_vars`/`CalcVVDRC_vars` + the DRC rolling-average
+  window); then 2e (WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus), step 3
+  (`ExpControl`), step 4 (the gate).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

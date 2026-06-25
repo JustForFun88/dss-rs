@@ -48,15 +48,16 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
 // Control-mode ordinals (InvControl.pas `TInvControlControlMode`). The full set
 // is VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5 AVR=6 GFM=7; the dispatch ports
-// land per sub-step (2b: VOLTVAR; 2c–2e: the rest).
+// land per sub-step (2b: VOLTVAR; 2c: VOLTWATT + VV_VW; 2d–2e: the rest).
 pub(crate) const NONE_MODE: i32 = 0;
 pub(crate) const VOLTVAR: i32 = 1;
 pub(crate) const VOLTWATT: i32 = 2;
 pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
 
-// Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
+// Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`). VV_DRC=2 lands 2d.
 pub(crate) const NONE_COMBMODE: i32 = 0;
+pub(crate) const VV_VW: i32 = 1;
 
 // Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`). LPF=1 /
 // RISEFALL=2 arrive with the rate-of-change dispatch (step 2e); only the
@@ -66,6 +67,8 @@ pub(crate) const ROC_INACTIVE: i32 = 0;
 // PendingChange action codes (InvControl.pas l.407-411).
 pub(crate) const CHANGE_NONE: i32 = 0;
 pub(crate) const CHANGEVARLEVEL: i32 = 1;
+pub(crate) const CHANGEWATTLEVEL: i32 = 2;
+pub(crate) const CHANGEWATTVARLEVEL: i32 = 3;
 
 // Reactive-power-reference ordinals (InvControl.pas constants).
 const REAC_POWER_VARAVAL: i32 = 0;
@@ -84,6 +87,7 @@ pub(crate) const FLAGDELTAQ: f64 = -1.0;
 pub(crate) const FLAGDELTAP: f64 = -1.0;
 // Pascal DELTAQDEFAULT/DELTAPDEFAULT (l.419-420) — the initial adaptive factor.
 pub(crate) const DELTAQDEFAULT: f64 = 0.5;
+pub(crate) const DELTAPDEFAULT: f64 = 0.5;
 
 /// 1-based property ordinals (Pascal `TInvControlProp` + the `TCktElementClass`
 /// tail). The legacy and modern Pascal names differ only in case, so the
@@ -225,6 +229,38 @@ pub(crate) struct InvVars {
     /// `FVVOperation` — volt-var operating flag (-1 absorb / 1 inject / 0 none).
     pub f_vv_operation: f64,
 
+    // --- volt-watt active-power state (VOLTWATT / VV_VW; sub-step 2c) ---
+    /// `PLimitVW` — the volt-watt kW set-point pushed to the DER.
+    pub p_limit_vw: f64,
+    /// `PLimitVWpu` — the kW limit (pu of `PBase`) read off the volt-watt curve.
+    pub p_limit_vw_pu: f64,
+    /// `PLimitLimitedpu` — the kW limit after the kVA / pctPmpp clamp (`Check_Plimits`).
+    pub p_limit_limitedpu: f64,
+    /// `PLimitEndpu` — the kW (pu) used in the convergence algorithm.
+    pub p_limit_endpu: f64,
+    /// `POldVWpu` — the prior volt-watt kW (pu) (convergence history).
+    pub p_old_vw_pu: f64,
+    /// `PBase` — the volt-watt power base (set by `Calc_PBase` from `VoltWattYAxis`).
+    pub p_base: f64,
+    /// `kW_out_desired` (= `FpresentkW` each Sample) and its pu form `kW_out_desiredpu`.
+    pub kw_out_desired: f64,
+    pub kw_out_desiredpu: f64,
+    /// `FFlagVWOperates` — latched once the volt-watt limit drops below 1 pu.
+    pub f_flag_vw_operates: bool,
+    /// `FVWOperation` — volt-watt operating flag (1 limiting / 0 not).
+    pub f_vw_operation: f64,
+    /// `FdeltaPFactor` — the adaptive convergence damping factor for volt-watt.
+    pub f_delta_p_factor: f64,
+    /// `FDCkW` (PVSystem `PanelkW`), `FDCkWRated` (PVSystem `Pmpp`),
+    /// `FpctDCkWRated` (PVSystem `puPmpp`), `FEffFactor` — the volt-watt power-base
+    /// inputs, refreshed each Sample by `UpdateDERParameters`. PVSystem-only: the
+    /// Storage VOLTWATT/VV_VW dispatch is deferred (an explicit error, not a silent
+    /// skip), so the Storage `DCkW` path of `Calc_PBase` is not carried here.
+    pub f_dckw: f64,
+    pub f_dckw_rated: f64,
+    pub f_pct_dckw_rated: f64,
+    pub f_eff_factor: f64,
+
     // --- hysteresis (curve 1/2) ---
     pub flag_change_curve: bool,
     pub f_active_vv_curve: i32,
@@ -263,6 +299,7 @@ impl InvVars {
             q_old: -1.0,
             q_old_vv: -1.0,
             f_delta_q_factor: DELTAQDEFAULT,
+            f_delta_p_factor: DELTAPDEFAULT,
             delta_v_old: -1.0,
             f_active_vv_curve: 1,
             f_inverter_on: true,
