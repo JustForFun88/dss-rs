@@ -919,16 +919,21 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     iterations; matches the oracle bit-for-bit). Added `invcontrol_voltwatt` /
     `_adaptive` / `vv_vw` to the `must` required-scenario guard (`golden_phase7.rs`),
     and a VV_VW Storage-deferred mock (symmetry with the VOLTWATT one). lib **598 →
-    599**. **Surfaced-not-fixed — the daily adaptive volt-watt path is
-    *ill-conditioned*, not gated:** a *daily* (multi-step) run with `DeltaP_factor`
-    unset diverges from the oracle ~1e-5 at the limiting steps (3/5/7/8), while the
-    snapshot matches bit-for-bit and the non-limiting steps (1/2/4/6) match — the
-    adaptive band thresholds (`delta_v > 0.9·delta_v_old`) are *discrete* comparisons
-    on the *continuous* inter-iteration voltage delta, so cross-time-step state
-    seeding crosses a threshold differently between engines and amplifies a
-    sub-tolerance difference (the WP7.3 `varCapability` conditioning class, not a
-    logic bug — the band arithmetic is faithful and the snapshot-adaptive golden
-    pins it). The corpus Daily volt-watt cases are Export-blocked anyway (Phase 8).
+    599**. **Daily volt-watt was a real PORT BUG (found + fixed) — the earlier
+    "ill-conditioned, not a bug" note was WRONG:** a *daily* (multi-step) run diverged
+    from the oracle by ~kW at the limiting steps — and crucially a *fixed* `DeltaP_factor`
+    diverged just as much as the adaptive one, so the adaptive bands were never the
+    cause. Per-control-iteration trajectory comparison (Rust ↔ oracle) pinned it:
+    `update_inv_control` was missing Pascal `UpdateInvControl`'s per-step reset block
+    (l.2555-2575) — **`FFlagVWOperates` latched across time steps**, forcing the damped
+    "requesting" VW branch on every later step (even non-limiting steps then ran 6-8
+    control iters vs the oracle's 2, slowly ramping `PLimitVW` instead of taking the
+    curve point directly), and `FdeltaPFactor` was not reset to `DELTAPDEFAULT` each
+    step (`FdeltaQFactor` deliberately is not — Pascal l.2574). Added the reset (flag +
+    P factor + mode/operation flags); Rust now matches the oracle to full precision at
+    every step. Gated by the new daily golden **`phase7/invcontrol_voltwatt_daily`**
+    (the previously-rejected daily case, now committed — the snapshot golden alone could
+    not catch a cross-step bug).
     (2) the `Check_Plimits` kVA/pctPmpp clamp arms have **live-only** coverage (the
     10 `*kVAlimitation/kvarlimitation/varP/wattP/pmpp_greater_kva` corpus cases) — no
     committed offline pin, mirroring the step-2b live-only kVA/kvar-clamp note.

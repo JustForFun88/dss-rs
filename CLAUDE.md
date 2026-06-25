@@ -62,6 +62,17 @@ read feeders from that vendored corpus, never from `.inputs/` at runtime.
 - Case-insensitive identifiers via lowercase-normalized keys (THashList semantics).
 - New behavior questions are settled empirically against the oracle (see
   `tools/golden/probe_val.py` for the pattern), not by guessing FPC semantics.
+- **Never wave off a Rust↔oracle divergence as "conditioning / not a bug" without
+  empirical proof.** That label has hidden real port bugs (e.g. a missing per-step
+  state reset in `InvControl.update_inv_control` that latched `FFlagVWOperates`
+  across time steps — see STATUS §WP7.5). A contractive iteration cannot amplify
+  ~1e-8 rounding into a kW-scale gap, so such a gap is a bug until proven otherwise.
+  Prove cause before concluding: (1) tighten the loop tolerance — if the gap
+  collapses, the engines share the fixpoint; (2) run a controlled experiment that
+  isolates the suspect (e.g. fixed vs adaptive factor); (3) dump the per-iteration
+  trajectory + iteration count on both engines and find the first divergence. A gap
+  that vanishes under tighter tolerance but leaves *different iteration counts* is a
+  cross-step state-leak bug, not conditioning.
 - **Commit messages: keep them short.** A concise subject line plus, only if
   needed, 1–3 short bullets — not half a page. State *what changed and why* in a
   sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not

@@ -125,6 +125,7 @@ fn phase7_targeted_scenarios_match_oracle() {
         "invcontrol_voltvar_avg",
         "invcontrol_voltwatt",
         "invcontrol_voltwatt_adaptive",
+        "invcontrol_voltwatt_daily",
         "invcontrol_vv_vw",
     ] {
         assert!(

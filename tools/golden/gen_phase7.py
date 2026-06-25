@@ -396,12 +396,9 @@ def deck_invcontrol_voltwatt() -> list[str]:
 # PV as the fixed-factor scenario; here the convergence runs the adaptive band logic
 # (0.9/0.8/0.2/0.1 thresholds, ±0.1/±0.05 steps) for all 13 iterations — the only
 # gate on the adaptive volt-watt path (the corpus cases all set DeltaP_factor).
-# NOTE a *daily* adaptive run is NOT gated: the adaptive band thresholds are discrete
-# comparisons on the continuous inter-iteration voltage delta, so cross-time-step
-# state seeding can cross a threshold differently between engines and amplify a
-# sub-tolerance difference into a ~1e-5 converged-state divergence at the limiting
-# steps (verified: the snapshot matches bit-for-bit; only the multi-step adaptive
-# path diverges) — conditioning, not a logic bug. See STATUS §1e.
+# The *daily* multi-step path is gated separately by `deck_invcontrol_voltwatt_daily`
+# below — it caught a real port bug the snapshot could not (a missing per-step
+# `FFlagVWOperates`/`FdeltaPFactor` reset that latched across time steps; see STATUS §1e).
 def deck_invcontrol_voltwatt_adaptive() -> list[str]:
     return [
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
@@ -413,6 +410,33 @@ def deck_invcontrol_voltwatt_adaptive() -> list[str]:
         "VoltwattYAxis=PMPPPU",
         *PV_TAIL,
         "set maxcontroliter=2000",
+    ]
+
+
+# The DAILY counterpart to the adaptive snapshot above — the multi-step volt-watt
+# path. An 8-step irradiance shape that alternates limiting (irradiance 1.0 → the PV
+# pushes bus b above the 1.02-pu vw knee so volt-watt limits, latching FFlagVWOperates)
+# and non-limiting (0.4-0.7 → below the knee) steps, and crucially ENDS on a
+# **non-limiting step that follows a limiting one** (step 8 = 0.5 after step 6 = 1.0).
+# That is the discriminator for the cross-time-step bug: with the missing per-step
+# `FFlagVWOperates` reset (Pascal `UpdateInvControl` l.2555-2575) the latched flag
+# forces the damped VW branch on this final step, so it grinds 6-8 control iterations
+# instead of 2 — caught by the golden's exact iteration-count pin (the converged kW is
+# capped at the available power either way, so the final *state* alone would not catch
+# it; the snapshot golden cannot catch it at all). `DeltaP_factor` left unset (adaptive).
+def deck_invcontrol_voltwatt_daily() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=8 units=km",
+        "new XYcurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.02 1.1)",
+        "new Loadshape.irrad npts=8 interval=1 mult=(.4 1.0 .6 1.0 .5 1.0 .7 .5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "irradiance=1.0 daily=irrad",
+        "new InvControl.ic mode=VOLTWATT voltage_curvex_ref=rated voltwatt_curve=vw "
+        "VoltwattYAxis=PMPPPU",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=8",
     ]
 
 
@@ -485,6 +509,7 @@ SCENARIOS = {
     "invcontrol_voltvar_avg": deck_invcontrol_voltvar_avg,
     "invcontrol_voltwatt": deck_invcontrol_voltwatt,
     "invcontrol_voltwatt_adaptive": deck_invcontrol_voltwatt_adaptive,
+    "invcontrol_voltwatt_daily": deck_invcontrol_voltwatt_daily,
     "invcontrol_vv_vw": deck_invcontrol_vv_vw,
 }
 

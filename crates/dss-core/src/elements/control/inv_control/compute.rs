@@ -28,9 +28,9 @@ use crate::elements::traits::ElemRef;
 use crate::util::fmt_g;
 
 use super::{
-    CHANGE_NONE, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL, FLAGDELTAP, FLAGDELTAQ,
-    InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR, NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX,
-    ROC_INACTIVE, VOLTVAR, VOLTWATT, VV_VW, WATTPF,
+    CHANGE_NONE, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL, DELTAPDEFAULT, FLAGDELTAP,
+    FLAGDELTAQ, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR, NONE_COMBMODE, NONE_MODE,
+    REAC_POWER_VARMAX, ROC_INACTIVE, VOLTVAR, VOLTWATT, VV_VW, WATTPF,
 };
 
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
@@ -864,6 +864,26 @@ impl InvControl {
         let dyna_h = env.dyna_h();
 
         for j in 0..self.fleet.len() {
+            // Pascal `UpdateInvControl`'s per-step reset (l.2555-2575, "Reset the
+            // operation flags for the new time step"): clear the DER inverter-control
+            // modes and the per-DER latch/operation flags before seeding the rolling
+            // average. **`f_flag_vw_operates` is load-bearing** — without this reset
+            // it latches across time steps, forcing the damped "requesting" volt-watt
+            // branch (the slow `Change_deltaP` ramp) on every subsequent step instead
+            // of taking the curve point directly, which diverges the multi-step
+            // control trajectory from the oracle. `FdeltaPFactor` resets to
+            // DELTAPDEFAULT each step, but `FdeltaQFactor` deliberately does NOT
+            // (Pascal l.2574 leaves it commented). The NOT_PORTED-mode state (DRCmode,
+            // DQDV, the FWP/FWV/FAVR/FVVDRC operation flags, and the FPrior*Optionpu
+            // priors consumed only by the deferred LPF/RoC path) is omitted.
+            let r = self.fleet[j];
+            env.der_set_vw_mode(r, false);
+            env.der_set_vv_mode(r, false);
+            self.ctrl_vars[j].f_flag_vw_operates = false;
+            self.ctrl_vars[j].f_vv_operation = 0.0;
+            self.ctrl_vars[j].f_vw_operation = 0.0;
+            self.ctrl_vars[j].f_delta_p_factor = DELTAPDEFAULT;
+
             let basekv = self.ctrl_vars[j].f_vbase / 1000.0;
             self.ctrl_vars[j].prior_roll_avg_window = self.ctrl_vars[j].f_roll_avg_window.avg_val();
             self.ctrl_vars[j].prior_drc_roll_avg_window =
