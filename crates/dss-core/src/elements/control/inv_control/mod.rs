@@ -360,12 +360,10 @@ pub struct InvControl {
 
     // --- WP7.5 step-2b runtime state (the DER fleet + dispatch) ---
     /// `FDERPointerList` — the resolved PVSystem/Storage fleet, built lazily on the
-    /// first `Sample` (empty until then), cached across samples like Pascal.
+    /// first `Sample` (empty until then), cached across samples like Pascal. An
+    /// empty fleet re-triggers the build (Pascal `FDERPointerList.Count = 0`); a
+    /// DERList edit clears it (`invalidate_fleet`).
     pub(crate) fleet: Vec<ElemRef>,
-    /// Whether the fleet still needs (re)building — set on a DERList edit, cleared
-    /// after `MakeDERList`. Drives the lazy build (the Pascal `FDERPointerList.Count
-    /// = 0` check at the top of `RecalcElementData`/`Sample`).
-    fleet_list_changed: bool,
     /// `CtrlVars` — one [`InvVars`] per fleet member (1:1 with `fleet`).
     ctrl_vars: Vec<InvVars>,
     /// `FVpuSolutionIdx` — toggles 1↔2 each `UpdateInvControl` pass.
@@ -449,8 +447,7 @@ impl InvControl {
             v_setpoint: 1.0,
             ctrl_model: MODEL_LINEAR,
 
-            fleet: Vec::new(),
-            fleet_list_changed: true, // force the first build
+            fleet: Vec::new(), // empty → the first Sample builds it
             ctrl_vars: Vec::new(),
             f_vpu_solution_idx: 0,
             f_vreg: 0.0,

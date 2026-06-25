@@ -60,11 +60,11 @@ impl InvControl {
     }
 
     /// Pascal `FDERPointerList.Clear` — drop the resolved fleet so the next
-    /// `Sample` rebuilds it (a DERList / PVSystemList edit changes the fleet).
+    /// `Sample` rebuilds it (an empty fleet re-triggers the build; a DERList /
+    /// PVSystemList edit changes the fleet).
     fn invalidate_fleet(&mut self) {
         self.fleet.clear();
         self.ctrl_vars.clear();
-        self.fleet_list_changed = true;
     }
 
     /// Run `ValidateXYCurve` against one resolved curve, nilling it (curve +

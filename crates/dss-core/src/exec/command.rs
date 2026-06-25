@@ -659,13 +659,21 @@ impl Dss {
                 .map(|ic| ic.der_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
-                let resolved: Option<&dyn DssObject> = if let Some(first) = der_names.first() {
-                    let (class, name) = first.split_once('.').unwrap_or(("", first.as_str()));
-                    foreign.find(class, name).map(|(_, o)| o)
-                } else {
+                let resolved: Option<&dyn DssObject> = if der_names.is_empty() {
                     foreign
                         .first_enabled("PVSystem")
                         .or_else(|| foreign.first_enabled("Storage"))
+                } else {
+                    // Pascal `MonitoredElement := FDERPointerList.Get(1)` is the
+                    // first *enabled* member (MakeDERList skips disabled), so scan
+                    // the named list for the first entry resolving to an enabled DER.
+                    der_names.iter().find_map(|n| {
+                        let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
+                        foreign.find(class, name).and_then(|(_, o)| {
+                            let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
+                            enabled.then_some(o)
+                        })
+                    })
                 };
                 resolved
                     .and_then(|o| o.as_ckt_element())

@@ -344,6 +344,31 @@ def deck_invcontrol_voltvar() -> list[str]:
     ]
 
 
+# A *daily* VOLTVAR run with `voltage_curvex_ref=avg` — the rolling-average
+# voltage path (`UpdateInvControl` feeds `FRollAvgWindow` each step;
+# `voltage_curvex_ref=avg` makes Sample use `FPresentVpu := Vpresent / AvgVal`,
+# i.e. the ratio to the prior step's voltage, not `Vpresent / Vbase`). This is the
+# only gate that exercises the rolling-average integration (the corpus `avg`/`ravg`
+# cases are Export-blocked → Phase 8), modeled on `Daily_voltvar_avg-2.dss` minus
+# the Export/Plot. The discriminator: on this deck the avg path settles at
+# kvar ≈ -3.9 where the *rated* path would give ≈ -63, so a regression that
+# bypassed the window (or used Vbase) fails the PV-power pin.
+def deck_invcontrol_voltvar_avg() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=irrad irradiance=1",
+        "new InvControl.ic mode=VOLTVAR voltage_curvex_ref=avg vvc_curve1=vv "
+        "deltaQ_factor=0.2 RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=8",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -385,6 +410,7 @@ SCENARIOS = {
     "storagecontroller_peakshave": deck_storagecontroller_peakshave,
     "storagecontroller_daily": deck_storagecontroller_daily,
     "invcontrol_voltvar": deck_invcontrol_voltvar,
+    "invcontrol_voltvar_avg": deck_invcontrol_voltvar_avg,
 }
 
 

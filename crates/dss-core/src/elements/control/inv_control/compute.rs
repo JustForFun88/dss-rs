@@ -23,6 +23,7 @@
 //! [`InvDispatchEnv`]: InvDispatchEnv
 
 use crate::elements::traits::ElemRef;
+use crate::util::fmt_g;
 
 use super::{
     CHANGEVARLEVEL, FLAGDELTAQ, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR, NONE_COMBMODE,
@@ -108,8 +109,12 @@ pub(crate) trait InvDispatchEnv {
     // --- per-DER write ---
     /// Pascal `DERElem.SetPFPriority(value)`.
     fn der_set_pf_priority(&mut self, r: ElemRef, value: bool);
-    /// Set the DER's inverter-control mode flags (`VWmode`/`VVmode`) + `Varmode`.
+    /// Set the DER's inverter-control mode flags (`VWmode`/`VVmode`) + `Varmode`
+    /// (the `DoPendingAction` path).
     fn der_set_modes(&mut self, r: ElemRef, vw_mode: bool, vv_mode: bool, var_mode: i32);
+    /// Set only `DERElem.VVmode` (the `Sample` path: Pascal sets just `VVmode`,
+    /// leaving `VWmode`/`Varmode` until `DoPendingAction`).
+    fn der_set_vv_mode(&mut self, r: ElemRef, value: bool);
     /// `TPVSystemObj.Presentkvar := q` / `TStorageObj.kvarRequested := q`.
     fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64);
     /// `DERElem.SetNominalDEROutput()`.
@@ -200,24 +205,29 @@ impl InvControl {
             self.f_list_size = self.fleet.len() as i32;
         }
 
-        // (Re)allocate the per-DER CtrlVars (Pascal MakeDERList's init loop).
-        self.ctrl_vars = (0..self.fleet.len())
-            .map(|_| super::InvVars::new())
-            .collect();
-
-        self.fleet_list_changed = false;
         !self.fleet.is_empty()
     }
 
     /// The deferred tail of Pascal `RecalcElementData`: build the fleet, then run
     /// the per-DER setup (`SetPFPriority(FALSE)` off VOLTWATT/WATTPF,
-    /// `UpdateDERParameters`, the rolling-window lengths). Runs once (gated by
-    /// `fleet_list_changed`) on the first `Sample`.
+    /// `UpdateDERParameters`, the rolling-window lengths). Pascal re-runs the build
+    /// whenever `FDERPointerList.Count = 0`, so gate on an **empty** fleet: a
+    /// successful (non-empty) build runs the setup once; a *partial* named list
+    /// that hit a missing member keeps its valid prefix (Count > 0) and is **not**
+    /// rebuilt (errors once); an all-missing / no-DER list stays empty and re-runs
+    /// each `Sample` (the named-missing 14403 every Sample, matching Pascal). A
+    /// DERList edit clears the fleet (`invalidate_fleet`), forcing a rebuild.
     fn ensure_fleet(&mut self, env: &mut dyn InvDispatchEnv) {
-        if !self.fleet_list_changed {
+        if !self.fleet.is_empty() {
             return;
         }
         self.make_der_list(env);
+        // One CtrlVars per built fleet member (Pascal `SetLength(CtrlVars, …)`) —
+        // sized to the *actual* fleet, so a partial named list (a missing member
+        // aborted the build after a valid prefix) still has its prefix allocated.
+        self.ctrl_vars = (0..self.fleet.len())
+            .map(|_| super::InvVars::new())
+            .collect();
 
         self.f_using_mon_buses = !self.mon_buses_name_list.is_empty();
 
@@ -289,9 +299,7 @@ impl InvControl {
     /// Pascal `TInvControlObj.Sample`. Step 2b: the VOLTVAR trigger only; every
     /// other mode records an explicit NOT_PORTED error (never a silent skip).
     pub(crate) fn sample(&mut self, env: &mut dyn InvDispatchEnv) -> Result<(), String> {
-        if self.fleet_list_changed {
-            self.ensure_fleet(env);
-        }
+        self.ensure_fleet(env); // lazy build (Pascal `if FDERPointerList.Count = 0`)
         if self.f_list_size <= 0 {
             return Ok(());
         }
@@ -314,6 +322,15 @@ impl InvControl {
         if self.rate_of_change_mode != ROC_INACTIVE {
             return Err(format!(
                 "InvControl.{}: LPF/RiseFall rate-of-change limiting is not yet ported (WP7.5 step 2e)",
+                self.ccd.cd.obj.name()
+            ));
+        }
+        // Exponential ControlModel runs the `TPICtrl` PI controller in
+        // `CalcVoltVar_vars` (WP7.7); reject it rather than silently freeze the
+        // var output (the deferral-is-never-a-silent-skip convention).
+        if self.ctrl_model != MODEL_LINEAR {
+            return Err(format!(
+                "InvControl.{}: Exponential ControlModel (the PICtrl PI controller) is not yet ported (WP7.7)",
                 self.ccd.cd.obj.name()
             ));
         }
@@ -364,7 +381,9 @@ impl InvControl {
                         .to_string(),
                 );
             }
-            env.der_set_modes(r, false, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
+            // Pascal `Sample` sets only `DERElem.VVmode := TRUE` here; `VWmode :=
+            // FALSE` / `Varmode := VARMODEKVAR` happen in `DoPendingAction`.
+            env.der_set_vv_mode(r, true);
 
             // Trigger from the volt-var mode.
             let cv = &self.ctrl_vars[i];
@@ -379,8 +398,9 @@ impl InvControl {
                 if self.ccd.show_event_log {
                     let der = env.der_full_name(r);
                     let msg = format!(
-                        "**Ready to change var output due to volt-var trigger in volt-var mode**, Vavgpu= {:.5}, VPriorpu={:.5}",
-                        self.ctrl_vars[i].f_present_vpu, self.ctrl_vars[i].f_avgp_vpu_prior
+                        "**Ready to change var output due to volt-var trigger in volt-var mode**, Vavgpu= {}, VPriorpu={}",
+                        fmt_g(self.ctrl_vars[i].f_present_vpu, 5),
+                        fmt_g(self.ctrl_vars[i].f_avgp_vpu_prior, 5)
                     );
                     env.append_event(&der, &msg);
                 }
@@ -440,8 +460,9 @@ impl InvControl {
                 if self.ccd.show_event_log {
                     let der = env.der_full_name(r);
                     let msg = format!(
-                        "VOLTVAR mode requested DER output var level to **, kvar = {:.5}. Actual output set to kvar= {:.5}.",
-                        q_desired_vv, present_kvar
+                        "VOLTVAR mode requested DER output var level to **, kvar = {}. Actual output set to kvar= {}.",
+                        fmt_g(q_desired_vv, 5),
+                        fmt_g(present_kvar, 5)
                     );
                     env.append_event(&der, &msg);
                 }
@@ -457,10 +478,11 @@ impl InvControl {
     /// solution voltages (the hysteresis history). Called at the end of the power
     /// flow loop (`UpdateAll`).
     pub(crate) fn update_inv_control(&mut self, env: &mut dyn InvDispatchEnv) {
-        if self.fleet_list_changed {
-            self.ensure_fleet(env);
-        }
-        // Update the solution index once (Pascal gates on j=1, i=1).
+        self.ensure_fleet(env); // lazy build (Pascal `if FDERPointerList.Count = 0`)
+        // Update the solution index once (Pascal gates on j=1, i=1; for a single
+        // InvControl — every gated case — `i=1`, so the bump is unconditional here.
+        // The multi-InvControl `i=1`-only quirk needs the element-list index the
+        // per-element env doesn't carry; unobservable, only the hysteresis path).
         if self.f_vpu_solution_idx == 2 {
             self.f_vpu_solution_idx = 1;
         } else {
@@ -706,7 +728,8 @@ impl InvControl {
                 }
                 cv.q_desired_vv = cv.q_old_vv + delta_q * cv.f_delta_q_factor;
             } else {
-                // Exponential ControlModel (TPICtrl) — NOT_PORTED (WP7.7).
+                // Unreachable: the Exponential ControlModel (TPICtrl PI controller)
+                // is rejected in `Sample` (WP7.7); kept for structural parity.
                 cv.q_desired_vv = cv.q_old_vv;
             }
         } else {

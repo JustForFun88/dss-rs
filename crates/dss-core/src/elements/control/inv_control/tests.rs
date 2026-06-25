@@ -176,7 +176,6 @@ mod voltvar {
         ders: Vec<MockDer>,
         pushes: Vec<i32>,
         errors: Vec<String>,
-        events: Vec<String>,
         control_iter: i32,
     }
     impl MockEnv {
@@ -185,7 +184,6 @@ mod voltvar {
                 ders,
                 pushes: Vec::new(),
                 errors: Vec::new(),
-                events: Vec::new(),
                 control_iter: 1,
             }
         }
@@ -263,6 +261,7 @@ mod voltvar {
             self.ders[Self::idx(r)].p_priority = value;
         }
         fn der_set_modes(&mut self, _r: ElemRef, _vw: bool, _vv: bool, _var_mode: i32) {}
+        fn der_set_vv_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
             let d = &mut self.ders[Self::idx(r)];
             // Model SetNominalDEROutput's kvar clamp to the limit band.
@@ -276,9 +275,7 @@ mod voltvar {
         fn push_change(&mut self, _delay: f64, code: i32) {
             self.pushes.push(code);
         }
-        fn append_event(&mut self, der: &str, msg: &str) {
-            self.events.push(format!("{der}: {msg}"));
-        }
+        fn append_event(&mut self, _der: &str, _msg: &str) {}
         fn control_iteration(&self) -> i32 {
             self.control_iter
         }
@@ -368,6 +365,63 @@ mod voltvar {
             cv.q_desired_vv
         );
         assert!((env.ders[0].requested_kvar - (-75.8)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn do_pending_action_injects_below_deadband() {
+        // V = 0.90 pu → curve y = +1.0 (inject); QHeadRoom(VARMAX) = 600.
+        // Check_Qlimits clamps QDesireEndpu to the current kvar limit (1.0 pu), then
+        // CalcVoltVar_vars: DeltaQ = 1.0*600 - (-1) = 601; QDesiredVV = -1 + 601*0.2
+        // = +119.2 — the positive (injecting) branch, exercising `QHeadRoom` (not
+        // `QHeadRoomNeg`). Mirrors the absorb test in the opposite direction.
+        let mut ic = voltvar_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 0.90, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_desire_vvpu - 1.0).abs() < 1e-9,
+            "QDesireVVpu = {}",
+            cv.q_desire_vvpu
+        );
+        assert!(
+            cv.q_desired_vv > 0.0 && (cv.q_desired_vv - 119.2).abs() < 1e-9,
+            "QDesiredVV = {} (expected +119.2, injecting)",
+            cv.q_desired_vv
+        );
+    }
+
+    #[test]
+    fn exponential_control_model_aborts_not_silently() {
+        // The Exponential ControlModel runs the (unported) PICtrl PI controller in
+        // CalcVoltVar_vars; Sample must reject it with an explicit error, never run
+        // the silent "stay put" branch (the deferral-is-never-a-silent-skip rule).
+        let mut ic = voltvar_ic();
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("Exponential ControlModel"),
+            "expected an Exponential NOT_PORTED error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn named_missing_does_not_re_error_when_a_valid_der_precedes_it() {
+        // Pascal re-runs MakeDERList only when FDERPointerList.Count = 0; a partial
+        // named list `[valid, missing]` keeps its valid prefix (Count > 0), so the
+        // 14403 fires once — not every Sample.
+        let mut ic = voltvar_ic();
+        ic.set_string_list(
+            prop::DER_LIST,
+            vec!["PVSystem.pv".into(), "PVSystem.gone".into()],
+        );
+        ic.side_effects(prop::DER_LIST, 0);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.sample(&mut env).unwrap(); // second Sample must NOT re-error
+        assert_eq!(env.errors.len(), 1, "errors: {:?}", env.errors);
+        assert_eq!(ic.fleet.len(), 1); // the valid prefix is retained
     }
 
     #[test]
