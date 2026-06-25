@@ -37,10 +37,12 @@ build + `Sample` dispatch defer to step 2b) COMPLETE — lib 577 → 585, golden
 `props/invcontrol.json` (20 oracle-pinned scenarios). WP7.5 step 2b =
 `InvControl` **VOLTVAR dispatch** (`MakeDERList` + the DER-fleet env, `Sample` /
 `DoPendingAction` / `UpdateInvControl`, the volt-var curve→clamp→delta-Q math)
-COMPLETE — lib 585 → 590, golden `phase7/invcontrol_voltvar` (the converged
-model + the exact 18/9 iteration counts) + 5 mock-env tests; **corpus 44 → 50**
-(the 6 SnapShot volt-var cases live-matched; the 7 Daily cases stay Export-blocked,
-Phase 8). next = WP7.5 step 2c: `InvControl` VOLTWATT + VV_VW.**
+COMPLETE — lib 585 → 593 (incl. the audit follow-ups), goldens
+`phase7/invcontrol_voltvar` (the converged model + the exact 18/9 iteration
+counts) + `phase7/invcontrol_voltvar_avg` (the daily rolling-average path) + 8
+mock-env tests; **corpus 44 → 50** (the 6 SnapShot volt-var cases live-matched;
+the 7 Daily cases stay Export-blocked, Phase 8). next = WP7.5 step 2c:
+`InvControl` VOLTWATT + VV_VW.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -94,7 +96,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 590, golden_feeders 1,
+cargo test --workspace      # dss-core lib 593, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -801,6 +803,38 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     *(Also fixed a pre-existing latent clippy `manual_range_contains` warning in
     the step-2a `validate_xy_curve` — kept the readable `y < 0 || y > 1` with a
     local allow rather than the double-negative range-contains.)*
+  - **audit-code follow-up:** verdict faithful 1:1 for the VOLTVAR happy path
+    (golden + 6 corpus cases prove it); fixed 1 Major + 4 Minor. (1) **Major —
+    Exponential `ControlModel` silently froze** (`CalcVoltVar_vars` else-branch set
+    `QDesiredVV := QOldVV`, a plausible no-change, instead of the unported PICtrl
+    PI solve) → now a `Sample`-time abort (the deferral-is-never-silent rule) + an
+    exec-style unit test. (2) `Sample` set `Varmode`/`VWmode` but Pascal sets only
+    `VVmode` there (the rest in `DoPendingAction`) → new `der_set_vv_mode` env
+    method. (3) event-log `{:.5}` → `fmt_g(.., 5)` (`%.5g` significant-figures,
+    matching StorageController). (4) a named DERList resolved the bus from the
+    first *named* entry → now the first *enabled* one (Pascal
+    `FDERPointerList.Get(1)`). (5) a partial named list `[valid, missing]`
+    re-emitted the 14403 every `Sample` → gate the lazy build on an **empty** fleet
+    (Pascal `FDERPointerList.Count = 0`), so a non-empty partial fleet errors once
+    (+ `CtrlVars` sized to the actual fleet in `ensure_fleet`); dropped the
+    now-redundant `fleet_list_changed` flag. Surfaced-not-fixed (both unobservable,
+    single-InvControl / homogeneous-fleet gated cases match): the `FVpuSolutionIdx`
+    `i=1`-only multi-InvControl quirk (needs the element-list index the per-element
+    env doesn't carry) and `FNphases` first-vs-last-DER.
+  - **audit-tests follow-up:** verdict strong (the golden pins the converged kvar +
+    exact 18/9 iters; the −75.8 mock is an independent hand-derivation). Closed the
+    Major gap — the rolling-average path (`avg`/`ravg` + `UpdateInvControl`) had
+    **zero** oracle pin (the corpus `avg`/`ravg` cases are Export-blocked): added
+    the **daily golden `phase7/invcontrol_voltvar_avg`** (`voltage_curvex_ref=avg`,
+    no Export, 8-step daily) that oracle-pins the rolling-average integration — a
+    discriminator, since the avg path settles at kvar ≈ −3.9 where the rated path
+    would give ≈ −63, so a window/avg-branch regression fails the PV-power pin.
+    Added mock tests for the **inject** direction (vpu 0.90 → `QDesiredVV=+119.2`,
+    the `QHeadRoom` branch) + the named-missing-once fix. Surfaced-not-fixed
+    (acceptable): the kVA/kvar-limit clamp is validated **live** (the
+    `greater_kVA`/`varaval_kvarlimitation` corpus cases) but has no committed
+    offline golden; the multi-DER fleet stays untested (every gated case is
+    single-DER). lib **590 → 593**.
 - **next:** WP7.5 step 2c — `InvControl` VOLTWATT + the VV_VW combi mode
   (`CalcPVWcurve_limitpu`/`CalcVoltWatt_watts`); then 2d (DRC / VV_DRC), 2e
   (WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus), step 3 (`ExpControl`), step 4

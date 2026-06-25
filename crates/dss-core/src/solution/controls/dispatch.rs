@@ -1425,6 +1425,14 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.var_mode = var_mode;
         }
     }
+    fn der_set_vv_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.vv_mode = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.vv_mode = value;
+        }
+    }
     fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
