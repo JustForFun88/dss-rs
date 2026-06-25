@@ -11,7 +11,7 @@ Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
 (`RollAvgWindow`) COMPLETE (incl. audits); WP7.5 step 2a (`InvControl`
-parse-only skeleton) COMPLETE — gate green, audits pending.**
+parse-only skeleton) COMPLETE (incl. audits).**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -33,7 +33,8 @@ feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 �
 2a = `InvControl` parse-only skeleton (the class + 34 props + 7 enums + 5
 XYcurve refs + `ValidateXYCurve` + `MakeLike` + registration; the DER-fleet
 build + `Sample` dispatch defer to step 2b) COMPLETE — lib 577 → 585, golden
-`props/invcontrol.json` (13 oracle-pinned scenarios). next = WP7.5 step 2b:
+`props/invcontrol.json` (20 oracle-pinned scenarios, incl. the audit-tests
+follow-up). next = WP7.5 step 2b:
 `InvControl` `Sample`/`DoPendingAction` + VOLTVAR mode.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
@@ -704,18 +705,46 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     dedicated arm — `Reset` is a Pascal no-op (`// inherited`),
     `Sample`/`DoPendingAction` record an explicit "InvControl … not yet ported
     (WP7.5 step 2b)" abort. **NOT_PORTED:** `MakePosSequence`.
-  - **Gate:** `props/invcontrol.json` (**13** oracle-pinned scenarios — default,
-    the six single-mode setups, the VV_VW combi, MonBus, LPF rate-of-change, the
-    bad-curve nulling, the PVSystemList prepend, and MakeLike, all round-trip
-    exactly) + **8 spec-pinned unit tests** (`Create` defaults + the side-effect
-    guards). NOTE the oracle quirk pinned in the scenarios: an InvControl with an
-    *empty* DERList auto-populates DERNameList from the circuit in
-    `RecalcElementData` (which the deferred 2a recalc skips), so every fleet
-    scenario names the DER list explicitly. **Corpus stays 44** (the
-    `Test/InvControl*` family — volt-var/volt-watt/VV_VW/VV_DRC/DRC/watt-pf/
-    watt-var/MonitoredVoltage — needs the step-2b+ dispatch). lib **577 → 585**.
+  - **Gate:** `props/invcontrol.json` (**20** oracle-pinned scenarios — default,
+    the six single-mode setups, the VV_VW/VV_DRC combis, MonBus, LPF/RiseFall
+    rate-of-change, all four curve-nulling arms + the VOLTVAR unchecked path, the
+    every-enum-slot coverage, the PVSystemList prepend, and MakeLike, all
+    round-trip exactly) + **8 spec-pinned unit tests** (`Create` defaults + the
+    side-effect guards). NOTE the oracle quirk pinned in the scenarios: an
+    InvControl with an *empty* DERList auto-populates DERNameList from the circuit
+    in `RecalcElementData` (which the deferred 2a recalc skips), so every fleet
+    scenario names the DER list explicitly (the curve/enum scenarios are DER-free
+    so the empty list stays empty). **Corpus stays 44** (the `Test/InvControl*`
+    family — volt-var/volt-watt/VV_VW/VV_DRC/DRC/watt-pf/watt-var/MonitoredVoltage
+    — needs the step-2b+ dispatch). lib **577 → 585**.
+  - **audit-code follow-up:** verdict faithful 1:1 — the property table (34
+    ordinals + the tail), the seven enums, `ValidateXYCurve`, the side-effect
+    guards, `Create` defaults, and `MakeLike`'s copy set all match the Pascal +
+    the oracle goldens; **no fix needed**. Surfaced-not-fixed (both non-defects):
+    (1) the inert JSON-schema flags `IntervalUnits`/`Units_s`/`Deprecated` on
+    AvgWindowLen/DynReacAvgWindowLen/LPFTau/VV_RefReactivePower/PVSystemList aren't
+    recorded — `PropFlags` has no such variants (consistent with the existing
+    infra, which records inert flags only when the enum defines them); (2)
+    `recalc_element_data` is a no-op, so an InvControl's terminal bus is unset in
+    2a — harmless now (no gate builds Y with an InvControl; any solve aborts at
+    `Sample`), but a **step-2b carry-forward**: `RecalcElementData` must restore
+    `Setbus(1, MonitoredElement.Firstbus)` before `ProcessBusDefs` walks the
+    control, or an empty terminal bus could perturb node ordering.
+  - **audit-tests follow-up:** verdict solid (the props.json is a genuine oracle
+    baseline; the unit tests pin exact Pascal-derived ctor defaults + every
+    side-effect guard; MakeLike decisively pins both copied and not-copied
+    fields). Closed the real coverage gaps — `props/invcontrol.json` **13 → 20**:
+    the WATTPF/WATTVAR/VoltWattCH curve-nulling arms (each a distinct band/message
+    the VOLTWATT scenario didn't reach), the VOLTVAR *unchecked* path (a Y=2 curve
+    is kept, not nilled), and the previously-unpinned enum reverse-render slots
+    (CombiMode VV_DRC, Voltage_CurveX_Ref Avg/RAvg, VoltWattYAxis
+    PAvailablePU/PctPMPPPU/KVARatingPU, RateOfChangeMode RiseFall, Mode GFM,
+    MonVoltageCalc min) + a non-default RiseFallLimit. No lib count change
+    (golden-only).
 - **next:** WP7.5 step 2b — `InvControl` `MakeDERList` + `Sample`/`DoPendingAction`
-  control skeleton + VOLTVAR mode; migrate the volt-var corpus family.
+  control skeleton + VOLTVAR mode (incl. the step-2b carry-forward: restore
+  `RecalcElementData`'s `Setbus` before `ProcessBusDefs`); migrate the volt-var
+  corpus family.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
