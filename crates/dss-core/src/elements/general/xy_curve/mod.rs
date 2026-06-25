@@ -99,6 +99,19 @@ impl XyCurveObj {
         self.npts.max(0) as usize
     }
 
+    /// Test/helper constructor: a curve from explicit `(x, y)` arrays (the same
+    /// state a `npts`/`xarray`/`yarray` parse would leave). Used by control unit
+    /// tests that need a ready volt-var / volt-watt curve without the prop engine.
+    #[cfg(test)]
+    pub(crate) fn from_points(name: &str, xs: &[f64], ys: &[f64]) -> Self {
+        assert_eq!(xs.len(), ys.len(), "from_points: x/y length mismatch");
+        let mut c = Self::new(name);
+        c.npts = xs.len() as i32;
+        c.x_values = xs.to_vec();
+        c.y_values = ys.to_vec();
+        c
+    }
+
     /// The curve's `Y` values (Pascal `YValues`, indexed `1..NumPoints`). Used by
     /// InvControl's `ValidateXYCurve` to range-check a control curve.
     pub fn y_values(&self) -> &[f64] {

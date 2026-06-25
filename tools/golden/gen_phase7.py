@@ -320,6 +320,30 @@ def deck_storagecontroller_daily() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2b: InvControl VOLTVAR (the smart-inverter volt-var dispatch) -
+# Source -> Line.l1 (a deliberately weak line) -> bus b; a PVSystem on b injects
+# 500 kW, raising the bus voltage above 1.0 pu. An InvControl in VOLTVAR mode
+# (RefReactivePower=VARMAX, deltaQ_factor=0.2) reads the PVSystem terminal voltage
+# and absorbs vars per the volt-var curve, regulating the bus back toward the
+# deadband. The gate is the converged electrical model + the PVSystem terminal
+# powers (the controller-driven kvar) + the exact iteration / control-iteration
+# count (the delta-Q convergence path — 18 iters / 9 control iters here).
+def deck_invcontrol_voltvar() -> list[str]:
+    # The same volt-var curve shape as the corpus Standard cases: y=+1 below 0.92,
+    # ramping to 0 at 1.0, to -1 at 1.08, flat thereafter (absorb above nominal).
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv "
+        "deltaQ_factor=0.2 RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=100",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -360,6 +384,7 @@ SCENARIOS = {
     "storage_daily_charge": deck_storage_daily_charge,
     "storagecontroller_peakshave": deck_storagecontroller_peakshave,
     "storagecontroller_daily": deck_storagecontroller_daily,
+    "invcontrol_voltvar": deck_invcontrol_voltvar,
 }
 
 

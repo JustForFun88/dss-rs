@@ -644,6 +644,42 @@ impl Dss {
             }
         }
 
+        // InvControl attaches its terminal to the first controlled DER's bus
+        // (Pascal `RecalcElementData` runs `MakeDERList` + `Setbus(1,
+        // MonitoredElement.Firstbus)`). `recalc_element_data` has no store access,
+        // so resolve the first DER's bus + phase count here (the foreign view) and
+        // hand them to the control; `end_edit` → `recalc` then attaches the
+        // terminal. A named DERList resolves its first entry; an empty list scans
+        // every PVSystem then Storage for the first enabled one (matching
+        // `MakeDERList`'s empty-list branch).
+        if objects[oi].as_any().is::<inv_control::InvControl>() {
+            let der_names: Vec<String> = objects[oi]
+                .as_any()
+                .downcast_ref::<inv_control::InvControl>()
+                .map(|ic| ic.der_name_list().to_vec())
+                .unwrap_or_default();
+            let info: Option<(String, usize)> = {
+                let resolved: Option<&dyn DssObject> = if let Some(first) = der_names.first() {
+                    let (class, name) = first.split_once('.').unwrap_or(("", first.as_str()));
+                    foreign.find(class, name).map(|(_, o)| o)
+                } else {
+                    foreign
+                        .first_enabled("PVSystem")
+                        .or_else(|| foreign.first_enabled("Storage"))
+                };
+                resolved
+                    .and_then(|o| o.as_ckt_element())
+                    .map(|e| (e.cd().get_bus(1).to_string(), e.cd().nphases))
+            };
+            if let Some((bus, nphases)) = info
+                && let Some(ic) = objects[oi]
+                    .as_any_mut()
+                    .downcast_mut::<inv_control::InvControl>()
+            {
+                ic.set_resolved_monitored(bus, nphases);
+            }
+        }
+
         // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it

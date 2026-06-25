@@ -33,19 +33,24 @@
 //! `MakePosSequence`.
 
 mod accessors;
+mod compute;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use compute::{DerSnap, FleetFind as InvFleetFind, InvDispatchEnv, MonitorVar};
+
 use crate::elements::control::control_elem::ControlElemData;
+use crate::elements::control::roll_avg_window::RollAvgWindow;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::traits::ElemRef;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
 // Control-mode ordinals (InvControl.pas `TInvControlControlMode`). The full set
-// is VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5 AVR=6 GFM=7; only the ones
-// the step-2a curve-validation references are bound here (the rest arrive with
-// the step-2b dispatch).
+// is VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5 AVR=6 GFM=7; the dispatch ports
+// land per sub-step (2b: VOLTVAR; 2c–2e: the rest).
 pub(crate) const NONE_MODE: i32 = 0;
+pub(crate) const VOLTVAR: i32 = 1;
 pub(crate) const VOLTWATT: i32 = 2;
 pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
@@ -53,14 +58,23 @@ pub(crate) const WATTVAR: i32 = 5;
 // Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
 pub(crate) const NONE_COMBMODE: i32 = 0;
 
-// Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`).
+// Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`). LPF=1 /
+// RISEFALL=2 arrive with the rate-of-change dispatch (step 2e); only the
+// INACTIVE default is bound here (the VOLTVAR step-2b guard).
 pub(crate) const ROC_INACTIVE: i32 = 0;
+
+// PendingChange action codes (InvControl.pas l.407-411).
+pub(crate) const CHANGE_NONE: i32 = 0;
+pub(crate) const CHANGEVARLEVEL: i32 = 1;
 
 // Reactive-power-reference ordinals (InvControl.pas constants).
 const REAC_POWER_VARAVAL: i32 = 0;
+pub(crate) const REAC_POWER_VARMAX: i32 = 1;
 
-// Monitored-phase sentinel (`DSSClass.pas`; reused via MonPhaseEnum).
+// Monitored-phase sentinels (`DSSClass.pas`; reused via MonPhaseEnum).
 const AVGPHASES: i32 = -1;
+pub(crate) const MAXPHASE: i32 = -2;
+pub(crate) const MINPHASE: i32 = -3;
 
 // Control-model ordinals (InvControl.pas `TInvControlModel`).
 const MODEL_LINEAR: i32 = 0;
@@ -68,6 +82,8 @@ const MODEL_LINEAR: i32 = 0;
 // FLAGDELTAQ / FLAGDELTAP — the "not set" sentinels (InvControl.pas l.417-418).
 pub(crate) const FLAGDELTAQ: f64 = -1.0;
 pub(crate) const FLAGDELTAP: f64 = -1.0;
+// Pascal DELTAQDEFAULT/DELTAPDEFAULT (l.419-420) — the initial adaptive factor.
+pub(crate) const DELTAQDEFAULT: f64 = 0.5;
 
 /// 1-based property ordinals (Pascal `TInvControlProp` + the `TCktElementClass`
 /// tail). The legacy and modern Pascal names differ only in case, so the
@@ -168,9 +184,98 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("InvControl", defs, true)
 }
 
-/// `TInvControlObj` — the parse-time surface (step 2a). The DER fleet, the
-/// per-DER `TInvVars` runtime state, and the `Sample`/dispatch machinery land in
-/// step 2b.
+/// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
+/// member). Only the fields the WP7.5 **step 2b** VOLTVAR dispatch + the shared
+/// machinery (`UpdateInvControl`, `Calc_QHeadRoom`, `Change_deltaQ_factor`,
+/// `UpdateDERParameters`) read/write are carried; the VW/DRC/WV/WP/AVR-only fields
+/// (`QDesiredWP`/`PLimitVW`/...) land with sub-steps 2c–2e. Field names mirror the
+/// Pascal record for a 1:1 read.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct InvVars {
+    /// `CondOffset` — monitored-terminal conductor offset (`(NTerms-1)*NCondsDER`).
+    pub cond_offset: usize,
+    pub nphases_der: usize,
+    pub nconds_der: usize,
+
+    // --- voltages (Sample / UpdateInvControl) ---
+    pub f_avgp_vpu_prior: f64,
+    pub f_avgp_drc_vpu_prior: f64,
+    pub f_present_vpu: f64,
+    pub f_present_drc_vpu: f64,
+
+    // --- volt-var reactive-power state ---
+    /// `QDesiredVV` — the volt-var kvar set-point pushed to the DER.
+    pub q_desired_vv: f64,
+    pub q_old: f64,
+    pub q_old_vv: f64,
+    pub q_headroom: f64,
+    pub q_headroom_neg: f64,
+    pub qoutputpu: f64,
+    pub qoutput_vvpu: f64,
+    /// `QDesireEndpu` — Q (pu) used in the convergence algorithm.
+    pub q_desire_endpu: f64,
+    /// `QDesireVVpu` — Q desired from the volt-var curve (pu of headroom).
+    pub q_desire_vvpu: f64,
+    /// `QDesireLimitedpu` — Q after the kVA / kvarlimit clamp (`Check_Qlimits`).
+    pub q_desire_limitedpu: f64,
+    /// `FdeltaQFactor` — the adaptive convergence damping factor.
+    pub f_delta_q_factor: f64,
+    /// `DeltaV_old` — prior |ΔVpu| (drives `Change_deltaQ_factor`).
+    pub delta_v_old: f64,
+    /// `FVVOperation` — volt-var operating flag (-1 absorb / 1 inject / 0 none).
+    pub f_vv_operation: f64,
+
+    // --- hysteresis (curve 1/2) ---
+    pub flag_change_curve: bool,
+    pub f_active_vv_curve: i32,
+
+    // --- rolling-average windows + the per-step voltage history ---
+    /// `FVpuSolution[1..2]` — last two per-unit solution voltages (index 0 unused).
+    pub f_vpu_solution: [f64; 3],
+    pub prior_roll_avg_window: f64,
+    pub prior_drc_roll_avg_window: f64,
+    pub f_roll_avg_window: RollAvgWindow,
+    pub f_drc_roll_avg_window: RollAvgWindow,
+
+    /// `FPendingChange` — the queued action code for this DER.
+    pub f_pending_change: i32,
+
+    // --- DER parameters refreshed each Sample by `UpdateDERParameters` ---
+    pub f_vbase: f64,
+    pub f_var_follow_inverter: bool,
+    pub f_inverter_on: bool,
+    pub f_present_kw: f64,
+    pub f_kva_rating: f64,
+    pub f_present_kvar: f64,
+    pub f_kvar_limit: f64,
+    pub f_kvar_limit_neg: f64,
+    pub f_current_kvar_limit: f64,
+    pub f_current_kvar_limit_neg: f64,
+    pub f_p_priority: bool,
+}
+
+impl InvVars {
+    /// Pascal `MakeDERList`'s per-DER initialization block (the subset the step-2b
+    /// VOLTVAR path consumes). `QOld`/`QOldVV` start at -1.0; the adaptive factor
+    /// at `DELTAQDEFAULT`; `DeltaV_old` at -1.0; the active curve at 1.
+    fn new() -> Self {
+        Self {
+            q_old: -1.0,
+            q_old_vv: -1.0,
+            f_delta_q_factor: DELTAQDEFAULT,
+            delta_v_old: -1.0,
+            f_active_vv_curve: 1,
+            f_inverter_on: true,
+            f_pending_change: CHANGE_NONE,
+            ..Default::default()
+        }
+    }
+}
+
+/// `TInvControlObj`. The parse-time surface (step 2a) plus the WP7.5 step-2b
+/// VOLTVAR dispatch state: the resolved DER fleet (`fleet`), the per-DER
+/// [`InvVars`] (`ctrl_vars`), and the rolling-average solution-voltage bookkeeping.
+/// VOLTWATT / DRC / WATTPF / WATTVAR / AVR + the combi modes land in 2c–2e.
 #[derive(Debug, Clone)]
 pub struct InvControl {
     pub ccd: ControlElemData,
@@ -252,6 +357,37 @@ pub struct InvControl {
     v_setpoint: f64,
     /// `CtrlModel` (`TInvControlModel`: Linear / Exponential).
     ctrl_model: i32,
+
+    // --- WP7.5 step-2b runtime state (the DER fleet + dispatch) ---
+    /// `FDERPointerList` — the resolved PVSystem/Storage fleet, built lazily on the
+    /// first `Sample` (empty until then), cached across samples like Pascal.
+    pub(crate) fleet: Vec<ElemRef>,
+    /// Whether the fleet still needs (re)building — set on a DERList edit, cleared
+    /// after `MakeDERList`. Drives the lazy build (the Pascal `FDERPointerList.Count
+    /// = 0` check at the top of `RecalcElementData`/`Sample`).
+    fleet_list_changed: bool,
+    /// `CtrlVars` — one [`InvVars`] per fleet member (1:1 with `fleet`).
+    ctrl_vars: Vec<InvVars>,
+    /// `FVpuSolutionIdx` — toggles 1↔2 each `UpdateInvControl` pass.
+    f_vpu_solution_idx: i32,
+    /// `FVreg` — the pu voltage used in the volt-var / volt-watt curves (object-level
+    /// in Pascal; the per-DER value of the current Sample iteration).
+    f_vreg: f64,
+    /// `FUsingMonBuses` — true when `MonBus=` named explicit monitored buses
+    /// (the per-bus `GetMonVoltage` path is NOT_PORTED until step 2e).
+    f_using_mon_buses: bool,
+
+    // --- parse-time resolved monitored-DER bus (the `Setbus(1, MonitoredElement.
+    // Firstbus)` carry-forward; the executive resolves it at edit-completion since
+    // `recalc_element_data` has no store access) ---
+    /// The first DER's `Firstbus` (the bus the control's terminal attaches to).
+    mon_bus: String,
+    /// The (last) DER's phase count (Pascal `FNphases := ControlledElement[i].NPhases`
+    /// over the recalc loop); the control's `NConds` follows.
+    mon_nphases: usize,
+    /// Whether [`set_resolved_monitored`](Self::set_resolved_monitored) ran (a fleet
+    /// member was found at parse time).
+    mon_resolved: bool,
 }
 
 impl InvControl {
@@ -312,6 +448,33 @@ impl InvControl {
 
             v_setpoint: 1.0,
             ctrl_model: MODEL_LINEAR,
+
+            fleet: Vec::new(),
+            fleet_list_changed: true, // force the first build
+            ctrl_vars: Vec::new(),
+            f_vpu_solution_idx: 0,
+            f_vreg: 0.0,
+            f_using_mon_buses: false,
+            mon_bus: String::new(),
+            mon_nphases: 3,
+            mon_resolved: false,
         }
+    }
+
+    /// The executive resolves the first DER's bus at edit-completion (Pascal
+    /// `RecalcElementData` runs `MakeDERList` + `Setbus(1, MonitoredElement.
+    /// Firstbus)`, but the Rust `recalc_element_data` has no store access). Called
+    /// from `exec::command` with the resolved first-DER bus + the (last) DER's phase
+    /// count; `end_edit`/[`recalc`](Self::recalc) then attaches the terminal.
+    pub(crate) fn set_resolved_monitored(&mut self, bus: String, nphases: usize) {
+        self.mon_bus = bus;
+        self.mon_nphases = nphases;
+        self.mon_resolved = true;
+    }
+
+    /// The current DER name list (consumed by the executive's parse-time fleet-bus
+    /// resolution).
+    pub(crate) fn der_name_list(&self) -> &[String] {
+        &self.der_name_list
     }
 }

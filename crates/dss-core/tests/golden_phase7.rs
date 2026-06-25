@@ -121,6 +121,7 @@ fn phase7_targeted_scenarios_match_oracle() {
         "storage_daily_charge",
         "storagecontroller_peakshave",
         "storagecontroller_daily",
+        "invcontrol_voltvar",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),
