@@ -2131,6 +2131,151 @@ SCENARIOS = [
         "allow_errors": True,
         "commands": ["New DynamicExp.de nvariables=2 varnames=[a b] expression=[ dt = b]"],
     },
+    # --- InvControl (WP7.5 step 2a; parse-only skeleton) --------------------
+    # The smart-inverter control over a PVSystem/Storage fleet. step 2a pins the
+    # property table: the seven enums (Mode/CombiMode/Voltage_CurveX_Ref/
+    # VoltWattYAxis/RateOfChangeMode/RefReactivePower/ControlModel), the five
+    # curves (+ the ValidateXYCurve range checks), the DRC / rate-of-change / AVR
+    # scalars, and MakeLike. The DER-fleet build and the Sample dispatch are step
+    # 2b. NOTE: an InvControl with an *empty* DERList auto-populates DERNameList
+    # from the circuit in RecalcElementData; every fleet scenario therefore names
+    # the DER list explicitly (the named branch does not auto-populate), and the
+    # MakeLike scenario keeps the circuit DER-free so the derived object's empty
+    # list stays empty.
+    {
+        "name": "invcontrol_default",
+        "target": "InvControl.ic1",
+        "commands": ["New InvControl.ic1"],
+    },
+    {
+        "name": "invcontrol_voltvar",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.vv npts=4 xarray=(0.5 0.95 1.05 1.5) yarray=(1 1 -1 -1)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=voltvar "
+            "voltage_curvex_ref=rated vvc_curve1=vv hysteresis_offset=-0.1 "
+            "avgwindowlen=30 deltaq_factor=0.4 VoltageChangeTolerance=0.001 "
+            "VarChangeTolerance=0.02 RefReactivePower=varmax",
+        ],
+    },
+    {
+        "name": "invcontrol_voltwatt",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.vw npts=4 xarray=(0.5 1.0 1.06 1.5) yarray=(1 1 0.2 0.2)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=voltwatt voltwatt_curve=vw "
+            "voltwattyaxis=pmpppu deltap_factor=0.3 ActivePChangeTolerance=0.02 "
+            "voltwattch_curve=vw",
+        ],
+    },
+    {
+        # A VOLTWATT curve with Y>1 violates ValidateXYCurve: the curve is dropped
+        # (VoltWatt_Curve dumps '') and error 381 is logged.
+        "name": "invcontrol_voltwatt_badcurve",
+        "target": "InvControl.inv1",
+        "allow_errors": True,
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.bad npts=2 xarray=(1.0 1.1) yarray=(1.5 0.5)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=voltwatt voltwatt_curve=bad",
+        ],
+    },
+    {
+        "name": "invcontrol_drc",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=dynamicreaccurr "
+            "dbvmin=0.97 dbvmax=1.03 argralowv=0.2 argrahiv=0.15 dynreacavgwindowlen=100",
+        ],
+    },
+    {
+        "name": "invcontrol_wattpf",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.wp npts=2 xarray=(0 1) yarray=(1 0.9)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=wattpf wattpf_curve=wp",
+        ],
+    },
+    {
+        "name": "invcontrol_wattvar",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.wv npts=3 xarray=(0 0.5 1) yarray=(0 0.2 -0.3)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=wattvar wattvar_curve=wv",
+        ],
+    },
+    {
+        # Combi VV_VW: both curves set, Mode stays NONE (CombiMode wins).
+        "name": "invcontrol_combi_vvvw",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.vv npts=4 xarray=(0.5 0.95 1.05 1.5) yarray=(1 1 -1 -1)",
+            "New XYcurve.vw npts=4 xarray=(0.5 1.0 1.06 1.5) yarray=(1 1 0.2 0.2)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] combimode=vv_vw "
+            "vvc_curve1=vv voltwatt_curve=vw",
+        ],
+    },
+    {
+        "name": "invcontrol_monbus",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] monvoltagecalc=max "
+            "monbus=[b1.1 b1.2] MonBusesVbase=[7.2 7.2]",
+        ],
+    },
+    {
+        # LPF rate-of-change with a positive Tau (so it stays active).
+        "name": "invcontrol_rateofchange_lpf",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New XYcurve.vv npts=2 xarray=(0.95 1.05) yarray=(1 -1)",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=voltvar vvc_curve1=vv "
+            "rateofchangemode=lpf lpftau=0.5",
+        ],
+    },
+    {
+        "name": "invcontrol_avr",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New InvControl.inv1 DERList=[pvsystem.pv1] mode=avr vsetpoint=1.02 "
+            "controlmodel=1",
+        ],
+    },
+    {
+        # The deprecated PVSystemList prepends "PVSystem." to bare names and writes
+        # the DERList backing; both dump the same list.
+        "name": "invcontrol_pvsystemlist",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New InvControl.inv1 PVSystemList=[pv1] mode=voltvar",
+        ],
+    },
+    {
+        # MakeLike copies the control settings but NOT DERNameList /
+        # MonBusesNameList / RefReactivePower / Vsetpoint / ControlModel /
+        # ShowEventLog (a Pascal quirk): the derived object keeps ctor defaults
+        # for those. The circuit is kept DER-free so the derived empty DERList is
+        # not auto-populated.
+        "name": "invcontrol_makelike",
+        "target": "InvControl.inv1",
+        "commands": [
+            "New XYcurve.vv npts=4 xarray=(0.5 0.95 1.05 1.5) yarray=(1 1 -1 -1)",
+            "New InvControl.base mode=voltvar vvc_curve1=vv dbvmin=0.97 dbvmax=1.03 "
+            "deltaq_factor=0.4 voltwattyaxis=pmpppu eventlog=yes RefReactivePower=varmax "
+            "vsetpoint=1.05 controlmodel=1",
+            "New InvControl.inv1 like=base",
+        ],
+    },
 ]
 
 
