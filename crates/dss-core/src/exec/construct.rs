@@ -179,6 +179,16 @@ impl Dss {
                 |name| Box::new(pvsystem::PVSystem::new(name)),
                 ElemKind::PVSystem,
             ),
+            // InvControl registers after PVSystem (Pascal DSSClassDefs.pas:273;
+            // the UPFC/IndMach012/GICsource/AutoTrans classes between PVSystem
+            // and InvControl are unported, so among ported classes it follows
+            // PVSystem directly). Registration order does not affect node
+            // ordering, which follows element creation order.
+            DssClass::ckt_class(
+                inv_control::class_props(&enums),
+                |name| Box::new(inv_control::InvControl::new(name)),
+                ElemKind::Control,
+            ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
             DssClass::ckt_class(
                 monitor::class_props(&enums),

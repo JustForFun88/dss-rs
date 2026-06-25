@@ -99,6 +99,12 @@ impl XyCurveObj {
         self.npts.max(0) as usize
     }
 
+    /// The curve's `Y` values (Pascal `YValues`, indexed `1..NumPoints`). Used by
+    /// InvControl's `ValidateXYCurve` to range-check a control curve.
+    pub fn y_values(&self) -> &[f64] {
+        &self.y_values
+    }
+
     /// Pascal `TXYcurveObj.InterpolatePoints`: linear interpolation between the
     /// `i`-th and `j`-th points (0-based). When the abscissae coincide the
     /// abscissa-array value is undefined, so the `i`-th ordinate is returned.

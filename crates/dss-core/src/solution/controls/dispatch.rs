@@ -9,6 +9,7 @@ use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
+use crate::elements::control::inv_control::InvControl;
 use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::relay::Relay;
@@ -80,6 +81,11 @@ enum ControlKind {
         monitored: Option<ElemRef>,
         element_terminal: usize,
     },
+    /// InvControl (WP7.5 step 2a): the parse-only skeleton. `Reset` is a Pascal
+    /// no-op; `Sample`/`DoPendingAction` (the DER-fleet dispatch) are deferred to
+    /// step 2b and record an explicit NOT_PORTED error rather than silently
+    /// skipping the control.
+    Inv,
 }
 
 /// The dispatch core: split the borrows, downcast, and invoke `Sample` /
@@ -163,6 +169,11 @@ pub(super) fn dispatch_control(
                     element_terminal: sc.ccd.element_terminal.max(1) as usize,
                 },
                 format!("StorageController.{}", sc.ccd.cd.obj.name()),
+            )
+        } else if let Some(ic) = obj.as_any().downcast_ref::<InvControl>() {
+            (
+                ControlKind::Inv,
+                format!("InvControl.{}", ic.ccd.cd.obj.name()),
             )
         } else {
             return Err(format!(
@@ -323,6 +334,19 @@ pub(super) fn dispatch_control(
         // Handled (and returned) above, before the CtrlCtx was built.
         ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
         ControlKind::StorageCtrl { .. } => unreachable!("StorageController handled above"),
+        // WP7.5 step 2a: InvControl parses but its DER-fleet dispatch is step 2b.
+        // Reset is a Pascal no-op (`// inherited`); Sample/DoPendingAction record
+        // an explicit NOT_PORTED error (never a silent skip).
+        ControlKind::Inv => match op {
+            ControlOp::Reset => {}
+            ControlOp::Sample | ControlOp::Action { .. } => {
+                return Err(abort(
+                    ctx.errors,
+                    &full_name,
+                    "InvControl Sample/DoPendingAction is not yet ported (WP7.5 step 2b)",
+                ));
+            }
+        },
         ControlKind::Swt { controlled } => {
             match op {
                 ControlOp::Sample => {

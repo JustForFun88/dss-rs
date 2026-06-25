@@ -19,6 +19,13 @@ pub(super) struct ControlEnums {
     pub(super) relay_type: EnumId,
     pub(super) relay_action: EnumId,
     pub(super) relay_state: EnumId,
+    pub(super) invcontrol_mode: EnumId,
+    pub(super) invcontrol_combi: EnumId,
+    pub(super) invcontrol_voltage_curvex: EnumId,
+    pub(super) invcontrol_voltwatt_yaxis: EnumId,
+    pub(super) invcontrol_roc: EnumId,
+    pub(super) invcontrol_reac_power: EnumId,
+    pub(super) invcontrol_model: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
@@ -190,6 +197,79 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["closed", "open", "trip"],
         &[2, 1, 1],
     ));
+    // InvControl.pas TInvControl.Create: the seven smart-inverter enums. The
+    // control-mode ordinals are VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5
+    // AVR=6 GFM=7 (NONE_MODE=0 dumps ''); CombiMode VV_VW=1 VV_DRC=2. All seven
+    // are SequentialOrdinals=True upstream.
+    let invcontrol_mode = push(DssEnum::new(
+        "InvControl: Control Mode",
+        true,
+        1,
+        5,
+        &[
+            "Voltvar",
+            "VoltWatt",
+            "DynamicReaccurr",
+            "WattPF",
+            "Wattvar",
+            "AVR",
+            "GFM",
+        ],
+        &[1, 2, 3, 4, 5, 6, 7],
+    ));
+    let invcontrol_combi = push(DssEnum::new(
+        "InvControl: Combi Mode",
+        true,
+        4,
+        4,
+        &["VV_VW", "VV_DRC"],
+        &[1, 2],
+    ));
+    let invcontrol_voltage_curvex = push(DssEnum::new(
+        "InvControl: Voltage Curve X Ref",
+        true,
+        1,
+        2,
+        &["Rated", "Avg", "RAvg"],
+        &[0, 1, 2],
+    ));
+    let invcontrol_voltwatt_yaxis = push(DssEnum::new(
+        "InvControl: Volt-Watt Y-Axis",
+        true,
+        1,
+        2,
+        &["PAvailablePU", "PMPPPU", "PctPMPPPU", "KVARatingPU"],
+        &[0, 1, 2, 3],
+    ));
+    let invcontrol_roc = push(DssEnum::new(
+        "InvControl: Rate-of-change Mode",
+        true,
+        3,
+        3,
+        &["Inactive", "LPF", "RiseFall"],
+        &[0, 1, 2],
+    ));
+    // RefQEnum: AllowLonger=True upstream (e.g. "VARAVAL"/"VARMAX" accept a
+    // longer typed value).
+    let mut refq = DssEnum::new(
+        "InvControl: Reactive Power Reference",
+        true,
+        4,
+        4,
+        &["VARAVAL", "VARMAX"],
+        &[0, 1],
+    );
+    refq.allow_longer = true;
+    let invcontrol_reac_power = push(refq);
+    // ControlModelEnum: MappedIntEnum (JSONUseNumbers) — Linear=0 Exponential=1.
+    let invcontrol_model = push(DssEnum::new(
+        "InvControl: Control Model",
+        true,
+        1,
+        1,
+        &["Linear", "Exponential"],
+        &[0, 1],
+    ));
     ControlEnums {
         reg_control_phase,
         mon_phase,
@@ -205,5 +285,12 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         relay_type,
         relay_action,
         relay_state,
+        invcontrol_mode,
+        invcontrol_combi,
+        invcontrol_voltage_curvex,
+        invcontrol_voltwatt_yaxis,
+        invcontrol_roc,
+        invcontrol_reac_power,
+        invcontrol_model,
     }
 }

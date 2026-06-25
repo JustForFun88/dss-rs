@@ -112,6 +112,20 @@ pub struct EnumRegistry {
     pub relay_action: EnumId,
     /// 'Relay: State' (Relay.pas `StateEnum`).
     pub relay_state: EnumId,
+    /// 'InvControl: Control Mode' (InvControl.pas `ModeEnum`; Voltvar..GFM).
+    pub invcontrol_mode: EnumId,
+    /// 'InvControl: Combi Mode' (InvControl.pas `CombiModeEnum`; VV_VW/VV_DRC).
+    pub invcontrol_combi: EnumId,
+    /// 'InvControl: Voltage Curve X Ref' (InvControl.pas `VoltageCurveXRefEnum`).
+    pub invcontrol_voltage_curvex: EnumId,
+    /// 'InvControl: Volt-Watt Y-Axis' (InvControl.pas `VoltWattYAxisEnum`).
+    pub invcontrol_voltwatt_yaxis: EnumId,
+    /// 'InvControl: Rate-of-change Mode' (InvControl.pas `RoCEnum`).
+    pub invcontrol_roc: EnumId,
+    /// 'InvControl: Reactive Power Reference' (InvControl.pas `RefQEnum`).
+    pub invcontrol_reac_power: EnumId,
+    /// 'InvControl: Control Model' (InvControl.pas `ControlModelEnum`).
+    pub invcontrol_model: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
     /// 'DynamicExp: Domain' (DynamicExp.pas `DomainEnum`).

@@ -78,6 +78,13 @@ impl EnumRegistry {
             relay_type: control.relay_type,
             relay_action: control.relay_action,
             relay_state: control.relay_state,
+            invcontrol_mode: control.invcontrol_mode,
+            invcontrol_combi: control.invcontrol_combi,
+            invcontrol_voltage_curvex: control.invcontrol_voltage_curvex,
+            invcontrol_voltwatt_yaxis: control.invcontrol_voltwatt_yaxis,
+            invcontrol_roc: control.invcontrol_roc,
+            invcontrol_reac_power: control.invcontrol_reac_power,
+            invcontrol_model: control.invcontrol_model,
             add_type: solution.add_type,
             dynamic_exp_domain: general.dynamic_exp_domain,
         }

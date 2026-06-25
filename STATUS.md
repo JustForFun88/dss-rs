@@ -10,7 +10,8 @@
 Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
-(`RollAvgWindow`) COMPLETE (incl. audits).**
+(`RollAvgWindow`) COMPLETE (incl. audits); WP7.5 step 2a (`InvControl`
+parse-only skeleton) COMPLETE — gate green, audits pending.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -28,8 +29,12 @@ fix), 11 mock-env `sample_*` unit tests (exact dispatch arithmetic) + 2 exec tes
 holds-target). **corpus stays 44** (the `StorageControllerTechNote`/`StoCtrl_*`
 feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 →
 **572** (incl. the audit follow-ups). **WP7.5 (DER C) step 1 = `RollAvgWindow`
-(the volt-var/DRC rolling-average helper) COMPLETE — lib 572 → 577; next =
-WP7.5 step 2: `InvControl`.**
+(the volt-var/DRC rolling-average helper) COMPLETE — lib 572 → 577. WP7.5 step
+2a = `InvControl` parse-only skeleton (the class + 34 props + 7 enums + 5
+XYcurve refs + `ValidateXYCurve` + `MakeLike` + registration; the DER-fleet
+build + `Sample` dispatch defer to step 2b) COMPLETE — lib 577 → 585, golden
+`props/invcontrol.json` (13 oracle-pinned scenarios). next = WP7.5 step 2b:
+`InvControl` `Sample`/`DoPendingAction` + VOLTVAR mode.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -76,13 +81,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**; **next = WP7.5 step 2: `InvControl`**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**; **next = WP7.5 step 2b: `InvControl` Sample/dispatch**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 577, golden_feeders 1,
+cargo test --workspace      # dss-core lib 585, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -626,7 +631,9 @@ tests}`):
   `InjCtx.system_y_changed`; it stays generic plumbing but needs no PVSystem/InvControl wiring.
 
 **WP7.5 (DER C: InvControl + ExpControl) — 🚧 IN PROGRESS** (step 1 = the
-`RollAvgWindow` helper; steps 2–4 = `InvControl` / `ExpControl` / gate).
+`RollAvgWindow` helper **COMPLETE**; step 2 = `InvControl` **— sub-step 2a
+(parse-only skeleton) COMPLETE, 2b–2e the dispatch**; step 3 = `ExpControl`;
+step 4 = the gate).
 
 **Step 1 — `RollAvgWindow` (`control/roll_avg_window.rs`).** Port of
 `Controls/RollAvgWindow.pas` (`TRollAvgWindow`, 105 lines) — the fixed-capacity
@@ -665,8 +672,50 @@ registration, corpus stays 44.** lib **572 → 576**.
   NOT latch), which no test sat exactly on. Added `time_threshold_is_strict_greater` (a
   size-100 window, `sum-time == length == 3` stays open so the next add grows to `avg=15`;
   a `>=` regression would evict to `20`). lib **576 → 577**.
-- **next:** WP7.5 step 2 — `InvControl` (`Controls/InvControl.pas`, 3586 lines,
-  the single largest unit in the phase).
+**Step 2 — `InvControl`** (`Controls/InvControl.pas`, 3586 lines, the single
+largest unit in the phase: 8 control modes — VOLTVAR / VOLTWATT / DRC / WATTPF /
+WATTVAR / AVR / GFM + the VV_VW / VV_DRC combi modes). Ported in sub-steps:
+**2a (the parse-only skeleton) COMPLETE**; 2b–2e add the DER-fleet build + the
+per-mode `Sample`/`DoPendingAction` dispatch (planned: 2b VOLTVAR, 2c
+VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
+
+- **step 2a — the parse-only skeleton (`control/inv_control/{mod,accessors,tests}`).**
+  The class on the `TControlElem` base with the full property surface: the 34
+  properties via `class_props`, the **seven smart-inverter enums**
+  (`invcontrol_{mode,combi,voltage_curvex,voltwatt_yaxis,roc,reac_power,model}`
+  in the control enum registry; `MonVoltageCalc` reuses `mon_phase`), the five
+  XYcurve refs (`VVC_Curve1` / `VoltWatt_Curve` / `VoltWattCH_Curve` /
+  `WattPF_Curve` / `WattVar_Curve`, snapshot-clone), the DERList / MonBus string
+  lists + the MonBusesVBase function-sized array, `Create` defaults,
+  `PropertySideEffects` (the `ValidateXYCurve` per-mode Y-range check that nils an
+  out-of-band VOLTWATT/WATTPF/WATTVAR curve with error 381; the DbVMin/DbVMax,
+  LPFTau/RiseFall→INACTIVE, Mode→clears-CombiMode, and PVSystemList-prepend
+  guards), `MakeLike`, and class registration after PVSystem (Pascal
+  DSSClassDefs.pas:273). `ControlModel` is a `MappedIntEnum` (parses + dumps the
+  number, like Generator/PVSystem `model`); `VV_RefReactivePower` is
+  DeprecatedAndRemoved (read-only `''`, like Storage `%Idlingkvar`);
+  `PVSystemList` shares the DERList backing (prepends `PVSystem.`).
+  - **Deferred to step 2b+ (the behavior):** `MakeDERList` (the PVSystem/Storage
+    fleet resolution), `RecalcElementData`'s bus/monitored-element setup, the
+    `monBus` per-bus node parsing (`FMonBuses`/`FMonBusesNodes`, consumed only by
+    `Sample`'s `GetMonVoltage`), the per-DER `TInvVars` runtime state, and the
+    whole `Sample`/`DoPendingAction` dispatch. **Never a silent skip:** the
+    control-sweep dispatcher (`solution/controls/dispatch.rs`) gives InvControl a
+    dedicated arm — `Reset` is a Pascal no-op (`// inherited`),
+    `Sample`/`DoPendingAction` record an explicit "InvControl … not yet ported
+    (WP7.5 step 2b)" abort. **NOT_PORTED:** `MakePosSequence`.
+  - **Gate:** `props/invcontrol.json` (**13** oracle-pinned scenarios — default,
+    the six single-mode setups, the VV_VW combi, MonBus, LPF rate-of-change, the
+    bad-curve nulling, the PVSystemList prepend, and MakeLike, all round-trip
+    exactly) + **8 spec-pinned unit tests** (`Create` defaults + the side-effect
+    guards). NOTE the oracle quirk pinned in the scenarios: an InvControl with an
+    *empty* DERList auto-populates DERNameList from the circuit in
+    `RecalcElementData` (which the deferred 2a recalc skips), so every fleet
+    scenario names the DER list explicitly. **Corpus stays 44** (the
+    `Test/InvControl*` family — volt-var/volt-watt/VV_VW/VV_DRC/DRC/watt-pf/
+    watt-var/MonitoredVoltage — needs the step-2b+ dispatch). lib **577 → 585**.
+- **next:** WP7.5 step 2b — `InvControl` `MakeDERList` + `Sample`/`DoPendingAction`
+  control skeleton + VOLTVAR mode; migrate the volt-var corpus family.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
