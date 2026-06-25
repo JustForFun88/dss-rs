@@ -125,14 +125,15 @@ fn pvsystemlist_prepends_class_and_sizes_list() {
     );
 }
 
-// --- WP7.5 step 2b: the VOLTVAR dispatch math, pinned through a mock env ---
+// --- WP7.5 step 2b/2c: the dispatch math, pinned through a mock env ---
 //
-// The full end-to-end VOLTVAR convergence is oracle-pinned by
-// `tests/golden/phase7/invcontrol_voltvar.json` (the live corpus volt-var family
-// migrates it too). These mock-env tests pin the *per-call* arithmetic — the
-// fleet build, the Sample trigger, `Calc_QHeadRoom`, and the first DoPendingAction
-// curve→clamp→delta-Q step — independent of the PVSystem injection model.
-mod voltvar {
+// The full end-to-end convergence is oracle-pinned by the
+// `tests/golden/phase7/invcontrol_{voltvar,voltwatt,vv_vw}.json` goldens (the live
+// corpus volt-var/volt-watt families migrate them too). These mock-env tests pin
+// the *per-call* arithmetic — the fleet build, the Sample triggers, `Calc_QHeadRoom`/
+// `Calc_PBase`, and the first DoPendingAction curve→clamp→delta step — independent
+// of the PVSystem injection model.
+mod dispatch {
     use super::super::compute::{DerSnap, FleetFind, InvDispatchEnv, MonitorVar};
     use super::super::{InvControl, prop};
     use crate::elements::traits::ElemRef;
@@ -143,7 +144,8 @@ mod voltvar {
     struct MockDer {
         name: String,
         enabled: bool,
-        vmag: f64, // per-phase terminal voltage magnitude (balanced)
+        is_storage: bool, // der_snap reports is_pvsystem = !is_storage
+        vmag: f64,        // per-phase terminal voltage magnitude (balanced)
         vbase: f64,
         present_kw: f64,
         kva_rating: f64,
@@ -153,6 +155,13 @@ mod voltvar {
         /// The last `der_set_kvar_requested` value (post-`SetNominalDEROutput`
         /// readback is modeled ideal: the requested kvar clamped to ±kvarLimit).
         requested_kvar: f64,
+        // --- volt-watt fields (Calc_PBase / Check_Plimits) ---
+        pmpp: f64,       // FDCkWRated
+        pu_pmpp: f64,    // FpctDCkWRated
+        eff_factor: f64, // FEffFactor
+        panel_kw: f64,   // FDCkW
+        /// The last `der_set_kw_requested` value (ideal readback for `der_present_kw`).
+        requested_kw: f64,
     }
     impl MockDer {
         fn new(name: &str, vpu: f64, present_kw: f64) -> Self {
@@ -160,6 +169,7 @@ mod voltvar {
             Self {
                 name: name.into(),
                 enabled: true,
+                is_storage: false,
                 vmag: vpu * vbase,
                 vbase,
                 present_kw,
@@ -168,6 +178,11 @@ mod voltvar {
                 kvar_limit_neg: 600.0,
                 p_priority: false,
                 requested_kvar: 0.0,
+                pmpp: 600.0,
+                pu_pmpp: 1.0,
+                eff_factor: 1.0,
+                panel_kw: present_kw,
+                requested_kw: present_kw,
             }
         }
     }
@@ -228,7 +243,7 @@ mod voltvar {
         fn der_snap(&self, r: ElemRef) -> DerSnap {
             let d = &self.ders[Self::idx(r)];
             DerSnap {
-                is_pvsystem: true,
+                is_pvsystem: !d.is_storage,
                 nphases: 3,
                 nterms: 1,
                 nconds: 4,
@@ -245,6 +260,10 @@ mod voltvar {
                 current_kvar_limit: d.kvar_limit,
                 current_kvar_limit_neg: d.kvar_limit_neg,
                 p_priority: d.p_priority,
+                dckw: d.panel_kw,
+                dckw_rated: d.pmpp,
+                pct_dckw_rated: d.pu_pmpp,
+                eff_factor: d.eff_factor,
             }
         }
         fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
@@ -262,14 +281,22 @@ mod voltvar {
         }
         fn der_set_modes(&mut self, _r: ElemRef, _vw: bool, _vv: bool, _var_mode: i32) {}
         fn der_set_vv_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_vw_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
             let d = &mut self.ders[Self::idx(r)];
             // Model SetNominalDEROutput's kvar clamp to the limit band.
             d.requested_kvar = q.clamp(-d.kvar_limit_neg, d.kvar_limit);
         }
+        fn der_set_kw_requested(&mut self, r: ElemRef, p: f64) {
+            self.ders[Self::idx(r)].requested_kw = p;
+        }
         fn der_set_nominal(&mut self, _r: ElemRef) {}
         fn der_present_kvar(&self, r: ElemRef) -> f64 {
             self.ders[Self::idx(r)].requested_kvar
+        }
+        fn der_present_kw(&self, r: ElemRef) -> f64 {
+            // Ideal readback: the requested kW limit (the VW set-point).
+            self.ders[Self::idx(r)].requested_kw
         }
         fn der_set_monitor_var(&mut self, _r: ElemRef, _kind: MonitorVar, _value: f64) {}
         fn push_change(&mut self, _delay: f64, code: i32) {
@@ -437,6 +464,192 @@ mod voltvar {
             (ic.ctrl_vars[0].q_headroom - expected).abs() < 1e-9,
             "QHeadRoom = {} expected {expected}",
             ic.ctrl_vars[0].q_headroom
+        );
+    }
+
+    // --- WP7.5 step 2c: VOLTWATT + VV_VW ---
+
+    /// A VOLTWATT control with a volt-watt curve that limits above 1.02 pu,
+    /// VoltWattYAxis=%Pmpp (default, PBase = Pmpp), DeltaP_factor=0.45 (a *set*
+    /// factor → used directly each iteration), named-list fleet `pv`.
+    fn voltwatt_ic() -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::VOLTWATT);
+        ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
+        let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vw",
+            &[1.0, 1.02, 1.1],
+            &[1.0, 1.0, 0.0],
+        );
+        ic.voltwatt_curve = Some(curve);
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic
+    }
+
+    #[test]
+    fn voltwatt_limits_kw_above_curve_knee() {
+        // V = 1.05 pu → curve y = 1 - (1.05-1.02)/(1.1-1.02) = 0.625 → PLimitVWpu.
+        // PBase(%Pmpp) = Pmpp = 600. kW_out_desiredpu = presentkW/PBase = 600/600 = 1.
+        // Check_Plimits: no kVA/pctPmpp clamp (var priority headroom 600 > 0.625*600=375;
+        //   pctPmpp 600 > 375) → PLimitLimitedpu = 1, PLimitEndpu = 0.625.
+        // CalcVoltWatt_watts (iter 1, requesting region): POldVWpu = |1| = 1;
+        //   DeltaP = 0.625 - 1 = -0.375; PLimitVW = (1 + (-0.375)*0.45)*600 = 498.75.
+        let mut ic = voltwatt_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 600.0)]);
+        ic.sample(&mut env).unwrap();
+        assert_eq!(env.pushes, vec![super::super::CHANGEWATTLEVEL]);
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.p_limit_vw_pu - 0.625).abs() < 1e-9,
+            "PLimitVWpu = {}",
+            cv.p_limit_vw_pu
+        );
+        assert!(
+            (cv.p_limit_endpu - 0.625).abs() < 1e-9,
+            "PLimitEndpu = {}",
+            cv.p_limit_endpu
+        );
+        assert!(
+            (cv.p_limit_vw - 498.75).abs() < 1e-9,
+            "PLimitVW = {} (expected 498.75)",
+            cv.p_limit_vw
+        );
+        assert!((env.ders[0].requested_kw - 498.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn voltwatt_no_limit_below_curve_knee() {
+        // V = 1.0 pu → curve y = 1.0 (no limit). PLimitEndpu = 1.0; not in the
+        // requesting region (1.0 < 1.0 is false) → PLimitVW = PLimitEndpu*PBase = 600.
+        let mut ic = voltwatt_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.0, 600.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.p_limit_vw_pu - 1.0).abs() < 1e-9,
+            "PLimitVWpu = {}",
+            cv.p_limit_vw_pu
+        );
+        assert!(
+            (cv.p_limit_vw - 600.0).abs() < 1e-9,
+            "PLimitVW = {}",
+            cv.p_limit_vw
+        );
+    }
+
+    #[test]
+    fn voltwatt_storage_is_deferred_not_silent() {
+        // The Storage VOLTWATT/VV_VW dispatch is deferred with an explicit error
+        // (the YPrim-state-flip propagation gap; PVSystem volt-watt is ported).
+        let mut ic = voltwatt_ic();
+        let mut der = MockDer::new("pv", 1.05, 600.0);
+        der.is_storage = true;
+        let mut env = MockEnv::new(vec![der]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("Storage VOLTWATT/VV_VW"),
+            "expected a Storage VW NOT_PORTED error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn vv_vw_dispatches_both_kw_and_kvar() {
+        // CombiMode=VV_VW over a PV at 1.05 pu: the single DoPendingAction sets BOTH
+        // the volt-watt kW limit (curve y=0.625 → PLimitVW=498.75, as in the VW test)
+        // AND a volt-var kvar (curve y=-0.625, VARMAX → QDesireEndpu=-0.625; QHeadRoom
+        // =600; QOldVV=-1 → QDesiredVV = -1 + (-0.625*600 - (-1))*0.2 = -75.8).
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
+        ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vw",
+            &[1.0, 1.02, 1.1],
+            &[1.0, 1.0, 0.0],
+        ));
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 600.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.p_limit_vw - 498.75).abs() < 1e-9,
+            "PLimitVW = {} (expected 498.75)",
+            cv.p_limit_vw
+        );
+        assert!(
+            (cv.q_desired_vv - (-75.8)).abs() < 1e-9,
+            "QDesiredVV = {} (expected -75.8)",
+            cv.q_desired_vv
+        );
+        // Both set-points reached the DER (one SetNominalDEROutput each).
+        assert!((env.ders[0].requested_kw - 498.75).abs() < 1e-9);
+        assert!((env.ders[0].requested_kvar - (-75.8)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn vv_vw_double_push_dispatches_once_via_pending_reset() {
+        // The VV_VW Sample fires BOTH the volt-watt and the volt-var trigger on
+        // ControlIteration 1, queuing CHANGEWATTVARLEVEL twice. DoPendingAction must
+        // dispatch the DER only ONCE (Pascal resets FPendingChange to NONE at the end
+        // of the loop body, so the second queued action is a no-op). Asserted by the
+        // two pushes + a single net convergence step (POldVWpu advanced once: from the
+        // iter-1 seed |kW_out_desiredpu|=1 toward PLimitEndpu, not twice).
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
+        ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
+        ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vw",
+            &[1.0, 1.02, 1.1],
+            &[1.0, 1.0, 0.0],
+        ));
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 600.0)]);
+        ic.sample(&mut env).unwrap();
+        // Both triggers fired → two queued actions.
+        assert_eq!(
+            env.pushes,
+            vec![
+                super::super::CHANGEWATTVARLEVEL,
+                super::super::CHANGEWATTVARLEVEL
+            ]
+        );
+        // Drive DoPendingAction twice (the queue would pop both). The pending-change
+        // reset makes the second call a no-op, so PLimitVW is the single-step result.
+        ic.do_pending_action(&mut env);
+        let after_first = ic.ctrl_vars[0].p_limit_vw;
+        ic.do_pending_action(&mut env);
+        let after_second = ic.ctrl_vars[0].p_limit_vw;
+        assert_eq!(
+            ic.ctrl_vars[0].f_pending_change,
+            super::super::CHANGE_NONE,
+            "pending change must be reset after dispatch"
+        );
+        assert_eq!(
+            after_first, after_second,
+            "the second DoPendingAction must be a no-op (pending reset), not a second step"
+        );
+        assert!(
+            (after_first - 498.75).abs() < 1e-9,
+            "PLimitVW = {after_first}"
         );
     }
 }
