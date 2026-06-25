@@ -16,6 +16,10 @@ use super::{InvControl, VOLTWATT, WATTPF, WATTVAR, prop};
 /// values in `[0, 1]`; WATTPF/WATTVAR require `[-1, 1]`. A violating curve is
 /// dropped (error 381). VOLTVAR is unchecked. Returns `false` (and the caller
 /// nils the curve + name) when the curve is invalid.
+// The explicit `y < lo || y > hi` reads clearer than clippy's negated
+// `!(lo..=hi).contains(&y)` (a double negative), and matches the Pascal
+// `(y > 1.0) or (y < -1.0)` bound test literally.
+#[allow(clippy::manual_range_contains)]
 fn validate_xy_curve(curve: &XyCurveObj, mode: i32) -> Result<(), ()> {
     let ys = curve.y_values();
     match mode {
@@ -35,6 +39,34 @@ fn validate_xy_curve(curve: &XyCurveObj, mode: i32) -> Result<(), ()> {
 }
 
 impl InvControl {
+    /// The parse-time tail of Pascal `RecalcElementData`: with the first DER's bus
+    /// resolved (by the executive at edit-completion), set the control's phase count
+    /// and attach its single terminal to that bus — Pascal `Setbus(1,
+    /// MonitoredElement.Firstbus)`. Without a resolved DER (no fleet member found at
+    /// parse time) the terminal stays unset, exactly like a control whose monitored
+    /// element is missing.
+    ///
+    /// `mon_nphases` is the resolved DER's phase count (Pascal sets `FNphases :=
+    /// ControlledElement[i].NPhases` over the recalc loop — the *last* DER's; for a
+    /// single-DER / homogeneous fleet, the same as the first DER's bus phases).
+    pub(crate) fn recalc(&mut self) {
+        if !self.mon_resolved {
+            return;
+        }
+        self.ccd.cd.nphases = self.mon_nphases;
+        self.ccd.cd.set_nconds(self.mon_nphases);
+        let bus = self.mon_bus.clone();
+        self.ccd.cd.set_bus(1, &bus);
+    }
+
+    /// Pascal `FDERPointerList.Clear` — drop the resolved fleet so the next
+    /// `Sample` rebuilds it (a DERList / PVSystemList edit changes the fleet).
+    fn invalidate_fleet(&mut self) {
+        self.fleet.clear();
+        self.ctrl_vars.clear();
+        self.fleet_list_changed = true;
+    }
+
     /// Run `ValidateXYCurve` against one resolved curve, nilling it (curve +
     /// name) and pushing error 381 when invalid. The message text matches the
     /// Pascal per mode.
@@ -122,10 +154,15 @@ impl CktElement for InvControl {
         &mut self.ccd.cd
     }
 
-    /// Step 2a: the DER-fleet build + bus/monitored-element setup is deferred to
-    /// step 2b (it resolves the PVSystem/Storage fleet through the store, like
-    /// the StorageController). Nothing the props dump reads depends on it.
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {}
+    /// Pascal `TInvControlObj.RecalcElementData` (the parse-time subset): attach
+    /// the control's terminal to the first DER's bus. The fleet *dispatch* build
+    /// (`MakeDERList` + `UpdateDERParameters`) needs store access, so it is deferred
+    /// to the first `Sample`; the bus is resolved at edit-completion instead (the
+    /// executive calls [`set_resolved_monitored`](InvControl::set_resolved_monitored)
+    /// before `end_edit` → `recalc`).
+    fn recalc_element_data(&mut self, _sys: &SysCtx) {
+        self.recalc();
+    }
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
@@ -338,7 +375,9 @@ impl DssObject for InvControl {
         use prop::*;
         match idx {
             DER_LIST => {
-                // Re-alloc based on the new list (the fleet rebuild is step 2b).
+                // Pascal: `FDERPointerList.Clear; FListSize := DERNameList.count`.
+                // Mark the fleet stale so the next `Sample` rebuilds it.
+                self.invalidate_fleet();
                 self.f_list_size = self.der_name_list.len() as i32;
             }
             MODE => self.combi_mode = super::NONE_COMBMODE,
@@ -391,9 +430,12 @@ impl DssObject for InvControl {
         }
     }
 
-    /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData` (a no-op
-    /// in step 2a, see [`CktElement::recalc_element_data`]).
-    fn end_edit(&mut self) {}
+    /// Pascal `TCktElementClass.EndEdit` → `RecalcElementData`: attach the
+    /// terminal to the resolved first-DER bus (the fleet *dispatch* build is
+    /// deferred to the first `Sample`).
+    fn end_edit(&mut self) {
+        self.recalc();
+    }
 
     /// Pascal `TInvControlObj.MakeLike` — copies the parse-time control settings.
     /// The per-DER fleet state (`ControlledElement`/`CtrlVars`) and the

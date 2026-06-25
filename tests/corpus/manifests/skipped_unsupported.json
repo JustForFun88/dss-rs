@@ -533,68 +533,38 @@
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"RefR"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Co"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"RefReacti"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not port"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not port"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"Ref"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"C"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"Ref"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"C"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"RefReact"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"R"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown param"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\","
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\""
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comman"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss",

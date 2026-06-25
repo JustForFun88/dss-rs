@@ -9,11 +9,13 @@ use super::power_flow::solve_snap;
 use super::{SolveEnv, SolveResult, sys_ctx};
 
 /// Pascal `EndOfTimeStepCleanup` (`SolutionAlgs.pas` l.86): the Storage SOC
-/// update (`StorageClass.UpdateAll`) — InvControl/ExpControl updates are WP7.5
-/// — plus the mode-5 monitor sampling (`MonitorClass.SampleAllMode5`, l.96 —
-/// captures the per-step timings).
+/// update (`StorageClass.UpdateAll`), then the InvControl rolling-average feed
+/// (`InvControlClass.UpdateAll`, WP7.5 step 2b — ExpControl is step 3), plus the
+/// mode-5 monitor sampling (`MonitorClass.SampleAllMode5`, l.96 — captures the
+/// per-step timings).
 fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
     update_all_storage(ckt, env);
+    crate::solution::controls::update_all_inv_controls(ckt, env);
     crate::solution::monitors::sample_all_monitors(ckt, env, true);
 }
 

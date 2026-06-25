@@ -9,7 +9,9 @@ use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
-use crate::elements::control::inv_control::InvControl;
+use crate::elements::control::inv_control::{
+    DerSnap, InvControl, InvDispatchEnv, InvFleetFind, MonitorVar,
+};
 use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::relay::Relay;
@@ -18,6 +20,7 @@ use crate::elements::control::storage_controller::{
 };
 use crate::elements::control::swt_control::SwtControl;
 use crate::elements::pc::generator::Generator;
+use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{STORE_EXTERNALMODE, Storage};
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
@@ -81,10 +84,10 @@ enum ControlKind {
         monitored: Option<ElemRef>,
         element_terminal: usize,
     },
-    /// InvControl (WP7.5 step 2a): the parse-only skeleton. `Reset` is a Pascal
-    /// no-op; `Sample`/`DoPendingAction` (the DER-fleet dispatch) are deferred to
-    /// step 2b and record an explicit NOT_PORTED error rather than silently
-    /// skipping the control.
+    /// InvControl dispatches a *dynamic* PVSystem/Storage fleet, so — like the
+    /// GenDispatcher / StorageController — it reaches the fleet through the whole
+    /// class registry (not a fixed pair). WP7.5 step 2b ports the VOLTVAR mode;
+    /// every other mode records an explicit NOT_PORTED error (never a silent skip).
     Inv,
 }
 
@@ -303,6 +306,71 @@ pub(super) fn dispatch_control(
         return Ok(());
     }
 
+    // InvControl dispatches a *dynamic* PVSystem/Storage fleet, so — like the
+    // GenDispatcher / StorageController above — it needs the whole class registry
+    // and none of the `CtrlCtx`; handle it before the shared context is built.
+    if let ControlKind::Inv = kind {
+        // Clone the control out so the store can be borrowed mutably for the fleet;
+        // `Sample`/`DoPendingAction` mutate the cached fleet + per-DER state, copied
+        // back afterwards.
+        let mut ic = store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<InvControl>()
+            .expect("kind matched above")
+            .clone();
+        let pv_systems = ckt.pv_systems.clone();
+        let storages = ckt.storages.clone();
+        let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+        let result = {
+            let Solution {
+                node_v,
+                event_log,
+                control_iteration,
+                int_hour,
+                t,
+                ..
+            } = &mut ckt.solution;
+            let mut env = InvDispEnv {
+                store: &mut **store,
+                node_v: &*node_v,
+                sys: &sys,
+                pv_systems,
+                storages,
+                bus_kvbase,
+                queue,
+                events: event_log,
+                errors,
+                self_ref: r,
+                int_hour: *int_hour,
+                t: *t,
+                control_iter: *control_iteration,
+                dyna_h: sys.dyna_h,
+                dbl_hour: sys.dbl_hour,
+            };
+            match op {
+                ControlOp::Sample => ic.sample(&mut env),
+                ControlOp::Reset => {
+                    ic.reset();
+                    Ok(())
+                }
+                ControlOp::Action { .. } => {
+                    ic.do_pending_action(&mut env);
+                    Ok(())
+                }
+            }
+        };
+        *store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<InvControl>()
+            .expect("kind matched above") = ic;
+        return match result {
+            Ok(()) => Ok(()),
+            Err(what) => Err(abort(errors, &full_name, &what)),
+        };
+    }
+
     // Build the shared control context from disjoint Solution fields.
     let Solution {
         node_v,
@@ -334,19 +402,7 @@ pub(super) fn dispatch_control(
         // Handled (and returned) above, before the CtrlCtx was built.
         ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
         ControlKind::StorageCtrl { .. } => unreachable!("StorageController handled above"),
-        // WP7.5 step 2a: InvControl parses but its DER-fleet dispatch is step 2b.
-        // Reset is a Pascal no-op (`// inherited`); Sample/DoPendingAction record
-        // an explicit NOT_PORTED error (never a silent skip).
-        ControlKind::Inv => match op {
-            ControlOp::Reset => {}
-            ControlOp::Sample | ControlOp::Action { .. } => {
-                return Err(abort(
-                    ctx.errors,
-                    &full_name,
-                    "InvControl Sample/DoPendingAction is not yet ported (WP7.5 step 2b)",
-                ));
-            }
-        },
+        ControlKind::Inv => unreachable!("InvControl handled above"),
         ControlKind::Swt { controlled } => {
             match op {
                 ControlOp::Sample => {
@@ -1157,5 +1213,282 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     }
     fn solve_mode(&self) -> SolveMode {
         self.sys.mode
+    }
+}
+
+/// Pascal `TInvControl.UpdateAll` (`SolutionAlgs.EndOfTimeStepCleanup`): feed every
+/// enabled InvControl's rolling-average windows with the converged solution voltage
+/// at the end of a time step. Mirrors the GenDispatcher/StorageController clone-out
+/// dispatch; runs only in the time-series modes (snapshot has no EndOfTimeStep hook).
+pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let SolveEnv { store, errors, .. } = env;
+    let controls = ckt.controls.clone();
+    let pv_systems = ckt.pv_systems.clone();
+    let storages = ckt.storages.clone();
+    let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+    let Solution {
+        node_v,
+        event_log,
+        control_queue,
+        control_iteration,
+        int_hour,
+        t,
+        ..
+    } = &mut ckt.solution;
+
+    for r in controls {
+        let obj = store.obj(r);
+        if !obj.as_any().is::<InvControl>() || !store.ckt_elem(r).cd().enabled {
+            continue;
+        }
+        let mut ic = store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<InvControl>()
+            .expect("checked above")
+            .clone();
+        {
+            let mut env2 = InvDispEnv {
+                store: &mut **store,
+                node_v: &*node_v,
+                sys: &sys,
+                pv_systems: pv_systems.clone(),
+                storages: storages.clone(),
+                bus_kvbase: bus_kvbase.clone(),
+                queue: &mut *control_queue,
+                events: &mut *event_log,
+                errors,
+                self_ref: r,
+                int_hour: *int_hour,
+                t: *t,
+                control_iter: *control_iteration,
+                dyna_h: sys.dyna_h,
+                dbl_hour: sys.dbl_hour,
+            };
+            ic.update_inv_control(&mut env2);
+        }
+        *store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<InvControl>()
+            .expect("checked above") = ic;
+    }
+}
+
+/// [`InvDispatchEnv`] over the store: the controlled PVSystem/Storage fleet's
+/// state, reached through the class registry. The fleet-scan lists are the
+/// circuit's creation-ordered `pv_systems`/`storages` (cloned by the caller so the
+/// store can be borrowed freely); `bus_kvbase[i]` is bus `i`'s kV base.
+struct InvDispEnv<'a> {
+    store: &'a mut dyn ElemStore,
+    node_v: &'a [Complex64],
+    sys: &'a SysCtx,
+    pv_systems: Vec<ElemRef>,
+    storages: Vec<ElemRef>,
+    bus_kvbase: Vec<f64>,
+    queue: &'a mut ControlQueue,
+    events: &'a mut EventLog,
+    errors: &'a mut Vec<String>,
+    self_ref: ElemRef,
+    int_hour: i32,
+    t: f64,
+    control_iter: i32,
+    dyna_h: f64,
+    dbl_hour: f64,
+}
+
+impl InvDispEnv<'_> {
+    fn find(&self, class: &str, name: &str) -> InvFleetFind {
+        match self.store.find_ckt_element(&format!("{class}.{name}")) {
+            None => InvFleetFind::NotFound,
+            Some(r) => {
+                if self.store.ckt_elem(r).cd().enabled {
+                    InvFleetFind::Found(r)
+                } else {
+                    InvFleetFind::Disabled
+                }
+            }
+        }
+    }
+    fn all_of(&self, class: &str, list: &[ElemRef]) -> Vec<(String, ElemRef, bool)> {
+        list.iter()
+            .map(|&r| {
+                let obj = self.store.obj(r);
+                let enabled = self.store.ckt_elem(r).cd().enabled;
+                (format!("{class}.{}", obj.data().name()), r, enabled)
+            })
+            .collect()
+    }
+}
+
+impl InvDispatchEnv for InvDispEnv<'_> {
+    fn find_pvsystem(&self, name: &str) -> InvFleetFind {
+        self.find("pvsystem", name)
+    }
+    fn find_storage(&self, name: &str) -> InvFleetFind {
+        self.find("storage", name)
+    }
+    fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)> {
+        self.all_of("PVSystem", &self.pv_systems)
+    }
+    fn all_storages(&self) -> Vec<(String, ElemRef, bool)> {
+        self.all_of("Storage", &self.storages)
+    }
+    fn push_error(&mut self, msg: String) {
+        self.errors.push(msg);
+    }
+
+    fn der_snap(&self, r: ElemRef) -> DerSnap {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            DerSnap {
+                is_pvsystem: true,
+                nphases: pv.cd.nphases,
+                nterms: pv.cd.nterms,
+                nconds: pv.cd.nconds,
+                vbase: pv.base.v_base,
+                var_follow_inverter: pv.base.var_follow_inverter,
+                inverter_on: pv.base.inverter_on,
+                present_kw: pv.present_kw(),
+                kva_rating: pv.f_kva_rating,
+                present_kvar: pv.present_kvar(),
+                kvar_limit: pv.f_kvar_limit,
+                kvar_limit_neg: pv.f_kvar_limit_neg,
+                current_kvar_limit: pv.base.current_kvar_limit,
+                current_kvar_limit_neg: pv.base.current_kvar_limit_neg,
+                p_priority: pv.p_priority,
+            }
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            DerSnap {
+                is_pvsystem: false,
+                nphases: st.cd.nphases,
+                nterms: st.cd.nterms,
+                nconds: st.cd.nconds,
+                vbase: st.base.v_base,
+                var_follow_inverter: st.base.var_follow_inverter,
+                inverter_on: st.base.inverter_on,
+                present_kw: st.present_kw(),
+                kva_rating: st.f_kva_rating,
+                present_kvar: st.present_kvar(),
+                kvar_limit: st.f_kvar_limit,
+                kvar_limit_neg: st.f_kvar_limit_neg,
+                current_kvar_limit: st.base.current_kvar_limit,
+                current_kvar_limit_neg: st.base.current_kvar_limit_neg,
+                p_priority: st.p_priority,
+            }
+        } else {
+            panic!("InvControl fleet entry is not a PVSystem or Storage");
+        }
+    }
+
+    fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
+        let elem = self.store.ckt_elem_mut(r);
+        elem.cd_mut().compute_vterminal(self.node_v);
+        let cd = elem.cd();
+        let n = cd.nphases;
+        (0..n).map(|i| cd.vterminal[i].norm()).collect()
+    }
+
+    fn der_bus_vbase(&self, r: ElemRef) -> f64 {
+        let cd = self.store.ckt_elem(r).cd();
+        let bus_ref = cd.terminals[0].bus_ref;
+        self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0) * 1000.0
+    }
+
+    fn der_full_name(&self, r: ElemRef) -> String {
+        let obj = self.store.obj(r);
+        if obj.as_any().is::<PVSystem>() {
+            format!("PVSystem.{}", obj.data().name())
+        } else {
+            format!("Storage.{}", obj.data().name())
+        }
+    }
+
+    fn der_set_pf_priority(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.pf_priority = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.pf_priority = value;
+        }
+    }
+    fn der_set_modes(&mut self, r: ElemRef, vw_mode: bool, vv_mode: bool, var_mode: i32) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.vw_mode = vw_mode;
+            pv.base.vv_mode = vv_mode;
+            pv.base.var_mode = var_mode;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.vw_mode = vw_mode;
+            st.base.vv_mode = vv_mode;
+            st.base.var_mode = var_mode;
+        }
+    }
+    fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            // Pascal `Set_Presentkvar` sets kvarRequested + varMode := VARMODEKVAR.
+            pv.kvar_requested = q;
+            pv.base.var_mode = VARMODE_KVAR;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.kvar_requested = q;
+        }
+    }
+    fn der_set_nominal(&mut self, r: ElemRef) {
+        let sys = self.sys;
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.set_nominal_der_output(sys);
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.set_nominal_der_output(sys);
+        }
+    }
+    fn der_present_kvar(&self, r: ElemRef) -> f64 {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.present_kvar()
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.present_kvar()
+        } else {
+            0.0
+        }
+    }
+    fn der_set_monitor_var(&mut self, r: ElemRef, kind: MonitorVar, value: f64) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            match kind {
+                MonitorVar::Vreg => pv.vreg = value,
+                MonitorVar::VvOperation => pv.vv_operation = value,
+            }
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            match kind {
+                MonitorVar::Vreg => st.vreg = value,
+                MonitorVar::VvOperation => st.vv_operation = value,
+            }
+        }
+    }
+
+    fn push_change(&mut self, delay: f64, code: i32) {
+        self.queue
+            .push_delay(self.int_hour, self.t, delay, code, 0, self.self_ref);
+    }
+    fn append_event(&mut self, der_full_name: &str, msg: &str) {
+        let name = format!(
+            "InvControl.{}, {}",
+            self.store.obj(self.self_ref).data().name(),
+            der_full_name
+        );
+        self.events
+            .append(&name, msg, self.int_hour, self.t, self.control_iter);
+    }
+    fn control_iteration(&self) -> i32 {
+        self.control_iter
+    }
+    fn dyna_h(&self) -> f64 {
+        self.dyna_h
+    }
+    fn dbl_hour(&self) -> f64 {
+        self.dbl_hour
     }
 }

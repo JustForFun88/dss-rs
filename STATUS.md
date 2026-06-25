@@ -11,7 +11,8 @@ Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
 (`RollAvgWindow`) COMPLETE (incl. audits); WP7.5 step 2a (`InvControl`
-parse-only skeleton) COMPLETE (incl. audits).**
+parse-only skeleton) COMPLETE (incl. audits); WP7.5 step 2b (`InvControl`
+VOLTVAR dispatch) COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -33,9 +34,13 @@ feeders stay Export-blocked (Phase 8) / SeasonalRating (NOT_PORTED)). lib 557 �
 2a = `InvControl` parse-only skeleton (the class + 34 props + 7 enums + 5
 XYcurve refs + `ValidateXYCurve` + `MakeLike` + registration; the DER-fleet
 build + `Sample` dispatch defer to step 2b) COMPLETE — lib 577 → 585, golden
-`props/invcontrol.json` (20 oracle-pinned scenarios, incl. the audit-tests
-follow-up). next = WP7.5 step 2b:
-`InvControl` `Sample`/`DoPendingAction` + VOLTVAR mode.**
+`props/invcontrol.json` (20 oracle-pinned scenarios). WP7.5 step 2b =
+`InvControl` **VOLTVAR dispatch** (`MakeDERList` + the DER-fleet env, `Sample` /
+`DoPendingAction` / `UpdateInvControl`, the volt-var curve→clamp→delta-Q math)
+COMPLETE — lib 585 → 590, golden `phase7/invcontrol_voltvar` (the converged
+model + the exact 18/9 iteration counts) + 5 mock-env tests; **corpus 44 → 50**
+(the 6 SnapShot volt-var cases live-matched; the 7 Daily cases stay Export-blocked,
+Phase 8). next = WP7.5 step 2c: `InvControl` VOLTWATT + VV_VW.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -44,7 +49,8 @@ per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
 its golden; `Fault`/`SwtControl`/`Fuse`/`Recloser`/`Relay` + reliability
 activation + the protection gate) lives in **§1e** (per-step summaries) and the
 archives [`phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md) /
-[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **44**.
+[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **50**
+(WP7.5 step 2b migrated the 6 SnapShot volt-var cases).
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -82,13 +88,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**; **next = WP7.5 step 2b: `InvControl` Sample/dispatch**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**; **next = WP7.5 step 2c: VOLTWATT + VV_VW**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 585, golden_feeders 1,
+cargo test --workspace      # dss-core lib 590, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -146,7 +152,7 @@ depend on the temporary `.inputs/electricdss-tst`.
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
 - **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
-  be installed).** For each of the **44** `solvable_now` cases the gate
+  be installed).** For each of the **50** `solvable_now` cases the gate
   compiles+solves on the Rust engine and on the pinned dss-python oracle
   (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
@@ -741,10 +747,64 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     PAvailablePU/PctPMPPPU/KVARatingPU, RateOfChangeMode RiseFall, Mode GFM,
     MonVoltageCalc min) + a non-default RiseFallLimit. No lib count change
     (golden-only).
-- **next:** WP7.5 step 2b — `InvControl` `MakeDERList` + `Sample`/`DoPendingAction`
-  control skeleton + VOLTVAR mode (incl. the step-2b carry-forward: restore
-  `RecalcElementData`'s `Setbus` before `ProcessBusDefs`); migrate the volt-var
-  corpus family.
+- **step 2b — the VOLTVAR dispatch (`control/inv_control/compute.rs` +
+  `dispatch.rs` env).** The real DER-fleet control: `MakeDERList` (named list →
+  14403 on a missing PVSystem/Storage; an empty list scans every PVSystem then
+  Storage, appending each `FullName` to `DERNameList`), the per-DER `TInvVars`
+  runtime state (`ctrl_vars`), `UpdateDERParameters` / `GetMonVoltage` (the
+  no-`MonBus` self-monitoring path), `Sample`'s VOLTVAR trigger + the
+  `DoPendingAction` `CHANGEVARLEVEL` dispatch (`CalcQVVcurve_desiredpu` incl. the
+  hysteresis state machine, `Check_Qlimits`, `Calc_QHeadRoom`, `CalcVoltVar_vars`'s
+  delta-Q convergence + `Change_deltaQ_factor`), and `UpdateInvControl` (the
+  rolling-average feed, wired into `EndOfTimeStepCleanup`'s `UpdateAll`).
+  - **Architecture (the StorageController/GenDispatcher pattern):** the fleet is a
+    *dynamic* set, so `Sample`/`DoPendingAction`/`UpdateAll` reach the
+    PVSystem/Storage fleet through an `InvDispatchEnv` over the store
+    (`dispatch.rs` clones the control out, builds the env, runs, copies back). The
+    fleet resolves **lazily on the first `Sample`**. The control's terminal bus
+    (Pascal `Setbus(1, MonitoredElement.Firstbus)`) is resolved at **parse-time
+    edit-completion** instead (the step-2b carry-forward): `exec/command.rs`
+    resolves the first DER's bus + phase count through the foreign view (a named
+    list → its first entry; an empty list → `ForeignClasses::first_enabled` over
+    PVSystem then Storage) and hands them to `set_resolved_monitored`; `end_edit`
+    → `recalc` attaches the terminal **before `ProcessBusDefs`**, so node ordering
+    matches the oracle.
+  - **The VOLTVAR channel:** `DoPendingAction` sets the DER's `kvar_requested` +
+    `varMode=KVAR` + `vv_mode`, calls `SetNominalDEROutput`, reads back
+    `Get_Presentkvar`. PVSystem's `SetNominalDEROutput` does **not** raise
+    `YprimInvalid` on an inverter cut-in/out (verified in WP7.4's YPrim note), so —
+    like GenDispatcher — InvControl needs **no** `system_y_changed`: the re-solve
+    carries the kvar change via the compensation-current injection.
+  - **The pinned oracle runs `CompatFlags=0`**, so a *set* `deltaQ_factor` is used
+    directly each iteration (`FdeltaQFactor := FdeltaQ_factor`); only the unset
+    sentinel `FLAGDELTAQ` takes the adaptive `Change_deltaQ_factor` path.
+  - **NOT_PORTED / deferred (each an explicit error, never a silent skip):** every
+    non-VOLTVAR mode (VOLTWATT / DRC / WATTPF / WATTVAR / AVR + the VV_VW / VV_DRC
+    combis → 2c–2e), the explicit-`MonBus` `GetMonVoltage` path (`FUsingMonBuses`
+    → 2e), the LPF / Rise-Fall rate-of-change limiting (→ 2e), and the Exponential
+    `ControlModel` (the `TPICtrl` PI controller → WP7.7). `MakePosSequence` stays
+    NOT_PORTED.
+  - **Gate:** targeted golden `phase7/invcontrol_voltvar` (a PVSystem on a weak
+    line absorbing vars per the volt-var curve — node voltages + the PVSystem
+    terminal powers 1e-6 **and the exact 18 iters / 9 control iters**, the delta-Q
+    convergence path; matched the oracle first-run) + **5 mock-env unit tests**
+    (the named-missing 14403, the empty auto-populate, the ControlIteration-1
+    push, the first-DoPendingAction curve→clamp→delta-Q step pinned to
+    `QDesiredVV=-75.8`, and `Calc_QHeadRoom` VARMAX vs VARAVAL). **Corpus 44 → 50:**
+    the **6 SnapShot volt-var cases** (`Standard`, `Standard_varaval`,
+    `varaval_kvarlimitation`, `greater_kVA_ppriority`/`qpriority`, `pctPmpp60`)
+    migrate into `solvable_now` and match the oracle full-model live (voltages,
+    powers, currents, YPrim — covering Check_Qlimits clamps + watt/var priority).
+    The **7 Daily volt-var cases** stay `skipped_unsupported` — blocked by `Export`
+    (Phase 8), **not** numerics (so the `avg`/`ravg` rolling-average path is
+    exercised but its oracle comparison waits on Phase 8). lib **585 → 590**.
+    *(Also fixed a pre-existing latent clippy `manual_range_contains` warning in
+    the step-2a `validate_xy_curve` — kept the readable `y < 0 || y > 1` with a
+    local allow rather than the double-negative range-contains.)*
+- **next:** WP7.5 step 2c — `InvControl` VOLTWATT + the VV_VW combi mode
+  (`CalcPVWcurve_limitpu`/`CalcVoltWatt_watts`); then 2d (DRC / VV_DRC), 2e
+  (WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus), step 3 (`ExpControl`), step 4
+  (the gate).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

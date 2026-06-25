@@ -25,6 +25,7 @@ mod dispatch;
 mod multi_rate;
 mod sampling;
 
+pub(crate) use dispatch::update_all_inv_controls;
 pub(crate) use sampling::{reset_all_controls, sample_do_control_actions};
 
 /// What the dispatch should invoke on the control element.
