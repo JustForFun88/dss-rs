@@ -2276,6 +2276,83 @@ SCENARIOS = [
             "New InvControl.inv1 like=base",
         ],
     },
+    # The seven scenarios below pin the remaining ValidateXYCurve nulling arms and
+    # the un-pinned enum reverse-render slots (audit-tests follow-up). They are
+    # DER-free (no PVSystem, empty DERList) so the deferred-recalc auto-populate
+    # divergence cannot occur (an empty DERList stays empty with no DER present).
+    {
+        # WATTPF curve with Y outside [-1,1]: ValidateXYCurve drops it (WattPF_Curve
+        # dumps '') + error 381 — the WATTPF arm, distinct band/message from VOLTWATT.
+        "name": "invcontrol_wattpf_badcurve",
+        "target": "InvControl.ic",
+        "allow_errors": True,
+        "commands": [
+            "New XYcurve.bad npts=2 xarray=(0 1) yarray=(1.5 0.5)",
+            "New InvControl.ic mode=wattpf wattpf_curve=bad",
+        ],
+    },
+    {
+        # WATTVAR curve with Y outside [-1,1]: dropped (WattVar_Curve '') + 381.
+        "name": "invcontrol_wattvar_badcurve",
+        "target": "InvControl.ic",
+        "allow_errors": True,
+        "commands": [
+            "New XYcurve.bad npts=2 xarray=(0 1) yarray=(0.2 -1.5)",
+            "New InvControl.ic mode=wattvar wattvar_curve=bad",
+        ],
+    },
+    {
+        # VoltWattCH curve out of [0,1]: shares the VOLTWATT validation arm, dropped
+        # (VoltWattCH_Curve '') + 381.
+        "name": "invcontrol_voltwattch_badcurve",
+        "target": "InvControl.ic",
+        "allow_errors": True,
+        "commands": [
+            "New XYcurve.bad npts=2 xarray=(1.0 1.1) yarray=(1.5 0.5)",
+            "New InvControl.ic mode=voltwatt voltwattch_curve=bad",
+        ],
+    },
+    {
+        # VOLTVAR (VVC_Curve1) is NOT range-checked: a Y of 2.0 is kept (VVC_Curve1
+        # still dumps the curve name) — the unchecked path, distinct from the three
+        # validated arms.
+        "name": "invcontrol_voltvar_unchecked_curve",
+        "target": "InvControl.ic",
+        "commands": [
+            "New XYcurve.big npts=2 xarray=(0.95 1.05) yarray=(2 -2)",
+            "New InvControl.ic mode=voltvar vvc_curve1=big",
+        ],
+    },
+    {
+        # Combi VV_DRC + the un-pinned enum slots: Voltage_CurveX_Ref=RAvg,
+        # VoltWattYAxis=KVARatingPU, RateOfChangeMode=RiseFall (a non-default
+        # RiseFallLimit keeps it active), MonVoltageCalc=min.
+        "name": "invcontrol_combi_vvdrc",
+        "target": "InvControl.ic",
+        "commands": [
+            "New InvControl.ic combimode=vv_drc voltage_curvex_ref=ravg "
+            "voltwattyaxis=kvaratingpu rateofchangemode=risefall risefalllimit=0.05 "
+            "monvoltagecalc=min",
+        ],
+    },
+    {
+        # VoltWattYAxis=PctPMPPPU + Voltage_CurveX_Ref=Avg (the remaining slots).
+        "name": "invcontrol_voltwatt_pctpmpp",
+        "target": "InvControl.ic",
+        "commands": [
+            "New XYcurve.vw npts=2 xarray=(1.0 1.1) yarray=(1 0.2)",
+            "New InvControl.ic mode=voltwatt voltwatt_curve=vw voltwattyaxis=pctpmpppu "
+            "voltage_curvex_ref=avg",
+        ],
+    },
+    {
+        # Mode=GFM + VoltWattYAxis=PAvailablePU (the last two enum slots).
+        "name": "invcontrol_gfm",
+        "target": "InvControl.ic",
+        "commands": [
+            "New InvControl.ic mode=gfm voltwattyaxis=pavailablepu",
+        ],
+    },
 ]
 
 
