@@ -1309,6 +1309,23 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
       fleet loop + the window + the Storage SOC carry together). Both have **teeth,
       proven by controlled revert**: corrupting the avg branch ×1.02 fails each (the
       mixed one isolated to `|diff|=0.82 > 7.2e-3`). **2 new goldens; corpus stays 76.**
+    - **Per-STEP (per-hour) comparison for every multi-step `golden_phase7` deck
+      (user-requested).** The phase7 command-replay golden previously compared only the
+      **final** step's state; the daily/duty decks now also pin the **per-hour
+      trajectory**. `gen_phase7.py` `add_step_monitors` auto-adds a `mode=1 ppolar=no`
+      (rectangular P/Q) Monitor on every controlled DER of any `mode=daily`/`mode=duty`
+      deck; `build()` captures every Monitor's channels; `golden_phase7.rs` compares
+      them elementwise via the shared `compare_monitor` (the same comparator
+      `golden_phase6`/`corpus_live` use). So all **16 daily phase7 goldens** (the
+      InvControl daily/24h family + `storage_daily{,_charge}` + `storagecontroller_daily`)
+      now pin each DER's P/Q at **every step** against the oracle, not just the endpoint
+      — closing the "final-state only" gap. (`ppolar=no` avoids the polar power-angle
+      ±180° wraparound that otherwise false-mismatches.) **Survey of the other stages:**
+      `golden_phase5` already steps per-hour (`steps[]`: per-step dblHour/iters/V),
+      `golden_phase6`/`corpus_live` already compare monitor channels per-step, and
+      `golden_checkpoints` pins the assembled model every step — so the only remaining
+      multi-step gap is `golden_ieee8500`'s 24-step daily *registers* segment (cumulative,
+      not per-step; addressed separately).
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).
