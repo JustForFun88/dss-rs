@@ -358,7 +358,12 @@ impl InvControl {
             .map(|_| super::InvVars::new())
             .collect();
 
-        self.f_using_mon_buses = !self.mon_buses_name_list.is_empty();
+        // Pascal `RecalcElementData` l.925: `FUsingMonBuses := (Length(FMonBuses) > 0)`
+        // — keyed off the *parsed* bus array (which `MakeLike` copies), not the raw
+        // `MonBusesNameList` (which `MakeLike` does NOT copy). For a normally-parsed
+        // control the two have equal length; for a `like=`-derived control only
+        // `mon_buses` survives, so this is the self-consistent (and Pascal-faithful) key.
+        self.f_using_mon_buses = !self.mon_buses.is_empty();
 
         for i in 0..self.fleet.len() {
             let snap = env.der_snap(self.fleet[i]);
@@ -421,13 +426,12 @@ impl InvControl {
             let cbuffer: Vec<Complex64> = (0..self.mon_buses.len())
                 .map(|j| {
                     let nodes = &self.mon_buses_nodes[j];
-                    // FMonBusesVbase[j+1] (Pascal 1-based) = mon_buses_vbase[j].
+                    // FMonBusesVbase[j+1] (Pascal 1-based) = mon_buses_vbase[j]. Pascal
+                    // divides unconditionally (l.1633/1637, with its own
+                    // `// TODO: NIL check?`); `.get` only guards the OOB index, which
+                    // never happens (mon_buses_vbase is sized to the same MonBus count).
                     let vbase = self.mon_buses_vbase.get(j).copied().unwrap_or(0.0);
-                    let scale = if vbase != 0.0 {
-                        basekv * 1000.0 / vbase
-                    } else {
-                        0.0
-                    };
+                    let scale = basekv * 1000.0 / vbase;
                     if nodes.len() == 2 {
                         let vi = env.mon_bus_node_v(j, nodes[0]);
                         let vj = env.mon_bus_node_v(j, nodes[1]);

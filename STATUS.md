@@ -1393,6 +1393,24 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     PVSystem` tag — the self path was already ported in 2b; re-probed + migrated here).
     No `.dss` corpus deck sets `RateofChangeMode`, so LPF/RiseFall has corpus-free
     targeted-golden coverage only (like AVR). lib **616 → 620**.
+  - **audit-code follow-up:** verdict faithful 1:1 for every supported (single-
+    InvControl, valid-config) shape — the LPF/RF math, the five `DoPendingAction`
+    tails (incl. the plain-`Min` watts quirk), the MonBus reduce + `GetRef` 1-based
+    indexing, the `FPrior*Optionpu` latch, and `MakeLike` all match Pascal
+    line-for-line. Fixed 2 Minor faithfulness items: (1) **`FUsingMonBuses` keyed off
+    `mon_buses_name_list`** instead of the parsed `mon_buses` — Pascal `RecalcElementData`
+    l.925 uses `Length(FMonBuses)` (which `MakeLike` copies; the name list it does
+    not), so a `like=`-derived MonBus control silently took the self-monitoring path;
+    re-keyed off `mon_buses` (+ a `make_like_preserves_monbus_path` test). (2) the
+    `MonBusesVbase` scale guarded `vbase != 0.0` → 0 where Pascal divides
+    unconditionally (l.1633/1637); restored the unconditional divide (the `.get` stays
+    only for the never-hit OOB index). Surfaced-not-fixed (all unreachable / pre-
+    existing): the `UpdateInvControl` `BasekV := CtrlVars[0]` (Pascal's `CtrlVars[i]`,
+    i = the InvControl element index = 1 for every gated single-InvControl case —
+    multi-MonBus-InvControl is both unreached *and* Pascal-self-buggy, like the
+    existing `FVpuSolutionIdx` i=1 quirk); the `ParseAsBusName` error fallback + the
+    empty-node / unresolved-bus ground reads (defensive, unreachable for valid MonBus
+    specs). lib **620 → 621**.
 - **next:** WP7.5 step 3 (`ExpControl` — the dynamic reactive-power control), then
   step 4 (the gate).
 
