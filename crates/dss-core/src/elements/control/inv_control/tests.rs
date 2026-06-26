@@ -282,6 +282,7 @@ mod dispatch {
         fn der_set_modes(&mut self, _r: ElemRef, _vw: bool, _vv: bool, _var_mode: i32) {}
         fn der_set_vv_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_vw_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_drc_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
             let d = &mut self.ders[Self::idx(r)];
             // Model SetNominalDEROutput's kvar clamp to the limit band.
@@ -310,6 +311,9 @@ mod dispatch {
             1.0
         }
         fn dbl_hour(&self) -> f64 {
+            0.0
+        }
+        fn dyna_t(&self) -> f64 {
             0.0
         }
     }
@@ -678,6 +682,167 @@ mod dispatch {
         assert!(
             (after_first - 498.75).abs() < 1e-9,
             "PLimitVW = {after_first}"
+        );
+    }
+
+    // --- WP7.5 step 2d: DRC + VV_DRC ---
+    //
+    // DRC has no curve: `CalcQDRC_desiredpu` derives the desired var from the
+    // per-step voltage *change* vs the DRC rolling-average window, so these mocks
+    // seed the window directly (the window is fed only by the time-step cleanup,
+    // which the mock env does not run — exactly why the end-to-end gate is the
+    // *daily* `phase7/invcontrol_drc` golden, not a snapshot).
+
+    /// A DRC control: no curve, zero-width deadband (DbVMin=DbVMax=1.0), steep
+    /// slopes (ArGra=50), VARMAX, deltaQ_factor=0.2, named-list fleet `pv`.
+    fn drc_ic() -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::DRC);
+        ic.dbv_min = 1.0;
+        ic.dbv_max = 1.0;
+        ic.ar_gra_low_v = 50.0;
+        ic.ar_gra_hi_v = 50.0;
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic
+    }
+
+    #[test]
+    fn drc_absorbs_on_rising_voltage() {
+        // V = 1.05 pu; seed the DRC window at 1.0 pu (vmag 7200 on the 7200 V base)
+        // -> deltaV = +0.05. V > DbVMax(1.0) -> QDesireDRCpu = -deltaV*ArGraHiV =
+        // -0.05*50 = -2.5. Check_Qlimits clamps QDesireEndpu to -1.0 (kvar limit pu);
+        // CalcDRC_vars (deltaQ=0.2, QOldDRC=-1): QDesiredDRC = -1 + (-1*600 - (-1))*0.2
+        // = -120.8.
+        let mut ic = drc_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap(); // builds the fleet; iter 1 queues CHANGEVARLEVEL
+        ic.ctrl_vars[0]
+            .f_drc_roll_avg_window
+            .add(7200.0, 3600.0, 2.0);
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_desire_drcpu - (-2.5)).abs() < 1e-9,
+            "QDesireDRCpu = {}",
+            cv.q_desire_drcpu
+        );
+        assert!(
+            (cv.q_desired_drc - (-120.8)).abs() < 1e-9,
+            "QDesiredDRC = {} (expected -120.8)",
+            cv.q_desired_drc
+        );
+        assert!((env.ders[0].requested_kvar - (-120.8)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn drc_is_a_noop_when_window_empty() {
+        // The pure-snapshot case: with the DRC rolling-average window empty
+        // (AvgVal = 0) the law forces deltaV -> 0, so QDesireDRCpu = 0 (no
+        // dynamic-reactive-current request). This is why DRC must be gated by a
+        // multi-step golden, not a snapshot.
+        let mut ic = drc_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // window never seeded
+        assert_eq!(
+            ic.ctrl_vars[0].q_desire_drcpu, 0.0,
+            "DRC must request 0 vars with an empty window"
+        );
+    }
+
+    #[test]
+    fn vv_drc_sums_curve_and_drc_q() {
+        // CombiMode=VV_DRC at V = 1.01 pu (just above the deadband) with the window
+        // seeded at 1.0 pu (deltaV = +0.01):
+        //   QDesireVVpu  = vv curve @1.01 = -0.125 (linear 1.0->1.08 maps 0->-1),
+        //   QDesireDRCpu = -deltaV*ArGraHiV = -0.01*50 = -0.5,
+        //   q_sum = -0.625 (NOT clamped: |q| < kvar-limit pu 1.0),
+        //   QDesireEndpu = -0.625; CalcVVDRC_vars (deltaQ=0.2, QOldVVDRC=-1):
+        //   QDesiredVVDRC = -1 + (-0.625*600 - (-1))*0.2 = -75.8.
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.dbv_min = 1.0;
+        ic.dbv_max = 1.0;
+        ic.ar_gra_low_v = 50.0;
+        ic.ar_gra_hi_v = 50.0;
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.01, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0]
+            .f_drc_roll_avg_window
+            .add(7200.0, 3600.0, 2.0);
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_desire_vvpu - (-0.125)).abs() < 1e-9,
+            "QDesireVVpu = {}",
+            cv.q_desire_vvpu
+        );
+        assert!(
+            (cv.q_desire_drcpu - (-0.5)).abs() < 1e-9,
+            "QDesireDRCpu = {}",
+            cv.q_desire_drcpu
+        );
+        assert!(
+            (cv.q_desired_vvdrc - (-75.8)).abs() < 1e-9,
+            "QDesiredVVDRC = {} (expected -75.8)",
+            cv.q_desired_vvdrc
+        );
+        assert!((env.ders[0].requested_kvar - (-75.8)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn vv_drc_pushes_changedrcvvarlevel() {
+        // The VV_DRC Sample queues CHANGEDRCVVARLEVEL (4), not CHANGEVARLEVEL — the
+        // dedicated combi action code the joint DoPendingAction dispatches on.
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 1.0, 1.5],
+            &[1.0, 0.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        // Both the DRC and the volt-var trigger fire on iter 1 (the latter via the
+        // ControlIteration==1 arm); both queue CHANGEDRCVVARLEVEL.
+        assert!(
+            env.pushes
+                .iter()
+                .all(|&c| c == super::super::CHANGEDRCVVARLEVEL),
+            "expected only CHANGEDRCVVARLEVEL, got {:?}",
+            env.pushes
+        );
+        assert!(!env.pushes.is_empty());
+    }
+
+    #[test]
+    fn wattpf_mode_aborts_not_silently() {
+        // WATTPF is still deferred (step 2e); Sample must reject it loudly, never
+        // silently no-op (the deferral-is-never-a-silent-skip rule).
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::WATTPF);
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("deferred to 2e"),
+            "expected a WATTPF NOT_PORTED error, got: {err}"
         );
     }
 }

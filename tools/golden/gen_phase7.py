@@ -465,6 +465,55 @@ def deck_invcontrol_vv_vw() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2d: InvControl DRC (the dynamic-reactive-current mode) ---------
+# DRC has NO curve: it absorbs/injects vars proportional to the per-step voltage
+# *change* tracked by the DRC rolling-average window (deltaV = present pu - rolling
+# avg), so it only operates in a multi-step run (the window is fed in
+# `EndOfTimeStepCleanup`; a pure snapshot is a no-op). The same weak line + a daily
+# irradiance shape make the bus voltage rise step-to-step; with a zero-width
+# deadband (DbVMin=DbVMax=1) and steep slopes (ArGra=50), the PV absorbs vars per
+# `CalcQDRC_desiredpu` -> `CalcDRC_vars` (the delta-Q convergence). This is the only
+# gate on the DRC path (the corpus DRC cases are Export/Plot-blocked -> Phase 8),
+# modeled on `DRC/Daily_DRC-2.dss` minus the Export/Plot.
+def deck_invcontrol_drc() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=irrad irradiance=1",
+        # DynReacavgwindowlen=2s exercises the IntervalUnits time-unit suffix (s/m/h)
+        # the corpus DRC family uses (here "s" => seconds, identical to a bare 2).
+        "new InvControl.ic mode=DRC DbVMin=1 DbVMax=1 ArGraLowV=50 ArGraHiV=50 "
+        "DynReacavgwindowlen=2s deltaQ_factor=0.2 RefReactivePower=VARMAX "
+        "varchangetolerance=0.00001 voltagechangetolerance=0.00001",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=8",
+    ]
+
+
+# --- WP7.5 step 2d: InvControl VV_DRC (the combined volt-var + DRC mode) --------
+# The same weak line + daily irradiance; CombiMode=VV_DRC runs the volt-var curve Q
+# *summed* with the DRC dynamic-reactive-current Q in one CHANGEDRCVVARLEVEL action
+# (`CalcVVDRC_vars`). Pins the joint converged kvar of the PV over the daily run.
+def deck_invcontrol_vv_drc() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=irrad irradiance=1",
+        "new InvControl.ic combimode=VV_DRC vvc_curve1=vv DbVMin=1 DbVMax=1 "
+        "ArGraLowV=50 ArGraHiV=50 DynReacavgwindowlen=2s deltaQ_factor=0.2 "
+        "RefReactivePower=VARMAX varchangetolerance=0.00001 voltagechangetolerance=0.00001",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=8",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -511,6 +560,8 @@ SCENARIOS = {
     "invcontrol_voltwatt_adaptive": deck_invcontrol_voltwatt_adaptive,
     "invcontrol_voltwatt_daily": deck_invcontrol_voltwatt_daily,
     "invcontrol_vv_vw": deck_invcontrol_vv_vw,
+    "invcontrol_drc": deck_invcontrol_drc,
+    "invcontrol_vv_drc": deck_invcontrol_vv_drc,
 }
 
 

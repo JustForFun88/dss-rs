@@ -3,7 +3,10 @@
 //! `SetObj*`). Split out of `class_props/mod.rs` (no behavioral change).
 
 use crate::obj::base::DssObject;
-use crate::obj::props::setters::{get_double, get_integer, set_obj_double, set_obj_integer};
+use crate::obj::props::setters::{
+    get_double, get_integer, interval_units_error, parse_interval_units_f64,
+    parse_interval_units_i32, set_obj_double, set_obj_integer,
+};
 use crate::obj::props::{PropEngine, PropFlags, PropType};
 use crate::util::interpret_dbl_array;
 use dss_parser::ParserError;
@@ -34,7 +37,18 @@ impl ClassProps {
         }
         match pd.ptype {
             PropType::Double => {
-                let v = get_double(eng, value)?;
+                let v = if pd.flags.contains(PropFlags::INTERVAL_UNITS) {
+                    match parse_interval_units_f64(value) {
+                        Some(v) => v,
+                        None => {
+                            // Pascal logs the message and `Exit`s — field unchanged.
+                            eng.errors.push(interval_units_error(&full, pd.name, value));
+                            return Ok(0);
+                        }
+                    }
+                } else {
+                    get_double(eng, value)?
+                };
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
                     obj.prop_scale(idx, false)
                 } else {
@@ -200,7 +214,18 @@ impl ClassProps {
                 Ok(0)
             }
             PropType::Integer => {
-                let v = get_integer(eng, value)?;
+                let v = if pd.flags.contains(PropFlags::INTERVAL_UNITS) {
+                    match parse_interval_units_i32(value) {
+                        Some(v) => v,
+                        None => {
+                            // Pascal logs the message and `Exit`s — field unchanged.
+                            eng.errors.push(interval_units_error(&full, pd.name, value));
+                            return Ok(obj.get_i32(idx));
+                        }
+                    }
+                } else {
+                    get_integer(eng, value)?
+                };
                 Ok(set_obj_integer(pd, obj, idx, v, eng, &full))
             }
             PropType::Boolean => {

@@ -7,13 +7,14 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-25 — **Phase 7 IN PROGRESS** (branch
+Last updated: 2026-06-26 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
 (`RollAvgWindow`) COMPLETE (incl. audits); WP7.5 step 2a (`InvControl`
 parse-only skeleton) COMPLETE (incl. audits); WP7.5 step 2b (`InvControl`
 VOLTVAR dispatch) COMPLETE; WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW
-dispatch) COMPLETE.**
+dispatch) COMPLETE; WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch)
+COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -53,8 +54,17 @@ live-matched). Key fix: the **`FPendingChange` reset at the end of the
 `DoPendingAction` loop body** (Pascal l.1606) — the VV_VW double-push (volt-watt
 *and* volt-var triggers both queue `CHANGEWATTVARLEVEL`) must dispatch the DER
 once per control iteration, not once per queued action. **Storage VOLTWATT/VV_VW
-deferred** (explicit error; PVSystem is ported). next = WP7.5 step 2d: DRC /
-VV_DRC.**
+deferred** (explicit error; PVSystem is ported). WP7.5 step 2d = `InvControl`
+**DRC + VV_DRC** (`CalcQDRC_desiredpu` dynamic-reactive-current law over the DRC
+rolling-average window + `CalcDRC_vars`/`CalcVVDRC_vars`; the joint volt-var+DRC
+`DoPendingAction`) COMPLETE — lib 599 → 607, goldens `phase7/invcontrol_drc`
+(daily; the DRC dynamic-reactive-current path) + `phase7/invcontrol_vv_drc`
+(daily; the joint VV+DRC Q) + 5 mock-env tests. **Also landed the
+`IntervalUnits` time-unit suffix parse** (`h`/`m`/`s` on `AvgWindowLen`/
+`DynReacAvgWindowLen`; the parser is now 1:1 with DSS for time units) — 3
+oracle-pinned props scenarios (each suffix on both props) + 3 unit tests. corpus
+stays 74 (the DRC/VV_DRC corpus family is daily + Export/Plot-blocked → Phase 8).
+next = WP7.5 step 2e: WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus.**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -102,13 +112,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**; **next = WP7.5 step 2d: DRC + VV_DRC**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**; **next = WP7.5 step 2e: WATTPF + WATTVAR + AVR + LPF/RiseFall + MonBus**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 599, golden_feeders 1,
+cargo test --workspace      # dss-core lib 607, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -652,9 +662,9 @@ tests}`):
   `InjCtx.system_y_changed`; it stays generic plumbing but needs no PVSystem/InvControl wiring.
 
 **WP7.5 (DER C: InvControl + ExpControl) — 🚧 IN PROGRESS** (step 1 = the
-`RollAvgWindow` helper **COMPLETE**; step 2 = `InvControl` **— sub-step 2a
-(parse-only skeleton) COMPLETE, 2b–2e the dispatch**; step 3 = `ExpControl`;
-step 4 = the gate).
+`RollAvgWindow` helper **COMPLETE**; step 2 = `InvControl` **— sub-steps 2a
+(parse-only skeleton) / 2b (VOLTVAR) / 2c (VOLTWATT + VV_VW) / 2d (DRC + VV_DRC)
+COMPLETE, 2e the remaining dispatch**; step 3 = `ExpControl`; step 4 = the gate).
 
 **Step 1 — `RollAvgWindow` (`control/roll_avg_window.rs`).** Port of
 `Controls/RollAvgWindow.pas` (`TRollAvgWindow`, 105 lines) — the fixed-capacity
@@ -937,10 +947,55 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     (2) the `Check_Plimits` kVA/pctPmpp clamp arms have **live-only** coverage (the
     10 `*kVAlimitation/kvarlimitation/varP/wattP/pmpp_greater_kva` corpus cases) — no
     committed offline pin, mirroring the step-2b live-only kVA/kvar-clamp note.
-- **next:** WP7.5 step 2d — `InvControl` DRC + the VV_DRC combi mode
-  (`CalcQDRC_desiredpu`/`CalcDRC_vars`/`CalcVVDRC_vars` + the DRC rolling-average
-  window); then 2e (WATTPF / WATTVAR / AVR + LPF/RiseFall + MonBus), step 3
-  (`ExpControl`), step 4 (the gate).
+- **step 2d — the DRC + VV_DRC dispatch (`control/inv_control/compute.rs`).**
+  Adds the **DRC** (dynamic reactive current) single mode and the **VV_DRC** combi
+  mode. DRC needs **no curve**: `CalcQDRC_desiredpu` derives the desired Q from the
+  per-step voltage *change* vs the DRC rolling-average window
+  (`deltaVDynReac = FPresentDRCVpu − FDRCRollAvgWindow.AvgVal/Vbase`), clamped by a
+  deadband (`DbVMin`/`DbVMax`) × slope (`ArGraLowV`/`ArGraHiV`); `CalcDRC_vars` is
+  the delta-Q convergence over `QOldDRC` (same shape as `CalcVoltVar_vars` minus the
+  curve-hysteresis branch). **VV_DRC** sums the volt-var curve Q *and* the DRC Q in
+  one `CHANGEDRCVVARLEVEL` action (`CalcVVDRC_vars`). `Sample`'s DRC/VV_DRC triggers,
+  the `DoPendingAction` DRC/VV_DRC branches, and the `Check_Qlimits` error bands
+  (DRC = 0.0005, VV_DRC = 0.005) + operation-flag assignments (`FDRCOperation`/
+  `FVVDRCOperation`) ported. The shared `Change_deltaQ_factor` adaptive band logic
+  was **extracted from `CalcVoltVar_vars`'s inline** into `change_deltaq_factor`/
+  `update_deltaq_factor` so VOLTVAR/DRC/VV_DRC share it (the existing VOLTVAR
+  golden + 6 corpus cases prove the refactor is behavior-preserving). The
+  `UpdateInvControl` per-step reset now also clears `DRCmode`/`FDRCOperation`/
+  `FVVDRCOperation` (the cross-step-leak class, like `FFlagVWOperates` in 2c).
+  - **DRC is a no-op in a pure snapshot** (the DRC rolling-average window is fed only
+    by the time-series `EndOfTimeStepCleanup`, so `AvgVal = 0` → `deltaV = 0` →
+    `QDesireDRCpu = 0`), so the targeted goldens are **daily** runs (like
+    `invcontrol_voltvar_avg`), not snapshots. New env method `der_set_drc_mode` +
+    `dyna_t` (the `Dynavars.t = 1` guard); new `MonitorVar::{DrcAvg,DrcOperation,
+    VvDrcOperation}` (mode-3 monitor state, unobservable until WP7.7).
+  - **Also landed the `IntervalUnits` time-unit suffix parse** (the user-requested
+    1:1 parser fidelity): `AvgWindowLen` / `DynReacAvgWindowLen` accept a trailing
+    `h` (×3600) / `m` (×60) / `s` (×1) char (a bare number = seconds), matching
+    Pascal `DSSObjectHelper.pas` l.273/325 exactly (lowercase-only `case`, bad
+    number/unit logs error 2020034/2020035 and leaves the field unchanged). New
+    `PropFlags::INTERVAL_UNITS` + `parse_interval_units_{i32,f64}` in the shared
+    property engine (Integer + Double arms); the corpus DRC/VV_DRC family uses the
+    `2s` form.
+  - **Storage DRC/VV_DRC:** DRC is **not** Storage-guarded (unlike VOLTWATT/VV_VW) —
+    `do_pending_drc`/`_vv_drc` set `var_mode = KVAR` via `der_set_modes` for both
+    PV and Storage, and DRC dispatches kvar setpoints (no Storage state flip), so
+    the WP7.4 YPrim-rebuild concern that gated Storage volt-watt does not apply.
+  - **Gate:** targeted goldens `phase7/invcontrol_drc` (a daily PV on a weak line;
+    the DRC absorbs vars per `CalcQDRC_desiredpu` → ~3.4 kvar/phase final, 20 iters)
+    + `phase7/invcontrol_vv_drc` (the joint VV+DRC Q, ~14.6 kvar/phase, 14 iters) +
+    **5 mock-env tests** (DRC absorb pinned to `QDesireDRCpu=-2.5`/`QDesiredDRC=-120.8`;
+    the snapshot no-op `QDesireDRCpu=0`; the VV_DRC sum `QDesireVVpu=-0.125`+
+    `QDesireDRCpu=-0.5`→`QDesiredVVDRC=-75.8`; the `CHANGEDRCVVARLEVEL` push; the
+    still-deferred WATTPF aborts loudly) + 3 oracle-pinned `props/invcontrol.json`
+    suffix scenarios (`s`/`m`/`h` on both props) + 3 `setters` unit tests (the
+    suffix conversions + the bad-unit/uppercase/empty error path). **Corpus stays
+    74** (the DRC/VV_DRC corpus family is all daily + `Export`/`Plot`-blocked →
+    Phase 8, like the Daily volt-var/volt-watt cases). lib **599 → 607**.
+- **next:** WP7.5 step 2e — `InvControl` WATTPF / WATTVAR / AVR + the LPF/RiseFall
+  rate-of-change limiting + the explicit-`MonBus` monitored-voltage path; then step
+  3 (`ExpControl`), step 4 (the gate).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

@@ -2353,6 +2353,31 @@ SCENARIOS = [
             "New InvControl.ic mode=gfm voltwattyaxis=pavailablepu",
         ],
     },
+    {
+        # The IntervalUnits time-unit suffix on AvgWindowLen / DynReacAvgWindowLen.
+        # The dump renders the converted integer (seconds), so these three scenarios
+        # pin every suffix's conversion against the oracle on BOTH properties:
+        #   s => x1, m => x60, h => x3600 (a bare number is seconds).
+        "name": "invcontrol_window_units_s",
+        "target": "InvControl.ic",
+        "commands": [
+            "New InvControl.ic avgwindowlen=2s dynreacavgwindowlen=30s",
+        ],
+    },
+    {
+        "name": "invcontrol_window_units_m",
+        "target": "InvControl.ic",
+        "commands": [
+            "New InvControl.ic avgwindowlen=2m dynreacavgwindowlen=5m",
+        ],
+    },
+    {
+        "name": "invcontrol_window_units_h",
+        "target": "InvControl.ic",
+        "commands": [
+            "New InvControl.ic avgwindowlen=1h dynreacavgwindowlen=2h",
+        ],
+    },
 ]
 
 
