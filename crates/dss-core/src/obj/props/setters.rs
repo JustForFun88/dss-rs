@@ -33,6 +33,59 @@ pub(super) fn get_integer(eng: &mut PropEngine, value: &str) -> Result<i32, Pars
     eng.parser.make_integer(eng.vars)
 }
 
+/// Pascal `IntervalUnits` integer parse (`DSSObjectHelper.pas` l.325): try the
+/// whole string as an integer (FPC `Val`); on failure, strip the trailing char as
+/// a time-unit suffix — `h` (×3600), `m` (×60), `s` (×1) — and parse the prefix.
+/// A bare number is seconds. Returns `None` on a bad number (error 2020034) or a
+/// bad unit char (2020035); the caller logs the message and leaves the field
+/// unchanged (Pascal `Exit`). The suffix is lowercase only, matching the Pascal
+/// `case` (no implicit case-folding).
+pub(super) fn parse_interval_units_i32(value: &str) -> Option<i32> {
+    if let Some(v) = val_i32(value) {
+        return Some(v);
+    }
+    let (prefix, last) = split_units_suffix(value)?;
+    let base = val_i32(prefix)?;
+    match last {
+        's' => Some(base),
+        'm' => Some(base * 60),
+        'h' => Some(base * 3600),
+        _ => None,
+    }
+}
+
+/// Pascal `IntervalUnits` double parse (`DSSObjectHelper.pas` l.273) — the Double
+/// twin of [`parse_interval_units_i32`].
+pub(super) fn parse_interval_units_f64(value: &str) -> Option<f64> {
+    if let Some(v) = val_f64(value) {
+        return Some(v);
+    }
+    let (prefix, last) = split_units_suffix(value)?;
+    let base = val_f64(prefix)?;
+    match last {
+        's' => Some(base),
+        'm' => Some(base * 60.0),
+        'h' => Some(base * 3600.0),
+        _ => None,
+    }
+}
+
+/// Split a value into (prefix, last char) for the units-suffix parse (Pascal
+/// `Copy(Value, 1, Length-1)` + `Value[High(Value)]`); `None` if empty.
+fn split_units_suffix(value: &str) -> Option<(&str, char)> {
+    let last = value.chars().next_back()?;
+    Some((&value[..value.len() - last.len_utf8()], last))
+}
+
+/// The Pascal `IntervalUnits` error message (codes 2020034/2020035), shared by
+/// the Integer and Double parse arms.
+pub(super) fn interval_units_error(full: &str, name: &str, value: &str) -> String {
+    format!(
+        "{full}.{name}: Error in specification, invalid value: \"{value}\". \
+         Units can only be h, m, or s (single char only). If omitted, \"s\" is assumed."
+    )
+}
+
 /// Pascal `SetObjDouble`: apply scale and the range/sign checks, the zero trap,
 /// and `InverseValue`, then write. A failed check records a message and leaves
 /// the field untouched (the field keeps its previous value).
@@ -159,4 +212,41 @@ pub(super) fn set_obj_integer(
     }
     obj.set_i32(idx, value);
     prev
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_interval_units_f64, parse_interval_units_i32};
+
+    #[test]
+    fn interval_units_i32_suffixes() {
+        // Bare = seconds; s = x1, m = x60, h = x3600 (Pascal IntervalUnits).
+        assert_eq!(parse_interval_units_i32("2"), Some(2));
+        assert_eq!(parse_interval_units_i32("2s"), Some(2));
+        assert_eq!(parse_interval_units_i32("5m"), Some(300));
+        assert_eq!(parse_interval_units_i32("1h"), Some(3600));
+        assert_eq!(parse_interval_units_i32("0s"), Some(0));
+    }
+
+    #[test]
+    fn interval_units_i32_rejects_bad_input() {
+        // Bad unit char, non-integer prefix, uppercase (Pascal `case` is lowercase
+        // only), and empty all yield None -> the caller logs the error and leaves
+        // the field unchanged.
+        assert_eq!(parse_interval_units_i32("2x"), None);
+        assert_eq!(parse_interval_units_i32("2.5"), None);
+        assert_eq!(parse_interval_units_i32("xs"), None);
+        assert_eq!(parse_interval_units_i32("2S"), None); // uppercase not folded
+        assert_eq!(parse_interval_units_i32(""), None);
+    }
+
+    #[test]
+    fn interval_units_f64_suffixes() {
+        assert_eq!(parse_interval_units_f64("2.5"), Some(2.5));
+        assert_eq!(parse_interval_units_f64("2.5s"), Some(2.5));
+        assert_eq!(parse_interval_units_f64("0.5m"), Some(30.0));
+        assert_eq!(parse_interval_units_f64("0.25h"), Some(900.0));
+        assert_eq!(parse_interval_units_f64("2H"), None); // uppercase not folded
+        assert_eq!(parse_interval_units_f64("2x"), None);
+    }
 }

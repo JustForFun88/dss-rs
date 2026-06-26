@@ -46,6 +46,12 @@ impl PropFlags {
     /// (`DSSObjectHelper.pas:2274`), and whose parse accepts the literal `NONE`
     /// to clear it. Used by Relay `RecloseIntervals` (`Type=DOC` ⇒ NumReclose 0).
     pub const ALLOW_NONE: Self = Self(1 << 13);
+    /// Pascal `IntervalUnits` (`DSSObjectHelper.pas` l.273/325): an Integer/Double
+    /// property whose value may carry a single trailing time-unit char — `h`
+    /// (×3600), `m` (×60), or `s` (×1); a bare number is seconds. A bad number or
+    /// unit logs the upstream error and leaves the field unchanged. Used by
+    /// InvControl `AvgWindowLen` / `DynReacAvgWindowLen`.
+    pub const INTERVAL_UNITS: Self = Self(1 << 14);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

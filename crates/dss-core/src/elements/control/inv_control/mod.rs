@@ -48,16 +48,18 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
 // Control-mode ordinals (InvControl.pas `TInvControlControlMode`). The full set
 // is VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5 AVR=6 GFM=7; the dispatch ports
-// land per sub-step (2b: VOLTVAR; 2c: VOLTWATT + VV_VW; 2d–2e: the rest).
+// land per sub-step (2b: VOLTVAR; 2c: VOLTWATT + VV_VW; 2d: DRC + VV_DRC; 2e: the rest).
 pub(crate) const NONE_MODE: i32 = 0;
 pub(crate) const VOLTVAR: i32 = 1;
 pub(crate) const VOLTWATT: i32 = 2;
+pub(crate) const DRC: i32 = 3;
 pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
 
-// Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`). VV_DRC=2 lands 2d.
+// Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
 pub(crate) const NONE_COMBMODE: i32 = 0;
 pub(crate) const VV_VW: i32 = 1;
+pub(crate) const VV_DRC: i32 = 2;
 
 // Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`). LPF=1 /
 // RISEFALL=2 arrive with the rate-of-change dispatch (step 2e); only the
@@ -69,6 +71,7 @@ pub(crate) const CHANGE_NONE: i32 = 0;
 pub(crate) const CHANGEVARLEVEL: i32 = 1;
 pub(crate) const CHANGEWATTLEVEL: i32 = 2;
 pub(crate) const CHANGEWATTVARLEVEL: i32 = 3;
+pub(crate) const CHANGEDRCVVARLEVEL: i32 = 4;
 
 // Reactive-power-reference ordinals (InvControl.pas constants).
 const REAC_POWER_VARAVAL: i32 = 0;
@@ -145,13 +148,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("XYCurve", "VVC_Curve1"),
         PropDef::double("Hysteresis_Offset").flags(PropFlags::NON_POSITIVE),
         PropDef::mapped_string_enum("Voltage_CurveX_Ref", enums.invcontrol_voltage_curvex),
-        PropDef::integer("AvgWindowLen"),
+        PropDef::integer("AvgWindowLen").flags(PropFlags::INTERVAL_UNITS),
         PropDef::object_ref_class("XYCurve", "VoltWatt_Curve"),
         PropDef::double("DbVMin"),
         PropDef::double("DbVMax"),
         PropDef::double("ArGraLowV"),
         PropDef::double("ArGraHiV"),
-        PropDef::integer("DynReacAvgWindowLen"),
+        PropDef::integer("DynReacAvgWindowLen").flags(PropFlags::INTERVAL_UNITS),
         PropDef::double("DeltaQ_Factor"),
         PropDef::double("VoltageChangeTolerance"),
         PropDef::double("VarChangeTolerance"),
@@ -189,11 +192,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 }
 
 /// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
-/// member). Only the fields the WP7.5 **step 2b** VOLTVAR dispatch + the shared
-/// machinery (`UpdateInvControl`, `Calc_QHeadRoom`, `Change_deltaQ_factor`,
-/// `UpdateDERParameters`) read/write are carried; the VW/DRC/WV/WP/AVR-only fields
-/// (`QDesiredWP`/`PLimitVW`/...) land with sub-steps 2c–2e. Field names mirror the
-/// Pascal record for a 1:1 read.
+/// member). Only the fields the WP7.5 **step 2b–2d** dispatch (VOLTVAR / VOLTWATT /
+/// VV_VW / DRC / VV_DRC) + the shared machinery (`UpdateInvControl`,
+/// `Calc_QHeadRoom`, `Change_deltaQ_factor`, `UpdateDERParameters`) read/write are
+/// carried; the WATTPF/WATTVAR/AVR-only fields (`QDesiredWP`/`QDesiredWV`/...) land
+/// with sub-step 2e. Field names mirror the Pascal record for a 1:1 read.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct InvVars {
     /// `CondOffset` — monitored-terminal conductor offset (`(NTerms-1)*NCondsDER`).
@@ -228,6 +231,25 @@ pub(crate) struct InvVars {
     pub delta_v_old: f64,
     /// `FVVOperation` — volt-var operating flag (-1 absorb / 1 inject / 0 none).
     pub f_vv_operation: f64,
+
+    // --- DRC / VV_DRC reactive-power state (sub-step 2d) ---
+    /// `QDesiredDRC` — the DRC kvar set-point pushed to the DER.
+    pub q_desired_drc: f64,
+    /// `QDesiredVVDRC` — the VV_DRC combi kvar set-point pushed to the DER.
+    pub q_desired_vvdrc: f64,
+    /// `QOldDRC` / `QOldVVDRC` — the prior DRC / VV_DRC kvar (convergence history;
+    /// start at -1.0 like `QOldVV`).
+    pub q_old_drc: f64,
+    pub q_old_vvdrc: f64,
+    /// `QoutputDRCpu` / `QoutputVVDRCpu` — the achieved Q (pu) used in the DRC /
+    /// VV_DRC trigger comparison.
+    pub qoutput_drcpu: f64,
+    pub qoutput_vvdrcpu: f64,
+    /// `QDesireDRCpu` — Q desired from the DRC dynamic-reactive-current law (pu).
+    pub q_desire_drcpu: f64,
+    /// `FDRCOperation` / `FVVDRCOperation` — DRC / VV_DRC operating flags.
+    pub f_drc_operation: f64,
+    pub f_vvdrc_operation: f64,
 
     // --- volt-watt active-power state (VOLTWATT / VV_VW; sub-step 2c) ---
     /// `PLimitVW` — the volt-watt kW set-point pushed to the DER.
@@ -298,6 +320,8 @@ impl InvVars {
         Self {
             q_old: -1.0,
             q_old_vv: -1.0,
+            q_old_drc: -1.0,
+            q_old_vvdrc: -1.0,
             f_delta_q_factor: DELTAQDEFAULT,
             f_delta_p_factor: DELTAPDEFAULT,
             delta_v_old: -1.0,

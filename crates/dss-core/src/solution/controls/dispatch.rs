@@ -1454,6 +1454,14 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.vw_mode = value;
         }
     }
+    fn der_set_drc_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.drc_mode = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.drc_mode = value;
+        }
+    }
     fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
@@ -1510,12 +1518,18 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 MonitorVar::Vreg => pv.vreg = value,
                 MonitorVar::VvOperation => pv.vv_operation = value,
                 MonitorVar::VwOperation => pv.vw_operation = value,
+                MonitorVar::DrcAvg => pv.vavg = value,
+                MonitorVar::DrcOperation => pv.drc_operation = value,
+                MonitorVar::VvDrcOperation => pv.vv_drc_operation = value,
             }
         } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
             match kind {
                 MonitorVar::Vreg => st.vreg = value,
                 MonitorVar::VvOperation => st.vv_operation = value,
                 MonitorVar::VwOperation => st.vw_operation = value,
+                MonitorVar::DrcAvg => st.vavg = value,
+                MonitorVar::DrcOperation => st.drc_operation = value,
+                MonitorVar::VvDrcOperation => st.vv_drc_operation = value,
             }
         }
     }
@@ -1541,5 +1555,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
     fn dbl_hour(&self) -> f64 {
         self.dbl_hour
+    }
+    fn dyna_t(&self) -> f64 {
+        self.t
     }
 }
