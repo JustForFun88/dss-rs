@@ -1260,7 +1260,11 @@ mod dispatch {
         let a = monbus_voltvar(vec!["m.1".into()], vec![7200.0]);
         let mut b = InvControl::new("b");
         b.make_like(&a);
-        assert_eq!(b.mon_buses, vec!["m".to_string()], "MakeLike must copy FMonBuses");
+        assert_eq!(
+            b.mon_buses,
+            vec!["m".to_string()],
+            "MakeLike must copy FMonBuses"
+        );
         assert_eq!(
             b.mon_buses_nodes,
             vec![vec![1]],
@@ -1293,6 +1297,66 @@ mod dispatch {
         assert!(
             (ic.ctrl_vars[0].f_present_vpu - 1.0).abs() < 1e-9,
             "FPresentVpu = {} (expected 1.0 from the L-L difference, not 1.333)",
+            ic.ctrl_vars[0].f_present_vpu
+        );
+    }
+
+    #[test]
+    fn monbus_max_min_reduce_folds_the_buffer() {
+        // Three single-node monitored buses at 1.00 / 1.05 / 0.98 pu. monVoltageCalc=MAX
+        // → 1.05, MIN → 0.98 (AVG would give 1.01 — so each fold is discriminated). The
+        // MonBus reduce path (reduce_mon_phase MAX/MIN over the complex cBuffer); the 3
+        // migrated corpus cases + the AVG mocks only cover AVGPHASES.
+        let probe = |phase: i32| {
+            let mut ic = monbus_voltvar(
+                vec!["m.1".into(), "m.2".into(), "m.3".into()],
+                vec![7200.0, 7200.0, 7200.0],
+            );
+            ic.mon_buses_phase = phase;
+            let c = |pu: f64| num_complex::Complex64::new(pu * 7200.0, 0.0);
+            let mut env = MockEnv::new(vec![MockDer::new("pv", 0.90, 300.0)]);
+            // m.1 → bus j=0 node 1, m.2 → j=1 node 2, m.3 → j=2 node 3.
+            env.mon_bus_v = vec![
+                vec![c(1.00)],
+                vec![c(0.0), c(1.05)],
+                vec![c(0.0), c(0.0), c(0.98)],
+            ];
+            ic.sample(&mut env).unwrap();
+            ic.ctrl_vars[0].f_present_vpu
+        };
+        assert!(
+            (probe(super::super::MAXPHASE) - 1.05).abs() < 1e-9,
+            "MAX reduce = {} (expected 1.05)",
+            probe(super::super::MAXPHASE)
+        );
+        assert!(
+            (probe(super::super::MINPHASE) - 0.98).abs() < 1e-9,
+            "MIN reduce = {} (expected 0.98)",
+            probe(super::super::MINPHASE)
+        );
+    }
+
+    #[test]
+    fn monbus_specific_phase_indexes_buffer_zero_based() {
+        // A numeric monVoltageCalc (a specific phase) reads `Cabs(cBuffer[FMonBusesPhase])`,
+        // and in the MonBus branch cBuffer is 0-based — so phase 2 reads cBuffer[2] = the
+        // 3rd monitored bus (0.98 pu), NOT the 2nd (the verbatim Pascal indexing quirk).
+        let mut ic = monbus_voltvar(
+            vec!["m.1".into(), "m.2".into(), "m.3".into()],
+            vec![7200.0, 7200.0, 7200.0],
+        );
+        ic.mon_buses_phase = 2;
+        let c = |pu: f64| num_complex::Complex64::new(pu * 7200.0, 0.0);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 0.90, 300.0)]);
+        env.mon_bus_v = vec![
+            vec![c(1.00)],
+            vec![c(0.0), c(1.05)],
+            vec![c(0.0), c(0.0), c(0.98)],
+        ];
+        ic.sample(&mut env).unwrap();
+        assert!(
+            (ic.ctrl_vars[0].f_present_vpu - 0.98).abs() < 1e-9,
+            "specific-phase reduce = {} (expected cBuffer[2] = 0.98)",
             ic.ctrl_vars[0].f_present_vpu
         );
     }
