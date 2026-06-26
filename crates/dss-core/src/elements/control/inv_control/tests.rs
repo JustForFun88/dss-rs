@@ -1250,6 +1250,33 @@ mod dispatch {
     }
 
     #[test]
+    fn make_like_preserves_monbus_path() {
+        // Pascal `RecalcElementData` l.925 keys `FUsingMonBuses` off the parsed
+        // `FMonBuses` (which MakeLike l.788 copies), NOT `MonBusesNameList` (which
+        // MakeLike does NOT copy). So a `like=`-derived MonBus control must still take
+        // the MonBus path. (The derived control's MonBusesVbase is empty — the
+        // upstream-pathological `like=`-with-MonBus case — so we assert the path
+        // selection, not the numeric voltage.)
+        let a = monbus_voltvar(vec!["m.1".into()], vec![7200.0]);
+        let mut b = InvControl::new("b");
+        b.make_like(&a);
+        assert_eq!(b.mon_buses, vec!["m".to_string()], "MakeLike must copy FMonBuses");
+        assert_eq!(
+            b.mon_buses_nodes,
+            vec![vec![1]],
+            "MakeLike must copy FMonBusesNodes"
+        );
+        b.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        b.side_effects(prop::DER_LIST, 0);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 0.95, 300.0)]);
+        let _ = b.sample(&mut env);
+        assert!(
+            b.f_using_mon_buses,
+            "a like=-derived MonBus control must take the MonBus path (keyed off FMonBuses)"
+        );
+    }
+
+    #[test]
     fn monbus_line_to_line_takes_node_difference() {
         // A 2-node MonBus entry (`m.1.2`): the monitored voltage is the |node1 − node2|
         // difference, scaled by basekv·1000 / vbase. node1 = 8000, node2 = 2000 →
