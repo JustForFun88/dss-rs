@@ -189,6 +189,14 @@ impl Dss {
                 |name| Box::new(inv_control::InvControl::new(name)),
                 ElemKind::Control,
             ),
+            // ExpControl registers directly after InvControl (Pascal
+            // DSSClassDefs.pas:276). Registration order does not affect node
+            // ordering, which follows element creation order.
+            DssClass::ckt_class(
+                exp_control::class_props(),
+                |name| Box::new(exp_control::ExpControl::new(name)),
+                ElemKind::Control,
+            ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
             DssClass::ckt_class(
                 monitor::class_props(&enums),

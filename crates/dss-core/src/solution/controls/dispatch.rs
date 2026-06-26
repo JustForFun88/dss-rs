@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::control::exp_control::{ExpControl, ExpDispatchEnv, PvFind, PvSnap};
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::inv_control::{
     DerSnap, InvControl, InvDispatchEnv, InvFleetFind, MonitorVar,
@@ -89,6 +90,10 @@ enum ControlKind {
     /// class registry (not a fixed pair). WP7.5 step 2b ports the VOLTVAR mode;
     /// every other mode records an explicit NOT_PORTED error (never a silent skip).
     Inv,
+    /// ExpControl dispatches a *dynamic* PVSystem fleet (the adaptive-`Vreg`
+    /// volt-var control); like InvControl it reaches the fleet through the whole
+    /// class registry (WP7.5 step 3).
+    Exp,
 }
 
 /// The dispatch core: split the borrows, downcast, and invoke `Sample` /
@@ -177,6 +182,11 @@ pub(super) fn dispatch_control(
             (
                 ControlKind::Inv,
                 format!("InvControl.{}", ic.ccd.cd.obj.name()),
+            )
+        } else if let Some(ec) = obj.as_any().downcast_ref::<ExpControl>() {
+            (
+                ControlKind::Exp,
+                format!("ExpControl.{}", ec.ccd.cd.obj.name()),
             )
         } else {
             return Err(format!(
@@ -386,6 +396,59 @@ pub(super) fn dispatch_control(
         };
     }
 
+    // ExpControl dispatches a *dynamic* PVSystem fleet, so — like the
+    // GenDispatcher / StorageController / InvControl above — it reaches the fleet
+    // through the whole class registry and none of the `CtrlCtx`; handle it here.
+    if let ControlKind::Exp = kind {
+        let mut ec = store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<ExpControl>()
+            .expect("kind matched above")
+            .clone();
+        let pv_systems = ckt.pv_systems.clone();
+        let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+        {
+            let Solution {
+                node_v,
+                event_log,
+                control_mode,
+                control_iteration,
+                int_hour,
+                t,
+                loads_need_updating,
+                ..
+            } = &mut ckt.solution;
+            let mut env = ExpDispEnv {
+                store: &mut **store,
+                node_v: &*node_v,
+                sys: &sys,
+                pv_systems,
+                bus_kvbase,
+                queue,
+                events: event_log,
+                self_ref: r,
+                int_hour: *int_hour,
+                t: *t,
+                control_mode: *control_mode,
+                control_iter: *control_iteration,
+                dyna_h: sys.dyna_h,
+                loads_need_updating,
+            };
+            match op {
+                ControlOp::Sample => ec.sample(&mut env),
+                ControlOp::Reset => ec.reset(),
+                ControlOp::Action { .. } => ec.do_pending_action(&mut env),
+            }
+        }
+        *store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<ExpControl>()
+            .expect("kind matched above") = ec;
+        return Ok(());
+    }
+
     // Build the shared control context from disjoint Solution fields.
     let Solution {
         node_v,
@@ -418,6 +481,7 @@ pub(super) fn dispatch_control(
         ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
         ControlKind::StorageCtrl { .. } => unreachable!("StorageController handled above"),
         ControlKind::Inv => unreachable!("InvControl handled above"),
+        ControlKind::Exp => unreachable!("ExpControl handled above"),
         ControlKind::Swt { controlled } => {
             match op {
                 ControlOp::Sample => {
@@ -1663,6 +1727,209 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
     fn dyna_t(&self) -> f64 {
         self.t
+    }
+    fn set_loads_need_updating(&mut self) {
+        *self.loads_need_updating = true;
+    }
+}
+
+/// Pascal `TExpControl.UpdateAll` (`SolutionAlgs.EndOfTimeStepCleanup`, l.92): after
+/// the InvControl rolling-average feed, slew every enabled ExpControl's adaptive
+/// `Vreg` toward the converged bus voltage. Mirrors the InvControl clone-out
+/// dispatch; runs only in the time-series modes (snapshot has no EndOfTimeStep hook).
+pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let SolveEnv { store, errors, .. } = env;
+    let _ = errors; // ExpControl.UpdateExpControl logs no errors
+    let controls = ckt.controls.clone();
+    let pv_systems = ckt.pv_systems.clone();
+    let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+    let Solution {
+        node_v,
+        event_log,
+        control_queue,
+        control_mode,
+        control_iteration,
+        int_hour,
+        t,
+        loads_need_updating,
+        ..
+    } = &mut ckt.solution;
+
+    for r in controls {
+        let obj = store.obj(r);
+        if !obj.as_any().is::<ExpControl>() || !store.ckt_elem(r).cd().enabled {
+            continue;
+        }
+        let mut ec = store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<ExpControl>()
+            .expect("checked above")
+            .clone();
+        {
+            let mut env2 = ExpDispEnv {
+                store: &mut **store,
+                node_v: &*node_v,
+                sys: &sys,
+                pv_systems: pv_systems.clone(),
+                bus_kvbase: bus_kvbase.clone(),
+                queue: &mut *control_queue,
+                events: &mut *event_log,
+                self_ref: r,
+                int_hour: *int_hour,
+                t: *t,
+                control_mode: *control_mode,
+                control_iter: *control_iteration,
+                dyna_h: sys.dyna_h,
+                loads_need_updating: &mut *loads_need_updating,
+            };
+            ec.update_exp_control(&mut env2);
+        }
+        *store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<ExpControl>()
+            .expect("checked above") = ec;
+    }
+}
+
+/// [`ExpDispatchEnv`] over the store: the controlled PVSystem fleet's state,
+/// reached through the class registry. The fleet-scan list is the circuit's
+/// creation-ordered `pv_systems` (cloned by the caller so the store can be borrowed
+/// freely); `bus_kvbase[i]` is bus `i`'s kV base.
+struct ExpDispEnv<'a> {
+    store: &'a mut dyn ElemStore,
+    node_v: &'a [Complex64],
+    sys: &'a SysCtx,
+    pv_systems: Vec<ElemRef>,
+    bus_kvbase: Vec<f64>,
+    queue: &'a mut ControlQueue,
+    events: &'a mut EventLog,
+    self_ref: ElemRef,
+    int_hour: i32,
+    t: f64,
+    control_mode: i32,
+    control_iter: i32,
+    dyna_h: f64,
+    loads_need_updating: &'a mut bool,
+}
+
+impl ExpDispEnv<'_> {
+    fn pvsystem(store: &dyn ElemStore, r: ElemRef) -> &PVSystem {
+        store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<PVSystem>()
+            .expect("ExpControl fleet entry is a PVSystem")
+    }
+    fn pvsystem_mut(store: &mut dyn ElemStore, r: ElemRef) -> &mut PVSystem {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<PVSystem>()
+            .expect("ExpControl fleet entry is a PVSystem")
+    }
+}
+
+impl ExpDispatchEnv for ExpDispEnv<'_> {
+    fn find_pvsystem(&self, name: &str) -> PvFind {
+        match self.store.find_ckt_element(&format!("pvsystem.{name}")) {
+            None => PvFind::NotFound,
+            Some(r) => {
+                if self.store.ckt_elem(r).cd().enabled {
+                    PvFind::Found(r)
+                } else {
+                    PvFind::Disabled
+                }
+            }
+        }
+    }
+    fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)> {
+        self.pv_systems
+            .iter()
+            .map(|&r| {
+                let pv = Self::pvsystem(self.store, r);
+                (pv.cd.obj.name().to_string(), r, pv.cd.enabled)
+            })
+            .collect()
+    }
+
+    fn pv_snap(&self, r: ElemRef) -> PvSnap {
+        let pv = Self::pvsystem(self.store, r);
+        let bus_ref = pv.cd.terminals[0].bus_ref;
+        PvSnap {
+            name: pv.cd.obj.name().to_string(),
+            nphases: pv.cd.nphases,
+            inverter_on: pv.base.inverter_on,
+            var_follow_inverter: pv.base.var_follow_inverter,
+            kva_rating: pv.f_kva_rating,
+            kvar_limit: pv.f_kvar_limit,
+            pmpp: pv.f_pmpp,
+            bus_kvbase: self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0),
+        }
+    }
+    fn pv_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
+        let elem = self.store.ckt_elem_mut(r);
+        elem.cd_mut().compute_vterminal(self.node_v);
+        let cd = elem.cd();
+        (0..cd.nphases).map(|i| cd.vterminal[i].norm()).collect()
+    }
+    fn pv_present_kvar(&self, r: ElemRef) -> f64 {
+        Self::pvsystem(self.store, r).present_kvar()
+    }
+    fn pv_present_kw(&self, r: ElemRef) -> f64 {
+        Self::pvsystem(self.store, r).present_kw()
+    }
+
+    fn pv_set_avr_mode(&mut self, r: ElemRef, value: bool) {
+        Self::pvsystem_mut(self.store, r).base.avr_mode = value;
+    }
+    fn pv_set_vw_mode(&mut self, r: ElemRef, value: bool) {
+        Self::pvsystem_mut(self.store, r).base.vw_mode = value;
+    }
+    fn pv_set_var_mode(&mut self, r: ElemRef, mode: i32) {
+        Self::pvsystem_mut(self.store, r).base.var_mode = mode;
+    }
+    fn pv_set_nominal(&mut self, r: ElemRef) {
+        let sys = self.sys;
+        Self::pvsystem_mut(self.store, r).set_nominal_der_output(sys);
+    }
+    fn pv_set_present_kw(&mut self, r: ElemRef, value: f64) {
+        // Pascal `PresentkW` WRITE is `kWRequested` directly (no var-mode side
+        // effect, unlike `Set_Presentkvar`).
+        Self::pvsystem_mut(self.store, r).kw_requested = value;
+    }
+    fn pv_set_pu_pmpp(&mut self, r: ElemRef, value: f64) {
+        Self::pvsystem_mut(self.store, r).f_pu_pmpp = value;
+    }
+    fn pv_set_present_kvar(&mut self, r: ElemRef, value: f64) {
+        // Pascal `Set_Presentkvar` sets kvarRequested + varMode := VARMODEKVAR.
+        let pv = Self::pvsystem_mut(self.store, r);
+        pv.kvar_requested = value;
+        pv.base.var_mode = VARMODE_KVAR;
+    }
+    fn pv_set_vreg_var(&mut self, r: ElemRef, value: f64) {
+        // Pascal `Set_Variable(5, value)` — the dynamic state variable `Vreg`.
+        Self::pvsystem_mut(self.store, r).vreg = value;
+    }
+
+    fn push_change(&mut self, delay: f64, code: i32) {
+        self.queue
+            .push_delay(self.int_hour, self.t, delay, code, 0, self.self_ref);
+    }
+    fn append_event(&mut self, sender: &str, msg: &str) {
+        self.events
+            .append(sender, msg, self.int_hour, self.t, self.control_iter);
+    }
+    fn control_mode(&self) -> i32 {
+        self.control_mode
+    }
+    fn control_iteration(&self) -> i32 {
+        self.control_iter
+    }
+    fn dyna_h(&self) -> f64 {
+        self.dyna_h
     }
     fn set_loads_need_updating(&mut self) {
         *self.loads_need_updating = true;

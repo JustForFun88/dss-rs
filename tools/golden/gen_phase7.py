@@ -1062,6 +1062,75 @@ def deck_pvsystem_clamps() -> list[str]:
     ]
 
 
+# --- WP7.5 step 3: ExpControl (the adaptive-Vreg volt-var control) -------------
+# ExpControl's distinguishing behavior is the per-step Vreg slew: UpdateExpControl
+# (EndOfTimeStepCleanup) moves FVregs toward the present bus voltage by VregTau, and
+# the next DoPendingAction reads the slewed Vreg in the slope crossing; the Tresponse
+# open-loop low-pass filter (FOpenTau) additionally lags the target Q. Both only fire
+# in a multi-step run (a snapshot has no EndOfTimeStep hook and control_mode=CTRLSTATIC
+# disables the filter), so the gate is a DAILY run; the auto-added per-step power
+# monitor pins the PV's kvar trajectory hour-by-hour (modeled on the corpus ExpControl
+# example minus the file-array/Export that keep it Phase-8-blocked).
+def deck_expcontrol_daily() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=irrad irradiance=1",
+        # VregTau=7200s / Tresponse=7200s vs the 3600s step: each step slews Vreg ~39%
+        # and lags Q ~68%, so the per-step kvar tracks the adapting Vreg (a fixed-Vreg
+        # regression diverges immediately).
+        "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 "
+        "deltaq_factor=0.3 tresponse=7200",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=8",
+    ]
+
+
+# The PreferQ + Qbias branches: a stronger PV (1000 kW) on the weak line drives the bus
+# higher; with QmaxLead/Lag widened to 0.6 the slope crossing reaches a Qpu whose
+# Plimit = kVA*sqrt(1-Qpu^2) falls below the panel kW, so PreferQ curtails the PV's kW
+# (PresentkW := Plimit, puPmpp scaled). Qbias=-0.2 shifts the operating point. The
+# per-step monitor pins both the curtailed kW and the kvar.
+def deck_expcontrol_daily_preferq() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=4 units=km",
+        "new Loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1000 Pmpp=1000 pf=1.0 "
+        "daily=irrad irradiance=1",
+        "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 "
+        "deltaq_factor=0.3 tresponse=7200 qbias=-0.2 qmaxlead=0.6 qmaxlag=0.6 preferq=yes",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=8",
+    ]
+
+
+# A full 24-hour endurance run: the adaptive Vreg slew + the FOpenTau open-loop lag
+# accumulate across all 24 *continuous* steps, each one seeded by the previous step's
+# converged voltage (the time-series state carry). The VARY24 irradiance ramps the bus
+# up to 1.0, back down to ~0.5, and up again, so Vreg chases a moving target all day and
+# the FLastStepQ/FLastIterQ filter bases turn over every step; the auto-added per-step
+# power monitor pins the full 24-step kvar trajectory (a cross-step state-leak — a stale
+# FVregs / FLastStepQ carry — diverges within a few steps, like the InvControl 24h gates).
+def deck_expcontrol_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        VARY24,
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=vary irradiance=1",
+        "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 "
+        "deltaq_factor=0.3 tresponse=7200",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -1111,6 +1180,9 @@ SCENARIOS = {
     "invcontrol_voltwatt_lpf": deck_invcontrol_voltwatt_lpf,
     "invcontrol_voltwatt_risefall": deck_invcontrol_voltwatt_risefall,
     "invcontrol_voltvar_monbus": deck_invcontrol_voltvar_monbus,
+    "expcontrol_daily": deck_expcontrol_daily,
+    "expcontrol_daily_preferq": deck_expcontrol_daily_preferq,
+    "expcontrol_24h": deck_expcontrol_24h,
 }
 
 

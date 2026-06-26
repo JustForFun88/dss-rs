@@ -688,6 +688,42 @@ impl Dss {
             }
         }
 
+        // ExpControl attaches its terminal to the first controlled PVSystem's bus
+        // (Pascal `RecalcElementData` runs `MakePVSystemList` + `Setbus(1,
+        // MonitoredElement.Firstbus)`). Like InvControl, resolve the first PVSystem's
+        // bus + phase count here (no store access in `recalc_element_data`). A named
+        // list resolves its first *enabled* entry; an empty list scans every
+        // PVSystem for the first enabled one (matching `MakePVSystemList`).
+        if objects[oi].as_any().is::<exp_control::ExpControl>() {
+            let pv_names: Vec<String> = objects[oi]
+                .as_any()
+                .downcast_ref::<exp_control::ExpControl>()
+                .map(|ec| ec.pvsystem_name_list().to_vec())
+                .unwrap_or_default();
+            let info: Option<(String, usize)> = {
+                let resolved: Option<&dyn DssObject> = if pv_names.is_empty() {
+                    foreign.first_enabled("PVSystem")
+                } else {
+                    pv_names.iter().find_map(|n| {
+                        foreign.find("PVSystem", n).and_then(|(_, o)| {
+                            let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
+                            enabled.then_some(o)
+                        })
+                    })
+                };
+                resolved
+                    .and_then(|o| o.as_ckt_element())
+                    .map(|e| (e.cd().get_bus(1).to_string(), e.cd().nphases))
+            };
+            if let Some((bus, nphases)) = info
+                && let Some(ec) = objects[oi]
+                    .as_any_mut()
+                    .downcast_mut::<exp_control::ExpControl>()
+            {
+                ec.set_resolved_monitored(bus, nphases);
+            }
+        }
+
         // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it
