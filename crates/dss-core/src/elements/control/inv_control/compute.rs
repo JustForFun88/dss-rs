@@ -406,13 +406,13 @@ impl InvControl {
         }
         if self.f_using_mon_buses {
             return Err(format!(
-                "InvControl.{}: explicit MonBus voltage monitoring is not yet ported (WP7.5 step 2e)",
+                "InvControl.{}: explicit MonBus voltage monitoring is not yet ported (WP7.5 step 2e-iii)",
                 self.ccd.cd.obj.name()
             ));
         }
         if self.rate_of_change_mode != ROC_INACTIVE {
             return Err(format!(
-                "InvControl.{}: LPF/RiseFall rate-of-change limiting is not yet ported (WP7.5 step 2e)",
+                "InvControl.{}: LPF/RiseFall rate-of-change limiting is not yet ported (WP7.5 step 2e-iii)",
                 self.ccd.cd.obj.name()
             ));
         }
