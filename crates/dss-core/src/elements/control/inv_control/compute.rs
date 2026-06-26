@@ -164,6 +164,17 @@ pub(crate) trait InvDispatchEnv {
     fn der_set_wv_mode(&mut self, r: ElemRef, value: bool);
     /// Set only `DERElem.AVRmode` (the AVR `Sample`/`DoPendingAction` path).
     fn der_set_avr_mode(&mut self, r: ElemRef, value: bool);
+    /// Pascal `DERElem.Varmode := value` for both DER types (the explicit
+    /// `Varmode := VARMODEKVAR` the WATTPF/WATTVAR/AVR `DoPendingAction` sets — so
+    /// `SetNominalDEROutput` applies `kvarRequested`. For PVSystem this is redundant
+    /// with `der_set_kvar_requested` modeling `Set_Presentkvar`, but a Storage's
+    /// `kvarRequested` write has no such side effect, so without it a Storage stays
+    /// `VARMODE_PF` and the requested kvar is silently dropped).
+    fn der_set_var_mode(&mut self, r: ElemRef, mode: i32);
+    /// `TStorageObj.kvarRequested` / `TPVSystemObj.kvarRequested` — the *requested*
+    /// kvar (not the achieved `Get_Presentkvar`). AVR's iter-2 `DQDV` reads this for a
+    /// Storage (Pascal l.1081), where PVSystem reads the achieved `Presentkvar`.
+    fn der_requested_kvar(&self, r: ElemRef) -> f64;
     /// `TPVSystemObj.pf_wp_nominal := value` (WATTPF; PVSystem only — Storage
     /// instead takes the `kvarRequested := QDesiredWP` branch handled via
     /// `der_set_kvar_requested`).
@@ -741,7 +752,6 @@ impl InvControl {
         control_iter: i32,
     ) -> Result<(), String> {
         let r = self.fleet[i];
-        self.guard_storage_var_mode(snap, "WATTPF")?;
 
         // Set_Variable(5, FVreg); Set_Variable(11, FWPOperation).
         let vreg = self.f_vreg;
@@ -792,7 +802,6 @@ impl InvControl {
         control_iter: i32,
     ) -> Result<(), String> {
         let r = self.fleet[i];
-        self.guard_storage_var_mode(snap, "WATTVAR")?;
 
         // Set_Variable(5, FVreg); Set_Variable(12, FWVOperation).
         let vreg = self.f_vreg;
@@ -848,14 +857,17 @@ impl InvControl {
         control_iter: i32,
     ) -> Result<(), String> {
         let r = self.fleet[i];
-        self.guard_storage_var_mode(snap, "AVR")?;
 
         // If the inverter is off and following it, skip this DER.
         if !snap.inverter_on && snap.var_follow_inverter {
             return Ok(());
         }
-        // PVSystem only (Storage guarded above); Pascal sets PVSys.AVRmode := TRUE.
-        env.der_set_avr_mode(r, true);
+        // PVSystem sets AVRmode; a Storage sets VVmode (verbatim Pascal l.2051-2054).
+        if snap.is_pvsystem {
+            env.der_set_avr_mode(r, true);
+        } else {
+            env.der_set_vv_mode(r, true);
+        }
 
         // Trigger from AVR mode: the voltage moved vs the prior average OR vs the
         // (limited) setpoint, the achieved Q drifted from the target, or iter 1.
@@ -1008,28 +1020,6 @@ impl InvControl {
         } else {
             Err(format!(
                 "InvControl.{}: Storage VOLTWATT/VV_VW dispatch is not yet ported (WP7.5; PVSystem volt-watt is ported)",
-                self.ccd.cd.obj.name()
-            ))
-        }
-    }
-
-    /// The Storage WATTPF / WATTVAR / AVR dispatch is **deferred** (a loud error, not
-    /// a silent skip). Pascal's `DoPendingAction` sets `Varmode := VARMODEKVAR` on the
-    /// DER for these modes, so `SetNominalDEROutput` applies the requested kvar; the
-    /// Rust port routes the `Varmode` side effect through `der_set_kvar_requested`,
-    /// which sets it **only for PVSystem** (`dispatch.rs`). A Storage therefore keeps
-    /// its `VARMODE_PF` default and `set_nominal` ignores `kvar_requested` — the
-    /// dispatch would silently regulate nothing. VOLTVAR/DRC avoid this because they
-    /// set `Varmode` via `der_set_modes` (both DER types). The per-DER `Varmode` (and,
-    /// for AVR, the Storage iter-2 DQDV source — Pascal reads `kvarRequested`, not the
-    /// achieved kvar) for WATTPF/WATTVAR/AVR are unported + ungated, so a Storage in
-    /// these modes errors. (PVSystem WATTPF/WATTVAR/AVR are fully ported + gated.)
-    fn guard_storage_var_mode(&self, snap: DerSnap, mode: &str) -> Result<(), String> {
-        if snap.is_pvsystem {
-            Ok(())
-        } else {
-            Err(format!(
-                "InvControl.{}: Storage {mode} dispatch is not yet ported (WP7.5; PVSystem {mode} is ported)",
                 self.ccd.cd.obj.name()
             ))
         }
@@ -1329,9 +1319,10 @@ impl InvControl {
     /// convergence — `QDesiredWP = QDesireEndpu·QHeadRoom`.
     fn do_pending_wattpf(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
-        // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WPmode := TRUE.
-        // (Varmode is set when the kvar set-point is pushed, via der_set_kvar_requested.)
+        // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WPmode := TRUE (for both
+        // DER types — der_set_var_mode so a Storage's kvarRequested is applied).
         env.der_set_vw_mode(r, false);
+        env.der_set_var_mode(r, crate::elements::pc::pvsystem::VARMODE_KVAR);
         env.der_set_wp_mode(r, true);
 
         // Main process.
@@ -1382,8 +1373,10 @@ impl InvControl {
     fn do_pending_wattvar(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
         let is_pv = env.der_is_pvsystem(r);
-        // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WVmode := TRUE.
+        // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WVmode := TRUE (for both
+        // DER types — der_set_var_mode so a Storage's kvarRequested is applied).
         env.der_set_vw_mode(r, false);
+        env.der_set_var_mode(r, crate::elements::pc::pvsystem::VARMODE_KVAR);
         env.der_set_wv_mode(r, true);
 
         // Main process.
@@ -1438,11 +1431,11 @@ impl InvControl {
     /// No `SetNominalDEROutput`/event log on iterations 1-2 (no kvar read-back yet).
     fn do_pending_avr(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
-        // Pascal l.1058-1060: VWmode := FALSE; Varmode := VARMODEKVAR; AVRmode := TRUE.
-        // PVSystem only — a Storage in AVR is rejected at `sample_avr`
-        // (`guard_storage_var_mode`), since `der_set_kvar_requested` sets `Varmode`
-        // only for PVSystem (so the Storage `Varmode := VARMODEKVAR` would be dropped).
+        // Pascal l.1058-1060: VWmode := FALSE; Varmode := VARMODEKVAR; AVRmode := TRUE
+        // (for both DER types — `der_set_var_mode` so a Storage's `kvarRequested` is
+        // applied by `set_nominal`, not discarded by its `VARMODE_PF` default).
         env.der_set_vw_mode(r, false);
+        env.der_set_var_mode(r, crate::elements::pc::pvsystem::VARMODE_KVAR);
         env.der_set_avr_mode(r, true);
 
         let control_iter = env.control_iteration();
@@ -1458,11 +1451,16 @@ impl InvControl {
             env.der_set_kvar_requested(r, qheadroom / 2.0);
         } else if control_iter == 2 {
             // Estimate dQ/dV from the voltage change the half-headroom kvar produced
-            // (Pascal l.1075-1082). `Presentkvar` reads back the achieved output.
-            let present_kvar = env.der_present_kvar(r);
+            // (Pascal l.1075-1082). PVSystem reads the achieved `Presentkvar`; a
+            // Storage reads its `kvarRequested` (Pascal l.1079-1081).
+            let kvar_for_dqdv = if env.der_is_pvsystem(r) {
+                env.der_present_kvar(r)
+            } else {
+                env.der_requested_kvar(r)
+            };
             let cv = &mut self.ctrl_vars[k];
             cv.dqdv =
-                (present_kvar / cv.q_headroom / (cv.f_present_vpu - cv.f_avgp_vpu_prior)).abs();
+                (kvar_for_dqdv / cv.q_headroom / (cv.f_present_vpu - cv.f_avgp_vpu_prior)).abs();
         } else {
             // The regulator (Pascal l.1084-1127).
             self.calc_qavr_desiredpu(k, env);

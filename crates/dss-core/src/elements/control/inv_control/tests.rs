@@ -183,6 +183,9 @@ mod dispatch {
         /// The last `der_set_kvar_requested` value (post-`SetNominalDEROutput`
         /// readback is modeled ideal: the requested kvar clamped to ±kvarLimit).
         requested_kvar: f64,
+        /// The DER `Varmode` (Pascal default VARMODE_PF=0); set to VARMODE_KVAR=1 by
+        /// `der_set_var_mode` — the Storage var-mode fix the dispatch must apply.
+        var_mode: i32,
         /// The last `der_set_pf_wp_nominal` value (WATTPF; PVSystem only).
         pf_wp_nominal: f64,
         // --- volt-watt fields (Calc_PBase / Check_Plimits) ---
@@ -209,6 +212,7 @@ mod dispatch {
                 p_priority: false,
                 pf_priority: false,
                 requested_kvar: 0.0,
+                var_mode: 0, // VARMODE_PF
                 pf_wp_nominal: 1.0,
                 pmpp: 600.0,
                 pu_pmpp: 1.0,
@@ -293,7 +297,9 @@ mod dispatch {
                 current_kvar_limit_neg: d.kvar_limit_neg,
                 p_priority: d.p_priority,
                 pf_priority: d.pf_priority,
-                dckw: d.panel_kw,
+                // Pascal UpdateDERParameters: FDCkW := 0.0 for Storage (l.1749, "not
+                // using it") — so its WATTPF/WATTVAR curves read at panel pu = 0.
+                dckw: if d.is_storage { 0.0 } else { d.panel_kw },
                 dckw_rated: d.pmpp,
                 pct_dckw_rated: d.pu_pmpp,
                 eff_factor: d.eff_factor,
@@ -322,6 +328,12 @@ mod dispatch {
         fn der_set_wp_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_wv_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_avr_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_var_mode(&mut self, r: ElemRef, mode: i32) {
+            self.ders[Self::idx(r)].var_mode = mode;
+        }
+        fn der_requested_kvar(&self, r: ElemRef) -> f64 {
+            self.ders[Self::idx(r)].requested_kvar
+        }
         fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
             self.ders[Self::idx(r)].pf_wp_nominal = value;
         }
@@ -997,20 +1009,26 @@ mod dispatch {
     }
 
     #[test]
-    fn avr_storage_is_deferred_not_silent() {
-        // A Storage in AVR must error loudly, never silently regulate nothing. Pascal
-        // sets `Varmode := VARMODEKVAR` on the Storage; the Rust port routes that side
-        // effect only through PVSystem's `der_set_kvar_requested`, so a Storage would
-        // keep VARMODE_PF and `set_nominal` would discard the AVR kvar request — the
-        // deferral-is-never-a-silent-skip rule (audit-code follow-up, step 2e-ii).
+    fn avr_storage_dispatches_in_kvar_mode() {
+        // A Storage in AVR regulates like a PVSystem (the converged kvar is oracle-
+        // pinned by phase7/invcontrol_avr_storage). Here the mock pins the var-mode
+        // fix: iter-1 sets the DER `Varmode := VARMODEKVAR` (so `set_nominal` applies
+        // the request, not its VARMODE_PF default) and pushes QHeadRoom/2 = 300 kvar.
         let mut ic = avr_ic();
         let mut der = MockDer::new("pv", 1.009, 200.0);
         der.is_storage = true;
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
+        env.control_iter = 1;
+        ic.sample(&mut env).unwrap(); // no error — Storage AVR is supported
+        ic.do_pending_action(&mut env);
+        assert_eq!(
+            env.ders[0].var_mode, 1,
+            "Storage Varmode must be VARMODE_KVAR"
+        );
         assert!(
-            err.contains("Storage AVR"),
-            "expected a Storage AVR NOT_PORTED error, got: {err}"
+            (env.ders[0].requested_kvar - 300.0).abs() < 1e-9,
+            "Storage AVR iter-1 kvar = {}",
+            env.ders[0].requested_kvar
         );
     }
 
@@ -1059,19 +1077,20 @@ mod dispatch {
     }
 
     #[test]
-    fn wattpf_storage_is_deferred_not_silent() {
-        // Same root cause as AVR: a Storage in WATTPF keeps VARMODE_PF (the `Varmode`
-        // side effect rides on PVSystem's `der_set_kvar_requested` only), so the kvar
-        // request would be silently discarded by `set_nominal`. Must error loudly
-        // (audit-code follow-up, step 2e-ii — the pre-existing 2e-i gap).
+    fn wattpf_storage_dispatches_in_kvar_mode() {
+        // A Storage in WATTPF dispatches (no error). FDCkW=0 for Storage, so the
+        // wattpf curve is read at panel-pu 0 (pf=1 here → kvar 0, matching the oracle —
+        // see phase7/invcontrol_wattpf_storage). The fix under test: the dispatch sets
+        // the DER `Varmode := VARMODE_KVAR` so a non-trivial request would be applied.
         let mut ic = wattpf_ic();
         let mut der = MockDer::new("pv", 1.0, 600.0);
         der.is_storage = true;
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
-        assert!(
-            err.contains("Storage WATTPF"),
-            "expected a Storage WATTPF NOT_PORTED error, got: {err}"
+        ic.sample(&mut env).unwrap(); // no error — Storage WATTPF is supported
+        ic.do_pending_action(&mut env);
+        assert_eq!(
+            env.ders[0].var_mode, 1,
+            "Storage Varmode must be VARMODE_KVAR"
         );
     }
 
@@ -1123,18 +1142,33 @@ mod dispatch {
     }
 
     #[test]
-    fn wattvar_storage_is_deferred_not_silent() {
-        // Same root cause as AVR/WATTPF: a Storage in WATTVAR keeps VARMODE_PF, so the
-        // kvar request would be silently discarded. Must error loudly (audit-code
-        // follow-up, step 2e-ii — the pre-existing 2e-i gap).
+    fn wattvar_storage_dispatches_in_kvar_mode() {
+        // A Storage in WATTVAR regulates: FDCkW=0 means the wattvar curve is read at
+        // panel-pu 0, so a curve with a non-zero y(0) drives a real kvar request. Here
+        // y(0)=-0.3 → QDesireWVpu=-0.3 → QDesiredWV = -0.3·QHeadRoom(=600) = -180. The
+        // fix under test: `Varmode := VARMODE_KVAR` so the request is applied (a Storage
+        // would otherwise keep VARMODE_PF and discard it). (The converged value is
+        // oracle-pinned by phase7/invcontrol_wattvar_storage.)
         let mut ic = wattvar_ic();
+        // Override the curve so y(0) = -0.3 (the curve point Storage actually reads).
+        ic.wattvar_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "wv",
+            &[0.0, 0.5, 1.0],
+            &[-0.3, -0.3, -0.4],
+        ));
         let mut der = MockDer::new("pv", 1.0, 600.0);
         der.is_storage = true;
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap(); // no error — Storage WATTVAR is supported
+        ic.do_pending_action(&mut env);
+        assert_eq!(
+            env.ders[0].var_mode, 1,
+            "Storage Varmode must be VARMODE_KVAR"
+        );
         assert!(
-            err.contains("Storage WATTVAR"),
-            "expected a Storage WATTVAR NOT_PORTED error, got: {err}"
+            (env.ders[0].requested_kvar - (-180.0)).abs() < 1e-9,
+            "Storage WATTVAR kvar = {} (expected -180)",
+            env.ders[0].requested_kvar
         );
     }
 }
