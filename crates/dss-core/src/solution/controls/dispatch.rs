@@ -1358,6 +1358,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 current_kvar_limit: pv.base.current_kvar_limit,
                 current_kvar_limit_neg: pv.base.current_kvar_limit_neg,
                 p_priority: pv.p_priority,
+                pf_priority: pv.pf_priority,
                 // volt-watt (Pascal UpdateDERParameters PVSystem branch):
                 dckw: pv.panel_kw,            // FDCkW := PVSystemVars.PanelkW
                 dckw_rated: pv.f_pmpp,        // FDCkWRated := Pmpp
@@ -1381,6 +1382,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 current_kvar_limit: st.base.current_kvar_limit,
                 current_kvar_limit_neg: st.base.current_kvar_limit_neg,
                 p_priority: st.p_priority,
+                pf_priority: st.pf_priority,
                 // volt-watt (Pascal UpdateDERParameters Storage branch). Used only
                 // by VOLTVAR for Storage (where they go unread); the Storage
                 // VOLTWATT/VV_VW dispatch is deferred (guarded at Sample), so the
@@ -1393,6 +1395,10 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         } else {
             panic!("InvControl fleet entry is not a PVSystem or Storage");
         }
+    }
+
+    fn der_is_pvsystem(&self, r: ElemRef) -> bool {
+        self.store.obj(r).as_any().is::<PVSystem>()
     }
 
     fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
@@ -1462,6 +1468,28 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.drc_mode = value;
         }
     }
+    fn der_set_wp_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.wp_mode = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.wp_mode = value;
+        }
+    }
+    fn der_set_wv_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.wv_mode = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.wv_mode = value;
+        }
+    }
+    fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.pf_wp_nominal = value;
+        }
+    }
     fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
@@ -1521,6 +1549,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 MonitorVar::DrcAvg => pv.vavg = value,
                 MonitorVar::DrcOperation => pv.drc_operation = value,
                 MonitorVar::VvDrcOperation => pv.vv_drc_operation = value,
+                MonitorVar::WpOperation => pv.wp_operation = value,
+                MonitorVar::WvOperation => pv.wv_operation = value,
             }
         } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
             match kind {
@@ -1530,6 +1560,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 MonitorVar::DrcAvg => st.vavg = value,
                 MonitorVar::DrcOperation => st.drc_operation = value,
                 MonitorVar::VvDrcOperation => st.vv_drc_operation = value,
+                MonitorVar::WpOperation => st.wp_operation = value,
+                MonitorVar::WvOperation => st.wv_operation = value,
             }
         }
     }

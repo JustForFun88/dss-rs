@@ -55,6 +55,12 @@ pub(crate) const VOLTWATT: i32 = 2;
 pub(crate) const DRC: i32 = 3;
 pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
+// AVR=6 (active voltage regulation) — dispatch lands with step 2e-ii. Until then
+// the Sample mode guard rejects it via the catch-all arm (so the ordinal is read
+// only by the deferred-AVR test); `allow(dead_code)` keeps the non-test lib build
+// quiet without hiding it from 2e-ii.
+#[allow(dead_code)]
+pub(crate) const AVR: i32 = 6;
 
 // Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
 pub(crate) const NONE_COMBMODE: i32 = 0;
@@ -251,6 +257,18 @@ pub(crate) struct InvVars {
     pub f_drc_operation: f64,
     pub f_vvdrc_operation: f64,
 
+    // --- WATTPF / WATTVAR reactive-power state (sub-step 2e-i) ---
+    /// `QDesiredWP` / `QDesiredWV` — the watt-pf / watt-var kvar set-point pushed
+    /// to the DER.
+    pub q_desired_wp: f64,
+    pub q_desired_wv: f64,
+    /// `QDesireWPpu` / `QDesireWVpu` — Q desired from the watt-pf / watt-var curve (pu).
+    pub q_desire_wppu: f64,
+    pub q_desire_wvpu: f64,
+    /// `FWPOperation` / `FWVOperation` — watt-pf / watt-var operating flags.
+    pub f_wp_operation: f64,
+    pub f_wv_operation: f64,
+
     // --- volt-watt active-power state (VOLTWATT / VV_VW; sub-step 2c) ---
     /// `PLimitVW` — the volt-watt kW set-point pushed to the DER.
     pub p_limit_vw: f64,
@@ -310,6 +328,11 @@ pub(crate) struct InvVars {
     pub f_current_kvar_limit: f64,
     pub f_current_kvar_limit_neg: f64,
     pub f_p_priority: bool,
+    /// `DERElem.GetPFPriority()` — the inverter PF-priority flag (read live by
+    /// Pascal's `CalcQWPcurve_desiredpu`; cached here at `UpdateDERParameters`
+    /// since `SetPFPriority` never fires inside the control loop, so the cached
+    /// value equals the live one).
+    pub f_pf_priority: bool,
 }
 
 impl InvVars {

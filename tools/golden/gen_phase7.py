@@ -514,6 +514,47 @@ def deck_invcontrol_vv_drc() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2e-i: InvControl WATTPF (the watt-pf smart-inverter mode) -------
+# Source -> Line.l1 -> bus b; a 1000 kW PV (1200 kVA) at full irradiance. The
+# watt-pf curve maps the PV's *power output* fraction (panel pu) to a power factor
+# (unity at low output, absorbing pf=-0.9 at full output). `CalcQWPcurve_desiredpu`
+# derives the kvar from p·tan(acos(pf)); since the inverter is at full power the
+# curve sits at its -0.9 endpoint. The gate pins the converged PV terminal power
+# (kW + the controller-set kvar) + the exact iteration count. WATTPF forces
+# QHeadRoom := kvarLimit (regardless of RefReactivePower).
+def deck_invcontrol_wattpf() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wpf npts=4 yarray=(1 1 -0.95 -0.9) xarray=(0 0.5 0.8 1.0)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=WATTPF wattpf_curve=wpf",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
+# --- WP7.5 step 2e-i: InvControl WATTVAR (the watt-var smart-inverter mode) ------
+# Source -> Line.l1 -> bus b; a 1000 kW PV (1000 kVA, so P alone fills the kVA
+# circle at full output). The watt-var curve maps panel pu to Q in pu of headroom
+# (0 at low output, absorbing -0.8 at full). `Calc_PQ_WV` then solves the
+# watt-var-line ∩ kVA-circle quadratic to keep (P, Q) inside the inverter rating —
+# the discriminator that exercises the quadratic branch (a 1000 kW + 800 kvar
+# request is 1281 kVA > the 1000-kVA rating). Pins the converged kW+kvar + iters.
+def deck_invcontrol_wattvar() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wv npts=4 yarray=(0 0 -0.4 -0.8) xarray=(0 0.5 0.8 1.0)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1000 Pmpp=1000 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=WATTVAR wattvar_curve=wv RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -562,6 +603,8 @@ SCENARIOS = {
     "invcontrol_vv_vw": deck_invcontrol_vv_vw,
     "invcontrol_drc": deck_invcontrol_drc,
     "invcontrol_vv_drc": deck_invcontrol_vv_drc,
+    "invcontrol_wattpf": deck_invcontrol_wattpf,
+    "invcontrol_wattvar": deck_invcontrol_wattvar,
 }
 
 
