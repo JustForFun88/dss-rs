@@ -1071,6 +1071,26 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     WATTPF/WATTVAR cases (`watt-pf_watt-var/dss/SnapShot_{wattpf,wattvar}.dss`)
     migrate into `solvable_now` and match the oracle full-model live. lib **608 →
     610**.
+  - **audit-code follow-up:** verdict faithful 1:1 (no Critical/Major) — every
+    WATTPF/WATTVAR math helper, both `Sample` triggers, both `DoPendingAction`
+    branches, the `check_qlimits` WATTPF extension, and the per-step reset map
+    line-for-line to the Pascal + the oracle goldens. Fixed **1 Minor ordering
+    divergence**: `Calc_PQ_WV` read `Qbase` from the *post*-`CalcWATTVAR_vars`
+    `QDesiredWV` where Pascal reads it at the procedure top (the *prior* value, 0 on
+    the first firing) — moved the `Pbase`/`Qbase` read before the first
+    `CalcWATTVAR_vars` (Pascal l.3348-3359). The probe showed this only perturbs the
+    iteration-1 *transient* (the control fixpoint is `QDesiredWV`-sign-consistent, so
+    the converged P/Q are identical even for asymmetric kvar limits — the simulated
+    pre-fix ordering still passed every golden), so it is a faithfulness/trajectory
+    fix, not a converged-value bug. Added golden `phase7/invcontrol_wattvar_asym`
+    (kvarMax=800/kvarMaxAbs=400 → the kVA-circle quadratic with QHeadRoom ≠
+    QHeadRoomNeg; lands on 1000 kVA, matched the oracle) — the only gate exercising
+    the quadratic with asymmetric headroom. Surfaced-not-fixed (unobservable until
+    WP7.7): the Storage mode-3 monitor var-index aliasing (Pascal writes both
+    `FWPOperation` and `FWVOperation` to Storage `Set_Variable(16)`; the Rust env
+    keeps separate `wp_operation`/`wv_operation` fields — only one fires per Sample,
+    so it is functionally equivalent and the slot is unread until the mode-3 monitor
+    body lands). lib **610** (golden-only add).
 - **next:** WP7.5 step 2e-ii — `InvControl` AVR (the active-voltage-regulation
   3-stage DQDV regulator); then step 2e-iii — the LPF/RiseFall rate-of-change
   limiting + the explicit-`MonBus` monitored-voltage path; then step 3

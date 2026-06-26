@@ -1895,6 +1895,22 @@ impl InvControl {
     /// watt-var-line ∩ kVA-circle quadratic for `PLimitEndpu` + `QDesireEndpu`.
     /// `CalcWATTVAR_vars` is run after each adjustment (matching Pascal's two calls).
     fn calc_pq_wv(&mut self, j: usize) {
+        // Pbase + Qbase are read at the TOP (Pascal l.3348-3359), i.e. `Qbase` uses
+        // the **prior** `QDesiredWV` (the value the previous control iteration left,
+        // 0 on the first) — *before* the first `CalcWATTVAR_vars` overwrites it. This
+        // only differs from reading it post-update when QHeadRoom ≠ QHeadRoomNeg
+        // (asymmetric kvar limits) and the prior/new `QDesiredWV` signs differ.
+        let (pbase, qbase) = {
+            let cv = &self.ctrl_vars[j];
+            let pbase = cv.f_kva_rating.min(cv.f_dckw_rated);
+            let qbase = if cv.q_desired_wv >= 0.0 {
+                cv.q_headroom
+            } else {
+                cv.q_headroom_neg
+            };
+            (pbase, qbase)
+        };
+
         // Part 1: PLimitEndpu from the kvar-limit flag, then CalcWATTVAR_vars.
         let (wv_operation, q_desire_endpu) = {
             let cv = &self.ctrl_vars[j];
@@ -1912,24 +1928,12 @@ impl InvControl {
         self.calc_wattvar_vars(j);
 
         // Part 2: if (P, Q) leaves the kVA circle, intersect the watt-var line with
-        // the kVA circle (Pascal's quadratic) and re-derive QDesireEndpu.
-        let (pbase, qbase, panel, kva_rating, p_limit_endpu, q_desired_wv) = {
+        // the kVA circle (Pascal's quadratic) and re-derive QDesireEndpu. `q_desired_wv`
+        // here is the *new* (post-CalcWATTVAR_vars) value, matching Pascal's `s` check.
+        let (panel, kva_rating, p_limit_endpu, q_desired_wv) = {
             let cv = &self.ctrl_vars[j];
-            let pbase = cv.f_kva_rating.min(cv.f_dckw_rated);
-            let qbase = if cv.q_desired_wv >= 0.0 {
-                cv.q_headroom
-            } else {
-                cv.q_headroom_neg
-            };
             let panel = cv.f_dckw * cv.f_eff_factor * cv.f_pct_dckw_rated;
-            (
-                pbase,
-                qbase,
-                panel,
-                cv.f_kva_rating,
-                cv.p_limit_endpu,
-                cv.q_desired_wv,
-            )
+            (panel, cv.f_kva_rating, cv.p_limit_endpu, cv.q_desired_wv)
         };
         let s = ((panel * p_limit_endpu).powi(2) + q_desired_wv.powi(2)).sqrt();
         if s > kva_rating {
