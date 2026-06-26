@@ -30,15 +30,23 @@
 //! control-iteration state machine — seed `QHeadRoom/2`, estimate `DQDV`, then
 //! regulate toward `Vsetpoint`) plus the `Sample` trigger.
 //!
+//! Step 2e-iii adds the **`MonBus=` explicit monitored-bus voltage path**
+//! (`GetMonVoltage`'s `FUsingMonBuses` branch — per-bus single-node / line-to-line
+//! voltages scaled to `FMonBusesVbase`, reduced AVG/MAX/MIN/phase) and the **LPF /
+//! Rise-Fall rate-of-change limiting** (`CalcLPF`/`CalcRF` smoothing
+//! `QDesireOptionpu`/`PLimitOptionpu` against the prior step's value before the
+//! `Check_Qlimits`/`Check_Plimits` clamp, wired into the VOLTVAR / DRC / VV_DRC /
+//! VOLTWATT / VV_VW `DoPendingAction` branches).
+//!
 //! **NOT_PORTED / deferred (each an explicit error, never a silent skip):** GFM →
 //! WP7.7, **Storage** in VOLTWATT/VV_VW (the YPrim-state-flip propagation gap;
-//! PVSystem volt-watt is ported), the `MonBus=` explicit monitored-bus voltage path
-//! (`FUsingMonBuses` → 2e-iii), the LPF / Rise-Fall rate-of-change limiting
-//! (→ 2e-iii), and the Exponential `ControlModel` (the `TPICtrl` PI controller →
-//! WP7.7).
+//! PVSystem volt-watt is ported), and the Exponential `ControlModel` (the `TPICtrl`
+//! PI controller → WP7.7).
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
+
+use num_complex::Complex64;
 
 use crate::elements::traits::ElemRef;
 use crate::util::fmt_g;
@@ -46,9 +54,31 @@ use crate::util::fmt_g;
 use super::{
     AVR, CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
     DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR,
-    NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_INACTIVE, VOLTVAR, VOLTWATT, VV_DRC, VV_VW,
-    WATTPF, WATTVAR,
+    NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_LPF, ROC_RISEFALL, VOLTVAR, VOLTWATT, VV_DRC,
+    VV_VW, WATTPF, WATTVAR,
 };
+
+/// Reduce the explicit-`MonBus` complex voltage buffer to a scalar by
+/// `MonVoltageCalc` (Pascal `GetMonVoltage`'s `FUsingMonBuses` `case`):
+/// AVG/MAX/MIN over `|cBuffer[j]|`, else a specific phase.
+fn reduce_mon_phase(cbuffer: &[Complex64], mon_phase: i32) -> f64 {
+    match mon_phase {
+        super::AVGPHASES => {
+            if cbuffer.is_empty() {
+                0.0
+            } else {
+                cbuffer.iter().map(|c| c.norm()).sum::<f64>() / cbuffer.len() as f64
+            }
+        }
+        MAXPHASE => cbuffer.iter().map(|c| c.norm()).fold(0.0, f64::max),
+        MINPHASE => cbuffer.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
+        // A specific phase. Pascal reads `Cabs(cBuffer[FMonBusesPhase])` — and in
+        // the MonBus branch `cBuffer` is filled 0-based (`cBuffer[0..len-1]`), so
+        // the phase number indexes it directly (an upstream quirk; the corpus
+        // MonBus cases all use AVG/MAX, so this arm is unexercised).
+        p => cbuffer.get(p as usize).map_or(0.0, |c| c.norm()),
+    }
+}
 
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
 fn pas_sign(x: f64) -> f64 {
@@ -141,6 +171,12 @@ pub(crate) trait InvDispatchEnv {
     /// `ActiveCircuit.Buses[DERElem.terminals[0].busRef].kVBase * 1000` — the L-N
     /// base volts for the `FVpuSolution` per-unit (UpdateInvControl).
     fn der_bus_vbase(&self, r: ElemRef) -> f64;
+    /// Pascal `GetMonVoltage`'s explicit-`MonBus` node read:
+    /// `ActiveCircuit.Solution.NodeV[Buses[BusList.Find(FMonBuses[j])].GetRef(node)]`
+    /// — the complex voltage at the `j`-th monitored bus's `node` (1-based node
+    /// number, used as `TDSSBus.GetRef`'s 1-based index, returning the ground node
+    /// `NodeV[0]=0` out of range). `j` indexes the control's parsed `mon_buses`.
+    fn mon_bus_node_v(&self, j: usize, node: i32) -> Complex64;
     /// `obj.FullName` (`PVSystem.<n>` / `Storage.<n>`) for the event log.
     fn der_full_name(&self, r: ElemRef) -> String;
 
@@ -371,10 +407,40 @@ impl InvControl {
         cv.f_eff_factor = snap.eff_factor;
     }
 
-    /// Pascal `TInvControlObj.GetMonVoltage(Vpresent, i, BasekV)` — the no-`MonBus`
-    /// path (per-DER self-monitoring). The explicit-`MonBus` path is NOT_PORTED
-    /// (step 2e); the caller guards on `FUsingMonBuses` first.
-    fn get_mon_voltage(&self, i: usize, env: &mut dyn InvDispatchEnv) -> f64 {
+    /// Pascal `TInvControlObj.GetMonVoltage(Vpresent, i, BasekV)`.
+    ///
+    /// With `MonBus=` named explicit monitored buses (`FUsingMonBuses`), each
+    /// monitored bus contributes a complex voltage `cBuffer[j]`: a single-node
+    /// magnitude or a 2-node line-to-line difference, scaled by `BasekV·1000 /
+    /// FMonBusesVbase[j]`; the buffer is then reduced by `MonVoltageCalc`
+    /// (AVG/MAX/MIN/phase). Without `MonBus`, the per-DER self-monitoring path
+    /// reduces the DER's own terminal-voltage magnitudes the same way.
+    fn get_mon_voltage(&self, i: usize, basekv: f64, env: &mut dyn InvDispatchEnv) -> f64 {
+        if self.f_using_mon_buses {
+            // The complex per-bus monitored voltages (Pascal `cBuffer[0..len-1]`).
+            let cbuffer: Vec<Complex64> = (0..self.mon_buses.len())
+                .map(|j| {
+                    let nodes = &self.mon_buses_nodes[j];
+                    // FMonBusesVbase[j+1] (Pascal 1-based) = mon_buses_vbase[j].
+                    let vbase = self.mon_buses_vbase.get(j).copied().unwrap_or(0.0);
+                    let scale = if vbase != 0.0 {
+                        basekv * 1000.0 / vbase
+                    } else {
+                        0.0
+                    };
+                    if nodes.len() == 2 {
+                        let vi = env.mon_bus_node_v(j, nodes[0]);
+                        let vj = env.mon_bus_node_v(j, nodes[1]);
+                        (vi - vj) * scale
+                    } else {
+                        let node = nodes.first().copied().unwrap_or(0);
+                        env.mon_bus_node_v(j, node) * scale
+                    }
+                })
+                .collect();
+            return reduce_mon_phase(&cbuffer, self.mon_buses_phase);
+        }
+
         let mags = env.der_vterminal_mags(self.fleet[i]);
         let n = self.ctrl_vars[i].nphases_der.min(mags.len());
         match self.mon_buses_phase {
@@ -415,18 +481,6 @@ impl InvControl {
                 _ => return Err(self.not_ported_mode()), // GFM → WP7.7
             }
         }
-        if self.f_using_mon_buses {
-            return Err(format!(
-                "InvControl.{}: explicit MonBus voltage monitoring is not yet ported (WP7.5 step 2e-iii)",
-                self.ccd.cd.obj.name()
-            ));
-        }
-        if self.rate_of_change_mode != ROC_INACTIVE {
-            return Err(format!(
-                "InvControl.{}: LPF/RiseFall rate-of-change limiting is not yet ported (WP7.5 step 2e-iii)",
-                self.ccd.cd.obj.name()
-            ));
-        }
         // Exponential ControlModel runs the `TPICtrl` PI controller in
         // `CalcVoltVar_vars` (WP7.7); reject it rather than silently freeze the
         // var output (the deferral-is-never-a-silent-skip convention).
@@ -445,7 +499,7 @@ impl InvControl {
             let snap = env.der_snap(r);
 
             let basekv = self.ctrl_vars[i].f_vbase / 1000.0; // L-N voltage
-            let vpresent = self.get_mon_voltage(i, env);
+            let vpresent = self.get_mon_voltage(i, basekv, env);
 
             // ControlIteration 1: seed the prior averages (for the event log).
             if control_iter == 1 {
@@ -1088,18 +1142,113 @@ impl InvControl {
         }
     }
 
+    /// Pascal `CalcLPF(m, powertype, LPF_desiredpu)` — the first-order low-pass
+    /// filter `out(t) = desired·(1−α) + prior·α`, `α = exp(−h/LPFTau)`, against the
+    /// prior time step's option value (`FPrior*Optionpu`). `is_vars` selects
+    /// `QDesireOptionpu` (`'VARS'`) vs `PLimitOptionpu` (`'WATTS'`).
+    fn calc_lpf(&mut self, m: usize, is_vars: bool, lpf_desiredpu: f64, env: &dyn InvDispatchEnv) {
+        // Pascal `alpha := exp(-1.0 * DynaVars.h / LPFTau)`.
+        let alpha = (-env.dyna_h() / self.lpf_tau).exp();
+        let cv = &mut self.ctrl_vars[m];
+        if is_vars {
+            cv.q_desire_optionpu =
+                lpf_desiredpu * (1.0 - alpha) + cv.f_prior_q_desire_optionpu * alpha;
+        } else {
+            cv.p_limit_optionpu =
+                lpf_desiredpu * (1.0 - alpha) + cv.f_prior_p_limit_optionpu * alpha;
+        }
+    }
+
+    /// Pascal `CalcRF(m, powertype, RF_desiredpu)` — clamp the per-step change to
+    /// `±FRiseFallLimit·h` around the prior step's option value, else take the
+    /// request unchanged. `is_vars` selects `QDesireOptionpu` vs `PLimitOptionpu`.
+    fn calc_rf(&mut self, m: usize, is_vars: bool, rf_desiredpu: f64, env: &dyn InvDispatchEnv) {
+        let step = self.rise_fall_limit * env.dyna_h();
+        let cv = &mut self.ctrl_vars[m];
+        let prior = if is_vars {
+            cv.f_prior_q_desire_optionpu
+        } else {
+            cv.f_prior_p_limit_optionpu
+        };
+        let out = if (rf_desiredpu - prior) > step {
+            prior + step
+        } else if (rf_desiredpu - prior) < -step {
+            prior - step
+        } else {
+            rf_desiredpu
+        };
+        if is_vars {
+            cv.q_desire_optionpu = out;
+        } else {
+            cv.p_limit_optionpu = out;
+        }
+    }
+
+    /// The `DoPendingAction` reactive-power tail shared by VOLTVAR / DRC / VV_DRC:
+    /// apply the LPF / Rise-Fall filter (if active) then the `Check_Qlimits`
+    /// kVA/kvar clamp, leaving `QDesireEndpu`. With rate-of-change active the clamp
+    /// runs on `QDesireOptionpu` and the sign follows it; INACTIVE clamps the raw
+    /// `desired_pu` (Pascal l.1001-1021 / l.1248-1269 / l.1318-1339).
+    fn apply_roc_qlimit(&mut self, k: usize, desired_pu: f64, env: &dyn InvDispatchEnv) {
+        match self.rate_of_change_mode {
+            ROC_LPF | ROC_RISEFALL => {
+                if self.rate_of_change_mode == ROC_LPF {
+                    self.calc_lpf(k, true, desired_pu, env);
+                } else {
+                    self.calc_rf(k, true, desired_pu, env);
+                }
+                let opt = self.ctrl_vars[k].q_desire_optionpu;
+                self.check_qlimits(k, opt);
+                let limited = self.ctrl_vars[k].q_desire_limitedpu;
+                self.ctrl_vars[k].q_desire_endpu = limited.abs().min(opt.abs()) * pas_sign(opt);
+            }
+            _ => {
+                self.check_qlimits(k, desired_pu);
+                let limited = self.ctrl_vars[k].q_desire_limitedpu;
+                self.ctrl_vars[k].q_desire_endpu =
+                    desired_pu.abs().min(limited.abs()) * pas_sign(desired_pu);
+            }
+        }
+    }
+
+    /// The `DoPendingAction` active-power tail shared by VOLTWATT / VV_VW: apply the
+    /// LPF / Rise-Fall filter (if active) then the `Check_Plimits` kVA/pctPmpp
+    /// clamp, leaving `PLimitEndpu`. With rate-of-change active the clamp runs on
+    /// `PLimitOptionpu` and `PLimitEndpu := Min(PLimitLimitedpu, PLimitOptionpu)`
+    /// (a **plain** min, Pascal l.1390/1478); INACTIVE uses the abs/sign form
+    /// (Pascal l.1404/1501).
+    fn apply_roc_plimit(&mut self, k: usize, desired_pu: f64, env: &dyn InvDispatchEnv) {
+        match self.rate_of_change_mode {
+            ROC_LPF | ROC_RISEFALL => {
+                if self.rate_of_change_mode == ROC_LPF {
+                    self.calc_lpf(k, false, desired_pu, env);
+                } else {
+                    self.calc_rf(k, false, desired_pu, env);
+                }
+                let opt = self.ctrl_vars[k].p_limit_optionpu;
+                self.check_plimits(k, opt);
+                let limited = self.ctrl_vars[k].p_limit_limitedpu;
+                self.ctrl_vars[k].p_limit_endpu = limited.min(opt);
+            }
+            _ => {
+                self.check_plimits(k, desired_pu);
+                let limited = self.ctrl_vars[k].p_limit_limitedpu;
+                self.ctrl_vars[k].p_limit_endpu =
+                    limited.abs().min(desired_pu.abs()) * pas_sign(desired_pu);
+            }
+        }
+    }
+
     /// Pascal `DoPendingAction`'s `VOLTVAR` branch.
     fn do_pending_voltvar(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
         env.der_set_modes(r, false, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
 
-        // Main process (RateOfChangeMode INACTIVE — LPF/RF are step 2e).
+        // Main process: the volt-var curve Q, then the LPF/RF rate-of-change filter
+        // (if active) and the kVA/kvar clamp.
         self.calc_qvv_curve_desiredpu(k, env);
         let q_desire_vvpu = self.ctrl_vars[k].q_desire_vvpu;
-        self.check_qlimits(k, q_desire_vvpu);
-        let limited = self.ctrl_vars[k].q_desire_limitedpu;
-        self.ctrl_vars[k].q_desire_endpu =
-            q_desire_vvpu.abs().min(limited.abs()) * pas_sign(q_desire_vvpu);
+        self.apply_roc_qlimit(k, q_desire_vvpu, env);
 
         // Convergence algorithm → QDesiredVV (kvar set-point).
         self.calc_voltvar_vars(k);
@@ -1144,13 +1293,11 @@ impl InvControl {
         self.ctrl_vars[k].kw_out_desiredpu =
             self.ctrl_vars[k].kw_out_desired / self.ctrl_vars[k].p_base;
 
-        // Main process (RateOfChangeMode INACTIVE — LPF/RF are step 2e).
+        // Main process: the volt-watt curve kW limit, then the LPF/RF filter (if
+        // active) and the kVA/pctPmpp clamp.
         self.calc_pvw_curve_limitpu(k);
         let p_limit_vw_pu = self.ctrl_vars[k].p_limit_vw_pu;
-        self.check_plimits(k, p_limit_vw_pu);
-        let limited = self.ctrl_vars[k].p_limit_limitedpu;
-        self.ctrl_vars[k].p_limit_endpu =
-            limited.abs().min(p_limit_vw_pu.abs()) * pas_sign(p_limit_vw_pu);
+        self.apply_roc_plimit(k, p_limit_vw_pu, env);
 
         // Convergence algorithm → PLimitVW (kW set-point).
         let control_iter = env.control_iteration();
@@ -1194,21 +1341,16 @@ impl InvControl {
         self.ctrl_vars[k].kw_out_desiredpu =
             self.ctrl_vars[k].kw_out_desired / self.ctrl_vars[k].p_base;
 
-        // Main process: QDesireVVpu + PLimitVWpu, then the Q and P clamps.
+        // Main process: QDesireVVpu + PLimitVWpu, then per-function LPF/RF (if
+        // active) and the Q and P clamps (Q first, then P — Pascal l.1463-1502).
         self.calc_pvw_curve_limitpu(k);
         self.calc_qvv_curve_desiredpu(k, env);
 
         let q_desire_vvpu = self.ctrl_vars[k].q_desire_vvpu;
-        self.check_qlimits(k, q_desire_vvpu);
-        let q_limited = self.ctrl_vars[k].q_desire_limitedpu;
-        self.ctrl_vars[k].q_desire_endpu =
-            q_desire_vvpu.abs().min(q_limited.abs()) * pas_sign(q_desire_vvpu);
+        self.apply_roc_qlimit(k, q_desire_vvpu, env);
 
         let p_limit_vw_pu = self.ctrl_vars[k].p_limit_vw_pu;
-        self.check_plimits(k, p_limit_vw_pu);
-        let p_limited = self.ctrl_vars[k].p_limit_limitedpu;
-        self.ctrl_vars[k].p_limit_endpu =
-            p_limited.abs().min(p_limit_vw_pu.abs()) * pas_sign(p_limit_vw_pu);
+        self.apply_roc_plimit(k, p_limit_vw_pu, env);
 
         // Convergence algorithms → PLimitVW + QDesiredVV.
         let control_iter = env.control_iteration();
@@ -1272,13 +1414,11 @@ impl InvControl {
         env.der_set_modes(r, false, false, crate::elements::pc::pvsystem::VARMODE_KVAR);
         env.der_set_drc_mode(r, true);
 
-        // Main process (RateOfChangeMode INACTIVE — LPF/RF are step 2e).
+        // Main process: the DRC dynamic-reactive-current Q, then the LPF/RF filter
+        // (if active) and the kVA/kvar clamp.
         self.calc_qdrc_desiredpu(k, env);
         let q_desire_drcpu = self.ctrl_vars[k].q_desire_drcpu;
-        self.check_qlimits(k, q_desire_drcpu);
-        let limited = self.ctrl_vars[k].q_desire_limitedpu;
-        self.ctrl_vars[k].q_desire_endpu =
-            q_desire_drcpu.abs().min(limited.abs()) * pas_sign(q_desire_drcpu);
+        self.apply_roc_qlimit(k, q_desire_drcpu, env);
 
         // Convergence algorithm → QDesiredDRC (kvar set-point).
         self.calc_drc_vars(k);
@@ -1525,13 +1665,12 @@ impl InvControl {
         env.der_set_modes(r, false, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
         env.der_set_drc_mode(r, true);
 
-        // Main process: QDesireVVpu + QDesireDRCpu, then the combined Q clamp.
+        // Main process: QDesireVVpu + QDesireDRCpu, then the LPF/RF filter (on the
+        // sum, if active) and the combined Q clamp.
         self.calc_qvv_curve_desiredpu(k, env);
         self.calc_qdrc_desiredpu(k, env);
         let q_sum = self.ctrl_vars[k].q_desire_vvpu + self.ctrl_vars[k].q_desire_drcpu;
-        self.check_qlimits(k, q_sum);
-        let limited = self.ctrl_vars[k].q_desire_limitedpu;
-        self.ctrl_vars[k].q_desire_endpu = q_sum.abs().min(limited.abs()) * pas_sign(q_sum);
+        self.apply_roc_qlimit(k, q_sum, env);
 
         // Convergence algorithm → QDesiredVVDRC (kvar set-point).
         self.calc_vvdrc_vars(k);
@@ -1597,8 +1736,11 @@ impl InvControl {
             // control trajectory from the oracle. `FdeltaPFactor` resets to
             // DELTAPDEFAULT each step, but `FdeltaQFactor` deliberately does NOT
             // (Pascal l.2574 leaves it commented). `DQDV` (Pascal l.2562) is reset so
-            // the AVR sensitivity is re-estimated each step. The `FPrior*Optionpu`
-            // priors (consumed only by the deferred LPF/RoC path) are still omitted.
+            // the AVR sensitivity is re-estimated each step. `FPrior*Optionpu` latch
+            // this step's `QDesireOptionpu`/`PLimitOptionpu` as the LPF/RF reference
+            // for the next step (Pascal l.2551-2552).
+            self.ctrl_vars[j].f_prior_p_limit_optionpu = self.ctrl_vars[j].p_limit_optionpu;
+            self.ctrl_vars[j].f_prior_q_desire_optionpu = self.ctrl_vars[j].q_desire_optionpu;
             let r = self.fleet[j];
             env.der_set_vw_mode(r, false);
             env.der_set_vv_mode(r, false);
@@ -1614,16 +1756,17 @@ impl InvControl {
             self.ctrl_vars[j].f_avr_operation = 0.0;
             self.ctrl_vars[j].f_delta_p_factor = DELTAPDEFAULT;
 
-            let basekv = self.ctrl_vars[j].f_vbase / 1000.0;
+            // Pascal `BasekV := CtrlVars[i].FVBase / 1000.0` — `i` is the InvControl's
+            // element-list index (1 for the single-InvControl gated case), so this is
+            // CtrlVars[1]'s vbase = `ctrl_vars[0]` (the `//TODO: check (i, j)`
+            // upstream quirk: it does NOT use the per-DER `j`; identical for a
+            // homogeneous fleet — the only gated shape).
+            let basekv = self.ctrl_vars[0].f_vbase / 1000.0;
             self.ctrl_vars[j].prior_roll_avg_window = self.ctrl_vars[j].f_roll_avg_window.avg_val();
             self.ctrl_vars[j].prior_drc_roll_avg_window =
                 self.ctrl_vars[j].f_drc_roll_avg_window.avg_val();
 
-            let solnvoltage = if self.f_using_mon_buses {
-                0.0 // MonBus path NOT_PORTED (step 2e); guarded at Sample
-            } else {
-                self.get_mon_voltage(j, env)
-            };
+            let solnvoltage = self.get_mon_voltage(j, basekv, env);
 
             let roll_len = self.roll_avg_window_length as f64;
             let drc_len = self.drc_roll_avg_window_length as f64;
@@ -1642,7 +1785,6 @@ impl InvControl {
                     0.0
                 };
             }
-            let _ = basekv;
         }
     }
 

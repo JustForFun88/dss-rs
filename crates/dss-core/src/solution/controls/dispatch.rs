@@ -322,6 +322,18 @@ pub(super) fn dispatch_control(
         let pv_systems = ckt.pv_systems.clone();
         let storages = ckt.storages.clone();
         let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+        // Resolve the control's `MonBus` names to per-bus `RefNo` arrays for the
+        // `GetMonVoltage` MonBus path (empty when unused or a name is unknown).
+        let mon_bus_refs: Vec<Vec<usize>> = ic
+            .mon_buses
+            .iter()
+            .map(|bn| {
+                ckt.bus_list
+                    .find(bn)
+                    .map(|bi| ckt.buses[bi].ref_no.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
         let result = {
             let Solution {
                 node_v,
@@ -339,6 +351,7 @@ pub(super) fn dispatch_control(
                 pv_systems,
                 storages,
                 bus_kvbase,
+                mon_bus_refs,
                 queue,
                 events: event_log,
                 errors,
@@ -1251,6 +1264,19 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
             .downcast_ref::<InvControl>()
             .expect("checked above")
             .clone();
+        // Resolve this control's `MonBus` names to per-bus `RefNo` arrays (disjoint
+        // from the `&mut ckt.solution` borrow held above; empty for the common
+        // no-MonBus control, so zero cost there).
+        let mon_bus_refs: Vec<Vec<usize>> = ic
+            .mon_buses
+            .iter()
+            .map(|bn| {
+                ckt.bus_list
+                    .find(bn)
+                    .map(|bi| ckt.buses[bi].ref_no.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
         {
             let mut env2 = InvDispEnv {
                 store: &mut **store,
@@ -1259,6 +1285,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 pv_systems: pv_systems.clone(),
                 storages: storages.clone(),
                 bus_kvbase: bus_kvbase.clone(),
+                mon_bus_refs,
                 queue: &mut *control_queue,
                 events: &mut *event_log,
                 errors,
@@ -1291,6 +1318,10 @@ struct InvDispEnv<'a> {
     pv_systems: Vec<ElemRef>,
     storages: Vec<ElemRef>,
     bus_kvbase: Vec<f64>,
+    /// The controlled InvControl's parsed `MonBus` ref arrays (one `RefNo` array
+    /// per `ic.mon_buses` entry; empty when `MonBus=` is unused or a name is
+    /// unknown). Backs [`InvDispatchEnv::mon_bus_node_v`].
+    mon_bus_refs: Vec<Vec<usize>>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut Vec<String>,
@@ -1418,6 +1449,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         let cd = self.store.ckt_elem(r).cd();
         let bus_ref = cd.terminals[0].bus_ref;
         self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0) * 1000.0
+    }
+
+    fn mon_bus_node_v(&self, j: usize, node: i32) -> Complex64 {
+        // Pascal `rBus.GetRef(node)` — 1-based index into the bus's `RefNo` array,
+        // 0 (ground, `NodeV[0]=0`) when out of range or the bus was unresolved.
+        let refs = self.mon_bus_refs.get(j);
+        let global = refs
+            .filter(|r| node >= 1 && (node as usize) <= r.len())
+            .map(|r| r[node as usize - 1])
+            .unwrap_or(0);
+        self.node_v.get(global).copied().unwrap_or(Complex64::ZERO)
     }
 
     fn der_full_name(&self, r: ElemRef) -> String {

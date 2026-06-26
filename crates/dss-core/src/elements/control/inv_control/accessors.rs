@@ -412,9 +412,24 @@ impl DssObject for InvControl {
                 }
             }
             MON_BUS => {
-                // The per-bus node parsing (FMonBuses/FMonBusesNodes via
-                // ParseAsBusName) is consumed only by Sample's GetMonVoltage —
-                // deferred to step 2b. The name list is already stored.
+                // Pascal `PropertySideEffects(monBus)`: split each `MonBus=` entry
+                // into its bus name (`FMonBuses`) and node numbers (`FMonBusesNodes`)
+                // via `DSS.AuxParser.ParseAsBusName`. Consumed by Sample's /
+                // UpdateInvControl's `GetMonVoltage` explicit-MonBus path. A fresh
+                // parser stands in for the standalone AuxParser (the entries are
+                // simple `bus[.node...]` tokens — no vars / auto-increment).
+                let mut parser = dss_parser::Parser::new();
+                let vars = dss_parser::ParserVars::new();
+                self.mon_buses.clear();
+                self.mon_buses_nodes.clear();
+                for entry in &self.mon_buses_name_list {
+                    let (bus, nodes) = match parser.parse_as_bus_name(entry, &vars) {
+                        Ok(v) => v,
+                        Err(_) => (entry.clone(), Vec::new()),
+                    };
+                    self.mon_buses.push(bus);
+                    self.mon_buses_nodes.push(nodes);
+                }
             }
             PVSYSTEM_LIST => {
                 // Legacy list: assume bare PVSystem names; prepend the class.
@@ -437,12 +452,12 @@ impl DssObject for InvControl {
         self.recalc();
     }
 
-    /// Pascal `TInvControlObj.MakeLike` — copies the parse-time control settings.
-    /// The per-DER fleet state (`ControlledElement`/`CtrlVars`) and the
-    /// `FMonBuses`/`FMonBusesNodes` arrays are step-2b runtime state (copied
-    /// there); Pascal notably does **not** copy `DERNameList`,
-    /// `MonBusesNameList`, `FReacPower_ref`, `Fv_setpoint`, `CtrlModel`, or
-    /// `ShowEventLog`, so those keep the derived object's ctor defaults.
+    /// Pascal `TInvControlObj.MakeLike` — copies the parse-time control settings
+    /// (incl. the parsed `FMonBuses`/`FMonBusesNodes` arrays). The per-DER fleet
+    /// state (`ControlledElement`/`CtrlVars`) is step-2b runtime state; Pascal
+    /// notably does **not** copy `DERNameList`, `MonBusesNameList`,
+    /// `FReacPower_ref`, `Fv_setpoint`, `CtrlModel`, or `ShowEventLog`, so those
+    /// keep the derived object's ctor defaults.
     fn make_like(&mut self, other: &dyn DssObject) {
         let Some(other) = other.as_any().downcast_ref::<InvControl>() else {
             return;
@@ -484,6 +499,8 @@ impl DssObject for InvControl {
         self.lpf_tau = other.lpf_tau;
         self.rise_fall_limit = other.rise_fall_limit;
         self.mon_buses_phase = other.mon_buses_phase;
+        self.mon_buses = other.mon_buses.clone();
+        self.mon_buses_nodes = other.mon_buses_nodes.clone();
 
         // Pascal copies FMonBusesVbase up to *this* object's MonBusesNameList
         // count (not the source's) — an upstream quirk; the derived object's
