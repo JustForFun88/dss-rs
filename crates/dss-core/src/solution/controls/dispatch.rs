@@ -1904,10 +1904,10 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         Self::pvsystem_mut(self.store, r).f_pu_pmpp = value;
     }
     fn pv_set_present_kvar(&mut self, r: ElemRef, value: f64) {
-        // Pascal `Set_Presentkvar` sets kvarRequested + varMode := VARMODEKVAR.
-        let pv = Self::pvsystem_mut(self.store, r);
-        pv.kvar_requested = value;
-        pv.base.var_mode = VARMODE_KVAR;
+        // Pascal `Presentkvar` property WRITE is a plain field write to
+        // `kvarRequested` (PVsystem.pas l.334: `WRITE kvarRequested`) — no var-mode
+        // side effect; `DoPendingAction` has already set `Varmode := VARMODEKVAR`.
+        Self::pvsystem_mut(self.store, r).kvar_requested = value;
     }
     fn pv_set_vreg_var(&mut self, r: ElemRef, value: f64) {
         // Pascal `Set_Variable(5, value)` — the dynamic state variable `Vreg`.

@@ -92,8 +92,9 @@ pub(crate) trait ExpDispatchEnv {
     fn pv_set_present_kw(&mut self, r: ElemRef, value: f64);
     /// Pascal `PVSys.puPmpp := value`.
     fn pv_set_pu_pmpp(&mut self, r: ElemRef, value: f64);
-    /// Pascal `PVSys.Presentkvar := value` (`Set_Presentkvar`: writes
-    /// `kvarRequested` + `Varmode := VARMODEKVAR`).
+    /// Pascal `PVSys.Presentkvar := value` — the property WRITE target is the
+    /// `kvarRequested` field directly (PVsystem.pas l.334; no setter, no var-mode
+    /// side effect — `DoPendingAction` already set `Varmode := VARMODEKVAR`).
     fn pv_set_present_kvar(&mut self, r: ElemRef, value: f64);
     /// Pascal `PVSys.Set_Variable(5, value)` — the dynamic state variable `Vreg`.
     fn pv_set_vreg_var(&mut self, r: ElemRef, value: f64);
