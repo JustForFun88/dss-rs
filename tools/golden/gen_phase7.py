@@ -1078,14 +1078,40 @@ def deck_expcontrol_daily() -> list[str]:
         "new Loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
         "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
         "daily=irrad irradiance=1",
-        # VregTau=7200s / Tresponse=7200s vs the 3600s step: each step slews Vreg ~39%
-        # and lags Q ~68%, so the per-step kvar tracks the adapting Vreg (a fixed-Vreg
-        # regression diverges immediately).
+        # Daily runs under the default CTRLSTATIC control mode, so the FOpenTau
+        # (Tresponse) low-pass filter is OFF here (Pascal gates it on
+        # ControlMode<>CTRLSTATIC); this deck pins the Vreg slew + cross-step carry
+        # ONLY. VregTau=7200s vs the 3600s step slews Vreg ~39%/step, so the per-step
+        # kvar tracks the adapting Vreg (a fixed-Vreg regression diverges immediately).
+        # The FOpenTau lag is gated separately by `deck_expcontrol_duty` (TIMEDRIVEN).
         "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 "
-        "deltaq_factor=0.3 tresponse=7200",
+        "deltaq_factor=0.3",
         *PV_TAIL,
         "set maxcontroliter=2000",
         "set mode=daily stepsize=1h number=8",
+    ]
+
+
+# The FOpenTau (Tresponse) open-loop low-pass lag — exercised in DUTY mode, where the
+# control mode is TIMEDRIVEN (set_mode.rs: DutyCycle -> TIMEDRIVEN) so Pascal's
+# `if ControlMode<>CTRLSTATIC` LPF branch (ExpControl.pas l.505-510) actually fires
+# (it is dormant in the daily decks above). Tresponse=60 -> FOpenTau=26s vs the 5s duty
+# step => each step's target Q is blended ~17.5% toward the prior step's value, so the
+# kvar RAMPS instead of jumping (oracle-probed: off=[18.97,16.90,15.06,…] monotonic
+# decline vs on=[5.91,8.75,10.01,…] lagged ramp-up — a regression deleting the LPF
+# diverges within one step). Also exercises the Vreg slew (VregTau=20s) under TIMEDRIVEN.
+def deck_expcontrol_duty() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Loadshape.irr npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "duty=irr irradiance=1",
+        "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=20 "
+        "deltaq_factor=0.3 tresponse=60",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=duty stepsize=5s number=8",
     ]
 
 
@@ -1102,20 +1128,21 @@ def deck_expcontrol_daily_preferq() -> list[str]:
         "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1000 Pmpp=1000 pf=1.0 "
         "daily=irrad irradiance=1",
         "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 "
-        "deltaq_factor=0.3 tresponse=7200 qbias=-0.2 qmaxlead=0.6 qmaxlag=0.6 preferq=yes",
+        "deltaq_factor=0.3 qbias=-0.2 qmaxlead=0.6 qmaxlag=0.6 preferq=yes",
         *PV_TAIL,
         "set maxcontroliter=2000",
         "set mode=daily stepsize=1h number=8",
     ]
 
 
-# A full 24-hour endurance run: the adaptive Vreg slew + the FOpenTau open-loop lag
-# accumulate across all 24 *continuous* steps, each one seeded by the previous step's
-# converged voltage (the time-series state carry). The VARY24 irradiance ramps the bus
-# up to 1.0, back down to ~0.5, and up again, so Vreg chases a moving target all day and
-# the FLastStepQ/FLastIterQ filter bases turn over every step; the auto-added per-step
-# power monitor pins the full 24-step kvar trajectory (a cross-step state-leak — a stale
-# FVregs / FLastStepQ carry — diverges within a few steps, like the InvControl 24h gates).
+# A full 24-hour endurance run: the adaptive Vreg slew accumulates across all 24
+# *continuous* steps, each one seeded by the previous step's converged voltage (the
+# time-series state carry the user asked for). The VARY24 irradiance ramps the bus up to
+# 1.0, back down to ~0.5, and up again, so Vreg chases a moving target all day and the
+# per-step kvar turns over every step; the auto-added per-step power monitor pins the
+# full 24-step kvar trajectory (a cross-step state-leak — a stale FVregs carry — diverges
+# within a few steps, like the InvControl 24h gates). Daily runs under CTRLSTATIC, so the
+# FOpenTau lag is OFF here (gated by `deck_expcontrol_duty`); this is the Vreg-slew gate.
 def deck_expcontrol_24h() -> list[str]:
     return [
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
@@ -1124,7 +1151,7 @@ def deck_expcontrol_24h() -> list[str]:
         "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
         "daily=vary irradiance=1",
         "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 "
-        "deltaq_factor=0.3 tresponse=7200",
+        "deltaq_factor=0.3",
         *PV_TAIL,
         "set maxcontroliter=2000",
         DAILY24,
@@ -1182,6 +1209,7 @@ SCENARIOS = {
     "invcontrol_voltvar_monbus": deck_invcontrol_voltvar_monbus,
     "expcontrol_daily": deck_expcontrol_daily,
     "expcontrol_daily_preferq": deck_expcontrol_daily_preferq,
+    "expcontrol_duty": deck_expcontrol_duty,
     "expcontrol_24h": deck_expcontrol_24h,
 }
 

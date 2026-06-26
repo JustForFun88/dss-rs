@@ -161,6 +161,10 @@ fn phase7_targeted_scenarios_match_oracle() {
         "invcontrol_voltwatt_lpf",
         "invcontrol_voltwatt_risefall",
         "invcontrol_voltvar_monbus",
+        "expcontrol_daily",
+        "expcontrol_daily_preferq",
+        "expcontrol_duty",
+        "expcontrol_24h",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

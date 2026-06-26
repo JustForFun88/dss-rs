@@ -107,12 +107,15 @@ properties + the PVSystemList↔DERList sync, `MakePVSystemList` (named-or-scan 
 `DoPendingAction` (the slope-crossing-at-`Vreg` + `Qbias` → headroom/`QmaxLead`/`QmaxLag`
 clamp → `PreferQ` kW curtail → `FOpenTau` low-pass → `DeltaQ_Factor` step), and
 `UpdateExpControl` (the per-step `Vreg` slew by `VregTau`, fired from
-`EndOfTimeStepCleanup` after the InvControl hook). lib 623 → **636**. Gate: golden
+`EndOfTimeStepCleanup` after the InvControl hook). lib 623 → **639** (incl. the audit
+follow-ups). Gate: golden
 `props/expcontrol.json` (4 oracle-pinned scenarios — defaults, full, list-sync,
 MakeLike) + goldens `phase7/expcontrol_{daily,daily_preferq,24h}` (daily/24h runs;
-the per-step PV kvar trajectory tracks the adapting `Vreg` + the `FOpenTau` lag, each
-step seeded by the prior step's converged voltage — the `expcontrol_24h` endurance gate
-is the cross-step state-carry guard) + 13 mock-env tests. **corpus stays 83** (the only
+the per-step PV kvar trajectory tracks the adapting `Vreg`, each step seeded by the
+prior step's converged voltage — the `expcontrol_24h` endurance gate is the cross-step
+state-carry guard) + `phase7/expcontrol_duty` (the duty-cycle `TIMEDRIVEN` run where the
+`FOpenTau` open-loop lag actually fires — daily runs under `CTRLSTATIC`, which gates it
+off) + 16 mock-env tests. **corpus stays 83** (the only
 corpus ExpControl example `Examples/ExpControl/Master.dss` is Phase-8-blocked by
 file-backed arrays + Export, independent of the class; no case carries a stale
 `unsupported_class=ExpControl` tag). One `TODO(compat)`: `FOpenTau := Tresponse /
@@ -173,7 +176,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 636, golden_feeders 1,
+cargo test --workspace      # dss-core lib 639, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -1504,6 +1507,33 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     (`Examples/ExpControl/Master.dss`) is Phase-8-blocked by `file=`-backed arrays +
     Export, independent of the class; no corpus case carries a stale
     `unsupported_class=ExpControl` tag (verified). lib **623 → 636**.
+  - **audit-code follow-up:** verdict faithful 1:1 — no Critical/Major/Minor, 4 inert
+    Nits. Fixed the one worth fixing: `pv_set_present_kvar` (the `Presentkvar :=` env
+    write) also set `Varmode := VARMODEKVAR` with a comment claiming a `Set_Presentkvar`
+    side effect, but `PVsystem.pas` l.334 declares `property Presentkvar … WRITE
+    kvarRequested` — a *plain field write*, no var-mode side effect (DoPendingAction
+    already set `Varmode := VARMODEKVAR` at its top, so the write was redundant +
+    harmless). Dropped it + corrected the comment (goldens/tests unchanged — var-mode is
+    KVAR either way). Surfaced-not-fixed (all inert): `ActiveTerminalIdx := 1` (PVSystem
+    is single-terminal); the control phase count from the *first* vs *last* fleet member
+    (ExpControl builds no Yprim — numerically irrelevant); `VregTau`'s `Units_s` flag
+    (JSON-schema metadata only). lib stays **636**.
+  - **audit-tests follow-up:** an independent agent confirmed the Vreg-slew goldens, the
+    dispatch-math mocks, PreferQ, and the props/MakeLike surface all have real teeth
+    (controlled break-tests), but flagged 2 gaps. (M1) **the FOpenTau LPF was exercised by
+    nothing** — the daily goldens run under the default `CTRLSTATIC` control mode, where
+    Pascal gates the filter OFF (`ControlMode<>CTRLSTATIC`, l.505), so `Tresponse` was
+    inert decoration (proven: removing it from the daily/24h/preferq decks left the
+    trajectories **byte-identical**). Added `phase7/expcontrol_duty` (a duty-cycle run →
+    `TIMEDRIVEN`, where the LPF fires — oracle-probed off=`[18.97,16.90,…]` vs
+    on=`[5.91,8.75,10.01,…]`, a lagged ramp) as the end-to-end FOpenTau gate + a mock
+    `fopen_tau_lpf_lags_target_in_timedriven_mode` (hand-derived filtered target), and
+    corrected the daily/24h deck comments (they pin the Vreg slew only). (M2) the 4
+    `expcontrol_*` goldens were **absent from the `golden_phase7.rs` must-list** deletion
+    guard — added. Also closed the multi-DER coverage gap
+    (`do_pending_dispatches_each_fleet_member_independently` — a 2-PV fleet, distinct
+    per-member Q) + the static-init low-clamp / in-band arms
+    (`static_init_clamps_low_and_keeps_in_band`). lib **636 → 639**; +1 golden.
 - **next:** WP7.5 step 4 (the gate / corpus burn-down review for the DER C block), then
   WP7.6 (Harmonics).
 
