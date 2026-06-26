@@ -996,6 +996,24 @@ mod dispatch {
         );
     }
 
+    #[test]
+    fn avr_storage_is_deferred_not_silent() {
+        // A Storage in AVR must error loudly, never silently regulate nothing. Pascal
+        // sets `Varmode := VARMODEKVAR` on the Storage; the Rust port routes that side
+        // effect only through PVSystem's `der_set_kvar_requested`, so a Storage would
+        // keep VARMODE_PF and `set_nominal` would discard the AVR kvar request — the
+        // deferral-is-never-a-silent-skip rule (audit-code follow-up, step 2e-ii).
+        let mut ic = avr_ic();
+        let mut der = MockDer::new("pv", 1.009, 200.0);
+        der.is_storage = true;
+        let mut env = MockEnv::new(vec![der]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("Storage AVR"),
+            "expected a Storage AVR NOT_PORTED error, got: {err}"
+        );
+    }
+
     /// A WATTPF control over a `wattpf_curve`, RefReactivePower=VARMAX.
     fn wattpf_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
@@ -1037,6 +1055,23 @@ mod dispatch {
             (env.ders[0].requested_kvar - expected_q).abs() < 1e-9,
             "wattpf kvar {} != {expected_q}",
             env.ders[0].requested_kvar
+        );
+    }
+
+    #[test]
+    fn wattpf_storage_is_deferred_not_silent() {
+        // Same root cause as AVR: a Storage in WATTPF keeps VARMODE_PF (the `Varmode`
+        // side effect rides on PVSystem's `der_set_kvar_requested` only), so the kvar
+        // request would be silently discarded by `set_nominal`. Must error loudly
+        // (audit-code follow-up, step 2e-ii — the pre-existing 2e-i gap).
+        let mut ic = wattpf_ic();
+        let mut der = MockDer::new("pv", 1.0, 600.0);
+        der.is_storage = true;
+        let mut env = MockEnv::new(vec![der]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("Storage WATTPF"),
+            "expected a Storage WATTPF NOT_PORTED error, got: {err}"
         );
     }
 
@@ -1084,6 +1119,22 @@ mod dispatch {
             (env.ders[0].requested_kw - 600.0).abs() < 1e-9,
             "wattvar kW {} != 600",
             env.ders[0].requested_kw
+        );
+    }
+
+    #[test]
+    fn wattvar_storage_is_deferred_not_silent() {
+        // Same root cause as AVR/WATTPF: a Storage in WATTVAR keeps VARMODE_PF, so the
+        // kvar request would be silently discarded. Must error loudly (audit-code
+        // follow-up, step 2e-ii — the pre-existing 2e-i gap).
+        let mut ic = wattvar_ic();
+        let mut der = MockDer::new("pv", 1.0, 600.0);
+        der.is_storage = true;
+        let mut env = MockEnv::new(vec![der]);
+        let err = ic.sample(&mut env).unwrap_err();
+        assert!(
+            err.contains("Storage WATTVAR"),
+            "expected a Storage WATTVAR NOT_PORTED error, got: {err}"
         );
     }
 }

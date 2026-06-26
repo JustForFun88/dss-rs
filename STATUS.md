@@ -74,7 +74,9 @@ watt-var incl. the kVA-circle quadratic) COMPLETE — lib 608 → 610, goldens
 iters) + 3 mock-env tests; **corpus 74 → 76** (the 2 SnapShot WATTPF/WATTVAR
 cases migrated, live-matched). WP7.5 step 2e-ii = `InvControl` **AVR** (the
 3-stage DQDV active-voltage-regulation regulator: seed `QHeadRoom/2` → estimate
-`DQDV` → regulate toward `Vsetpoint`) COMPLETE — lib 610 → 613, golden
+`DQDV` → regulate toward `Vsetpoint`) COMPLETE — lib 610 → 616 (incl. the
+audit-code follow-up: the Storage AVR/WATTPF/WATTVAR `Varmode` silent-degradation
+loud-guard fix), golden
 `phase7/invcontrol_avr` (a snapshot regulating the bus to `Vsetpoint`=0.98, the
 exact 250 iters) + 3 mock-env tests; **corpus stays 76** (no AVR corpus case).
 Key fix: the **`LoadsNeedUpdating := TRUE`** after `DoPendingAction` (Pascal
@@ -137,7 +139,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 613, golden_feeders 1,
+cargo test --workspace      # dss-core lib 616, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -1171,6 +1173,28 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     `gfm_mode_aborts_not_silently` (GFM is the now-deferred mode). **Corpus stays 76**
     (the `Test/InvControl*` family has no AVR case — the only AVR full-solve gate is
     the targeted golden). lib **610 → 613**.
+  - **audit-code follow-up:** verdict faithful 1:1 for the **PVSystem** AVR path
+    (golden-pinned; every helper/branch matches Pascal line-for-line incl. the dead
+    band block, the ControlIteration=3 reset, the literal-0.2 step, and the
+    `LoadsNeedUpdating` fix wired into both env sites). Fixed **1 Major** silent
+    degradation: **Storage AVR ran but regulated nothing.** Pascal's AVR
+    `DoPendingAction` sets `Varmode := VARMODEKVAR` for *every* DER, but the Rust port
+    routes that side effect through `der_set_kvar_requested`, which sets `var_mode`
+    only for PVSystem — so a Storage kept its `VARMODE_PF` default and
+    `set_nominal_der_output` discarded `kvar_requested` (the AVR kvar silently lost →
+    `DQDV≈0` → no regulation, no error). The original STATUS claim "like Storage-
+    VOLTVAR/DRC coverage" was **wrong**: VOLTVAR/DRC set `var_mode` via `der_set_modes`
+    (both DER types) so they would work; AVR/WATTPF/WATTVAR did not. **Same root cause
+    in the prior step 2e-i** (Storage WATTPF/WATTVAR shared the gap). Fixed all three
+    with a loud `guard_storage_var_mode` (the `guard_storage_vw` pattern) — a Storage
+    in AVR/WATTPF/WATTVAR now errors explicitly (the deferral-is-never-a-silent-skip
+    rule); PVSystem unaffected (all PVSystem goldens/corpus still match). 3 mock tests
+    (`{avr,wattpf,wattvar}_storage_is_deferred_not_silent`) + the corrected
+    `do_pending_avr` `Varmode` comment. **Deferred (loud):** porting the Storage
+    `Varmode` + the Storage iter-2 DQDV source (Pascal reads `kvarRequested`, not the
+    achieved kvar) for these modes, until a Storage smart-inverter gate exists. lib
+    **613 → 616**. *(A second instance of [[dont-rationalize-conditioning]] — a
+    "deferred no-op / unexercised" justification hid a real gap.)*
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).
