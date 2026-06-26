@@ -23,7 +23,7 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::assert_complex_close;
+use harness::{MonitorCap, assert_complex_close, compare_monitor, tol_for};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +35,10 @@ struct Golden {
     node_order: Vec<String>,
     snap: Snap,
     registers: Registers,
+    /// Per-step feeder-head P/Q over the daily segment (a `mode=1 ppolar=no` monitor):
+    /// pins the daily run at every hour, not only by the cumulative registers.
+    #[serde(default)]
+    monitors: Vec<MonitorCap>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,5 +248,12 @@ fn ieee8500_matches_oracle() {
             (value - exp).abs() <= tol,
             "register {name} differs: {value} vs {exp}"
         );
+    }
+
+    // Per-step feeder-head P/Q over the daily segment: pins each hour against the
+    // oracle (not only the cumulative registers above), via the shared comparator.
+    let tol = tol_for("feeder");
+    for m in &golden.monitors {
+        compare_monitor(&dss, m, &tol, "ieee8500");
     }
 }

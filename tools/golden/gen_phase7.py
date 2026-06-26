@@ -996,9 +996,14 @@ def add_step_monitors(cmds: list[str]) -> list[str]:
             ders.append(m.group(1))
     if not ders:
         return cmds
-    # `ppolar=no` → rectangular power (P, Q per phase) rather than polar (|S|, angle):
-    # the power angle wraps at ±180° (oracle 180 vs port −180 = same angle, false
-    # mismatch), so rectangular P/Q is the per-step quantity we pin.
+    # `ppolar=no` → rectangular power (P, Q per phase) rather than polar (|S|, angle).
+    # Rectangular is the right per-step quantity to pin: it compares the actual P and Q,
+    # so a genuine reactive-power divergence is fully caught. The polar form instead has
+    # an ill-defined *sign* when Q is numerically zero (e.g. unity-pf hours where the
+    # WATTPF curve gives pf=1 → Q=0): the power angle is atan2(Q, −P), so a Q of +0 vs a
+    # Q of machine epsilon (verified: oracle Q=0.0 vs port Q=−6.3e−15 at one such hour)
+    # reads as +180° vs −180° — a representation artifact of the sign of zero, NOT an
+    # opposite reactive flow. Rectangular sidesteps that (|ΔQ|~1e-15 ≪ the power floor).
     mons = [
         f"new Monitor.mon{i} element={der} terminal=1 mode=1 ppolar=no"
         for i, der in enumerate(ders)

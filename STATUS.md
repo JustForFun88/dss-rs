@@ -1319,13 +1319,24 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
       `golden_phase6`/`corpus_live` use). So all **16 daily phase7 goldens** (the
       InvControl daily/24h family + `storage_daily{,_charge}` + `storagecontroller_daily`)
       now pin each DER's P/Q at **every step** against the oracle, not just the endpoint
-      — closing the "final-state only" gap. (`ppolar=no` avoids the polar power-angle
-      ±180° wraparound that otherwise false-mismatches.) **Survey of the other stages:**
+      — closing the "final-state only" gap. **`ppolar=no` (rectangular P/Q) is a
+      deliberate, evidence-checked choice, not a workaround:** it pins the *actual* P/Q
+      (so a real reactive divergence is fully caught), whereas the polar form's power
+      angle `atan2(Q,−P)` has an ill-defined sign when Q is numerically zero — at a
+      unity-pf hour the WATTPF curve gives pf=1 → Q=0, and a probe confirmed **oracle
+      Q=0.0 vs port Q=−6.3e−15** (machine epsilon) there, i.e. +180° vs −180° is the
+      sign-of-zero, NOT an opposite reactive flow (the port and oracle agree on Q to 15
+      sig figs; at the next hour, where Q is a real +4e−12, both agree on sign too). So
+      no bug was hidden — rectangular keeps full sensitivity (|ΔQ|~1e-15 ≪ the power
+      floor). **Survey of the other stages:**
       `golden_phase5` already steps per-hour (`steps[]`: per-step dblHour/iters/V),
       `golden_phase6`/`corpus_live` already compare monitor channels per-step, and
-      `golden_checkpoints` pins the assembled model every step — so the only remaining
-      multi-step gap is `golden_ieee8500`'s 24-step daily *registers* segment (cumulative,
-      not per-step; addressed separately).
+      `golden_checkpoints` pins the assembled model every step. The last gap —
+      `golden_ieee8500`'s 24-step daily segment (which compared only the **cumulative**
+      EnergyMeter registers) — is now also per-step: a `mode=1 ppolar=no` Monitor on the
+      metered feeder head pins the per-hour P/Q (24 samples) via `compare_monitor`. So
+      **every multi-step golden across all stages now compares per-step**, not just the
+      final/cumulative state.
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).

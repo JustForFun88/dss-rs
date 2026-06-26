@@ -45,6 +45,12 @@ MASTER_REL = "Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
 # Replayed after `Compile <master>` (the harness issues the compile itself).
 SNAP_COMMANDS = [
     "New Energymeter.m1 Line.ln5815900-1 1",
+    # A per-step power monitor on the metered feeder head (rectangular P/Q — `ppolar=no`,
+    # which pins the actual P/Q and avoids the polar power-angle's ill-defined sign when
+    # Q is numerically zero; see the note in gen_phase7.py) so the 24-step daily segment
+    # is pinned at EVERY hour, not only by the cumulative EnergyMeter registers (which
+    # could mask a transient per-step divergence that integrates away).
+    "New Monitor.mday Line.ln5815900-1 1 mode=1 ppolar=no",
     "Set Maxiterations=20",
     "Solve",
 ]
@@ -145,6 +151,28 @@ def main() -> None:
         "values": list(m.RegisterValues),
     }
 
+    # The per-step monitor trajectory of the daily segment (sample 0 = the snapshot
+    # solve, samples 1-24 = the daily hours): the feeder-head P/Q at every step, so the
+    # daily run is pinned per-hour, not only by the cumulative registers.
+    mon = ckt.Monitors
+    monitors = []
+    names = list(mon.AllNames)
+    if names == ["NONE"]:
+        names = []
+    for nm in names:
+        mon.Name = nm
+        nch = mon.NumChannels
+        monitors.append(
+            {
+                "name": nm,
+                "header": list(mon.Header),
+                "sample_count": int(mon.SampleCount),
+                "channels": [
+                    [float(x) for x in mon.Channel(i)] for i in range(1, nch + 1)
+                ],
+            }
+        )
+
     out = {
         "schema": SCHEMA,
         "oracle": oracle,
@@ -154,6 +182,7 @@ def main() -> None:
         "node_order": node_order,
         "snap": snap,
         "registers": registers,
+        "monitors": monitors,
     }
     OUT.write_text(json.dumps(out, indent=1) + "\n")
     print(
