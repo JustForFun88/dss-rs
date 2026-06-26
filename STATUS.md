@@ -74,17 +74,17 @@ watt-var incl. the kVA-circle quadratic) COMPLETE — lib 608 → 610, goldens
 iters) + 3 mock-env tests; **corpus 74 → 76** (the 2 SnapShot WATTPF/WATTVAR
 cases migrated, live-matched). WP7.5 step 2e-ii = `InvControl` **AVR** (the
 3-stage DQDV active-voltage-regulation regulator: seed `QHeadRoom/2` → estimate
-`DQDV` → regulate toward `Vsetpoint`) COMPLETE — lib 610 → 616 (incl. the
-audit-code follow-up: the Storage AVR/WATTPF/WATTVAR `Varmode` silent-degradation
-loud-guard fix), golden
+`DQDV` → regulate toward `Vsetpoint`) COMPLETE — lib 610 → 616, golden
 `phase7/invcontrol_avr` (a snapshot regulating the bus to `Vsetpoint`=0.98, the
 exact 250 iters) + 3 mock-env tests; **corpus stays 76** (no AVR corpus case).
 Key fix: the **`LoadsNeedUpdating := TRUE`** after `DoPendingAction` (Pascal
 l.1605) was missing — AVR's iter-1/2 set `kvarRequested` without an explicit
 `SetNominalDEROutput`, so the re-solve never picked it up and AVR never converged;
 the earlier step-2c "no-op in this architecture" note was wrong (idempotent for
-the other modes — all goldens/corpus unchanged). next = WP7.5 step 2e-iii (the
-explicit `MonBus` voltage path + the LPF/RiseFall rate-of-change limiting).**
+the other modes — all goldens/corpus unchanged). **Storage AVR/WATTPF/WATTVAR also
+ported to working** (the DER `Varmode := VARMODEKVAR` set for both DER types) + 3
+Storage goldens. next = WP7.5 step 2e-iii (the explicit `MonBus` voltage path + the
+LPF/RiseFall rate-of-change limiting).**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -1194,7 +1194,9 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     `Varmode` + the Storage iter-2 DQDV source (Pascal reads `kvarRequested`, not the
     achieved kvar) for these modes, until a Storage smart-inverter gate exists. lib
     **613 → 616**. *(A second instance of [[dont-rationalize-conditioning]] — a
-    "deferred no-op / unexercised" justification hid a real gap.)*
+    "deferred no-op / unexercised" justification hid a real gap.)* **The guarded
+    Storage paths were subsequently ported to working — see the Storage follow-up
+    below.**
   - **audit-tests follow-up:** verdict strong (the `invcontrol_avr` golden is a real
     oracle pin compared at full strength — exact 250 iters + node order + 1e-6 V/P; the
     3 mock values are independent hand-derivations, not snapshots). Closed the two real
@@ -1216,6 +1218,27 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     multi-step convergence broadly instead. The check_qlimits *clamp arithmetic* is
     shared with VOLTVAR (already tested); only the AVR error-band → FAVROperation delta
     is AVR-specific (and unobservable). lib **616** (golden-only add).
+  - **Storage smart-inverter follow-up (user-requested) — Storage AVR/WATTPF/WATTVAR
+    now WORK** (the audit-code follow-up had *guarded* them loudly; this ports them).
+    Root fix: the dispatch now sets the DER `Varmode := VARMODEKVAR` for **both** DER
+    types via a new `der_set_var_mode` env method (Pascal's explicit
+    `Varmode := VARMODEKVAR`, l.1059/1134/1189) — so a Storage's `kvarRequested` is
+    applied by `set_nominal` instead of discarded by its `VARMODE_PF` default. Also: the
+    AVR iter-2 `DQDV` reads `kvarRequested` for a Storage (Pascal l.1081; PVSystem reads
+    the achieved `Presentkvar`) via `der_requested_kvar`; the WATTVAR kW push stays
+    PVSystem-only. The three `guard_storage_var_mode` guards are removed. **Empirical
+    note (oracle-probed):** Storage **AVR regulates** identically to PVSystem (Q≈119.5
+    kvar/phase → V=0.98); Storage **WATTPF/WATTVAR** read their curves at panel pu **0**
+    (Pascal `FDCkW := 0.0` for Storage, l.1749, "not using it"), so they regulate only
+    via a non-trivial curve `y(0)` (WATTVAR) or `WattPriority` making the watt term
+    non-zero (WATTPF) — not degenerate-zero in general, but driven by `y(0)`. **Gate:**
+    3 oracle-pinned goldens `phase7/invcontrol_{avr,wattpf,wattvar}_storage` (Storage
+    DER, full-model + Storage SOC/state, matched the oracle bit-for-bit:
+    AVR≈119.5, WATTPF≈54.8, WATTVAR≈60 kvar/phase) + the 3 mock
+    `*_storage_is_deferred_not_silent` tests replaced by positive
+    `*_storage_dispatches_in_kvar_mode` tests (pin `Varmode := VARMODE_KVAR` is set +
+    the Storage kvar request). **Corpus stays 76** (no Storage InvControl corpus case).
+    lib **616** (deferred tests → positive tests, net 0; goldens added).
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).

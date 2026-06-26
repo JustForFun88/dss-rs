@@ -662,6 +662,62 @@ def deck_invcontrol_avr_kvarlim() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2e-ii: InvControl AVR/WATTPF/WATTVAR over a STORAGE DER ----------
+# The Storage smart-inverter var modes (the AVR/WATTPF/WATTVAR `Varmode :=
+# VARMODEKVAR` Storage path). A discharging Storage on a weak line raises the bus
+# like a PV; the control regulates its reactive output the same way. These pin that
+# the Storage dispatch is applied (a Storage would otherwise keep its VARMODE_PF
+# default and `set_nominal` would discard the requested kvar).
+
+# Storage AVR: regulates the bus to Vsetpoint=0.98 (≈119 kvar/phase) — the Storage
+# analog of `invcontrol_avr`; also exercises the AVR iter-2 DQDV Storage source
+# (Pascal reads `kvarRequested`, not the achieved kvar).
+def deck_invcontrol_avr_storage() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Storage.st bus1=b phases=3 kV=12.47 kVA=600 kWrated=500 kWhrated=1000 "
+        "%stored=50 State=Discharging %Discharge=100",
+        "new InvControl.ic mode=AVR DERList=[Storage.st] Vsetpoint=0.98 "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
+# Storage WATTPF: FDCkW=0 for Storage (Pascal l.1749) so the curve is read at panel
+# pu 0 (pf=-0.95 here); with WattPriority the watt term `p = kW_out_desired` is
+# non-zero, so the Storage absorbs ~55 kvar/phase (a non-degenerate WATTPF case).
+def deck_invcontrol_wattpf_storage() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wpf npts=4 yarray=(-0.95 -0.95 -0.95 -0.9) xarray=(0 0.5 0.8 1.0)",
+        "new Storage.st bus1=b phases=3 kV=12.47 kVA=600 kWrated=500 kWhrated=1000 "
+        "%stored=50 State=Discharging %Discharge=100 WattPriority=yes",
+        "new InvControl.ic mode=WATTPF DERList=[Storage.st] wattpf_curve=wpf",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
+# Storage WATTVAR: FDCkW=0 → the curve is read at panel pu 0, so a non-zero y(0)
+# (=-0.3 here) drives a real kvar request (~60 kvar/phase). Pins the Storage WATTVAR
+# kvar push (the PVSystem-only kW push is correctly skipped for a Storage).
+def deck_invcontrol_wattvar_storage() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wv npts=4 yarray=(-0.3 -0.3 -0.4 -0.8) xarray=(0 0.5 0.8 1.0)",
+        "new Storage.st bus1=b phases=3 kV=12.47 kVA=600 kWrated=500 kWhrated=1000 "
+        "%stored=50 State=Discharging %Discharge=100",
+        "new InvControl.ic mode=WATTVAR DERList=[Storage.st] wattvar_curve=wv "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -717,6 +773,9 @@ SCENARIOS = {
     "invcontrol_avr": deck_invcontrol_avr,
     "invcontrol_avr_daily": deck_invcontrol_avr_daily,
     "invcontrol_avr_kvarlim": deck_invcontrol_avr_kvarlim,
+    "invcontrol_avr_storage": deck_invcontrol_avr_storage,
+    "invcontrol_wattpf_storage": deck_invcontrol_wattpf_storage,
+    "invcontrol_wattvar_storage": deck_invcontrol_wattvar_storage,
 }
 
 

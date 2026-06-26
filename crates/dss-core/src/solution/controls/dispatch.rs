@@ -1497,6 +1497,24 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.avr_mode = value;
         }
     }
+    fn der_set_var_mode(&mut self, r: ElemRef, mode: i32) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.var_mode = mode;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.var_mode = mode;
+        }
+    }
+    fn der_requested_kvar(&self, r: ElemRef) -> f64 {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.kvar_requested
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.kvar_requested
+        } else {
+            0.0
+        }
+    }
     fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
