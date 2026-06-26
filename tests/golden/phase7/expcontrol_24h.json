@@ -11,7 +11,7 @@
    "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
    "new Loadshape.vary npts=24 interval=1 mult=(.3 .35 .4 .5 .6 .7 .8 .9 1.0 .95 .9 .8 .7 .6 .55 .5 .6 .7 .8 .9 .95 1.0 .9 .85)",
    "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 daily=vary irradiance=1",
-   "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 deltaq_factor=0.3 tresponse=7200",
+   "new ExpControl.ec derlist=[pvsystem.pv] vreg=1.0 slope=22 vregtau=7200 deltaq_factor=0.3",
    "set voltagebases=[12.47]",
    "calcvoltagebases",
    "set maxcontroliter=2000",

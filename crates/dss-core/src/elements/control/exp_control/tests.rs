@@ -394,4 +394,78 @@ mod dispatch {
         approx(ec.ctrl_vars[0].f_vregs, 1.05);
         approx(ec.f_vreg_init, 0.01);
     }
+
+    #[test]
+    fn static_init_clamps_low_and_keeps_in_band() {
+        // The other two static-init arms (the >VregMax arm is above):
+        //  - Vpu < VregMin → clamp UP to VregMin, nudge FVregInit to 0.01.
+        let mut ec = ExpControl::new("e1");
+        ec.f_vreg_init = 0.0;
+        ec.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
+        ec.side_effects(prop::PVSYSTEM_LIST, 0);
+        let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 0.90, 300.0)]);
+        env.control_mode = CTRLSTATIC;
+        ec.sample(&mut env);
+        approx(ec.ctrl_vars[0].f_vregs, 0.95);
+        approx(ec.f_vreg_init, 0.01);
+
+        //  - Vpu in [VregMin, VregMax] → FVregs := Vpu, FVregInit NOT nudged.
+        let mut ec2 = ExpControl::new("e1");
+        ec2.f_vreg_init = 0.0;
+        ec2.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
+        ec2.side_effects(prop::PVSYSTEM_LIST, 0);
+        let mut env2 = MockExpEnv::new(vec![MockPv::new("pv1", 1.00, 300.0)]);
+        env2.control_mode = CTRLSTATIC;
+        ec2.sample(&mut env2);
+        approx(ec2.ctrl_vars[0].f_vregs, 1.00);
+        approx(ec2.f_vreg_init, 0.0); // in-band: no nudge
+    }
+
+    #[test]
+    fn fopen_tau_lpf_lags_target_in_timedriven_mode() {
+        // The FOpenTau low-pass filter (ExpControl.pas l.505-510) fires ONLY when
+        // ControlMode<>CTRLSTATIC — dormant in the daily goldens (which run CTRLSTATIC),
+        // so this is the per-call FOpenTau gate (the duty golden is the end-to-end one).
+        // Tresponse=23.026 → FOpenTau=10; dt=1 → blend (1-exp(-0.1))=0.09516. The raw
+        // target (as in sample_triggers) is -264.0; FLastStepQ seeds at -1.0, so the
+        // filtered target = -1 + (-264-(-1))·0.09516 ≈ -26.03 — far from the unfiltered
+        // -264.0 (a regression dropping the LPF lands on -264.0 and fails).
+        let mut ec = named_ec();
+        ec.set_f64(prop::TRESPONSE, 23.026);
+        ec.recalc(); // derive FOpenTau = Tresponse / 2.3026 = 10
+        let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.02, 300.0)]);
+        env.control_mode = TIMEDRIVEN;
+        ec.sample(&mut env);
+        ec.do_pending_action(&mut env);
+        let factor = 1.0 - (-1.0_f64 / 10.0).exp();
+        let expected = -1.0 + (-264.0 - (-1.0)) * factor;
+        approx(ec.ctrl_vars[0].f_target_q, expected);
+        assert!(
+            (ec.ctrl_vars[0].f_target_q - (-264.0)).abs() > 100.0,
+            "the LPF must move the target far from the unfiltered -264.0"
+        );
+    }
+
+    #[test]
+    fn do_pending_dispatches_each_fleet_member_independently() {
+        // A 2-PV fleet at different voltages: each member gets its OWN slope-crossing
+        // Q (no cross-DER state sharing in the per-DER loops — the only multi-member
+        // dispatch coverage). pv1 at 1.02 absorbs (-264.0), pv2 at 0.98 injects (+264.0).
+        let mut ec = ExpControl::new("e1");
+        ec.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into(), "pv2".into()]);
+        ec.side_effects(prop::PVSYSTEM_LIST, 0);
+        let mut env = MockExpEnv::new(vec![
+            MockPv::new("pv1", 1.02, 300.0),
+            MockPv::new("pv2", 0.98, 300.0),
+        ]);
+        ec.sample(&mut env);
+        assert_eq!(ec.fleet.len(), 2);
+        ec.do_pending_action(&mut env);
+        approx(ec.ctrl_vars[0].f_target_q, -264.0);
+        approx(ec.ctrl_vars[1].f_target_q, 264.0);
+        // The deltaQ step off the -1.0 seed: pv1 -1+(-264-(-1))·0.7=-185.1;
+        // pv2 -1+(264-(-1))·0.7=184.5 — distinct kvar pushed to each PV.
+        approx(env.pvs[0].requested_kvar, -185.1);
+        approx(env.pvs[1].requested_kvar, 184.5);
+    }
 }
