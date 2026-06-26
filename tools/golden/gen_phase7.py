@@ -619,6 +619,49 @@ def deck_invcontrol_avr() -> list[str]:
     ]
 
 
+# The DAILY counterpart to deck_invcontrol_avr — the multi-step AVR path. An
+# irradiance shape varies the PV output each step; AVR re-regulates the bus to
+# Vsetpoint=0.98 every step (final step ~117 kvar/phase, V=0.98). This is the
+# multi-step gate (the AVR analog of invcontrol_voltwatt_daily / _voltvar_avg): it
+# exercises the EndOfTimeStepCleanup -> UpdateInvControl -> next-step restart path
+# and the fleet's persistence across steps. (The per-step DQDV/FAVROperation resets
+# in UpdateInvControl are faithful-to-Pascal but unobservable — DQDV is re-estimated
+# every step's iter-2 and FAVROperation is write-only until the mode-3 monitor, WP7.7
+# — so this golden pins the multi-step convergence broadly, not those exact resets.)
+def deck_invcontrol_avr_daily() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Loadshape.irrad npts=6 interval=1 mult=(.5 .7 .85 .95 1.0 .9)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=irrad irradiance=1",
+        "new InvControl.ic mode=AVR Vsetpoint=0.98 RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=6",
+    ]
+
+
+# An AVR run whose Vsetpoint (0.95) is UNREACHABLE given a small kvar limit
+# (kvarMax=kvarMaxAbs=50): the AVR demands more vars than the inverter can supply, so
+# `Check_Qlimits` clamps the request (the AVR error-band + the kvar-limit arm) and
+# `|QDesireEndpu − QDesireLimitedpu| < 0.05` drives `Fv_setpointLimited := FPresentVpu`
+# — the LIMITED branch of `do_pending_avr` the main `invcontrol_avr` golden never
+# reaches (its 600-kvar headroom leaves the request unclamped). The fleet caps at
+# ~16.3 kvar/phase (the 50-kvar limit) and the bus settles at ~1.005 pu (above the
+# 0.95 setpoint). Pins the kvar-limited AVR converged state + iters against the oracle.
+def deck_invcontrol_avr_kvarlim() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "kvarMax=50 kvarMaxAbs=50 irradiance=1.0",
+        "new InvControl.ic mode=AVR Vsetpoint=0.95 RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -672,6 +715,8 @@ SCENARIOS = {
     "invcontrol_wattvar_asym": deck_invcontrol_wattvar_asym,
     "invcontrol_wattvar_qlim": deck_invcontrol_wattvar_qlim,
     "invcontrol_avr": deck_invcontrol_avr,
+    "invcontrol_avr_daily": deck_invcontrol_avr_daily,
+    "invcontrol_avr_kvarlim": deck_invcontrol_avr_kvarlim,
 }
 
 

@@ -1195,6 +1195,27 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     achieved kvar) for these modes, until a Storage smart-inverter gate exists. lib
     **613 → 616**. *(A second instance of [[dont-rationalize-conditioning]] — a
     "deferred no-op / unexercised" justification hid a real gap.)*
+  - **audit-tests follow-up:** verdict strong (the `invcontrol_avr` golden is a real
+    oracle pin compared at full strength — exact 250 iters + node order + 1e-6 V/P; the
+    3 mock values are independent hand-derivations, not snapshots). Closed the two real
+    gaps with **two oracle-pinned goldens**: (1) **`phase7/invcontrol_avr_daily`** — the
+    Major finding (no multi-step AVR coverage): a 6-step daily run re-regulating to
+    `Vsetpoint` each step (final ~117 kvar/phase, V=0.98), the AVR analog of
+    `invcontrol_voltwatt_daily`/`_voltvar_avg`, guarding the EndOfTimeStepCleanup →
+    `UpdateInvControl` → next-step-restart path + fleet persistence (matched the oracle
+    bit-for-bit, 598 iters). (2) **`phase7/invcontrol_avr_kvarlim`** — the
+    `Fv_setpointLimited` LIMITED branch + the AVR arm of `Check_Qlimits` (Minor
+    findings): `Vsetpoint=0.95` with kvarMax=50 makes the setpoint unreachable, so the
+    kvar limit clamps the request and `|QEnd−QLimited| < 0.05` drives
+    `Fv_setpointLimited := FPresentVpu` — the branch the unclamped main golden never
+    reaches (fleet caps at ~16.3 kvar/phase, V≈1.005, 110 iters). **Surfaced-not-fixed
+    (accepted):** the per-step `DQDV`/`FAVROperation` resets in `UpdateInvControl` are
+    faithful-to-Pascal but **unobservable** (DQDV is re-estimated every step's iter-2;
+    FAVROperation is write-only until the mode-3 monitor, WP7.7), so no test (the daily
+    golden included) discriminates *those exact resets* — the daily golden pins the
+    multi-step convergence broadly instead. The check_qlimits *clamp arithmetic* is
+    shared with VOLTVAR (already tested); only the AVR error-band → FAVROperation delta
+    is AVR-specific (and unobservable). lib **616** (golden-only add).
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).
