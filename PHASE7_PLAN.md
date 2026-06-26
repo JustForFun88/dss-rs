@@ -33,14 +33,17 @@
 >    PHASE7_PLAN.md §1).
 > 2. **Update `STATUS.md`** for the step (the §1e record + the §1 frontier/table),
 >    then **commit** the step (gate-green code + STATUS together).
-> 3. **`/audit-code <scope>`** — scope it to *this step's just-landed commit(s)*,
->    not the whole branch: pass the step's commit range (`<first-sha>^..HEAD`) or
->    the step label (e.g. `WP7.1 step 3b`). Settle every finding against the pinned
->    oracle, **fix** what is real, update `STATUS.md` with an *audit-code follow-up*
->    note, and **commit** the fixes. (Re-run the gate before committing.)
-> 4. **`/audit-tests <scope>`** — same scope (the step's commits / label). Fix every
->    real finding, add an *audit-tests follow-up* note to `STATUS.md`, and **commit**.
->    (Re-run the gate before committing.)
+> 3. **`/audit-code <scope>`** — run by an **independent agent** with a scoped brief
+>    (see "Who runs the steps" below), not a fork of your full context. Scope it to
+>    *this step's just-landed commit(s)*, not the whole branch: pass the step's
+>    commit range (`<first-sha>^..HEAD`) or the step label (e.g. `WP7.1 step 3b`).
+>    Take back **only its findings report**; then *you* settle every finding against
+>    the pinned oracle, **fix** what is real, update `STATUS.md` with an *audit-code
+>    follow-up* note, and **commit** the fixes. (Re-run the gate before committing.)
+> 4. **`/audit-tests <scope>`** — same: an **independent agent**, same scope (the
+>    step's commits / label), launched in parallel with step 3. Take back its
+>    findings report; *you* fix every real finding, add an *audit-tests follow-up*
+>    note to `STATUS.md`, and **commit**. (Re-run the gate before committing.)
 > 5. **`STATUS.md` full review + sync + cleanup.** Read **the whole of `STATUS.md`
 >    end to end** (not just the section the step touched) and bring it back into a
 >    lean, consistent state:
@@ -78,21 +81,33 @@
 > existing `Phase 7 WPx.y step …: <audit-code|audit-tests> follow-up — <what>`
 > shape already in the history.
 >
-> **Who runs the steps — default: you, in the main loop.** The ritual is about
-> staying in the loop and owning the result, so the gate, every `STATUS.md` edit,
-> every fix, every commit, and the final report are done by **you directly** — they
-> need the conversation context, the probe-the-oracle / Pascal-as-spec discipline,
-> and ownership of the numerics. Do **not** hand these to a fresh agent: it would
-> re-derive context and lacks the PIN / `TODO(compat)` rules, which is exactly how
-> silent degradation slips in. The **one** worthwhile delegation is the read-heavy
-> *discovery* half of the audits (steps 3–4) on a **large WP**, where the diff +
-> prior-code + Pascal reads would bloat the main context: run `/audit-code` and
-> `/audit-tests` as **forks** (they inherit this context — a fresh general-purpose
-> agent does not), optionally the two in parallel since code vs tests are
-> independent scopes, and take back only the findings report. **You still settle
-> each finding against the oracle, fix it, and commit.** For a small sub-step, skip
-> the fork and invoke the audit skills inline — the fork is overhead that only pays
-> off at WP scale.
+> **Who runs the steps — default: you, in the main loop; the two audits go to
+> independent agents.** The ritual is about staying in the loop and owning the
+> result, so the gate, every `STATUS.md` edit, every fix, every commit, and the
+> final report are done by **you directly** — they need the conversation context,
+> the probe-the-oracle / Pascal-as-spec discipline, and ownership of the numerics.
+> **The discovery half of the audits (steps 3–4), however, is delegated to
+> independent agents** — `/audit-code` and `/audit-tests` each as its own agent, the
+> two in parallel since code vs tests are independent scopes. Use **fresh,
+> independent agents, not forks**: do **not** hand an auditor your whole context
+> window. Forking copies the entire conversation, which is wasteful and buries the
+> auditor in irrelevant state; a scoped agent reviews more sharply against a clean
+> brief. Pass each auditor a **self-contained brief with only what it needs**, and
+> nothing more:
+> - the exact scope — the step's commit range (`<first-sha>^..HEAD`) or label;
+> - the changed files / diff under audit;
+> - the authoritative baselines to check against — the specific Pascal unit(s) +
+>   procedure/identifier names, the relevant `PORTING_PLAN.md`/`PHASE7_PLAN.md`/
+>   `STATUS.md` section(s);
+> - the binding rules it must apply — the PIN (`tools/golden/PIN.txt`), the
+>   `TODO(compat)` / `NOT_PORTED` discipline, and that the oracle is the spec.
+>
+> Each audit agent returns **only its findings report**. **You** (the main loop)
+> then settle each finding against the oracle, fix what is real, and commit — the
+> auditors are read-only and never edit. For a trivial sub-step where authoring the
+> brief costs more than the audit, you may invoke the audit skill inline instead;
+> the independent-agent path is the default whenever the diff/prior-code/Pascal
+> reads would bloat the main context.
 >
 > **On Pascal line references:** this plan is written just-in-time, before the
 > per-WP deep read. It cites Pascal **units and procedure/identifier names**
