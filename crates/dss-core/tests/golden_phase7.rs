@@ -25,7 +25,10 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::{ElementCap, YPrim, assert_complex_close, compare_element, compare_yprim, tol_for};
+use harness::{
+    ElementCap, MonitorCap, YPrim, assert_complex_close, compare_element, compare_monitor,
+    compare_yprim, tol_for,
+};
 use serde::Deserialize;
 
 /// One scenario file: `{schema, oracle, scenario}` (the `oracle` block is
@@ -53,6 +56,11 @@ struct Scenario {
     /// (`kWhStored`/`%Stored`/`State`) — the WP7.4 SOC-trajectory pin.
     #[serde(default)]
     storage: Vec<StorageCap>,
+    /// Per-step monitor channels (a `mode=1` power monitor on each controlled DER in
+    /// a daily/duty deck): the PER-HOUR trajectory, compared elementwise so a
+    /// multi-step golden pins every step, not just the final state.
+    #[serde(default)]
+    monitors: Vec<MonitorCap>,
 }
 
 /// One Storage's post-solve state readback (`? Storage.<name>.<prop>`).
@@ -221,6 +229,14 @@ fn phase7_targeted_scenarios_match_oracle() {
                     _ => assert_eq!(&actual, expected, "{label}: state differs"),
                 }
             }
+        }
+
+        // The PER-STEP (per-hour) monitor trajectory of a multi-step run: every
+        // channel of every DER power monitor is compared elementwise against the
+        // oracle, so a daily/duty golden pins EACH step, not only the final state
+        // captured above. Snapshot scenarios carry no monitors (empty → no-op).
+        for m in &sc.monitors {
+            compare_monitor(&dss, m, &tol, ctx);
         }
     }
 }

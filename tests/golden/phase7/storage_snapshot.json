@@ -227,6 +227,7 @@
      "State": "Discharging"
     }
    }
-  ]
+  ],
+  "monitors": []
  }
 }

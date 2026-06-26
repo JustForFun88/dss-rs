@@ -39,6 +39,7 @@ Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -979,7 +980,40 @@ SCENARIOS = {
 }
 
 
+def add_step_monitors(cmds: list[str]) -> list[str]:
+    """For a multi-step (daily/duty) deck, add a `mode=1` power Monitor on every
+    controlled DER (PVSystem/Storage) so the golden captures + compares the DER's P/Q
+    at EVERY step — the per-hour trajectory, not only the final state. Snapshot decks
+    (no `mode=daily`/`mode=duty`) are returned unchanged. Monitors are passive (they
+    don't perturb the solve), and are inserted just before the time-series `set mode=`
+    command (after the DERs/controls are defined)."""
+    if not any(("mode=daily" in c or "mode=duty" in c) for c in cmds):
+        return cmds
+    ders = []
+    for c in cmds:
+        m = re.match(r"\s*new\s+((?:PVSystem|Storage)\.\w+)", c, re.I)
+        if m and m.group(1) not in ders:
+            ders.append(m.group(1))
+    if not ders:
+        return cmds
+    # `ppolar=no` → rectangular power (P, Q per phase) rather than polar (|S|, angle):
+    # the power angle wraps at ±180° (oracle 180 vs port −180 = same angle, false
+    # mismatch), so rectangular P/Q is the per-step quantity we pin.
+    mons = [
+        f"new Monitor.mon{i} element={der} terminal=1 mode=1 ppolar=no"
+        for i, der in enumerate(ders)
+    ]
+    out, inserted = [], False
+    for c in cmds:
+        if not inserted and ("mode=daily" in c or "mode=duty" in c):
+            out.extend(mons)
+            inserted = True
+        out.append(c)
+    return out
+
+
 def build(d, name: str, cmds: list[str]) -> dict:
+    cmds = add_step_monitors(cmds)
     d.Text.Command = "clear"
     for c in cmds:
         d.Text.Command = c
@@ -1003,6 +1037,31 @@ def build(d, name: str, cmds: list[str]) -> dict:
             d.Text.Command = f"? {nm}.{p}"
             props[p] = d.Text.Result
         storage.append({"name": nm, "properties": props})
+    # Per-step monitor channels — the per-HOUR trajectory of a multi-step run. Every
+    # Monitor a deck defines accumulates one sample per solved step during the daily
+    # run; we capture each channel array so the Rust harness can compare them
+    # elementwise (per step) via `compare_monitor`. A multi-step (daily/duty) deck adds
+    # a `mode=1` power monitor on each controlled DER, so the golden pins the DER's
+    # P/Q at EVERY step, not just the final-state capture above. Snapshot decks define
+    # no monitor → empty list. Same capture shape as `gen_phase6.py`.
+    mon = ckt.Monitors
+    monitors = []
+    names = list(mon.AllNames)
+    if names == ["NONE"]:
+        names = []
+    for nm in names:
+        mon.Name = nm
+        nch = mon.NumChannels
+        monitors.append(
+            {
+                "name": nm,
+                "header": list(mon.Header),
+                "sample_count": int(mon.SampleCount),
+                "channels": [
+                    [float(x) for x in mon.Channel(i)] for i in range(1, nch + 1)
+                ],
+            }
+        )
     return {
         "name": name,
         "commands": cmds,
@@ -1014,6 +1073,7 @@ def build(d, name: str, cmds: list[str]) -> dict:
         "line_yprim": capture_yprim(ckt, LINE),
         "elements": elements,
         "storage": storage,
+        "monitors": monitors,
     }
 
 
