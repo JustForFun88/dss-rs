@@ -1091,6 +1091,22 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     keeps separate `wp_operation`/`wv_operation` fields — only one fires per Sample,
     so it is functionally equivalent and the slot is unread until the mode-3 monitor
     body lands). lib **610** (golden-only add).
+  - **audit-tests follow-up:** verdict strong (the goldens are oracle-pinned —
+    `gen_phase7.py` asserts the PIN versions, values from the oracle not regenerated
+    Rust — and compared exact-iteration + node-order + 1e-6 V/P; the 2 corpus cases
+    are live full-model-compared; the mock values are independent hand-derivations;
+    the replaced `wattpf_mode_aborts_not_silently` → `avr_mode_aborts_not_silently`
+    keeps the deferral-never-silent guard on the now-deferred mode). Closed the one
+    real gap — the kvar-limited `Calc_PQ_WV` `GetXValue(QDesireEndpu)` branch
+    (`|FWVOperation| = 0.2`) was covered **live-only** (the corpus `SnapShot_wattvar`
+    curve reaches the full-headroom limit; my other wattvar goldens stay below it):
+    added the offline golden `phase7/invcontrol_wattvar_qlim` (a y=-1.0 curve → the
+    kvar limit fires → `GetXValue`; matched the oracle). Strengthened
+    `wattvar_first_step_curve_to_kvar` to also pin the PVSystem kW push
+    (`requested_kw == 600`). Surfaced-not-fixed (consistent with the established
+    Storage-fleet gap): the Storage WATTPF/WATTVAR path stays unexercised (every gate
+    is PVSystem-only, like Storage-VOLTVAR/DRC). lib **610** (golden + mock-assert
+    only).
 - **next:** WP7.5 step 2e-ii — `InvControl` AVR (the active-voltage-regulation
   3-stage DQDV regulator); then step 2e-iii — the LPF/RiseFall rate-of-change
   limiting + the explicit-`MonBus` monitored-voltage path; then step 3
