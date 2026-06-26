@@ -57,7 +57,7 @@ once per control iteration, not once per queued action. **Storage VOLTWATT/VV_VW
 deferred** (explicit error; PVSystem is ported). WP7.5 step 2d = `InvControl`
 **DRC + VV_DRC** (`CalcQDRC_desiredpu` dynamic-reactive-current law over the DRC
 rolling-average window + `CalcDRC_vars`/`CalcVVDRC_vars`; the joint volt-var+DRC
-`DoPendingAction`) COMPLETE — lib 599 → 607, goldens `phase7/invcontrol_drc`
+`DoPendingAction`) COMPLETE — lib 599 → 608, goldens `phase7/invcontrol_drc`
 (daily; the DRC dynamic-reactive-current path) + `phase7/invcontrol_vv_drc`
 (daily; the joint VV+DRC Q) + 5 mock-env tests. **Also landed the
 `IntervalUnits` time-unit suffix parse** (`h`/`m`/`s` on `AvgWindowLen`/
@@ -118,7 +118,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 607, golden_feeders 1,
+cargo test --workspace      # dss-core lib 608, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -993,6 +993,32 @@ VOLTWATT/VV_VW, 2d DRC/VV_DRC, 2e WATTPF/WATTVAR/AVR + LPF/RiseFall + MonBus).
     suffix conversions + the bad-unit/uppercase/empty error path). **Corpus stays
     74** (the DRC/VV_DRC corpus family is all daily + `Export`/`Plot`-blocked →
     Phase 8, like the Daily volt-var/volt-watt cases). lib **599 → 607**.
+  - **audit-code follow-up:** verdict faithful 1:1 (no Critical/Major) — every DRC/
+    VV_DRC math helper, both `Sample` triggers, both `DoPendingAction` branches, the
+    `Check_Qlimits` error-band/flag additions, the per-step reset extension, and the
+    IntervalUnits parse map line-for-line to the Pascal; **no fix needed**.
+    Surfaced-not-fixed (both unreachable/unobservable): (1) `drc_avg_pu` guards
+    `f_vbase=0`→0 where Pascal divides unconditionally — but that value feeds only the
+    mode-3 monitor `Set_Variable(6/15)` (unobservable until WP7.7) and `f_vbase` is
+    never 0; the *observable* `CalcQDRC_desiredpu` path is unguarded, matching Pascal;
+    (2) the WATTPF/WATTVAR/AVR `Check_Qlimits` error bands are omitted (those modes are
+    rejected at `Sample`, so unreachable until 2e). Confirmed `val_i32`/`val_f64` are
+    strict (reject `2h`/`2s`) so the suffix path fires — empirically pinned by the
+    props golden (`1h`→3600, `2h`→7200).
+  - **audit-tests follow-up:** verdict strong (the daily goldens are oracle-pinned and
+    DRC genuinely operates — a broken DRC→Q=0 fails both the element-power and the
+    node-voltage checks; the mock values are independent hand-derivations; the suffix
+    conversions are pinned against the **oracle**, not regenerated Rust output). Closed
+    the one gap — added an **end-to-end IntervalUnits error-path test** (a bad unit
+    `avgwindowlen=2x` logs the error + leaves the field at its default through the parse
+    engine; the happy path was already oracle-pinned). Surfaced-not-fixed (both
+    acceptable): the daily golden pins the final converged state + last-step iteration
+    count (not a per-step trajectory) — adequate for DRC (no convergence latch like
+    `FFlagVWOperates`; matches the `voltvar_avg` precedent), but a per-step pin will be
+    needed if step 2e's LPF/RoC (real cross-step state) reuses this golden shape; and
+    the **Storage DRC/VV_DRC** path is unexercised (consistent with the existing
+    untested Storage-VOLTVAR / multi-DER coverage, not a 2d regression). lib **607 →
+    608**.
 - **next:** WP7.5 step 2e — `InvControl` WATTPF / WATTVAR / AVR + the LPF/RiseFall
   rate-of-change limiting + the explicit-`MonBus` monitored-voltage path; then step
   3 (`ExpControl`), step 4 (the gate).
