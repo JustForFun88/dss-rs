@@ -1266,12 +1266,36 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     - **24-hour multi-step endurance goldens (user-requested).** A full 24-step hourly
       run per mode × DER type — `phase7/invcontrol_{avr,wattpf,wattvar}_24h` (PVSystem,
       a varying day-shape) + `phase7/invcontrol_{avr,wattpf,wattvar}_storage_24h`
-      (Storage, low kWrated so it stays discharging while the **SOC depletes 100% →
-      32.7%** — the genuine "values carry from the previous step"). Each ends on an
-      active step (so the final-step golden is non-trivial) and is matched against the
-      oracle bit-for-bit (full model + Storage SOC/state + exact iteration count). This
-      is the multi-step Storage AVR coverage the audit-tests Minor flagged, generalized
-      to all six mode×DER combinations. **6 new goldens; corpus stays 76.**
+      (Storage, low kWrated so it stays discharging at hour 24). Each ends on an active
+      step (so the final-step golden is non-trivial) and is matched against the oracle
+      bit-for-bit (full model + Storage SOC/state + exact iteration count). **How much
+      cross-step state each carries** (so the framing doesn't overclaim — an
+      audit-tests finding below): the **Storage** trio carries the integrated SOC
+      genuinely (**%stored 100% → 32.7%** over 24 steps, revert-proven); **AVR**
+      (PVSystem + Storage) warm-starts each step via `QOldAVR`, so its iteration-count
+      pin is cross-step sensitive; the **PVSystem WATTPF/WATTVAR** pair are
+      feed-forward/memoryless (no deltaQ convergence, no rolling window), so those two
+      verify the daily-mode run *completes* + pin a real operating point but do **not**
+      carry cross-step state (the PVSystem rolling-window cross-step path is covered by
+      `invcontrol_voltvar_avg`). **6 new goldens; corpus stays 76.**
+    - **audit-tests follow-up (commit 279aed9: wattprio + 24h goldens):** an
+      independent agent **reproduced all three controlled reverts** — the
+      `invcontrol_avr_storage_wattprio` discriminator (forcing the achieved kvar for
+      Storage's iter-2 DQDV fails it, 60 vs 58), the Storage-AVR-24h SOC carry (zeroing
+      the discharge integral fails the `%stored` pin), and the WATTVAR no-kW-push mock
+      (dropping `if is_pv` pushes `requested_kw` to 600) — confirming each is a genuine
+      gate. The WATTPF non-zero-kvar mock value (−131.47) is independently formula-
+      derived, not a snapshot. **One real finding (Minor): the STATUS note + the
+      `gen_phase7.py` deck comment over-claimed "each step carries from the previous"
+      for the PVSystem WATTPF/WATTVAR 24h pair** — those modes are memoryless, so those
+      two goldens are single-operating-point pins of the daily-mode path, not endurance
+      discriminators. Fixed by correcting both docs to state per-golden exactly what
+      carries (Storage SOC + AVR `QOldAVR`; WATTPF/WATTVAR PV = feed-forward). The
+      goldens are kept (they still pin a real oracle operating point + prove the
+      daily-mode run completes for those modes). **Surfaced-not-added (redundant):** a
+      VV_avg 24h or Storage-AVR-WattPriority 24h deck — the PVSystem rolling-window
+      cross-step carry is already pinned by `invcontrol_voltvar_avg`, and the iter-2
+      requested-kvar source by the single-step `invcontrol_avr_storage_wattprio`.
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).

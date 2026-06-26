@@ -741,14 +741,23 @@ def deck_invcontrol_avr_storage_wattprio() -> list[str]:
     ]
 
 
-# --- WP7.5 step 2e-ii: 24-hour multi-step (daily) AVR/WATTPF/WATTVAR endurance ---
-# A full 24-step hourly run for each smart-inverter var mode × DER type, where each
-# step carries from the previous (the EndOfTimeStepCleanup -> UpdateInvControl rolling
-# windows + per-step resets for both; the integrated SOC for Storage). The golden
-# pins the final (hour-24) converged state + iteration count; the shapes END ACTIVE so
-# the final step exercises real control (not an inert step). The Storage runs use a low
-# kWrated so the battery stays discharging at hour 24 while the SOC genuinely depletes
-# (100% -> ~32.7%), the clearest "values from the previous step" carry.
+# --- WP7.5 step 2e-ii: 24-hour multi-step (daily) AVR/WATTPF/WATTVAR runs -----------
+# A full 24-step hourly run for each smart-inverter var mode × DER type, exercising the
+# daily solve mode + EndOfTimeStepCleanup -> UpdateInvControl per step. Each golden pins
+# the final (hour-24) converged state + iteration count; the shapes END ACTIVE so the
+# final step is non-trivial (not an inert step).
+#
+# How much CROSS-STEP state each actually carries (so the naming doesn't overclaim):
+#   - Storage (all 3 modes): the integrated SOC carries genuinely — kWrated is low
+#     enough that the battery stays discharging at hour 24 while %stored depletes
+#     100% -> ~32.7% (the clearest "values from the previous step"; revert-proven).
+#   - AVR (PVSystem + Storage): `QOldAVR` warm-starts each step's convergence, so the
+#     iteration-count pin is cross-step sensitive.
+#   - WATTPF / WATTVAR on a PVSystem: these are **feed-forward / memoryless** (no
+#     deltaQ convergence, no rolling window) — the hour-24 state is a pure function of
+#     the hour-24 load mult, so these two goldens verify the daily-mode run *completes*
+#     and pin a real operating point, but do NOT carry cross-step state. (PVSystem
+#     rolling-window cross-step carry is covered separately by `invcontrol_voltvar_avg`.)
 DAILY24 = "set mode=daily stepsize=1h number=24"
 # A 24h profile that varies across the day but ends active (hour 24 = 0.85).
 VARY24 = (
