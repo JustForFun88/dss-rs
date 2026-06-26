@@ -228,6 +228,9 @@ mod dispatch {
         pushes: Vec<i32>,
         errors: Vec<String>,
         control_iter: i32,
+        /// Per-monitored-bus complex node voltages for the explicit-`MonBus` path:
+        /// `mon_bus_v[j][node-1]` is the voltage at monitored bus `j`, node `node`.
+        mon_bus_v: Vec<Vec<num_complex::Complex64>>,
     }
     impl MockEnv {
         fn new(ders: Vec<MockDer>) -> Self {
@@ -236,6 +239,7 @@ mod dispatch {
                 pushes: Vec::new(),
                 errors: Vec::new(),
                 control_iter: 1,
+                mon_bus_v: Vec::new(),
             }
         }
         fn idx(r: ElemRef) -> usize {
@@ -314,6 +318,14 @@ mod dispatch {
         }
         fn der_bus_vbase(&self, r: ElemRef) -> f64 {
             self.ders[Self::idx(r)].vbase
+        }
+        fn mon_bus_node_v(&self, j: usize, node: i32) -> num_complex::Complex64 {
+            self.mon_bus_v
+                .get(j)
+                .filter(|_| node >= 1)
+                .and_then(|v| v.get((node - 1) as usize))
+                .copied()
+                .unwrap_or(num_complex::Complex64::ZERO)
         }
         fn der_full_name(&self, r: ElemRef) -> String {
             format!("PVSystem.{}", self.ders[Self::idx(r)].name)
@@ -1192,6 +1204,131 @@ mod dispatch {
             (env.ders[0].requested_kw - 400.0).abs() < 1e-9,
             "Storage WATTVAR must not push kW (requested_kw = {})",
             env.ders[0].requested_kw
+        );
+    }
+
+    /// A VOLTVAR control monitoring an explicit `MonBus` (3 single-node phases),
+    /// `monVoltageCalc=AVG`. The DER's curve x-ref is `rated`.
+    fn monbus_voltvar(buses: Vec<String>, vbase: Vec<f64>) -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::VOLTVAR);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic.set_string_list(prop::MON_BUS, buses);
+        ic.side_effects(prop::MON_BUS, 0);
+        ic.set_f64_array(prop::MON_BUSES_VBASE, vbase);
+        ic
+    }
+
+    #[test]
+    fn monbus_single_node_avg_overrides_self_voltage() {
+        // MonBus monitors bus m at 1.02 pu (3 single-node phases); the DER's own
+        // terminal sits at 0.95 pu. With voltage_curvex_ref=rated, FPresentVpu must
+        // follow the MonBus average (1.02), NOT the self-monitored 0.95 — a regression
+        // that ignored MonBus (read the DER terminal) would land on 0.95.
+        let mut ic = monbus_voltvar(
+            vec!["m.1".into(), "m.2".into(), "m.3".into()],
+            vec![7200.0, 7200.0, 7200.0], // L-N base = DER vbase → scale = 1.0
+        );
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 0.95, 300.0)]);
+        // m.1 reads node 1 of bus j=0, m.2 node 2 of j=1, m.3 node 3 of j=2 (each at
+        // 1.02 pu → 7344 V); the mock indexes `mon_bus_v[j][node-1]`.
+        let v = num_complex::Complex64::new(1.02 * 7200.0, 0.0);
+        env.mon_bus_v = vec![vec![v], vec![v, v], vec![v, v, v]];
+        ic.sample(&mut env).unwrap();
+        assert!(
+            (ic.ctrl_vars[0].f_present_vpu - 1.02).abs() < 1e-9,
+            "FPresentVpu = {} (expected 1.02 from MonBus, not 0.95 self)",
+            ic.ctrl_vars[0].f_present_vpu
+        );
+    }
+
+    #[test]
+    fn monbus_line_to_line_takes_node_difference() {
+        // A 2-node MonBus entry (`m.1.2`): the monitored voltage is the |node1 − node2|
+        // difference, scaled by basekv·1000 / vbase. node1 = 8000, node2 = 2000 →
+        // |diff| = 6000; vbase = 6000 → cBuffer = 6000·(7200/6000) = 7200 →
+        // FPresentVpu = 7200 / 7200 = 1.0. Reading only node1 (a regression dropping the
+        // subtraction) would give 8000·(7200/6000)/7200 = 1.333.
+        let mut ic = monbus_voltvar(vec!["m.1.2".into()], vec![6000.0]);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 0.95, 300.0)]);
+        env.mon_bus_v = vec![vec![
+            num_complex::Complex64::new(8000.0, 0.0),
+            num_complex::Complex64::new(2000.0, 0.0),
+        ]];
+        ic.sample(&mut env).unwrap();
+        assert!(
+            (ic.ctrl_vars[0].f_present_vpu - 1.0).abs() < 1e-9,
+            "FPresentVpu = {} (expected 1.0 from the L-L difference, not 1.333)",
+            ic.ctrl_vars[0].f_present_vpu
+        );
+    }
+
+    /// A VOLTVAR control with rate-of-change limiting (`mode`/`limit` set directly).
+    fn roc_voltvar(mode: i32) -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::VOLTVAR);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.rate_of_change_mode = mode;
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic
+    }
+
+    #[test]
+    fn lpf_smooths_desired_q_against_prior_option() {
+        // RateofChangeMode=LPF, LPFTau=2 s, mock dyna_h=1 s → α = exp(−1/2) = 0.606531.
+        // At V=1.05 pu the curve gives QDesireVVpu = −0.625 (linear 1.0→1.08 maps 0→−1).
+        // Seeding the prior option at −0.2: QDesireOptionpu = −0.625·(1−α) + −0.2·α.
+        let mut ic = roc_voltvar(super::super::ROC_LPF);
+        ic.lpf_tau = 2.0;
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0].f_prior_q_desire_optionpu = -0.2;
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_desire_vvpu - (-0.625)).abs() < 1e-9,
+            "QDesireVVpu = {}",
+            cv.q_desire_vvpu
+        );
+        let alpha = (-0.5f64).exp();
+        let expected = -0.625 * (1.0 - alpha) + (-0.2) * alpha;
+        assert!(
+            (cv.q_desire_optionpu - expected).abs() < 1e-9,
+            "QDesireOptionpu = {} (expected {expected})",
+            cv.q_desire_optionpu
+        );
+    }
+
+    #[test]
+    fn risefall_ramps_desired_q_against_prior_option() {
+        // RateofChangeMode=RiseFall, RiseFallLimit=0.1, mock dyna_h=1 → per-step cap 0.1.
+        // QDesireVVpu = −0.625 (V=1.05); prior option = −0.2. The change −0.425 exceeds
+        // the downward cap (−0.425 < −0.1), so QDesireOptionpu ramps to prior − 0.1 = −0.3,
+        // NOT the full −0.625 (a regression dropping the rate limit would land there).
+        let mut ic = roc_voltvar(super::super::ROC_RISEFALL);
+        ic.rise_fall_limit = 0.1;
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0].f_prior_q_desire_optionpu = -0.2;
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_desire_optionpu - (-0.3)).abs() < 1e-9,
+            "QDesireOptionpu = {} (expected −0.3, the rate-limited ramp)",
+            cv.q_desire_optionpu
         );
     }
 }

@@ -15,7 +15,9 @@ parse-only skeleton) COMPLETE (incl. audits); WP7.5 step 2b (`InvControl`
 VOLTVAR dispatch) COMPLETE; WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW
 dispatch) COMPLETE; WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch)
 COMPLETE; WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE;
-WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE.**
+WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE; WP7.5 step 2e-iii
+(`InvControl` LPF/RiseFall rate-of-change + explicit-`MonBus` voltage path)
+COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -83,8 +85,17 @@ l.1605) was missing — AVR's iter-1/2 set `kvarRequested` without an explicit
 the earlier step-2c "no-op in this architecture" note was wrong (idempotent for
 the other modes — all goldens/corpus unchanged). **Storage AVR/WATTPF/WATTVAR also
 ported to working** (the DER `Varmode := VARMODEKVAR` set for both DER types) + 3
-Storage goldens. next = WP7.5 step 2e-iii (the explicit `MonBus` voltage path + the
-LPF/RiseFall rate-of-change limiting).**
+Storage goldens.** WP7.5 step 2e-iii = `InvControl` **LPF/RiseFall rate-of-change
+limiting** (`CalcLPF`/`CalcRF` smoothing/ramping the desired var/watt output against
+the prior step's value, wired into the VOLTVAR/DRC/VV_DRC/VOLTWATT/VV_VW
+`DoPendingAction` branches) **+ the explicit-`MonBus` monitored-voltage path**
+(`GetMonVoltage`'s `FUsingMonBuses` branch — per-bus single-node / line-to-line
+voltages reduced AVG/MAX/MIN) COMPLETE — lib 616 → 620, goldens
+`phase7/invcontrol_voltvar_{lpf,risefall}` (daily; the LPF lag / RiseFall ramp Q
+trajectory, per-step-pinned; controlled-revert-proven) + `phase7/invcontrol_voltvar_monbus`
+(snapshot; monitors an upstream bus ≠ the PV) + 4 mock-env tests; **corpus 76 → 83**
+(3 SnapShot MonBus VOLTVAR cases live-matched + 4 `Local_voltage_*` self-monitoring
+cases, stale tags re-probed). next = WP7.5 step 3 (`ExpControl`), then step 4 (the gate).**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -93,8 +104,9 @@ per-step detail (the Carson line-constants engine + the `WireData`/`CNData`/
 its golden; `Fault`/`SwtControl`/`Fuse`/`Recloser`/`Relay` + reliability
 activation + the protection gate) lives in **§1e** (per-step summaries) and the
 archives [`phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md) /
-[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **76**
-(WP7.5 step 2e-i migrated the 2 SnapShot WATTPF/WATTVAR cases on top of step 2c's
+[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). `solvable_now` is at **83**
+(WP7.5 step 2e-iii migrated the 3 SnapShot MonBus VOLTVAR cases + 4 `Local_voltage_*`
+self-monitoring cases on top of step 2e-i's 2 SnapShot WATTPF/WATTVAR, step 2c's
 18 SnapShot volt-watt + 6 SnapShot VV_VW).
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
@@ -133,13 +145,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**, **WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE**, **WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE**; **next = WP7.5 step 2e-iii (MonBus + LPF/RiseFall)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**, **WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE**, **WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE**, **WP7.5 step 2e-iii (`InvControl` LPF/RiseFall + MonBus) COMPLETE**; **next = WP7.5 step 3 (`ExpControl`)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 616, golden_feeders 1,
+cargo test --workspace      # dss-core lib 620, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -197,7 +209,7 @@ depend on the temporary `.inputs/electricdss-tst`.
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
 - **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
-  be installed).** For each of the **76** `solvable_now` cases the gate
+  be installed).** For each of the **83** `solvable_now` cases the gate
   compiles+solves on the Rust engine and on the pinned dss-python oracle
   (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
@@ -683,9 +695,10 @@ tests}`):
   `InjCtx.system_y_changed`; it stays generic plumbing but needs no PVSystem/InvControl wiring.
 
 **WP7.5 (DER C: InvControl + ExpControl) — 🚧 IN PROGRESS** (step 1 = the
-`RollAvgWindow` helper **COMPLETE**; step 2 = `InvControl` **— sub-steps 2a
-(parse-only skeleton) / 2b (VOLTVAR) / 2c (VOLTWATT + VV_VW) / 2d (DRC + VV_DRC)
-COMPLETE, 2e the remaining dispatch**; step 3 = `ExpControl`; step 4 = the gate).
+`RollAvgWindow` helper **COMPLETE**; step 2 = `InvControl` **COMPLETE** — sub-steps
+2a (parse-only skeleton) / 2b (VOLTVAR) / 2c (VOLTWATT + VV_VW) / 2d (DRC + VV_DRC) /
+2e-i (WATTPF + WATTVAR) / 2e-ii (AVR) / 2e-iii (LPF/RiseFall + MonBus) **all done**;
+**next = step 3 = `ExpControl`**; step 4 = the gate).
 
 **Step 1 — `RollAvgWindow` (`control/roll_avg_window.rs`).** Port of
 `Controls/RollAvgWindow.pas` (`TRollAvgWindow`, 105 lines) — the fixed-capacity
@@ -1337,9 +1350,51 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
       metered feeder head pins the per-hour P/Q (24 samples) via `compare_monitor`. So
       **every multi-step golden across all stages now compares per-step**, not just the
       final/cumulative state.
-- **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
-  explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
-  gate).
+- **step 2e-iii — the LPF/RiseFall rate-of-change limiting + the explicit-`MonBus`
+  monitored-voltage path (`control/inv_control/compute.rs` + `accessors.rs` + the
+  dispatch env).**
+  - **LPF / Rise-Fall (`CalcLPF`/`CalcRF`).** A first-order low-pass filter
+    (`out = desired·(1−α) + prior·α`, `α = exp(−h/LPFTau)`) or a ramp limiter (clamp
+    the per-step change to `±RiseFallLimit·h`) smooths/ramps the desired var/watt
+    output against the **prior time step's** `QDesireOptionpu`/`PLimitOptionpu`
+    (`FPrior*Optionpu`, latched once per step in `UpdateInvControl`, Pascal
+    l.2551-2552). Wired into the VOLTVAR / DRC / VV_DRC / VOLTWATT / VV_VW
+    `DoPendingAction` branches via two shared tails (`apply_roc_qlimit` /
+    `apply_roc_plimit`): the INACTIVE arm is the unchanged clamp; the LPF/RF arm runs
+    the filter then `Check_Qlimits` / `Check_Plimits` on the smoothed value.
+    **Genuinely cross-step** (the filter references the prior step), so gated by DAILY
+    goldens. Reproduced verbatim: the watts LPF/RF `PLimitEndpu := Min(PLimitLimitedpu,
+    PLimitOptionpu)` is a **plain** min (Pascal l.1390/1478), not the abs/sign form the
+    INACTIVE/var arms use.
+  - **MonBus (`GetMonVoltage`'s `FUsingMonBuses` branch).** The `monBus` side-effect
+    splits each `MonBus=` string into `FMonBuses` + `FMonBusesNodes` via
+    `ParseAsBusName`; `GetMonVoltage` reads each monitored bus's complex node voltage
+    (single-node, or a 2-node line-to-line difference) scaled by
+    `BasekV·1000 / FMonBusesVbase`, reduced by `MonVoltageCalc` (AVG/MAX/MIN, or a
+    specific phase — the last unexercised). The env gains `mon_bus_node_v(j, node)`
+    (the `NodeV[Bus.GetRef(node)]` read, Pascal's 1-based-index quirk preserved),
+    resolved to per-bus `RefNo` arrays at env build; **both** env sites (the
+    Sample/Action dispatch + the UpdateAll feed) build it. `UpdateInvControl`'s
+    `BasekV` faithfully uses `CtrlVars[i]` (i=1 — the InvControl-index `//TODO: check
+    (i,j)` quirk, identical for the homogeneous gated fleets). MakeLike now copies
+    `FMonBuses`/`FMonBusesNodes` (Pascal l.788-789).
+  - **Gate:** targeted goldens `phase7/invcontrol_voltvar_lpf` + `_risefall` (daily
+    VOLTVAR, a swinging irradiance shape so the desired Q jumps each hour; the per-step
+    monitor pins the lag/ramp Q trajectory — LPF Q ≠ RiseFall Q step-for-step, both ≠
+    INACTIVE; a **controlled revert** forcing INACTIVE fails them at step 1) +
+    `phase7/invcontrol_voltvar_monbus` (a snapshot monitoring an upstream bus `m` ≠ the
+    PV's bus `b`, so MonBus ≠ self-monitoring) + **4 mock-env tests** (MonBus
+    single-node AVG overriding the self voltage; the L-L node difference; the LPF
+    smoothing formula; the RiseFall ramp clamp — all hand-derived). **Corpus 76 → 83:**
+    the **3 SnapShot MonBus VOLTVAR cases** (`Mon_voltage_average{,_LL,_Mix}-2` —
+    single-node / line-to-line / mixed specs, each monitoring the source bus A ≠ the
+    PV's bus B) migrate into `solvable_now` and match the oracle full-model live, **plus
+    4 `Local_voltage_*` self-monitoring cases** (a stale `unsupported_class=InvControl,
+    PVSystem` tag — the self path was already ported in 2b; re-probed + migrated here).
+    No `.dss` corpus deck sets `RateofChangeMode`, so LPF/RiseFall has corpus-free
+    targeted-golden coverage only (like AVR). lib **616 → 620**.
+- **next:** WP7.5 step 3 (`ExpControl` — the dynamic reactive-power control), then
+  step 4 (the gate).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

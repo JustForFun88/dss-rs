@@ -382,26 +382,6 @@
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"d"
   },
   {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
    "tag": "unsupported_class=InvControl,PVSystem",
    "note": "New Command: Object Type \"PVSystem\" not found."
@@ -419,21 +399,6 @@
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
    "tag": "unsupported_class=InvControl,PVSystem",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
-   "note": "New Command: Object Type \"PVSystem\" not found."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem; unsupported_command=Show",
    "note": "New Command: Object Type \"PVSystem\" not found."
   },
   {

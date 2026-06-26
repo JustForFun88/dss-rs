@@ -63,10 +63,12 @@ pub(crate) const NONE_COMBMODE: i32 = 0;
 pub(crate) const VV_VW: i32 = 1;
 pub(crate) const VV_DRC: i32 = 2;
 
-// Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`). LPF=1 /
-// RISEFALL=2 arrive with the rate-of-change dispatch (step 2e); only the
-// INACTIVE default is bound here (the VOLTVAR step-2b guard).
+// Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`: Inactive /
+// LPF / RiseFall). LPF/RISEFALL drive the step-2e-iii rate-of-change limiting
+// (`CalcLPF`/`CalcRF` in `DoPendingAction`).
 pub(crate) const ROC_INACTIVE: i32 = 0;
+pub(crate) const ROC_LPF: i32 = 1;
+pub(crate) const ROC_RISEFALL: i32 = 2;
 
 // PendingChange action codes (InvControl.pas l.407-411).
 pub(crate) const CHANGE_NONE: i32 = 0;
@@ -310,6 +312,17 @@ pub(crate) struct InvVars {
     pub f_vw_operation: f64,
     /// `FdeltaPFactor` — the adaptive convergence damping factor for volt-watt.
     pub f_delta_p_factor: f64,
+
+    // --- LPF / Rise-Fall rate-of-change limiting (sub-step 2e-iii) ---
+    /// `QDesireOptionpu` / `PLimitOptionpu` — the desired Q / P limit (pu) *after*
+    /// the LPF / Rise-Fall filter, fed into `Check_Qlimits` / `Check_Plimits`.
+    pub q_desire_optionpu: f64,
+    pub p_limit_optionpu: f64,
+    /// `FPriorQDesireOptionpu` / `FPriorPLimitOptionpu` — the prior time step's
+    /// `QDesireOptionpu` / `PLimitOptionpu` (the LPF/RF reference, refreshed once
+    /// per step in `UpdateInvControl`).
+    pub f_prior_q_desire_optionpu: f64,
+    pub f_prior_p_limit_optionpu: f64,
     /// `FDCkW` (PVSystem `PanelkW`), `FDCkWRated` (PVSystem `Pmpp`),
     /// `FpctDCkWRated` (PVSystem `puPmpp`), `FEffFactor` — the volt-watt power-base
     /// inputs, refreshed each Sample by `UpdateDERParameters`. PVSystem-only: the
@@ -450,8 +463,15 @@ pub struct InvControl {
 
     /// `FMonBusesPhase` (MonVoltageCalc; MonPhaseEnum: avg/max/min/phase no.).
     mon_buses_phase: i32,
-    /// `MonBusesNameList` — the monitored bus list.
+    /// `MonBusesNameList` — the raw monitored-bus list (the `MonBus=` strings,
+    /// possibly with `.node` suffixes).
     mon_buses_name_list: Vec<String>,
+    /// `FMonBuses` — the parsed bus names (the `.node` suffix stripped), and
+    /// `FMonBusesNodes` — the per-bus node numbers, both derived from
+    /// `mon_buses_name_list` by `ParseAsBusName` in the `MonBus` side-effect.
+    /// Consumed by `GetMonVoltage`'s explicit-`MonBus` path.
+    pub(crate) mon_buses: Vec<String>,
+    mon_buses_nodes: Vec<Vec<i32>>,
     /// `FMonBusesVbase` — one base-kV per monitored bus (array_size =
     /// MonBusesNameList.Count).
     mon_buses_vbase: Vec<f64>,
@@ -475,7 +495,7 @@ pub struct InvControl {
     /// in Pascal; the per-DER value of the current Sample iteration).
     f_vreg: f64,
     /// `FUsingMonBuses` — true when `MonBus=` named explicit monitored buses
-    /// (the per-bus `GetMonVoltage` path is NOT_PORTED until step 2e).
+    /// (drives `GetMonVoltage`'s per-bus path; set in `ensure_fleet`).
     f_using_mon_buses: bool,
 
     // --- parse-time resolved monitored-DER bus (the `Setbus(1, MonitoredElement.
@@ -545,6 +565,8 @@ impl InvControl {
 
             mon_buses_phase: AVGPHASES,
             mon_buses_name_list: Vec::new(),
+            mon_buses: Vec::new(),
+            mon_buses_nodes: Vec::new(),
             mon_buses_vbase: Vec::new(),
 
             v_setpoint: 1.0,

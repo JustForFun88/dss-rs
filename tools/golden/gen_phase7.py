@@ -910,6 +910,86 @@ def deck_invcontrol_voltvar_mixed_24h() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2e-iii: InvControl LPF / Rise-Fall rate-of-change limiting -------
+# `RateofChangeMode=LPF/RiseFall` smooths/ramps the desired var output against the
+# PRIOR time step's value (`CalcLPF`/`CalcRF`, the `FPrior*Optionpu` reference
+# refreshed once per step in `UpdateInvControl`), so it is a genuinely cross-step
+# path — gated by DAILY runs with a stepped irradiance shape that swings the desired
+# Q each hour. No corpus case exercises rate-of-change (no `.dss` deck in the corpus
+# sets it), so these targeted goldens are the only gate. The per-step monitor
+# (`add_step_monitors`) pins the DER's P/Q at EVERY hour, so the lag/ramp shape is
+# compared step-by-step against the oracle — a regression that dropped the filter
+# (taking the raw desired Q) fails the early steps where the smoothing/ramp differs
+# most from the unfiltered value.
+
+# A shape that jumps around so the desired Q changes sharply each step (the filter
+# input is far from a steady state — maximizing the LPF lag / RF ramp signal).
+ROC_IRRAD = "new Loadshape.roc npts=6 interval=1 mult=(.2 1.0 .3 1.0 .4 1.0)"
+
+
+def deck_invcontrol_voltvar_lpf() -> list[str]:
+    # LPFTau = 3600 s with stepsize 1 h → alpha = exp(-1) ≈ 0.368, so each step's Q
+    # is 0.632·desired + 0.368·prior — a strong, visible low-pass lag against the
+    # swinging irradiance.
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        ROC_IRRAD,
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=roc irradiance=1",
+        "new InvControl.ic mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv "
+        "deltaQ_factor=0.2 RefReactivePower=VARMAX RateofChangeMode=LPF LPFTau=3600",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=6",
+    ]
+
+
+def deck_invcontrol_voltvar_risefall() -> list[str]:
+    # RiseFallLimit = 0.00005 pu/s with stepsize 1 h → the per-step change is capped
+    # at 0.18 pu of headroom, so a step that wants a big jump in Q ramps gradually
+    # instead — the rate limiter is plainly visible against the swinging irradiance.
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        ROC_IRRAD,
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=roc irradiance=1",
+        "new InvControl.ic mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv "
+        "deltaQ_factor=0.2 RefReactivePower=VARMAX RateofChangeMode=RiseFall "
+        "RiseFallLimit=0.00005",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=6",
+    ]
+
+
+# A snapshot VOLTVAR run whose InvControl monitors an UPSTREAM bus `m` (between the
+# source and the PV's bus `b`) via `MonBus=`, NOT the PV's own terminal. The
+# self-monitoring path would read the PV's elevated terminal voltage at `b`; the
+# explicit-MonBus path reads the lower `m`, so the control absorbs a different kvar.
+# A regression that fell back to self-monitoring (or dropped the MonBus scaling)
+# lands on a different operating point and fails the PV-power pin. The corpus
+# `Mon_voltage_average{,_LL,_Mix}-2` cases give the live oracle gate (single-node /
+# line-to-line / mixed specs); this is the deterministic offline backstop.
+def deck_invcontrol_voltvar_monbus() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=m phases=3 r1=1.0 x1=4.0 c1=0 length=1.5 units=km",
+        "new Line.l2 bus1=m bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=1.5 units=km",
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv "
+        "deltaQ_factor=0.2 RefReactivePower=VARMAX monVoltageCalc=AVG "
+        "MonBus=[m.1 m.2 m.3] monBusesVbase=[7200 7200 7200]",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -977,6 +1057,9 @@ SCENARIOS = {
     "invcontrol_wattvar_storage_24h": deck_invcontrol_wattvar_storage_24h,
     "invcontrol_voltvar_avg_24h": deck_invcontrol_voltvar_avg_24h,
     "invcontrol_voltvar_mixed_24h": deck_invcontrol_voltvar_mixed_24h,
+    "invcontrol_voltvar_lpf": deck_invcontrol_voltvar_lpf,
+    "invcontrol_voltvar_risefall": deck_invcontrol_voltvar_risefall,
+    "invcontrol_voltvar_monbus": deck_invcontrol_voltvar_monbus,
 }
 
 
