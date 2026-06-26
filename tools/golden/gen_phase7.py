@@ -595,6 +595,30 @@ def deck_invcontrol_wattvar_qlim() -> list[str]:
     ]
 
 
+# --- WP7.5 step 2e-ii: InvControl AVR (active voltage regulation) ---------------
+# AVR needs NO curve — it regulates the monitored voltage toward `Vsetpoint` via a
+# 3-stage DQDV process across control iterations (iter 1 seeds QHeadRoom/2, iter 2
+# estimates dQ/dV, iter 3+ runs the regulator law). The same weak line + 600 kVA PV
+# raises bus b to ~1.009 pu uncontrolled; with Vsetpoint=0.98 the AVR absorbs vars
+# (~119 kvar/phase) to pull the voltage down to exactly 0.9801 pu. This is a
+# *snapshot* mode (the regulator converges across control iterations within one
+# solve, not across time steps). The gate pins the converged PV terminal power (the
+# controller-driven kvar) + the bus voltage at setpoint + the exact (high) iteration
+# count — the AVR DQDV law is heavily damped (0.2 step + DQmax clamp), so it takes
+# ~250 iterations; a per-iteration trajectory divergence from the oracle would shift
+# the count. (The corpus has no AVR case, so this is the only AVR full-solve gate.)
+def deck_invcontrol_avr() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "irradiance=1.0",
+        "new InvControl.ic mode=AVR Vsetpoint=0.98 RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -647,6 +671,7 @@ SCENARIOS = {
     "invcontrol_wattvar": deck_invcontrol_wattvar,
     "invcontrol_wattvar_asym": deck_invcontrol_wattvar_asym,
     "invcontrol_wattvar_qlim": deck_invcontrol_wattvar_qlim,
+    "invcontrol_avr": deck_invcontrol_avr,
 }
 
 

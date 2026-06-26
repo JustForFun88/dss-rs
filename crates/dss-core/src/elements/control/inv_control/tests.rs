@@ -321,6 +321,7 @@ mod dispatch {
         fn der_set_drc_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_wp_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_wv_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_avr_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
             self.ders[Self::idx(r)].pf_wp_nominal = value;
         }
@@ -357,6 +358,7 @@ mod dispatch {
         fn dyna_t(&self) -> f64 {
             0.0
         }
+        fn set_loads_need_updating(&mut self) {}
     }
 
     /// A VOLTVAR control over a `vvc_curve` that absorbs above 1.0 pu, named-list
@@ -872,19 +874,125 @@ mod dispatch {
     }
 
     #[test]
-    fn avr_mode_aborts_not_silently() {
-        // AVR is still deferred (step 2e-ii); Sample must reject it loudly, never
-        // silently no-op (the deferral-is-never-a-silent-skip rule). (WATTPF/WATTVAR
-        // are now ported — see `wattpf_*`/`wattvar_*` below.)
+    fn gfm_mode_aborts_not_silently() {
+        // GFM (mode ordinal 7) is still deferred (WP7.7); Sample must reject it
+        // loudly, never silently no-op (the deferral-is-never-a-silent-skip rule).
+        // (AVR is now ported — see `avr_*` below.)
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::AVR);
+        ic.set_i32(prop::MODE, 7); // GFM
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
         let err = ic.sample(&mut env).unwrap_err();
         assert!(
-            err.contains("deferred to 2e-ii"),
-            "expected an AVR NOT_PORTED error, got: {err}"
+            err.contains("WP7.7 (GFM)"),
+            "expected a GFM NOT_PORTED error, got: {err}"
+        );
+    }
+
+    /// An AVR control (Vsetpoint=0.98, VARMAX) over the named `pv` fleet. No curve.
+    fn avr_ic() -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::AVR);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::VSETPOINT, 0.98);
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic
+    }
+
+    #[test]
+    fn avr_iter1_seeds_half_headroom() {
+        // Control iteration 1: AVR seeds the prior-voltage baselines and pushes
+        // QHeadRoom/2 kvar (Pascal l.1063-1073). VARMAX → QHeadRoom = kvarLimit = 600,
+        // so the requested kvar is 300; FAvgpAVRVpuPrior latches the present pu (1.009).
+        let mut ic = avr_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.009, 200.0)]);
+        env.control_iter = 1;
+        ic.sample(&mut env).unwrap();
+        assert_eq!(env.pushes, vec![super::super::CHANGEVARLEVEL]);
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_headroom - 600.0).abs() < 1e-9,
+            "QHeadRoom = {}",
+            cv.q_headroom
+        );
+        assert!(
+            (cv.f_avgp_avr_vpu_prior - 1.009).abs() < 1e-9,
+            "FAvgpAVRVpuPrior = {}",
+            cv.f_avgp_avr_vpu_prior
+        );
+        assert!(
+            (env.ders[0].requested_kvar - 300.0).abs() < 1e-9,
+            "requested kvar = {}",
+            env.ders[0].requested_kvar
+        );
+    }
+
+    #[test]
+    fn avr_iter2_estimates_dqdv() {
+        // Iteration 1 seeds kvar=300 at v=1.009; the solve drops the voltage to 1.0;
+        // iteration 2 estimates DQDV = |Presentkvar / QHeadRoom / (Vpresent − Vprior)|
+        // = |300 / 600 / (1.0 − 1.009)| = 0.5/0.009 ≈ 55.5556 (Pascal l.1075-1082).
+        let mut ic = avr_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.009, 200.0)]);
+        env.control_iter = 1;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 1 → kvar 300
+        // The re-solve drops the bus voltage (mock the new terminal magnitude).
+        env.ders[0].vmag = 1.0 * env.ders[0].vbase;
+        env.control_iter = 2;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 2 → DQDV
+        let cv = &ic.ctrl_vars[0];
+        let expected = (300.0_f64 / 600.0 / (1.0 - 1.009)).abs();
+        assert!(
+            (cv.dqdv - expected).abs() < 1e-6,
+            "DQDV = {} expected {expected}",
+            cv.dqdv
+        );
+    }
+
+    #[test]
+    fn avr_iter3_regulator_step_clamped_by_dqmax() {
+        // Iteration 3 runs the regulator: DQ = FdeltaQFactor·DQDV·(Vsetpoint − v) is
+        // clamped to ±DQmax (= 0.1·kvarLimit/QHeadRoomNeg = 0.1), so QDesireAVRpu lands
+        // at −0.1; CalcAVR_vars then sets QDesiredAVR = QOldAVR(0) + 0.2·(−0.1·600) = −12.
+        let mut ic = avr_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.009, 200.0)]);
+        env.control_iter = 1;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 1
+        env.ders[0].vmag = 1.0 * env.ders[0].vbase;
+        env.control_iter = 2;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 2 → DQDV ≈ 55.5556
+        env.control_iter = 3;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 3 → regulator
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.q_desire_avrpu - (-0.1)).abs() < 1e-9,
+            "QDesireAVRpu = {} (expected the −DQmax clamp −0.1)",
+            cv.q_desire_avrpu
+        );
+        assert!(
+            (cv.q_desired_avr - (-12.0)).abs() < 1e-9,
+            "QDesiredAVR = {} (expected −12)",
+            cv.q_desired_avr
+        );
+        assert!(
+            (env.ders[0].requested_kvar - (-12.0)).abs() < 1e-9,
+            "requested kvar = {}",
+            env.ders[0].requested_kvar
+        );
+        // The setpoint-limited voltage is the configured setpoint (the request is far
+        // from the kvar limit, so the |QEnd − QLimited| < 0.05 branch is not taken).
+        assert!(
+            (cv.f_v_setpoint_limited - 0.98).abs() < 1e-9,
+            "Fv_setpointLimited = {}",
+            cv.f_v_setpoint_limited
         );
     }
 
