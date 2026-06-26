@@ -329,6 +329,7 @@ pub(super) fn dispatch_control(
                 control_iteration,
                 int_hour,
                 t,
+                loads_need_updating,
                 ..
             } = &mut ckt.solution;
             let mut env = InvDispEnv {
@@ -347,6 +348,7 @@ pub(super) fn dispatch_control(
                 control_iter: *control_iteration,
                 dyna_h: sys.dyna_h,
                 dbl_hour: sys.dbl_hour,
+                loads_need_updating,
             };
             match op {
                 ControlOp::Sample => ic.sample(&mut env),
@@ -1234,6 +1236,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         control_iteration,
         int_hour,
         t,
+        loads_need_updating,
         ..
     } = &mut ckt.solution;
 
@@ -1265,6 +1268,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 control_iter: *control_iteration,
                 dyna_h: sys.dyna_h,
                 dbl_hour: sys.dbl_hour,
+                loads_need_updating: &mut *loads_need_updating,
             };
             ic.update_inv_control(&mut env2);
         }
@@ -1296,6 +1300,7 @@ struct InvDispEnv<'a> {
     control_iter: i32,
     dyna_h: f64,
     dbl_hour: f64,
+    loads_need_updating: &'a mut bool,
 }
 
 impl InvDispEnv<'_> {
@@ -1484,6 +1489,14 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.wv_mode = value;
         }
     }
+    fn der_set_avr_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.avr_mode = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.avr_mode = value;
+        }
+    }
     fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
         let obj = self.store.obj_mut(r);
         if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
@@ -1590,5 +1603,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
     fn dyna_t(&self) -> f64 {
         self.t
+    }
+    fn set_loads_need_updating(&mut self) {
+        *self.loads_need_updating = true;
     }
 }

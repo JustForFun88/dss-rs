@@ -55,11 +55,7 @@ pub(crate) const VOLTWATT: i32 = 2;
 pub(crate) const DRC: i32 = 3;
 pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
-// AVR=6 (active voltage regulation) — dispatch lands with step 2e-ii. Until then
-// the Sample mode guard rejects it via the catch-all arm (so the ordinal is read
-// only by the deferred-AVR test); `allow(dead_code)` keeps the non-test lib build
-// quiet without hiding it from 2e-ii.
-#[allow(dead_code)]
+// AVR=6 (active voltage regulation) — the 3-stage DQDV regulator, ported in step 2e-ii.
 pub(crate) const AVR: i32 = 6;
 
 // Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
@@ -198,11 +194,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 }
 
 /// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
-/// member). Only the fields the WP7.5 **step 2b–2d** dispatch (VOLTVAR / VOLTWATT /
-/// VV_VW / DRC / VV_DRC) + the shared machinery (`UpdateInvControl`,
-/// `Calc_QHeadRoom`, `Change_deltaQ_factor`, `UpdateDERParameters`) read/write are
-/// carried; the WATTPF/WATTVAR/AVR-only fields (`QDesiredWP`/`QDesiredWV`/...) land
-/// with sub-step 2e. Field names mirror the Pascal record for a 1:1 read.
+/// member). Carries the fields the WP7.5 **step 2b–2e-ii** dispatch (VOLTVAR /
+/// VOLTWATT / VV_VW / DRC / VV_DRC / WATTPF / WATTVAR / AVR) + the shared machinery
+/// (`UpdateInvControl`, `Calc_QHeadRoom`, `Change_deltaQ_factor`,
+/// `UpdateDERParameters`) read/write. Field names mirror the Pascal record for a
+/// 1:1 read.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct InvVars {
     /// `CondOffset` — monitored-terminal conductor offset (`(NTerms-1)*NCondsDER`).
@@ -268,6 +264,29 @@ pub(crate) struct InvVars {
     /// `FWPOperation` / `FWVOperation` — watt-pf / watt-var operating flags.
     pub f_wp_operation: f64,
     pub f_wv_operation: f64,
+
+    // --- AVR (active voltage regulation) reactive-power state (sub-step 2e-ii) ---
+    /// `QDesiredAVR` — the AVR kvar set-point pushed to the DER.
+    pub q_desired_avr: f64,
+    /// `QOldAVR` — the prior AVR kvar (convergence history). Pascal seeds it to
+    /// `-PVSys.kvarLimitNeg/2` (or 0 for an all-Storage fleet) in `MakeDERList`,
+    /// but `CalcQAVR_desiredpu` resets it to 0 at control iteration 3 *before* any
+    /// read, so the seed is unobservable — left at the `Default` 0.0.
+    pub q_old_avr: f64,
+    /// `QoutputAVRpu` — the achieved Q (pu) used in the AVR trigger comparison.
+    pub qoutput_avrpu: f64,
+    /// `QDesireAVRpu` — Q desired from the AVR DQDV law (pu).
+    pub q_desire_avrpu: f64,
+    /// `FAVROperation` — AVR operating flag (-1 absorb / 1 inject / 0 none).
+    pub f_avr_operation: f64,
+    /// `DQDV` — the dQ/dV sensitivity estimated on control iteration 2.
+    pub dqdv: f64,
+    /// `Fv_setpointLimited` — the AVR voltage setpoint after the kvar-limit back-off
+    /// (the trigger compares `FPresentVpu` against it).
+    pub f_v_setpoint_limited: f64,
+    /// `FAvgpAVRVpuPrior` — the control-iteration-1 prior voltage, used as the AVR
+    /// baseline (`v`) at control iteration 3.
+    pub f_avgp_avr_vpu_prior: f64,
 
     // --- volt-watt active-power state (VOLTWATT / VV_VW; sub-step 2c) ---
     /// `PLimitVW` — the volt-watt kW set-point pushed to the DER.

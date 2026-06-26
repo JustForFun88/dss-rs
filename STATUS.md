@@ -14,7 +14,8 @@ WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
 parse-only skeleton) COMPLETE (incl. audits); WP7.5 step 2b (`InvControl`
 VOLTVAR dispatch) COMPLETE; WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW
 dispatch) COMPLETE; WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch)
-COMPLETE; WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE.**
+COMPLETE; WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE;
+WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
 + fleet kW/kWh aggregates, `GetControlPower`/`GetControlCurrent`, and `Sample`'s
@@ -71,7 +72,16 @@ watt-var incl. the kVA-circle quadratic) COMPLETE — lib 608 → 610, goldens
 `phase7/invcontrol_wattpf` (pf=-0.9 at full output, 6 iters) +
 `phase7/invcontrol_wattvar` (the (P,Q) lands exactly on the 1000-kVA circle, 6
 iters) + 3 mock-env tests; **corpus 74 → 76** (the 2 SnapShot WATTPF/WATTVAR
-cases migrated, live-matched). next = WP7.5 step 2e-ii (AVR), then 2e-iii (the
+cases migrated, live-matched). WP7.5 step 2e-ii = `InvControl` **AVR** (the
+3-stage DQDV active-voltage-regulation regulator: seed `QHeadRoom/2` → estimate
+`DQDV` → regulate toward `Vsetpoint`) COMPLETE — lib 610 → 613, golden
+`phase7/invcontrol_avr` (a snapshot regulating the bus to `Vsetpoint`=0.98, the
+exact 250 iters) + 3 mock-env tests; **corpus stays 76** (no AVR corpus case).
+Key fix: the **`LoadsNeedUpdating := TRUE`** after `DoPendingAction` (Pascal
+l.1605) was missing — AVR's iter-1/2 set `kvarRequested` without an explicit
+`SetNominalDEROutput`, so the re-solve never picked it up and AVR never converged;
+the earlier step-2c "no-op in this architecture" note was wrong (idempotent for
+the other modes — all goldens/corpus unchanged). next = WP7.5 step 2e-iii (the
 explicit `MonBus` voltage path + the LPF/RiseFall rate-of-change limiting).**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
@@ -121,13 +131,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**, **WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE**; **next = WP7.5 step 2e-ii (AVR), then 2e-iii (MonBus + LPF/RiseFall)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**, **WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE**, **WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE**; **next = WP7.5 step 2e-iii (MonBus + LPF/RiseFall)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 610, golden_feeders 1,
+cargo test --workspace      # dss-core lib 613, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -1107,10 +1117,63 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     Storage-fleet gap): the Storage WATTPF/WATTVAR path stays unexercised (every gate
     is PVSystem-only, like Storage-VOLTVAR/DRC). lib **610** (golden + mock-assert
     only).
-- **next:** WP7.5 step 2e-ii — `InvControl` AVR (the active-voltage-regulation
-  3-stage DQDV regulator); then step 2e-iii — the LPF/RiseFall rate-of-change
-  limiting + the explicit-`MonBus` monitored-voltage path; then step 3
-  (`ExpControl`), step 4 (the gate).
+- **step 2e-ii — the AVR dispatch (`control/inv_control/compute.rs`).** Adds the
+  **AVR** (active voltage regulation) single mode — the 3-stage DQDV regulator
+  (`CHANGEVARLEVEL`, no curve): `Sample`'s AVR trigger (three voltage/var conditions
+  OR `ControlIteration=1`; PVSystem sets `AVRmode`, Storage `VVmode` — verbatim
+  Pascal l.2051-2054) + the `DoPendingAction` control-iteration state machine —
+  **iter 1** seeds `FAvgpVpuPrior`/`FAvgpAVRVpuPrior` and pushes `QHeadRoom/2` kvar,
+  **iter 2** estimates the `DQDV` sensitivity from the resulting voltage change,
+  **iter 3+** runs the regulator (`CalcQAVR_desiredpu` → `Check_Qlimits` →
+  `CalcAVR_vars`) driving the monitored voltage toward `Vsetpoint`. The
+  `check_qlimits` AVR error band (0.005) + `FAVROperation` arm, and the
+  `UpdateInvControl` per-step reset of `DQDV`/`FAVROperation`, were added. New
+  `InvVars` AVR fields (`QDesiredAVR`/`QOldAVR`/`QoutputAVRpu`/`QDesireAVRpu`/
+  `FAVROperation`/`DQDV`/`Fv_setpointLimited`/`FAvgpAVRVpuPrior`) + the env method
+  `der_set_avr_mode`. `Fv_setpoint` (the `Vsetpoint` prop) was already wired in 2a.
+  - **REAL PORT BUG found + fixed — the earlier step-2c "`LoadsNeedUpdating` is a
+    no-op in this architecture" note was WRONG.** AVR's iter-1/2 dispatch sets
+    `kvarRequested` *without* calling `SetNominalDEROutput` (verbatim Pascal — iter 1
+    pushes `QHeadRoom/2`, iter 2 only reads it back for `DQDV`); it relies on Pascal
+    `DoPendingAction`'s `LoadsNeedUpdating := TRUE` (l.1605) to make the *next* solve
+    re-run `SetNominalDEROutput` over the fleet. The Rust `InvDispEnv` never set that
+    flag (the other modes call `der_set_nominal` explicitly), so AVR iter-2 read a
+    **stale kvar = 0 → DQDV = 0 → the regulator never moved the voltage → max control
+    iterations exceeded (no convergence)**. Fixed by adding
+    `env.set_loads_need_updating()` at the end of `do_pending_action` (matching Pascal
+    l.1605, the GenDispatcher/StorageController pattern). **Idempotent for the other
+    modes** (re-applying `SetNominalDEROutput` from the same request is a no-op): the
+    VOLTVAR/VOLTWATT/VV_VW/DRC/VV_DRC/WATTPF/WATTVAR goldens + all 76 corpus cases
+    still match the oracle at their exact prior iteration counts. (Per the
+    [[dont-rationalize-conditioning]] discipline — a deferred "no-op" claim hid a real
+    gap until the mode that depended on it landed.)
+  - **AVR is a snapshot mode** (the regulator converges across *control* iterations
+    within one solve, not across time steps; it uses `FPresentVpu`/`Vsetpoint`/`DQDV`,
+    not the rolling-average window), so the targeted golden is a snapshot. The DQDV law
+    is heavily damped (a hard-coded 0.2 step + the `DQmax` clamp), so convergence takes
+    ~250 control-loop iterations — pinned exactly.
+  - **NOT_PORTED / deferred (each an explicit error):** GFM/Exponential (→ WP7.7); the
+    `MonBus` path + LPF/RiseFall (→ 2e-iii). The Storage AVR path is **not** guarded
+    (AVR pushes kvar set-points, no state flip), but is **unexercised** (no corpus/
+    golden Storage AVR case), like the existing Storage-VOLTVAR/DRC/WATTPF coverage.
+  - **Reproduced verbatim (plain comment, not `TODO(compat)`):** the dead
+    damping-band block in `CalcQAVR_desiredpu` (Pascal l.3170-3182), immediately
+    overwritten by the unconditional `FdeltaQFactor := 0.2` (l.3184); and the AVR
+    event-log string that literally reads "VOLTVAR mode requested …" (a Pascal
+    copy-paste at l.1124-1126).
+  - **Gate:** targeted golden `phase7/invcontrol_avr` (a 600 kVA PV on a weak line,
+    `Vsetpoint=0.98`, VARMAX → the AVR absorbs ~119 kvar/phase to pull the bus voltage
+    to exactly 0.9801 pu; node voltages + the PV terminal power 1e-6 **and the exact
+    250 iters** — matched the oracle bit-for-bit after the `loads_need_updating` fix) +
+    **3 mock-env tests** (the iter-1 `QHeadRoom/2` seed, the iter-2 `DQDV` estimate, the
+    iter-3 regulator step with the `DQmax` clamp pinned to `QDesireAVRpu=-0.1`/
+    `QDesiredAVR=-12`); the deferral guard flipped `avr_mode_aborts_not_silently` →
+    `gfm_mode_aborts_not_silently` (GFM is the now-deferred mode). **Corpus stays 76**
+    (the `Test/InvControl*` family has no AVR case — the only AVR full-solve gate is
+    the targeted golden). lib **610 → 613**.
+- **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
+  explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
+  gate).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

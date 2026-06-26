@@ -25,12 +25,17 @@
 //! `CalcWATTVAR_vars` (the watt-var curve Q with the kVA-circle quadratic) plus the
 //! `Sample` triggers and `DoPendingAction` branches.
 //!
-//! **NOT_PORTED / deferred (each an explicit error, never a silent skip):** the
-//! remaining control modes (AVR → 2e-ii; GFM → WP7.7), **Storage** in VOLTWATT/VV_VW
-//! (the YPrim-state-flip propagation gap; PVSystem volt-watt is ported), the
-//! `MonBus=` explicit monitored-bus voltage path (`FUsingMonBuses` → 2e), the LPF /
-//! Rise-Fall rate-of-change limiting (→ 2e), and the Exponential `ControlModel`
-//! (the `TPICtrl` PI controller → WP7.7).
+//! Step 2e-ii adds the **AVR** (active voltage regulation) single mode: the 3-stage
+//! DQDV regulator (`CalcQAVR_desiredpu`/`CalcAVR_vars` + the `DoPendingAction`
+//! control-iteration state machine — seed `QHeadRoom/2`, estimate `DQDV`, then
+//! regulate toward `Vsetpoint`) plus the `Sample` trigger.
+//!
+//! **NOT_PORTED / deferred (each an explicit error, never a silent skip):** GFM →
+//! WP7.7, **Storage** in VOLTWATT/VV_VW (the YPrim-state-flip propagation gap;
+//! PVSystem volt-watt is ported), the `MonBus=` explicit monitored-bus voltage path
+//! (`FUsingMonBuses` → 2e-iii), the LPF / Rise-Fall rate-of-change limiting
+//! (→ 2e-iii), and the Exponential `ControlModel` (the `TPICtrl` PI controller →
+//! WP7.7).
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
@@ -39,7 +44,7 @@ use crate::elements::traits::ElemRef;
 use crate::util::fmt_g;
 
 use super::{
-    CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
+    AVR, CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
     DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR,
     NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_INACTIVE, VOLTVAR, VOLTWATT, VV_DRC, VV_VW,
     WATTPF, WATTVAR,
@@ -157,6 +162,8 @@ pub(crate) trait InvDispatchEnv {
     fn der_set_wp_mode(&mut self, r: ElemRef, value: bool);
     /// Set only `DERElem.WVmode` (the WATTVAR `Sample`/`DoPendingAction` path).
     fn der_set_wv_mode(&mut self, r: ElemRef, value: bool);
+    /// Set only `DERElem.AVRmode` (the AVR `Sample`/`DoPendingAction` path).
+    fn der_set_avr_mode(&mut self, r: ElemRef, value: bool);
     /// `TPVSystemObj.pf_wp_nominal := value` (WATTPF; PVSystem only — Storage
     /// instead takes the `kvarRequested := QDesiredWP` branch handled via
     /// `der_set_kvar_requested`).
@@ -192,6 +199,13 @@ pub(crate) trait InvDispatchEnv {
     /// `ActiveCircuit.Solution.DynaVars.t` (seconds within the step) — the DRC
     /// `Dynavars.t = 1` guard in `CalcQDRC_desiredpu`.
     fn dyna_t(&self) -> f64;
+    /// Pascal `ActiveCircuit.Solution.LoadsNeedUpdating := TRUE` (`DoPendingAction`
+    /// l.1605) — force the next solve to re-run `SetNominalDEROutput` over every PC
+    /// element. Load-bearing for the AVR modes, whose iteration-1/2 dispatch sets
+    /// `kvarRequested` *without* calling `SetNominalDEROutput` directly (so the
+    /// re-solve must pick the request up); harmless/idempotent for the modes that do
+    /// call `der_set_nominal` (the recompute from the same request is a no-op).
+    fn set_loads_need_updating(&mut self);
 }
 
 /// Which mode-3 monitor state variable a `der_set_monitor_var` write targets.
@@ -386,8 +400,8 @@ impl InvControl {
             }
         } else {
             match self.control_mode {
-                NONE_MODE | VOLTVAR | VOLTWATT | DRC | WATTPF | WATTVAR => {}
-                _ => return Err(self.not_ported_mode()), // AVR → 2e-ii; GFM → WP7.7
+                NONE_MODE | VOLTVAR | VOLTWATT | DRC | WATTPF | WATTVAR | AVR => {}
+                _ => return Err(self.not_ported_mode()), // GFM → WP7.7
             }
         }
         if self.f_using_mon_buses {
@@ -458,6 +472,7 @@ impl InvControl {
                     DRC => self.sample_drc(i, env, snap, control_iter),
                     WATTPF => self.sample_wattpf(i, env, snap, control_iter)?,
                     WATTVAR => self.sample_wattvar(i, env, snap, control_iter)?,
+                    AVR => self.sample_avr(i, env, snap, control_iter),
                     _ => {} // NONE_MODE: do nothing
                 }
             }
@@ -816,6 +831,60 @@ impl InvControl {
         Ok(())
     }
 
+    /// Pascal `Sample`'s `AVR` (active voltage regulation) arm. AVR needs **no
+    /// curve** — it regulates the monitored voltage toward `Vsetpoint` via the
+    /// 3-stage DQDV process in `DoPendingAction`. The trigger compares the present
+    /// voltage against both the prior average and the (kvar-limited) setpoint. Unlike
+    /// the other var modes the AVR arm writes no mode-3 monitor `Set_Variable` (Pascal
+    /// l.2040-2076), and for a PVSystem it sets `AVRmode := TRUE` (a Storage sets
+    /// `VVmode := TRUE` instead — verbatim Pascal l.2051-2054).
+    fn sample_avr(
+        &mut self,
+        i: usize,
+        env: &mut dyn InvDispatchEnv,
+        snap: DerSnap,
+        control_iter: i32,
+    ) {
+        let r = self.fleet[i];
+
+        // If the inverter is off and following it, skip this DER.
+        if !snap.inverter_on && snap.var_follow_inverter {
+            return;
+        }
+        if snap.is_pvsystem {
+            env.der_set_avr_mode(r, true); // PVSys.AVRmode := TRUE
+        } else {
+            env.der_set_vv_mode(r, true); // Storage.VVmode := TRUE
+        }
+
+        // Trigger from AVR mode: the voltage moved vs the prior average OR vs the
+        // (limited) setpoint, the achieved Q drifted from the target, or iter 1.
+        let v_setpoint = self.v_setpoint;
+        let cv = &self.ctrl_vars[i];
+        let trigger = (cv.f_present_vpu - cv.f_avgp_vpu_prior).abs()
+            > self.voltage_change_tolerance
+            || (cv.qoutput_avrpu.abs() - cv.q_desire_endpu.abs()).abs() > self.var_change_tolerance
+            || (cv.f_present_vpu - cv.f_v_setpoint_limited).abs() > self.voltage_change_tolerance
+            || control_iter == 1;
+        if trigger {
+            self.ctrl_vars[i].f_avr_operation = 0.0;
+            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
+            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                let cv = &self.ctrl_vars[i];
+                let msg = format!(
+                    "**Ready to change var output due to AVR trigger in AVR mode**, Vavgpu= {}, VPriorpu={}, Vsetpoint={}, VsetpointLimited={}",
+                    fmt_g(cv.f_present_vpu, 5),
+                    fmt_g(cv.f_avgp_vpu_prior, 5),
+                    fmt_g(v_setpoint, 5),
+                    fmt_g(cv.f_v_setpoint_limited, 5)
+                );
+                env.append_event(&der, &msg);
+            }
+        }
+    }
+
     /// Pascal `Sample`'s `VV_DRC` combi arm: a volt-var trigger AND a DRC trigger,
     /// both queuing `CHANGEDRCVVARLEVEL` (so both can push in one Sample). Needs the
     /// volt-var curve (Pascal error 382).
@@ -987,13 +1056,21 @@ impl InvControl {
                 && pending == CHANGEVARLEVEL
             {
                 self.do_pending_wattvar(k, env);
+            } else if self.control_mode == AVR
+                && self.combi_mode == NONE_COMBMODE
+                && pending == CHANGEVARLEVEL
+            {
+                self.do_pending_avr(k, env);
             }
 
-            // Pascal resets FPendingChange to NONE at the end of every DER's loop
-            // body (l.1606), so a *second* queued action for the same DER in one
-            // control iteration (the VV_VW double-push: a volt-watt trigger AND a
-            // volt-var trigger both queue CHANGEWATTVARLEVEL) is a no-op — the DER
-            // is dispatched once per control iteration, not once per queued action.
+            // Pascal `DoPendingAction` l.1605-1606 (end of every DER's loop body):
+            // force the next solve to re-run SetNominalDEROutput (so a kvar/kW request
+            // pushed *without* an explicit `der_set_nominal` — the AVR iter-1/2 path —
+            // is applied by the re-solve), then reset FPendingChange so a *second*
+            // queued action for the same DER in one control iteration (the VV_VW
+            // double-push) is a no-op (the DER is dispatched once per control
+            // iteration, not once per queued action).
+            env.set_loads_need_updating();
             self.ctrl_vars[k].f_pending_change = CHANGE_NONE;
         }
     }
@@ -1330,6 +1407,93 @@ impl InvControl {
         }
     }
 
+    /// Pascal `DoPendingAction`'s `AVR` branch — the 3-stage active-voltage-regulation
+    /// DQDV regulator (Pascal l.1055-1127). Control iteration 1 seeds the baseline
+    /// voltages and pushes `QHeadRoom/2`; iteration 2 estimates the dQ/dV sensitivity
+    /// `DQDV` from the resulting voltage change; iteration 3+ runs the regulator law
+    /// (`CalcQAVR_desiredpu` → `Check_Qlimits` → `CalcAVR_vars`) to a kvar set-point.
+    /// No `SetNominalDEROutput`/event log on iterations 1-2 (no kvar read-back yet).
+    fn do_pending_avr(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
+        let r = self.fleet[k];
+        // Pascal l.1058-1060: VWmode := FALSE; Varmode := VARMODEKVAR; AVRmode := TRUE.
+        // (Varmode is set when the kvar set-point is pushed, via der_set_kvar_requested.)
+        env.der_set_vw_mode(r, false);
+        env.der_set_avr_mode(r, true);
+
+        let control_iter = env.control_iteration();
+        if control_iter == 1 {
+            // Seed the AVR baselines and push the initial half-headroom kvar (Pascal
+            // l.1063-1073). No SetNominalDEROutput — the next solve applies it.
+            let qheadroom = {
+                let cv = &mut self.ctrl_vars[k];
+                cv.f_avgp_vpu_prior = cv.f_present_vpu;
+                cv.f_avgp_avr_vpu_prior = cv.f_present_vpu;
+                cv.q_headroom
+            };
+            env.der_set_kvar_requested(r, qheadroom / 2.0);
+        } else if control_iter == 2 {
+            // Estimate dQ/dV from the voltage change the half-headroom kvar produced
+            // (Pascal l.1075-1082). `Presentkvar` reads back the achieved output.
+            let present_kvar = env.der_present_kvar(r);
+            let cv = &mut self.ctrl_vars[k];
+            cv.dqdv =
+                (present_kvar / cv.q_headroom / (cv.f_present_vpu - cv.f_avgp_vpu_prior)).abs();
+        } else {
+            // The regulator (Pascal l.1084-1127).
+            self.calc_qavr_desiredpu(k, env);
+            let q_desire_avrpu = self.ctrl_vars[k].q_desire_avrpu;
+            self.check_qlimits(k, q_desire_avrpu);
+            let limited = self.ctrl_vars[k].q_desire_limitedpu;
+            self.ctrl_vars[k].q_desire_endpu =
+                q_desire_avrpu.abs().min(limited.abs()) * pas_sign(q_desire_avrpu);
+
+            // The setpoint used in the trigger: the present voltage if the kvar limit
+            // backed the request off, else the configured setpoint (Pascal l.1092-1095).
+            {
+                let v_setpoint = self.v_setpoint;
+                let cv = &mut self.ctrl_vars[k];
+                cv.f_v_setpoint_limited =
+                    if (cv.q_desire_endpu - cv.q_desire_limitedpu).abs() < 0.05 {
+                        cv.f_present_vpu
+                    } else {
+                        v_setpoint
+                    };
+            }
+
+            // Convergence algorithm → QDesiredAVR (kvar set-point).
+            self.calc_avr_vars(k);
+
+            // Push the new kvar to the DER and recompute its P/Q.
+            let q_desired_avr = self.ctrl_vars[k].q_desired_avr;
+            env.der_set_kvar_requested(r, q_desired_avr);
+            env.der_set_nominal(r);
+
+            let present_kvar = env.der_present_kvar(r);
+            let cv = &mut self.ctrl_vars[k];
+            cv.qoutputpu = if q_desired_avr >= 0.0 {
+                present_kvar / cv.q_headroom
+            } else {
+                present_kvar / cv.q_headroom_neg
+            };
+            cv.qoutput_avrpu = cv.qoutputpu;
+            cv.f_avgp_vpu_prior = cv.f_present_vpu;
+            cv.q_old = present_kvar;
+            cv.q_old_avr = present_kvar;
+
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                // Pascal's event-log string here literally says "VOLTVAR mode …"
+                // (a copy-paste in InvControl.pas l.1124-1126); reproduced verbatim.
+                let msg = format!(
+                    "VOLTVAR mode requested DER output var level to **, kvar = {}. Actual output set to kvar= {}.",
+                    fmt_g(q_desired_avr, 5),
+                    fmt_g(present_kvar, 5)
+                );
+                env.append_event(&der, &msg);
+            }
+        }
+    }
+
     /// Pascal `DoPendingAction`'s `VV_DRC` combi branch — the volt-var curve Q
     /// *summed* with the DRC Q, clamped jointly, then converged over `QOldVVDRC`.
     fn do_pending_vv_drc(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
@@ -1409,20 +1573,22 @@ impl InvControl {
             // of taking the curve point directly, which diverges the multi-step
             // control trajectory from the oracle. `FdeltaPFactor` resets to
             // DELTAPDEFAULT each step, but `FdeltaQFactor` deliberately does NOT
-            // (Pascal l.2574 leaves it commented). The still-NOT_PORTED-mode state
-            // (DQDV, the FWP/FWV/FAVR operation flags, and the FPrior*Optionpu priors
-            // consumed only by the deferred LPF/RoC path) is omitted.
+            // (Pascal l.2574 leaves it commented). `DQDV` (Pascal l.2562) is reset so
+            // the AVR sensitivity is re-estimated each step. The `FPrior*Optionpu`
+            // priors (consumed only by the deferred LPF/RoC path) are still omitted.
             let r = self.fleet[j];
             env.der_set_vw_mode(r, false);
             env.der_set_vv_mode(r, false);
             env.der_set_drc_mode(r, false);
             self.ctrl_vars[j].f_flag_vw_operates = false;
+            self.ctrl_vars[j].dqdv = 0.0;
             self.ctrl_vars[j].f_vv_operation = 0.0;
             self.ctrl_vars[j].f_vw_operation = 0.0;
             self.ctrl_vars[j].f_drc_operation = 0.0;
             self.ctrl_vars[j].f_vvdrc_operation = 0.0;
             self.ctrl_vars[j].f_wp_operation = 0.0;
             self.ctrl_vars[j].f_wv_operation = 0.0;
+            self.ctrl_vars[j].f_avr_operation = 0.0;
             self.ctrl_vars[j].f_delta_p_factor = DELTAPDEFAULT;
 
             let basekv = self.ctrl_vars[j].f_vbase / 1000.0;
@@ -1567,11 +1733,12 @@ impl InvControl {
     fn check_qlimits(&mut self, j: usize, q: f64) {
         let cv = &mut self.ctrl_vars[j];
         // Error band (Pascal: VOLTVAR/WATTPF/WATTVAR/AVR/VV_DRC/VV_VW = 0.005,
-        // DRC = 0.0005; VOLTVAR/WATTPF/VV_VW/DRC/VV_DRC reach `Check_Qlimits` (AVR →
-        // 2e-ii). WATTVAR uses the separate `check_qlimits_wv`, so its arm here is
-        // unreachable and omitted.)
+        // DRC = 0.0005; VOLTVAR/WATTPF/AVR/VV_VW/DRC/VV_DRC reach `Check_Qlimits`.
+        // WATTVAR uses the separate `check_qlimits_wv`, so its arm here is unreachable
+        // and omitted.)
         let error = if self.control_mode == VOLTVAR
             || self.control_mode == WATTPF
+            || self.control_mode == AVR
             || self.combi_mode == VV_VW
             || self.combi_mode == VV_DRC
         {
@@ -1635,6 +1802,9 @@ impl InvControl {
         }
         if self.control_mode == DRC {
             cv.f_drc_operation = f_operation;
+        }
+        if self.control_mode == AVR {
+            cv.f_avr_operation = f_operation;
         }
         if self.combi_mode == VV_DRC {
             cv.f_vvdrc_operation = f_operation;
@@ -1780,6 +1950,89 @@ impl InvControl {
 
         if dyna_t == 1.0 {
             cv.q_desire_drcpu = 0.0;
+        }
+    }
+
+    /// Pascal `CalcQAVR_desiredpu(j)` — the AVR regulator law (control iteration 3+).
+    /// The desired Q (pu) drives the monitored voltage toward `Vsetpoint`:
+    /// `DQ = FdeltaQFactor·DQDV·(Vsetpoint − v)`, clamped by `DQmax` and added to the
+    /// present per-unit Q. On control iteration 3 the baseline `v` is the seeded
+    /// `FAvgpAVRVpuPrior` and the present Q / `QOldAVR` are zeroed (the first real
+    /// regulator step). The damping-band block before `FdeltaQFactor := 0.2` is
+    /// reproduced verbatim though Pascal's unconditional `:= 0.2` (l.3184) overwrites
+    /// it (so `FdeltaQFactor` is always 0.2 where it is used at l.3191).
+    fn calc_qavr_desiredpu(&mut self, j: usize, env: &mut dyn InvDispatchEnv) {
+        let control_iter = env.control_iteration();
+        let v_setpoint = self.v_setpoint;
+        let cv = &mut self.ctrl_vars[j];
+
+        let dqmax = 0.1 * cv.f_kvar_limit / cv.q_headroom_neg;
+        cv.q_desire_avrpu = 0.0;
+
+        let mut q_present_pu = if cv.f_present_kvar >= 0.0 {
+            cv.f_present_kvar / cv.q_headroom
+        } else {
+            cv.f_present_kvar / cv.q_headroom_neg
+        };
+
+        let v = if control_iter == 3 {
+            q_present_pu = 0.0;
+            cv.q_old_avr = 0.0;
+            cv.f_avgp_avr_vpu_prior
+        } else {
+            cv.f_present_vpu
+        };
+
+        // The adaptive band (Pascal l.3170-3182). Dead: l.3184 unconditionally
+        // overwrites `FdeltaQFactor := 0.2` immediately after — reproduced verbatim.
+        let delta_v = (v_setpoint - cv.f_avgp_vpu_prior).abs();
+        if delta_v.abs() < 0.005 && cv.f_delta_q_factor > 0.2 {
+            cv.f_delta_q_factor += 0.1;
+        } else if delta_v.abs() < 0.02 && cv.f_delta_q_factor > 0.2 {
+            cv.f_delta_q_factor += 0.05;
+        } else if delta_v.abs() > 0.02 && cv.f_delta_q_factor < 0.9 {
+            cv.f_delta_q_factor -= 0.05;
+        } else if delta_v.abs() < 0.05 && cv.f_delta_q_factor < 0.9 {
+            cv.f_delta_q_factor -= 0.1;
+        }
+        cv.f_delta_q_factor = 0.2; // Pascal l.3184 — unconditional override.
+
+        cv.delta_v_old = (cv.f_present_vpu - cv.f_avgp_vpu_prior).abs();
+
+        let mut dq = if cv.f_present_vpu - cv.f_avgp_vpu_prior == 0.0 {
+            0.0
+        } else {
+            cv.f_delta_q_factor * cv.dqdv * (v_setpoint - v)
+        };
+        if dq.abs() > dqmax {
+            dq = if dq < 0.0 { -dqmax } else { dqmax };
+        }
+        cv.q_desire_avrpu = q_present_pu + dq;
+    }
+
+    /// Pascal `CalcAVR_vars(j)` — the AVR convergence step → `QDesiredAVR`. Linear
+    /// `ControlModel` only (the hard-coded 0.2 step, **not** `FdeltaQFactor`);
+    /// Exponential (the `TPICtrl` PI controller) is rejected at `Sample` (WP7.7).
+    fn calc_avr_vars(&mut self, j: usize) {
+        let mut delta_q = {
+            let cv = &self.ctrl_vars[j];
+            if cv.q_desire_endpu >= 0.0 {
+                cv.q_desire_endpu * cv.q_headroom
+            } else {
+                cv.q_desire_endpu * cv.q_headroom_neg
+            }
+        };
+        if self.ctrl_model == MODEL_LINEAR {
+            delta_q -= self.ctrl_vars[j].q_old_avr;
+            // Pascal updates FdeltaQFactor here (Change_deltaQ_factor / set factor),
+            // but QDesiredAVR uses the literal 0.2, not FdeltaQFactor — so this only
+            // refreshes the (unused-by-AVR) factor + DeltaV_old. Kept for fidelity.
+            self.update_deltaq_factor(j);
+            let cv = &mut self.ctrl_vars[j];
+            cv.q_desired_avr = cv.q_old_avr + 0.2 * delta_q;
+        } else {
+            // Unreachable: Exponential PICtrl rejected at Sample (WP7.7).
+            self.ctrl_vars[j].q_desired_avr = self.ctrl_vars[j].q_old_avr;
         }
     }
 
@@ -2069,7 +2322,7 @@ impl InvControl {
     /// The "mode/combi not yet ported" error (records the active mode for clarity).
     fn not_ported_mode(&self) -> String {
         format!(
-            "InvControl.{}: VOLTVAR/VOLTWATT/DRC/WATTPF/WATTVAR + the VV_VW/VV_DRC combis are ported (WP7.5 step 2b-2e-i); mode={} combi={} is deferred to 2e-ii (AVR) / WP7.7 (GFM)",
+            "InvControl.{}: VOLTVAR/VOLTWATT/DRC/WATTPF/WATTVAR/AVR + the VV_VW/VV_DRC combis are ported (WP7.5 step 2b-2e-ii); mode={} combi={} is deferred to WP7.7 (GFM)",
             self.ccd.cd.obj.name(),
             self.control_mode,
             self.combi_mode
