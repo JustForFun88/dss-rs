@@ -282,6 +282,16 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss",
    "kind": "feeder",
    "n_steps": 1

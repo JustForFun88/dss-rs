@@ -19,12 +19,18 @@
 //! the DRC rolling-average window, `CalcDRC_vars`/`CalcVVDRC_vars` (the delta-Q
 //! convergence), and the joint volt-var + DRC `DoPendingAction` for VV_DRC.
 //!
+//! Step 2e-i adds the **WATTPF** (watt-pf) and **WATTVAR** (watt-var) single modes:
+//! the `CalcQWPcurve_desiredpu`/`CalcWATTPF_vars` (the curve-derived power factor →
+//! kvar) and `CalcQWVcurve_desiredpu`/`Check_Qlimits_WV`/`Calc_PQ_WV`/
+//! `CalcWATTVAR_vars` (the watt-var curve Q with the kVA-circle quadratic) plus the
+//! `Sample` triggers and `DoPendingAction` branches.
+//!
 //! **NOT_PORTED / deferred (each an explicit error, never a silent skip):** the
-//! remaining control modes (WATTPF / WATTVAR / AVR → 2e; GFM → WP7.7), **Storage**
-//! in VOLTWATT/VV_VW (the YPrim-state-flip propagation gap; PVSystem volt-watt is
-//! ported), the `MonBus=` explicit monitored-bus voltage path (`FUsingMonBuses` →
-//! 2e), the LPF / Rise-Fall rate-of-change limiting (→ 2e), and the Exponential
-//! `ControlModel` (the `TPICtrl` PI controller → WP7.7).
+//! remaining control modes (AVR → 2e-ii; GFM → WP7.7), **Storage** in VOLTWATT/VV_VW
+//! (the YPrim-state-flip propagation gap; PVSystem volt-watt is ported), the
+//! `MonBus=` explicit monitored-bus voltage path (`FUsingMonBuses` → 2e), the LPF /
+//! Rise-Fall rate-of-change limiting (→ 2e), and the Exponential `ControlModel`
+//! (the `TPICtrl` PI controller → WP7.7).
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
@@ -36,7 +42,7 @@ use super::{
     CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
     DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR,
     NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_INACTIVE, VOLTVAR, VOLTWATT, VV_DRC, VV_VW,
-    WATTPF,
+    WATTPF, WATTVAR,
 };
 
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
@@ -83,6 +89,9 @@ pub(crate) struct DerSnap {
     pub current_kvar_limit: f64,
     pub current_kvar_limit_neg: f64,
     pub p_priority: bool,
+    /// `DERElem.GetPFPriority()` — the inverter PF-priority flag (distinct from
+    /// `P_Priority`); read by `CalcQWPcurve_desiredpu` (WATTPF).
+    pub pf_priority: bool,
     // --- volt-watt fields (VOLTWATT / VV_VW; UpdateDERParameters + Calc_PBase).
     // PVSystem-only: the Storage VOLTWATT/VV_VW dispatch is deferred (an explicit
     // error in `sample_voltwatt`/`sample_vv_vw`), so the Storage-specific reads
@@ -118,6 +127,9 @@ pub(crate) trait InvDispatchEnv {
 
     // --- per-DER read ---
     fn der_snap(&self, r: ElemRef) -> DerSnap;
+    /// `DERElem.IsPVSystem()` — true for a PVSystem, false for a Storage (the
+    /// WATTVAR PVSystem-only kW push in `DoPendingAction`).
+    fn der_is_pvsystem(&self, r: ElemRef) -> bool;
     /// Pascal `DERElem.ComputeVTerminal` then `Cabs(Vterminal[1..NPhases])` — the
     /// per-phase terminal voltage magnitudes (used by `GetMonVoltage`).
     fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64>;
@@ -141,6 +153,14 @@ pub(crate) trait InvDispatchEnv {
     fn der_set_vw_mode(&mut self, r: ElemRef, value: bool);
     /// Set only `DERElem.DRCmode` (the DRC / VV_DRC `Sample`/`DoPendingAction` path).
     fn der_set_drc_mode(&mut self, r: ElemRef, value: bool);
+    /// Set only `DERElem.WPmode` (the WATTPF `Sample`/`DoPendingAction` path).
+    fn der_set_wp_mode(&mut self, r: ElemRef, value: bool);
+    /// Set only `DERElem.WVmode` (the WATTVAR `Sample`/`DoPendingAction` path).
+    fn der_set_wv_mode(&mut self, r: ElemRef, value: bool);
+    /// `TPVSystemObj.pf_wp_nominal := value` (WATTPF; PVSystem only — Storage
+    /// instead takes the `kvarRequested := QDesiredWP` branch handled via
+    /// `der_set_kvar_requested`).
+    fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64);
     /// `TPVSystemObj.Presentkvar := q` / `TStorageObj.kvarRequested := q`.
     fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64);
     /// `TPVSystemObj.PresentkW := p` / `TStorageObj.kWRequested := p` — both write
@@ -190,6 +210,10 @@ pub(crate) enum MonitorVar {
     DrcOperation,
     /// Pascal `Set_Variable(10/19, FVVDRCOperation)` (VV_DRC).
     VvDrcOperation,
+    /// Pascal `Set_Variable(11/16, FWPOperation)` (WATTPF).
+    WpOperation,
+    /// Pascal `Set_Variable(12/16, FWVOperation)` (WATTVAR).
+    WvOperation,
 }
 
 impl InvControl {
@@ -314,6 +338,7 @@ impl InvControl {
         cv.f_current_kvar_limit = snap.current_kvar_limit;
         cv.f_current_kvar_limit_neg = snap.current_kvar_limit_neg;
         cv.f_p_priority = snap.p_priority;
+        cv.f_pf_priority = snap.pf_priority;
         // volt-watt DER parameters (Calc_PBase / Check_Plimits / CalcPVWcurve_limitpu).
         cv.f_dckw = snap.dckw;
         cv.f_dckw_rated = snap.dckw_rated;
@@ -361,8 +386,8 @@ impl InvControl {
             }
         } else {
             match self.control_mode {
-                NONE_MODE | VOLTVAR | VOLTWATT | DRC => {}
-                _ => return Err(self.not_ported_mode()), // WATTPF/WATTVAR/AVR/GFM → 2e
+                NONE_MODE | VOLTVAR | VOLTWATT | DRC | WATTPF | WATTVAR => {}
+                _ => return Err(self.not_ported_mode()), // AVR → 2e-ii; GFM → WP7.7
             }
         }
         if self.f_using_mon_buses {
@@ -431,6 +456,8 @@ impl InvControl {
                     VOLTVAR => self.sample_voltvar(i, env, snap, control_iter)?,
                     VOLTWATT => self.sample_voltwatt(i, env, snap, control_iter)?,
                     DRC => self.sample_drc(i, env, snap, control_iter),
+                    WATTPF => self.sample_wattpf(i, env, snap, control_iter)?,
+                    WATTVAR => self.sample_wattvar(i, env, snap, control_iter)?,
                     _ => {} // NONE_MODE: do nothing
                 }
             }
@@ -688,6 +715,107 @@ impl InvControl {
         }
     }
 
+    /// Pascal `Sample`'s `WATTPF` arm: the watt-pf control. The trigger uses
+    /// `QoutputVVpu` (shared with the var modes); the inverter-off check is the var
+    /// form (`FInverterON=FALSE AND VarFollowInverter`).
+    fn sample_wattpf(
+        &mut self,
+        i: usize,
+        env: &mut dyn InvDispatchEnv,
+        snap: DerSnap,
+        control_iter: i32,
+    ) -> Result<(), String> {
+        let r = self.fleet[i];
+
+        // Set_Variable(5, FVreg); Set_Variable(11, FWPOperation).
+        let vreg = self.f_vreg;
+        let wp_op = self.ctrl_vars[i].f_wp_operation;
+        env.der_set_monitor_var(r, MonitorVar::Vreg, vreg);
+        env.der_set_monitor_var(r, MonitorVar::WpOperation, wp_op);
+
+        if !snap.inverter_on && snap.var_follow_inverter {
+            return Ok(());
+        }
+        if self.wattpf_curve.is_none() {
+            return Err(
+                "XY Curve object representing wattpf_curve does not exist or is not tied to InvControl."
+                    .to_string(),
+            );
+        }
+        env.der_set_wp_mode(r, true); // DERElem.WPmode := TRUE
+
+        let cv = &self.ctrl_vars[i];
+        let trigger = (cv.f_present_vpu - cv.f_avgp_vpu_prior).abs()
+            > self.voltage_change_tolerance
+            || (cv.qoutput_vvpu.abs() - cv.q_desire_endpu.abs()).abs() > self.var_change_tolerance
+            || control_iter == 1;
+        if trigger {
+            self.ctrl_vars[i].f_wp_operation = 0.0;
+            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
+            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                let msg = format!(
+                    "**Ready to change var output due to watt-pf trigger in watt-pf mode**, Vavgpu= {}, VPriorpu={}",
+                    fmt_g(self.ctrl_vars[i].f_present_vpu, 5),
+                    fmt_g(self.ctrl_vars[i].f_avgp_vpu_prior, 5)
+                );
+                env.append_event(&der, &msg);
+            }
+        }
+        Ok(())
+    }
+
+    /// Pascal `Sample`'s `WATTVAR` arm: the watt-var control. Same trigger shape as
+    /// WATTPF (`QoutputVVpu`); records `FWVOperation` to monitor var 12.
+    fn sample_wattvar(
+        &mut self,
+        i: usize,
+        env: &mut dyn InvDispatchEnv,
+        snap: DerSnap,
+        control_iter: i32,
+    ) -> Result<(), String> {
+        let r = self.fleet[i];
+
+        // Set_Variable(5, FVreg); Set_Variable(12, FWVOperation).
+        let vreg = self.f_vreg;
+        let wv_op = self.ctrl_vars[i].f_wv_operation;
+        env.der_set_monitor_var(r, MonitorVar::Vreg, vreg);
+        env.der_set_monitor_var(r, MonitorVar::WvOperation, wv_op);
+
+        if !snap.inverter_on && snap.var_follow_inverter {
+            return Ok(());
+        }
+        if self.wattvar_curve.is_none() {
+            return Err(
+                "XY Curve object representing wattvar_curve does not exist or is not tied to InvControl."
+                    .to_string(),
+            );
+        }
+        env.der_set_wv_mode(r, true); // DERElem.WVmode := TRUE
+
+        let cv = &self.ctrl_vars[i];
+        let trigger = (cv.f_present_vpu - cv.f_avgp_vpu_prior).abs()
+            > self.voltage_change_tolerance
+            || (cv.qoutput_vvpu.abs() - cv.q_desire_endpu.abs()).abs() > self.var_change_tolerance
+            || control_iter == 1;
+        if trigger {
+            self.ctrl_vars[i].f_wv_operation = 0.0;
+            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
+            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                let msg = format!(
+                    "**Ready to change var output due to watt-var trigger in watt-var mode**, Vavgpu= {}, VPriorpu={}",
+                    fmt_g(self.ctrl_vars[i].f_present_vpu, 5),
+                    fmt_g(self.ctrl_vars[i].f_avgp_vpu_prior, 5)
+                );
+                env.append_event(&der, &msg);
+            }
+        }
+        Ok(())
+    }
+
     /// Pascal `Sample`'s `VV_DRC` combi arm: a volt-var trigger AND a DRC trigger,
     /// both queuing `CHANGEDRCVVARLEVEL` (so both can push in one Sample). Needs the
     /// volt-var curve (Pascal error 382).
@@ -849,6 +977,16 @@ impl InvControl {
                 && pending == CHANGEVARLEVEL
             {
                 self.do_pending_drc(k, env);
+            } else if self.control_mode == WATTPF
+                && self.combi_mode == NONE_COMBMODE
+                && pending == CHANGEVARLEVEL
+            {
+                self.do_pending_wattpf(k, env);
+            } else if self.control_mode == WATTVAR
+                && self.combi_mode == NONE_COMBMODE
+                && pending == CHANGEVARLEVEL
+            {
+                self.do_pending_wattvar(k, env);
             }
 
             // Pascal resets FPendingChange to NONE at the end of every DER's loop
@@ -1083,6 +1221,115 @@ impl InvControl {
         }
     }
 
+    /// Pascal `DoPendingAction`'s `WATTPF` branch — the watt-pf kvar set-point. The
+    /// power factor comes from `wattpf_curve(panel pu)` (`CalcQWPcurve_desiredpu`);
+    /// `CalcWATTPF_vars` then turns the clamped pu Q into kvar. A PVSystem also
+    /// stores `pf_wp_nominal` (so its nominal applies the pf); a Storage takes the
+    /// kvar set-point directly (both via `der_set_kvar_requested`). No deltaQ
+    /// convergence — `QDesiredWP = QDesireEndpu·QHeadRoom`.
+    fn do_pending_wattpf(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
+        let r = self.fleet[k];
+        // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WPmode := TRUE.
+        // (Varmode is set when the kvar set-point is pushed, via der_set_kvar_requested.)
+        env.der_set_vw_mode(r, false);
+        env.der_set_wp_mode(r, true);
+
+        // Main process.
+        self.calc_qwp_curve_desiredpu(k);
+        let q_desire_wppu = self.ctrl_vars[k].q_desire_wppu;
+        self.check_qlimits(k, q_desire_wppu);
+        let limited = self.ctrl_vars[k].q_desire_limitedpu;
+        self.ctrl_vars[k].q_desire_endpu =
+            q_desire_wppu.abs().min(limited.abs()) * pas_sign(q_desire_wppu);
+        self.calc_wattpf_vars(k);
+
+        // Push pf_wp_nominal (PVSystem; no-op for Storage) + the kvar set-point.
+        let q_desired_wp = self.ctrl_vars[k].q_desired_wp;
+        let pf_wp_nominal = self.pf_wp_nominal;
+        env.der_set_pf_wp_nominal(r, pf_wp_nominal);
+        env.der_set_kvar_requested(r, q_desired_wp);
+        env.der_set_nominal(r);
+
+        let present_kvar = env.der_present_kvar(r);
+        let cv = &mut self.ctrl_vars[k];
+        cv.qoutputpu = if q_desired_wp >= 0.0 {
+            present_kvar / cv.q_headroom
+        } else {
+            present_kvar / cv.q_headroom_neg
+        };
+        cv.qoutput_vvpu = cv.qoutputpu;
+        cv.f_avgp_vpu_prior = cv.f_present_vpu;
+        cv.q_old = present_kvar;
+        cv.q_old_vv = present_kvar;
+
+        if self.ccd.show_event_log {
+            let der = env.der_full_name(r);
+            let msg = format!(
+                "WATTPF mode requested DER output var level to **, kvar = {}. Actual output set to kvar= {}.",
+                fmt_g(q_desired_wp, 5),
+                fmt_g(present_kvar, 5)
+            );
+            env.append_event(&der, &msg);
+        }
+    }
+
+    /// Pascal `DoPendingAction`'s `WATTVAR` branch — the watt-var kvar set-point off
+    /// `wattvar_curve(panel pu)` (`CalcQWVcurve_desiredpu`), clamped by
+    /// `Check_Qlimits_WV` (no watt-priority arm), then `Calc_PQ_WV` keeps the final
+    /// (P, Q) inside the kVA circle (solving the watt-var-line ∩ kVA-circle
+    /// quadratic when needed). A PVSystem also sets its kW to
+    /// `PLimitEndpu·min(kVArating, DCkWrated)`.
+    fn do_pending_wattvar(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
+        let r = self.fleet[k];
+        let is_pv = env.der_is_pvsystem(r);
+        // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WVmode := TRUE.
+        env.der_set_vw_mode(r, false);
+        env.der_set_wv_mode(r, true);
+
+        // Main process.
+        self.calc_qwv_curve_desiredpu(k);
+        let q_desire_wvpu = self.ctrl_vars[k].q_desire_wvpu;
+        self.check_qlimits_wv(k, q_desire_wvpu);
+        let limited = self.ctrl_vars[k].q_desire_limitedpu;
+        self.ctrl_vars[k].q_desire_endpu =
+            q_desire_wvpu.abs().min(limited.abs()) * pas_sign(q_desire_wvpu);
+        // Keeps the final P and Q within the watt-var curve / kVA circle; sets
+        // QDesiredWV (via CalcWATTVAR_vars) + PLimitEndpu.
+        self.calc_pq_wv(k);
+
+        // Push kvar; a PVSystem also pushes kW = PLimitEndpu·min(kVArating, DCkWrated).
+        let q_desired_wv = self.ctrl_vars[k].q_desired_wv;
+        env.der_set_kvar_requested(r, q_desired_wv);
+        if is_pv {
+            let cv = &self.ctrl_vars[k];
+            let p = cv.p_limit_endpu * cv.f_kva_rating.min(cv.f_dckw_rated);
+            env.der_set_kw_requested(r, p);
+        }
+        env.der_set_nominal(r);
+
+        let present_kvar = env.der_present_kvar(r);
+        let cv = &mut self.ctrl_vars[k];
+        cv.qoutputpu = if q_desired_wv >= 0.0 {
+            present_kvar / cv.q_headroom
+        } else {
+            present_kvar / cv.q_headroom_neg
+        };
+        cv.qoutput_vvpu = cv.qoutputpu;
+        cv.f_avgp_vpu_prior = cv.f_present_vpu;
+        cv.q_old = present_kvar;
+        cv.q_old_vv = present_kvar;
+
+        if self.ccd.show_event_log {
+            let der = env.der_full_name(r);
+            let msg = format!(
+                "WATTVAR mode requested DER output var level to **, kvar = {}. Actual output set to kvar= {}.",
+                fmt_g(q_desired_wv, 5),
+                fmt_g(present_kvar, 5)
+            );
+            env.append_event(&der, &msg);
+        }
+    }
+
     /// Pascal `DoPendingAction`'s `VV_DRC` combi branch — the volt-var curve Q
     /// *summed* with the DRC Q, clamped jointly, then converged over `QOldVVDRC`.
     fn do_pending_vv_drc(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
@@ -1174,6 +1421,8 @@ impl InvControl {
             self.ctrl_vars[j].f_vw_operation = 0.0;
             self.ctrl_vars[j].f_drc_operation = 0.0;
             self.ctrl_vars[j].f_vvdrc_operation = 0.0;
+            self.ctrl_vars[j].f_wp_operation = 0.0;
+            self.ctrl_vars[j].f_wv_operation = 0.0;
             self.ctrl_vars[j].f_delta_p_factor = DELTAPDEFAULT;
 
             let basekv = self.ctrl_vars[j].f_vbase / 1000.0;
@@ -1318,8 +1567,11 @@ impl InvControl {
     fn check_qlimits(&mut self, j: usize, q: f64) {
         let cv = &mut self.ctrl_vars[j];
         // Error band (Pascal: VOLTVAR/WATTPF/WATTVAR/AVR/VV_DRC/VV_VW = 0.005,
-        // DRC = 0.0005; VOLTVAR/VV_VW/DRC/VV_DRC are ported here, the rest are 2e).
+        // DRC = 0.0005; VOLTVAR/WATTPF/VV_VW/DRC/VV_DRC reach `Check_Qlimits` (AVR →
+        // 2e-ii). WATTVAR uses the separate `check_qlimits_wv`, so its arm here is
+        // unreachable and omitted.)
         let error = if self.control_mode == VOLTVAR
+            || self.control_mode == WATTPF
             || self.combi_mode == VV_VW
             || self.combi_mode == VV_DRC
         {
@@ -1377,6 +1629,9 @@ impl InvControl {
 
         if self.control_mode == VOLTVAR || self.combi_mode == VV_VW {
             cv.f_vv_operation = f_operation;
+        }
+        if self.control_mode == WATTPF {
+            cv.f_wp_operation = f_operation;
         }
         if self.control_mode == DRC {
             cv.f_drc_operation = f_operation;
@@ -1528,6 +1783,185 @@ impl InvControl {
         }
     }
 
+    /// Pascal `CalcQWPcurve_desiredpu(j)` — the watt-pf desired Q (pu). The power
+    /// factor `pf_wp_nominal` (object-level, overwritten per DER) is read off
+    /// `wattpf_curve` at the panel pu; the desired kvar follows from
+    /// `p·tan(acos(pf))·sign(pf)`. `p` is the panel power when neither P- nor
+    /// PF-priority is set, else `kW_out_desired`. Pascal's local `QDesiredWP` here
+    /// shadows the `CtrlVars` field (only `QDesireWPpu` + `pf_wp_nominal` are
+    /// recorded; `CtrlVars.QDesiredWP` is set later by `CalcWATTPF_vars`).
+    fn calc_qwp_curve_desiredpu(&mut self, j: usize) {
+        let (panel_pu, p, q_headroom, q_headroom_neg) = {
+            let cv = &self.ctrl_vars[j];
+            let panel_pu = cv.f_dckw * cv.f_eff_factor * cv.f_pct_dckw_rated / cv.f_dckw_rated;
+            // Pascal: `if (FPPriority = FALSE) and (pf_priority = FALSE)`.
+            let p = if !cv.f_p_priority && !cv.f_pf_priority {
+                cv.f_dckw * cv.f_eff_factor * cv.f_pct_dckw_rated
+            } else {
+                cv.kw_out_desired
+            };
+            (panel_pu, p, cv.q_headroom, cv.q_headroom_neg)
+        };
+        let pf_wp_nominal = self
+            .wattpf_curve
+            .as_mut()
+            .expect("wattpf_curve checked at Sample")
+            .get_y_value(panel_pu);
+        self.pf_wp_nominal = pf_wp_nominal;
+        let q_desired_wp =
+            p * (1.0 / (pf_wp_nominal * pf_wp_nominal) - 1.0).sqrt() * pas_sign(pf_wp_nominal);
+        let cv = &mut self.ctrl_vars[j];
+        cv.q_desire_wppu = if q_desired_wp >= 0.0 {
+            q_desired_wp / q_headroom
+        } else {
+            q_desired_wp / q_headroom_neg
+        };
+    }
+
+    /// Pascal `CalcWATTPF_vars(j)` — turn the clamped pu Q into the kvar set-point
+    /// (`QDesiredWP = QDesireEndpu · QHeadRoom`/`QHeadRoomNeg`). No convergence step.
+    fn calc_wattpf_vars(&mut self, j: usize) {
+        let cv = &mut self.ctrl_vars[j];
+        cv.q_desired_wp = if cv.q_desire_endpu >= 0.0 {
+            cv.q_desire_endpu * cv.q_headroom
+        } else {
+            cv.q_desire_endpu * cv.q_headroom_neg
+        };
+    }
+
+    /// Pascal `CalcQWVcurve_desiredpu(j)` — the watt-var desired Q (pu) off
+    /// `wattvar_curve` at the panel pu (`Pbase = min(kVArating, DCkWrated)`).
+    fn calc_qwv_curve_desiredpu(&mut self, j: usize) {
+        let x = {
+            let cv = &self.ctrl_vars[j];
+            let pbase = cv.f_kva_rating.min(cv.f_dckw_rated);
+            cv.f_dckw * cv.f_eff_factor * cv.f_pct_dckw_rated / pbase
+        };
+        let value = self
+            .wattvar_curve
+            .as_mut()
+            .expect("wattvar_curve checked at Sample")
+            .get_y_value(x);
+        self.ctrl_vars[j].q_desire_wvpu = value;
+    }
+
+    /// Pascal `Check_Qlimits_WV(j, Q)` — the WATTVAR kvar-limit clamp. Like
+    /// `Check_Qlimits` but with **no** watt-priority `Q_Ppriority` arm; records
+    /// `FWVOperation`.
+    fn check_qlimits_wv(&mut self, j: usize, q: f64) {
+        let cv = &mut self.ctrl_vars[j];
+        let error = if self.control_mode == WATTVAR {
+            0.005
+        } else {
+            0.0
+        };
+
+        let mut f_operation = if q < -error {
+            -1.0
+        } else if q > error {
+            1.0
+        } else {
+            0.0
+        };
+
+        cv.q_desire_limitedpu = 1.0; // not limited
+
+        let mut current_kvar_limit_pu = cv.f_current_kvar_limit / cv.q_headroom;
+        let mut current_kvar_limit_neg_pu = cv.f_current_kvar_limit_neg / cv.q_headroom_neg;
+        if current_kvar_limit_pu > cv.q_desire_limitedpu {
+            current_kvar_limit_pu = cv.q_desire_limitedpu;
+        }
+        if current_kvar_limit_neg_pu > cv.q_desire_limitedpu {
+            current_kvar_limit_neg_pu = cv.q_desire_limitedpu;
+        }
+
+        if q > 0.0 && q.abs() >= current_kvar_limit_pu.abs() {
+            f_operation = 0.2 * pas_sign(q);
+            cv.q_desire_limitedpu = current_kvar_limit_pu * pas_sign(q);
+        } else if q < 0.0 && q.abs() >= current_kvar_limit_neg_pu.abs() {
+            f_operation = 0.2 * pas_sign(q);
+            cv.q_desire_limitedpu = current_kvar_limit_neg_pu * pas_sign(q);
+        }
+
+        if self.control_mode == WATTVAR {
+            cv.f_wv_operation = f_operation;
+        }
+    }
+
+    /// Pascal `Calc_PQ_WV(j)` — keep the final P and Q on the watt-var curve and
+    /// inside the kVA circle. If the kvar limit was hit (`|FWVOperation| = 0.2`),
+    /// `PLimitEndpu` is the watt for that var (`GetXValue(QDesireEndpu)`), else full
+    /// power (1.0). If the resulting (P, Q) exceeds `kVArating`, solve the
+    /// watt-var-line ∩ kVA-circle quadratic for `PLimitEndpu` + `QDesireEndpu`.
+    /// `CalcWATTVAR_vars` is run after each adjustment (matching Pascal's two calls).
+    fn calc_pq_wv(&mut self, j: usize) {
+        // Part 1: PLimitEndpu from the kvar-limit flag, then CalcWATTVAR_vars.
+        let (wv_operation, q_desire_endpu) = {
+            let cv = &self.ctrl_vars[j];
+            (cv.f_wv_operation, cv.q_desire_endpu)
+        };
+        let p_limit_endpu = if wv_operation.abs() == 0.2 {
+            self.wattvar_curve
+                .as_ref()
+                .expect("wattvar_curve checked at Sample")
+                .get_x_value(q_desire_endpu)
+        } else {
+            1.0
+        };
+        self.ctrl_vars[j].p_limit_endpu = p_limit_endpu;
+        self.calc_wattvar_vars(j);
+
+        // Part 2: if (P, Q) leaves the kVA circle, intersect the watt-var line with
+        // the kVA circle (Pascal's quadratic) and re-derive QDesireEndpu.
+        let (pbase, qbase, panel, kva_rating, p_limit_endpu, q_desired_wv) = {
+            let cv = &self.ctrl_vars[j];
+            let pbase = cv.f_kva_rating.min(cv.f_dckw_rated);
+            let qbase = if cv.q_desired_wv >= 0.0 {
+                cv.q_headroom
+            } else {
+                cv.q_headroom_neg
+            };
+            let panel = cv.f_dckw * cv.f_eff_factor * cv.f_pct_dckw_rated;
+            (
+                pbase,
+                qbase,
+                panel,
+                cv.f_kva_rating,
+                cv.p_limit_endpu,
+                cv.q_desired_wv,
+            )
+        };
+        let s = ((panel * p_limit_endpu).powi(2) + q_desired_wv.powi(2)).sqrt();
+        if s > kva_rating {
+            let curve = self
+                .wattvar_curve
+                .as_mut()
+                .expect("wattvar_curve checked at Sample");
+            let coeff = curve.get_coefficients(panel / pbase);
+            let a_line = coeff.0 * qbase / pbase;
+            let b_line = coeff.1 * qbase;
+            let aa = 1.0 + a_line * a_line;
+            let bb = 2.0 * a_line * b_line;
+            let cc = b_line * b_line - kva_rating * kva_rating;
+            let new_p = (-bb + (bb * bb - 4.0 * aa * cc).sqrt()) / (2.0 * aa * pbase);
+            let new_q = curve.get_y_value(new_p);
+            self.ctrl_vars[j].p_limit_endpu = new_p;
+            self.ctrl_vars[j].q_desire_endpu = new_q;
+        }
+        self.calc_wattvar_vars(j);
+    }
+
+    /// Pascal `CalcWATTVAR_vars(j)` — turn the clamped pu Q into the kvar set-point
+    /// (`QDesiredWV = QDesireEndpu · QHeadRoom`/`QHeadRoomNeg`).
+    fn calc_wattvar_vars(&mut self, j: usize) {
+        let cv = &mut self.ctrl_vars[j];
+        cv.q_desired_wv = if cv.q_desire_endpu >= 0.0 {
+            cv.q_desire_endpu * cv.q_headroom
+        } else {
+            cv.q_desire_endpu * cv.q_headroom_neg
+        };
+    }
+
     /// Pascal `Calc_PBase(j)` — the volt-watt power base from `VoltWattYAxis`
     /// (0:=%Available `FDCkW·FEffFactor`, 1:=%Pmpp `FDCkWRated`, 2:=%PctPmpp
     /// `FDCkWRated·FpctDCkWRated`, 3:=%kVArating `FkVARating`). PVSystem path only —
@@ -1631,7 +2065,7 @@ impl InvControl {
     /// The "mode/combi not yet ported" error (records the active mode for clarity).
     fn not_ported_mode(&self) -> String {
         format!(
-            "InvControl.{}: VOLTVAR/VOLTWATT/DRC + the VV_VW/VV_DRC combis are ported (WP7.5 step 2b-2d); mode={} combi={} is deferred to 2e (WATTPF/WATTVAR/AVR) / WP7.7 (GFM)",
+            "InvControl.{}: VOLTVAR/VOLTWATT/DRC/WATTPF/WATTVAR + the VV_VW/VV_DRC combis are ported (WP7.5 step 2b-2e-i); mode={} combi={} is deferred to 2e-ii (AVR) / WP7.7 (GFM)",
             self.ccd.cd.obj.name(),
             self.control_mode,
             self.combi_mode

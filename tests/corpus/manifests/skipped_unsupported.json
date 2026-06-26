@@ -597,16 +597,6 @@
    "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
   },
   {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\"]"
-  },
-  {
    "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
    "tag": "unsupported_class=InvControl",
    "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"arGraHiV\\\" (value \\\"50\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"dynReacAvgWindowLen"

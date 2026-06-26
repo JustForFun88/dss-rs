@@ -179,9 +179,12 @@ mod dispatch {
         kvar_limit: f64,
         kvar_limit_neg: f64,
         p_priority: bool,
+        pf_priority: bool,
         /// The last `der_set_kvar_requested` value (post-`SetNominalDEROutput`
         /// readback is modeled ideal: the requested kvar clamped to ±kvarLimit).
         requested_kvar: f64,
+        /// The last `der_set_pf_wp_nominal` value (WATTPF; PVSystem only).
+        pf_wp_nominal: f64,
         // --- volt-watt fields (Calc_PBase / Check_Plimits) ---
         pmpp: f64,       // FDCkWRated
         pu_pmpp: f64,    // FpctDCkWRated
@@ -204,7 +207,9 @@ mod dispatch {
                 kvar_limit: 600.0,
                 kvar_limit_neg: 600.0,
                 p_priority: false,
+                pf_priority: false,
                 requested_kvar: 0.0,
+                pf_wp_nominal: 1.0,
                 pmpp: 600.0,
                 pu_pmpp: 1.0,
                 eff_factor: 1.0,
@@ -287,11 +292,15 @@ mod dispatch {
                 current_kvar_limit: d.kvar_limit,
                 current_kvar_limit_neg: d.kvar_limit_neg,
                 p_priority: d.p_priority,
+                pf_priority: d.pf_priority,
                 dckw: d.panel_kw,
                 dckw_rated: d.pmpp,
                 pct_dckw_rated: d.pu_pmpp,
                 eff_factor: d.eff_factor,
             }
+        }
+        fn der_is_pvsystem(&self, r: ElemRef) -> bool {
+            !self.ders[Self::idx(r)].is_storage
         }
         fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
             let v = self.ders[Self::idx(r)].vmag;
@@ -310,6 +319,11 @@ mod dispatch {
         fn der_set_vv_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_vw_mode(&mut self, _r: ElemRef, _value: bool) {}
         fn der_set_drc_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_wp_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_wv_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
+            self.ders[Self::idx(r)].pf_wp_nominal = value;
+        }
         fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
             let d = &mut self.ders[Self::idx(r)];
             // Model SetNominalDEROutput's kvar clamp to the limit band.
@@ -858,18 +872,101 @@ mod dispatch {
     }
 
     #[test]
-    fn wattpf_mode_aborts_not_silently() {
-        // WATTPF is still deferred (step 2e); Sample must reject it loudly, never
-        // silently no-op (the deferral-is-never-a-silent-skip rule).
+    fn avr_mode_aborts_not_silently() {
+        // AVR is still deferred (step 2e-ii); Sample must reject it loudly, never
+        // silently no-op (the deferral-is-never-a-silent-skip rule). (WATTPF/WATTVAR
+        // are now ported — see `wattpf_*`/`wattvar_*` below.)
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::WATTPF);
+        ic.set_i32(prop::MODE, super::super::AVR);
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
         let err = ic.sample(&mut env).unwrap_err();
         assert!(
-            err.contains("deferred to 2e"),
-            "expected a WATTPF NOT_PORTED error, got: {err}"
+            err.contains("deferred to 2e-ii"),
+            "expected an AVR NOT_PORTED error, got: {err}"
+        );
+    }
+
+    /// A WATTPF control over a `wattpf_curve`, RefReactivePower=VARMAX.
+    fn wattpf_ic() -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::WATTPF);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        // pf vs panel-pu: at full output the inverter runs pf = -0.9 (absorbing).
+        let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "wpf",
+            &[0.0, 0.5, 1.0],
+            &[1.0, 1.0, -0.9],
+        );
+        ic.wattpf_curve = Some(curve);
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic
+    }
+
+    #[test]
+    fn wattpf_first_step_curve_to_kvar() {
+        // The watt-pf curve gives pf = -0.9 at the panel pu (1.0). With neither P-
+        // nor PF-priority, p = panel power = FDCkW·FEffFactor·FpctDCkWRated. The
+        // desired kvar is p·tan(acos(0.9))·sign(-0.9) = -600·0.484123 = -290.47,
+        // within the ±600 kvar limit, so it is pushed straight through.
+        let mut ic = wattpf_ic();
+        // panel_kw = pmpp = 600, eff = 1, pu_pmpp = 1 → panel pu = 1.0, p = 600.
+        let mut der = MockDer::new("pv", 1.0, 600.0);
+        der.panel_kw = 600.0;
+        der.pmpp = 600.0;
+        der.kva_rating = 1000.0; // room so the kVA clamp does not bite
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+
+        // pf_wp_nominal recorded on the (PVSystem) DER.
+        assert!((env.ders[0].pf_wp_nominal - (-0.9)).abs() < 1e-12);
+        // p·tan(acos(0.9)) absorbed (pf = -0.9 → negative kvar).
+        let expected_q = -600.0 * (1.0 / 0.81 - 1.0_f64).sqrt();
+        assert!(
+            (env.ders[0].requested_kvar - expected_q).abs() < 1e-9,
+            "wattpf kvar {} != {expected_q}",
+            env.ders[0].requested_kvar
+        );
+    }
+
+    /// A WATTVAR control over a `wattvar_curve`, RefReactivePower=VARMAX.
+    fn wattvar_ic() -> InvControl {
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::WATTVAR);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        // watt-var: at full output, absorb -0.4 pu of headroom.
+        let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "wv",
+            &[0.0, 0.5, 1.0],
+            &[0.0, 0.0, -0.4],
+        );
+        ic.wattvar_curve = Some(curve);
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+        ic
+    }
+
+    #[test]
+    fn wattvar_first_step_curve_to_kvar() {
+        // The watt-var curve gives Q = -0.4 pu of headroom at panel pu = 1.0. With a
+        // 600-kvar VARMAX headroom that is QDesireEndpu = -0.4 (within the kvar
+        // limit, not kVA-bound since kVArating = 1000 leaves room), so
+        // QDesiredWV = -0.4·600 = -240 kvar.
+        let mut ic = wattvar_ic();
+        let mut der = MockDer::new("pv", 1.0, 600.0);
+        der.panel_kw = 600.0;
+        der.pmpp = 600.0;
+        der.kva_rating = 1000.0;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        assert!(
+            (env.ders[0].requested_kvar - (-240.0)).abs() < 1e-9,
+            "wattvar kvar {} != -240",
+            env.ders[0].requested_kvar
         );
     }
 }
