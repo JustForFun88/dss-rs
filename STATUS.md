@@ -1296,6 +1296,19 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
       VV_avg 24h or Storage-AVR-WattPriority 24h deck — the PVSystem rolling-window
       cross-step carry is already pinned by `invcontrol_voltvar_avg`, and the iter-2
       requested-kvar source by the single-step `invcontrol_avr_storage_wattprio`.
+    - **Genuine rolling-window endurance goldens (user-requested follow-up).** Since a
+      WATTPF/WATTVAR rolling-window test provably has **no teeth** (their Q is
+      feed-forward — a controlled ×2 corruption of the windowed `present_vpu` passes,
+      because `present_vpu` only feeds their trigger), two VOLTVAR-avg 24h goldens were
+      added instead, where the window *does* drive the output (the curve is read at
+      `present_vpu = vpresent/avg_val`): **`invcontrol_voltvar_avg_24h`** (single
+      PVSystem, `AvgWindowLen=6h` → a real 6-step rolling average; oracle avg Q≈1.6 vs
+      rated ≈12.8 kvar/phase) and **`invcontrol_voltvar_mixed_24h`** — one InvControl
+      driving a **mixed PVSystem + Storage fleet** (the **first multi-DER gated case**,
+      closing the single-DER-only gap audit-tests flagged at step 2b; it exercises the
+      fleet loop + the window + the Storage SOC carry together). Both have **teeth,
+      proven by controlled revert**: corrupting the avg branch ×1.02 fails each (the
+      mixed one isolated to `|diff|=0.82 > 7.2e-3`). **2 new goldens; corpus stays 76.**
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).

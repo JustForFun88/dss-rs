@@ -857,6 +857,58 @@ def deck_invcontrol_wattvar_storage_24h() -> list[str]:
     ]
 
 
+# A 24-hour VOLTVAR run with `voltage_curvex_ref=avg` + a real 6h `AvgWindowLen` — the
+# one true rolling-window ENDURANCE test on a PVSystem. Unlike WATTPF/WATTVAR (whose Q
+# is feed-forward, so the window can't change the output), VOLTVAR reads its curve at
+# `present_vpu = vpresent/avg_val`, so the 6h-averaged voltage genuinely carries history
+# across the 24 steps AND changes the converged Q (oracle: avg ≈ 1.6 kvar/phase vs
+# rated ≈ 12.8 — the window moves the curve operating point). So this golden has TEETH:
+# a broken avg branch / window feed diverges from the oracle here (controlled-revert
+# confirmed — corrupting `present_vpu` fails it, where the WATTPF/WATTVAR-avg variants
+# pass because their output is window-independent). The shape ends active (hour-24 mult
+# 0.85). This is the multi-step rolling-window cross-step carry for a PVSystem.
+def deck_invcontrol_voltvar_avg_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        VARY24,
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=vary irradiance=1",
+        "new InvControl.ic mode=VOLTVAR DERList=[PVSystem.pv] voltage_curvex_ref=avg "
+        "vvc_curve1=vv deltaQ_factor=0.2 RefReactivePower=VARMAX AvgWindowLen=6h",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
+# The MIXED-fleet rolling-window endurance test: ONE InvControl (VOLTVAR, avg, 6h
+# window) drives a fleet of BOTH a PVSystem AND a Storage on bus b — exercising three
+# cross-step paths at once that no other gate covers together: (1) the multi-DER fleet
+# loop (the prior single-DER goldens never ran a 2-element fleet — flagged untested by
+# audit-tests step 2b); (2) the rolling window with TEETH (oracle: avg moves both DERs'
+# Q — PV 11.7 -> 1.2, Storage 5.9 -> 0.6 kvar/phase vs rated — so a broken window
+# diverges here); (3) the Storage SOC carry (100% -> 32.7% over 24 steps). Both DERs
+# regulate vars off the same windowed bus-b voltage; the shape ends active.
+def deck_invcontrol_voltvar_mixed_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        VARY24,
+        "new XYcurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=vary irradiance=1",
+        STORAGE24,
+        "new InvControl.ic mode=VOLTVAR DERList=[PVSystem.pv, Storage.st] "
+        "voltage_curvex_ref=avg vvc_curve1=vv deltaQ_factor=0.2 RefReactivePower=VARMAX "
+        "AvgWindowLen=6h",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -922,6 +974,8 @@ SCENARIOS = {
     "invcontrol_avr_storage_24h": deck_invcontrol_avr_storage_24h,
     "invcontrol_wattpf_storage_24h": deck_invcontrol_wattpf_storage_24h,
     "invcontrol_wattvar_storage_24h": deck_invcontrol_wattvar_storage_24h,
+    "invcontrol_voltvar_avg_24h": deck_invcontrol_voltvar_avg_24h,
+    "invcontrol_voltvar_mixed_24h": deck_invcontrol_voltvar_mixed_24h,
 }
 
 
