@@ -718,6 +718,136 @@ def deck_invcontrol_wattvar_storage() -> list[str]:
     ]
 
 
+# Storage AVR with WattPriority — the gate that makes the AVR iter-2 DQDV *source*
+# observable. With watt priority the inverter holds its discharge kW and backs off
+# kvar to the kVA circle, so iter-1's QHeadRoom/2 (300 kvar) request is backed off:
+# `present_kvar < requested_kvar`. Pascal's iter-2 DQDV reads the (backed-off) achieved
+# `Presentkvar` for a PVSystem but the (un-clamped) `kvarRequested` for a Storage
+# (l.1078-1081). In the plain `invcontrol_avr_storage` deck (kvar priority) the two
+# coincide; only here do they differ, so reverting the Storage DQDV source to the
+# achieved kvar changes the converged result (proven by controlled revert). The
+# Storage can't fully reach Vsetpoint (kvar capped) → V≈0.993, ~70 kvar/phase.
+def deck_invcontrol_avr_storage_wattprio() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        "new Storage.st bus1=b phases=3 kV=12.47 kVA=600 kWrated=560 kWhrated=2000 "
+        "%stored=50 State=Discharging %Discharge=100 kvarMax=600 kvarMaxAbs=600 "
+        "WattPriority=yes",
+        "new InvControl.ic mode=AVR DERList=[Storage.st] Vsetpoint=0.98 "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
+# --- WP7.5 step 2e-ii: 24-hour multi-step (daily) AVR/WATTPF/WATTVAR endurance ---
+# A full 24-step hourly run for each smart-inverter var mode × DER type, where each
+# step carries from the previous (the EndOfTimeStepCleanup -> UpdateInvControl rolling
+# windows + per-step resets for both; the integrated SOC for Storage). The golden
+# pins the final (hour-24) converged state + iteration count; the shapes END ACTIVE so
+# the final step exercises real control (not an inert step). The Storage runs use a low
+# kWrated so the battery stays discharging at hour 24 while the SOC genuinely depletes
+# (100% -> ~32.7%), the clearest "values from the previous step" carry.
+DAILY24 = "set mode=daily stepsize=1h number=24"
+# A 24h profile that varies across the day but ends active (hour 24 = 0.85).
+VARY24 = (
+    "new Loadshape.vary npts=24 interval=1 mult=(.3 .35 .4 .5 .6 .7 .8 .9 1.0 .95 "
+    ".9 .8 .7 .6 .55 .5 .6 .7 .8 .9 .95 1.0 .9 .85)"
+)
+# Storage: kVA=300, kWrated=50 (50·24=1200 kWh < usable 1600), %stored=100, discharging.
+STORAGE24 = (
+    "new Storage.st bus1=b phases=3 kV=12.47 kVA=300 kWrated=50 kWhrated=2000 "
+    "%stored=100 State=Discharging %Discharge=100"
+)
+
+
+def deck_invcontrol_avr_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        VARY24,
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=600 Pmpp=500 pf=1.0 "
+        "daily=vary irradiance=1",
+        "new InvControl.ic mode=AVR DERList=[PVSystem.pv] Vsetpoint=0.98 "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
+def deck_invcontrol_wattpf_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        VARY24,
+        "new XYcurve.wpf npts=4 yarray=(1 1 -0.95 -0.9) xarray=(0 0.5 0.8 1.0)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "daily=vary irradiance=1",
+        "new InvControl.ic mode=WATTPF DERList=[PVSystem.pv] wattpf_curve=wpf",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
+def deck_invcontrol_wattvar_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        VARY24,
+        "new XYcurve.wv npts=4 yarray=(0 0 -0.4 -0.8) xarray=(0 0.5 0.8 1.0)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1000 Pmpp=1000 pf=1.0 "
+        "daily=vary irradiance=1",
+        "new InvControl.ic mode=WATTVAR DERList=[PVSystem.pv] wattvar_curve=wv "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
+def deck_invcontrol_avr_storage_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
+        STORAGE24,
+        "new InvControl.ic mode=AVR DERList=[Storage.st] Vsetpoint=0.985 "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
+def deck_invcontrol_wattpf_storage_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wpf npts=4 yarray=(-0.95 -0.95 -0.95 -0.9) xarray=(0 0.5 0.8 1.0)",
+        STORAGE24 + " WattPriority=yes",
+        "new InvControl.ic mode=WATTPF DERList=[Storage.st] wattpf_curve=wpf",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
+def deck_invcontrol_wattvar_storage_24h() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wv npts=4 yarray=(-0.3 -0.3 -0.4 -0.8) xarray=(0 0.5 0.8 1.0)",
+        STORAGE24,
+        "new InvControl.ic mode=WATTVAR DERList=[Storage.st] wattvar_curve=wv "
+        "RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        DAILY24,
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -774,8 +904,15 @@ SCENARIOS = {
     "invcontrol_avr_daily": deck_invcontrol_avr_daily,
     "invcontrol_avr_kvarlim": deck_invcontrol_avr_kvarlim,
     "invcontrol_avr_storage": deck_invcontrol_avr_storage,
+    "invcontrol_avr_storage_wattprio": deck_invcontrol_avr_storage_wattprio,
     "invcontrol_wattpf_storage": deck_invcontrol_wattpf_storage,
     "invcontrol_wattvar_storage": deck_invcontrol_wattvar_storage,
+    "invcontrol_avr_24h": deck_invcontrol_avr_24h,
+    "invcontrol_wattpf_24h": deck_invcontrol_wattpf_24h,
+    "invcontrol_wattvar_24h": deck_invcontrol_wattvar_24h,
+    "invcontrol_avr_storage_24h": deck_invcontrol_avr_storage_24h,
+    "invcontrol_wattpf_storage_24h": deck_invcontrol_wattpf_storage_24h,
+    "invcontrol_wattvar_storage_24h": deck_invcontrol_wattvar_storage_24h,
 }
 
 

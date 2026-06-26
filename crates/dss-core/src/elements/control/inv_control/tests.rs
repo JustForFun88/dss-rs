@@ -1078,19 +1078,33 @@ mod dispatch {
 
     #[test]
     fn wattpf_storage_dispatches_in_kvar_mode() {
-        // A Storage in WATTPF dispatches (no error). FDCkW=0 for Storage, so the
-        // wattpf curve is read at panel-pu 0 (pf=1 here → kvar 0, matching the oracle —
-        // see phase7/invcontrol_wattpf_storage). The fix under test: the dispatch sets
-        // the DER `Varmode := VARMODE_KVAR` so a non-trivial request would be applied.
+        // A Storage in WATTPF regulates (the converged magnitude is oracle-pinned by
+        // phase7/invcontrol_wattpf_storage). FDCkW=0 for Storage so the wattpf curve is
+        // read at panel-pu 0; with a non-unity pf there (-0.95) and WattPriority the
+        // watt term `p = kW_out_desired` (= present 400) is non-zero, so the Storage
+        // absorbs Q = -400·tan(acos(0.95)) = -131.47 kvar. Pins the var-mode fix AND a
+        // non-degenerate kvar (not just var_mode==1).
         let mut ic = wattpf_ic();
-        let mut der = MockDer::new("pv", 1.0, 600.0);
+        ic.wattpf_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "wpf",
+            &[0.0, 0.5, 1.0],
+            &[-0.95, -0.95, -0.9],
+        ));
+        let mut der = MockDer::new("pv", 1.0, 400.0);
         der.is_storage = true;
+        der.p_priority = true; // WattPriority → p = kW_out_desired (non-zero)
         let mut env = MockEnv::new(vec![der]);
         ic.sample(&mut env).unwrap(); // no error — Storage WATTPF is supported
         ic.do_pending_action(&mut env);
         assert_eq!(
             env.ders[0].var_mode, 1,
             "Storage Varmode must be VARMODE_KVAR"
+        );
+        let expected = -400.0 * (1.0 / 0.95_f64.powi(2) - 1.0).sqrt();
+        assert!(
+            (env.ders[0].requested_kvar - expected).abs() < 1e-9,
+            "Storage WATTPF kvar = {} (expected {expected})",
+            env.ders[0].requested_kvar
         );
     }
 
@@ -1156,7 +1170,9 @@ mod dispatch {
             &[0.0, 0.5, 1.0],
             &[-0.3, -0.3, -0.4],
         ));
-        let mut der = MockDer::new("pv", 1.0, 600.0);
+        // present_kw 400 ≠ the would-be kW-push value (PLimitEndpu·min(kVA,DCkWrated)
+        // = 600), so the "no kW push for Storage" gate is observable below.
+        let mut der = MockDer::new("pv", 1.0, 400.0);
         der.is_storage = true;
         let mut env = MockEnv::new(vec![der]);
         ic.sample(&mut env).unwrap(); // no error — Storage WATTVAR is supported
@@ -1169,6 +1185,13 @@ mod dispatch {
             (env.ders[0].requested_kvar - (-180.0)).abs() < 1e-9,
             "Storage WATTVAR kvar = {} (expected -180)",
             env.ders[0].requested_kvar
+        );
+        // The WATTVAR kW push is PVSystem-only; a Storage's kW request is untouched
+        // (Pascal l.1206-1212). A dropped `if is_pv` gate would overwrite it with 600.
+        assert!(
+            (env.ders[0].requested_kw - 400.0).abs() < 1e-9,
+            "Storage WATTVAR must not push kW (requested_kw = {})",
+            env.ders[0].requested_kw
         );
     }
 }
