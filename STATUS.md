@@ -1069,9 +1069,10 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     WvOperation}`.
   - **Storage WATTPF/WATTVAR** is **not** guarded (unlike VOLTWATT/VV_VW): both push
     kvar set-points (WATTVAR's PVSystem-only kW push is gated on `der_is_pvsystem`),
-    so the WP7.4 YPrim-state-flip concern does not apply — but the Storage path is
-    **unexercised** (no corpus/golden Storage WATTPF/WATTVAR case), like the existing
-    Storage-VOLTVAR/DRC coverage.
+    so the WP7.4 YPrim-state-flip concern does not apply — but the Storage path was
+    **unexercised** here (no Storage WATTPF/WATTVAR gate), and was in fact *silently
+    broken* (the `Varmode` gap the step-2e-ii audit-code found + then ported to working;
+    see the step-2e-ii Storage follow-up).
   - **NOT_PORTED / deferred (each an explicit error):** AVR (→ 2e-ii), the `MonBus`
     path + LPF/RiseFall (→ 2e-iii), GFM/Exponential (→ WP7.7).
   - **Gate:** targeted goldens `phase7/invcontrol_wattpf` (a 1000 kW PV, pf=-0.9 at
@@ -1155,9 +1156,9 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     is heavily damped (a hard-coded 0.2 step + the `DQmax` clamp), so convergence takes
     ~250 control-loop iterations — pinned exactly.
   - **NOT_PORTED / deferred (each an explicit error):** GFM/Exponential (→ WP7.7); the
-    `MonBus` path + LPF/RiseFall (→ 2e-iii). The Storage AVR path is **not** guarded
-    (AVR pushes kvar set-points, no state flip), but is **unexercised** (no corpus/
-    golden Storage AVR case), like the existing Storage-VOLTVAR/DRC/WATTPF coverage.
+    `MonBus` path + LPF/RiseFall (→ 2e-iii). *(The Storage AVR path was initially
+    unexercised + silently broken — found by the audit-code follow-up, then ported to
+    working; see the step-2e-ii Storage follow-up.)*
   - **Reproduced verbatim (plain comment, not `TODO(compat)`):** the dead
     damping-band block in `CalcQAVR_desiredpu` (Pascal l.3170-3182), immediately
     overwritten by the unconditional `FdeltaQFactor := 0.2` (l.3184); and the AVR
@@ -1189,7 +1190,9 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     with a loud `guard_storage_var_mode` (the `guard_storage_vw` pattern) — a Storage
     in AVR/WATTPF/WATTVAR now errors explicitly (the deferral-is-never-a-silent-skip
     rule); PVSystem unaffected (all PVSystem goldens/corpus still match). 3 mock tests
-    (`{avr,wattpf,wattvar}_storage_is_deferred_not_silent`) + the corrected
+    (`{avr,wattpf,wattvar}_storage_is_deferred_not_silent`, later replaced by the
+    positive `*_storage_dispatches_in_kvar_mode` tests when the path was ported) + the
+    corrected
     `do_pending_avr` `Varmode` comment. **Deferred (loud):** porting the Storage
     `Varmode` + the Storage iter-2 DQDV source (Pascal reads `kvarRequested`, not the
     achieved kvar) for these modes, until a Storage smart-inverter gate exists. lib
