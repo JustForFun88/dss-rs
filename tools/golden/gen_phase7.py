@@ -555,6 +555,27 @@ def deck_invcontrol_wattvar() -> list[str]:
     ]
 
 
+# A WATTVAR run with ASYMMETRIC kvar limits (kvarMax=800, kvarMaxAbs=400) that
+# trips the `Calc_PQ_WV` kVA-circle quadratic with an absorbing (negative-Q) curve —
+# the only gate that exercises the quadratic with QHeadRoom ≠ QHeadRoomNeg (so the
+# `a_line`/`b_line` headroom scaling is pinned against the oracle for asymmetric
+# limits, not just the symmetric `invcontrol_wattvar` case). NOTE the `Qbase`
+# ordering inside `Calc_PQ_WV` (prior vs post-`CalcWATTVAR_vars` `QDesiredWV`) only
+# perturbs the iteration-1 transient — the fixpoint is sign-consistent, so the
+# converged P/Q here are identical either way; this golden pins the converged state.
+def deck_invcontrol_wattvar_asym() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        "new XYcurve.wv npts=4 yarray=(0 0 -0.4 -0.8) xarray=(0 0.5 0.8 1.0)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1000 Pmpp=1000 pf=1.0 "
+        "kvarMax=800 kvarMaxAbs=400 irradiance=1.0",
+        "new InvControl.ic mode=WATTVAR wattvar_curve=wv RefReactivePower=VARMAX",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+    ]
+
+
 def deck_pvsystem_clamps() -> list[str]:
     # Pins the three discrete ComputeInverterPower states the plan calls out
     # ("inverter control discrete state exact") via three PVSystems, oracle-pinned
@@ -605,6 +626,7 @@ SCENARIOS = {
     "invcontrol_vv_drc": deck_invcontrol_vv_drc,
     "invcontrol_wattpf": deck_invcontrol_wattpf,
     "invcontrol_wattvar": deck_invcontrol_wattvar,
+    "invcontrol_wattvar_asym": deck_invcontrol_wattvar_asym,
 }
 
 
