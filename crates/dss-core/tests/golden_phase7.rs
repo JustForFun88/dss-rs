@@ -134,6 +134,8 @@ fn phase7_targeted_scenarios_match_oracle() {
         "invcontrol_wattvar_asym",
         "invcontrol_wattvar_qlim",
         "invcontrol_avr",
+        "invcontrol_avr_daily",
+        "invcontrol_avr_kvarlim",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),
