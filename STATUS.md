@@ -1381,7 +1381,9 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
   - **Gate:** targeted goldens `phase7/invcontrol_voltvar_lpf` + `_risefall` (daily
     VOLTVAR, a swinging irradiance shape so the desired Q jumps each hour; the per-step
     monitor pins the lag/ramp Q trajectory — LPF Q ≠ RiseFall Q step-for-step, both ≠
-    INACTIVE; a **controlled revert** forcing INACTIVE fails them at step 1) +
+    INACTIVE; a **controlled revert** forcing INACTIVE fails the LPF golden at the
+    iteration-count assertion + the step-2 monitor — the step-1 monitor matches, the PV
+    being below cut-in at the low-irradiance first step) +
     `phase7/invcontrol_voltvar_monbus` (a snapshot monitoring an upstream bus `m` ≠ the
     PV's bus `b`, so MonBus ≠ self-monitoring) + **4 mock-env tests** (MonBus
     single-node AVG overriding the self voltage; the L-L node difference; the LPF
@@ -1411,6 +1413,30 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     existing `FVpuSolutionIdx` i=1 quirk); the `ParseAsBusName` error fallback + the
     empty-node / unresolved-bus ground reads (defensive, unreachable for valid MonBus
     specs). lib **620 → 621**.
+  - **audit-tests follow-up:** an independent agent ran controlled reverts confirming
+    the LPF golden + the MonBus golden have real teeth (forcing INACTIVE /
+    self-monitoring fails them), the mock values are independent hand-derivations, and
+    the corpus migration is legitimate (bijection holds, full-model live-compared).
+    Closed 2 Major + 2 Minor gaps: (M1) **the `invcontrol_voltvar_risefall` golden had
+    no teeth** — `RiseFallLimit=0.00005` (a 0.18-pu/step cap) never bound (the per-step
+    Q swing is ~0.07 pu), so it reproduced the *unfiltered* trajectory byte-for-byte and
+    a regression dropping RiseFall would have passed it; oracle-probed for a binding
+    value → `RiseFallLimit=0.00001` (0.036-pu cap) makes the ramp bind (the Q trajectory
+    now differs from INACTIVE by ≤7.6 kvar and from LPF), regenerated from the oracle
+    (the iter count happens to equal INACTIVE=15, so the teeth come from the per-step
+    monitor). (M2) **the active-power ROC path (`apply_roc_plimit`, VOLTWATT/VV_VW + the
+    plain-`Min` clamp) had no test** — all 3 original goldens were VOLTVAR; added 2 daily
+    VOLTWATT ROC goldens `phase7/invcontrol_voltwatt_{lpf,risefall}` (oracle-probed to
+    bind: LPF τ=7200 lags the kW limit ~93 kW, RiseFall 0.00002 ramps it as a clean
+    monotonic curve, both ≠ unfiltered), exercising the watts LPF + RF branches and the
+    plain-`Min(PLimitLimitedpu, PLimitOptionpu)` clamp. (m1/m2) **the MonBus MAX/MIN +
+    specific-phase reduce arms were untested** (the 3 migrated corpus cases + the AVG
+    mocks only cover AVGPHASES; the MAX corpus cases are daily+Export-blocked) — added
+    `monbus_max_min_reduce_folds_the_buffer` (MAX→1.05 / MIN→0.98 over a 1.00/1.05/0.98
+    buffer where AVG would give 1.01) + `monbus_specific_phase_indexes_buffer_zero_based`
+    (the 0-based cBuffer quirk). **Surfaced-not-fixed (accepted):** Storage-DER + MonBus
+    and a multi-DER fleet sharing a monitored bus stay untested (the MonBus path
+    selection is DER-orthogonal — low risk). lib **621 → 623**.
 - **next:** WP7.5 step 3 (`ExpControl` — the dynamic reactive-power control), then
   step 4 (the gate).
 

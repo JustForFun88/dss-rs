@@ -158,6 +158,8 @@ fn phase7_targeted_scenarios_match_oracle() {
         "invcontrol_voltvar_mixed_24h",
         "invcontrol_voltvar_lpf",
         "invcontrol_voltvar_risefall",
+        "invcontrol_voltwatt_lpf",
+        "invcontrol_voltwatt_risefall",
         "invcontrol_voltvar_monbus",
     ] {
         assert!(

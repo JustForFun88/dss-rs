@@ -947,9 +947,12 @@ def deck_invcontrol_voltvar_lpf() -> list[str]:
 
 
 def deck_invcontrol_voltvar_risefall() -> list[str]:
-    # RiseFallLimit = 0.00005 pu/s with stepsize 1 h → the per-step change is capped
-    # at 0.18 pu of headroom, so a step that wants a big jump in Q ramps gradually
-    # instead — the rate limiter is plainly visible against the swinging irradiance.
+    # RiseFallLimit = 0.00001 pu/s with stepsize 1 h → the per-step change is capped at
+    # 0.036 pu of headroom, well below the ~0.13-pu jumps the swinging irradiance would
+    # otherwise drive, so the ramp limiter BINDS every step: the Q ramps gradually
+    # instead of jumping. Oracle-probed to bind (a loose cap that never bound would make
+    # this golden equal the unfiltered trajectory — no teeth; here the RiseFall Q
+    # trajectory differs from both INACTIVE by ≤7.6 kvar and from the LPF golden).
     return [
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
         "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km",
@@ -959,7 +962,53 @@ def deck_invcontrol_voltvar_risefall() -> list[str]:
         "daily=roc irradiance=1",
         "new InvControl.ic mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv "
         "deltaQ_factor=0.2 RefReactivePower=VARMAX RateofChangeMode=RiseFall "
-        "RiseFallLimit=0.00005",
+        "RiseFallLimit=0.00001",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=6",
+    ]
+
+
+# The active-power (WATTS) rate-of-change path — `apply_roc_plimit` / `CalcLPF` /
+# `CalcRF` with `is_vars=false` + the **plain** `Min(PLimitLimitedpu, PLimitOptionpu)`
+# clamp (no abs/sign), which the VOLTVAR ROC decks above do NOT reach. A daily VOLTWATT
+# run on a weak line whose irradiance swings between non-limiting (below the 1.02 knee)
+# and limiting (above it), so the volt-watt kW limit `PLimitVW` changes each step and
+# the filter smooths/ramps it. Both oracle-probed to BIND (the per-step P trajectory
+# differs from the unfiltered run — LPF by ~93 kW, RiseFall by a clean monotonic ramp).
+WATTS_ROC_IRRAD = "new Loadshape.wroc npts=6 interval=1 mult=(.5 1.0 .6 1.0 .7 1.0)"
+
+
+def deck_invcontrol_voltwatt_lpf() -> list[str]:
+    # LPFTau=7200 s, stepsize 1 h → α = exp(-0.5) = 0.6065: the kW limit lags strongly.
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=8 units=km",
+        WATTS_ROC_IRRAD,
+        "new XYcurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.02 1.1)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "daily=wroc irradiance=1",
+        "new InvControl.ic mode=VOLTWATT voltage_curvex_ref=rated voltwatt_curve=vw "
+        "VoltwattYAxis=PMPPPU DeltaP_factor=0.45 RateofChangeMode=LPF LPFTau=7200",
+        *PV_TAIL,
+        "set maxcontroliter=2000",
+        "set mode=daily stepsize=1h number=6",
+    ]
+
+
+def deck_invcontrol_voltwatt_risefall() -> list[str]:
+    # RiseFallLimit=0.00002 pu/s → 0.072 pu/step cap: the kW limit ramps up gradually
+    # instead of jumping to the curve point — a clean monotonic ramp signature.
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=8 units=km",
+        WATTS_ROC_IRRAD,
+        "new XYcurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.02 1.1)",
+        "new PVSystem.pv bus1=b phases=3 kV=12.47 kVA=1200 Pmpp=1000 pf=1.0 "
+        "daily=wroc irradiance=1",
+        "new InvControl.ic mode=VOLTWATT voltage_curvex_ref=rated voltwatt_curve=vw "
+        "VoltwattYAxis=PMPPPU DeltaP_factor=0.45 RateofChangeMode=RiseFall "
+        "RiseFallLimit=0.00002",
         *PV_TAIL,
         "set maxcontroliter=2000",
         "set mode=daily stepsize=1h number=6",
@@ -1059,6 +1108,8 @@ SCENARIOS = {
     "invcontrol_voltvar_mixed_24h": deck_invcontrol_voltvar_mixed_24h,
     "invcontrol_voltvar_lpf": deck_invcontrol_voltvar_lpf,
     "invcontrol_voltvar_risefall": deck_invcontrol_voltvar_risefall,
+    "invcontrol_voltwatt_lpf": deck_invcontrol_voltwatt_lpf,
+    "invcontrol_voltwatt_risefall": deck_invcontrol_voltwatt_risefall,
     "invcontrol_voltvar_monbus": deck_invcontrol_voltvar_monbus,
 }
 
