@@ -968,5 +968,14 @@ mod dispatch {
             "wattvar kvar {} != -240",
             env.ders[0].requested_kvar
         );
+        // The PVSystem-only kW push: PLimitEndpu·min(kVArating, DCkWrated). Here
+        // |Q|=240 is below the kvar limit so FWVOperation != 0.2 → PLimitEndpu = 1.0
+        // and (P,Q)=(600,-240) stays inside the 1000-kVA circle (no quadratic), so
+        // kW = 1.0·min(1000, 600) = 600.
+        assert!(
+            (env.ders[0].requested_kw - 600.0).abs() < 1e-9,
+            "wattvar kW {} != 600",
+            env.ders[0].requested_kw
+        );
     }
 }
