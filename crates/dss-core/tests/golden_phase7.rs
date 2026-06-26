@@ -137,8 +137,15 @@ fn phase7_targeted_scenarios_match_oracle() {
         "invcontrol_avr_daily",
         "invcontrol_avr_kvarlim",
         "invcontrol_avr_storage",
+        "invcontrol_avr_storage_wattprio",
         "invcontrol_wattpf_storage",
         "invcontrol_wattvar_storage",
+        "invcontrol_avr_24h",
+        "invcontrol_wattpf_24h",
+        "invcontrol_wattvar_24h",
+        "invcontrol_avr_storage_24h",
+        "invcontrol_wattpf_storage_24h",
+        "invcontrol_wattvar_storage_24h",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

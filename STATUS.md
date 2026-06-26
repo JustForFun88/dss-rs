@@ -1242,6 +1242,36 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     `*_storage_dispatches_in_kvar_mode` tests (pin `Varmode := VARMODE_KVAR` is set +
     the Storage kvar request). **Corpus stays 76** (no Storage InvControl corpus case).
     lib **616** (deferred tests → positive tests, net 0; goldens added).
+    - **audit-code follow-up (Storage port):** verdict **faithful 1:1, no fix** —
+      an independent agent verified every Storage path matches Pascal line-for-line
+      (the `Varmode := VARMODEKVAR` set for both DER types; the AVR iter-2 DQDV source
+      PVSystem=achieved/Storage=requested; the WATTVAR kW push correctly PVSystem-only;
+      `pf_wp_nominal` PVSystem-only), confirmed `guard_storage_vw` (VOLTWATT/VV_VW) is
+      preserved + still called, and re-ran the gate green. No empty fix-commit.
+    - **audit-tests follow-up (Storage port):** verdict strong with two real gaps,
+      both proven by **controlled revert** (the auditor showed the suspect change
+      survived with all tests green). (1) **Major — the AVR iter-2 `der_requested_kvar`
+      Storage source was unpinned** (in `invcontrol_avr_storage` the achieved kvar ==
+      the requested kvar at iter-2, so reverting to `der_present_kvar` passed). Closed
+      with golden **`phase7/invcontrol_avr_storage_wattprio`** — a `WattPriority`
+      Storage backs off kvar to the kVA circle, so `present_kvar < requested_kvar` at
+      iter-1; reverting the Storage DQDV source to the achieved kvar now shifts the
+      iteration count (60 vs 58) → the golden **fails**, proving it discriminates. (2)
+      Minor — the WATTVAR PVSystem-only kW-push gate + the degenerate WATTPF mock:
+      strengthened `wattvar_storage_dispatches_in_kvar_mode` to pin the Storage kW is
+      **not** pushed (`requested_kw` unchanged at 400 — a dropped `if is_pv` would
+      overwrite it with 600), and `wattpf_storage_dispatches_in_kvar_mode` to pin a
+      **non-zero** kvar (curve y(0)=-0.95 + WattPriority → -131.47, not just
+      `var_mode==1`). lib **616** (golden + mock-assert only).
+    - **24-hour multi-step endurance goldens (user-requested).** A full 24-step hourly
+      run per mode × DER type — `phase7/invcontrol_{avr,wattpf,wattvar}_24h` (PVSystem,
+      a varying day-shape) + `phase7/invcontrol_{avr,wattpf,wattvar}_storage_24h`
+      (Storage, low kWrated so it stays discharging while the **SOC depletes 100% →
+      32.7%** — the genuine "values carry from the previous step"). Each ends on an
+      active step (so the final-step golden is non-trivial) and is matched against the
+      oracle bit-for-bit (full model + Storage SOC/state + exact iteration count). This
+      is the multi-step Storage AVR coverage the audit-tests Minor flagged, generalized
+      to all six mode×DER combinations. **6 new goldens; corpus stays 76.**
 - **next:** WP7.5 step 2e-iii — the LPF/RiseFall rate-of-change limiting + the
   explicit-`MonBus` monitored-voltage path; then step 3 (`ExpControl`), step 4 (the
   gate).
