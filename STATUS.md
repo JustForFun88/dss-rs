@@ -90,10 +90,11 @@ limiting** (`CalcLPF`/`CalcRF` smoothing/ramping the desired var/watt output aga
 the prior step's value, wired into the VOLTVAR/DRC/VV_DRC/VOLTWATT/VV_VW
 `DoPendingAction` branches) **+ the explicit-`MonBus` monitored-voltage path**
 (`GetMonVoltage`'s `FUsingMonBuses` branch — per-bus single-node / line-to-line
-voltages reduced AVG/MAX/MIN) COMPLETE — lib 616 → 620, goldens
-`phase7/invcontrol_voltvar_{lpf,risefall}` (daily; the LPF lag / RiseFall ramp Q
-trajectory, per-step-pinned; controlled-revert-proven) + `phase7/invcontrol_voltvar_monbus`
-(snapshot; monitors an upstream bus ≠ the PV) + 4 mock-env tests; **corpus 76 → 83**
+voltages reduced AVG/MAX/MIN) COMPLETE — lib 616 → 623 (incl. the audit follow-ups),
+goldens `phase7/invcontrol_volt{var,watt}_{lpf,risefall}` (daily; the LPF lag /
+RiseFall ramp Q/kW trajectory, per-step-pinned; controlled-revert-proven — both the var
+and the watts ROC paths) + `phase7/invcontrol_voltvar_monbus` (snapshot; monitors an
+upstream bus ≠ the PV) + 7 mock-env tests; **corpus 76 → 83**
 (3 SnapShot MonBus VOLTVAR cases live-matched + 4 `Local_voltage_*` self-monitoring
 cases, stale tags re-probed). next = WP7.5 step 3 (`ExpControl`), then step 4 (the gate).**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
@@ -151,7 +152,7 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 620, golden_feeders 1,
+cargo test --workspace      # dss-core lib 623, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
