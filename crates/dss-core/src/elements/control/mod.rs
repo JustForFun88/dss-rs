@@ -5,6 +5,7 @@
 
 pub mod cap_control;
 pub mod control_elem;
+pub mod exp_control;
 pub mod gen_dispatcher;
 pub mod inv_control;
 pub mod recloser;
@@ -16,6 +17,7 @@ pub mod swt_control;
 
 pub use cap_control::CapControl;
 pub use control_elem::{ControlElemData, RefSnapshot};
+pub use exp_control::ExpControl;
 pub use gen_dispatcher::GenDispatcher;
 pub use inv_control::InvControl;
 pub use recloser::Recloser;

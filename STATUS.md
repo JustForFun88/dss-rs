@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-26 — **Phase 7 IN PROGRESS** (branch
+Last updated: 2026-06-27 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`): **WP7.1 COMPLETE; WP7.2 (Protection) COMPLETE;
 WP7.3 (DER A) COMPLETE; WP7.4 (DER B) COMPLETE; WP7.5 (DER C) step 1
 (`RollAvgWindow`) COMPLETE (incl. audits); WP7.5 step 2a (`InvControl`
@@ -17,6 +17,7 @@ dispatch) COMPLETE; WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch)
 COMPLETE; WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE;
 WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE; WP7.5 step 2e-iii
 (`InvControl` LPF/RiseFall rate-of-change + explicit-`MonBus` voltage path)
+COMPLETE; WP7.5 step 3 (`ExpControl` — the adaptive-`Vreg` volt-var control)
 COMPLETE.**
 WP7.4 step 2 = the real `StorageController` (`Controls/StorageController.pas`,
 replacing the WP6.8 parse-only skeleton): `MakeFleetList`, the `SetFleet*` helpers
@@ -96,7 +97,27 @@ RiseFall ramp Q/kW trajectory, per-step-pinned; controlled-revert-proven — bot
 and the watts ROC paths) + `phase7/invcontrol_voltvar_monbus` (snapshot; monitors an
 upstream bus ≠ the PV) + 7 mock-env tests; **corpus 76 → 83**
 (3 SnapShot MonBus VOLTVAR cases live-matched + 4 `Local_voltage_*` self-monitoring
-cases, stale tags re-probed). next = WP7.5 step 3 (`ExpControl`), then step 4 (the gate).**
+cases, stale tags re-probed).
+WP7.5 step 3 = `ExpControl` (`Controls/ExpControl.pas`, 749 lines — "adapted and
+simplified from InvControl") COMPLETE — the adaptive-`Vreg` volt-var control over a
+**PVSystem-only** fleet (a directory module `control/exp_control/{mod,accessors,
+compute,tests}` on the InvControl/StorageController dispatch pattern). Ports the 14
+properties + the PVSystemList↔DERList sync, `MakePVSystemList` (named-or-scan fleet,
+`AVRmode := TRUE`), `Sample` (the present-Vpu trigger + the static-init Vreg find),
+`DoPendingAction` (the slope-crossing-at-`Vreg` + `Qbias` → headroom/`QmaxLead`/`QmaxLag`
+clamp → `PreferQ` kW curtail → `FOpenTau` low-pass → `DeltaQ_Factor` step), and
+`UpdateExpControl` (the per-step `Vreg` slew by `VregTau`, fired from
+`EndOfTimeStepCleanup` after the InvControl hook). lib 623 → **636**. Gate: golden
+`props/expcontrol.json` (4 oracle-pinned scenarios — defaults, full, list-sync,
+MakeLike) + goldens `phase7/expcontrol_{daily,daily_preferq,24h}` (daily/24h runs;
+the per-step PV kvar trajectory tracks the adapting `Vreg` + the `FOpenTau` lag, each
+step seeded by the prior step's converged voltage — the `expcontrol_24h` endurance gate
+is the cross-step state-carry guard) + 13 mock-env tests. **corpus stays 83** (the only
+corpus ExpControl example `Examples/ExpControl/Master.dss` is Phase-8-blocked by
+file-backed arrays + Export, independent of the class; no case carries a stale
+`unsupported_class=ExpControl` tag). One `TODO(compat)`: `FOpenTau := Tresponse /
+2.3026` divides by the *truncated* ln(10) literal (`LN10_TRUNCATED`).
+**next = WP7.5 step 4 (the gate / corpus burn-down review), then WP7.6 (Harmonics).**
 *(WP7.3 = the `DynamicExp` object + the `InvBasedPceData` inverter base + `PVSystem`;
 its detail is in §1e.)*
 **WP7.1 (line constants & geometry) and WP7.2 (protection) are COMPLETE** — the
@@ -146,13 +167,13 @@ Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**, **WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE**, **WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE**, **WP7.5 step 2e-iii (`InvControl` LPF/RiseFall + MonBus) COMPLETE**; **next = WP7.5 step 3 (`ExpControl`)**. Per-step detail in §1e |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1 done**, **WP7.2 (Protection) COMPLETE**, **WP7.3 (DER A) COMPLETE**, **WP7.4 (DER B: Storage + StorageController) COMPLETE**, **WP7.5 (DER C) step 1 (`RollAvgWindow`) COMPLETE**, **WP7.5 step 2a (`InvControl` parse-only skeleton) COMPLETE**, **WP7.5 step 2b (`InvControl` VOLTVAR dispatch) COMPLETE**, **WP7.5 step 2c (`InvControl` VOLTWATT + VV_VW dispatch) COMPLETE**, **WP7.5 step 2d (`InvControl` DRC + VV_DRC dispatch) COMPLETE**, **WP7.5 step 2e-i (`InvControl` WATTPF + WATTVAR dispatch) COMPLETE**, **WP7.5 step 2e-ii (`InvControl` AVR dispatch) COMPLETE**, **WP7.5 step 2e-iii (`InvControl` LPF/RiseFall + MonBus) COMPLETE**, **WP7.5 step 3 (`ExpControl`) COMPLETE**; **next = WP7.5 step 4 (gate review), then WP7.6 (Harmonics)**. Per-step detail in §1e |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 623, golden_feeders 1,
+cargo test --workspace      # dss-core lib 636, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -1438,8 +1459,53 @@ WATTPF/WATTVAR, 2e-ii AVR, 2e-iii LPF/RiseFall + MonBus).
     (the 0-based cBuffer quirk). **Surfaced-not-fixed (accepted):** Storage-DER + MonBus
     and a multi-DER fleet sharing a monitored bus stay untested (the MonBus path
     selection is DER-orthogonal — low risk). lib **621 → 623**.
-- **next:** WP7.5 step 3 (`ExpControl` — the dynamic reactive-power control), then
-  step 4 (the gate).
+- **step 3 — `ExpControl` (`control/exp_control/{mod,accessors,compute,tests}`).**
+  Port of `Controls/ExpControl.pas` (749 lines, upstream "adapted and simplified from
+  InvControl for adaptive controller research"): an adaptive-`Vreg` volt-var control
+  over a **PVSystem-only** fleet, on the InvControl/StorageController clone-out dispatch
+  pattern (a PVSystem-typed `ExpDispatchEnv` in `dispatch.rs`, the fleet resolved lazily
+  on the first `Sample`).
+  - **The 14 properties + the list sync.** `PVSystemList` (bare names) and `DERList`
+    (class-prefixed `PVSystem.<n>`) share **no backing** (distinct upstream StringLists)
+    but the side effects keep them in lockstep — a write to either clears the fleet,
+    sets `FListSize`, and rebuilds the other (prefix on / `StripClassName` off). No new
+    enums (all scalars/bools/lists). `props/expcontrol.json` (4 oracle-pinned scenarios —
+    defaults, full, list-sync, MakeLike) round-trips exactly; `VregTau` dumps plain (its
+    `Units_s` is JSON-only).
+  - **`MakePVSystemList`.** A named list keeps each found+enabled PVSystem (silently
+    skipping missing/disabled — **no** 14403, unlike InvControl); an empty list scans
+    every PVSystem (adding enabled ones to the fleet, every name to `FPVSystemNameList`).
+    Each fleet member gets `AVRmode := TRUE`; `CtrlVars` (the per-DER
+    `FPriorVpu`/`FPresentVpu`/`FLastIterQ`/`FLastStepQ`/`FTargetQ`/`FWithinTol`/`FVregs`)
+    init to the Pascal seeds (last-iter/step kvar = −1, `Vreg := FVregInit`).
+  - **`Sample`.** Present per-unit voltage = avg `|Vterminal|` / (`kVBase·1000`); the
+    static-init `FVregInit ≤ 0` branch finds `Vreg` from the present voltage clamped into
+    `[VregMin,VregMax]`; the not-injecting (`InverterON=false ∧ VarFollowInverter`) branch
+    tracks `Vreg` and skips; otherwise a `Verr`/`Qerr`/iter-1 trigger queues
+    `CHANGEVARLEVEL`.
+  - **`DoPendingAction`.** `Qpu = −QVSlope·(Vpu − Vreg) + Qbias`, then `SetNominalDEROutput`
+    → clamp to the dynamic headroom `√(1−(kW/kVA)²)` (or `1` if `PreferQ`) / inverter
+    `kvarLimit/kVA` / `±QmaxLead`/`QmaxLag`; `PreferQ` curtails kW to `Plimit =
+    kVA·√(1−Qpu²)` (writes `PresentkW`+`puPmpp`); the `FOpenTau` (= `Tresponse/2.3026`,
+    the truncated-ln(10) `TODO(compat)`) low-pass lags the target (non-static modes only);
+    `DeltaQ_Factor` moves the kvar one step; `LoadsNeedUpdating := TRUE`.
+  - **`UpdateExpControl`** (the `ExpControlClass.UpdateAll` hook, `SolutionAlgs` l.92,
+    right after the InvControl `UpdateAll` in `end_of_time_step_cleanup`): snapshot
+    `FLastStepQ`, slew `Vreg` toward the present voltage by `VregTau`, clamp to
+    `[VregMin,VregMax]`, write it back as PVSystem state var 5 (`Set_Variable(5,…)`).
+  - **Gate.** `phase7/expcontrol_{daily,daily_preferq,24h}` — daily/24h runs where the
+    per-step PV kvar (the auto-added `mode=1 ppolar=no` monitor) tracks the **adapting
+    `Vreg` + the `FOpenTau` lag**, each step seeded by the prior step's converged voltage;
+    `expcontrol_24h` (the VARY24 ramp over 24 continuous steps) is the cross-step
+    state-carry endurance guard, `_daily_preferq` exercises the kW-curtail + `Qbias`
+    branches. **13 mock-env tests** pin the per-call arithmetic (the `−264.0`/`−185.1`
+    curve→clamp→delta step, the `Vreg` slew, the not-injecting / `PreferQ` / static-init
+    branches, the list sync). **Corpus stays 83** — the only corpus ExpControl example
+    (`Examples/ExpControl/Master.dss`) is Phase-8-blocked by `file=`-backed arrays +
+    Export, independent of the class; no corpus case carries a stale
+    `unsupported_class=ExpControl` tag (verified). lib **623 → 636**.
+- **next:** WP7.5 step 4 (the gate / corpus burn-down review for the DER C block), then
+  WP7.6 (Harmonics).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

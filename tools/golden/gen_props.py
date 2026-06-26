@@ -2378,6 +2378,53 @@ SCENARIOS = [
             "New InvControl.ic avgwindowlen=1h dynreacavgwindowlen=2h",
         ],
     },
+    # --- ExpControl (WP7.5 step 3) -----------------------------------------
+    # The adaptive-Vreg volt-var control over a PVSystem fleet. Pins the 14
+    # properties, the PVSystemList ↔ DERList sync (the two share no backing but are
+    # kept in lockstep by the side effects), and MakeLike. An ExpControl with an
+    # *empty* PVSystemList/DERList scans the circuit for PVSystems on the first
+    # Sample (not at parse), so the parse-time dump of an empty list stays empty —
+    # the default scenario keeps the circuit DER-free.
+    {
+        "name": "expcontrol_default",
+        "target": "ExpControl.e1",
+        "commands": ["New ExpControl.e1"],
+    },
+    {
+        # Full spec on a real PVSystem (the corpus ExpControl example's settings).
+        "name": "expcontrol_full",
+        "target": "ExpControl.e1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New ExpControl.e1 derlist=[pvsystem.pv1] deltaq_factor=0.3 vreg=1.0 "
+            "slope=22 vregtau=300 tresponse=5 qbias=-0.3 vregmin=0.94 vregmax=1.06 "
+            "qmaxlead=0.4 qmaxlag=0.45 preferq=yes eventlog=yes",
+        ],
+    },
+    {
+        # The deprecated/companion PVSystemList: bare names that the side effect
+        # mirrors into the class-prefixed DERList (both dump in sync).
+        "name": "expcontrol_pvsystemlist",
+        "target": "ExpControl.e1",
+        "commands": [
+            "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+            "New ExpControl.e1 pvsystemlist=[pv1]",
+        ],
+    },
+    {
+        # MakeLike copies the dispatch scalars but NOT Tresponse / ShowEventLog /
+        # the name lists (a Pascal quirk): the derived object keeps the ctor
+        # defaults for those. The circuit is kept DER-free so the derived empty
+        # list is not auto-populated.
+        "name": "expcontrol_makelike",
+        "target": "ExpControl.e1",
+        "commands": [
+            "New ExpControl.base vreg=1.02 slope=30 vregtau=600 qbias=-0.2 "
+            "vregmin=0.93 vregmax=1.07 qmaxlead=0.4 qmaxlag=0.45 deltaq_factor=0.5 "
+            "preferq=yes tresponse=8 eventlog=yes",
+            "New ExpControl.e1 like=base",
+        ],
+    },
 ]
 
 
