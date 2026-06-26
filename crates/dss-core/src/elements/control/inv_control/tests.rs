@@ -6,6 +6,7 @@
 //! oracle exposes none of these internals outside a full InvControl solve.
 
 use super::*;
+use crate::exec::Dss;
 use crate::obj::base::DssObject;
 
 #[test]
@@ -122,6 +123,32 @@ fn pvsystemlist_prepends_class_and_sizes_list() {
     assert_eq!(
         ic.get_string_list(prop::DER_LIST),
         ic.get_string_list(prop::PVSYSTEM_LIST)
+    );
+}
+
+#[test]
+fn interval_units_bad_unit_logs_error_and_keeps_default() {
+    // A bad time-unit suffix on an IntervalUnits property logs the Pascal error
+    // (DSSObjectHelper l.347: 2020035) and leaves the field at its default
+    // (AvgWindowLen = 1), matching Pascal's `Exit` (field unchanged). The happy
+    // path (2m -> 120) is oracle-pinned by props/invcontrol.json; this pins the
+    // error wiring end-to-end through the parse engine.
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t");
+    dss.command("new InvControl.ic avgwindowlen=2x");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("Units can only be h, m, or s")),
+        "expected an IntervalUnits error, got: {:?}",
+        dss.errors()
+    );
+    dss.command("? InvControl.ic.AvgWindowLen");
+    assert_eq!(
+        dss.result().trim(),
+        "1",
+        "AvgWindowLen must keep its default on a bad unit suffix"
     );
 }
 
