@@ -11,12 +11,16 @@ Last updated: 2026-06-27 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`). Completed work packages this phase: **WP7.1 (line
 constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
 InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), and WP7.5
-(DER C: InvControl + ExpControl) steps 1–3** — i.e. the `RollAvgWindow` helper, the
-full `InvControl` (8 modes: VOLTVAR / VOLTWATT / DRC / WATTPF / WATTVAR / AVR + the
-VV_VW / VV_DRC combis, with LPF/RiseFall rate-of-change limiting and the
-explicit-`MonBus` monitored-voltage path), and `ExpControl` (the adaptive-`Vreg`
-volt-var control). **next = WP7.5 step 4 (the gate / corpus burn-down review for the
-DER C block), then WP7.6 (Harmonics).**
+(DER C: InvControl + ExpControl) COMPLETE — all four steps** — i.e. the
+`RollAvgWindow` helper, the full `InvControl` (8 modes: VOLTVAR / VOLTWATT / DRC /
+WATTPF / WATTVAR / AVR + the VV_VW / VV_DRC combis, with LPF/RiseFall rate-of-change
+limiting and the explicit-`MonBus` monitored-voltage path), `ExpControl` (the
+adaptive-`Vreg` volt-var control), and the **step-4 corpus burn-down review** (the
+DER-C corpus migration is now maximal: a fresh `DSS_LIVE_CLASSIFY` re-probe of every
+InvControl/ExpControl candidate migrated 1 newly-solvable snapshot case and
+re-tagged the rest with their genuine current blocker — all Phase-8 Export/Plot/
+file-backed-array commands or the WP7.7 GFM-mode-7 / WP7.5 Storage-VOLTWATT
+deferrals, none blocked by DER-C numerics). **next = WP7.6 (Harmonics).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -26,7 +30,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md).
-Current scores: dss-core **lib 639**, **`solvable_now` 83** (the live corpus gate);
+Current scores: dss-core **lib 639**, **`solvable_now` 84** (the live corpus gate; +1 this step);
 oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
 Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
@@ -62,7 +66,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.4 + WP7.5 steps 1–3 done**; **next = WP7.5 step 4 (gate review), then WP7.6 (Harmonics)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants)**; **next = WP7.6 (Harmonics)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
 
 ### Gate state (all green)
 ```
@@ -126,7 +130,7 @@ depend on the temporary `.inputs/electricdss-tst`.
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
 - **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
-  be installed).** For each of the **83** `solvable_now` cases the gate
+  be installed).** For each of the **84** `solvable_now` cases the gate
   compiles+solves on the Rust engine and on the pinned dss-python oracle
   (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
@@ -222,10 +226,10 @@ lean. They are frozen history, superseded only by the code and tests:
   the WP6.8 skeleton), plus the Storage-specific YPrim-rebuild fix. **Complete +
   gate-green on the branch (not yet merged).**
   → [`docs/phase-records/phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md)
-- **Phase 7 WP7.5** (DER C, steps 1–3) — `RollAvgWindow`, the full `InvControl` (8
-  modes + LPF/RiseFall + MonBus, both PVSystem and Storage DERs), and `ExpControl`
-  (the adaptive-`Vreg` volt-var control). **Steps 1–3 complete + gate-green on the
-  branch; step 4 (the gate / corpus burn-down review) is the open frontier.**
+- **Phase 7 WP7.5** (DER C, steps 1–4) — `RollAvgWindow`, the full `InvControl` (8
+  modes + LPF/RiseFall + MonBus, both PVSystem and Storage DERs), `ExpControl`
+  (the adaptive-`Vreg` volt-var control), and the step-4 corpus burn-down review.
+  **COMPLETE + gate-green on the branch (not yet merged).**
   → [`docs/phase-records/phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md)
 
 ---
@@ -355,7 +359,7 @@ In brief:
   Storage-specific** — PVSystem/InvControl dispatch kvar/kW setpoints, not discrete
   state, so they never invalidate YPrim.
 
-**WP7.5 (DER C: InvControl + ExpControl) — steps 1–3 ✅ COMPLETE, step 4 open.** Full
+**WP7.5 (DER C: InvControl + ExpControl) — ✅ COMPLETE (steps 1–4).** Full
 per-step records (incl. the two real-port-bug write-ups and the Storage
 smart-inverter follow-up) archived at
 [`docs/phase-records/phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md). In brief:
@@ -391,8 +395,26 @@ smart-inverter follow-up) archived at
   `FOpenTau` LPF gate — daily runs under `CTRLSTATIC` gate it off) + 16 mock tests.
   One `TODO(compat)` (`FOpenTau := Tresponse/2.3026`, the truncated ln(10)). **Corpus
   stays 83.** lib **623 → 639**.
-- **next:** WP7.5 step 4 (the gate / corpus burn-down review for the DER C block),
-  then WP7.6 (Harmonics).
+- **step 4 — the gate / corpus burn-down review (DER C).** No code change (lib stays
+  **639**); the gate is green and the DER-C corpus migration is confirmed **maximal**.
+  A fresh `DSS_LIVE_CLASSIFY=1` re-probe of **all 48** InvControl/ExpControl-tagged
+  `skipped_unsupported` cases (the migration of the bulk happened in steps 2b–2e;
+  many remaining cases still carried *stale* `unsupported_class=InvControl`/`PVSystem`
+  tags from before the class landed) found exactly **1 newly-solvable** case —
+  `…/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss` (a near-ideal-Thevenin
+  snapshot: PVSystem + VOLTVAR InvControl regulating kvar to the curve zero-crossing;
+  full-model live-compared to the oracle, **corpus 83 → 84**). The other **47** are
+  genuinely blocked by Phase-8 / later work, **not** by DER-C numerics, so their tags
+  were refreshed to the genuine current blocker: **42** by a Phase-8 command
+  (Export / Export+Plot — the Daily/MonitoredVoltage families), **3** GFM-mode-7
+  cases (`unsupported_command=BatchEdit; deferred=gfm-WP7.7`, also `File=`-blocked),
+  **1** `ExpControl/Master.dss` (`unsupported_feature=file-backed-arrays`), and **1**
+  `11_2_kWRatedViolation` (`deferred=storage-voltwatt-WP7.5`, the loud Storage-VOLTWATT
+  guard from step 2c). `tools/corpus/COVERAGE.md` regenerated (84 → **25.1%** of entry
+  points); the `corpus_manifest` bijection holds. *(The stale tags were a
+  documentation-honesty fix only — they never affected the gate, which keys on the
+  bijection + the `solvable_now` live compare.)*
+- **next:** WP7.6 (Harmonics) — the first cross-cutting solve mode.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

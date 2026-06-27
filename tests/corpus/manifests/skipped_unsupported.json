@@ -352,119 +352,114 @@
    "note": "Version8/Distrib/Examples/InductionMachine/Run.dss: Rust engine errors after compile: [\"LoadShape.wind2400: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"New Command: Object Type \\\"Fault\\\" not found.\", \"New Command: Object Type \\\"IndMach012\\\" not found.\", \"New Command"
   },
   {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"RefReact"
-  },
-  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"deltaQ_factor\\\" "
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"deltaQ_facto"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\""
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comm"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\""
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comm"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"d"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comma"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem",
-   "note": "New Command: Object Type \"PVSystem\" not found."
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem",
-   "note": "New Command: Object Type \"PVSystem\" not found."
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem",
-   "note": "New Command: Object Type \"PVSystem\" not found."
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
-   "tag": "unsupported_class=InvControl,PVSystem",
-   "note": "New Command: Object Type \"PVSystem\" not found."
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"deltaQ_fact"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"deltaQ_"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown paramet"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown paramet"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown paramete"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"DynReacavgwindowlen\\\" (value \\\"2s\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"deltaQ"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter "
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Com"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter "
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Com"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" i"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" i"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"vw_curve\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown "
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported y"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"deltaQ_factor\\\" (value \\\"0.2\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\\"RefRea"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
@@ -503,68 +498,68 @@
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown param"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unk"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not p"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown paramete"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parameter \\"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Co"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown paramete"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"U"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \""
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown p"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported "
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknow"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", "
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown parame"
+   "tag": "unsupported_command=Export,Plot",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\""
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltwatt_curve\\\" (value \\\"generic\\\") for object \\\"XYcurve.generic\\\"\", \"Unknown par"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
-   "tag": "unsupported_class=InvControl",
-   "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"arGraHiV\\\" (value \\\"50\\\") for object \\\"XYcurve.vv_curve\\\"\", \"Unknown parameter \\\"dynReacAvgWindowLen"
+   "tag": "unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss",
@@ -573,8 +568,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
-   "tag": "unsupported_class=InvControl; unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"InvControl\\\" not found.\", \"Unknown parameter \\\"voltWattCH_curve\\\" (value \\\"vw_curve_ch\\\") for object \\\"XYcurve.vw_curve_ch\\\"\", \"Command \\\"Export\\\" is not porte"
+   "tag": "deferred=storage-voltwatt-WP7.5",
+   "note": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss: Rust engine errors after compile: [\"Error Sampling Control Device \\\"InvControl.voltwatt\\\". Error = InvControl.voltwatt: Storage VOLTWATT/VV_VW dispatch is not yet ported (WP7.5; PVSystem volt-watt is ported)\", \"Error Encou"
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/pst.dss",
@@ -673,18 +668,18 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
-   "tag": "unsupported_class=InvControl; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"InvControl\\\" not found.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Storag"
+   "tag": "unsupported_command=BatchEdit",
+   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Error Sampling Control Device \\\"InvControl.stoctrl\\\". Error "
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
-   "tag": "unsupported_class=InvControl; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"InvControl\\\" not found.\", \"Command \\\"BatchEdit\\\" is not ported yet.\""
+   "tag": "unsupported_command=BatchEdit",
+   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Error Sampling Control Device \\\"InvControl.stoctrl\\"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
-   "tag": "unsupported_class=InvControl; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"New Command: Object Type \\\"InvControl\\\" not found.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Storage"
+   "tag": "unsupported_command=BatchEdit",
+   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Error Sampling Control Device \\\"InvControl.stoctrl\\\". Error ="
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",

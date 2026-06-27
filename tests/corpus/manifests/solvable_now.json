@@ -122,12 +122,52 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -559,41 +599,6 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
    "kind": "feeder",
    "n_steps": 1
   }
