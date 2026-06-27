@@ -178,6 +178,15 @@ fn harmonic_mode_relabels_monitor_time_columns() {
         ["Freq".to_string(), "Harmonic".to_string()]
     );
     assert_eq!(m.sample_count, 2, "fundamental + 5th harmonic samples");
+    // In harmonics mode the two time slots hold the *values* (Pascal `TakeSample`
+    // l.1202-1206 stores Frequency/Harmonic, not hour/sec), so slot 0 (`dbl_hour`)
+    // is the swept frequency: the fundamental 60 Hz then the 5th 300 Hz. (Pins the
+    // harmonic time-slot value offline — the oracle's `Monitors.Header` can't.)
+    assert_eq!(
+        m.dbl_hour,
+        vec![60.0, 300.0],
+        "harmonic time slot 0 holds Freq (fundamental, then 5th)"
+    );
 }
 
 #[test]
