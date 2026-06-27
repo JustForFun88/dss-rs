@@ -49,6 +49,10 @@ port bug. Therefore, while porting:
   **conditioning exception** (do not try to match the oracle's numerical noise at the
   pole). Per `PORTING_PLAN.md` §4 the rule is "parse numbers, never compare formatted
   strings; document exceptions in TOLERANCE_NOTES" — this is one such exception.
+  **First clear the `CLAUDE.md` bar** ("never wave off a divergence as conditioning
+  without empirical proof"): confirm the case is genuinely near-singular (tiny `rcond` /
+  a real `singular_col`, gap collapses under a tighter solve rather than a cross-step
+  state leak) *before* tagging it a conditioning exception.
 - For the live corpus gate (`corpus_live.rs`) and **WP7.6 step 3** (harmonics corpus
   migration): keep any case that sits *on* a resonance out of `solvable_now` until §4
   lands, or gate it with a relaxed/escape tolerance. Well-conditioned harmonic cases
@@ -66,38 +70,49 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   `r = b − A·x; dx = solve(r); x += dx` for a few steps (gate on `rcond` / residual
   norm so well-conditioned solves pay nothing). Standard technique, ~50–100 lines, no new
   dependency. On ill-conditioned (near-resonant) systems this sharply improves accuracy →
-  dss-rs becomes *more accurate than OpenDSS at the same frequency*. (Verified against the
-  OpenDSS solver: it does **no** iterative refinement on the linear solve — `KLUSystem::Solve`
-  issues a single `klu_z_solve`, and `klu_solve.c` itself states "no iterative refinement is"
-  performed. OpenDSS's *outer* loop is a **nonlinear** power-flow fixed point on the load
-  injections, not linear residual correction; and harmonics is a single direct solve — paper
+  dss-rs becomes *more accurate than OpenDSS at the same frequency*. (Confirmed against the
+  upstream KLU sources — not the vendored tree, which carries only the Pascal `KLUSolve.pas`
+  externals into `libklusolvex`: KLU does **no** iterative refinement on the linear solve —
+  `KLUSystem::Solve` issues a single `klu_z_solve`, and `klu_solve.c` itself states "no
+  iterative refinement is" performed. OpenDSS's *outer* loop is a **nonlinear** power-flow
+  fixed point on the load injections, not linear residual correction; and harmonics is a
+  single direct solve — paper
   Eq. (28), "determined directly without an iterative process" — so nothing corrects the
   near-singular conditioning error.)
   **Acceptance:** on a damped resonance test, refined `Z` converges to the analytical
-  value as damping → small; residual `‖b − A·x‖` falls below a set bound.
+  value as damping is reduced *so long as `u·κ(Y) ≲ 1`* (below that, `Y` is too
+  ill-conditioned w.r.t. machine precision to rescue — see Limit); residual `‖b − A·x‖`
+  falls below a set bound. (The residual test checks backward stability; only the
+  `Z`-convergence checks the forward accuracy that needs the compensated residual.)
 
   **Confirmed by the standard numerical-LA literature (this is a named, textbook
   technique, not a homegrown trick).** Both texts describe exactly the three-step
   process `r = b − A·x; solve A·d = r; x += d`:
   - **Golub & Van Loan, *Matrix Computations* (4th ed.), §3.5.3 "Iterative
-    Improvement" (p. 140).** States *our* case verbatim: with partial pivoting the
-    computed `x̂` already solves a nearby system, "*However, this may not be the case
-    for certain pivot strategies used to preserve sparsity. In this situation, the
-    fixed precision iterative improvement step can be worthwhile and cheap.*" (cites
-    Arioli, Demmel & Duff 1988). Also: "*The original A must be used in the
-    high-precision computation of r.*" Heuristic III: with residual at precision `u²`,
-    after `k` steps `x` has ≈`min{d, k(d−q)}` correct digits (`u=10⁻ᵈ`, `κ(A)≈10^q`);
-    each refinement is `O(n²)`/`O(nnz)` vs the one-time `O(n³)` factorization.
+    Improvement" (heading p. 139, body p. 140).** States *our* case verbatim: with
+    partial pivoting the computed `x̂` already solves a nearby system, "*However, this
+    may not be the case for certain pivot strategies used to preserve sparsity. In this
+    situation, the fixed precision iterative improvement step can be worthwhile and
+    cheap.*" (cites Arioli, Demmel & Duff — GVL's running text prints "1988", but its
+    own bibliography and the paper itself give **1989**, SIAM J. Matrix Anal. Appl. 10).
+    Also: "*The original A must be used in the high-precision computation of r.*" The
+    forward-accuracy ("correct digits") result is the **mixed/extended-precision**
+    regime — *not* the fixed-precision sentence above — namely GVL's Heuristic III: with
+    the residual computed at precision `u²`, after `k` steps `x` has ≈`min{d, k(d−q)}`
+    correct digits (`u=10⁻ᵈ`, `κ∞(A)≈10^q`). GVL gives the per-step cost as `O(n²)` vs
+    the one-time `O(n³)` factorization; for our sparse factors that per-step cost is
+    `O(nnz)` of the LU factors (our extension, not GVL's figure).
   - **Higham, *Accuracy and Stability of Numerical Algorithms* (2nd ed.), Ch. 12
     "Iterative Refinement."** "*The economics … are favourable for solvers based on a
-    factorization of A, because the factorization used to compute x can be reused.*"
-    The solver is treated as a black box — "*the solver need not be LU factorization
-    or even a factorization method*" (only backward-stability, Eq. 12.1, is assumed),
-    so it composes with our `SparseSet` as-is. Directly on motive: "*sparse GE is
-    performed without pivoting, for speed, and iterative refinement is used to regain
-    stability*" (Li & Demmel 1998; Dongarra et al. 2000). Fixed-precision refinement
-    restores **backward** stability (Skeel 1980); **forward** accuracy near the pole
-    needs an extended-precision residual.
+    factorization of A, because the factorization used to compute x̂ can be reused*" (in
+    the correction solve). The solver is treated as a black box — "*the solver need not
+    be LU factorization or even a factorization method*" (only backward-stability,
+    Eq. 12.1, is assumed), so it composes with our `SparseSet` as-is. Directly on motive:
+    "*sparse GE is performed without pivoting, for speed, and iterative refinement is
+    used to regain stability*" (Li & Demmel 1998; Dongarra et al. 2000). Fixed-precision
+    refinement restores **backward** stability — normwise for an arbitrary solver
+    (Jankowski & Woźniakowski 1977), componentwise for GEPP (Skeel 1980); **forward**
+    accuracy near the pole needs an extended-precision residual.
   - Russian canon (cited in Venikov's own bibliography, see below): **Фаддеев &
     Фаддеева, «Вычислительные методы линейной алгебры» (1963)** — "уточнение по
     невязкам"; **Брамеллер/Аллан/Хэмэм, «Слабозаполненные матрицы» (1979)** — sparse
@@ -122,14 +137,16 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   5. **Gate on `rcond` / residual norm** (both already exposed): well-conditioned corpus
      solves skip refinement entirely → bit-identical to today → oracle-match gate
      untouched. Off by default during the port; this *is* the post-1:1 divergence.
-  **Limit (= §2.3):** a truly singular `Y` (lossless pole) is beyond rescue — GVL: "*no
-  improvement may result if A is badly conditioned w.r.t. the machine precision.*" The
-  target regime is ill-conditioned-but-not-singular (damped resonance).
+  **Limit (= §2.3):** rescue needs `u·κ(Y) ≲ 1`, not merely nonsingularity. A truly
+  singular `Y` (lossless pole) is hopeless, but so is a *nonsingular* `Y` once it is
+  "*badly conditioned w.r.t. the machine precision*" (GVL: "*no improvement may result*"
+  there). The target regime is the damped resonance that stays inside `u·κ(Y) ≲ 1`.
 
   **Not to be confused with the two *other* iterations in the power-systems texts**
   (Venikov, *«Математические задачи электроэнергетики»*): (a) §2-4 stationary linear
   solvers — простая итерация (Jacobi) / Зейдель (Gauss-Seidel), `x⁽ᵏ⁾ = B + C·x⁽ᵏ⁻¹⁾`,
-  converge only under diagonal dominance `|λ(C)|<1` — these solve `Ax=b` from scratch
+  converge iff the spectral radius `ρ(C)<1` (diagonal dominance is the usual sufficient
+  condition) — these solve `Ax=b` from scratch
   and *diverge* near a singular `Y`; (b) Appendix 8 / the nonlinear power-flow outer loop
   (simple iteration / Newton) — the OpenDSS outer loop already noted above. Iterative
   refinement is a third, distinct thing: it polishes one *direct* solve and is generic
@@ -173,15 +190,17 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
 - `investigations/oracle-powers-currents-harmonic/` (git-ignored) — the well-conditioned
   resonance-style parity check (dss-rs ↔ oracle).
 - **G. H. Golub & C. F. Van Loan, *Matrix Computations*, 4th ed., Johns Hopkins, 2013 —
-  §3.5.3 "Iterative Improvement" (p. 140)** (local copy
+  §3.5.3 "Iterative Improvement" (heading p. 139, body p. 140)** (local copy
   `.inputs/Solve_books/2013 Matrix Computations 4th.pdf`). The sparsity-preserving-pivot
   case + mixed-precision Heuristic III. Underlying analysis: Skeel (1980); Arioli, Demmel
-  & Duff (1988).
+  & Duff (1989 — GVL's running text misprints the year as "1988").
 - **N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002 —
   Ch. 12 "Iterative Refinement"** (local copy
   `.inputs/Solve_books/Higham_2002_Accuracy and Stability of Numerical Algorithms.pdf`).
   Definitive treatment; factorization-reuse economics, solver-agnostic assumption
   (Eq. 12.1), fixed- vs extended-precision behaviour, sparse-GE-without-pivoting use case.
+  Fixed-precision backward stability: Jankowski & Woźniakowski (1977, normwise, arbitrary
+  solver); Skeel (1980, componentwise, GEPP).
 - **Фаддеев Д. К., Фаддеева В. Н., «Вычислительные методы линейной алгебры», ГИФМЛ,
   1963** and **Брамеллер А., Аллан Р., Хэмэм Я., «Слабозаполненные матрицы: анализ
   электроэнергетических систем», Энергия, 1979** — Russian-canon sources for residual
