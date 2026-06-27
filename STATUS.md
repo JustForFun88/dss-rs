@@ -589,6 +589,12 @@ mode, ported in steps split by injection family.
     is stable across the two queries), so all existing goldens are byte-unchanged
     (`git status` confirmed only the 3 new files appear after a full `gen_phase7.py` regen).
     No `TODO(compat)` — there is no engine inexactness, only a query-order capture choice.
+    **Investigated & RESOLVED** — verdict: a genuine long-standing OpenDSS engine bug
+    (stale-`Iterminal`), reproduced identically on the pinned oracle and **real EPRI
+    OpenDSS through v11.0.0.1** (also dss-python 0.16.0b2 / altdss); not fixed upstream;
+    mechanism pinned to `PCElement.pas` × `CktElement.pas`. Workaround correct; no Rust
+    change. Full write-up, IEEE-1459 proof, repro script, and an OpenDSS issue draft live
+    in **`investigations/oracle-powers-currents-harmonic/`** (git-ignored, local only).
   - **audit-tests follow-up:** verdict **sound + strictly additive** — the 3 new goldens
     are a genuine oracle pin (full-corpus regen reproduces them byte-for-byte against the
     pinned 0.15.7/0.14.5 oracle, non-degenerate injection), the `capture_element`

@@ -73,6 +73,44 @@ impl Dss {
         let sys = crate::solution::solution::sys_ctx(ckt);
         let node_v = ckt.solution.node_v.clone();
         let positive_seq = ckt.positive_sequence;
+        // Per-terminal complex power below is formed as S = V*conj(I)
+        // (`node_v[n] * i.conj()`): node voltage times the conjugate of the
+        // terminal current -- the IEEE definition of complex power
+        // (IEEE Std 1459-2010, 3.1.1.6, p. 5: S = P + jQ = V*I_conj; and
+        // J. L. Willems, "The IEEE Standard 1459: What and Why?", sec. III-IV,
+        // eq. (3), p. 2: P = V0*I0 + sum_k V_k*I_k*cos(phi_k)) -- with V and I
+        // taken at the SAME frequency.
+        //
+        // In harmonics mode the engine solves each harmonic order h as an
+        // independent per-frequency phasor network, V_bus^h = inv(Y_bus^h)*I_bus^h
+        // (N.-C. Yang & Y.-W. Hsu, "OpenDSS-based Harmonic Power Flow Analysis for
+        // Power Systems with Passive Power Filters", IEEE Access, 2023, sec. IV,
+        // eq. (28)), so the meaningful terminal power is the per-harmonic complex
+        // power S_h = V_h*conj(I_h) (IEEE 1459-2010, 3.1.2.5, p. 9:
+        // P_H = V0*I0 + sum_{h!=1} V_h*I_h*cos(theta_h), where theta_h is "the
+        // phase angle between the phasors V_h and I_h" -- the SAME order h for
+        // both; cf. 3.1.2.4, p. 9: P1 = V1*I1*cos(theta_1)).
+        //
+        // A product mixing a voltage at one harmonic with a current at a different
+        // harmonic, V_h*conj(I_{h'!=h}), is NOT a power: cross-frequency terms
+        // appear only in the non-active instantaneous power p_q, whose average is
+        // zero (IEEE 1459-2010, 3.1.2.2, pp. 8-9: the
+        // 2*sum_n sum_{m!=n} V_m*I_n*sin(m*w*t-a_m)*sin(n*w*t-b_n) term; the
+        // standard states p_q "does not represent a net transfer of energy (i.e.,
+        // its average value is nil)"). The root reason is the orthogonality of the
+        // harmonic (Fourier) basis over a fundamental period (W. M. Grady,
+        // "Understanding Power System Harmonics", Apr. 2012, ch. 2,
+        // eqs. (2.1)-(2.2), pp. 2-1..2-3).
+        //
+        // We therefore call `compute_iterminal` ONCE per element and immediately
+        // form V*conj(I) from that single fresh terminal current, so V and I are
+        // always the same frequency and the cross-frequency product can never
+        // arise. This is a deliberate divergence from the pinned oracle, whose
+        // `CktElement.Powers` returns V_h*conj(I_fundamental) when read AFTER
+        // `CktElement.Currents` for a Generator/PVSystem/Storage in harmonics mode
+        // (an order-dependent, stale-Iterminal engine bug we do NOT reproduce;
+        // full analysis + IEEE-1459 proof live in the git-ignored
+        // investigations/oracle-powers-currents-harmonic/).
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
             let class_name = classes[r.cls].props.class_name();
@@ -93,8 +131,12 @@ impl Dss {
                     currents[2 * k + 1] = i.im;
                     let n = cd.node_ref[k];
                     if n > 0 {
+                        // S = V*conj(I) at the present (per-harmonic, in harmonics
+                        // mode) solution frequency; see the block comment above.
                         let mut s = node_v[n] * i.conj();
                         if positive_seq {
+                            // x3: balanced three-phase scaling of the single-phase
+                            // power (Willems, "...What and Why?", sec. V.A, p. 3).
                             s *= 3.0;
                         }
                         powers[2 * k] = s.re * 0.001;
