@@ -33,7 +33,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md).
-Current scores: dss-core **lib 646**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 650**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus migration lands in WP7.6 step 3); oracle pinned to dss-python
 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
@@ -76,7 +76,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 639, golden_feeders 1,
+cargo test --workspace      # dss-core lib 650, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -529,6 +529,27 @@ mode, ported in steps split by injection family.
     `harmonic_yprim_*` unit test's `expected` re-derives the split arithmetic (a
     transcription check) — its teeth are the naive-path discriminator + the oracle
     golden anchor; left as-is.
+  - **audit-code follow-up:** verdict **faithful, no Critical/Major** — the harmonic
+    numeric paths are 1:1 ports (SetMultArray/GetMult, the VSource/Load harmonic
+    branches, the YPrim `%SeriesRL` split, the drivers, CollectAllFrequencies) and
+    oracle-verified end-to-end; the DER deferral is genuinely loud. Fixed **1
+    silent-wrong gap + 1 faithfulness nit**: (1) a **typo'd `spectrum=` name** resolved
+    silently to NIL (→ zero harmonic injection, no diagnostic) where the oracle raises
+    `#401 …Spectrum: Spectrum object "x" not found.` (probe-confirmed) — the
+    edit-completion resolver now pushes that error (`exec/command.rs`), pinned by a new
+    `unknown_spectrum_name_errors_not_silent` exec test; (2) `initialize_for_harmonics`
+    now early-returns the instant an element sets `solution_abort` (matching Pascal's
+    `Exit`). **Surfaced-not-fixed (carry-forward to step 2, each harmless now):** (a)
+    `Set mode=harmonics` runs `initialize_for_harmonics` *after* `set_mode` commits the
+    flags and discards its bool — unobservable in step 1 (the Load init never aborts,
+    the DER family is caught by the solve-time guard, and a real abort sets
+    `solution_abort` which the next `Solve` honors), to be aligned with the Pascal
+    `OK_for_Harmonics` ordering when step-2 DER `InitHarmonics` (which *can* abort)
+    lands; (b) the zero-harmonic-spectrum *definition* error (Pascal 65001) loses only
+    its message — the numeric behavior is faithful (both engines build no `MultArray` →
+    zero injection), a pre-existing `end_edit`-has-no-error-sink limit; (c) the monitor
+    harmonic *header* names (`Freq`/`Harmonic`) ride with monitor-reset-on-mode-change
+    in step 3 (the sample *body* + the data-channel gate are done). lib **649 → 650**.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
