@@ -574,7 +574,8 @@ mode, ported in steps split by injection family.
   (replaced by 3 injection exec tests). Gate: 3 oracle-pinned goldens
   `phase7/harmonics_{generator,pvsystem,storage}_h5` (`gen_phase7.py` + `golden_phase7.rs`)
   — node V + DER/Line I/P + the Line YPrim entry-by-entry at the 5th, matched the oracle
-  1e-6 (golden_phase7 56 → 59). **Corpus stays 84** (migration is step 3). lib **650 → 653**.
+  1e-6 (golden_phase7 56 → 59, + a delta golden in the audit-code follow-up → 60).
+  **Corpus stays 84** (migration is step 3). lib **650 → 653**.
   - **The `capture_element` order quirk (golden generator, not a port bug — confirmed
     with the user "don't port the oracle's bug"):** the oracle's `CktElement.Powers`,
     when queried *after* `Currents`, returns `V_harmonic · conj(I_fundamental)` for a
@@ -602,6 +603,29 @@ mode, ported in steps split by injection family.
     branch entry-by-entry and discriminates it from the power-flow stamping, oracle-free);
     (3) the 3 new scenarios were missing from the `golden_phase7.rs` `must` anti-silent-drop
     guard → added. lib **650 → 653**.
+  - **audit-code follow-up:** verdict **faithful 1:1 port, no Critical/Major** — the harmonic
+    math (`InitHarmonics`/`DoHarmonicMode`/the `CalcYPrimMatrix` Y=Yeq branch) matches Pascal
+    line-for-line for all three elements, the `SetNominalGeneration` restructure is
+    byte-identical on the power-flow path and correctly Pascal-guarded in harmonic/dynamic
+    mode, the dispatch order (harmonic before GFM) and the `capture_element` swap are
+    confirmed faithful. **No code-behavior fix needed** — the two Minor findings are
+    comment-honesty items (settled): (1) Pascal dispatches `DoDynamicMode` first for
+    `IsDynamicModel`, which is WP7.7 and **unreachable today** (the Dynamic/FaultStudy/
+    MonteFault solve modes error "Unknown solution mode" before any element injects —
+    verified in `dispatch.rs`), so only the harmonic check is ported; the dispatch-site
+    comment now says so. (2) The "unused shape `factor`" skip comment was too absolute for
+    dynamic mode (the GENERALTIME arm *can* call a shape mult) — reworded to note it is
+    exactly unused in harmonics and unobservable (ShapeFactor unread) in dynamics until
+    WP7.7. **Added the one high-value recommended coverage:** a **delta** generator harmonic
+    golden `phase7/harmonics_generator_delta_h5` (the delta `Y/3` YPrim stamping + the
+    no-neutral injection buffer — paths the wye goldens never reach), matched the oracle 1e-6
+    (golden_phase7 59 → 60). **Surfaced-not-fixed (acceptable):** an OFF-generator harmonic
+    case (`gen_on=false` → `Vthevharm=0` + the `EPSILON` YPrim stamp) stays golden-uncovered
+    (no injection → only "no distortion"; the EPSILON branch is read by the offline
+    discriminators' sibling path), and a FaultStudy+Generator parity golden is impossible
+    until the FaultStudy solve mode lands (WP7.9). The Generator `do_harmonic_mode`'s
+    `SpectrumObj.GetMult` NIL-guard (`.unwrap_or(ZERO)`) is *more* defensive than Pascal (which
+    would AV) — kept (reproducing an AV would be wrong; `defaultgen` always resolves).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

@@ -409,7 +409,10 @@ impl Generator {
             self.do_harmonic_mode(sys, node_v);
             return;
         }
-        // Dynamics models are WP7.7.
+        // Pascal dispatches `DoDynamicMode` first for `IsDynamicModel`; that is
+        // WP7.7 and unreachable today (the Dynamic/FaultStudy/MonteFault solve
+        // modes error "Unknown solution mode" before any element injects —
+        // `dispatch.rs`), so only the harmonic check is ported here.
         match self.gen_model {
             1 => self.do_constant_pq_gen(sys, node_v),
             2 => self.do_constant_z_gen(sys, node_v),

@@ -1284,6 +1284,18 @@ def deck_harmonics_storage_h5() -> list[str]:
     ]
 
 
+def deck_harmonics_generator_delta_h5() -> list[str]:
+    # A DELTA generator: exercises the harmonic YPrim's delta `Y/3` stamping and
+    # the no-neutral injection buffer — paths the wye goldens never reach.
+    return [
+        *HARM_HEAD,
+        "new Generator.g bus1=b phases=3 kv=12.47 kw=1000 pf=0.95 model=1 conn=delta",
+        *HARM_TAIL,
+        "set harmonics=(5)",
+        "set mode=harmonics",
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -1346,6 +1358,7 @@ SCENARIOS = {
     "harmonics_generator_h5": deck_harmonics_generator_h5,
     "harmonics_pvsystem_h5": deck_harmonics_pvsystem_h5,
     "harmonics_storage_h5": deck_harmonics_storage_h5,
+    "harmonics_generator_delta_h5": deck_harmonics_generator_delta_h5,
 }
 
 
