@@ -677,6 +677,23 @@ mode, ported in steps split by injection family.
     fundamental — a separate item). **Corpus stays 84**, consistent with the WP7.5 step-4
     policy (Export/Show-blocked cases stay skipped until Phase 8); `COVERAGE.md` unchanged.
     The harmonics solve itself is fully gated by the 10 targeted `phase7/harmonics_*` goldens.
+  - **audit-code follow-up:** verdict **substantially faithful, no Critical/Major** — the
+    harmonic header (`ClearMonitorStream`), the `Set_Mode` reset tail (exact order + scope,
+    header sees `IsHarmonicModel=TRUE`), and the `reset_all_meters` reborrow are 1:1, and the
+    new reset makes Rust *more* oracle-faithful (the oracle resets on every mode change).
+    Fixed **2 doc-honesty Minors**: (1) the `end_edit`/`do_action` comments over-claimed "the
+    solution is never in harmonics mode here" — corrected to state the **real residual
+    divergence** (editing/clearing a monitor *after* entering harmonics relabels only on the
+    next reset; offline-only — the C-API strips both time columns — and self-healing), keeping
+    the `false` (the `DssObject` edit surface carries no solution state); (2) the now-stale
+    `set_mode.rs` doc ("monitor/meter resets are Phase 6 no-ops") updated to the real reset
+    tail; plus the `harmonics.rs` abort comment corrected (no ported `init_harmonics` sets
+    `solution_abort`; the DER early-`Exit` paths are returns, and the disk-spill abort is N/A
+    to the in-memory save). **Surfaced-not-fixed (carry-forward, unreachable):** `set_cmd.rs`
+    discards the `initialize_for_harmonics` bool and runs the reset tail unconditionally, where
+    a Pascal `OK_for_Harmonics`-false would `Exit` (no mode change, no reset) — but no ported
+    DER aborts, so it is unreachable; a code note marks it to honour when the DER abort path
+    lands (extends the step-1 ordering carry-forward (a)). lib stays **655** (comment-only).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

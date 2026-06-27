@@ -35,8 +35,11 @@ pub(crate) fn initialize_for_harmonics(ckt: &mut Circuit, env: &mut SolveEnv) ->
         if elem.cd().enabled {
             elem.init_harmonics(&sys, &node_v);
             // Pascal `InitializeForHarmonics` `Exit`s the instant an element
-            // aborts the solution (no element does in step 1, but step 2's DER
-            // `InitHarmonics` can).
+            // aborts the solution. The check is faithful but currently
+            // unreached: no ported element's `init_harmonics` sets
+            // `solution_abort` (the DER `InitHarmonics` early-`Exit` paths are
+            // returns, not aborts), and the Pascal `savePresentVoltages` disk
+            // failure that also aborts is N/A to this in-memory save.
             if ckt.solution.solution_abort {
                 return false;
             }
