@@ -20,9 +20,12 @@
 //!   `SolveZeroLoadSnapShot`, the generator dQ/dV seed, `CheckControls`,
 //!   `SolveSnap`, `SolveDirect`).
 //! - `time_series` — the `SolutionAlgs.pas` stepping modes.
+//! - `harmonics` — the harmonics solve mode (`SolveHarmonic`/`SolveHarmonicT`,
+//!   the frequency sweep, `InitializeForHarmonics`).
 //! - `dispatch` — the top-level `Solve` mode dispatcher and `SetVoltageBases`.
 
 mod dispatch;
+mod harmonics;
 mod power_flow;
 mod set_mode;
 mod state;
@@ -36,4 +39,5 @@ pub use state::{
     POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, sys_ctx,
 };
 
+pub(crate) use harmonics::initialize_for_harmonics;
 pub(crate) use power_flow::solve_circuit;

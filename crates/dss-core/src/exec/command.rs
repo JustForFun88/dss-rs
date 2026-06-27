@@ -582,6 +582,29 @@ impl Dss {
             }
         }
 
+        // Resolve the harmonic spectrum for any element that injects from one
+        // (Pascal `Set_Spectrum` / the constructor default `SpectrumObj :=
+        // SpectrumClass.DefaultX`). The element reports its default/explicit
+        // `spectrum=` name; we clone the resolved `SpectrumObj` (its `MultArray`
+        // is already built by the spectrum's `EndEdit`) in for the harmonic
+        // injection path. Same foreign-view pattern as the Fuse curve above.
+        let spectrum_name = objects[oi]
+            .as_ckt_element()
+            .and_then(|ce| ce.harmonic_spectrum_name())
+            .map(str::to_string);
+        if let Some(name) = spectrum_name {
+            let resolved = (!name.is_empty())
+                .then(|| {
+                    foreign.find("Spectrum", &name).and_then(|(_, o)| {
+                        o.as_any().downcast_ref::<spectrum::SpectrumObj>().cloned()
+                    })
+                })
+                .flatten();
+            if let Some(ce) = objects[oi].as_ckt_element_mut() {
+                ce.set_harmonic_spectrum(resolved);
+            }
+        }
+
         // Same pattern for the Recloser's four TCC curves (PhaseFast/PhaseDelayed
         // default to the built-in `a`/`d` in the constructor, which cannot reach
         // the registry): resolve every non-empty name through the foreign view and

@@ -348,6 +348,7 @@ pub(crate) mod opt {
     pub const PRICE_SIGNAL: usize = 50;
     pub const PRICE_CURVE: usize = 51;
     pub const BASE_FREQUENCY: usize = 53;
+    pub const HARMONICS: usize = 54;
     pub const MAX_CONTROL_ITER: usize = 55;
     pub const ALLOCATION_FACTORS: usize = 48;
     pub const CASE_NAME: usize = 63;

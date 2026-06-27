@@ -27,6 +27,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -283,6 +284,17 @@ pub struct Load {
     /// Pascal `ShapeFactor`: the (P, Q) multiplier from the active shape in a
     /// time-series mode; `(1, 1)` otherwise. Recomputed each `SetNominalLoad`.
     pub shape_factor: Complex64,
+
+    /// Resolved harmonic spectrum (Pascal `SpectrumObj`), snapshot-cloned at
+    /// edit-completion; the harmonic current source applies it to the captured
+    /// fundamental phase currents.
+    pub spectrum_obj: Option<SpectrumObj>,
+    /// Pascal `HarmMag`/`HarmAng`/`LoadFundamental`: the fundamental phase-current
+    /// magnitudes/angles captured by `InitHarmonics` (the harmonic injection base)
+    /// and the solution frequency at which harmonics mode was entered.
+    pub harm_mag: Vec<f64>,
+    pub harm_ang: Vec<f64>,
+    pub load_fundamental: f64,
 }
 
 /// Pascal `SetNcondsForConnection`.
@@ -393,6 +405,10 @@ impl Load {
             cvr_shape_ref: None,
             growth_shape_ref: None,
             shape_factor: CDOUBLEONE,
+            spectrum_obj: None,
+            harm_mag: Vec::new(),
+            harm_ang: Vec::new(),
+            load_fundamental: 0.0,
         };
         load.cd.inj_current = vec![Complex64::ZERO; load.cd.yorder];
         load.recalc(&default_recalc_ctx());

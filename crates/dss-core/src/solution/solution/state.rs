@@ -164,7 +164,15 @@ pub struct Solution {
     pub vmag_saved: Vec<f64>,
     pub error_saved: Vec<f64>,
     pub node_vbase: Vec<f64>,
+    /// Pascal `savePresentVoltages`/`RetrieveSavedVoltages`: the fundamental
+    /// `NodeV` captured when entering harmonics mode (the original spills it to a
+    /// `SavedVoltages.dbl` file; this port keeps it in memory). Restored before a
+    /// harmonic sweep if the last solution was off-fundamental.
+    pub saved_node_v: Vec<Complex64>,
     pub harmonic_list: Vec<f64>,
+    /// Pascal `DoAllHarmonics`: when true the harmonic sweep collects every
+    /// frequency in use across the spectra; otherwise it uses `harmonic_list`.
+    pub do_all_harmonics: bool,
 
     /// `ckt.ControlQueue` — pending control actions (WP5.4). Driven by the
     /// control loop (WP5.7) once RegControl/CapControl `Sample` arms it.
@@ -226,7 +234,9 @@ impl Solution {
             vmag_saved: vec![0.0],
             error_saved: vec![0.0],
             node_vbase: vec![0.0],
+            saved_node_v: Vec::new(),
             harmonic_list: vec![1.0, 5.0, 7.0, 11.0, 13.0],
+            do_all_harmonics: true,
             control_queue: ControlQueue::new(),
             event_log: EventLog::new(),
         }
@@ -259,14 +269,15 @@ impl Solution {
         self.update_dbl_hour();
     }
 
-    /// Pascal `Set_Frequency`.
-    pub fn set_frequency(&mut self, value: f64) {
+    /// Pascal `Set_Frequency`. `fundamental` is the circuit base frequency
+    /// (`ActiveCircuit.Fundamental`), which `Solution` does not own.
+    pub fn set_frequency(&mut self, value: f64, fundamental: f64) {
         if self.frequency != value {
             self.frequency_changed = true;
             self.system_y_changed = true; // because of the frequency change
         }
         self.frequency = value;
-        self.harmonic = 1.0; // TODO(phase7): Harmonic := Frequency / Fundamental
+        self.harmonic = value / fundamental;
     }
 
     /// Pascal `ZeroInjCurr`.

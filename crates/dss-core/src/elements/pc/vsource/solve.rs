@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::{VSource, get_vmag};
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{CALPHA, EPSILON, quad_solver, sqrt3};
@@ -237,6 +238,23 @@ impl CktElement for VSource {
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }
+    }
+
+    fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
+        self.spectrum_obj.as_ref()
+    }
+
+    fn harmonic_spectrum_name(&self) -> Option<&str> {
+        Some(&self.spectrum)
+    }
+
+    fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
+        self.spectrum_obj = spectrum;
+    }
+
+    /// Pascal `GetSourceFrequency` (Vsource branch): the source's `srcFrequency`.
+    fn source_frequency(&self) -> Option<f64> {
+        Some(self.src_frequency)
     }
 
     /// Pascal `TVsourceObj.GetCurrents`: `Yprim·V(node) − InjCurrent`.

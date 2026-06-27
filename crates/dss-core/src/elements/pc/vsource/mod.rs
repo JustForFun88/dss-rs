@@ -20,6 +20,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::ElemRef;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -163,6 +164,10 @@ pub struct VSource {
     pub daily_shape: String,
     pub duty_shape: String,
     pub spectrum: String,
+    /// Resolved harmonic spectrum (Pascal `SpectrumObj`), snapshot-cloned at
+    /// edit-completion from the default/explicit `spectrum=` name; consumed by
+    /// the harmonic injection path (`GetVterminalForSource`).
+    pub spectrum_obj: Option<SpectrumObj>,
     /// Resolved shape objects (Pascal `YearlyShapeObj` etc.), snapshot-cloned
     /// at parse time like [`super::super::load::Load`]; `GetVterminalForSource`
     /// drives `GetMultAtHour` on the owned copy in a time-series mode.
@@ -230,6 +235,7 @@ impl VSource {
             daily_shape: String::new(),
             duty_shape: String::new(),
             spectrum: "defaultvsource".to_string(),
+            spectrum_obj: None,
             yearly_shape_obj: None,
             daily_shape_obj: None,
             duty_shape_obj: None,

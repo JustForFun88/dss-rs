@@ -1158,6 +1158,51 @@ def deck_expcontrol_24h() -> list[str]:
     ]
 
 
+# --- WP7.6 step 1: Harmonics mode (the current-source family) ---------------
+# Source -> Line.l1 -> bus b carrying a nonlinear Load. After the fundamental
+# power flow, `set mode=harmonics` re-injects each PC element from its spectrum
+# and the sweep solves each harmonic on the frequency-scaled Y. These decks pin a
+# single harmonic each (`set harmonics=(h)`) so the captured model IS that
+# harmonic's distortion: the Load is an ideal harmonic current source (its
+# defaultload spectrum), the VSource is a short at the harmonic (defaultvsource =
+# fundamental only -> GetMult=0), and the Line YPrim is the frequency-scaled
+# sym-component Y. Gate: per-harmonic node voltages + the Load/Line terminal
+# currents/powers + the Line YPrim entry-by-entry, all at the harmonic frequency.
+HARM_HEAD = [
+    "new circuit.h basekv=12.47 phases=3 bus1=src basefreq=60 mvasc3=20000 mvasc1=21000",
+    "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=3.4 length=1 units=km",
+]
+HARM_LOAD = "new Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.9 model=1"
+HARM_TAIL = ["set voltagebases=[12.47]", "calcvoltagebases", "solve"]
+
+
+def deck_harmonics_load_h5() -> list[str]:
+    return [*HARM_HEAD, HARM_LOAD, *HARM_TAIL, "set harmonics=(5)", "set mode=harmonics"]
+
+
+def deck_harmonics_load_h7() -> list[str]:
+    return [*HARM_HEAD, HARM_LOAD, *HARM_TAIL, "set harmonics=(7)", "set mode=harmonics"]
+
+
+def deck_harmonics_vsource() -> list[str]:
+    # The VSource injects the 5th harmonic from a custom spectrum while the Load
+    # is linear (`spectrum=linear` = fundamental only, no harmonic current). This
+    # isolates the VSource harmonic injection path (`GetVterminalForSource`'s
+    # harmonic branch) from the Load current-source path covered above.
+    return [
+        "new circuit.h basekv=12.47 phases=3 bus1=src basefreq=60 mvasc3=20000 mvasc1=21000",
+        "new spectrum.src NumHarm=2 harmonic=(1 5) %mag=(100 10) angle=(0 0)",
+        "edit vsource.source spectrum=src",
+        "new Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=3.4 length=1 units=km",
+        "new Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.9 model=1 spectrum=linear",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+        "set harmonics=(5)",
+        "set mode=harmonics",
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -1211,6 +1256,9 @@ SCENARIOS = {
     "expcontrol_daily_preferq": deck_expcontrol_daily_preferq,
     "expcontrol_duty": deck_expcontrol_duty,
     "expcontrol_24h": deck_expcontrol_24h,
+    "harmonics_load_h5": deck_harmonics_load_h5,
+    "harmonics_load_h7": deck_harmonics_load_h7,
+    "harmonics_vsource": deck_harmonics_vsource,
 }
 
 

@@ -6,6 +6,7 @@ use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
 use crate::solution::SolveMode;
+use crate::support::cmatrix::CMatrix;
 use dss_parser::{Parser, ParserVars};
 
 /// Build a populated `LoadShapeObj` through its real property engine (same
@@ -142,6 +143,58 @@ fn snapshot_mode_ignores_shape() {
         (load.w_nominal - 33333.333).abs() < 1e-2,
         "w {}",
         load.w_nominal
+    );
+}
+
+/// The Load's YPrim in harmonics mode is **not** the naive frequency-scaled
+/// `Yeq`: it is the `%SeriesRL` split (a parallel R-L part with `Y.im /= h` and a
+/// series R-L part with `Z.im *= h`). This pins that split entry-by-entry and,
+/// as a discriminator, asserts it differs substantially from the naive path — a
+/// regression to `Yeq; Y.im /= h` (the pre-WP7.6 placeholder) fails here. A
+/// network solve dilutes the ~40% YPrim error down to ~0.1% on the node
+/// voltages, so the offline golden caught it but only barely; this unit test
+/// pins the admittance itself.
+#[test]
+fn harmonic_yprim_uses_series_rl_split_not_naive_yeq() {
+    let mut load = load_100kw_pf09();
+    load.kv_load_base = 12.47;
+    // Establish `Yeq` from the fundamental snapshot, like the real solve does
+    // before entering harmonics mode.
+    load.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 0.0));
+    let yeq = load.yeq;
+    assert!(yeq.norm() > 0.0, "Yeq not established");
+
+    let h = 5.0_f64;
+    let freq_mult = h; // base frequency 60 → 300 Hz
+    let sys = SysCtx {
+        frequency: 60.0 * h,
+        fundamental: 60.0,
+        is_harmonic_model: true,
+        ..default_recalc_ctx()
+    };
+
+    let mut ym = CMatrix::new(load.cd.yorder);
+    load.calc_yprim_matrix(&mut ym, &sys);
+    let actual = ym.get(0, 0); // wye phase-A diagonal = the load admittance Y
+
+    // Expected: parallel R-L (1 - %SeriesRL of Yeq, im/h) + series R-L
+    // (Z = inv(%SeriesRL·Yeq), im·h, re-inverted). %SeriesRL = 0.5, puXharm = 0.
+    let mut y_par = yeq * (1.0 - load.pu_series_rl);
+    y_par.im /= freq_mult;
+    let mut z_ser = (yeq * load.pu_series_rl).inv();
+    z_ser.im *= freq_mult;
+    let expected = z_ser.inv() + y_par;
+    assert!(
+        (actual - expected).norm() < 1e-9,
+        "harmonic YPrim {actual} != series-RL split {expected}"
+    );
+
+    // Discriminator: the naive `Yeq; Y.im /= h` path (the bug) is far off.
+    let mut naive = yeq;
+    naive.im /= freq_mult;
+    assert!(
+        (actual - naive).norm() > 0.1 * naive.norm(),
+        "harmonic YPrim {actual} is indistinguishable from the naive Yeq path {naive}"
     );
 }
 

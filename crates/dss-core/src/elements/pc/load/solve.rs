@@ -8,18 +8,52 @@ use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
 use crate::support::cmatrix::CMatrix;
+use crate::support::complexutil::{cdang, rotate_phasor_deg};
+use crate::util::EPSILON;
 
 use super::{Connection, Load, LoadModel};
 
 impl Load {
-    /// Pascal `CalcYPrimMatrix` (power-flow path; the harmonic series-RL
-    /// split arrives in Phase 7).
+    /// Pascal `CalcYPrimMatrix`: the load's equivalent admittance, frequency-
+    /// corrected. In harmonics mode (above fundamental) the load is split into a
+    /// parallel R-L part and a series R-L part (`%SeriesRL`), each with its own
+    /// reactance-vs-frequency scaling.
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
         self.cd.yprim_freq = sys.frequency;
         let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
 
-        let mut y = self.yeq;
-        y.im /= freq_multiplier; // correct reactive part for frequency
+        let y = if sys.is_harmonic_model && sys.frequency != sys.fundamental {
+            if sys.neglect_load_y {
+                // Just a small value so things don't die and the actual injection
+                // current still comes out the terminal.
+                Complex64::new(EPSILON, 0.0)
+            } else {
+                // Equivalent Y: part of the load is series R-L, the rest parallel
+                // R-L, based on the equivalent Y at 100% voltage.
+                let mut y = self.yeq * (1.0 - self.pu_series_rl);
+                y.im /= freq_multiplier; // correct reactive part for frequency
+                if self.pu_series_rl != 0.0 {
+                    let mut z_series = if self.pu_x_harm > 0.0 {
+                        // Special harmonic reactance representing motors (the
+                        // series branch is assumed to be the motor).
+                        let x_series_ohms = self.kv_load_base.powi(2) * 1000.0
+                            / (self.kva_base * self.pu_series_rl)
+                            * self.pu_x_harm;
+                        Complex64::new(x_series_ohms / self.xr_harm_ratio, x_series_ohms)
+                    } else {
+                        // Compute Zseries from the nominal load value.
+                        (self.yeq * self.pu_series_rl).inv()
+                    };
+                    z_series.im *= freq_multiplier; // correct reactive part for frequency
+                    y = z_series.inv() + y;
+                }
+                y
+            }
+        } else {
+            let mut y = self.yeq;
+            y.im /= freq_multiplier; // correct reactive part for frequency
+            y
+        };
 
         let yij = -y;
         let nphases = self.cd.nphases;
@@ -377,7 +411,13 @@ impl Load {
         errors: &mut Vec<String>,
     ) {
         self.cd.iterminal_updated = false;
-        // Harmonic mode arrives in Phase 7.
+        // Pascal `CalcLoadModelContribution`: above the fundamental, harmonics
+        // mode injects the spectrum-scaled current source instead of the
+        // power-flow load model.
+        if sys.is_harmonic_model && sys.frequency != sys.fundamental {
+            self.do_harmonic_mode(sys);
+            return;
+        }
 
         self.calc_yprim_contribution(node_v); // init InjCurrent array
         self.calc_vterminal_phase(sys, node_v); // actual voltage across each phase
@@ -395,6 +435,45 @@ impl Load {
             self.cd.iterminal_solution_count = sys.solution_count;
             self.stick_curr(false, curr, i); // into InjCurrent
         }
+    }
+
+    /// Pascal `TLoadObj.InitHarmonics`: capture the present (fundamental) phase
+    /// currents' magnitude/angle as the harmonic injection base. The spectrum is
+    /// applied to these in [`Load::do_harmonic_mode`].
+    pub(super) fn init_harmonics(&mut self, sys: &SysCtx) {
+        let n = self.cd.nphases;
+        self.harm_mag = vec![0.0; n];
+        self.harm_ang = vec![0.0; n];
+        // `LoadFundamental` = the solution frequency when harmonics mode is entered.
+        self.load_fundamental = sys.frequency;
+        for i in 0..n {
+            self.harm_mag[i] = self.phase_curr[i].norm();
+            self.harm_ang[i] = cdang(self.phase_curr[i]);
+        }
+    }
+
+    /// Pascal `TLoadObj.DoHarmonicMode`: an ideal harmonic current source — the
+    /// captured fundamental phase-current magnitude scaled by the spectrum
+    /// multiplier at this harmonic and time-shifted by the fundamental angle.
+    fn do_harmonic_mode(&mut self, sys: &SysCtx) {
+        self.cd.inj_current.fill(Complex64::ZERO);
+        self.cd.zero_iterminal();
+        let load_harmonic = sys.frequency / self.load_fundamental;
+        let mult = self
+            .spectrum_obj
+            .as_ref()
+            .map(|s| s.get_mult(load_harmonic))
+            .unwrap_or(Complex64::ZERO);
+        for i in 0..self.cd.nphases {
+            let mut curr = mult * self.harm_mag[i]; // base harmonic magnitude
+            curr = rotate_phasor_deg(curr, load_harmonic, self.harm_ang[i]); // time shift
+            // Pascal `StickCurrInTerminalArray(InjCurrent, Curr)` /
+            // `(ITerminal, -Curr)` — the same sign convention as the power-flow
+            // path (`stick_curr` is a 1:1 of the Pascal helper, `arr[i] -= Curr`).
+            self.stick_curr(false, curr, i); // into InjCurrent
+            self.stick_curr(true, -curr, i); // into ITerminal
+        }
+        self.cd.iterminal_updated = true;
     }
 
     /// Pascal `CalcInjCurrentArray`.

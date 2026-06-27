@@ -13,6 +13,7 @@ mod autoadd;
 mod controls;
 mod energymeter_registers;
 mod energymeter_zones;
+mod harmonics;
 mod lifecycle;
 mod line_fetch;
 mod monitors;
