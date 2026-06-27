@@ -127,9 +127,12 @@ impl Generator {
             self.p_nominal_per_phase = -0.1 * self.kw_base / nphases;
             self.q_nominal_per_phase = 0.0;
         } else if !harm_or_dyn {
-            // (Pascal computes an unused shape `factor` here in harmonics/dynamics
-            // mode — its only side effect is `ShapeFactor`, which is never read in
-            // those modes — so it is skipped: behaviorally identical.)
+            // (Pascal computes a `factor` here even in harmonics/dynamics mode. In
+            // harmonics it is exactly unused — HARMONICMODE is not in the `case`, so
+            // `Factor:=1` with no shape call. In dynamics the GENERALTIME/DYNAMICMODE
+            // arm *can* call a shape mult, but its only result is `ShapeFactor`, which
+            // is unread in those modes here (Pnom/Yeq below are not recomputed), so
+            // skipping is behaviorally identical until the WP7.7 dynamics solve lands.)
             let factor = if self.is_fixed {
                 1.0
             } else {
