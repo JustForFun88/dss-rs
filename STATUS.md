@@ -395,25 +395,57 @@ smart-inverter follow-up) archived at
   `FOpenTau` LPF gate — daily runs under `CTRLSTATIC` gate it off) + 16 mock tests.
   One `TODO(compat)` (`FOpenTau := Tresponse/2.3026`, the truncated ln(10)). **Corpus
   stays 83.** lib **623 → 639**.
-- **step 4 — the gate / corpus burn-down review (DER C).** No code change (lib stays
-  **639**); the gate is green and the DER-C corpus migration is confirmed **maximal**.
-  A fresh `DSS_LIVE_CLASSIFY=1` re-probe of **all 48** InvControl/ExpControl-tagged
-  `skipped_unsupported` cases (the migration of the bulk happened in steps 2b–2e;
-  many remaining cases still carried *stale* `unsupported_class=InvControl`/`PVSystem`
+- **step 4 — the gate / corpus burn-down review (DER C).** No Rust code change (lib
+  stays **639**); the gate is green and the DER-C corpus migration is confirmed
+  **maximal**. A fresh `DSS_LIVE_CLASSIFY=1` re-probe of **all 48**
+  InvControl/ExpControl-tagged `skipped_unsupported` cases (the bulk migrated in steps
+  2b–2e; many of the rest still carried *stale* `unsupported_class=InvControl`/`PVSystem`
   tags from before the class landed) found exactly **1 newly-solvable** case —
   `…/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss` (a near-ideal-Thevenin
-  snapshot: PVSystem + VOLTVAR InvControl regulating kvar to the curve zero-crossing;
-  full-model live-compared to the oracle, **corpus 83 → 84**). The other **47** are
-  genuinely blocked by Phase-8 / later work, **not** by DER-C numerics, so their tags
-  were refreshed to the genuine current blocker: **42** by a Phase-8 command
-  (Export / Export+Plot — the Daily/MonitoredVoltage families), **3** GFM-mode-7
-  cases (`unsupported_command=BatchEdit; deferred=gfm-WP7.7`, also `File=`-blocked),
-  **1** `ExpControl/Master.dss` (`unsupported_feature=file-backed-arrays`), and **1**
-  `11_2_kWRatedViolation` (`deferred=storage-voltwatt-WP7.5`, the loud Storage-VOLTWATT
-  guard from step 2c). `tools/corpus/COVERAGE.md` regenerated (84 → **25.1%** of entry
-  points); the `corpus_manifest` bijection holds. *(The stale tags were a
-  documentation-honesty fix only — they never affected the gate, which keys on the
-  bijection + the `solvable_now` live compare.)*
+  snapshot: PVSystem + VOLTVAR InvControl regulating kvar from the file-set `kvar=500`
+  to the curve zero-crossing at v≈1.0 pu, 56 control iters; full-model live-compared to
+  the oracle, **corpus 83 → 84**). **Commit delta: 1 migrated + 39 stale tags
+  refreshed** to the genuine current blocker (the other 8 of the 47 still-blocked cases
+  already carried a correct `Export,Plot` tag). The **47 still-blocked** cases are
+  blocked by Phase-8 / later work, **not** by DER-C numerics — current-state breakdown:
+  **42** by a Phase-8 command (Export / Export+Plot — the Daily/MonitoredVoltage
+  families), **3** GFM-mode-7 cases (`unsupported_command=BatchEdit; deferred=gfm-WP7.7`,
+  also `File=`-blocked), **1** `ExpControl/Master.dss`
+  (`unsupported_feature=file-backed-arrays`), and **1** `11_2_kWRatedViolation`
+  (`deferred=storage-voltwatt-WP7.5`, the loud Storage-VOLTWATT guard from step 2c).
+  `tools/corpus/COVERAGE.md` regenerated (84 → **25.1%** of entry points); the
+  `corpus_manifest` bijection holds. *(The stale tags were a documentation-honesty fix
+  only — they never affected the gate, which keys on the bijection + the `solvable_now`
+  live compare.)*
+  - **audit-code follow-up:** verdict **correct** — the full live gate matched all 84
+    cases, the migrated VV case is non-trivial (the regulator moved kvar 500 → ~0 over
+    56 iters, not an empty pass), the 39 refreshed tags each match the genuine re-probed
+    Rust-engine error, and no hidden-migratable DER-C case was left behind (all 40
+    InvControl/PVSystem candidates still error; the only solvable one is migrated). Two
+    doc-only fixes applied: (1) the **GFM tags** were committed as plain
+    `unsupported_command=BatchEdit` (the classify report truncates the reason at 400
+    chars, dropping the `mode=7 … (GFM)` clause my appender keyed on), out of sync with
+    this record's claim — re-set to `unsupported_command=BatchEdit; deferred=gfm-WP7.7`
+    with a hand-transcribed full-blocker note; (2) this record's accounting was
+    sharpened to separate the *commit delta* (1 migrated + 39 retagged) from the
+    *current-state* family breakdown. **Surfaced-not-fixed (out of DER-C scope, tracked
+    for a future corpus-hygiene pass):** ~16 *non*-DER-C `skipped_unsupported` cases
+    (line-constants / `Show` / `Open`/`Close`) now compile+solve clean on the Rust
+    engine but still carry possibly-stale tags — a clean Rust compile ≠ migratable (the
+    gate also needs the oracle full-model match), so these need their own
+    `DSS_LIVE_CLASSIFY` re-probe, not a blind migration.
+  - **audit-tests follow-up:** verdict **sound + strictly additive** — the new case
+    adds real verification (the harness pins the exact 56 control iters Rust↔oracle and
+    the full unrelaxed model compare), it is **not flaky** (the gate ran green twice,
+    84/84), and nothing was weakened (no tolerance loosened, no case removed/downgraded,
+    the depth guard + bijection hold). **Minor (recorded, no fix):** the near-ideal-source
+    `currentkvarLimit` *family* is borderline as a class (a sibling under
+    `…/NewFeatures/varCapability/` is parked `live_mismatch_near_ideal_source`), but the
+    migrated `_VV` variant sits in its stable zone — VOLTVAR drives Q→0 at v=1.0 pu so
+    the reactive source current is ~1e-4 A and the ill-conditioned-Y mismatch never
+    amplifies past tolerance (the parked siblings force a fixed `kvar=` → ~20 A reactive
+    → the mismatch that parks them). No offline golden was added (the live gate is the
+    pin); **no fix needed**.
 - **next:** WP7.6 (Harmonics) — the first cross-cutting solve mode.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
@@ -590,10 +622,10 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
-  `StorageController` behavior — ✅ **`PVSystem` (WP7.3), `Storage` +
-  `StorageController` (WP7.4) done** (the WP6.8 StorageController parse-only skeleton
-  is replaced by the real fleet dispatch; `is_zone_pce` now admits Storage/PVSystem);
-  `InvControl`/`ExpControl` remain for **WP7.5**.
+  `StorageController` behavior — ✅ **all done**: `PVSystem` (WP7.3), `Storage` +
+  `StorageController` (WP7.4), and `InvControl` + `ExpControl` (WP7.5) (the WP6.8
+  StorageController parse-only skeleton is replaced by the real fleet dispatch;
+  `is_zone_pce` now admits Storage/PVSystem).
 - **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — ✅ **done
   (WP7.2)**: all five classes ported on the control sweep, the `Open`/`Close` exec
   verbs landed, and an enabled Relay/Recloser/Fuse sets `Flg.HasOCPDevice` so

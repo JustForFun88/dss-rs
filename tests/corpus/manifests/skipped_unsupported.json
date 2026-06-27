@@ -668,18 +668,18 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Error Sampling Control Device \\\"InvControl.stoctrl\\\". Error "
+   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
+   "note": "Run_8500Node_GFMDaily.dss: Rust engine errors after compile: file-backed numeric arrays (File=) not supported; Command BatchEdit not ported; InvControl.stoctrl mode=7 combi=0 (GFM) deferred to WP7.7."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Error Sampling Control Device \\\"InvControl.stoctrl\\"
+   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
+   "note": "Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: file-backed numeric arrays (File=) not supported; Command BatchEdit not ported; InvControl.stoctrl mode=7 combi=0 (GFM) deferred to WP7.7."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Error Sampling Control Device \\\"InvControl.stoctrl\\\". Error ="
+   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
+   "note": "Run_8500Node_GFMSnap.dss: Rust engine errors after compile: file-backed numeric arrays (File=) not supported; Command BatchEdit not ported; InvControl.stoctrl mode=7 combi=0 (GFM) deferred to WP7.7."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
