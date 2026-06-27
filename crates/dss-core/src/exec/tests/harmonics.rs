@@ -126,6 +126,85 @@ fn second_harmonic_solve_restores_saved_voltages() {
     );
 }
 
+#[test]
+fn harmonic_mode_relabels_monitor_time_columns() {
+    // Pascal `ClearMonitorStream` (Monitor.pas l.709): the two leading time
+    // columns are `hour`/`t(sec)` at fundamental and `Freq`/`Harmonic` in
+    // harmonics mode. Entering harmonics resets every monitor (Pascal `Set_Mode`
+    // tail), which rebuilds the header from the now-committed `IsHarmonicModel`.
+    // (Oracle-independent: the C-API `Monitors.Header` strips these two columns,
+    // so only the offline header surface can pin the relabel.)
+    let mut dss = Dss::new();
+    dss.command("New circuit.harm basekv=12.47 pu=1.0 phases=3 mvasc3=20000 mvasc1=21000");
+    dss.command("New Line.l1 bus1=sourcebus bus2=loadbus length=1 units=km r1=0.1 x1=0.3 c1=3.4");
+    dss.command("New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=1000 pf=0.9 model=1");
+    dss.command("New Monitor.m element=Load.ld1 terminal=1 mode=0");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "fundamental: {:?}", dss.errors());
+    let hdr0 = dss.monitor_view("m").expect("m").header;
+    assert_eq!(
+        &hdr0[0..2],
+        ["hour".to_string(), "t(sec)".to_string()],
+        "fundamental-mode time columns"
+    );
+
+    dss.command("Set harmonics=(5)");
+    dss.command("Set mode=harmonics");
+    assert!(dss.errors().is_empty(), "set mode: {:?}", dss.errors());
+    let hdr_h = dss.monitor_view("m").expect("m").header;
+    assert_eq!(
+        &hdr_h[0..2],
+        ["Freq".to_string(), "Harmonic".to_string()],
+        "harmonics mode must relabel the monitor time columns"
+    );
+    // The relabel touches only the two time columns — the V/I data channels are
+    // unchanged (the golden `harmonics_doall` pins those values against the
+    // oracle; here we confirm the relabel does not disturb them).
+    assert_eq!(&hdr_h[2..], &hdr0[2..], "data channels must be unchanged");
+
+    // The harmonic sweep then samples the fundamental + the 5th into the
+    // relabelled monitor.
+    dss.command("Solve");
+    assert!(
+        dss.errors().is_empty(),
+        "harmonic solve: {:?}",
+        dss.errors()
+    );
+    let m = dss.monitor_view("m").expect("m");
+    assert_eq!(
+        &m.header[0..2],
+        ["Freq".to_string(), "Harmonic".to_string()]
+    );
+    assert_eq!(m.sample_count, 2, "fundamental + 5th harmonic samples");
+}
+
+#[test]
+fn mode_change_resets_monitor_buffer() {
+    // Pascal `Set_Mode` tail (Solution.pas l.2133): `MonitorClass.ResetAll`
+    // clears every monitor's buffer on a mode change, so samples accumulated
+    // under one mode never carry into the next.
+    let mut dss = harmonic_test_dss();
+    dss.command("New Monitor.m element=Line.l1 terminal=1 mode=0");
+    dss.command("Set mode=daily number=2");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "daily: {:?}", dss.errors());
+    assert_eq!(
+        dss.monitor_view("m").expect("m").sample_count,
+        2,
+        "daily(2) accumulates one sample per step"
+    );
+
+    // Switching mode resets the buffer.
+    dss.command("Set mode=snapshot");
+    assert_eq!(
+        dss.monitor_view("m").expect("m").sample_count,
+        0,
+        "a mode change must clear the monitor buffer"
+    );
+}
+
 /// The voltage-source-behind-reactance DER family (Generator/PVSystem/Storage)
 /// injects harmonic current from its spectrum in harmonics mode (WP7.6 step 2):
 /// the solve completes (no loud deferral) and the spectrum-driven injection

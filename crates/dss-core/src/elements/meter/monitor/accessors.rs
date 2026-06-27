@@ -19,9 +19,9 @@ impl CktElement for Monitor {
         &mut self.med.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
+    fn recalc_element_data(&mut self, sys: &SysCtx) {
         let mut errors = Vec::new();
-        self.recalc(&mut errors);
+        self.recalc(&mut errors, sys.is_harmonic_model);
         for e in errors {
             self.med.cd.obj.push_error(e);
         }
@@ -160,13 +160,23 @@ impl DssObject for Monitor {
     /// live metered element + node voltages), so they no-op here.
     fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
         if ordinal == 0 {
-            self.reset_it();
+            // `Action=Clear/Reset` during parse: the solution is never in
+            // harmonics mode here (it cannot be entered without a prior
+            // fundamental solve), so the header carries the `hour`/`t(sec)`
+            // labels; the `Set mode=harmonics` reset relabels them.
+            self.reset_it(false);
         }
     }
 
     fn end_edit(&mut self) {
+        // Pascal `RecalcElementData` reads the live `IsHarmonicModel`; at
+        // parse/edit time the solution is always at fundamental (harmonics mode
+        // requires a prior solve, and monitors are defined before it), so the
+        // header is built non-harmonic here. The harmonic time-column labels are
+        // applied when `Set mode=harmonics` resets every monitor (Pascal
+        // `Set_Mode` -> `ClearMonitorStream` with `IsHarmonicModel=TRUE`).
         let mut errors = Vec::new();
-        self.recalc(&mut errors);
+        self.recalc(&mut errors, false);
         for e in errors {
             self.med.cd.obj.push_error(e);
         }

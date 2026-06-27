@@ -7,12 +7,12 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-27 — **Phase 7 IN PROGRESS** (branch
+Last updated: 2026-06-28 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`). Completed work packages this phase: **WP7.1 (line
 constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
-InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), and WP7.5
-(DER C: InvControl + ExpControl) COMPLETE**. **WP7.6 (Harmonics) IN PROGRESS —
-steps 1 + 2 COMPLETE.** Step 1 landed the harmonics solve mode for the
+InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), WP7.5
+(DER C: InvControl + ExpControl), and WP7.6 (Harmonics) COMPLETE**. WP7.6 ran in
+three steps. Step 1 landed the harmonics solve mode for the
 current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
 `harmonic = frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
 `SolveHarmonic`/`SolveHarmonicT` drivers (`CollectAllFrequencies`/`AddFrequency` +
@@ -23,8 +23,13 @@ DER family (Generator/PVSystem/Storage `InitHarmonics`/`DoHarmonicMode` + the
 harmonic `CalcYPrimMatrix` Y=Yeq branch + the `SetNominalGeneration` harmonic guard):
 each is a voltage source behind its subtransient reactance (Generator Xd"; PV/Storage
 %R/%X), injecting the spectrum-scaled, phase-rotated Thevenin voltage through YPrim.
-The `guard_unported_harmonic_der` loud abort is removed.** **next = WP7.6 step 3
-(monitor harmonic header + corpus migration + gate finalize).**
+The `guard_unported_harmonic_der` loud abort is removed.** **Step 3 landed the
+monitor harmonic header (`ClearMonitorStream` labels the two time columns
+`Freq`/`Harmonic` in harmonics mode) and the `Set mode=` monitor/meter reset (the
+Pascal `Set_Mode` tail), and confirmed the harmonics corpus burn-down is maximal:
+0 migratable — all 4 corpus harmonics decks are Phase-8 (`Export`/`Show`) /
+`Isource` / FaultStudy-blocked, not harmonics-blocked (2 stale `Swtcontrol` tags
+refreshed).** **next = WP7.7 (Dynamics core).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -34,9 +39,10 @@ archives under `docs/phase-records/`:
 [`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md).
-Current scores: dss-core **lib 653**, **`solvable_now` 84** (the live corpus gate;
-the harmonics corpus migration lands in WP7.6 step 3); oracle pinned to dss-python
-0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
+Current scores: dss-core **lib 655**, **`solvable_now` 84** (the live corpus gate;
+the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
+WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
+`tools/golden/PIN.txt`).
 
 Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 §Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
@@ -71,13 +77,13 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) steps 1+2 done (VSource+Load current-source family + Generator/PVSystem/Storage Thevenin family)**; **next = WP7.6 step 3 (monitor harmonic header + corpus migration)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE (current-source + Thevenin-DER families + the harmonic monitor header / `Set mode=` reset)**; **next = WP7.7 (Dynamics core)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 653, golden_feeders 1,
+cargo test --workspace      # dss-core lib 655, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -453,7 +459,7 @@ smart-inverter follow-up) archived at
     pin); **no fix needed**.
 - **next:** WP7.6 (Harmonics) — the first cross-cutting solve mode.
 
-**WP7.6 (Harmonics) — 🚧 IN PROGRESS (steps 1+2 of 3 COMPLETE).** The harmonics solve
+**WP7.6 (Harmonics) — ✅ COMPLETE (steps 1–3).** The harmonics solve
 mode, ported in steps split by injection family.
 - **step 1 — the current-source harmonic family (VSource + Load) + the solve-mode
   driver.** Pascal `SolutionAlgs.SolveHarmonic`/`SolveHarmonicT`,
@@ -633,6 +639,44 @@ mode, ported in steps split by injection family.
     until the FaultStudy solve mode lands (WP7.9). The Generator `do_harmonic_mode`'s
     `SpectrumObj.GetMult` NIL-guard (`.unwrap_or(ZERO)`) is *more* defensive than Pascal (which
     would AV) — kept (reproducing an AV would be wrong; `defaultgen` always resolves).
+- **step 3 — the monitor harmonic header + the `Set mode=` reset + the corpus burn-down.**
+  Two faithful behavioral ports plus a documentation-honesty corpus refresh.
+  - **Monitor harmonic header (`ClearMonitorStream`, Monitor.pas l.709).** The two leading
+    time columns are now labelled `Freq`/`Harmonic` when the solution is in harmonics mode,
+    else `hour`/`t(sec)` — `is_harmonic` threaded through `reset_it`/`recalc`/
+    `clear_monitor_stream`. The canonical relabel path is the `Set mode=harmonics` reset
+    (it carries the live `IsHarmonicModel`); `end_edit`/`do_action` build non-harmonic
+    (parse/edit time is always at fundamental — harmonics mode requires a prior solve and
+    monitors are defined before it; `recalc_element_data` is **dead** in this architecture,
+    never invoked). The relabel is **oracle-invisible**: the C-API `Monitors_Get_Header`
+    returns `Header.Strings[k+2]` (CAPI_Monitors.pas l.414), stripping the two time columns,
+    so it is gated **offline** — the data channels stay exactly as the live/golden gates pin.
+  - **Monitor + meter reset on mode change (`Set_Mode` tail, Solution.pas l.2132).** The
+    `Set Mode=` handler now runs the full Pascal tail — `MonitorClass.ResetAll` +
+    `EnergyMeterClass.ResetAll` ahead of the existing fault/control resets — so every mode
+    change clears the monitor/meter buffers (the missing piece flagged as a Phase-6 no-op in
+    the old `set_cmd.rs` comment). The **oracle already does this**, so adding it can only
+    tighten Rust↔oracle agreement, never loosen it (the 84 live cases + 10 harmonic goldens
+    are byte-unchanged — the reset is benign-empty in every gated deck, and the relabel only
+    touches the gate-skipped time columns). It is also what rebuilds the harmonic header.
+  - **Gate.** 2 new exec tests (`exec/tests/harmonics.rs`): `harmonic_mode_relabels_monitor_
+    time_columns` (a real harmonic deck — header[0..2] flips `Freq`/`Harmonic` on `set mode=
+    harmonics`, data channels unchanged, fundamental + 5th samples) and
+    `mode_change_resets_monitor_buffer` (a daily(2) run's 2 samples are cleared by the next
+    `set mode=`). lib **653 → 655**; golden_phase7 stays **60**, `solvable_now` stays **84**.
+  - **Corpus burn-down — 0 migratable, maximal (honest refresh).** All 4 corpus harmonics
+    decks re-probed: each is blocked by a Phase-8 report command or an unported feature, not
+    by harmonics. `Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS` and
+    `…/HarmonicsVariableLoad/IEEE_519.DSS` now run the **full `harmonicT` solve clean**
+    (SwtControl + `Open` + `set mode=harmonicT` all ported, WP7.2/WP7.6; both CONVERGE) —
+    blocked only by the trailing `export monitor`/`show monitor` (Phase 8). Their **stale**
+    `unsupported_class=Swtcontrol` tags (SwtControl ported in WP7.2) were refreshed to the
+    genuine `unsupported_command=Export,Show; deferred=phase8-reporting`. `FreqScan/Run_Scan`
+    needs `Isource` (no source-current harmonic family in this crate) + Plot/Show/Export;
+    `NEVTestCase/Run_NEV` needs FaultStudy (WP7.9) + Export/Show (and does not converge at
+    fundamental — a separate item). **Corpus stays 84**, consistent with the WP7.5 step-4
+    policy (Export/Show-blocked cases stay skipped until Phase 8); `COVERAGE.md` unchanged.
+    The harmonics solve itself is fully gated by the 10 targeted `phase7/harmonics_*` goldens.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
@@ -761,13 +805,16 @@ getter.
   gate needs it.
 
 Other deferrals: Transformer GIC path (<0.51 Hz) + harmonics interplay
-(Phase 7); RegControl/CapControl `Sample`/`DoPendingAction` **wired into the
+(the frequency-scaled Y + the <0.51 Hz branch are **exercised by WP7.6
+harmonics**; the GIC *elements* stay Phase 9); RegControl/CapControl
+`Sample`/`DoPendingAction` **wired into the
 control loop (WP5.7)**; RegControl/ControlQueue debug-trace files (flag
 stored, no file — port with Monitors, Phase 6+); `MakePosSequence` everywhere
 (Phase 6+); `BusCoords` **ported (WP5.8)**; Monitors/EnergyMeters
 `sample_all`/`EndOfTimeStepCleanup` are no-op hook stubs at the SolveDaily/
-Yearly/Duty call sites (Phase 6); Newton algorithm, harmonics/dynamics/
-faultstudy/Monte-Carlo/load-duration/`SolveGeneralTime` solve modes (Phase 7);
+Yearly/Duty call sites (Phase 6); Newton algorithm, dynamics/faultstudy/
+Monte-Carlo/load-duration/`SolveGeneralTime` solve modes (Phase 7; the
+**harmonics**/`harmonicT` modes are **ported, WP7.6**);
 `Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported".
 
 ---
@@ -822,10 +869,11 @@ this environment; the `py` launcher is broken — use `python` directly.
   `geometry`/`spacing`/`wires`/`cncables`/`tscables` resolve and drive the Carson
   Z/Yc (one plural-cable reset + the `DG_Prot_Fdr` ~3e-5 line-Y precision case
   tracked-open, §1e).
-- **Dynamics & harmonics** (Generator/Storage `DoDynamicMode`/`DoHarmonicMode`,
-  state vars beyond names/count) + `MakePosSequence` everywhere; Monitor modes
-  3/4/7/8/10/12 build their header but defer the sample body; Transformer GIC
-  (<0.51 Hz).
+- **Harmonics** (`DoHarmonicMode` for VSource/Load + Generator/PVSystem/Storage,
+  the frequency sweep + the harmonic monitor header) — ✅ **done (WP7.6)**.
+- **Dynamics** (Generator/Storage `DoDynamicMode`, state vars beyond names/count)
+  + `MakePosSequence` everywhere; Monitor modes 3/4/7/8/10/12 build their header
+  but defer the sample body; Transformer GIC (<0.51 Hz) elements — WP7.7+ / Phase 9.
 - **AutoAdd solve mode** (`circuit/auto_add.rs` skeleton) — needs aux-current
   injection (`UseAuxCurrents`) + meter-register sampling in the solve loop; the
   options round-trip but the mode keeps its "Unknown solution mode" error.
