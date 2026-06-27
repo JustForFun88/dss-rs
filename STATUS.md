@@ -574,7 +574,7 @@ mode, ported in steps split by injection family.
   (replaced by 3 injection exec tests). Gate: 3 oracle-pinned goldens
   `phase7/harmonics_{generator,pvsystem,storage}_h5` (`gen_phase7.py` + `golden_phase7.rs`)
   — node V + DER/Line I/P + the Line YPrim entry-by-entry at the 5th, matched the oracle
-  1e-6 (golden_phase7 56 → 59). **Corpus stays 84** (migration is step 3). lib stays **650**.
+  1e-6 (golden_phase7 56 → 59). **Corpus stays 84** (migration is step 3). lib **650 → 653**.
   - **The `capture_element` order quirk (golden generator, not a port bug — confirmed
     with the user "don't port the oracle's bug"):** the oracle's `CktElement.Powers`,
     when queried *after* `Currents`, returns `V_harmonic · conj(I_fundamental)` for a
@@ -587,6 +587,21 @@ mode, ported in steps split by injection family.
     is stable across the two queries), so all existing goldens are byte-unchanged
     (`git status` confirmed only the 3 new files appear after a full `gen_phase7.py` regen).
     No `TODO(compat)` — there is no engine inexactness, only a query-order capture choice.
+  - **audit-tests follow-up:** verdict **sound + strictly additive** — the 3 new goldens
+    are a genuine oracle pin (full-corpus regen reproduces them byte-for-byte against the
+    pinned 0.15.7/0.14.5 oracle, non-degenerate injection), the `capture_element`
+    Powers-first swap is non-weakening (byte-identical for every existing golden, no
+    tolerance touched, still compared vs the oracle not Rust-vs-Rust), and the
+    deferral→injection conversion is correct. Fixed the **3 Minor gaps**: (1) the exec
+    injection tests were smoke-only (`vmax > 0 && < 12.47e3`, a ~4600× envelope) →
+    tightened to a genuine small-distortion bracket (`0.1 V ≤ vmax < 5% of L-N nominal`);
+    (2) **no oracle-independent offline discriminator** for the DER harmonic injection (the
+    step-1 Load had `harmonic_yprim_uses_series_rl_split_not_naive_yeq`) → added
+    `harmonic_yprim_is_{subtransient,thevenin}_admittance_not_powerflow` to
+    generator/pvsystem/storage `tests.rs` (each pins the harmonic `CalcYPrimMatrix` Y=Yeq
+    branch entry-by-entry and discriminates it from the power-flow stamping, oracle-free);
+    (3) the 3 new scenarios were missing from the `golden_phase7.rs` `must` anti-silent-drop
+    guard → added. lib **650 → 653**.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
