@@ -166,6 +166,26 @@ pub trait CktElement {
         let _ = (sys, node_v);
     }
 
+    /// Pascal `TPCElement.InitStateVars` (`PCElement.pas` l.174): seed this
+    /// machine's dynamic state variables from the present (power-flow) operating
+    /// point. Run once over every enabled PC element when entering dynamics mode
+    /// (`calcInitialMachineStates`, the `OK_for_Dynamics` success path). Default
+    /// no-op — the base `TPCElement` and the elements without dynamic state
+    /// (loads, sources) carry nothing to initialise.
+    fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let _ = (sys, node_v);
+    }
+
+    /// Pascal `TPCElement.IntegrateStates` (`PCElement.pas` l.179): advance this
+    /// machine's dynamic states by one predictor or corrector half-step (the
+    /// `Solution.iteration_flag` predictor/corrector selector is surfaced to
+    /// `SysCtx` once a machine consumes it, WP7.7 step 2). Run over every PC
+    /// element twice per dynamics time step (`IntegratePCStates`). Default no-op
+    /// — only machines with dynamic state respond.
+    fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let _ = (sys, node_v);
+    }
+
     /// Pascal `SpectrumObj`: the harmonic spectrum this element injects from, if
     /// one is resolved. Read by the harmonic frequency sweep
     /// (`CollectAllFrequencies`). Default None.

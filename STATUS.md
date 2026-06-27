@@ -11,8 +11,10 @@ Last updated: 2026-06-28 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`). Completed work packages this phase: **WP7.1 (line
 constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
 InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), WP7.5
-(DER C: InvControl + ExpControl), and WP7.6 (Harmonics) COMPLETE**. WP7.6 ran in
-three steps. Step 1 landed the harmonics solve mode for the
+(DER C: InvControl + ExpControl), and WP7.6 (Harmonics) COMPLETE**; **WP7.7
+(Dynamics core) IN PROGRESS — step 1 (the `SolveDynamic` predictor/corrector
+driver) done.** WP7.6 ran in three steps. Step 1 landed the harmonics solve mode
+for the
 current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
 `harmonic = frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
 `SolveHarmonic`/`SolveHarmonicT` drivers (`CollectAllFrequencies`/`AddFrequency` +
@@ -29,7 +31,15 @@ monitor harmonic header (`ClearMonitorStream` labels the two time columns
 Pascal `Set_Mode` tail), and confirmed the harmonics corpus burn-down is maximal:
 0 migratable — all 4 corpus harmonics decks are Phase-8 (`Export`/`Show`) /
 `Isource` / FaultStudy-blocked, not harmonics-blocked (2 stale `Swtcontrol` tags
-refreshed).** **next = WP7.7 (Dynamics core).**
+refreshed).** **WP7.7 step 1** wired `SolveMode::Dynamic` → `solve_dynamic`
+(`solution/solution/dynamics.rs`): the predictor/corrector step loop over
+`DynaVars.h` (`IterationFlag` 0/1), `IntegratePCStates`, and the
+`calcInitialMachineStates` dynamics-entry hook on the `Set mode=dynamic` handler
+(mirroring the harmonics entry). The per-element state machinery
+(`InitStateVars`/`IntegrateStates`/dynamics injection) is the no-op `CktElement`
+trait default for now — Generator/Storage/PVSystem fill it in step 2,
+IndMach012/DynEqPCE in step 3. **next = WP7.7 step 2 (Generator/Storage/PVSystem
+dynamics state vars + Monitor mode 3).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -40,7 +50,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md).
-Current scores: dss-core **lib 656**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 659**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -78,7 +88,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE (current-source + Thevenin-DER families + the harmonic monitor header / `Set mode=` reset)**; **next = WP7.7 (Dynamics core)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (the `SolveDynamic` predictor/corrector driver) done**; **next = WP7.7 step 2 (Generator/Storage/PVSystem dynamics state vars)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
@@ -494,6 +504,59 @@ and all six audit follow-ups) archived at
   **0 migratable** — all 4 decks are Phase-8 (`Export`) / `Isource` /
   FaultStudy-blocked, not harmonics-blocked (2 stale `Swtcontrol` tags refreshed).
   lib 653 → 656; golden_phase7 **60**; `solvable_now` **84**.
+
+**WP7.7 (Dynamics core) — 🚧 IN PROGRESS.**
+- **step 1 — the `SolveDynamic` driver (`solution/solution/dynamics.rs`):** wired
+  `SolveMode::Dynamic` → `solve_dynamic`, the predictor/corrector step loop over
+  `DynaVars.h` (per step: `IncrementTime` → `DefaultHourMult` → predictor
+  [`IterationFlag = NewTimeStep`, `IntegratePCStates`, `SolveSnap`] → corrector
+  [`SameTimeStep`, …] → `MonitorClass.SampleAll` → `EndOfTimeStepCleanup`), with
+  `SolutionInitialized` forced true so the inner power flow does not re-init per
+  step. Added `IntegratePCStates` (`SolutionAlgs.pas` l.321 — the full PCElements
+  list, no `Enabled` test) and `calcInitialMachineStates` (`Solution.pas` l.2156 —
+  the dynamics-entry machine-state init, enabled-gated), wired into the
+  `Set mode=dynamic` handler and fired only on a *fresh* entry into a dynamics mode
+  from a solved circuit (`was_dynamic` capture). Critically it runs **before**
+  `set_mode` commits `is_dynamic_model`/`h`/`mode` — Pascal's `OK_for_Dynamics`
+  timing — so each machine's `InitStateVars`/`ComputeIterminal` captures its
+  operating point from the power-flow state, not the dynamic Norton branch (the
+  harmonics entry stays post-commit; only dynamics needs the pre-commit order).
+  New no-op-default `CktElement` trait hooks `init_state_vars`/`integrate_states`
+  (base `TPCElement` does nothing); `Solution.iteration_flag` set by the driver
+  (surfaced to `SysCtx` in step 2 when a machine consumes it). Ported the Load
+  `GENERALTIME`/`DYNAMICMODE` `SetNominalLoad` case (growth × load-multiplier,
+  `ShapeFactor` 1+j1 under the `USENONE` `ActiveLoadShapeClass` default — the
+  established Generator/Storage/PVSystem assumption; the old `_ =>` arm wrongly
+  claimed Dynamic was unreachable + dropped the load-multiplier). Gate: 3 driver
+  integration tests (`exec/tests/dynamics.rs`) — a static-circuit dynamics solve
+  holds the snapshot fixpoint to 1 ppm across 5 steps + one monitor sample/step, a
+  `loadmult=2` solve drops the loadbus voltage (proves the re-solve + covers the
+  new multiplier arm), and the `OK_for_Dynamics` unsolved-entry guard. The focused
+  oracle gate over a real dynamics machine is step 4. lib **656 → 659**;
+  `solvable_now` **84**.
+  - **audit-code follow-up:** verdict — no step-1 bug; the driver is a faithful 1:1
+    `SolveDynamic` port (predictor/corrector order, `IterationFlag`, the
+    `IntegratePCStates`-all vs `calcInitialMachineStates`-enabled-gated distinction,
+    the Load `DYNAMICMODE` arm all confirmed against Pascal). Acted on three
+    forward-risk items it surfaced: **(1)** the entry hook was moved **ahead of**
+    `set_mode`'s mode commit (above) — it was post-commit, which would have made a
+    step-2 Generator `InitStateVars` capture the dynamic-branch current instead of
+    the power-flow one; **(2)** leaving dynamics mode does not yet
+    `InvalidateAllPCELEMENTS` — marked `NOT_PORTED(WP7.7 step 2)` in `set_mode`
+    (inert until a machine presents a mode-dependent Norton YPrim); **(3)**
+    `preserve_node_voltages` is set but `build_y_matrix` does not yet honour
+    `UpdateVBus`/`RestoreNodeVfromVbus` — marked `NOT_PORTED(WP7.7)` at the build
+    site (pre-existing since WP7.6-harmonics; inert with no mid-step Y rebuild).
+  - **audit-tests follow-up:** verdict — genuine guards, not smoke (loop-bound /
+    clock / sample-count / unsolved-guard all real). Closed the one gap it found:
+    the 1-ppm voltage-hold check is tautological for a static fixture (a no-solve
+    driver passes it; only `is_solved` caught that), and the new Load `DYNAMICMODE`
+    multiplier arm was exercised only at loadmult 1 — added
+    `dynamic_mode_load_multiplier_moves_operating_point` (loadmult=2 → loadbus
+    voltage must drop), which makes the re-solve observable and gives the arm its
+    first non-trivial coverage. lib 658 → **659**.
+- **next:** step 2 — Generator/Storage/PVSystem `InitStateVars`/`IntegrateStates`/
+  the dynamics current injection (`DoDynamicMode`/`CalcVthev_Dyn`) + Monitor mode 3.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

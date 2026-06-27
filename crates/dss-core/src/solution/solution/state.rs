@@ -12,6 +12,7 @@ use crate::circuit::Circuit;
 use crate::elements::traits::{ElemStore, SysCtx};
 use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
+use crate::support::dynamics::IterationFlag;
 
 /// Pascal `TSolveMode` (Phase 3 implements Snapshot and Direct).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -144,6 +145,9 @@ pub struct Solution {
     pub t: f64,
     pub h: f64,
     pub dbl_hour: f64,
+    /// `DynaVars.IterationFlag`: predictor (`NewTimeStep`) vs corrector
+    /// (`SameTimeStep`) within a dynamics time step (`SolveDynamic`).
+    pub iteration_flag: IterationFlag,
     pub interval_hrs: f64,
     pub number_of_times: i32,
     pub random_type: i32,
@@ -220,6 +224,7 @@ impl Solution {
             t: 0.0,
             h: 0.001, // default for dynasolve
             dbl_hour: 0.0,
+            iteration_flag: IterationFlag::NewTimeStep,
             interval_hrs: 1.0,
             number_of_times: 100,
             random_type: 1, // GAUSSIAN

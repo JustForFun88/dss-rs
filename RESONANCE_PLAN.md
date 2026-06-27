@@ -76,6 +76,66 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   **Acceptance:** on a damped resonance test, refined `Z` converges to the analytical
   value as damping → small; residual `‖b − A·x‖` falls below a set bound.
 
+  **Confirmed by the standard numerical-LA literature (this is a named, textbook
+  technique, not a homegrown trick).** Both texts describe exactly the three-step
+  process `r = b − A·x; solve A·d = r; x += d`:
+  - **Golub & Van Loan, *Matrix Computations* (4th ed.), §3.5.3 "Iterative
+    Improvement" (p. 140).** States *our* case verbatim: with partial pivoting the
+    computed `x̂` already solves a nearby system, "*However, this may not be the case
+    for certain pivot strategies used to preserve sparsity. In this situation, the
+    fixed precision iterative improvement step can be worthwhile and cheap.*" (cites
+    Arioli, Demmel & Duff 1988). Also: "*The original A must be used in the
+    high-precision computation of r.*" Heuristic III: with residual at precision `u²`,
+    after `k` steps `x` has ≈`min{d, k(d−q)}` correct digits (`u=10⁻ᵈ`, `κ(A)≈10^q`);
+    each refinement is `O(n²)`/`O(nnz)` vs the one-time `O(n³)` factorization.
+  - **Higham, *Accuracy and Stability of Numerical Algorithms* (2nd ed.), Ch. 12
+    "Iterative Refinement."** "*The economics … are favourable for solvers based on a
+    factorization of A, because the factorization used to compute x can be reused.*"
+    The solver is treated as a black box — "*the solver need not be LU factorization
+    or even a factorization method*" (only backward-stability, Eq. 12.1, is assumed),
+    so it composes with our `SparseSet` as-is. Directly on motive: "*sparse GE is
+    performed without pivoting, for speed, and iterative refinement is used to regain
+    stability*" (Li & Demmel 1998; Dongarra et al. 2000). Fixed-precision refinement
+    restores **backward** stability (Skeel 1980); **forward** accuracy near the pole
+    needs an extended-precision residual.
+  - Russian canon (cited in Venikov's own bibliography, see below): **Фаддеев &
+    Фаддеева, «Вычислительные методы линейной алгебры» (1963)** — "уточнение по
+    невязкам"; **Брамеллер/Аллан/Хэмэм, «Слабозаполненные матрицы» (1979)** — sparse
+    factorization in the power-systems (Tinney/KLU) lineage.
+
+  **Integration recipe — drop-in over the existing `SparseSet` (no `solve_one`
+  change).** Iterative refinement is a strict *outer* wrapper around the current
+  single direct solve (`crates/dss-sparse/src/lib.rs`, `solve_one`):
+  1. The factorization (`self.factors`) is computed once and reused for every
+     correction solve — exactly the "favourable economics" above. Cost per step is the
+     triangular solves only, no refactor.
+  2. **Row-equilibration is already handled.** The factored matrix is `diag(s)·A`, but
+     `solve_one` pre-scales the RHS by `row_scale`. Passing the *true* residual
+     `r = b − A·x` into `solve_one(r, dx)` therefore solves `diag(s)·A·dx = diag(s)·r`,
+     i.e. `A·dx = r` — correct. **`solve_one` needs no change.**
+  3. **Compute the residual on the unscaled assembled `self.matrix`** (not the factored
+     `diag(s)·A`) — both texts insist on the original `A`.
+  4. **Residual precision.** Fixed f64 already restores backward stability (the
+     "worthwhile and cheap" sparsity case). For forward accuracy at a near-singular `Y`,
+     accumulate `b − A·x` with a compensated (Kahan/two-product) complex dot — pure
+     Rust, no new dependency, honours `#![forbid(unsafe_code)]`.
+  5. **Gate on `rcond` / residual norm** (both already exposed): well-conditioned corpus
+     solves skip refinement entirely → bit-identical to today → oracle-match gate
+     untouched. Off by default during the port; this *is* the post-1:1 divergence.
+  **Limit (= §2.3):** a truly singular `Y` (lossless pole) is beyond rescue — GVL: "*no
+  improvement may result if A is badly conditioned w.r.t. the machine precision.*" The
+  target regime is ill-conditioned-but-not-singular (damped resonance).
+
+  **Not to be confused with the two *other* iterations in the power-systems texts**
+  (Venikov, *«Математические задачи электроэнергетики»*): (a) §2-4 stationary linear
+  solvers — простая итерация (Jacobi) / Зейдель (Gauss-Seidel), `x⁽ᵏ⁾ = B + C·x⁽ᵏ⁻¹⁾`,
+  converge only under diagonal dominance `|λ(C)|<1` — these solve `Ax=b` from scratch
+  and *diverge* near a singular `Y`; (b) Appendix 8 / the nonlinear power-flow outer loop
+  (simple iteration / Newton) — the OpenDSS outer loop already noted above. Iterative
+  refinement is a third, distinct thing: it polishes one *direct* solve and is generic
+  NLA, orthogonal to the PF outer loop. Venikov's books do **not** describe it; they cite
+  the linear-algebra texts that do (Фаддеев & Фаддеева).
+
 - **WP-R2 — resonance-aware analysis (more effort, a new *analysis* feature, not a
   core-solve change).** Locate resonances analytically instead of blind scanning:
   eigen-decompose `Y_bus(h) = L·Λ·Tᵀ` and find the orders where an eigenvalue → 0 (the
@@ -112,3 +172,20 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   discipline — and why this is *not* one).
 - `investigations/oracle-powers-currents-harmonic/` (git-ignored) — the well-conditioned
   resonance-style parity check (dss-rs ↔ oracle).
+- **G. H. Golub & C. F. Van Loan, *Matrix Computations*, 4th ed., Johns Hopkins, 2013 —
+  §3.5.3 "Iterative Improvement" (p. 140)** (local copy
+  `.inputs/Solve_books/2013 Matrix Computations 4th.pdf`). The sparsity-preserving-pivot
+  case + mixed-precision Heuristic III. Underlying analysis: Skeel (1980); Arioli, Demmel
+  & Duff (1988).
+- **N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002 —
+  Ch. 12 "Iterative Refinement"** (local copy
+  `.inputs/Solve_books/Higham_2002_Accuracy and Stability of Numerical Algorithms.pdf`).
+  Definitive treatment; factorization-reuse economics, solver-agnostic assumption
+  (Eq. 12.1), fixed- vs extended-precision behaviour, sparse-GE-without-pivoting use case.
+- **Фаддеев Д. К., Фаддеева В. Н., «Вычислительные методы линейной алгебры», ГИФМЛ,
+  1963** and **Брамеллер А., Аллан Р., Хэмэм Я., «Слабозаполненные матрицы: анализ
+  электроэнергетических систем», Энергия, 1979** — Russian-canon sources for residual
+  refinement and sparse factorization, both cited in V. A. Venikov, *«Электрические
+  системы. Математические задачи электроэнергетики»* (bibliography "К главам 1 и 2").
+  Note: Venikov's §2-4 ("итерационные методы") covers *stationary* solvers
+  (Jacobi/Seidel), not residual refinement — see the WP-R1 "not to be confused" note.

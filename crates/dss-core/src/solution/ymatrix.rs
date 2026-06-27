@@ -45,6 +45,15 @@ pub fn build_y_matrix(
     option: BuildOption,
     allocate_vi: bool,
 ) -> SolveResult {
+    // NOT_PORTED(WP7.7): Pascal `BuildYMatrix` brackets the rebuild with
+    // `UpdateVBus()` / `RestoreNodeVfromVbus()` when `Solution.PreserveNodeVoltages`
+    // is set (Ymatrix.pas l.298/l.449), so node voltages survive a mid-mode Y
+    // rebuild. The flag is set entering Harmonic/HarmonicT (WP7.6) and Dynamic
+    // (WP7.7 step 1) but not yet consumed here. Inert so far: those modes do not
+    // force a mid-step structural Y rebuild without a per-element dynamics YPrim
+    // invalidation (step 2). Honour it when the step-2 machine YPrims can change Y
+    // mid-dynamics; until then the harmonics goldens + the step-1 driver tests pass
+    // because no rebuild discards the preserved voltages.
     // Recount buses/nodes if bus definitions changed — this changes the node
     // references into the system Y matrix.
     if ckt.bus_name_redefined {
