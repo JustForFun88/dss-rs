@@ -127,9 +127,10 @@ fn second_harmonic_solve_restores_saved_voltages() {
 }
 
 /// The voltage-source-behind-reactance DER family (Generator/PVSystem/Storage)
-/// defers its harmonic injection to WP7.6 step 2 and must refuse the solve
-/// loudly rather than run its power-flow injection at a harmonic frequency.
-fn assert_der_harmonic_deferral(der_new: &str, full_name: &str) {
+/// injects harmonic current from its spectrum in harmonics mode (WP7.6 step 2):
+/// the solve completes (no loud deferral) and the spectrum-driven injection
+/// produces a non-zero harmonic distortion voltage.
+fn assert_der_harmonic_injects(der_new: &str, full_name: &str) {
     let mut dss = Dss::new();
     dss.command("New circuit.d basekv=12.47 pu=1.0 phases=3 mvasc3=20000 mvasc1=21000");
     dss.command("New Line.l1 bus1=sourcebus bus2=db length=1 units=km r1=0.1 x1=0.3");
@@ -146,10 +147,29 @@ fn assert_der_harmonic_deferral(der_new: &str, full_name: &str) {
     dss.command("Set harmonics=(5)");
     dss.command("Set mode=harmonics");
     dss.command("Solve");
-    let errs = dss.errors().join("\n");
     assert!(
-        errs.contains(full_name) && errs.contains("WP7.6 step 2"),
-        "expected a loud {full_name} harmonic deferral, got: {errs:?}"
+        dss.errors().is_empty(),
+        "{full_name} harmonic solve: {:?}",
+        dss.errors()
+    );
+
+    let ckt = dss.circuit().unwrap();
+    assert!(ckt.is_solved, "{full_name}: not solved");
+    // The sweep leaves the solution at the 5th harmonic (300 Hz).
+    assert!((ckt.solution.harmonic - 5.0).abs() < 1e-9, "{full_name}");
+    assert!((ckt.solution.frequency - 300.0).abs() < 1e-9, "{full_name}");
+    // The DER injected 5th-harmonic current from its spectrum → a small,
+    // non-zero distortion voltage.
+    let vmax = (1..=ckt.num_nodes)
+        .map(|i| ckt.solution.node_v[i].norm())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        vmax > 0.0,
+        "{full_name}: all harmonic voltages zero (no injection)"
+    );
+    assert!(
+        vmax < 12.47e3,
+        "{full_name}: harmonic voltage {vmax} not a small distortion"
     );
 }
 
@@ -168,25 +188,30 @@ fn unknown_spectrum_name_errors_not_silent() {
 }
 
 #[test]
-fn generator_in_harmonic_mode_aborts_loudly() {
-    assert_der_harmonic_deferral(
+fn generator_in_harmonic_mode_injects() {
+    // Generator carries the built-in `defaultgen` spectrum (3% at the 5th).
+    assert_der_harmonic_injects(
         "New Generator.g1 bus1=db kv=12.47 kw=100 pf=0.95 model=1",
         "Generator.g1",
     );
 }
 
 #[test]
-fn pvsystem_in_harmonic_mode_aborts_loudly() {
-    assert_der_harmonic_deferral(
-        "New PVSystem.pv1 bus1=db phases=3 kv=12.47 kva=100 pmpp=100 irradiance=1.0",
+fn pvsystem_in_harmonic_mode_injects() {
+    // PVSystem has no default spectrum (Create forces `SpectrumObj := NIL`), so
+    // give it one explicitly to exercise the injection path.
+    assert_der_harmonic_injects(
+        "New PVSystem.pv1 bus1=db phases=3 kv=12.47 kva=100 pmpp=100 irradiance=1.0 spectrum=defaultgen",
         "PVSystem.pv1",
     );
 }
 
 #[test]
-fn storage_in_harmonic_mode_aborts_loudly() {
-    assert_der_harmonic_deferral(
-        "New Storage.st1 bus1=db phases=3 kv=12.47 kwrated=100 kwhrated=200 state=idling",
+fn storage_in_harmonic_mode_injects() {
+    // Storage discharging (so it carries a fundamental current to capture) +
+    // an explicit spectrum.
+    assert_der_harmonic_injects(
+        "New Storage.st1 bus1=db phases=3 kv=12.47 kwrated=100 kwhrated=200 state=discharging %discharge=100 spectrum=defaultgen",
         "Storage.st1",
     );
 }

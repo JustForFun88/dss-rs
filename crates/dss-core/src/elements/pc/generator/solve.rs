@@ -5,18 +5,59 @@
 
 use num_complex::Complex64;
 
-use crate::elements::traits::SysCtx;
+use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::cmatrix::CMatrix;
+use crate::support::complexutil::{cang, rotate_phasor_deg, rotate_phasor_rad};
 use crate::support::mathutil::SymComp;
-use crate::util::sqrt3;
+use crate::util::{EPSILON, sqrt3};
 
 use super::{Connection, Generator};
 
 impl Generator {
-    /// Pascal `CalcYPrimMatrix` (power-flow path).
+    /// Pascal `CalcYPrimMatrix` (power-flow + harmonic/dynamic paths).
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
         self.cd.yprim_freq = sys.frequency;
         let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
+
+        let nphases = self.cd.nphases;
+        let nconds = self.cd.nconds;
+
+        if sys.is_harmonic_model {
+            // Harmonic/dynamic YPrim: `Y := Yeq` (the L-N subtransient admittance
+            // set in `InitHarmonics`), `EPSILON` if the generator is off; positive
+            // (not negated like the power-flow path).
+            let mut y = if self.gen_on {
+                self.yeq
+            } else {
+                Complex64::new(EPSILON, 0.0)
+            };
+            if self.connection == Connection::Delta {
+                y /= 3.0; // convert to delta impedance
+            }
+            y.im /= freq_multiplier;
+            let yij = -y;
+            match self.connection {
+                Connection::Wye => {
+                    for i in 0..nphases {
+                        ymatrix.set(i, i, y);
+                        ymatrix.add(nconds - 1, nconds - 1, y);
+                        ymatrix.set(i, nconds - 1, yij);
+                        ymatrix.set(nconds - 1, i, yij);
+                    }
+                }
+                Connection::Delta => {
+                    for i in 0..nphases {
+                        ymatrix.set(i, i, y);
+                        ymatrix.add(i, i, y); // put it in again
+                        for j in 0..i {
+                            ymatrix.set(i, j, yij);
+                            ymatrix.set(j, i, yij);
+                        }
+                    }
+                }
+            }
+            return;
+        }
 
         // Regular power-flow generator model: Yeq is L-N; negate for generation.
         let mut y = -self.yeq;
@@ -25,8 +66,6 @@ impl Generator {
         }
         y.im /= freq_multiplier;
 
-        let nphases = self.cd.nphases;
-        let nconds = self.cd.nconds;
         match self.connection {
             Connection::Wye => {
                 let yij = -y;
@@ -363,7 +402,14 @@ impl Generator {
         errors: &mut Vec<String>,
     ) {
         self.cd.iterminal_updated = false;
-        // Dynamics/harmonics models are Phase 7.
+        // Above the fundamental, harmonics mode injects the spectrum-scaled
+        // Thevenin source through YPrim instead of the power-flow model (Pascal
+        // `if IsHarmonicModel and (Frequency <> Fundamental) then DoHarmonicMode`).
+        if sys.is_harmonic_model && sys.frequency != sys.fundamental {
+            self.do_harmonic_mode(sys, node_v);
+            return;
+        }
+        // Dynamics models are WP7.7.
         match self.gen_model {
             1 => self.do_constant_pq_gen(sys, node_v),
             2 => self.do_constant_z_gen(sys, node_v),
@@ -397,6 +443,69 @@ impl Generator {
             self.cd.inj_current.fill(Complex64::ZERO);
         } else {
             self.calc_gen_model_contribution(sys, node_v, errors);
+        }
+    }
+
+    /// Pascal `TGeneratorObj.InitHarmonics`: capture the Thevenin voltage behind
+    /// Xd" from the present fundamental terminal current as the harmonic injection
+    /// base. `Yeq` becomes the L-N subtransient admittance the harmonic
+    /// `CalcYPrimMatrix` branch consumes.
+    pub(super) fn init_harmonics_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.cd.yprim_invalid = true; // force YPrim rebuild
+        self.gen_fundamental = sys.frequency; // whatever the frequency is on entry
+        self.yeq = Complex64::new(0.0, self.xdpp).inv(); // L-N, used for current calcs
+
+        if !self.gen_on {
+            self.v_thev_harm = 0.0;
+            self.theta_harm = 0.0;
+            return;
+        }
+        self.compute_iterminal(sys, node_v); // present value of current
+        let nconds = self.cd.nconds;
+        let va = match self.connection {
+            // wye — neutral is explicit
+            Connection::Wye => node_v[self.cd.node_ref[0]] - node_v[self.cd.node_ref[nconds - 1]],
+            // delta — assume neutral is at zero
+            Connection::Delta => node_v[self.cd.node_ref[0]],
+        };
+        let e = va - self.cd.iterminal[0] * Complex64::new(0.0, self.xdpp);
+        self.v_thev_harm = e.norm(); // base mag
+        self.theta_harm = cang(e); // base angle (radians)
+    }
+
+    /// Pascal `TGeneratorObj.DoHarmonicMode`: the generator as a voltage source
+    /// behind Xd" — the spectrum-scaled, phase-rotated Thevenin voltage pushed
+    /// through YPrim to the injection current. `IterminalUpdated` stays false (the
+    /// terminal current is derived from the network in `GetTerminalCurrents`).
+    fn do_harmonic_mode(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.cd.compute_vterminal(node_v);
+        let gen_harmonic = sys.frequency / self.gen_fundamental;
+        let mult = self
+            .spectrum_obj
+            .as_ref()
+            .map(|s| s.get_mult(gen_harmonic))
+            .unwrap_or(Complex64::ZERO);
+        let mut e = mult * self.v_thev_harm; // base harmonic magnitude
+        e = rotate_phasor_rad(e, gen_harmonic, self.theta_harm); // fundamental phase shift
+
+        let nphases = self.cd.nphases;
+        let nconds = self.cd.nconds;
+        let mut buffer = vec![Complex64::ZERO; nconds];
+        for (i, slot) in buffer.iter_mut().enumerate().take(nphases) {
+            *slot = e;
+            if i < nphases - 1 {
+                e = rotate_phasor_deg(e, gen_harmonic, -120.0); // assume 3-phase
+            }
+        }
+        // Handle wye connection: assume no neutral injection voltage.
+        if self.connection == Connection::Wye {
+            buffer[nconds - 1] = self.cd.vterminal[nconds - 1];
+        }
+
+        // InjCurrent = YPrim · buffer.
+        let cd = &mut self.cd;
+        if let Some(yprim) = &cd.yprim {
+            yprim.mv_mult(&mut cd.inj_current, &buffer);
         }
     }
 }

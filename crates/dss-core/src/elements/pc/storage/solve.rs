@@ -10,8 +10,9 @@
 use num_complex::Complex64;
 
 use crate::elements::pc::inv_based_pce::Connection;
-use crate::elements::traits::SysCtx;
+use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::cmatrix::CMatrix;
+use crate::support::complexutil::{cang, rotate_phasor_deg, rotate_phasor_rad};
 use crate::support::mathutil::SymComp;
 use crate::util::sqrt3;
 
@@ -247,6 +248,12 @@ impl Storage {
         errors: &mut Vec<String>,
     ) {
         self.cd.iterminal_updated = false;
+        // Harmonics (above the fundamental) inject the spectrum-scaled Thevenin
+        // source — checked before GFM, matching Pascal's dispatch order.
+        if sys.is_harmonic_model && sys.frequency != sys.fundamental {
+            self.do_harmonic_mode(sys, node_v);
+            return;
+        }
         if self.base.gfm_mode {
             // Pascal `if GFM_Mode then DoGFM_Mode(); Exit;` — DoGFM_Mode /
             // CalcGFMYprim are WP7.7 (dynamics). Init InjCurrent from Yprim like
@@ -287,6 +294,64 @@ impl Storage {
             self.cd.inj_current.fill(Complex64::ZERO);
         } else {
             self.calc_storage_model_contribution(sys, node_v, errors);
+        }
+    }
+
+    /// Pascal `TStorageObj.InitHarmonics`: a Thevenin equivalent behind the
+    /// `%R`/`%X` reactance — capture its source magnitude/angle from the present
+    /// fundamental terminal current. `Yeq` becomes the L-N harmonic admittance the
+    /// harmonic `CalcYPrimMatrix` branch consumes.
+    pub(super) fn init_harmonics_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.cd.yprim_invalid = true; // force YPrim rebuild
+        self.storage_fundamental = sys.frequency; // frequency on entry
+        let z_thev = Complex64::new(self.r_thev, self.x_thev);
+        self.base.yeq = z_thev.inv(); // L-N, used for current calcs
+
+        self.compute_iterminal(sys, node_v); // present value of current
+        let nconds = self.cd.nconds;
+        let va = match self.base.connection {
+            // wye — neutral is explicit
+            Connection::Wye => node_v[self.cd.node_ref[0]] - node_v[self.cd.node_ref[nconds - 1]],
+            // delta — assume neutral is at zero
+            Connection::Delta => node_v[self.cd.node_ref[0]],
+        };
+        let e = va - self.cd.iterminal[0] * z_thev;
+        self.v_thev_harm = e.norm(); // base mag
+        self.theta_harm = cang(e); // base angle (radians)
+    }
+
+    /// Pascal `TStorageObj.DoHarmonicMode`: the Storage element as a voltage
+    /// source behind `%R`/`%X` — the spectrum-scaled, phase-rotated Thevenin
+    /// voltage pushed through YPrim to the injection current.
+    fn do_harmonic_mode(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.cd.compute_vterminal(node_v);
+        let storage_harmonic = sys.frequency / self.storage_fundamental;
+        let mult = self
+            .spectrum_obj
+            .as_ref()
+            .map(|s| s.get_mult(storage_harmonic))
+            .unwrap_or(Complex64::ZERO);
+        let mut e = mult * self.v_thev_harm; // base harmonic magnitude
+        e = rotate_phasor_rad(e, storage_harmonic, self.theta_harm); // fundamental phase shift
+
+        let nphases = self.cd.nphases;
+        let nconds = self.cd.nconds;
+        let mut buffer = vec![Complex64::ZERO; nconds];
+        for (i, slot) in buffer.iter_mut().enumerate().take(nphases) {
+            *slot = e;
+            if i < nphases - 1 {
+                e = rotate_phasor_deg(e, storage_harmonic, -120.0); // assume 3-phase
+            }
+        }
+        // Handle wye connection: assume no neutral injection voltage.
+        if self.base.connection == Connection::Wye {
+            buffer[nconds - 1] = self.cd.vterminal[nconds - 1];
+        }
+
+        // InjCurrent = YPrim · buffer.
+        let cd = &mut self.cd;
+        if let Some(yprim) = &cd.yprim {
+            yprim.mv_mult(&mut cd.inj_current, &buffer);
         }
     }
 }

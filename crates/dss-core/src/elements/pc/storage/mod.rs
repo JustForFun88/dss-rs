@@ -44,6 +44,7 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -264,6 +265,11 @@ pub struct Storage {
     pub r_thev: f64,
     /// `XThev` — Thevenin X in ohms.
     pub x_thev: f64,
+    /// `Vthevharm` — harmonic Thevenin source magnitude (captured at the
+    /// fundamental in `InitHarmonics`).
+    pub v_thev_harm: f64,
+    /// `ThetaHarm` — harmonic Thevenin source angle (radians).
+    pub theta_harm: f64,
     /// `Fkvarlimit` — max kvar output (unsigned).
     pub f_kvar_limit: f64,
     /// `Fkvarlimitneg`.
@@ -358,6 +364,9 @@ pub struct Storage {
 
     /// `SpectrumObj` name — Create sets it NIL (empty) for the inverter PCEs.
     pub spectrum: String,
+    /// Resolved harmonic spectrum, snapshot-cloned in at edit-completion (only
+    /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
+    pub spectrum_obj: Option<SpectrumObj>,
     /// `DynaModelNameStr` — user dynamics DLL name (NOT_PORTED; stored only).
     pub dyna_model_name: String,
     /// `DynaModelEditStr` (NOT_PORTED).
@@ -431,6 +440,8 @@ impl Storage {
             f_kva_rating: kw_rating, // FkVArating := kWRating
             r_thev: 0.0,
             x_thev: 0.0,
+            v_thev_harm: 0.0,
+            theta_harm: 0.0,
             f_kvar_limit: kw_rating, // Fkvarlimit := FkVArating
             f_kvar_limit_neg: kw_rating,
             pct_kw_rated: 1.0,
@@ -479,6 +490,7 @@ impl Storage {
             registers: [0.0; NUM_STORAGE_REGISTERS],
             derivatives: [0.0; NUM_STORAGE_REGISTERS],
             spectrum: String::new(),
+            spectrum_obj: None,
             dyna_model_name: String::new(),
             dyna_model_edit: String::new(),
         };

@@ -1238,6 +1238,52 @@ def deck_harmonics_load_motor_h5() -> list[str]:
     ]
 
 
+# --- WP7.6 step 2: the voltage-source-behind-reactance DER family ------------
+# Generator/PVSystem/Storage inject harmonics as a Thevenin source behind their
+# subtransient reactance (Generator: Xd"; PVSystem/Storage: %R/%X). The
+# fundamental power flow sets each one's harmonic reference (Vthevharm/ThetaHarm),
+# then `set mode=harmonics` re-injects the spectrum-scaled source and the sweep
+# solves the 5th on the frequency-scaled Y. Gate: node V + DER/Line I/P + the Line
+# YPrim entry-by-entry, all at the 5th harmonic.
+def deck_harmonics_generator_h5() -> list[str]:
+    # A Generator at bus b carries the built-in `defaultgen` spectrum; at the 5th
+    # it injects 3% (defaultgen %mag at h=5) of its Thevenin-behind-Xd" reference.
+    return [
+        *HARM_HEAD,
+        "new Generator.g bus1=b phases=3 kv=12.47 kw=1000 pf=0.95 model=1",
+        *HARM_TAIL,
+        "set harmonics=(5)",
+        "set mode=harmonics",
+    ]
+
+
+def deck_harmonics_pvsystem_h5() -> list[str]:
+    # PVSystem behind %R/%X; it has no default spectrum (Create forces
+    # `SpectrumObj := NIL`), so an explicit `spectrum=defaultgen` drives the
+    # 5th-harmonic injection.
+    return [
+        *HARM_HEAD,
+        "new PVSystem.pv bus1=b phases=3 kv=12.47 kva=1000 pmpp=1000 irradiance=1.0 "
+        "spectrum=defaultgen",
+        *HARM_TAIL,
+        "set harmonics=(5)",
+        "set mode=harmonics",
+    ]
+
+
+def deck_harmonics_storage_h5() -> list[str]:
+    # Storage discharging (so it carries a fundamental current for the Thevenin
+    # reference) behind %R/%X, injecting the 5th from an explicit spectrum.
+    return [
+        *HARM_HEAD,
+        "new Storage.st bus1=b phases=3 kv=12.47 kwrated=1000 kwhrated=2000 "
+        "state=discharging %discharge=100 spectrum=defaultgen",
+        *HARM_TAIL,
+        "set harmonics=(5)",
+        "set mode=harmonics",
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -1297,6 +1343,9 @@ SCENARIOS = {
     "harmonics_doall": deck_harmonics_doall,
     "harmonics_doall_t": deck_harmonics_doall_t,
     "harmonics_load_motor_h5": deck_harmonics_load_motor_h5,
+    "harmonics_generator_h5": deck_harmonics_generator_h5,
+    "harmonics_pvsystem_h5": deck_harmonics_pvsystem_h5,
+    "harmonics_storage_h5": deck_harmonics_storage_h5,
 }
 
 

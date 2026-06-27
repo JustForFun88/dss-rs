@@ -4,12 +4,12 @@
 //! fundamental-voltage save/restore (`savePresentVoltages` /
 //! `RetrieveSavedVoltages`).
 //!
-//! Step-1 scope (WP7.6): the current-source harmonic family (VSource + Load;
-//! Isource is not ported in this crate). The voltage-source-behind-reactance
-//! DERs (Generator / PVSystem / Storage) defer their `InitHarmonics` /
-//! `DoHarmonicMode` to step 2 and are refused loudly here
-//! ([`guard_unported_harmonic_der`]) rather than run their power-flow injection
-//! at a harmonic frequency.
+//! Scope (WP7.6): the current-source harmonic family (VSource + Load; Isource is
+//! not ported in this crate) landed in step 1, and the
+//! voltage-source-behind-reactance DERs (Generator / PVSystem / Storage —
+//! `InitHarmonics` / `DoHarmonicMode`) in step 2. Their per-element harmonic
+//! injection runs through the shared `init_harmonics` / `inj_currents` hooks; no
+//! solve-mode-level special-casing remains.
 
 use crate::circuit::Circuit;
 use crate::util::EPSILON;
@@ -50,10 +50,6 @@ pub(crate) fn initialize_for_harmonics(ckt: &mut Circuit, env: &mut SolveEnv) ->
 /// rebuild (via `Set_Frequency`), and every non-fundamental frequency is solved
 /// directly and sampled into the monitors.
 pub(super) fn solve_harmonic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    if guard_unported_harmonic_der(ckt, env) {
-        return Ok(());
-    }
-
     // Last solution was something other than fundamental: reset to it and reload
     // the saved fundamental voltages (Pascal `RetrieveSavedVoltages`).
     if ckt.solution.frequency != ckt.fundamental {
@@ -90,10 +86,6 @@ pub(super) fn solve_harmonic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResu
 pub(super) fn solve_harmonic_t(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0; // for energy meters / storage
     if ckt.solution.solution_abort {
-        return Ok(());
-    }
-
-    if guard_unported_harmonic_der(ckt, env) {
         return Ok(());
     }
 
@@ -205,35 +197,4 @@ fn retrieve_saved_voltages(ckt: &mut Circuit) -> bool {
     }
     ckt.solution.node_v.clone_from(&ckt.solution.saved_node_v);
     true
-}
-
-/// WP7.6 step 1 ships only the current-source harmonic family. Refuse the solve
-/// loudly when an enabled Generator / PVSystem / Storage is present — running its
-/// power-flow injection at a harmonic frequency would be silently wrong (the
-/// deferral-is-never-a-silent-fallback rule). Removed in step 2.
-fn guard_unported_harmonic_der(ckt: &mut Circuit, env: &mut SolveEnv) -> bool {
-    let mut blocker = None;
-    'outer: for (kind, list) in [
-        ("Generator", ckt.generators.clone()),
-        ("PVSystem", ckt.pv_systems.clone()),
-        ("Storage", ckt.storages.clone()),
-    ] {
-        for r in list {
-            let cd = env.store.ckt_elem(r).cd();
-            if cd.enabled {
-                blocker = Some(format!("{kind}.{}", cd.obj.name()));
-                break 'outer;
-            }
-        }
-    }
-    if let Some(name) = blocker {
-        env.errors.push(format!(
-            "{name}: harmonic-mode injection (InitHarmonics/DoHarmonicMode) is not \
-             ported yet (Phase 7 WP7.6 step 2)."
-        ));
-        ckt.solution.solution_abort = true;
-        true
-    } else {
-        false
-    }
 }
