@@ -278,3 +278,21 @@ fn reset_command_resets_controls() {
         "Reset must reset controls (close the bank to InitialState)"
     );
 }
+
+#[test]
+fn mode_change_resets_meter_registers() {
+    // Pascal `Set_Mode` tail (Solution.pas l.2134): `EnergyMeterClass.ResetAll`
+    // zeroes every meter's registers on a mode change, alongside the monitor
+    // reset (WP7.6 step 3). The daily run accumulated kWh; switching mode clears it.
+    let mut dss = daily_meter_case(false);
+    assert!(
+        meter_reg(&dss, "m1", "kWh") > 1.0,
+        "daily run should accumulate kWh"
+    );
+    dss.command("Set mode=snapshot");
+    assert_eq!(
+        meter_reg(&dss, "m1", "kWh"),
+        0.0,
+        "a mode change must reset the meter registers"
+    );
+}

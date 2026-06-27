@@ -39,7 +39,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md).
-Current scores: dss-core **lib 655**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 656**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -83,7 +83,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 655, golden_feeders 1,
+cargo test --workspace      # dss-core lib 656, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -694,6 +694,22 @@ mode, ported in steps split by injection family.
     a Pascal `OK_for_Harmonics`-false would `Exit` (no mode change, no reset) — but no ported
     DER aborts, so it is unreachable; a code note marks it to honour when the DER abort path
     lands (extends the step-1 ordering carry-forward (a)). lib stays **655** (comment-only).
+  - **audit-tests follow-up:** verdict **sound + strictly additive** — both new exec tests
+    are genuine regression pins (the auditor reverted each code change and confirmed the
+    matching test fails), the "0 migratable" claim was re-verified by running all 4 corpus
+    harmonics decks (HarmonicsTMode/VariableLoad CONVERGE through the full `harmonicT` solve,
+    blocked only by the trailing `Export`), and **no golden was regenerated** (the new resets
+    moved no oracle-pinned value). Fixed the **3 Minors**: (1) `Show` is a Phase-8 **no-op
+    stub** (returns without erroring, `command.rs:63`), not a blocker — the two refreshed tags
+    + notes corrected to `unsupported_command=Export` only (the genuine remaining error); (2)
+    the harmonic time-slot *value* was ungated — strengthened `harmonic_mode_relabels_*` to
+    pin `dbl_hour == [60, 300]` (the swept `Freq` held in slot 0, Pascal `TakeSample`
+    l.1202-1206), the one offline surface for it; (3) the meter half of the `Set_Mode` reset
+    had no direct test — added `mode_change_resets_meter_registers` (a daily run's kWh is
+    zeroed by the next `set mode=`). lib **655 → 656**. **Noted (out of step scope):** an
+    online `dblFreq` pin (`compare_monitor` ignores `dbl_hour`) and the stale `Show` in the
+    untouched `FreqScan`/`NEVTestCase` tags (whose primary blockers — `Isource`, FaultStudy
+    — are correct) are left for a future corpus-hygiene / harness pass.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
