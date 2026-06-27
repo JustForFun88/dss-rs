@@ -20,8 +20,10 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
     // Pascal `OK_for_Dynamics` / `OK_for_Harmonics`: entering a dynamics or
     // harmonics mode requires a solved circuit (errors 486/487). The
     // machine-state initialization behind a *successful* entry
-    // (`calcInitialMachineStates` / `InitializeForHarmonics`) is Phase 7; the
-    // mode is still set, and `Solve` then reports the mode as not ported.
+    // (`calcInitialMachineStates` / `InitializeForHarmonics`) runs in the
+    // executive `Set mode=` handler after this returns `true` (set_cmd.rs). The
+    // Dynamic and Harmonic(T) solves are ported (WP7.7 / WP7.6); the
+    // MonteFault/FaultStudy solves are still WP7.9 and `Solve` errors on them.
     let value_is_dynamic = matches!(
         value,
         SolveMode::MonteFault | SolveMode::Dynamic | SolveMode::FaultStudy
@@ -48,6 +50,15 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
         let fundamental = ckt.fundamental;
         ckt.solution.set_frequency(fundamental, fundamental);
     }
+    // NOT_PORTED(WP7.7 step 2): Pascal `OK_for_Dynamics` (Solution.pas l.2185)
+    // runs `ckt.InvalidateAllPCELEMENTS()` when *leaving* dynamics mode, to force
+    // a YPrim recompute for machines whose primitive is mode-dependent (the
+    // Norton `Yeq` they present in dynamics differs from their power-flow YPrim).
+    // Inert until the DER `CalcYPrimMatrix` dynamics branch lands (step 2): no
+    // currently-ported element has a dynamics-dependent YPrim, and the leave path
+    // does not change frequency, so there is nothing to invalidate yet. Lands with
+    // the machine YPrims in step 2 (needs the whole-circuit invalidate that reaches
+    // the element store, unlike this `&mut Circuit`-only `set_mode`).
 
     let sol = &mut ckt.solution;
     sol.mode = value;

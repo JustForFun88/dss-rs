@@ -22,9 +22,12 @@
 //! - `time_series` — the `SolutionAlgs.pas` stepping modes.
 //! - `harmonics` — the harmonics solve mode (`SolveHarmonic`/`SolveHarmonicT`,
 //!   the frequency sweep, `InitializeForHarmonics`).
+//! - `dynamics` — the dynamics solve mode (`SolveDynamic` predictor/corrector
+//!   loop, `IntegratePCStates`, `calcInitialMachineStates`).
 //! - `dispatch` — the top-level `Solve` mode dispatcher and `SetVoltageBases`.
 
 mod dispatch;
+mod dynamics;
 mod harmonics;
 mod power_flow;
 mod set_mode;
@@ -39,5 +42,6 @@ pub use state::{
     POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, sys_ctx,
 };
 
+pub(crate) use dynamics::calc_initial_machine_states;
 pub(crate) use harmonics::initialize_for_harmonics;
 pub(crate) use power_flow::solve_circuit;

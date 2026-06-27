@@ -88,6 +88,40 @@ impl Dss {
                     opt::MODE => {
                         if let Some(v) = enum_ord(enums, enums.solve_mode, &param, errors) {
                             let new_mode = SolveMode::from_ordinal(v);
+                            let was_dynamic = ckt.solution.is_dynamic_model;
+                            // Pascal `OK_for_Dynamics` (Solution.pas l.2188) seeds the
+                            // machine states with `calcInitialMachineStates` *before*
+                            // `Set_Mode` commits the new mode / `IsDynamicModel` / `h`
+                            // — so each machine's `InitStateVars` captures its operating
+                            // point from the **power-flow** state (`ComputeIterminal`
+                            // must see the pre-dynamics current branch, not the dynamic
+                            // Norton one). Reproduce that timing here, while
+                            // `is_dynamic_model` is still the old value, on a fresh entry
+                            // into a dynamics mode (Dynamic/MonteFault/FaultStudy) from a
+                            // solved circuit — the same `not IsDynamicModel and
+                            // ValueIsDynamic and IsSolved` condition `set_mode` re-checks
+                            // before committing. (MonteFault/FaultStudy *solves* are
+                            // WP7.9, but the state init is harmless + faithful for them.)
+                            if !was_dynamic
+                                && matches!(
+                                    new_mode,
+                                    SolveMode::Dynamic
+                                        | SolveMode::MonteFault
+                                        | SolveMode::FaultStudy
+                                )
+                                && ckt.is_solved
+                            {
+                                let mut store = ClassStore {
+                                    classes: &mut *classes,
+                                };
+                                let mut env = SolveEnv {
+                                    store: &mut store,
+                                    parser: &mut *aux_parser,
+                                    vars,
+                                    errors: &mut *errors,
+                                };
+                                crate::solution::calc_initial_machine_states(ckt, &mut env);
+                            }
                             if crate::solution::set_mode(ckt, new_mode, errors) {
                                 let mut store = ClassStore { classes };
                                 let mut env = SolveEnv {

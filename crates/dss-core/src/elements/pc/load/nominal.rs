@@ -137,11 +137,23 @@ impl Load {
                     self.calc_duty_mult(sys.dbl_hour);
                     f
                 }
+                SolveMode::Time | SolveMode::Dynamic => {
+                    // Pascal `GENERALTIME`/`DYNAMICMODE`: growth × load-multiplier
+                    // (unless Exempt), with the ShapeFactor taken from
+                    // `ActiveLoadShapeClass`. That class is `USENONE` by default
+                    // (not yet a ported setting — same assumption as
+                    // Generator/Storage/PVSystem), so `ShapeFactor` stays 1+j1.
+                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    f
+                }
                 // The remaining modes (MonteCarlo*/LoadDuration*/PeakDay/
-                // GeneralTime/Dynamic/AutoAdd/...) are not reachable yet — the
-                // solve dispatcher only runs the modes above — so they default
-                // to growth-only with a unit ShapeFactor, matching the Pascal
-                // trailing `else`. Wired in later phases as the modes land.
+                // AutoAdd/...) are not reachable yet — the solve dispatcher only
+                // runs the modes above (plus Dynamic, handled above) — so they
+                // default to growth-only with a unit ShapeFactor, matching the
+                // Pascal trailing `else`. Wired in later phases as the modes land.
                 _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };
