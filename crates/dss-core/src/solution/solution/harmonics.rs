@@ -34,6 +34,12 @@ pub(crate) fn initialize_for_harmonics(ckt: &mut Circuit, env: &mut SolveEnv) ->
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {
             elem.init_harmonics(&sys, &node_v);
+            // Pascal `InitializeForHarmonics` `Exit`s the instant an element
+            // aborts the solution (no element does in step 1, but step 2's DER
+            // `InitHarmonics` can).
+            if ckt.solution.solution_abort {
+                return false;
+            }
         }
     }
     !ckt.solution.solution_abort

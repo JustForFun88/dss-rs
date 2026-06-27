@@ -593,13 +593,24 @@ impl Dss {
             .and_then(|ce| ce.harmonic_spectrum_name())
             .map(str::to_string);
         if let Some(name) = spectrum_name {
-            let resolved = (!name.is_empty())
-                .then(|| {
-                    foreign.find("Spectrum", &name).and_then(|(_, o)| {
-                        o.as_any().downcast_ref::<spectrum::SpectrumObj>().cloned()
-                    })
-                })
-                .flatten();
+            let resolved = if name.is_empty() {
+                None
+            } else {
+                let found = foreign
+                    .find("Spectrum", &name)
+                    .and_then(|(_, o)| o.as_any().downcast_ref::<spectrum::SpectrumObj>().cloned());
+                if found.is_none() {
+                    // Pascal `Set_Spectrum` resolves a `DSSObjectReferenceProperty`
+                    // and raises error 401 on a missing name — surface it loudly
+                    // (else the element would inject silent-zero harmonic current).
+                    errors.push(format!(
+                        "{}.{}.Spectrum: Spectrum object \"{name}\" not found.",
+                        props.class_name(),
+                        objects[oi].data().name()
+                    ));
+                }
+                found
+            };
             if let Some(ce) = objects[oi].as_ckt_element_mut() {
                 ce.set_harmonic_spectrum(resolved);
             }

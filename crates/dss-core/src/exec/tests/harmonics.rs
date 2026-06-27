@@ -154,6 +154,20 @@ fn assert_der_harmonic_deferral(der_new: &str, full_name: &str) {
 }
 
 #[test]
+fn unknown_spectrum_name_errors_not_silent() {
+    // A typo'd `spectrum=` must error (Pascal #401 `Set_Spectrum`), not silently
+    // resolve to NIL and inject zero harmonic current.
+    let mut dss = Dss::new();
+    dss.command("New circuit.s basekv=12.47 phases=3 bus1=src");
+    dss.command("New Load.x bus1=src phases=3 kv=12.47 kw=100 spectrum=doesnotexist");
+    let errs = dss.errors().join("\n");
+    assert!(
+        errs.contains("Spectrum object \"doesnotexist\" not found"),
+        "expected a loud missing-spectrum error, got: {errs:?}"
+    );
+}
+
+#[test]
 fn generator_in_harmonic_mode_aborts_loudly() {
     assert_der_harmonic_deferral(
         "New Generator.g1 bus1=db kv=12.47 kw=100 pf=0.95 model=1",
