@@ -100,25 +100,79 @@ fn default_all_harmonics_sweeps_load_spectrum() {
 }
 
 #[test]
-fn generator_in_harmonic_mode_aborts_loudly() {
-    // The voltage-source-behind-reactance DER family (Generator/PVSystem/
-    // Storage) defers its harmonic injection to WP7.6 step 2 and must refuse the
-    // solve loudly rather than run its power-flow injection at a harmonic.
+fn second_harmonic_solve_restores_saved_voltages() {
+    // After a sweep the frequency sits at the last harmonic; a second `solve`
+    // must reset to the fundamental and reload the saved voltages
+    // (`RetrieveSavedVoltages`) before re-sweeping — and reproduce the result
+    // bit-for-bit (the restore is deterministic).
+    let mut dss = harmonic_test_dss();
+    dss.command("Set harmonics=(5)");
+    dss.command("Set mode=harmonics");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "first: {:?}", dss.errors());
+    let v1 = load_current_mag(&mut dss);
+    assert!(
+        (dss.circuit().unwrap().solution.frequency - 300.0).abs() < 1e-9,
+        "sweep should leave frequency at the 5th harmonic"
+    );
+
+    // Second solve: frequency != fundamental at entry → restore + re-sweep.
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "second: {:?}", dss.errors());
+    let v2 = load_current_mag(&mut dss);
+    assert!(
+        (v1 - v2).abs() < 1e-9,
+        "re-entrant harmonic solve drifted: {v1} vs {v2}"
+    );
+}
+
+/// The voltage-source-behind-reactance DER family (Generator/PVSystem/Storage)
+/// defers its harmonic injection to WP7.6 step 2 and must refuse the solve
+/// loudly rather than run its power-flow injection at a harmonic frequency.
+fn assert_der_harmonic_deferral(der_new: &str, full_name: &str) {
     let mut dss = Dss::new();
-    dss.command("New circuit.g basekv=12.47 pu=1.0 phases=3 mvasc3=20000 mvasc1=21000");
-    dss.command("New Line.l1 bus1=sourcebus bus2=genbus length=1 units=km r1=0.1 x1=0.3");
-    dss.command("New Generator.g1 bus1=genbus kv=12.47 kw=100 pf=0.95 model=1");
+    dss.command("New circuit.d basekv=12.47 pu=1.0 phases=3 mvasc3=20000 mvasc1=21000");
+    dss.command("New Line.l1 bus1=sourcebus bus2=db length=1 units=km r1=0.1 x1=0.3");
+    dss.command(der_new);
     dss.command("Set voltagebases=[12.47]");
     dss.command("CalcVoltageBases");
     dss.command("Solve");
-    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(
+        dss.errors().is_empty(),
+        "{full_name} fundamental: {:?}",
+        dss.errors()
+    );
 
     dss.command("Set harmonics=(5)");
     dss.command("Set mode=harmonics");
     dss.command("Solve");
     let errs = dss.errors().join("\n");
     assert!(
-        errs.contains("Generator.g1") && errs.contains("WP7.6 step 2"),
-        "expected a loud Generator harmonic deferral, got: {errs:?}"
+        errs.contains(full_name) && errs.contains("WP7.6 step 2"),
+        "expected a loud {full_name} harmonic deferral, got: {errs:?}"
+    );
+}
+
+#[test]
+fn generator_in_harmonic_mode_aborts_loudly() {
+    assert_der_harmonic_deferral(
+        "New Generator.g1 bus1=db kv=12.47 kw=100 pf=0.95 model=1",
+        "Generator.g1",
+    );
+}
+
+#[test]
+fn pvsystem_in_harmonic_mode_aborts_loudly() {
+    assert_der_harmonic_deferral(
+        "New PVSystem.pv1 bus1=db phases=3 kv=12.47 kva=100 pmpp=100 irradiance=1.0",
+        "PVSystem.pv1",
+    );
+}
+
+#[test]
+fn storage_in_harmonic_mode_aborts_loudly() {
+    assert_der_harmonic_deferral(
+        "New Storage.st1 bus1=db phases=3 kv=12.47 kwrated=100 kwhrated=200 state=idling",
+        "Storage.st1",
     );
 }
