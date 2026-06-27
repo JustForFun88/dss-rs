@@ -160,21 +160,26 @@ impl DssObject for Monitor {
     /// live metered element + node voltages), so they no-op here.
     fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
         if ordinal == 0 {
-            // `Action=Clear/Reset` during parse: the solution is never in
-            // harmonics mode here (it cannot be entered without a prior
-            // fundamental solve), so the header carries the `hour`/`t(sec)`
-            // labels; the `Set mode=harmonics` reset relabels them.
+            // `Action=Clear/Reset` runs at parse time with no solution context,
+            // so the header is rebuilt with the fundamental `hour`/`t(sec)`
+            // labels; the `Set mode=harmonics` reset relabels them (see
+            // `end_edit` for the one residual harmonics-mode divergence).
             self.reset_it(false);
         }
     }
 
     fn end_edit(&mut self) {
-        // Pascal `RecalcElementData` reads the live `IsHarmonicModel`; at
-        // parse/edit time the solution is always at fundamental (harmonics mode
-        // requires a prior solve, and monitors are defined before it), so the
-        // header is built non-harmonic here. The harmonic time-column labels are
-        // applied when `Set mode=harmonics` resets every monitor (Pascal
-        // `Set_Mode` -> `ClearMonitorStream` with `IsHarmonicModel=TRUE`).
+        // Pascal `RecalcElementData` reads the live `IsHarmonicModel`, but the
+        // `DssObject` edit surface carries no solution state, so the header is
+        // built with the fundamental `hour`/`t(sec)` labels here. The harmonic
+        // `Freq`/`Harmonic` labels are applied when `Set mode=harmonics` resets
+        // every monitor (Pascal `Set_Mode` -> `ClearMonitorStream` with
+        // `IsHarmonicModel=TRUE`) — the path that matters in practice, since
+        // monitors are defined before the first solve. The one residual
+        // divergence (editing/clearing a monitor *after* entering harmonics
+        // mode, where Pascal would write `Freq`/`Harmonic`) relabels only on the
+        // next `Set mode=`/`Reset Monitors`; it is unobservable through the
+        // oracle (the C-API strips both time columns) and self-healing.
         let mut errors = Vec::new();
         self.recalc(&mut errors, false);
         for e in errors {

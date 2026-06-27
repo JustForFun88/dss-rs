@@ -100,6 +100,11 @@ impl Dss {
                                 // mode initialises each PC element's harmonic base
                                 // values from the present fundamental solution
                                 // (`set_mode` already enforced solved@fundamental).
+                                // The return is discarded: Pascal `OK_for_Harmonics`
+                                // returns false (→ `Set_Mode` `Exit`, no mode change,
+                                // no reset tail) only if an element aborts, which no
+                                // ported `init_harmonics` does (see harmonics.rs);
+                                // honour it when the DER abort path is ported.
                                 if matches!(new_mode, SolveMode::Harmonic | SolveMode::HarmonicT) {
                                     crate::solution::initialize_for_harmonics(ckt, &mut env);
                                 }

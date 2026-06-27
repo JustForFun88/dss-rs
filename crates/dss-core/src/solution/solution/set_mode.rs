@@ -7,8 +7,9 @@ use super::{ADMITTANCE, CONTROLSOFF, SolveMode, TIMEDRIVEN};
 /// Pascal `TSolutionObj.Set_Mode` (`Solution.pas` l.2010): reset the clock,
 /// revert control/load models, apply per-mode defaults. Returns whether the
 /// mode was actually changed (the `OK_for_Dynamics`/`OK_for_Harmonics` guards
-/// can refuse). The caller (the executive) runs `DoResetControls` afterwards —
-/// monitor/meter resets are Phase 6 no-ops and there are no faults yet.
+/// can refuse). The caller (the executive) runs the Pascal `Set_Mode` reset
+/// tail afterwards — `MonitorClass.ResetAll`, `EnergyMeterClass.ResetAll`,
+/// `DoResetFaults`, `DoResetControls` (only when this returns `true`).
 pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -> bool {
     let sol = &mut ckt.solution;
     sol.int_hour = 0;
