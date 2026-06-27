@@ -89,9 +89,6 @@ impl Dss {
                         if let Some(v) = enum_ord(enums, enums.solve_mode, &param, errors) {
                             let new_mode = SolveMode::from_ordinal(v);
                             if crate::solution::set_mode(ckt, new_mode, errors) {
-                                // Pascal `Set_Mode` tail: monitor/meter resets are
-                                // Phase 6 no-ops; `DoResetFaults` and
-                                // `DoResetControls` run here.
                                 let mut store = ClassStore { classes };
                                 let mut env = SolveEnv {
                                     store: &mut store,
@@ -106,6 +103,15 @@ impl Dss {
                                 if matches!(new_mode, SolveMode::Harmonic | SolveMode::HarmonicT) {
                                     crate::solution::initialize_for_harmonics(ckt, &mut env);
                                 }
+                                // Pascal `Set_Mode` tail (Solution.pas l.2132):
+                                // reset monitors, meters, faults, controls — in
+                                // that order. The monitor reset rebuilds each
+                                // header from the now-committed `IsHarmonicModel`,
+                                // so entering harmonics relabels the two time
+                                // columns `Freq`/`Harmonic`; it also clears any
+                                // samples accumulated under the previous mode.
+                                crate::solution::monitors::reset_all_monitors(ckt, &mut env);
+                                crate::solution::meters::reset_all_meters(ckt, env.store);
                                 crate::solution::faults::reset_faults(ckt, &mut env);
                                 if let Err(e) =
                                     crate::solution::controls::reset_all_controls(ckt, &mut env)

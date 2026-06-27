@@ -67,8 +67,12 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
     }
 }
 
-/// Pascal `TDSSMonitor.ResetAll`: clear every enabled monitor's buffer.
+/// Pascal `TDSSMonitor.ResetAll`: clear every enabled monitor's buffer and
+/// rebuild its header. `IsHarmonicModel` selects the time-column labels
+/// (`Freq`/`Harmonic` vs `hour`/`t(sec)`), so entering harmonics mode (the
+/// `Set mode=harmonics` reset) relabels them.
 pub(crate) fn reset_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let is_harmonic = ckt.solution.is_harmonic_model;
     let monitors = ckt.monitors.clone();
     for mon_ref in monitors {
         let m = env
@@ -78,7 +82,7 @@ pub(crate) fn reset_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
             .downcast_mut::<Monitor>()
             .expect("ckt.monitors holds Monitor objects");
         if m.med.cd.enabled {
-            m.reset_it();
+            m.reset_it(is_harmonic);
         }
     }
 }

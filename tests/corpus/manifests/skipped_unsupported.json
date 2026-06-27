@@ -308,13 +308,13 @@
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
-   "tag": "unsupported_class=Swtcontrol; unsupported_command=Open",
-   "note": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Open\\\" is not ported yet.\", \"Unknown solu"
+   "tag": "unsupported_command=Export,Show; deferred=phase8-reporting",
+   "note": "Re-probed WP7.6 step 3: the full harmonicT solve now runs clean (SwtControl + Open + set mode=harmonicT all ported, WP7.2/WP7.6 steps 1-2; the deck CONVERGES). The only remaining Rust-engine error is the trailing Phase-8 monitor report `export monitor MPCC` (`Command \"Export\" is not ported yet.`) followed by `show monitor MPCC`. Migrate to solvable_now when Phase 8 lands Export/Show. (Was stale: unsupported_class=Swtcontrol; unsupported_command=Open — both ported.)"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
-   "tag": "unsupported_class=Swtcontrol; unsupported_command=Export,Show",
-   "note": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"New Command: Object Type \\\"Swtcontrol\\\" not found.\", \"Unknown solution mode. (not ported in Phase 5)\", \"Unknown solution mode. (not ported in Phase "
+   "tag": "unsupported_command=Export,Show; deferred=phase8-reporting",
+   "note": "Re-probed WP7.6 step 3: the full harmonicT solve (with a mid-run load edit) now runs clean (SwtControl + set mode=harmonicT ported, WP7.2/WP7.6 steps 1-2; the deck CONVERGES). The only remaining Rust-engine error is the trailing Phase-8 monitor report `export monitor MPCC` (`Command \"Export\" is not ported yet.`) followed by `show monitor MPCC`. Migrate to solvable_now when Phase 8 lands Export/Show. (Was stale: unsupported_class=Swtcontrol — ported.)"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",

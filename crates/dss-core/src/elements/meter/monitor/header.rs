@@ -5,16 +5,18 @@ use super::{MAGNITUDEMASK, MODEMASK, Monitor, NUM_SOLUTION_VARS, POSSEQONLYMASK,
 use crate::elements::meter::meter_element::MeteredKind;
 
 impl Monitor {
-    /// Pascal `ResetIt`: clear the buffer and rebuild the header.
-    pub fn reset_it(&mut self) {
+    /// Pascal `ResetIt`: clear the buffer and rebuild the header. `is_harmonic`
+    /// is the present `ActiveCircuit.Solution.IsHarmonicModel` (it only selects
+    /// the two time-column labels — see [`Self::clear_monitor_stream`]).
+    pub fn reset_it(&mut self, is_harmonic: bool) {
         self.mon_buffer.clear();
-        self.clear_monitor_stream();
+        self.clear_monitor_stream(is_harmonic);
     }
 
     /// Pascal `RecalcElementData`: validate the metered element against the
     /// mode, copy its phase/conductor counts, set the monitor's bus, and build
     /// the header (`ClearMonitorStream`).
-    pub fn recalc(&mut self, errors: &mut Vec<String>) {
+    pub fn recalc(&mut self, errors: &mut Vec<String>, is_harmonic: bool) {
         self.valid_monitor = false;
         let Some(snap) = self.med.metered_snap.clone() else {
             errors.push(format!(
@@ -65,18 +67,24 @@ impl Monitor {
             .unwrap_or_default();
         self.med.cd.set_bus(1, &bus);
 
-        self.clear_monitor_stream();
+        self.clear_monitor_stream(is_harmonic);
         self.valid_monitor = true;
     }
 
     /// Pascal `ClearMonitorStream`: reset the buffer header and compute
-    /// `RecordSize` + the per-mode header strings (non-harmonic; the harmonic
-    /// header is Phase 7).
-    fn clear_monitor_stream(&mut self) {
+    /// `RecordSize` + the per-mode header strings. The two leading time columns
+    /// are labelled `Freq`/`Harmonic` when the solution is in harmonics mode
+    /// (`IsHarmonicModel`), else `hour`/`t(sec)` (`Monitor.pas` l.709).
+    fn clear_monitor_stream(&mut self, is_harmonic: bool) {
         self.header.clear();
         self.sample_count = 0;
-        self.header.push("hour".into());
-        self.header.push("t(sec)".into());
+        if is_harmonic {
+            self.header.push("Freq".into());
+            self.header.push("Harmonic".into());
+        } else {
+            self.header.push("hour".into());
+            self.header.push("t(sec)".into());
+        }
 
         let nphases = self.med.cd.nphases;
         let nconds = self.med.cd.nconds;
