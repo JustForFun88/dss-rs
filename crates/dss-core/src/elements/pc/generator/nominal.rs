@@ -94,31 +94,42 @@ impl Generator {
         };
     }
 
-    /// Pascal `SetNominalGeneration` (the power-flow path; dynamics/harmonics
-    /// branches are never entered in Phase 6 and are omitted).
+    /// Pascal `SetNominalGeneration`. In dynamics/harmonics mode the generator is
+    /// left in whatever state it had at the fundamental: the ON decision, the
+    /// per-phase P/Q and `Yeq` are **not** recomputed (Pascal guards each block
+    /// with `if not (IsDynamicModel or IsHarmonicModel)`), so the harmonic `Yeq`
+    /// set by [`Generator::init_harmonics_impl`](super::Generator) survives.
     pub fn set_nominal_generation(&mut self, sys: &SysCtx) {
         let gen_on_saved = self.gen_on;
         self.shape_factor = CDOUBLEONE;
+        let harm_or_dyn = sys.is_harmonic_model || sys.is_dynamic_model;
 
         // Decide whether the generator is ON (LOADMODE compares the dispatch
         // reference, PRICEMODE the price signal, both against DispValue).
-        self.gen_on = true;
-        if !self.forced_on && self.dispatch_value > 0.0 {
-            let off_load = self.dispatch_mode == LOADMODE
-                && sys.generator_dispatch_reference < self.dispatch_value;
-            let off_price =
-                self.dispatch_mode == PRICEMODE && sys.price_signal < self.dispatch_value;
-            if off_load || off_price {
-                self.gen_on = false;
+        if !harm_or_dyn {
+            self.gen_on = true;
+            if !self.forced_on && self.dispatch_value > 0.0 {
+                let off_load = self.dispatch_mode == LOADMODE
+                    && sys.generator_dispatch_reference < self.dispatch_value;
+                let off_price =
+                    self.dispatch_mode == PRICEMODE && sys.price_signal < self.dispatch_value;
+                if off_load || off_price {
+                    self.gen_on = false;
+                }
             }
         }
 
         let nphases = self.cd.nphases as f64;
         if !self.gen_on {
-            // OFF: a tiny resistive load so the matrix doesn't go singular.
+            // OFF: a tiny resistive load so the matrix doesn't go singular (this
+            // runs in harmonics mode too — but `gen_on` is then the fundamental
+            // state, never recomputed above).
             self.p_nominal_per_phase = -0.1 * self.kw_base / nphases;
             self.q_nominal_per_phase = 0.0;
-        } else {
+        } else if !harm_or_dyn {
+            // (Pascal computes an unused shape `factor` here in harmonics/dynamics
+            // mode — its only side effect is `ShapeFactor`, which is never read in
+            // those modes — so it is skipped: behaviorally identical.)
             let factor = if self.is_fixed {
                 1.0
             } else {
@@ -179,27 +190,30 @@ impl Generator {
             }
         }
 
-        if self.gen_model == 6 {
-            self.yeq = Complex64::new(0.0, -self.xd).inv(); // gets negated in CalcYPrim
-        } else {
-            self.yeq = Complex64::new(self.p_nominal_per_phase, -self.q_nominal_per_phase)
-                / self.v_base.powi(2); // Vbase L-N for 3-phase
-            self.yeq95 = if self.vminpu != 0.0 {
-                self.yeq / self.vminpu.powi(2)
+        if !harm_or_dyn {
+            if self.gen_model == 6 {
+                self.yeq = Complex64::new(0.0, -self.xd).inv(); // gets negated in CalcYPrim
             } else {
-                self.yeq // always a constant-Z model
-            };
-            self.yeq105 = if self.vmaxpu != 0.0 {
-                self.yeq / self.vmaxpu.powi(2)
-            } else {
-                self.yeq
-            };
-        }
+                self.yeq = Complex64::new(self.p_nominal_per_phase, -self.q_nominal_per_phase)
+                    / self.v_base.powi(2); // Vbase L-N for 3-phase
+                self.yeq95 = if self.vminpu != 0.0 {
+                    self.yeq / self.vminpu.powi(2)
+                } else {
+                    self.yeq // always a constant-Z model
+                };
+                self.yeq105 = if self.vmaxpu != 0.0 {
+                    self.yeq / self.vmaxpu.powi(2)
+                } else {
+                    self.yeq
+                };
+            }
 
-        if self.gen_model == 7 {
-            self.phase_current_limit =
-                Complex64::new(self.p_nominal_per_phase, -self.q_nominal_per_phase) / self.v_base95;
-            self.model7_max_phase_curr = self.phase_current_limit.norm();
+            if self.gen_model == 7 {
+                self.phase_current_limit =
+                    Complex64::new(self.p_nominal_per_phase, -self.q_nominal_per_phase)
+                        / self.v_base95;
+                self.model7_max_phase_curr = self.phase_current_limit.norm();
+            }
         }
 
         // If the generator state changes, force a Y rebuild.

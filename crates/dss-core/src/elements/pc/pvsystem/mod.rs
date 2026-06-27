@@ -40,6 +40,7 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData};
@@ -210,6 +211,11 @@ pub struct PVSystem {
     pub r_thev: f64,
     /// `XThev` — Thevenin X in ohms.
     pub x_thev: f64,
+    /// `Vthevharm` — harmonic Thevenin source magnitude (captured at the
+    /// fundamental in `InitHarmonics`).
+    pub v_thev_harm: f64,
+    /// `ThetaHarm` — harmonic Thevenin source angle (radians).
+    pub theta_harm: f64,
     /// `FTemperature`.
     pub f_temperature: f64,
     /// `FPmpp`.
@@ -261,6 +267,9 @@ pub struct PVSystem {
     pub var_base: f64,
     /// `PVSystemSolutionCount`.
     pub pv_system_solution_count: i32,
+    /// `PVSystemFundamental` — the solution frequency when harmonics mode is
+    /// entered (the harmonic ratio's denominator).
+    pub pv_system_fundamental: f64,
     /// `PVsystemObjSwitchOpen`.
     pub pv_system_obj_switch_open: bool,
 
@@ -270,6 +279,9 @@ pub struct PVSystem {
 
     /// `SpectrumObj` name — Create sets it NIL (empty) for the inverter PCEs.
     pub spectrum: String,
+    /// Resolved harmonic spectrum, snapshot-cloned in at edit-completion (only
+    /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
+    pub spectrum_obj: Option<SpectrumObj>,
 
     // Temperature-shape references (snapshot-clone + ElemRef, WP4.2/WP5.3).
     pub yearly_t_shape: String,
@@ -347,6 +359,8 @@ impl PVSystem {
             f_kva_rating: 500.0,
             r_thev: 0.0,
             x_thev: 0.0,
+            v_thev_harm: 0.0,
+            theta_harm: 0.0,
             f_temperature: 25.0,
             f_pmpp: 500.0,
             f_pu_pmpp: 1.0, // full on
@@ -374,10 +388,12 @@ impl PVSystem {
             duty_start: 0.0,
             var_base: 0.0,
             pv_system_solution_count: -1,
+            pv_system_fundamental: 0.0,
             pv_system_obj_switch_open: false,
             registers: [0.0; NUM_PVSYSTEM_REGISTERS],
             derivatives: [0.0; NUM_PVSYSTEM_REGISTERS],
             spectrum: String::new(),
+            spectrum_obj: None,
             yearly_t_shape: String::new(),
             daily_t_shape: String::new(),
             duty_t_shape: String::new(),

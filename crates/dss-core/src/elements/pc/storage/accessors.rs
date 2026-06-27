@@ -9,6 +9,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
@@ -70,6 +71,23 @@ impl CktElement for Storage {
         self.cd.inj_current = vec![Complex64::ZERO; yorder];
 
         self.cd.apply_yprim_open_conductor_calcs();
+    }
+
+    /// Pascal `TStorageObj.InitHarmonics`.
+    fn init_harmonics(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.init_harmonics_impl(sys, node_v);
+    }
+
+    fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
+        self.spectrum_obj.as_ref()
+    }
+
+    fn harmonic_spectrum_name(&self) -> Option<&str> {
+        Some(&self.spectrum)
+    }
+
+    fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
+        self.spectrum_obj = spectrum;
     }
 
     /// Pascal `TStorageObj.InjCurrents` + `TPCElement.InjCurrents`.

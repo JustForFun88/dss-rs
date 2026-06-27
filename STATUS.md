@@ -12,18 +12,19 @@ Last updated: 2026-06-27 — **Phase 7 IN PROGRESS** (branch
 constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
 InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), and WP7.5
 (DER C: InvControl + ExpControl) COMPLETE**. **WP7.6 (Harmonics) IN PROGRESS —
-step 1 (the harmonics solve mode for the current-source family: VSource + Load)
-COMPLETE.** Step 1 landed `Spectrum.SetMultArray`/`GetMult`, the `harmonic =
-frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
+steps 1 + 2 COMPLETE.** Step 1 landed the harmonics solve mode for the
+current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
+`harmonic = frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
 `SolveHarmonic`/`SolveHarmonicT` drivers (`CollectAllFrequencies`/`AddFrequency` +
 the in-memory `savePresentVoltages`/`RetrieveSavedVoltages`), `InitializeForHarmonics`
 on the `Set mode=harmonics` entry, the VSource harmonic `GetVterminalForSource`
-branch and the Load `InitHarmonics`/`DoHarmonicMode` (incl. the **harmonic Load
-YPrim `%SeriesRL` series/parallel split** — the bug the oracle golden caught), with
-Generator/PVSystem/Storage harmonic injection a **loud abort** (deferred to step 2).
-**next = WP7.6 step 2 (the Thevenin DER family: Generator/PVSystem/Storage
-`InitHarmonics`/`DoHarmonicMode`), then step 3 (monitor harmonic header + corpus
-migration + gate finalize).**
+branch and the Load `InitHarmonics`/`DoHarmonicMode`. **Step 2 landed the Thevenin
+DER family (Generator/PVSystem/Storage `InitHarmonics`/`DoHarmonicMode` + the
+harmonic `CalcYPrimMatrix` Y=Yeq branch + the `SetNominalGeneration` harmonic guard):
+each is a voltage source behind its subtransient reactance (Generator Xd"; PV/Storage
+%R/%X), injecting the spectrum-scaled, phase-rotated Thevenin voltage through YPrim.
+The `guard_unported_harmonic_der` loud abort is removed.** **next = WP7.6 step 3
+(monitor harmonic header + corpus migration + gate finalize).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -70,7 +71,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) step 1 done (VSource+Load current-source family)**; **next = WP7.6 step 2 (Thevenin DER family)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) steps 1+2 done (VSource+Load current-source family + Generator/PVSystem/Storage Thevenin family)**; **next = WP7.6 step 3 (monitor harmonic header + corpus migration)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
 
 ### Gate state (all green)
 ```
@@ -452,7 +453,7 @@ smart-inverter follow-up) archived at
     pin); **no fix needed**.
 - **next:** WP7.6 (Harmonics) — the first cross-cutting solve mode.
 
-**WP7.6 (Harmonics) — 🚧 IN PROGRESS (step 1 of 3 COMPLETE).** The harmonics solve
+**WP7.6 (Harmonics) — 🚧 IN PROGRESS (steps 1+2 of 3 COMPLETE).** The harmonics solve
 mode, ported in steps split by injection family.
 - **step 1 — the current-source harmonic family (VSource + Load) + the solve-mode
   driver.** Pascal `SolutionAlgs.SolveHarmonic`/`SolveHarmonicT`,
@@ -550,6 +551,42 @@ mode, ported in steps split by injection family.
     zero injection), a pre-existing `end_edit`-has-no-error-sink limit; (c) the monitor
     harmonic *header* names (`Freq`/`Harmonic`) ride with monitor-reset-on-mode-change
     in step 3 (the sample *body* + the data-channel gate are done). lib **649 → 650**.
+- **step 2 — the Thevenin DER family (Generator + PVSystem + Storage).** Pascal
+  `T{Generator,PVsystem,Storage}Obj.InitHarmonics`/`DoHarmonicMode` + the harmonic
+  `CalcYPrimMatrix` branch. Each DER is a **voltage source behind its subtransient
+  reactance** (Generator: `Xd"`; PVSystem/Storage: `%R`/`%X` → `RThev`/`XThev`):
+  `InitHarmonics` sets `Yeq := Cinv(...)` (the L-N harmonic admittance) and captures
+  the Thevenin reference `Vthevharm = |Va − I·Z|` / `ThetaHarm = ∠(…)` from the present
+  **fundamental** terminal current (`compute_iterminal`); `DoHarmonicMode` injects
+  `InjCurrent = YPrim · (SpectrumObj.GetMult(h)·Vthevharm rotated by ThetaHarm and
+  −120°/phase)`, leaving `IterminalUpdated=false` so the terminal current is derived
+  from the network (unlike the Load current-source family). The harmonic
+  `CalcYPrimMatrix` branch stamps `Y := Yeq` (Generator: `EPSILON` if off; **not**
+  negated like power flow), delta `/3`, `Y.im /= FreqMultiplier`. **Real correctness
+  fix on the way in:** `SetNominalGeneration` recomputed `Yeq`/`GenON`/`Pnom`
+  unconditionally — Pascal guards each with `if not (IsDynamicModel or IsHarmonicModel)`,
+  else the harmonic `Yeq` from `InitHarmonics` is clobbered before the YPrim build; the
+  port now mirrors the guard (PVSystem/Storage `SetNominalDEROutput` already early-returned
+  in those modes). New struct fields `v_thev_harm`/`theta_harm`/`{gen,pv_system,storage}_fundamental`
+  + a resolved `spectrum_obj` (Generator default `defaultgen`; PVSystem/Storage force
+  `SpectrumObj := NIL`, so they inject only from an explicit `spectrum=`). The
+  `guard_unported_harmonic_der` loud abort and its 3 deferral exec tests are removed
+  (replaced by 3 injection exec tests). Gate: 3 oracle-pinned goldens
+  `phase7/harmonics_{generator,pvsystem,storage}_h5` (`gen_phase7.py` + `golden_phase7.rs`)
+  — node V + DER/Line I/P + the Line YPrim entry-by-entry at the 5th, matched the oracle
+  1e-6 (golden_phase7 56 → 59). **Corpus stays 84** (migration is step 3). lib stays **650**.
+  - **The `capture_element` order quirk (golden generator, not a port bug — confirmed
+    with the user "don't port the oracle's bug"):** the oracle's `CktElement.Powers`,
+    when queried *after* `Currents`, returns `V_harmonic · conj(I_fundamental)` for a
+    Thevenin DER in harmonics mode (a stale-`Iterminal` cross-product, physically
+    meaningless), but `Powers`-first gives the consistent `V_harmonic · conj(I_harmonic)`
+    the engine produces when asked directly. The Rust harness computes power single-pass
+    (`node_v · conj(Iterminal)`, always consistent), so `gen_checkpoints.capture_element`
+    now reads `Powers` **before** `Currents` to pin the oracle's consistent answer. The
+    swap is **identical for every non-Thevenin-DER-harmonic element** (their `Iterminal`
+    is stable across the two queries), so all existing goldens are byte-unchanged
+    (`git status` confirmed only the 3 new files appear after a full `gen_phase7.py` regen).
+    No `TODO(compat)` — there is no engine inexactness, only a query-order capture choice.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

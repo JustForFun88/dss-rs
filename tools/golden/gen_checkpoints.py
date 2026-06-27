@@ -137,11 +137,21 @@ def capture_injection(d) -> dict:
 
 def capture_element(ckt, name: str) -> dict:
     """A selected element's terminal currents (A, re/im) and powers (kW/kvar),
-    the oracle `CktElement.Currents` / `Powers`."""
+    the oracle `CktElement.Currents` / `Powers`.
+
+    `Powers` is read BEFORE `Currents`: for a Thevenin-family DER
+    (Generator/PVSystem/Storage) in harmonics mode the oracle's `Currents` query
+    leaves the cached `Iterminal` stale, so a following `Powers` query returns
+    `V_harmonic · conj(I_fundamental)` — a physically meaningless cross-product
+    (the engine's own order-dependent quirk, NOT a stable output worth pinning).
+    Reading `Powers` first yields the consistent `V_harmonic · conj(I_harmonic)`
+    the engine produces when asked directly, matching the Rust harness's
+    single-pass `node_v · conj(Iterminal)`. For every non-harmonic / current-source
+    element the two orders are identical, so existing captures are unchanged."""
     ckt.SetActiveElement(name)
     el = ckt.ActiveCktElement
-    cur = list(el.Currents)
     pwr = list(el.Powers)
+    cur = list(el.Currents)
     return {
         "name": name,
         "i_re": cur[0::2],

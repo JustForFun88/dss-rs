@@ -23,6 +23,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -241,6 +242,13 @@ pub struct Generator {
     pub shape_is_actual: bool,
     pub v_avg: f64,
 
+    // Harmonic-mode state (GenVars `Vthevharm`/`ThetaHarm` + `GenFundamental`):
+    // the Thevenin voltage behind Xd" captured at the fundamental in
+    // `InitHarmonics`, applied through the spectrum in `DoHarmonicMode`.
+    pub v_thev_harm: f64,
+    pub theta_harm: f64,
+    pub gen_fundamental: f64,
+
     // Model-3 DQDV var-control state.
     pub dqdv: f64,
     pub dqdv_saved: f64,
@@ -263,6 +271,9 @@ pub struct Generator {
     pub dynamic_eq: String,
     pub dyn_out: String,
     pub spectrum: String,
+    /// Resolved harmonic spectrum (Pascal `SpectrumObj := SpectrumClass.DefaultGen`
+    /// or an explicit `spectrum=`), snapshot-cloned in at edit-completion.
+    pub spectrum_obj: Option<SpectrumObj>,
 
     pub yearly_shape: String,
     pub daily_shape: String,
@@ -364,6 +375,9 @@ impl Generator {
             shape_factor: CDOUBLEONE,
             shape_is_actual: false,
             v_avg: 0.0,
+            v_thev_harm: 0.0,
+            theta_harm: 0.0,
+            gen_fundamental: 0.0,
             dqdv: 0.0,
             dqdv_saved: 0.0,
             delta_q_max: 0.0,
@@ -380,6 +394,7 @@ impl Generator {
             dynamic_eq: String::new(),
             dyn_out: String::new(),
             spectrum: "defaultgen".to_string(),
+            spectrum_obj: None,
             yearly_shape: String::new(),
             daily_shape: String::new(),
             duty_shape: String::new(),
