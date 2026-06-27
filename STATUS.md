@@ -34,7 +34,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md).
-Current scores: dss-core **lib 650**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 653**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus migration lands in WP7.6 step 3); oracle pinned to dss-python
 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
@@ -77,7 +77,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 650, golden_feeders 1,
+cargo test --workspace      # dss-core lib 653, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -483,7 +483,8 @@ mode, ported in steps split by injection family.
   gap that was harmless until the spectrum became load-bearing. **NOT_PORTED / deferred
   (each a loud abort, never silent):** Generator/PVSystem/Storage harmonic injection
   (the voltage-source-behind-reactance family) → step 2 (a `guard_unported_harmonic_der`
-  refuses the solve loudly if any is enabled). The monitor harmonic *header* names
+  refused the solve loudly if any was enabled — **now landed + the guard removed in
+  step 2**). The monitor harmonic *header* names
   (`Freq`/`Harmonic`) ride on the Phase-6-deferred monitor-reset-on-mode-change → step
   3. Isource is not ported in this crate (no source-current harmonic family).
   - **Gate:** 3 targeted oracle-pinned goldens (`gen_phase7.py` + `golden_phase7.rs`):
