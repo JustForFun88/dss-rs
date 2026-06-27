@@ -12,6 +12,7 @@ pub mod ymatrix;
 
 pub use control_queue::{ControlActioner, ControlQueue, TimeRec};
 pub use event_log::EventLog;
+pub(crate) use solution::initialize_for_harmonics;
 pub use solution::{
     ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, MULTIRATE, NEWTONSOLVE, NORMALSOLVE,
     POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, set_mode, set_voltage_bases,

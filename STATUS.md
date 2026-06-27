@@ -11,16 +11,19 @@ Last updated: 2026-06-27 — **Phase 7 IN PROGRESS** (branch
 `phase-7-extended-elements`). Completed work packages this phase: **WP7.1 (line
 constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
 InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), and WP7.5
-(DER C: InvControl + ExpControl) COMPLETE — all four steps** — i.e. the
-`RollAvgWindow` helper, the full `InvControl` (8 modes: VOLTVAR / VOLTWATT / DRC /
-WATTPF / WATTVAR / AVR + the VV_VW / VV_DRC combis, with LPF/RiseFall rate-of-change
-limiting and the explicit-`MonBus` monitored-voltage path), `ExpControl` (the
-adaptive-`Vreg` volt-var control), and the **step-4 corpus burn-down review** (the
-DER-C corpus migration is now maximal: a fresh `DSS_LIVE_CLASSIFY` re-probe of every
-InvControl/ExpControl candidate migrated 1 newly-solvable snapshot case and
-re-tagged the rest with their genuine current blocker — all Phase-8 Export/Plot/
-file-backed-array commands or the WP7.7 GFM-mode-7 / WP7.5 Storage-VOLTWATT
-deferrals, none blocked by DER-C numerics). **next = WP7.6 (Harmonics).**
+(DER C: InvControl + ExpControl) COMPLETE**. **WP7.6 (Harmonics) IN PROGRESS —
+step 1 (the harmonics solve mode for the current-source family: VSource + Load)
+COMPLETE.** Step 1 landed `Spectrum.SetMultArray`/`GetMult`, the `harmonic =
+frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
+`SolveHarmonic`/`SolveHarmonicT` drivers (`CollectAllFrequencies`/`AddFrequency` +
+the in-memory `savePresentVoltages`/`RetrieveSavedVoltages`), `InitializeForHarmonics`
+on the `Set mode=harmonics` entry, the VSource harmonic `GetVterminalForSource`
+branch and the Load `InitHarmonics`/`DoHarmonicMode` (incl. the **harmonic Load
+YPrim `%SeriesRL` series/parallel split** — the bug the oracle golden caught), with
+Generator/PVSystem/Storage harmonic injection a **loud abort** (deferred to step 2).
+**next = WP7.6 step 2 (the Thevenin DER family: Generator/PVSystem/Storage
+`InitHarmonics`/`DoHarmonicMode`), then step 3 (monitor harmonic header + corpus
+migration + gate finalize).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -30,8 +33,9 @@ archives under `docs/phase-records/`:
 [`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md).
-Current scores: dss-core **lib 639**, **`solvable_now` 84** (the live corpus gate; +1 this step);
-oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
+Current scores: dss-core **lib 646**, **`solvable_now` 84** (the live corpus gate;
+the harmonics corpus migration lands in WP7.6 step 3); oracle pinned to dss-python
+0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
 Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 §Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
@@ -66,7 +70,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants)**; **next = WP7.6 (Harmonics)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) step 1 done (VSource+Load current-source family)**; **next = WP7.6 step 2 (Thevenin DER family)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..5}.md` |
 
 ### Gate state (all green)
 ```
@@ -447,6 +451,62 @@ smart-inverter follow-up) archived at
     → the mismatch that parks them). No offline golden was added (the live gate is the
     pin); **no fix needed**.
 - **next:** WP7.6 (Harmonics) — the first cross-cutting solve mode.
+
+**WP7.6 (Harmonics) — 🚧 IN PROGRESS (step 1 of 3 COMPLETE).** The harmonics solve
+mode, ported in steps split by injection family.
+- **step 1 — the current-source harmonic family (VSource + Load) + the solve-mode
+  driver.** Pascal `SolutionAlgs.SolveHarmonic`/`SolveHarmonicT`,
+  `Utilities.InitializeForHarmonics`/`savePresentVoltages`/`RetrieveSavedVoltages`,
+  `Spectrum.SetMultArray`/`GetMult`, and the per-element `InitHarmonics`/`DoHarmonicMode`.
+  Landed in `solution/solution/harmonics.rs` (the sweep over `CollectAllFrequencies`
+  / the `harmonic_list`, the in-memory fundamental-voltage save/restore — the original
+  spills to a `.dbl` file, this port keeps it on `Solution.saved_node_v` — and a
+  per-frequency `SolveDirect` + monitor `SampleAll`), wired into the dispatcher and
+  into `Set mode=harmonics` (the Pascal `OK_for_Harmonics` entry runs
+  `InitializeForHarmonics`). **Foundational pieces already in place (verified, not
+  re-ported):** the frequency-dependent Y rebuild — Line/Transformer/Reactor/Capacitor
+  all already scale YPrim by `sys.frequency/base_frequency` (incl. the GIC `<0.51 Hz`
+  branches), the monitor harmonic-mode *sample body* (freq/harmonic in the time
+  slot), and `solve_direct`'s `is_harmonic_model` PC-injection arm. **Real fixes:** the
+  `harmonic = frequency/fundamental` value (was hard-pinned `1.0`); `Spectrum`'s
+  deferred `MultArray`/`GetMult`; the VSource `GetVterminalForSource` harmonic branch
+  (the source is a short at harmonics under `defaultvsource`); the Load
+  `InitHarmonics` (capture `HarmMag`/`HarmAng` from the fundamental `FPhaseCurr`) +
+  `DoHarmonicMode` (the ideal harmonic current source) + the **harmonic Load YPrim
+  `%SeriesRL` split** (`CalcYPrimMatrix`'s harmonic branch — a parallel R-L part with
+  `Y.im /= h` and a series R-L part with `Z.im *= h`, *not* the naive
+  `Yeq; Y.im /= h`). The spectrum is resolved + snapshot-cloned at edit-completion
+  (the Fuse-curve pattern — VSource/Load report their default/explicit `spectrum=`
+  name via `harmonic_spectrum_name`, the executive clones the `SpectrumObj` in). The
+  `MakeLike` of both also now copies the (previously-dropped) spectrum name — a latent
+  gap that was harmless until the spectrum became load-bearing. **NOT_PORTED / deferred
+  (each a loud abort, never silent):** Generator/PVSystem/Storage harmonic injection
+  (the voltage-source-behind-reactance family) → step 2 (a `guard_unported_harmonic_der`
+  refuses the solve loudly if any is enabled). The monitor harmonic *header* names
+  (`Freq`/`Harmonic`) ride on the Phase-6-deferred monitor-reset-on-mode-change → step
+  3. Isource is not ported in this crate (no source-current harmonic family).
+  - **Gate:** 3 targeted oracle-pinned goldens (`gen_phase7.py` + `golden_phase7.rs`):
+    `harmonics_load_h5` / `harmonics_load_h7` (the Load current-source family + the
+    frequency-scaled Line/source Y at the 5th/7th — node V + Load/Line I/P + the Line
+    YPrim entry-by-entry, all at the harmonic frequency, matched the oracle 1e-6) and
+    `harmonics_vsource` (the VSource harmonic injection from a custom spectrum, linear
+    load isolating the source path). Plus **3 exec smoke tests** (the 5th injects
+    exactly 20% of fundamental; `DoAllHarmonics` sweeps the full spectrum; the
+    Generator deferral aborts loudly), **3 `Spectrum` unit tests** (`SetMultArray`'s
+    fundamental-rotation + nearest-0.01 `GetMult` + the pre-`EndEdit` zero), and **1
+    Load unit test** (`harmonic_yprim_uses_series_rl_split_not_naive_yeq` — pins the
+    YPrim split entry-by-entry *and* discriminates it from the naive path, the offline
+    backstop for the bug the golden caught). **Corpus stays 84** (migration is step 3).
+    lib **639 → 646**.
+  - **Real bug found + fixed (the golden caught it, the smoke test didn't):** the Load
+    YPrim in harmonics mode was the placeholder `Yeq; Y.im /= h`, not the `%SeriesRL`
+    series/parallel split — a ~40% error in the load admittance that a network solve
+    dilutes to ~0.14% on the node voltages, so the loose smoke-test voltage check
+    passed while the 1e-6 oracle golden failed. The `harmonic_yprim_*` unit test is the
+    direct offline pin so a regression can't slip the golden again. (Also corrected a
+    `StickCurrInTerminalArray` sign inversion in `DoHarmonicMode` — the Rust
+    `stick_curr` is a 1:1 of the Pascal helper, *not* a negated form — which a 180°
+    voltage flip in the golden surfaced.)
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

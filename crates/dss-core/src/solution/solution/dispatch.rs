@@ -7,6 +7,7 @@ use crate::elements::pc::storage::Storage;
 use crate::solution::ymatrix::initialize_node_vbase;
 use crate::util::sqrt3;
 
+use super::harmonics::{solve_harmonic, solve_harmonic_t};
 use super::power_flow::{solve_direct, solve_snap, solve_zero_load_snapshot};
 use super::time_series::{solve_daily, solve_duty, solve_peak_day, solve_yearly};
 use super::{SolveEnv, SolveMode, SolveResult};
@@ -85,6 +86,8 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::DutyCycle => solve_duty(ckt, env),
         SolveMode::PeakDay => solve_peak_day(ckt, env),
         SolveMode::Direct => solve_direct(ckt, env),
+        SolveMode::Harmonic => solve_harmonic(ckt, env),
+        SolveMode::HarmonicT => solve_harmonic_t(ckt, env),
         _ => {
             env.errors
                 .push("Unknown solution mode.".to_string() + " (not ported in Phase 5)");

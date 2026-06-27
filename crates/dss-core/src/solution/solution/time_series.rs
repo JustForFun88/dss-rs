@@ -13,7 +13,7 @@ use super::{SolveEnv, SolveResult, sys_ctx};
 /// (`InvControlClass.UpdateAll`, l.91) and the ExpControl `Vreg` slew
 /// (`ExpControlClass.UpdateAll`, l.92), plus the mode-5 monitor sampling
 /// (`MonitorClass.SampleAllMode5`, l.96 — captures the per-step timings).
-fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
+pub(super) fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
     update_all_storage(ckt, env);
     crate::solution::controls::update_all_inv_controls(ckt, env);
     crate::solution::controls::update_all_exp_controls(ckt, env);

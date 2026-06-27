@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -66,6 +67,22 @@ impl CktElement for Load {
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }
+    }
+
+    fn init_harmonics(&mut self, sys: &SysCtx, _node_v: &[Complex64]) {
+        self.init_harmonics(sys);
+    }
+
+    fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
+        self.spectrum_obj.as_ref()
+    }
+
+    fn harmonic_spectrum_name(&self) -> Option<&str> {
+        Some(&self.spectrum)
+    }
+
+    fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
+        self.spectrum_obj = spectrum;
     }
 
     /// Pascal `TPCElement.GetCurrents` + `TLoadObj.GetTerminalCurrents`.
@@ -517,8 +534,10 @@ impl DssObject for Load {
         self.duty_shape = other.duty_shape.clone();
         self.yearly_shape = other.yearly_shape.clone();
         self.growth_shape = other.growth_shape.clone();
+        self.spectrum = other.spectrum.clone();
         // Pascal copies the resolved shape pointers (CVR/Daily/Duty/Yearly/
-        // Growth); here that is the snapshot clone + its ElemRef.
+        // Growth) and the spectrum; here that is the snapshot clone + its ElemRef.
+        self.spectrum_obj = other.spectrum_obj.clone();
         self.cvr_shape_obj = other.cvr_shape_obj.clone();
         self.daily_shape_obj = other.daily_shape_obj.clone();
         self.duty_shape_obj = other.duty_shape_obj.clone();

@@ -165,6 +165,9 @@ fn phase7_targeted_scenarios_match_oracle() {
         "expcontrol_daily_preferq",
         "expcontrol_duty",
         "expcontrol_24h",
+        "harmonics_load_h5",
+        "harmonics_load_h7",
+        "harmonics_vsource",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),

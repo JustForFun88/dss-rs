@@ -6,6 +6,7 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::solution::SolveMode;
 
 /// Reference to a circuit element inside the executive's class registry:
@@ -153,6 +154,43 @@ pub trait CktElement {
             "Improper call to InjCurrents for Element: \"{}\"",
             self.cd().obj.name()
         );
+    }
+
+    /// Pascal `TPCElement.InitHarmonics`: capture the per-element harmonic base
+    /// values (the fundamental-frequency reference magnitude/angle the spectrum
+    /// is applied to) from the present fundamental solution. Run once over every
+    /// enabled PC element when entering harmonics mode (`InitializeForHarmonics`).
+    /// Default no-op — most elements (and the sources, whose harmonic injection
+    /// is recomputed each step) carry no harmonic state.
+    fn init_harmonics(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let _ = (sys, node_v);
+    }
+
+    /// Pascal `SpectrumObj`: the harmonic spectrum this element injects from, if
+    /// one is resolved. Read by the harmonic frequency sweep
+    /// (`CollectAllFrequencies`). Default None.
+    fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
+        None
+    }
+
+    /// The `spectrum=` name this element resolves its harmonic spectrum from
+    /// (default or explicit), or None if it has no spectrum. The executive
+    /// resolves it at edit-completion (Pascal `Set_Spectrum` / the constructor
+    /// default) and hands the clone back through [`Self::set_harmonic_spectrum`].
+    fn harmonic_spectrum_name(&self) -> Option<&str> {
+        None
+    }
+
+    /// Store the resolved harmonic spectrum snapshot (Pascal `SpectrumObj`).
+    fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
+        let _ = spectrum;
+    }
+
+    /// Pascal `GetSourceFrequency` (Vsource/Isource): the source's own base
+    /// frequency, used by `CollectAllFrequencies` for the source pass. Non-source
+    /// elements return None (the sweep uses the system fundamental for them).
+    fn source_frequency(&self) -> Option<f64> {
+        None
     }
 
     /// `GetCurrents`: total currents into the element terminals. The default

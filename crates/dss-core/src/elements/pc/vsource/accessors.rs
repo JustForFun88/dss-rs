@@ -360,7 +360,9 @@ impl DssObject for VSource {
         self.yearly_shape = other.yearly_shape.clone();
         self.daily_shape = other.daily_shape.clone();
         self.duty_shape = other.duty_shape.clone();
-        // Pascal copies the resolved shape pointers (Daily/Duty/Yearly).
+        self.spectrum = other.spectrum.clone();
+        // Pascal copies the resolved shape/spectrum pointers (generic MakeLike).
+        self.spectrum_obj = other.spectrum_obj.clone();
         self.yearly_shape_obj = other.yearly_shape_obj.clone();
         self.daily_shape_obj = other.daily_shape_obj.clone();
         self.duty_shape_obj = other.duty_shape_obj.clone();

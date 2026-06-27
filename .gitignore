@@ -2,3 +2,5 @@
 .inputs
 __pycache__/
 /tmp
+.claude
+*SavedVoltages.dbl

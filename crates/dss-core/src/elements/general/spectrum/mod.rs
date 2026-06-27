@@ -9,8 +9,11 @@
 #[cfg(test)]
 mod tests;
 
+use num_complex::Complex64;
+
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
+use crate::support::complexutil::pdeg_to_complex;
 
 // Pascal `TSpectrumProp` ordinals + the property table. `%Mag` is stored
 // per-unit: the parser multiplies by 0.01 and the getter divides by it
@@ -42,9 +45,10 @@ pub struct SpectrumObj {
     pu_mag_array: Option<Vec<f64>>,
     angle_array: Option<Vec<f64>>,
     csvfile: String,
-    // `MultArray` (the complex per-harmonic phasors built by `SetMultArray`)
-    // is only consumed by the harmonic solution mode, so it is deferred to the
-    // harmonics phase; nothing in the property dump depends on it.
+    /// `MultArray` — the complex per-harmonic phasors built by `SetMultArray`,
+    /// each shifted so the fundamental sits at zero phase. Consumed only by the
+    /// harmonic solution mode (`get_mult`); nothing in the property dump reads it.
+    mult_array: Option<Vec<Complex64>>,
 }
 
 impl SpectrumObj {
@@ -56,6 +60,7 @@ impl SpectrumObj {
             pu_mag_array: None,
             angle_array: None,
             csvfile: String::new(),
+            mult_array: None,
         }
     }
 
@@ -64,6 +69,60 @@ impl SpectrumObj {
     fn harm_array_has_a_zero(&self) -> Option<usize> {
         let arr = self.harm_array.as_ref()?;
         arr.iter().position(|&v| v == 0.0).map(|i| i + 1)
+    }
+
+    /// Pascal `TSpectrumObj.SetMultArray`: rotate every harmonic phasor so the
+    /// fundamental (the `Round(HarmArray)=1` entry) sits at zero phase, and cache
+    /// the result in `MultArray`. Called from `EndEdit` once all three input
+    /// arrays are present and no zero harmonic was given.
+    fn set_mult_array(&mut self) {
+        let (Some(harm), Some(pu_mag), Some(angle)) = (
+            self.harm_array.as_ref(),
+            self.pu_mag_array.as_ref(),
+            self.angle_array.as_ref(),
+        ) else {
+            return;
+        };
+        let n = self.num_harm.max(0) as usize;
+        if harm.len() < n || pu_mag.len() < n || angle.len() < n {
+            return;
+        }
+
+        let mut fund_angle = 0.0;
+        for i in 0..n {
+            // Pascal `Round` is banker's rounding (ties-to-even); harmonics are
+            // integers in practice, so this is exact.
+            if harm[i].round_ties_even() as i64 == 1 {
+                fund_angle = angle[i];
+                break;
+            }
+        }
+
+        let mut mult = Vec::with_capacity(n);
+        for i in 0..n {
+            mult.push(pdeg_to_complex(pu_mag[i], angle[i] - harm[i] * fund_angle));
+        }
+        self.mult_array = Some(mult);
+    }
+
+    /// Pascal `TSpectrumObj.HarmArray`: the harmonic ordinals in this spectrum
+    /// (used by the harmonic frequency sweep).
+    pub fn harmonics(&self) -> Option<&[f64]> {
+        self.harm_array.as_deref()
+    }
+
+    /// Pascal `TSpectrumObj.GetMult`: the complex multiplier for harmonic `h`
+    /// (matched to the nearest 0.01), or zero if `h` is not in the spectrum.
+    pub fn get_mult(&self, h: f64) -> Complex64 {
+        let (Some(harm), Some(mult)) = (self.harm_array.as_ref(), self.mult_array.as_ref()) else {
+            return Complex64::ZERO;
+        };
+        for (i, &hv) in harm.iter().enumerate() {
+            if (h - hv).abs() < 0.01 {
+                return mult[i];
+            }
+        }
+        Complex64::ZERO
     }
 }
 
@@ -146,12 +205,20 @@ impl DssObject for SpectrumObj {
     }
 
     fn end_edit(&mut self) {
-        // Pascal `TSpectrum.EndEdit`: reject a zero harmonic; otherwise it would
-        // build MultArray (deferred to the harmonics phase). We keep the
-        // validation so malformed spectra still report the same error.
+        // Pascal `TSpectrum.EndEdit`: only act once `HarmArray` is allocated.
+        // A zero harmonic is rejected (DoSimpleMsg 65001) and `MultArray` is left
+        // unbuilt; otherwise, with all three input arrays present, build the
+        // rotated multiplier array the harmonic solution consumes.
+        if self.harm_array.is_none() {
+            return;
+        }
         if self.harm_array_has_a_zero().is_some() {
-            // DoSimpleMsg in the original; surfaced via the engine error log
-            // by the caller is not wired here, so this is a no-op guard for now.
+            // DoSimpleMsg in the original; the error sink is not wired into
+            // `end_edit`, so this stays a no-op guard (`MultArray` not built).
+            return;
+        }
+        if self.pu_mag_array.is_some() && self.angle_array.is_some() {
+            self.set_mult_array();
         }
     }
 

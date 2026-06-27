@@ -82,28 +82,36 @@ impl Dss {
                     }
                     opt::FREQUENCY => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
-                            ckt.solution.set_frequency(v);
+                            ckt.solution.set_frequency(v, ckt.fundamental);
                         }
                     }
                     opt::MODE => {
-                        if let Some(v) = enum_ord(enums, enums.solve_mode, &param, errors)
-                            && crate::solution::set_mode(ckt, SolveMode::from_ordinal(v), errors)
-                        {
-                            // Pascal `Set_Mode` tail: monitor/meter resets are
-                            // Phase 6 no-ops; `DoResetFaults` and
-                            // `DoResetControls` run here.
-                            let mut store = ClassStore { classes };
-                            let mut env = SolveEnv {
-                                store: &mut store,
-                                parser: aux_parser,
-                                vars,
-                                errors,
-                            };
-                            crate::solution::faults::reset_faults(ckt, &mut env);
-                            if let Err(e) =
-                                crate::solution::controls::reset_all_controls(ckt, &mut env)
-                            {
-                                env.errors.push(format!("Error resetting controls: {e}"));
+                        if let Some(v) = enum_ord(enums, enums.solve_mode, &param, errors) {
+                            let new_mode = SolveMode::from_ordinal(v);
+                            if crate::solution::set_mode(ckt, new_mode, errors) {
+                                // Pascal `Set_Mode` tail: monitor/meter resets are
+                                // Phase 6 no-ops; `DoResetFaults` and
+                                // `DoResetControls` run here.
+                                let mut store = ClassStore { classes };
+                                let mut env = SolveEnv {
+                                    store: &mut store,
+                                    parser: aux_parser,
+                                    vars,
+                                    errors,
+                                };
+                                // Pascal `OK_for_Harmonics`: entering harmonics
+                                // mode initialises each PC element's harmonic base
+                                // values from the present fundamental solution
+                                // (`set_mode` already enforced solved@fundamental).
+                                if matches!(new_mode, SolveMode::Harmonic | SolveMode::HarmonicT) {
+                                    crate::solution::initialize_for_harmonics(ckt, &mut env);
+                                }
+                                crate::solution::faults::reset_faults(ckt, &mut env);
+                                if let Err(e) =
+                                    crate::solution::controls::reset_all_controls(ckt, &mut env)
+                                {
+                                    env.errors.push(format!("Error resetting controls: {e}"));
+                                }
                             }
                         }
                     }
@@ -281,12 +289,30 @@ impl Dss {
                     opt::BASE_FREQUENCY => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             ckt.fundamental = v; // Set Base Frequency for system
-                            ckt.solution.set_frequency(v);
+                            ckt.solution.set_frequency(v, ckt.fundamental);
                         }
                     }
                     opt::MAX_CONTROL_ITER => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.max_control_iterations = v;
+                        }
+                    }
+                    // Pascal `DoHarmonicsList` (ExecHelper.pas l.2687): `ALL`
+                    // sweeps every spectrum frequency; otherwise the value is a
+                    // vector of harmonics (zero-filled) used in place of `ALL`.
+                    opt::HARMONICS => {
+                        if param.eq_ignore_ascii_case("ALL") {
+                            ckt.solution.do_all_harmonics = true;
+                        } else {
+                            ckt.solution.do_all_harmonics = false;
+                            let mut buf = vec![0.0; 100];
+                            match parser.parse_as_vector(vars, &mut buf, false) {
+                                Ok(n) => {
+                                    buf.truncate(n.min(100));
+                                    ckt.solution.harmonic_list = buf;
+                                }
+                                Err(e) => errors.push(e.message().to_string()),
+                            }
                         }
                     }
                     // Pascal `DoSetAllocationFactors` (ExecHelper.pas l.2651):
@@ -322,7 +348,7 @@ impl Dss {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             *default_base_freq = v;
                             ckt.fundamental = v;
-                            ckt.solution.set_frequency(v);
+                            ckt.solution.set_frequency(v, ckt.fundamental);
                         }
                     }
                     opt::EARTH_MODEL => {

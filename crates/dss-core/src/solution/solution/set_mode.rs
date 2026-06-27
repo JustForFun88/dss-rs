@@ -45,7 +45,7 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
         // Leaving harmonics mode: reset to fundamental. (`InvalidateAllPCElements`
         // is covered by the frequency change forcing a Y rebuild.)
         let fundamental = ckt.fundamental;
-        ckt.solution.set_frequency(fundamental);
+        ckt.solution.set_frequency(fundamental, fundamental);
     }
 
     let sol = &mut ckt.solution;

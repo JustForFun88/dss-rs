@@ -6,7 +6,7 @@ use num_complex::Complex64;
 use super::{VSource, get_vmag};
 use crate::elements::traits::SysCtx;
 use crate::solution::SolveMode;
-use crate::support::complexutil::pdeg_to_complex;
+use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
 use crate::util::EPSILON2;
 
 impl VSource {
@@ -69,6 +69,32 @@ impl VSource {
         } else {
             get_vmag(self.kv_base, self.per_unit, nphases)
         };
+
+        if sys.is_harmonic_model {
+            // Harmonic mode: the source voltage at this harmonic is the spectrum
+            // multiplier applied to the fundamental magnitude, rotated by the
+            // per-phase shift (`ScanType` controls positive/zero/normal rotation).
+            let src_harmonic = sys.frequency / self.src_frequency;
+            let mult = self
+                .spectrum_obj
+                .as_ref()
+                .map(|s| s.get_mult(src_harmonic))
+                .unwrap_or(Complex64::ZERO);
+            let mut vharm = mult * self.vmag;
+            vharm = rotate_phasor_deg(vharm, src_harmonic, self.angle); // phase 1 shift
+            for i in 0..nphases {
+                self.cd.vterminal[i] = vharm;
+                self.cd.vterminal[i + nphases] = Complex64::ZERO;
+                if i < nphases - 1 {
+                    vharm = match self.scan_type {
+                        1 => rotate_phasor_deg(vharm, 1.0, -360.0 / nphases as f64), // pos seq
+                        0 => vharm,                                                  // zero seq
+                        _ => rotate_phasor_deg(vharm, src_harmonic, -360.0 / nphases as f64),
+                    };
+                }
+            }
+            return;
+        }
 
         if (sys.frequency - self.src_frequency).abs() > EPSILON2 {
             self.vmag = 0.0; // Solution Frequency and Source Frequency don't match!

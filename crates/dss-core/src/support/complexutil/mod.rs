@@ -94,3 +94,15 @@ pub fn pdeg_to_complex(mag: f64, angle_deg: f64) -> Complex64 {
     let ang = angle_deg / TRUNCATED_RAD_TO_DEG;
     Complex64::new(mag * ang.cos(), mag * ang.sin())
 }
+
+/// Pascal `RotatePhasorDeg(Phasor, h, AngleDeg)`: rotate by `h · AngleDeg`
+/// degrees (used by the harmonic injection paths).
+pub fn rotate_phasor_deg(phasor: Complex64, h: f64, angle_deg: f64) -> Complex64 {
+    phasor * pdeg_to_complex(1.0, h * angle_deg)
+}
+
+/// Pascal `RotatePhasorRad(Phasor, h, AngleRad)`: rotate by `h · AngleRad`
+/// radians.
+pub fn rotate_phasor_rad(phasor: Complex64, h: f64, angle_rad: f64) -> Complex64 {
+    phasor * pclx(1.0, h * angle_rad)
+}

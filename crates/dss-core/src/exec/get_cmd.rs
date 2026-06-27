@@ -160,6 +160,16 @@ impl Dss {
                         .unwrap_or_default(),
                 ),
                 opt::BASE_FREQUENCY => append_result(&mut result, &float_to_str(ckt.fundamental)),
+                // Pascal `ExecOptions.pas:930`: `ALL`, else each harmonic appended.
+                opt::HARMONICS => {
+                    if ckt.solution.do_all_harmonics {
+                        append_result(&mut result, "ALL");
+                    } else {
+                        for h in &ckt.solution.harmonic_list {
+                            append_result(&mut result, &float_to_str(*h));
+                        }
+                    }
+                }
                 opt::MAX_CONTROL_ITER => append_result(
                     &mut result,
                     &ckt.solution.max_control_iterations.to_string(),
