@@ -158,18 +158,19 @@ fn assert_der_harmonic_injects(der_new: &str, full_name: &str) {
     // The sweep leaves the solution at the 5th harmonic (300 Hz).
     assert!((ckt.solution.harmonic - 5.0).abs() < 1e-9, "{full_name}");
     assert!((ckt.solution.frequency - 300.0).abs() < 1e-9, "{full_name}");
-    // The DER injected 5th-harmonic current from its spectrum → a small,
-    // non-zero distortion voltage.
+    // The DER injected 5th-harmonic current from its spectrum → a genuine small
+    // distortion voltage: materially non-zero (>0.1 V — a near-zero broken
+    // injection fails), but well under 5% of the L-N nominal (~7200 V) since the
+    // spectrum injects only a few % at the 5th and the network attenuates it. The
+    // exact magnitude is pinned by `phase7/harmonics_*_h5` (oracle) and the
+    // offline `harmonic_yprim_*` discriminator unit tests; this just brackets the
+    // smoke envelope on the real solve.
     let vmax = (1..=ckt.num_nodes)
         .map(|i| ckt.solution.node_v[i].norm())
         .fold(0.0_f64, f64::max);
     assert!(
-        vmax > 0.0,
-        "{full_name}: all harmonic voltages zero (no injection)"
-    );
-    assert!(
-        vmax < 12.47e3,
-        "{full_name}: harmonic voltage {vmax} not a small distortion"
+        (0.1..0.05 * 7200.0).contains(&vmax),
+        "{full_name}: harmonic distortion {vmax} V not a genuine small distortion"
     );
 }
 
@@ -211,7 +212,7 @@ fn storage_in_harmonic_mode_injects() {
     // Storage discharging (so it carries a fundamental current to capture) +
     // an explicit spectrum.
     assert_der_harmonic_injects(
-        "New Storage.st1 bus1=db phases=3 kv=12.47 kwrated=100 kwhrated=200 state=discharging %discharge=100 spectrum=defaultgen",
+        "New Storage.st1 bus1=db phases=3 kv=12.47 kwrated=1000 kwhrated=2000 state=discharging %discharge=100 spectrum=defaultgen",
         "Storage.st1",
     );
 }

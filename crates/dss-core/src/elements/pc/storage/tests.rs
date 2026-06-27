@@ -5,12 +5,60 @@
 //! inverter clamp, the `%stored` read/write).
 
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce};
+use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::support::cmatrix::CMatrix;
+use num_complex::Complex64;
 
 use super::*;
 
 fn ctx() -> crate::elements::traits::SysCtx {
     crate::elements::pc::generator::default_recalc_ctx()
+}
+
+/// The harmonic-mode YPrim is the Thevenin admittance behind `%R`/`%X`
+/// (`Yeq := 1/(Rthev + j·Xthev)`, then `Y.im /= h`) that `InitHarmonics` sets —
+/// NOT the state-dependent power-flow admittance. Pins the harmonic
+/// `CalcYPrimMatrix` branch entry-by-entry and discriminates it from the
+/// power-flow stamping. Oracle-independent backstop for the
+/// `phase7/harmonics_storage_h5` golden.
+#[test]
+fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
+    let mut st = Storage::new("s1");
+    // A representative power-flow discharge admittance (the state-dependent
+    // YeqDischarge the power-flow branch would stamp).
+    st.yeq_discharge = Complex64::new(0.006, -0.0004);
+    let pf_yeq = st.yeq_discharge;
+    // `InitHarmonics`: Yeq := 1/(Rthev + j·Xthev) (representative ohms).
+    let z_thev = Complex64::new(25.0, 25.0);
+    st.r_thev = z_thev.re;
+    st.x_thev = z_thev.im;
+    st.base.yeq = z_thev.inv();
+
+    let h = 5.0_f64;
+    let sys = SysCtx {
+        frequency: 60.0 * h,
+        fundamental: 60.0,
+        is_harmonic_model: true,
+        ..ctx()
+    };
+    let mut ym = CMatrix::new(st.cd.yorder);
+    st.calc_yprim_matrix(&mut ym, &sys);
+    let actual = ym.get(0, 0); // wye phase-A diagonal
+
+    let mut expected = z_thev.inv();
+    expected.im /= h;
+    assert!(
+        (actual - expected).norm() < 1e-12,
+        "harmonic YPrim {actual} != Thevenin admittance {expected}"
+    );
+    // Discriminator: the discharging power-flow stamping (−YeqDischarge, freq-scaled).
+    let mut naive = -pf_yeq;
+    naive.im /= h;
+    assert!(
+        (actual - naive).norm() > 0.1 * naive.norm(),
+        "harmonic YPrim {actual} indistinguishable from the power-flow path {naive}"
+    );
 }
 
 /// Pascal `TStorageObj.Create` defaults.

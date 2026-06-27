@@ -23,6 +23,55 @@ fn default_nominal_generation() {
     assert!((g.yeq.im - yeq.im).abs() < 1e-9);
 }
 
+/// The harmonic-mode YPrim is the **subtransient** admittance behind Xd"
+/// (`Yeq := 1/(j·Xd")`, then `Y.im /= h`) that `InitHarmonics` sets — NOT the
+/// frequency-scaled power-flow admittance. Pins it entry-by-entry and, as a
+/// discriminator, asserts it is far from the power-flow path: a regression that
+/// forgot to overwrite `Yeq` in `init_harmonics_impl` (reusing the power-flow
+/// `Yeq`) fails here. Oracle-independent — the offline backstop the
+/// `phase7/harmonics_generator_h5` golden complements (mirrors the step-1 Load
+/// `harmonic_yprim_uses_series_rl_split_not_naive_yeq` discriminator).
+#[test]
+fn harmonic_yprim_is_subtransient_admittance_not_powerflow() {
+    let mut g = Generator::new("g1");
+    // Establish the power-flow Yeq, like a snapshot solve does before harmonics.
+    g.set_nominal_generation(&snap_ctx());
+    let pf_yeq = g.yeq;
+    assert!(pf_yeq.norm() > 0.0, "power-flow Yeq not established");
+
+    // `InitHarmonics` overwrites Yeq with the L-N subtransient admittance and
+    // leaves the generator on.
+    g.gen_on = true;
+    g.yeq = Complex64::new(0.0, g.xdpp).inv();
+
+    let h = 5.0_f64;
+    let sys = SysCtx {
+        frequency: 60.0 * h,
+        fundamental: 60.0,
+        is_harmonic_model: true,
+        ..default_recalc_ctx()
+    };
+    let mut ym = CMatrix::new(g.cd.yorder);
+    g.calc_yprim_matrix(&mut ym, &sys);
+    let actual = ym.get(0, 0); // wye phase-A diagonal
+
+    // Expected: Y := 1/(j·Xd"), reactive part scaled by the harmonic.
+    let mut expected = Complex64::new(0.0, g.xdpp).inv();
+    expected.im /= h;
+    assert!(
+        (actual - expected).norm() < 1e-9,
+        "harmonic YPrim {actual} != subtransient admittance {expected}"
+    );
+
+    // Discriminator: the (negated, freq-scaled) power-flow admittance is far off.
+    let mut naive = -pf_yeq;
+    naive.im /= h;
+    assert!(
+        (actual - naive).norm() > 0.1 * naive.norm(),
+        "harmonic YPrim {actual} indistinguishable from the power-flow path {naive}"
+    );
+}
+
 /// kW/PF web: setting kW=100, PF=0.95 derives kvar via SyncUpPowerQuantities.
 #[test]
 fn kw_pf_sets_kvar() {

@@ -4,10 +4,57 @@
 //! does not expose directly (Create defaults, the inverter clamp branches,
 //! `ComputePanelPower`, the YEQ derivation).
 
+use crate::elements::pc::generator::default_recalc_ctx;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce};
+use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::support::cmatrix::CMatrix;
+use num_complex::Complex64;
 
 use super::*;
+
+/// The harmonic-mode YPrim is the Thevenin admittance behind `%R`/`%X`
+/// (`Yeq := 1/(Rthev + j·Xthev)`, then `Y.im /= h`) that `InitHarmonics` sets —
+/// NOT the (negated) power-flow admittance. Pins the harmonic `CalcYPrimMatrix`
+/// branch entry-by-entry and, as a discriminator, asserts it is far from the
+/// power-flow stamping. Oracle-independent backstop for the
+/// `phase7/harmonics_pvsystem_h5` golden.
+#[test]
+fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
+    let mut pv = PVSystem::new("pv1");
+    // A representative power-flow Yeq (what SetNominalDEROutput leaves before harmonics).
+    pv.base.yeq = Complex64::new(0.006, -0.0004);
+    let pf_yeq = pv.base.yeq;
+    // `InitHarmonics`: Yeq := 1/(Rthev + j·Xthev) (representative ohms).
+    let z_thev = Complex64::new(25.0, 25.0);
+    pv.r_thev = z_thev.re;
+    pv.x_thev = z_thev.im;
+    pv.base.yeq = z_thev.inv();
+
+    let h = 5.0_f64;
+    let sys = SysCtx {
+        frequency: 60.0 * h,
+        fundamental: 60.0,
+        is_harmonic_model: true,
+        ..default_recalc_ctx()
+    };
+    let mut ym = CMatrix::new(pv.cd.yorder);
+    pv.calc_yprim_matrix(&mut ym, &sys);
+    let actual = ym.get(0, 0); // wye phase-A diagonal
+
+    let mut expected = z_thev.inv();
+    expected.im /= h;
+    assert!(
+        (actual - expected).norm() < 1e-12,
+        "harmonic YPrim {actual} != Thevenin admittance {expected}"
+    );
+    let mut naive = -pf_yeq;
+    naive.im /= h;
+    assert!(
+        (actual - naive).norm() > 0.1 * naive.norm(),
+        "harmonic YPrim {actual} indistinguishable from the power-flow path {naive}"
+    );
+}
 
 /// Pascal `TPVsystemObj.Create` defaults.
 #[test]

@@ -171,6 +171,9 @@ fn phase7_targeted_scenarios_match_oracle() {
         "harmonics_doall",
         "harmonics_doall_t",
         "harmonics_load_motor_h5",
+        "harmonics_generator_h5",
+        "harmonics_pvsystem_h5",
+        "harmonics_storage_h5",
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),
