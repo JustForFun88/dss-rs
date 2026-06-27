@@ -1203,6 +1203,41 @@ def deck_harmonics_vsource() -> list[str]:
     ]
 
 
+# A `mode=0` V/I monitor on the Load captures the per-harmonic distortion at
+# every swept frequency, so the golden pins the WHOLE multi-harmonic sweep
+# (compare_monitor, channel-by-channel), not just the last harmonic's node V.
+HARM_MON = "new Monitor.m element=Load.ld terminal=1 mode=0 ppolar=no"
+
+
+def deck_harmonics_doall() -> list[str]:
+    # The DEFAULT harmonics study: no `set harmonics=`, so DoAllHarmonics collects
+    # the load's spectrum (1,3,5,7,9,11,13) and sweeps each. The monitor pins the
+    # per-harmonic V/I trajectory (the actual output of a harmonics study) +
+    # CollectAllFrequencies / AddFrequency ordering.
+    return [*HARM_HEAD, HARM_LOAD, HARM_MON, *HARM_TAIL, "set mode=harmonics"]
+
+
+def deck_harmonics_doall_t() -> list[str]:
+    # The same default sweep through the sequential-time driver SolveHarmonicT
+    # (`mode=harmonicT`): pins solve_harmonic_t's per-harmonic monitor capture
+    # (its final NodeV is the fundamental, so the monitor is the real gate).
+    return [*HARM_HEAD, HARM_LOAD, HARM_MON, *HARM_TAIL, "set mode=harmonicT"]
+
+
+def deck_harmonics_load_motor_h5() -> list[str]:
+    # `%SeriesRL` with `puXharm>0` selects the motor series-reactance YPrim branch
+    # (XseriesOhms from kVLoadBase²·1000/(kVA·%SeriesRL)·puXharm with XRharm),
+    # which the default-load goldens (puXharm=0) never reach.
+    return [
+        *HARM_HEAD,
+        "new Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.9 model=1 "
+        "%SeriesRL=50 puXharm=0.2 XRharm=6",
+        *HARM_TAIL,
+        "set harmonics=(5)",
+        "set mode=harmonics",
+    ]
+
+
 # name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
 # every *.json in the directory, so this is the single source of truth.
 SCENARIOS = {
@@ -1259,6 +1294,9 @@ SCENARIOS = {
     "harmonics_load_h5": deck_harmonics_load_h5,
     "harmonics_load_h7": deck_harmonics_load_h7,
     "harmonics_vsource": deck_harmonics_vsource,
+    "harmonics_doall": deck_harmonics_doall,
+    "harmonics_doall_t": deck_harmonics_doall_t,
+    "harmonics_load_motor_h5": deck_harmonics_load_motor_h5,
 }
 
 

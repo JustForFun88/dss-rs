@@ -507,6 +507,28 @@ mode, ported in steps split by injection family.
     `StickCurrInTerminalArray` sign inversion in `DoHarmonicMode` — the Rust
     `stick_curr` is a 1:1 of the Pascal helper, *not* a negated form — which a 180°
     voltage flip in the golden surfaced.)
+  - **audit-tests follow-up:** verdict — the four *primary* paths (Load injection,
+    the YPrim split, the VSource injection, the frequency-scaled Line Y) were
+    strongly oracle-pinned (1e-6 + Line YPrim entry-by-entry, guarded in `must`), but
+    several *reachable default* sub-paths shipped without an oracle gate. Closed the
+    two Major gaps + the motor minor with **3 new oracle goldens**: `harmonics_doall`
+    (the **default** `DoAllHarmonics` sweep — a `mode=0` Load monitor pins V/I on
+    **every** swept harmonic, 7 samples × 16 channels, via `compare_monitor` — the
+    real distortion output, not just the last harmonic), `harmonics_doall_t` (the
+    same sweep through `SolveHarmonicT`, previously **untested** — its final NodeV is
+    the fundamental so the monitor is the gate), and `harmonics_load_motor_h5` (the
+    `puXharm>0` motor series-reactance YPrim branch the default-load goldens skip).
+    Plus 3 exec tests: `second_harmonic_solve_restores_saved_voltages` (the re-entrant
+    `RetrieveSavedVoltages` path) and the DER deferral guard now asserted for **all
+    three** families (Generator/PVSystem/Storage), not just Generator. lib **646 →
+    649**; golden_phase7 53 → 56. **Surfaced-not-fixed (acceptable):** the monitor
+    *time-column* header names stay `hour`/`t(sec)` rather than `Freq`/`Harmonic` —
+    `compare_monitor` skips those columns (it compares the V/I data channels), so the
+    values are pinned now; the cosmetic header rename rides with the
+    monitor-reset-on-mode-change (a Phase-6 deferral) in step 3. The
+    `harmonic_yprim_*` unit test's `expected` re-derives the split arithmetic (a
+    transcription check) — its teeth are the naive-path discriminator + the oracle
+    golden anchor; left as-is.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
