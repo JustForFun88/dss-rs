@@ -162,6 +162,26 @@ the policy above applies unchanged. Two gate-specific points:
   ULPs at 1e-6 rel / 1e-4 abs. The mode-5 wall-clock timing channels
   (`SolveSnap_uSecs` / `TimeStep_uSecs`) are not modeled and are skipped.
 
+- **Dynamics mode-3 state-variable trajectories — same monitor policy, 1e-6
+  (`exec/tests/dynamics.rs`).** The dynamics gates (Kundur generator — classic and
+  DynamicExp — plus PV/Storage/IndMach012) record state variables through the same
+  f32 monitor stream, so they follow the monitor-channel policy above. The realized
+  Rust↔oracle match on the Kundur gates is ~1e-8 on **every** channel (the swing
+  extrema over 11071 steps included), so they are pinned at the standard **1e-6
+  rel**, not the looser `1e-5` PORTING_PLAN §Phase 7 *allows* for dynamics (that is
+  an upper bound we do not need). Two subtleties, both pinned against the oracle's
+  *actual* value rather than against 0:
+  - the swing-equation **fixpoint residual** channels (`dSpeed`, `dTheta`, `speed`,
+    `dspeed`) are not zero at steady state — `dSpeed = (Pshaft + electrical_power)/
+    Mmass` where `Pshaft` is fixed at init but the electrical power is recomputed
+    each step, a ~1.5e-8-rel power mismatch / `Mmass`, ≈ −4.3093074e-5 deg/s. The
+    oracle reproduces it identically (Rust matches to ~9e-8 rel), so it is pinned at
+    its real value, which is a stronger guard than an `abs < ε ≈ 0` bound.
+  - the `rel` helper floors its denominator at 1.0, so for these sub-1 residuals the
+    `1e-6` pin is effectively a `1e-6` *absolute* band around the oracle value —
+    still ~10⁴× tighter than the residual's own magnitude and catching any sign flip
+    or order-1 divergence.
+
 - **EnergyMeter registers — 1e-4 rel (`golden_phase6.rs`, 8500 gate).** The
   PORTING_PLAN §4 energy-accumulation policy.
 

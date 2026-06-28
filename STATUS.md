@@ -884,6 +884,36 @@ and all six audit follow-ups) archived at
     unpinned channels (**ch1 `dspeed`** ~0 + **ch8 `damp`** exactly 0), and tightened
     the per-sample fixpoint-hold loop **1e-4 → 1e-5** (the classic sibling's bound; the
     real drift is ≤1 ULP). lib **675 → 676**.
+  - **audit-code follow-up:** verdict **faithful, no critical bug** — every focus
+    area (calc-value/const branches, the `(0..50000)` guard, `Set/GetDynOutputNames`,
+    the `on_dynamic_eq_set` sizing order, the `InitStateVars`/`IntegrateStates`
+    `DynamicEqObj <> NIL` branches, `Get_PCE_Value` codes 0-8, the DynExp-first
+    state-var dispatch, MakeLike not copying `dyneq`, the `solve_eq` disjoint borrow)
+    confirmed line-for-line against Pascal. Fixed its one real Minor: `set_dyn_output_names`
+    sized `DynOut` to `names.len()`; Pascal `SetLength(DynOut, 2)` is **unconditional**,
+    so a 1-element `DynOut=[Speed]` would panic on `dyn_out[1]` in `IntegrateStates`
+    — now `vec![0; 2]` (1:1, slot 1 = 0; >2 names overrun like Pascal's range error).
+    Plus the Nit (the 50007 message's per-element trailing comma). **Surfaced-not-fixed:**
+    Generator has no `Set_Variable`, so the DynamicEq `msg 566` guard is absent — a
+    **pre-existing** documented gap (no caller yet), not a step-3b regression; the
+    `UserDynInit` number-vs-string `requiredRPN` distinction is deferred with
+    `SaveWrite` (Phase 8). lib stays **676**.
+  - **Tolerance review (prompted by a "why 1e-4/1e-5, not the planned 1e-6?"
+    question).** TOLERANCE_NOTES.md pins monitor channels at **1e-6 rel / 1e-4 abs**
+    (they are f32); the dynamics gates had copied the classic step-2a `1e-5`/`1e-4`
+    bounds. Measured the actual Rust↔oracle delta on every channel of both Kundur
+    gates (classic + DynExp): **~1e-8 or tighter** (steady theta 2e-9, pshaft 1.4e-8;
+    fault freq 3.6e-11; swing extrema 3e-9/2e-8) — the looseness was masking nothing.
+    Tightened **all** dynamics monitor pins to the standard **1e-6** (both gates).
+    Critically, investigated the largest "small" channel: classic `dSpeed` =
+    −4.3093074e-5 deg/s — **proved (oracle probe) it is not a bug**: the oracle
+    produces the identical value (Rust matches to ~9e-8 rel). It is the swing-equation
+    fixpoint *residual* (`Pshaft` fixed at init vs the per-step recomputed electrical
+    power, ~1.5e-8-rel mismatch / `Mmass`), reproduced by both engines. The residual
+    channels (`dSpeed`/`dTheta`/`speed`/`dspeed`) are now pinned against the oracle's
+    **actual value** (a stronger guard than `abs < ε ≈ 0`), and TOLERANCE_NOTES.md
+    documents the dynamics monitor policy + the residual rationale. No new exception;
+    the dynamics tests now obey the standard monitor-channel tolerance. lib stays **676**.
 - **next:** step 3b cont. — PVSystem/Storage `DynamicEq` integration. They already
   resolve the `DynamicExp` ref (WP7.3/7.4); refactor `InvBasedPceData` to embed the
   shared `DynEqPceData`, add the per-phase inverter `IntegrateStates`/`InitStateVars`

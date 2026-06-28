@@ -216,22 +216,32 @@ fn generator_dynamics_mode3_holds_operating_point_vs_oracle() {
     // Oracle (dss-python 0.15.7) — the undisturbed segment is the swing-equation
     // fixpoint: the last sample equals the init operating point.
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // All channels pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md;
+    // measured Rust↔oracle match ~1e-8 on every channel).
+    assert!(rel(last(0), 60.0) < 1e-6, "Frequency (Hz) = {}", last(0));
+    assert!(rel(last(1), 41.77272) < 1e-6, "Theta (deg) = {}", last(1));
+    assert!(rel(last(2), 1.1625859) < 1e-6, "Vd (pu) = {}", last(2));
+    assert!(rel(last(3), 1.9979999e9) < 1e-6, "PShaft (W) = {}", last(3));
+    // dSpeed / dTheta are NOT zero — they are the swing-equation fixpoint residual
+    // (Pshaft fixed at init vs the per-step recomputed electrical power, a
+    // ~1.5e-8-rel power mismatch / Mmass). The oracle reproduces them identically
+    // (-4.3093074e-5 deg/s, -1.9431876e-7 deg), so they are pinned against the
+    // oracle's actual residual, not against 0.
     assert!(
-        (last(0) - 60.0).abs() < 1e-4,
-        "Frequency (Hz) = {}",
-        last(0)
+        rel(last(4), -4.3093074e-5) < 1e-6,
+        "dSpeed (deg/s) = {}",
+        last(4)
     );
-    assert!(rel(last(1), 41.77272) < 1e-5, "Theta (deg) = {}", last(1));
-    assert!(rel(last(2), 1.1625859) < 1e-5, "Vd (pu) = {}", last(2));
-    assert!(rel(last(3), 1.9979999e9) < 1e-5, "PShaft (W) = {}", last(3));
-    // dSpeed / dTheta sit at numerical-noise zero on the undisturbed run.
-    assert!(last(4).abs() < 1e-3, "dSpeed (deg/s) = {}", last(4));
-    assert!(last(5).abs() < 1e-4, "dTheta (deg) = {}", last(5));
+    assert!(
+        rel(last(5), -1.9431876e-7) < 1e-6,
+        "dTheta (deg) = {}",
+        last(5)
+    );
 
     // The fixpoint holds for the whole run, not just the last sample.
     for (s, &v) in m.channels[1].iter().enumerate() {
         assert!(
-            rel(v as f64, 41.77272) < 1e-5,
+            rel(v as f64, 41.77272) < 1e-6,
             "Theta drifted at sample {s}: {v}"
         );
     }
@@ -259,14 +269,14 @@ fn generator_dynamics_fault_response_matches_oracle_kundur() {
     // Pre-fault (sample 1000) the rotor sits at the steady angle; the fault then
     // accelerates it monotonically. Oracle (dss-python 0.15.7): Theta rises
     // 41.77272 -> 48.47866 deg over the 70 fault steps; Frequency reaches 60.536 Hz.
-    assert!(rel(theta[1000] as f64, 41.77272) < 1e-5, "pre-fault Theta");
+    assert!(rel(theta[1000] as f64, 41.77272) < 1e-6, "pre-fault Theta");
     let last = theta[1070] as f64;
     assert!(
-        rel(last, 48.47866) < 1e-4,
+        rel(last, 48.47866) < 1e-6,
         "end-of-fault Theta (deg) = {last}"
     );
     assert!(
-        rel(freq[1070] as f64, 60.536129) < 1e-4,
+        rel(freq[1070] as f64, 60.536129) < 1e-6,
         "end-of-fault Frequency (Hz) = {}",
         freq[1070]
     );
@@ -313,10 +323,11 @@ fn generator_dynamics_swing_matches_oracle_kundur() {
         .iter()
         .fold(f64::NEG_INFINITY, |a, &b| a.max(b as f64));
     // Oracle (dss-python 0.15.7): the undamped rotor swing reaches min 24.18569 deg
-    // (trough) and max 98.131889 deg (first peak) over the 10 s ride-out.
-    assert!(rel(tmin, 24.18569) < 1e-4, "Theta swing min (deg) = {tmin}");
+    // (trough) and max 98.131889 deg (first peak) over the 10 s ride-out. Pinned at
+    // the standard monitor `1e-6` (measured match 3.0e-9 / 3.5e-9).
+    assert!(rel(tmin, 24.18569) < 1e-6, "Theta swing min (deg) = {tmin}");
     assert!(
-        rel(tmax, 98.131889) < 1e-4,
+        rel(tmax, 98.131889) < 1e-6,
         "Theta swing max (deg) = {tmax}"
     );
 }
@@ -408,34 +419,39 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
     assert_eq!(m.channels.len(), 12);
 
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // Oracle DynExp steady values (the swing-equation fixpoint). The ~0 channels
-    // sit at numerical-noise zero (~2e-7); `damp` (deck-set 0, no equation) is
+    // Oracle DynExp steady values, all pinned at the standard monitor-channel
+    // `1e-6` (TOLERANCE_NOTES.md). The "small" channels (speed / dspeed / dtheta)
+    // are NOT zero — they are the swing-equation fixpoint *residual* (Pshaft is
+    // fixed at init but the electrical power is recomputed each step, a ~1.5e-8-rel
+    // power mismatch / Mmass), which the oracle reproduces identically (the Rust↔
+    // oracle match is ~1e-8–2e-9 on every channel). They are pinned against the
+    // oracle's actual residual, not against 0. `damp` (deck-set 0, no equation) is
     // exactly 0.
-    assert!(last(0).abs() < 1e-5, "speed = {}", last(0)); // ~0
-    assert!(last(1).abs() < 1e-5, "dspeed = {}", last(1)); // ~0
-    assert!(rel(last(2), 41221132.0) < 1e-5, "mass = {}", last(2)); // 2HS/w0
-    assert!(rel(last(4), 1.9979999e9) < 1e-5, "pshaft = {}", last(4));
-    assert!(rel(last(6), 1.998e9) < 1e-5, "pterm = {}", last(6));
+    assert!(rel(last(0), -1.9431351e-7) < 1e-6, "speed = {}", last(0));
+    assert!(rel(last(1), -7.521161e-7) < 1e-6, "dspeed = {}", last(1));
+    assert!(rel(last(2), 41221132.0) < 1e-6, "mass = {}", last(2)); // 2HS/w0
+    assert!(rel(last(4), 1.9979999e9) < 1e-6, "pshaft = {}", last(4));
+    assert!(rel(last(6), 1.998e9) < 1e-6, "pterm = {}", last(6));
     assert!(last(8).abs() < 1e-9, "damp = {}", last(8)); // exactly 0
     assert!(
-        rel(last(10), 0.7290715) < 1e-5,
+        rel(last(10), 0.7290715) < 1e-6,
         "theta (rad) = {}",
         last(10)
     );
-    assert!(last(11).abs() < 1e-5, "dtheta = {}", last(11)); // ~0
+    assert!(rel(last(11), -1.9431876e-7) < 1e-6, "dtheta = {}", last(11));
 
     // theta (rad) here equals the classic gate's Theta (41.77272 deg) — the DynExp
-    // reproduces the built-in shaft model exactly.
+    // reproduces the built-in shaft model exactly. (Sanity cross-check against the
+    // classic f32 pin, so deg-loose; the binding pin is the rad value above.)
     assert!(
         (last(10) * 180.0 / std::f64::consts::PI - 41.77272).abs() < 1e-3,
         "DynExp theta must equal the classic Theta in degrees"
     );
 
-    // The fixpoint holds for the whole run (≤1 f32 ULP drift, matching the classic
-    // sibling's 1e-5 bound).
+    // The fixpoint holds for the whole run (measured ≤7.9e-8 rel drift = sub-ULP).
     for (s, &v) in m.channels[10].iter().enumerate() {
         assert!(
-            rel(v as f64, 0.7290715) < 1e-5,
+            rel(v as f64, 0.7290715) < 1e-6,
             "theta drifted at sample {s}: {v}"
         );
     }
@@ -463,14 +479,14 @@ fn generator_dynexp_dynamics_fault_response_matches_oracle() {
     // Pre-fault the rotor sits at the steady angle; the fault accelerates it.
     // Oracle (dss-python 0.15.7): theta 0.7290715 -> 0.84611225 rad
     // (= 41.77272 -> 48.478657 deg, the classic gate's 48.47866); speed -> 3.368602.
-    assert!(rel(theta[1000] as f64, 0.7290715) < 1e-5, "pre-fault theta");
+    assert!(rel(theta[1000] as f64, 0.7290715) < 1e-6, "pre-fault theta");
     assert!(
-        rel(theta[1070] as f64, 0.84611225) < 1e-4,
+        rel(theta[1070] as f64, 0.84611225) < 1e-6,
         "end-of-fault theta (rad) = {}",
         theta[1070]
     );
     assert!(
-        rel(speed[1070] as f64, 3.368602) < 1e-4,
+        rel(speed[1070] as f64, 3.368602) < 1e-6,
         "end-of-fault speed = {}",
         speed[1070]
     );
@@ -510,13 +526,14 @@ fn generator_dynexp_dynamics_swing_matches_oracle_kundur() {
         .iter()
         .fold(f64::NEG_INFINITY, |a, &b| a.max(b as f64));
     // Oracle (dss-python 0.15.7): theta swings between 0.42211992 and 1.7127246 rad
-    // (= 24.18569 / 98.131889 deg, the classic gate's values).
+    // (= 24.18569 / 98.131889 deg, the classic gate's values). Pinned at the
+    // standard monitor-channel `1e-6` rel (measured match 1.1e-8 / 2.0e-8).
     assert!(
-        rel(tmin, 0.42211992) < 1e-4,
+        rel(tmin, 0.42211992) < 1e-6,
         "theta swing min (rad) = {tmin}"
     );
     assert!(
-        rel(tmax, 1.7127246) < 1e-4,
+        rel(tmax, 1.7127246) < 1e-6,
         "theta swing max (rad) = {tmax}"
     );
     assert!(

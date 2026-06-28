@@ -125,14 +125,18 @@ impl DynEqPceData {
     pub fn set_dyn_output_names(&mut self, names: &[String]) -> Vec<String> {
         let mut errors = Vec::new();
         let Some(eq) = &self.dynamic_eq_obj else {
+            // Pascal builds the list with a trailing comma per element.
+            let list: String = names.iter().map(|n| format!("{n},")).collect();
             errors.push(format!(
                 "A DynamicExp object needs to be assigned to this element before \
-                 this declaration: DynOut = [{}]",
-                names.join(",")
+                 this declaration: DynOut = [{list}]"
             ));
             return errors;
         };
-        self.dyn_out = vec![0; names.len()];
+        // Pascal `SetLength(DynOut, 2)` — always two output slots (speed + angle).
+        // A 1-element `DynOut=[Speed]` leaves slot 1 = 0 (the integration reads
+        // `DynOut[1]` as the angle var); >2 names overrun (Pascal range error).
+        self.dyn_out = vec![0; 2];
         for (idx, name) in names.iter().enumerate() {
             let var_idx = eq.get_out_idx(name);
             if var_idx < 0 {
