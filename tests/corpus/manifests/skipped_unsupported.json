@@ -824,7 +824,7 @@
     {
       "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
       "tag": "unsupported_feature=file-backed-arrays",
-      "note": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"LoadShape.load1: LoadShape has no data to be normalized. Check for previous errors."
+      "note": "UPFC + UPFCControl are ported (Phase 7); the snapshot is oracle-gated in exec/tests/upfc.rs. The deck stays unsolvable: it uses file-backed loadshapes (pmult=[file=...], not supported yet) and ends in show/plot (Phase 8)."
     },
     {
       "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",

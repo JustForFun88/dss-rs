@@ -179,8 +179,22 @@ impl Dss {
                 |name| Box::new(pvsystem::PVSystem::new(name)),
                 ElemKind::PVSystem,
             ),
+            // UPFC + UPFCControl register after PVSystem, before IndMach012 (Pascal
+            // DSSClassDefs.pas:255/258 UPFC_ELEMENT/UPFC_CONTROL). Registration
+            // order does not affect node ordering, which follows element creation
+            // order.
+            DssClass::ckt_class(
+                upfc::class_props(&enums),
+                |name| Box::new(upfc::Upfc::new(name)),
+                ElemKind::Upfc,
+            ),
+            DssClass::ckt_class(
+                upfc_control::class_props(&enums),
+                |name| Box::new(upfc_control::UpfcControl::new(name)),
+                ElemKind::Control,
+            ),
             // IndMach012 registers after PVSystem, before InvControl (Pascal
-            // DSSClassDefs.pas:255 INDMACH012_ELEMENT; the UPFC/GICsource/AutoTrans
+            // DSSClassDefs.pas:264 INDMACH012_ELEMENT; the GICsource/AutoTrans
             // classes around it are unported). Registration order does not affect
             // node ordering, which follows element creation order.
             DssClass::ckt_class(

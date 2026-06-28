@@ -20,9 +20,11 @@ use crate::elements::control::storage_controller::{
     FleetFind, StorageController, StorageDispatchEnv, StorageSnap,
 };
 use crate::elements::control::swt_control::SwtControl;
+use crate::elements::control::upfc_control::{UpfcControl, UpfcDispatchEnv};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{STORE_EXTERNALMODE, Storage};
+use crate::elements::pc::upfc::Upfc;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
 use crate::elements::pd::transformer::Transformer;
@@ -94,6 +96,10 @@ enum ControlKind {
     /// volt-var control); like InvControl it reaches the fleet through the whole
     /// class registry (WP7.5 step 3).
     Exp,
+    /// UPFCControl drives a *dynamic* UPFC fleet (scanned from the whole class
+    /// registry); `Sample` polls every UPFC's `CheckStatus`, `Action` uploads
+    /// their currents, `Reset` is a no-op.
+    Upfc,
 }
 
 /// The dispatch core: split the borrows, downcast, and invoke `Sample` /
@@ -187,6 +193,11 @@ pub(super) fn dispatch_control(
             (
                 ControlKind::Exp,
                 format!("ExpControl.{}", ec.ccd.cd.obj.name()),
+            )
+        } else if let Some(uc) = obj.as_any().downcast_ref::<UpfcControl>() {
+            (
+                ControlKind::Upfc,
+                format!("UPFCControl.{}", uc.ccd.cd.obj.name()),
             )
         } else {
             return Err(format!(
@@ -449,6 +460,46 @@ pub(super) fn dispatch_control(
         return Ok(());
     }
 
+    // UPFCControl drives a *dynamic* UPFC fleet, so — like the GenDispatcher /
+    // StorageController / InvControl / ExpControl above — it reaches the fleet
+    // through the whole class registry and none of the `CtrlCtx`; handle it here.
+    if let ControlKind::Upfc = kind {
+        // Clone the control out so the store can be borrowed mutably for the fleet;
+        // `Sample`/`DoPendingAction` mutate the cached pointer list, copied back.
+        let mut uc = store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<UpfcControl>()
+            .expect("kind matched above")
+            .clone();
+        let upfcs = ckt.upfcs.clone();
+        {
+            let mut env = UpfcDispEnv {
+                store: &mut **store,
+                node_v: &ckt.solution.node_v,
+                sys: &sys,
+                upfcs,
+            };
+            match op {
+                ControlOp::Sample => {
+                    if uc.sample(&mut env) {
+                        // Pascal `ActiveCircuit.ControlQueue.Push(0, 0, 0, Self)` —
+                        // a present-time action to re-solve with the new injections.
+                        queue.push(0, 0.0, 0, 0, r);
+                    }
+                }
+                ControlOp::Action { .. } => uc.do_pending_action(&mut env),
+                ControlOp::Reset => {} // Pascal `Reset` is a no-op
+            }
+        }
+        *store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<UpfcControl>()
+            .expect("kind matched above") = uc;
+        return Ok(());
+    }
+
     // Build the shared control context from disjoint Solution fields.
     let Solution {
         node_v,
@@ -482,6 +533,7 @@ pub(super) fn dispatch_control(
         ControlKind::StorageCtrl { .. } => unreachable!("StorageController handled above"),
         ControlKind::Inv => unreachable!("InvControl handled above"),
         ControlKind::Exp => unreachable!("ExpControl handled above"),
+        ControlKind::Upfc => unreachable!("UPFCControl handled above"),
         ControlKind::Swt { controlled } => {
             match op {
                 ControlOp::Sample => {
@@ -1012,6 +1064,61 @@ impl GenDispatchEnv for GenDispEnv<'_> {
     }
     fn set_gen_kvar_base(&mut self, g: ElemRef, value: f64) {
         Self::generator_mut(self.store, g).kvar_base = value;
+    }
+}
+
+/// [`UpfcDispatchEnv`] over the store: the controlled UPFC fleet, reached through
+/// the class registry. The fleet-scan list is the circuit's creation-ordered
+/// `upfcs` (cloned by the caller so the store can be borrowed freely).
+struct UpfcDispEnv<'a> {
+    store: &'a mut dyn ElemStore,
+    node_v: &'a [Complex64],
+    sys: &'a SysCtx,
+    upfcs: Vec<ElemRef>,
+}
+
+impl UpfcDispEnv<'_> {
+    fn upfc(store: &dyn ElemStore, u: ElemRef) -> &Upfc {
+        store
+            .obj(u)
+            .as_any()
+            .downcast_ref::<Upfc>()
+            .expect("UPFCControl list entry is a UPFC")
+    }
+    fn upfc_mut(store: &mut dyn ElemStore, u: ElemRef) -> &mut Upfc {
+        store
+            .obj_mut(u)
+            .as_any_mut()
+            .downcast_mut::<Upfc>()
+            .expect("UPFCControl list entry is a UPFC")
+    }
+}
+
+impl UpfcDispatchEnv for UpfcDispEnv<'_> {
+    fn find_enabled_upfc(&self, name: &str) -> Option<ElemRef> {
+        let r = self.store.find_ckt_element(&format!("upfc.{name}"))?;
+        self.store.ckt_elem(r).cd().enabled.then_some(r)
+    }
+    fn all_enabled_upfcs(&self) -> Vec<ElemRef> {
+        self.upfcs
+            .iter()
+            .copied()
+            .filter(|&u| self.store.ckt_elem(u).cd().enabled)
+            .collect()
+    }
+    fn check_status(&mut self, u: ElemRef) -> bool {
+        // Pascal `checkPF` reaches `MonElm.Power[1]`; compute it first (a disjoint
+        // element), then mutate the UPFC's control flags via `CheckStatus`.
+        let mon = Self::upfc(self.store, u).mon_elm;
+        let mon_power = mon.map(|m| {
+            self.store
+                .ckt_elem_mut(m)
+                .terminal_power(self.sys, self.node_v, 1)
+        });
+        Self::upfc_mut(self.store, u).check_status(mon_power)
+    }
+    fn upload_currents(&mut self, u: ElemRef) {
+        Self::upfc_mut(self.store, u).upload_currents();
     }
 }
 

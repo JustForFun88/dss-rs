@@ -249,6 +249,10 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
                 .as_any()
                 .downcast_ref::<crate::elements::pc::vccs::Vccs>()
                 .is_some()
+            || obj
+                .as_any()
+                .downcast_ref::<crate::elements::pc::upfc::Upfc>()
+                .is_some()
         {
             (MeteredKind::PcElement, 0, 0)
         } else {

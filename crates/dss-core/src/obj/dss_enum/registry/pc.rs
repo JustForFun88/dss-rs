@@ -18,6 +18,7 @@ pub(super) struct PcEnums {
     pub(super) storage_dispatch_mode: EnumId,
     pub(super) ind_mach_slip_option: EnumId,
     pub(super) vsc_mode: EnumId,
+    pub(super) upfc_mode: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
@@ -179,6 +180,25 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
     vscm.default_value = 0;
     let vsc_mode = push(vscm);
 
+    // UPFC.pas TUPFC.Create: `UPFCModeEnum` (JSONUseNumbers; sequential 0..5). The
+    // text dump of the MappedIntEnum `Mode` property renders the integer ordinal
+    // directly (probed), so these names only feed the JSON/ordinal-to-string path.
+    let upfc_mode = push(DssEnum::new(
+        "UPFC: Mode",
+        true,
+        0,
+        0,
+        &[
+            "Off",
+            "Voltage Regulator",
+            "Phase Angle Regulator",
+            "Dual Regulator",
+            "Double Reference (Voltage)",
+            "Double Reference (Dual)",
+        ],
+        &[0, 1, 2, 3, 4, 5],
+    ));
+
     PcEnums {
         connection,
         vsource_model,
@@ -193,5 +213,6 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         storage_dispatch_mode,
         ind_mach_slip_option,
         vsc_mode,
+        upfc_mode,
     }
 }
