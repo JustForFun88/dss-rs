@@ -82,6 +82,19 @@ impl Monitor {
                 self.add_dbl(tap);
                 return;
             }
+            3 => {
+                // Pascal `TakeSample` mode 3 (Monitor.pas l.1245-1250): pick up
+                // the metered PC element's state variables —
+                // GetAllVariables(StateBuffer) then AddDblsToBuffer(StateBuffer,
+                // Length(StateBuffer)). `record_size` was set to NumVariables at
+                // header build (`ClearMonitorStream`).
+                let n = self.record_size;
+                let mut states = vec![0.0_f64; n];
+                let e = metered.as_ckt_element_mut().expect("ckt element");
+                e.get_all_variables(sys, node_v, &mut states);
+                self.add_dbls(&states);
+                return;
+            }
             5 => {
                 // Solution variables (no metered access).
                 let vars = [
@@ -134,10 +147,10 @@ impl Monitor {
                 }
                 return;
             }
-            // Modes 3 (state vars), 4 (flicker/Pstcalc), 7 (Storage), 8/10
-            // (transformer winding currents/voltages), 12 (LL) build their
-            // header but defer the sample body to Phase 6+/7 (no gate uses
-            // them; the metered surface they need is not yet exposed).
+            // Modes 4 (flicker/Pstcalc), 7 (Storage), 8/10 (transformer winding
+            // currents/voltages), 12 (LL) build their header but defer the
+            // sample body to Phase 6+/7 (no gate uses them; the metered surface
+            // they need is not yet exposed).
             _ => return,
         }
 

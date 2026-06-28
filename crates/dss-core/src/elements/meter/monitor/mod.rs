@@ -10,12 +10,12 @@
 //! where Pascal narrows (`AddDblToBuffer`).
 //!
 //! Modes ported (PHASE6_PLAN §2.3): 0 (V&I), 1 (powers), 2 (transformer tap),
-//! 5 (solution variables), 6 (capacitor steps), 9 (losses), 11 (all terminal
-//! V&I) — plus the ±16/±32/±64 modifiers, residual, VIpolar/Ppolar. Modes 3
-//! (PCElement state vars — needs the dynamics surface), 4 (flicker/Pstcalc),
-//! 7 (Storage), 8/10 (transformer winding currents/voltages) and 12 (LL
-//! voltages) build their **header** but defer the sample body (Phase 6+/7); the
-//! gate exercises 0/1/2/5. File save/`TranslateToCSV` is Phase 8.
+//! 3 (PCElement state vars), 5 (solution variables), 6 (capacitor steps), 9
+//! (losses), 11 (all terminal V&I) — plus the ±16/±32/±64 modifiers, residual,
+//! VIpolar/Ppolar. Modes 4 (flicker/Pstcalc), 7 (Storage), 8/10 (transformer
+//! winding currents/voltages) and 12 (LL voltages) build their **header** but
+//! defer the sample body (Phase 6+/7); the gate exercises 0/1/2/5. File
+//! save/`TranslateToCSV` is Phase 8.
 //!
 //! Split into submodules mirroring `load/`, `generator/`, `vsource/`:
 //! - this `mod.rs` — property ordinals, `class_props`, the `Monitor` struct,

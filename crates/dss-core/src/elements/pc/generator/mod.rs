@@ -29,9 +29,11 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::SolveMode;
 use crate::support::cmatrix::CMatrix;
+use crate::support::dynamics::IterationFlag;
 use crate::util::{CDOUBLEONE, sqrt3};
 
 mod accessors;
+mod dynamics;
 mod nominal;
 mod registers;
 mod solve;
@@ -249,6 +251,26 @@ pub struct Generator {
     pub theta_harm: f64,
     pub gen_fundamental: f64,
 
+    // GenVars dynamics state (InitStateVars/IntegrateStates). Re-seeded at
+    // dynamics entry by `init_state_vars`; the transient values are not copied
+    // by `MakeLike` (Pascal copies the whole GenVars record, but the transient
+    // state is overwritten on the next dynamics entry).
+    pub theta: f64,             // GenVars.Theta (rad), D-axis voltage angle
+    pub dtheta: f64,            // GenVars.dTheta
+    pub speed: f64,             // GenVars.Speed (rad/sec, rel. to synchronous)
+    pub dspeed: f64,            // GenVars.dSpeed
+    pub w0: f64,                // GenVars.w0 = TwoPi·Frequency
+    pub m_mass: f64,            // GenVars.Mmass (derived: 2·H·kVA·1000/w0)
+    pub d_damping: f64,         // GenVars.D (derived: Dpu·kVA·1000/w0), NOT self.dpu
+    pub p_shaft: f64,           // GenVars.Pshaft
+    pub v_thev_mag: f64,        // GenVars.VthevMag
+    pub vthev: Complex64,       // Vthev (Thevenin voltage behind Xd')
+    pub zthev: Complex64,       // GenVars.Zthev
+    pub edp: Complex64,         // Edp (pos-seq voltage behind transient reactance)
+    pub speed_history: f64,     // GenVars.SpeedHistory (integration history)
+    pub theta_history: f64,     // GenVars.ThetaHistory
+    pub model7_last_angle: f64, // Model7LastAngle (PLL hold for inverter model)
+
     // Model-3 DQDV var-control state.
     pub dqdv: f64,
     pub dqdv_saved: f64,
@@ -378,6 +400,21 @@ impl Generator {
             v_thev_harm: 0.0,
             theta_harm: 0.0,
             gen_fundamental: 0.0,
+            theta: 0.0,
+            dtheta: 0.0,
+            speed: 0.0,
+            dspeed: 0.0,
+            w0: 0.0,
+            m_mass: 0.0,
+            d_damping: 0.0,
+            p_shaft: 0.0,
+            v_thev_mag: 0.0,
+            vthev: Complex64::ZERO,
+            zthev: Complex64::ZERO,
+            edp: Complex64::ZERO,
+            speed_history: 0.0,
+            theta_history: 0.0,
+            model7_last_angle: 0.0,
             dqdv: 0.0,
             dqdv_saved: 0.0,
             delta_q_max: 0.0,
@@ -438,5 +475,6 @@ pub fn default_recalc_ctx() -> SysCtx {
         positive_sequence: false,
         time_of_day: 0.0,
         dyna_h: 0.0,
+        iteration_flag: IterationFlag::NewTimeStep,
     }
 }

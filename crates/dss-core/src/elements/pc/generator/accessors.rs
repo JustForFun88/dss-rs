@@ -53,6 +53,32 @@ impl CktElement for Generator {
         self.init_harmonics_impl(sys, node_v);
     }
 
+    /// Pascal `TGeneratorObj.InitStateVars`.
+    fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.init_state_vars_impl(sys, node_v);
+    }
+
+    /// Pascal `TGeneratorObj.IntegrateStates`.
+    fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.integrate_states_impl(sys, node_v);
+    }
+
+    /// Pascal `TGeneratorObj.NumVariables`.
+    fn num_variables(&self) -> usize {
+        self.num_gen_variables()
+    }
+
+    /// Pascal `TGeneratorObj.VariableName`.
+    fn variable_name(&self, i: usize) -> String {
+        self.gen_variable_name(i)
+    }
+
+    /// Pascal `TGeneratorObj.GetAllVariables`.
+    fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        let _ = (sys, node_v);
+        self.get_gen_variables(states);
+    }
+
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
         self.spectrum_obj.as_ref()
     }

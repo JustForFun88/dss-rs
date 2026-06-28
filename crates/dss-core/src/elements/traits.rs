@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::solution::SolveMode;
+use crate::support::dynamics::IterationFlag;
 
 /// Reference to a circuit element inside the executive's class registry:
 /// `(class index, object index)`. The Pascal pointer lists (`CktElements`,
@@ -105,6 +106,9 @@ pub struct SysCtx {
     /// `Solution.DynaVars.h` — the dynamics step size in seconds (Storage
     /// charge-time tolerance window).
     pub dyna_h: f64,
+    /// `Solution.DynaVars.IterationFlag` — the predictor (`NewTimeStep`) /
+    /// corrector (`SameTimeStep`) selector consumed by `IntegrateStates`.
+    pub iteration_flag: IterationFlag,
 }
 
 /// Mutable solve-state view for current injection: the node voltage vector
@@ -184,6 +188,28 @@ pub trait CktElement {
     /// — only machines with dynamic state respond.
     fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let _ = (sys, node_v);
+    }
+
+    /// Pascal `TPCElement.NumVariables` (`PCElement.pas`): the number of dynamic
+    /// state variables this element exposes (Monitor mode 3 reads them). Default
+    /// 0 — non-machine elements carry no state variables.
+    fn num_variables(&self) -> usize {
+        0
+    }
+
+    /// Pascal `TPCElement.VariableName(i)` (`PCElement.pas`): the name of state
+    /// variable `i` (1-based). Default empty — only machines name their states.
+    fn variable_name(&self, i: usize) -> String {
+        let _ = i;
+        String::new()
+    }
+
+    /// Pascal `TPCElement.GetAllVariables(States)` (`PCElement.pas`): fill `states`
+    /// (length ≥ [`Self::num_variables`]) with the present value of every dynamic
+    /// state variable. Default no-op — non-machine elements write nothing. Run by
+    /// Monitor mode 3 each dynamics sample.
+    fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        let _ = (sys, node_v, states);
     }
 
     /// Pascal `SpectrumObj`: the harmonic spectrum this element injects from, if

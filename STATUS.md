@@ -13,7 +13,9 @@ constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
 InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), WP7.5
 (DER C: InvControl + ExpControl), and WP7.6 (Harmonics) COMPLETE**; **WP7.7
 (Dynamics core) IN PROGRESS — step 1 (the `SolveDynamic` predictor/corrector
-driver) done.** WP7.6 ran in three steps. Step 1 landed the harmonics solve mode
+driver) + step 2a (Generator dynamics state machinery + Monitor mode 3 + a real
+`Open`-verb bug fix, oracle-pinned on the Kundur Ex.13.1 swing) done.** WP7.6 ran
+in three steps. Step 1 landed the harmonics solve mode
 for the
 current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
 `harmonic = frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
@@ -34,12 +36,15 @@ Pascal `Set_Mode` tail), and confirmed the harmonics corpus burn-down is maximal
 refreshed).** **WP7.7 step 1** wired `SolveMode::Dynamic` → `solve_dynamic`
 (`solution/solution/dynamics.rs`): the predictor/corrector step loop over
 `DynaVars.h` (`IterationFlag` 0/1), `IntegratePCStates`, and the
-`calcInitialMachineStates` dynamics-entry hook on the `Set mode=dynamic` handler
-(mirroring the harmonics entry). The per-element state machinery
-(`InitStateVars`/`IntegrateStates`/dynamics injection) is the no-op `CktElement`
-trait default for now — Generator/Storage/PVSystem fill it in step 2,
-IndMach012/DynEqPCE in step 3. **next = WP7.7 step 2 (Generator/Storage/PVSystem
-dynamics state vars + Monitor mode 3).**
+`calcInitialMachineStates` dynamics-entry hook on the `Set mode=dynamic` handler.
+**Step 2a** landed the **Generator** dynamics state machinery
+(`InitStateVars`/`IntegrateStates`/`DoDynamicMode` + the 6 GenVars state
+variables), **Monitor mode 3** (the real state-variable sample body), and a **real
+`Open`-verb bug fix** (`Open class.name` with no `term=` was a no-op; now opens the
+active terminal, Pascal `DoOpenCmd`). Oracle-pinned on the canonical Kundur Ex.13.1
+deck (steady mode-3 trajectory + fault response + the full undamped swing matching
+the oracle to 5 digits). **next = WP7.7 step 2b (PVSystem/Storage inverter dynamics,
+`InvDynamics.TInvDynamicVars`), then step 3 (IndMach012 + DynEqPCE).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -50,7 +55,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md).
-Current scores: dss-core **lib 659**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 662**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -88,13 +93,13 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (the `SolveDynamic` predictor/corrector driver) done**; **next = WP7.7 step 2 (Generator/Storage/PVSystem dynamics state vars)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix, oracle-pinned on Kundur) done**; **next = WP7.7 step 2b (PVSystem/Storage inverter dynamics)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 659, golden_feeders 1,
+cargo test --workspace      # dss-core lib 662, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -555,8 +560,50 @@ and all six audit follow-ups) archived at
     `dynamic_mode_load_multiplier_moves_operating_point` (loadmult=2 → loadbus
     voltage must drop), which makes the re-solve observable and gives the arm its
     first non-trivial coverage. lib 658 → **659**.
-- **next:** step 2 — Generator/Storage/PVSystem `InitStateVars`/`IntegrateStates`/
-  the dynamics current injection (`DoDynamicMode`/`CalcVthev_Dyn`) + Monitor mode 3.
+- **step 2a — Generator dynamics state machinery + Monitor mode 3 + the `Open`-verb
+  fix.** Ported the classic (`DynamicEqObj = NIL`) Generator dynamics: the shared
+  state-var trait surface (`SysCtx.iteration_flag` + the no-op-default
+  `num_variables`/`variable_name`/`get_all_variables`), 15 GenVars dynamics fields,
+  and `generator/dynamics.rs` (`InitStateVars` — `Zthev` model-7/machine branch,
+  `Yeq = Cinv(Zthev)`, 1-/3-phase `Edp`, `theta = cang(Edp)`, `w0`/`Mmass`/`D`,
+  `Pshaft = -Power[1].re`; `IntegrateStates` — trapezoidal half-step, history seeded
+  only on `NewTimeStep`; `DoDynamicMode` — voltage-source-behind-`Zthev` injection,
+  model-7 PLL + current limit, neg/zero-seq, neutral; `CalcVthev_Dyn`/`_Mod7`; the
+  6 GenVars variables). `calc_gen_model_contribution` now dispatches `DoDynamicMode`
+  first under `is_dynamic_model`; the `CalcYPrimMatrix` `Y := Yeq` branch covers
+  `is_dynamic_model || is_harmonic_model`. **Monitor mode 3** got its real
+  sample/header body (`GetAllVariables` → `MeteredSnapshot.variable_names`).
+  `DynamicEqObj`/`DynamicExp`, UserModel/ShaftModel DLLs and GFM stay NOT_PORTED.
+  **Constant note:** `RadiansToDegrees`/`TwoPi` are full-precision (`180/PI`,
+  `2*PI`) — the vendored 0.14.5 `DSSGlobals.pas` l.84-85 are the active defs (the
+  `57.29577951` line above them is commented out); using the truncated value would
+  *diverge* from the oracle (so **not** a `TODO(compat)` on this path).
+  - **Real bug found + fixed (the `Open`/`Close` exec verb, not dynamics-specific).**
+    `Open class.name` with an omitted `term=` was a full no-op (`set_terminal_closed(0,…)`
+    rejected by the `terminal>=1` guard), so the element never opened. Pascal
+    `DoOpenCmd` sets `ActiveTerminalIdx := Terminal` (`Set_ActiveTerminal`
+    *ignores* a 0/out-of-range terminal, leaving the active terminal = terminal 1)
+    then `Closed[Conductor] := FALSE` on that **active** terminal. Fixed
+    `do_open_close_cmd` to mirror this: keep the active terminal when `term=` is
+    omitted and open it (default terminal 1). Surfaced by the Kundur deck's
+    `Open Line.Source_HT_2` (no `term=`); the prior WP7.2 Open/Close gates only used
+    explicit terminals, so the bug was latent.
+  - **Gate (the focused step-2a oracle gate, done now not deferred to step 4):** 3
+    oracle-pinned Generator-dynamics tests on the canonical Kundur Ex.13.1 deck
+    (`exec/tests/dynamics.rs`, dss-python 0.15.7): (1) **steady mode-3 trajectory** —
+    all 6 GenVars channels hold the operating point across 1001 samples (Theta
+    41.77272, Vd 1.1625859, PShaft 1.998e9, Freq 60) at 1e-5; (2) **fault response**
+    — the 3-phase fault accelerates the rotor, Theta rises 41.77→48.48 monotonically
+    matching the oracle; (3) **full swing** — fault cleared by `Open`ing the weaker
+    line, the undamped (D=0) rotor swing min/max (24.18569 / 98.131889 deg) match the
+    oracle to 5 digits (the regression guard for the `Open` fix). The post-Open
+    divergence was *proven* a real bug (wrong-sign dSpeed at the first post-open step;
+    line 2 kept carrying 1480 A instead of 0) — **not** conditioning, **not** the
+    `UpdateVBus` path — and root-caused to the `Open`-verb no-op above. lib
+    **659 → 662**; `solvable_now` **84** (the full Kundur deck migration is step 4).
+- **next:** step 2b — PVSystem/Storage inverter dynamics (`InvDynamics.pas`
+  `TInvDynamicVars`: per-phase `it`/`dit`/`Vgrid`, `InitStateVars`/`IntegrateStates`/
+  `DoDynamicMode`; GFM deferred), then step 3 (IndMach012 + DynEqPCE integration).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
