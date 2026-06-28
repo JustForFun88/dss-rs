@@ -176,9 +176,11 @@ fn rel(a: f64, b: f64) -> f64 {
 /// WP7.7 step-2a focused oracle gate: the Generator dynamics state variables on
 /// the undisturbed Kundur run match the pinned dss-python 0.15.7 oracle. The deck
 /// enters dynamics (`h=0.001`, 1 step) then runs 1000 more steps with no
-/// disturbance; the swing equation sits at its fixpoint, so every mode-3 sample
-/// holds the operating point constant. Values are the oracle's `g1vars` monitor
-/// channels (captured with the pinned engine; channels are f32 on both sides).
+/// disturbance; the macro operating point (Frequency / Theta / Vd / PShaft) holds
+/// constant, while the derivative channels (dSpeed / dTheta) slowly ring around the
+/// fixpoint — they are a catastrophic-cancellation residual, see the dSpeed pin
+/// below. Values are the oracle's `g1vars` monitor channels (captured with the
+/// pinned engine; channels are f32 on both sides).
 #[test]
 fn generator_dynamics_mode3_holds_operating_point_vs_oracle() {
     let mut dss = kundur_dss();
@@ -216,17 +218,27 @@ fn generator_dynamics_mode3_holds_operating_point_vs_oracle() {
     // Oracle (dss-python 0.15.7) — the undisturbed segment is the swing-equation
     // fixpoint: the last sample equals the init operating point.
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // All channels pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md;
-    // measured Rust↔oracle match ~1e-8 on every channel).
+    // All channels pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md). The
+    // macro channels (Frequency / Theta / Vd / PShaft) match the oracle to the f32
+    // floor; the cancellation-residual channels (dSpeed / dTheta) match to ~6e-8
+    // f64 / exactly 1 f32-ulp (≈9e-8) — see the dSpeed note.
     assert!(rel(last(0), 60.0) < 1e-6, "Frequency (Hz) = {}", last(0));
     assert!(rel(last(1), 41.77272) < 1e-6, "Theta (deg) = {}", last(1));
     assert!(rel(last(2), 1.1625859) < 1e-6, "Vd (pu) = {}", last(2));
     assert!(rel(last(3), 1.9979999e9) < 1e-6, "PShaft (W) = {}", last(3));
-    // dSpeed / dTheta are NOT zero — they are the swing-equation fixpoint residual
-    // (Pshaft fixed at init vs the per-step recomputed electrical power, a
-    // ~1.5e-8-rel power mismatch / Mmass). The oracle reproduces them identically
-    // (-4.3093074e-5 deg/s, -1.9431876e-7 deg), so they are pinned against the
-    // oracle's actual residual, not against 0.
+    // dSpeed / dTheta are NOT zero and NOT constant: they are the slow ring of the
+    // trapezoidal integrator around the fixpoint, i.e. `dSpeed = (Pshaft +
+    // TracePower.re) / Mmass` where `Pshaft` is frozen at init (`Get_Power`) and
+    // `TracePower.re` is recomputed every step (`TerminalPowerIn`). Those two
+    // summands are ≈±2e9 W and nearly cancel: the residual is ≈31 W = 1.5e-8 rel.
+    // Both summands match the oracle to the f64 solver floor (PShaft 1 ulp,
+    // TracePower 7 ulp on 2e9), so their ≈31 W difference matches to ~8 ulp and
+    // dSpeed = difference / Mmass inherits a ~6e-8-rel f64 floor — which f32 monitor
+    // storage then quantizes to exactly 1 ulp (≈9e-8). That is the cancellation
+    // floor (amplified faer-vs-KLU rounding), NOT engine error: it cannot be
+    // tightened without KLU-bit-identical arithmetic, and "fixing" the residual to 0
+    // would diverge from the oracle. Pinned against the oracle's actual value (one
+    // point on the slow ring at sample 1000), not against 0.
     assert!(
         rel(last(4), -4.3093074e-5) < 1e-6,
         "dSpeed (deg/s) = {}",
@@ -421,12 +433,15 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
     // Oracle DynExp steady values, all pinned at the standard monitor-channel
     // `1e-6` (TOLERANCE_NOTES.md). The "small" channels (speed / dspeed / dtheta)
-    // are NOT zero — they are the swing-equation fixpoint *residual* (Pshaft is
-    // fixed at init but the electrical power is recomputed each step, a ~1.5e-8-rel
-    // power mismatch / Mmass), which the oracle reproduces identically (the Rust↔
-    // oracle match is ~1e-8–2e-9 on every channel). They are pinned against the
-    // oracle's actual residual, not against 0. `damp` (deck-set 0, no equation) is
-    // exactly 0.
+    // are NOT zero and NOT constant — they are the slow ring of the trapezoidal
+    // integrator around the fixpoint: `Pshaft`/`Mass` are frozen at init but the
+    // electrical power `Pterm` is recomputed each step, so `dspeed` is the residual
+    // of two ≈±2e9 W summands (≈31 W = 1.5e-8 rel). The big channels (mass / pshaft
+    // / pterm) match the oracle to the f64 solver floor; the cancellation residuals
+    // (speed / dspeed / dtheta) therefore match only to ~6e-8 f64 / 1 f32-ulp — the
+    // cancellation floor, not engine error (cf. the classic-Kundur dSpeed note).
+    // Pinned against the oracle's actual value, not against 0. `damp` (deck-set 0,
+    // no equation) is exactly 0.
     assert!(rel(last(0), -1.9431351e-7) < 1e-6, "speed = {}", last(0));
     assert!(rel(last(1), -7.521161e-7) < 1e-6, "dspeed = {}", last(1));
     assert!(rel(last(2), 41221132.0) < 1e-6, "mass = {}", last(2)); // 2HS/w0

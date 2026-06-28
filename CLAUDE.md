@@ -73,6 +73,19 @@ read feeders from that vendored corpus, never from `.inputs/` at runtime.
   trajectory + iteration count on both engines and find the first divergence. A gap
   that vanishes under tighter tolerance but leaves *different iteration counts* is a
   cross-step state-leak bug, not conditioning.
+- **The converse needs the same rigor: when a gap genuinely IS a cancellation
+  floor, prove it by decomposition, never by a tolerance sweep.** A residual that is
+  the near-cancellation of two large summands (e.g. generator dynamics `dSpeed =
+  (Pshaft + TracePower.re)/Mmass`, two ≈±2e9 W terms whose ≈31 W difference is
+  1.5e-8 rel) has an *inherent* Rust↔oracle floor of ~1 f32-ulp (~9e-8) / ~6e-8 in
+  f64 — faer-vs-KLU last-ulp rounding amplified by the cancellation. Prove it's the
+  floor and not a bug by reading the **live f64** state (dss-python
+  `ActiveCktElement.AllVariableValues` vs Rust element fields / `get_all_variables`
+  — the f32 monitor channel hides it) and checking each summand matches the oracle
+  to f64-ulp (Pshaft 1 ulp, TracePower 7 ulp) while only their difference is loose.
+  Such a floor is NOT a `TODO(compat)` and must not be "fixed" — forcing the
+  residual to 0 *diverges* from the oracle = a real port bug. (Documented at the
+  `dSpeed` pins in `exec/tests/dynamics.rs`.)
 - **Commit messages: keep them short.** A concise subject line plus, only if
   needed, 1–3 short bullets — not half a page. State *what changed and why* in a
   sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
