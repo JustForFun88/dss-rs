@@ -145,7 +145,7 @@
   {
    "name": "indmach012_makelike",
    "commands": [
-    "New IndMach012.base bus1=b kV=0.48 kW=900 kVA=1100 H=4 puRs=0.05 puXs=0.08 puRr=0.02 puXr=0.13 puXm=3.5 MaxSlip=0.11",
+    "New IndMach012.base bus1=b kV=0.48 kW=900 kVA=1100 H=4 D=3 puRs=0.05 puXs=0.08 puRr=0.02 puXr=0.13 puXm=3.5 MaxSlip=0.11 conn=wye slip=0.05 SlipOption=fixedslip",
     "New IndMach012.m1 like=base bus1=c"
    ],
    "target": "IndMach012.m1",
@@ -158,7 +158,7 @@
     "Conn": "delta",
     "kVA": "1100",
     "H": "4",
-    "D": "1",
+    "D": "3",
     "puRs": "0.05",
     "puXs": "0.08",
     "puRr": "0.02",

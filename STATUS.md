@@ -758,6 +758,18 @@ and all six audit follow-ups) archived at
     arm now returns the unsolved `PowerFactor(0)=1` placeholder with a comment; the live
     PF stays state var #21); (3) documented the `calc_model` `<3`-phase zero-padding
     (well-defined vs Pascal's read-past-buffer UB, unreachable in the corpus).
+  - **audit-tests follow-up:** verdict **sound + non-vacuous** — the auditor
+    independently re-ran the pinned oracle and confirmed every dynamics constant and
+    all 5 props scenarios reproduce exactly (real oracle output, not regenerated Rust),
+    and proved `tolerance=1e-8` is genuinely necessary (the conditioning is real). Fixed
+    3 items: (1) **Major** — the `indmach012_makelike` props scenario left
+    `Slip`/`SlipOption`/`Conn` at defaults on `base`, so a MakeLike that wrongly *copied*
+    those non-copied fields would pass; `base` now sets `conn=wye slip=0.05
+    SlipOption=fixedslip D=3` and the regenerated golden pins the non-copy (m1 reads back
+    0.007/VariableSlip/delta) vs the copied-via-record `D=3`; (2) tightened the steady
+    Is2/Ir2 quiescence bound `1e-3 → 1e-5` (~20× over the ~4.79e-7 actual); (3) added a
+    value pin for the `dTheta` state var (`rel(last(5), -6.022097) < 1e-5`) — previously
+    only `dSpeed` among the rate vars was checked. No corpus migration (recon-confirmed).
 - **next:** step 3b — DynEqPCE (`pc/dyneq_pce.rs`) integration (the `DynamicEqObj <> NIL`
   path + `DynOut` selection; flips Generator's Phase-6 `NOT_PORTED` `DynamicEq` to the
   real ref; PVSystem/Storage already carry the real ref).

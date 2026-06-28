@@ -2088,11 +2088,16 @@ SCENARIOS = [
         "commands": ["New IndMach012.m1 bus1=b kV=0.48 kW=300 MaxSlip=0.08 slip=0.5"],
     },
     {
+        # MakeLike copies the MachineData record (so D *is* copied) + pu*/MaxSlip,
+        # but deliberately NOT Slip/SlipOption/Conn. `base` sets non-default values
+        # for all of these so the dump distinguishes copied (D=3) from non-copied
+        # (m1 reads back the ctor defaults Slip=0.007 / VariableSlip / delta).
         "name": "indmach012_makelike",
         "target": "IndMach012.m1",
         "commands": [
-            "New IndMach012.base bus1=b kV=0.48 kW=900 kVA=1100 H=4 "
-            "puRs=0.05 puXs=0.08 puRr=0.02 puXr=0.13 puXm=3.5 MaxSlip=0.11",
+            "New IndMach012.base bus1=b kV=0.48 kW=900 kVA=1100 H=4 D=3 "
+            "puRs=0.05 puXs=0.08 puRr=0.02 puXr=0.13 puXm=3.5 MaxSlip=0.11 "
+            "conn=wye slip=0.05 SlipOption=fixedslip",
             "New IndMach012.m1 like=base bus1=c",
         ],
     },

@@ -876,6 +876,7 @@ fn indmach012_dynamics_mode3_holds_operating_point_vs_oracle() {
         "Efficiency % = {}",
         last(21)
     );
+    assert!(rel(last(5), -6.022097) < 1e-5, "dTheta (deg) = {}", last(5));
     // dSpeed sits at numerical-noise zero on the undisturbed run.
     assert!(last(4).abs() < 1e-3, "dSpeed (deg/s) = {}", last(4));
     // The induction-machine rotor slips, so Theta drifts linearly: pin both ends.
@@ -890,10 +891,11 @@ fn indmach012_dynamics_mode3_holds_operating_point_vs_oracle() {
         last(1)
     );
 
-    // The balanced source keeps the negative sequence quiescent across the run.
+    // The balanced source keeps the negative sequence quiescent across the run
+    // (the oracle holds Is2/Ir2 at ~4.79e-7; this bound is ~20× over that).
     for s in 0..m.channels[14].len() {
-        assert!(at(14, s) < 1e-3, "Is2 grew at sample {s}: {}", at(14, s));
-        assert!(at(16, s) < 1e-3, "Ir2 grew at sample {s}: {}", at(16, s));
+        assert!(at(14, s) < 1e-5, "Is2 grew at sample {s}: {}", at(14, s));
+        assert!(at(16, s) < 1e-5, "Ir2 grew at sample {s}: {}", at(16, s));
     }
     // The electrical equilibrium holds for the whole run, not just the endpoints.
     for s in 0..m.channels[6].len() {
