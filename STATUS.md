@@ -712,16 +712,32 @@ and all six audit follow-ups) archived at
   upstream), the `IndMach012SwitchOpen` Open flag (carried, never set — the latent
   Generator `gen_switch_open` gap). `DoHarmonicMode` ported verbatim incl. the upstream
   commented-out-`E` quirk (injects ~0). The `DynamicEqObj <> NIL` path is step 3b.
-  - **Conditioning proven, not a bug (CLAUDE.md discipline).** The IndMach012 PF
-    operating point differed Rust↔oracle ~5e-4 at the default tolerance with the *same*
-    iteration count (4). A tolerance sweep on the oracle proved the cause: the
-    fixed-slope slip-Newton converges *slower* than the node-voltage tolerance, so at
-    1e-4 the slip is still settling and faer vs KLU stop at different iter-4 points;
-    tightening to 1e-7/1e-10 collapses both to the true fixpoint (slip 0.0159741,
-    P = the 1200 kW target, dSpeed≈0). The focused gate solves at `tolerance=1e-8` so
-    both reach the fixpoint. (A corpus IndMach012 deck at the default tolerance may
-    therefore need its own tolerance handling at migration time — step 4 / a future
-    `needs_investigation` note, not a port bug.)
+  - **Real port bug found + fixed — the "conditioning" was a stateful extra slip
+    step ([[dont-rationalize-conditioning]]).** The IndMach012 PF operating point
+    differed Rust↔oracle ~4.7e-4 in P at the default tolerance with the *same*
+    network iteration count (4). Step 3a originally mis-filed this as conditioning
+    (the fixed-slope slip-Newton lagging the node-voltage tolerance, "faer vs KLU
+    stopping at different iter-4 points," a tolerance sweep "confirming" it). That was
+    exactly the trap: tightening the tolerance *masks* the bug (once the slip sits at
+    its root an extra step is a no-op) — it does not prove conditioning, and the
+    hidden tell was a *different per-element slip-step count* (Rust 5, oracle 4)
+    behind the matching network count. Root cause (instrumented `CalcPFlow` + the
+    pinned oracle): `do_indmach_model` set `iterminal_updated = true` as a plain field
+    write, dropping the Pascal `TPCElement.set_ITerminalUpdated` side effect
+    `IterminalSolutionCount := SolutionCount`. After the converged loop the motor's
+    `iterminal_solution_count` stayed −1 ≠ `solution_count`, so the *first* post-solve
+    `ComputeIterminal`/`GetCurrents` (any power/current read) re-ran the **stateful**
+    `CalcPFlow` — a 5th slip step the oracle never takes (its stamp makes the counts
+    equal → the cached terminal current is reused). Generator/Load/PVSystem/Storage
+    `put_curr` already carried the stamp; IndMach012 was the lone straggler, *and* the
+    only PC element whose `GetTerminalCurrents` recompute is stateful — so it was the
+    only one that ever *showed*. Fix = the one missing stamp line. Rust now reproduces
+    the oracle bit-for-bit at **both** the default (slip 0.0159858, P 1200.687 kW,
+    Is1 1594.017 A) and tight (slip 0.0159741, P 1200.000 kW) tolerances. Regression
+    `indmach012_snapshot_default_tol_matches_oracle` pins the default-tolerance
+    operating point against the pinned oracle (fails by ~4.7e-4 without the stamp).
+    The dynamics gate keeps `tolerance=1e-8` — now just a clean
+    electromechanical-fixpoint start, **not** a bug workaround.
   - **Real bug fixed during the port (Monitor mode-3 metered-kind).** Like PVSystem
     (WP7.3) / Storage (WP7.4), the Monitor mode-3 metered-kind classifier had to admit
     IndMach012 (`accessors.rs` downcast list) or a mode-3 monitor aborts "must be a power
@@ -739,18 +755,23 @@ and all six audit follow-ups) archived at
     variables, the slipping equilibrium holds (slip/currents/losses/power constant, Theta
     drifts linearly, dSpeed≈0, neg-seq quiescent) matching the oracle at 1e-5; (2)
     **3-phase fault** — the inrush + deceleration (slip rises, rotor frequency falls)
-    matches elementwise through 50 fault steps. Plus 3 construction/slip-clamp unit tests
-    and `props/indmach012.json` (5 scenarios). **No corpus migration** (the `InductionMachine`
-    Master.DSS is also blocked on a `LoadShape action=normalize` CSV + `Plot`; the
-    `Test/indmachtest` deck uses a NOT_PORTED user model — both step-4/Phase-8). lib
-    **666 → 671**; `solvable_now` **84**.
+    matches elementwise through 50 fault steps. Plus (3) **default-tolerance snapshot**
+    (`indmach012_snapshot_default_tol_matches_oracle`, added with the extra-slip-step
+    fix) — pins the 1e-4 terminal power/current to the pinned oracle (P 1200.687 kW,
+    Is1 1594.017 A), the regression guard for the `set_ITerminalUpdated` stamp. Plus 3
+    construction/slip-clamp unit tests and `props/indmach012.json` (5 scenarios). **No
+    corpus migration** (the `InductionMachine` Master.DSS is also blocked on a
+    `LoadShape action=normalize` CSV + `Plot`; the `Test/indmachtest` deck uses a
+    NOT_PORTED user model — both step-4/Phase-8). lib **666 → 672**; `solvable_now`
+    **84**.
   - **audit-code follow-up:** verdict **faithful, no real bug** — every formula
     confirmed line-for-line against `IndMach012.pas` (the swing sign/abs,
     `Pshaft=+Power[1].re`, the D/Dpu undamped wiring, the commented-out harmonic `E`,
     the wye no-neutral diagonal stamping + delta floating-trick, `MakeLike`'s copy
-    subset), and the conditioning claim independently re-confirmed by an oracle
-    tolerance sweep (the oracle's *own* operating point moves with tolerance, converging
-    to the pinned values). Fixed 3 Minor items: (1) **infidelity** — `update_vbase` used
+    subset). (The audit's "conditioning independently re-confirmed by a tolerance
+    sweep" verdict was **later overturned** — the Rust↔oracle gap was the missing
+    `set_ITerminalUpdated` stamp / extra slip step fixed above; the sweep masked it,
+    it did not prove conditioning.) Fixed 3 Minor items: (1) **infidelity** — `update_vbase` used
     `(kV·1000)/√3` instead of Pascal's `kV·InvSQRT3x1000` constant (sub-ULP, but now uses
     the `inv_sqrt3_x1000()` helper like the Generator port); (2) removed the write-only
     `power1` cache (its only reader, `get_f64(PF)`, is unreachable — the dump is
@@ -760,9 +781,12 @@ and all six audit follow-ups) archived at
     (well-defined vs Pascal's read-past-buffer UB, unreachable in the corpus).
   - **audit-tests follow-up:** verdict **sound + non-vacuous** — the auditor
     independently re-ran the pinned oracle and confirmed every dynamics constant and
-    all 5 props scenarios reproduce exactly (real oracle output, not regenerated Rust),
-    and proved `tolerance=1e-8` is genuinely necessary (the conditioning is real). Fixed
-    3 items: (1) **Major** — the `indmach012_makelike` props scenario left
+    all 5 props scenarios reproduce exactly (real oracle output, not regenerated Rust).
+    (The "`tolerance=1e-8` is genuinely necessary because the conditioning is real"
+    finding was **later overturned**: the default-tolerance gap was the extra-slip-step
+    bug fixed above, not conditioning. `tolerance=1e-8` is retained only as a clean
+    dynamics-fixpoint start; the default-tolerance match is now pinned by
+    `indmach012_snapshot_default_tol_matches_oracle`.) Fixed 3 items: (1) **Major** — the `indmach012_makelike` props scenario left
     `Slip`/`SlipOption`/`Conn` at defaults on `base`, so a MakeLike that wrongly *copied*
     those non-copied fields would pass; `base` now sets `conn=wye slip=0.05
     SlipOption=fixedslip D=3` and the regenerated golden pins the non-copy (m1 reads back

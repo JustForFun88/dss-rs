@@ -224,7 +224,18 @@ impl IndMach012 {
     fn do_indmach_model(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.calc_yprim_contribution(node_v); // init InjCurrent
         self.calc_model(sys);
+        // Pascal `IterminalUpdated := TRUE` goes through the `TPCElement`
+        // property setter `set_ITerminalUpdated`, which also stamps
+        // `IterminalSolutionCount := SolutionCount`. That stamp is what lets a
+        // later `ComputeIterminal`/`GetCurrents` in the same solution reuse the
+        // cached terminal current instead of recomputing the model — and for
+        // IndMach012 the recompute is *stateful*: `CalcPFlow` advances the
+        // fixed-slope slip-Newton by one step. Without the stamp the post-solve
+        // power/current read fired a spurious extra slip step, landing the motor
+        // one step past the oracle's operating point (~5e-4 in P). Mirror the
+        // Generator/Load/PVSystem/Storage `put_curr` bookkeeping exactly.
         self.cd.iterminal_updated = true;
+        self.cd.iterminal_solution_count = sys.solution_count;
         for i in 0..self.cd.nphases {
             self.cd.inj_current[i] -= self.cd.iterminal[i];
         }
