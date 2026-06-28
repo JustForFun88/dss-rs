@@ -473,7 +473,12 @@ impl Load {
             self.stick_curr(false, curr, i); // into InjCurrent
             self.stick_curr(true, -curr, i); // into ITerminal
         }
+        // Pascal `IterminalUpdated := TRUE` (Load.pas, end of `DoHarmonicMode`) goes
+        // through the `TPCElement` property setter, which also stamps
+        // `IterminalSolutionCount := SolutionCount` so a post-solve read reuses the
+        // cached terminal current instead of recomputing (mirrors the PF models).
         self.cd.iterminal_updated = true;
+        self.cd.iterminal_solution_count = sys.solution_count;
     }
 
     /// Pascal `CalcInjCurrentArray`.

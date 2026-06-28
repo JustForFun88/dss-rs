@@ -738,22 +738,30 @@ and all six audit follow-ups) archived at
     operating point against the pinned oracle (fails by ~4.7e-4 without the stamp).
     The dynamics gate keeps `tolerance=1e-8` — now just a clean
     electromechanical-fixpoint start, **not** a bug workaround.
-  - **Cross-element scope check (is the missing stamp a general bug?).** Audited
-    every `iterminal_updated = true` site vs Pascal. The stamp matters *numerically*
-    only when the post-solve `ComputeIterminal`/`GetCurrents` recompute is
-    **stateful** — and `IndMach012.CalcPFlow` (the per-call slip-Newton step) is the
-    **only** stateful current recompute in the engine. Generator/Load/Storage/PVSystem
-    current models (all PF models + dynamics) are **idempotent**: recomputing at the
-    same V returns the same current and changes no state, so a missing stamp there is
-    at most a redundant recompute, never a numeric divergence — confirmed by the green
-    live-oracle gate. (Pascal's own stamping is itself uneven: Load/Storage/PVSystem
-    stamp in every path via the `ITerminalUpdated`/`set_ITerminalUpdated` setter incl.
-    dynamics + harmonic; Generator only stamps its model-7 PF path. Rust's PF paths
-    already stamp; the Storage/PVSystem dynamics + Load harmonic paths do not — benign
-    idempotent infidelities, left for the §6 `TODO(compat)`-style cleanup pass, not a
-    blanket change here since "same fix for all" is not even well-defined against the
-    uneven Pascal and would be behavior-neutral / unverifiable.) Net: **only
-    IndMach012 needed the fix.**
+  - **Cross-element 1:1 sweep of the `set_ITerminalUpdated` stamp.** The stamp
+    (`IterminalSolutionCount := SolutionCount` set by the Pascal `ITerminalUpdated`
+    property setter) makes a post-solve `ComputeIterminal`/`GetCurrents` reuse the
+    **cached** terminal current instead of **recomputing** the model; without it the
+    count stays stale and the read recomputes. It only changes *numbers* when the
+    recompute is **stateful** — and `IndMach012.CalcPFlow` (the per-call slip step) is
+    the only stateful recompute in the engine (why only it produced a visible bug).
+    But a 1:1 port must match Pascal's cache-vs-recompute choice at *every* site, so
+    audited all of them. Pascal Load/Storage/PVSystem/IndMach012 stamp (cache) in
+    **every** model path (PF + dynamics + harmonic) via `ITerminalUpdated`/
+    `set_ITerminalUpdated`; Generator stamps only its model-7 PF path (models 1-6 +
+    dynamics recompute). Rust's PF paths already stamped, but **Storage/PVSystem
+    `DoDynamicMode` + Load `DoHarmonicMode` were flag-without-stamp** (so they
+    recomputed where Pascal caches) — now stamped to match (`storage/dynamics.rs`,
+    `pvsystem/dynamics.rs`, `load/solve.rs`; full gate incl. live oracle stays green,
+    i.e. they land on the oracle's cached value). **Generator** is left as-is: its
+    `DoDynamicMode` recompute already matches Pascal (Pascal also recomputes there),
+    and the one residual infidelity — `put_curr` caching PF **models 1-6** where
+    Pascal recomputes@N — is a Phase-3 caching-strategy choice, **sub-tolerance**
+    (green at 1e-6) and behavior-neutral, whose 1:1 fix means making `put_curr`
+    model-7-only (restructuring validated code); deferred to the §6 cleanup, tracked
+    here. Net: the missing-stamp bug existed at 4 sites (IndMach012 PF + 3 cache
+    paths); all fixed. Generator PF-1-6 over-cache is the one known remaining
+    (sub-tolerance) divergence.
   - **audit-tests follow-up (the stamp fix):** verdict **genuine, non-vacuous,
     oracle-pinned** — independently reproduced the pinned-oracle baseline byte-for-byte
     and confirmed `indmach012_snapshot_default_tol_matches_oracle` FAILS without the
