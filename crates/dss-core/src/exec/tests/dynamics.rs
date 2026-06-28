@@ -747,19 +747,13 @@ fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
 // WP7.7 step 3a — IndMach012 (induction machine) dynamics.
 // ===========================================================================
 
-/// WP7.7 step-3a regression: the snapshot power flow of the induction motor at
-/// the **default** node-voltage tolerance (1e-4) matches the pinned dss-python
-/// 0.15.7 oracle exactly. The slip-Newton uses a fixed `dSdP` slope, so it lags
-/// the node-voltage convergence and the snapshot stops at a not-fully-settled
-/// operating point (slip 0.0159858, P 1200.687 kW — *not* the 1200 kW target).
-/// Both engines must stop at that *same* point. Before the fix Rust took one
-/// extra slip step at power-read time because `do_indmach_model` set
-/// `iterminal_updated` without the Pascal `set_ITerminalUpdated` stamp of
-/// `IterminalSolutionCount`; the post-solve `ComputeIterminal` then re-ran the
-/// stateful `CalcPFlow` (a 5th slip step), landing ~5e-4 past the oracle in P.
-/// The oracle values below are the pinned engine's `Powers`/`Currents` at 1e-4.
-#[test]
-fn indmach012_snapshot_default_tol_matches_oracle() {
+/// The shared IndMach012 deck (self-contained reproduction of the corpus
+/// `Version8/.../InductionMachine` example: a 12.47 kV source → 1500 kVA step-down
+/// transformer → a 600 kvar shunt cap and a 1200 kW delta induction motor), built
+/// through `calcv` but **not** solved — the caller picks the tolerance and solves.
+/// Shared by the default-tolerance snapshot gate and the tight-tolerance dynamics
+/// gate so the two cannot silently drift apart.
+fn indmach_deck() -> Dss {
     let mut dss = Dss::new();
     dss.command("Set DefaultBaseFrequency=60");
     dss.command(
@@ -778,6 +772,23 @@ fn indmach012_snapshot_default_tol_matches_oracle() {
     );
     dss.command("set voltagebases=[12.47, 0.48]");
     dss.command("calcv");
+    dss
+}
+
+/// WP7.7 step-3a regression: the snapshot power flow of the induction motor at
+/// the **default** node-voltage tolerance (1e-4) matches the pinned dss-python
+/// 0.15.7 oracle exactly. The slip-Newton uses a fixed `dSdP` slope, so it lags
+/// the node-voltage convergence and the snapshot stops at a not-fully-settled
+/// operating point (slip 0.0159858, P 1200.687 kW — *not* the 1200 kW target).
+/// Both engines must stop at that *same* point. Before the fix Rust took one
+/// extra slip step at power-read time because `do_indmach_model` set
+/// `iterminal_updated` without the Pascal `set_ITerminalUpdated` stamp of
+/// `IterminalSolutionCount`; the post-solve `ComputeIterminal` then re-ran the
+/// stateful `CalcPFlow` (a 5th slip step), landing ~5e-4 past the oracle in P.
+/// The oracle values below are the pinned engine's `Powers`/`Currents` at 1e-4.
+#[test]
+fn indmach012_snapshot_default_tol_matches_oracle() {
+    let mut dss = indmach_deck();
     // Default tolerance (1e-4) — the conditions that exposed the extra-slip-step bug.
     dss.command("Set tolerance=1e-4 maxiterations=100");
     dss.command("solve");
@@ -806,29 +817,11 @@ fn indmach012_snapshot_default_tol_matches_oracle() {
     assert!(rel(i1a, 1594.017119) < 1e-6, "|I1a| (A) = {i1a}");
 }
 
-/// IndMach012 dynamics deck (self-contained reproduction of the corpus
-/// `Version8/.../InductionMachine` example: a 12.47 kV source → 1500 kVA step-down
-/// transformer → a 600 kvar shunt cap and a 1200 kW delta induction motor). Solved
-/// to steady state with a mode-3 monitor on the 22 IndMach012 state variables.
+/// IndMach012 dynamics deck: the shared [`indmach_deck`] solved to steady state
+/// (tight tolerance, see below) with a mode-3 monitor on the 22 IndMach012 state
+/// variables.
 fn indmach_dyn_dss() -> Dss {
-    let mut dss = Dss::new();
-    dss.command("Set DefaultBaseFrequency=60");
-    dss.command(
-        "New Circuit.indtest basekv=12.47 pu=1.0 phases=3 bus1=src \
-         mvasc3=20000 mvasc1=21000",
-    );
-    dss.command(
-        "New Transformer.tg phases=3 windings=2 buses=(src, mbus) \
-         conns=(delta,wye) kvs=(12.47,0.48) kvas=(1500,1500) xhl=5",
-    );
-    dss.command("New Capacitor.cg conn=wye bus1=mbus phases=3 kvar=600 kv=0.48");
-    dss.command(
-        "New IndMach012.m1 bus1=mbus kV=0.48 kW=1200 conn=delta kVA=1500 H=6 \
-         puRs=0.048 puXs=0.075 puRr=0.018 puXr=0.12 puXm=3.8 slip=0.02 \
-         SlipOption=variableslip",
-    );
-    dss.command("set voltagebases=[12.47, 0.48]");
-    dss.command("calcv");
+    let mut dss = indmach_deck();
     // The IndMach012 slip-Newton (fixed `dSdP` slope) converges slower than the
     // node-voltage tolerance: at the default 1e-4 the network test trips at iter 4
     // while the slip is still ~1e-4 from its root, so the snapshot stops short of
@@ -852,11 +845,14 @@ fn indmach_dyn_dss() -> Dss {
 /// the undisturbed run match the pinned dss-python 0.15.7 oracle. The motor sits at
 /// its slipping equilibrium, so the electrical state (slip, currents, losses,
 /// power) holds constant while the rotor angle Theta drifts at the slip rate. The
-/// deck is solved to a tight tolerance (`1e-8`) so both engines reach the true
-/// fixpoint — the IndMach012 slip-Newton lags the node-voltage tolerance, so at the
-/// loose default the engines stop at different iter-4 operating points (a tolerance
-/// sweep proved the gap collapses under tightening; STATUS WP7.7 step 3a).
-/// Values are the oracle's `mvars` mode-3 monitor channels (f32 on both sides).
+/// deck is solved to a tight tolerance (`1e-8`) so the slip-Newton (which lags the
+/// node-voltage convergence) reaches the true electromechanical fixpoint before
+/// dynamics start — `1e-8` is a clean-start choice, *not* a divergence workaround:
+/// at the default tolerance Rust and the oracle now stop at the *same* iter-4 point
+/// (pinned by `indmach012_snapshot_default_tol_matches_oracle`; the earlier
+/// "different iter-4 points / conditioning" reading was the extra-slip-step bug,
+/// since fixed). Values are the oracle's `mvars` mode-3 monitor channels (f32 on
+/// both sides).
 #[test]
 fn indmach012_dynamics_mode3_holds_operating_point_vs_oracle() {
     let mut dss = indmach_dyn_dss();
