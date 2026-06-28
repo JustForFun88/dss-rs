@@ -87,6 +87,8 @@ pub struct EnumRegistry {
     pub storage_state: EnumId,
     /// 'Storage: Dispatch Mode' (Storage.pas `DispatchModeEnum`).
     pub storage_dispatch_mode: EnumId,
+    /// 'IndMach012: Slip Option' (IndMach012.pas `SlipOptionEnum`).
+    pub ind_mach_slip_option: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,

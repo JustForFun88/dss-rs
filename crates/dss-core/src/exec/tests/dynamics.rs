@@ -742,3 +742,223 @@ fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
         last(0)
     );
 }
+
+// ===========================================================================
+// WP7.7 step 3a — IndMach012 (induction machine) dynamics.
+// ===========================================================================
+
+/// IndMach012 dynamics deck (self-contained reproduction of the corpus
+/// `Version8/.../InductionMachine` example: a 12.47 kV source → 1500 kVA step-down
+/// transformer → a 600 kvar shunt cap and a 1200 kW delta induction motor). Solved
+/// to steady state with a mode-3 monitor on the 22 IndMach012 state variables.
+fn indmach_dyn_dss() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.indtest basekv=12.47 pu=1.0 phases=3 bus1=src \
+         mvasc3=20000 mvasc1=21000",
+    );
+    dss.command(
+        "New Transformer.tg phases=3 windings=2 buses=(src, mbus) \
+         conns=(delta,wye) kvs=(12.47,0.48) kvas=(1500,1500) xhl=5",
+    );
+    dss.command("New Capacitor.cg conn=wye bus1=mbus phases=3 kvar=600 kv=0.48");
+    dss.command(
+        "New IndMach012.m1 bus1=mbus kV=0.48 kW=1200 conn=delta kVA=1500 H=6 \
+         puRs=0.048 puXs=0.075 puRr=0.018 puXr=0.12 puXm=3.8 slip=0.02 \
+         SlipOption=variableslip",
+    );
+    dss.command("set voltagebases=[12.47, 0.48]");
+    dss.command("calcv");
+    // The IndMach012 slip-Newton (fixed `dSdP` slope) converges slower than the
+    // node-voltage tolerance: at the default 1e-4 the slip is still settling, so
+    // faer and KLU stop at different iter-4 operating points (~5e-4 apart). Tighten
+    // the tolerance so both reach the true fixpoint (P = the 1200 kW target,
+    // dSpeed ≈ 0) — proven by a tolerance sweep (STATUS WP7.7 step 3a).
+    dss.command("Set tolerance=1e-8 maxiterations=100");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "indmach steady: {:?}",
+        dss.errors()
+    );
+    dss.command("New Monitor.mvars IndMach012.m1 Term=1 mode=3");
+    dss
+}
+
+/// WP7.7 step-3a focused oracle gate: the IndMach012 dynamics state variables on
+/// the undisturbed run match the pinned dss-python 0.15.7 oracle. The motor sits at
+/// its slipping equilibrium, so the electrical state (slip, currents, losses,
+/// power) holds constant while the rotor angle Theta drifts at the slip rate. The
+/// deck is solved to a tight tolerance (`1e-8`) so both engines reach the true
+/// fixpoint — the IndMach012 slip-Newton lags the node-voltage tolerance, so at the
+/// loose default the engines stop at different iter-4 operating points (a tolerance
+/// sweep proved the gap collapses under tightening; STATUS WP7.7 step 3a).
+/// Values are the oracle's `mvars` mode-3 monitor channels (f32 on both sides).
+#[test]
+fn indmach012_dynamics_mode3_holds_operating_point_vs_oracle() {
+    let mut dss = indmach_dyn_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    assert!(
+        dss.errors().is_empty(),
+        "enter dynamics: {:?}",
+        dss.errors()
+    );
+    dss.command("Solve number=49");
+    assert!(dss.errors().is_empty(), "dynamic run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("mvars").expect("mvars monitor");
+    // The mode-3 header tail is the 22 IndMach012 state-variable names.
+    assert_eq!(
+        &m.header[2..],
+        [
+            "Frequency",
+            "Theta (deg)",
+            "E1",
+            "Pshaft",
+            "dSpeed (deg/sec)",
+            "dTheta (deg)",
+            "Slip",
+            "puRs",
+            "puXs",
+            "puRr",
+            "puXr",
+            "puXm",
+            "Maxslip",
+            "Is1",
+            "Is2",
+            "Ir1",
+            "Ir2",
+            "Stator Losses",
+            "Rotor Losses",
+            "Shaft Power (hp)",
+            "Power Factor",
+            "Efficiency (%)"
+        ],
+        "mode-3 header tail = the 22 IndMach012 variable names"
+    );
+    // 1 (enter) + 49 = 50 samples.
+    assert_eq!(m.sample_count, 50);
+    assert_eq!(m.channels.len(), 22);
+    let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
+    let last = |ch: usize| at(ch, m.channels[ch].len() - 1);
+
+    // The slipping equilibrium: the electrical state is constant across the run and
+    // matches the oracle. (Oracle dss-python 0.15.7, tol 1e-8.)
+    assert!(
+        (last(0) - 59.041553).abs() < 1e-4,
+        "Frequency = {}",
+        last(0)
+    );
+    assert!(rel(last(2), 0.8986012) < 1e-5, "E1 (pu) = {}", last(2));
+    assert!(rel(last(3), 1200000.1) < 1e-5, "Pshaft (W) = {}", last(3));
+    assert!(rel(last(6), 0.015974108) < 1e-5, "Slip = {}", last(6));
+    assert!(rel(last(13), 1593.1091) < 1e-5, "Is1 (A) = {}", last(13));
+    assert!(rel(last(15), 1531.1659) < 1e-5, "Ir1 (A) = {}", last(15));
+    assert!(
+        rel(last(17), 56136.43) < 1e-5,
+        "Stator Losses = {}",
+        last(17)
+    );
+    assert!(
+        rel(last(18), 19445.965) < 1e-5,
+        "Rotor Losses = {}",
+        last(18)
+    );
+    assert!(rel(last(19), 1605.7596) < 1e-5, "Shaft hp = {}", last(19));
+    assert!(
+        rel(last(20), 0.90832734) < 1e-5,
+        "Power Factor = {}",
+        last(20)
+    );
+    assert!(
+        rel(last(21), 93.70147) < 1e-5,
+        "Efficiency % = {}",
+        last(21)
+    );
+    // dSpeed sits at numerical-noise zero on the undisturbed run.
+    assert!(last(4).abs() < 1e-3, "dSpeed (deg/s) = {}", last(4));
+    // The induction-machine rotor slips, so Theta drifts linearly: pin both ends.
+    assert!(
+        rel(at(1, 0), -41.16823) < 1e-5,
+        "Theta@0 (deg) = {}",
+        at(1, 0)
+    );
+    assert!(
+        rel(last(1), -58.075226) < 1e-5,
+        "Theta@49 (deg) = {}",
+        last(1)
+    );
+
+    // The balanced source keeps the negative sequence quiescent across the run.
+    for s in 0..m.channels[14].len() {
+        assert!(at(14, s) < 1e-3, "Is2 grew at sample {s}: {}", at(14, s));
+        assert!(at(16, s) < 1e-3, "Ir2 grew at sample {s}: {}", at(16, s));
+    }
+    // The electrical equilibrium holds for the whole run, not just the endpoints.
+    for s in 0..m.channels[6].len() {
+        assert!(
+            rel(at(6, s), 0.015974108) < 1e-5,
+            "Slip drifted at sample {s}: {}",
+            at(6, s)
+        );
+    }
+}
+
+/// The fault response: a 3-phase bolted fault at the motor bus collapses the
+/// terminal voltage, so the motor loses electrical torque, decelerates (the slip
+/// rises and the rotor frequency falls), and draws a large inrush. This drives
+/// `IntegrateStates` with a genuine disturbance and matches the oracle elementwise
+/// through the fault. (Oracle dss-python 0.15.7, tol 1e-8.)
+#[test]
+fn indmach012_dynamics_fault_response_matches_oracle() {
+    let mut dss = indmach_dyn_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=49"); // 50 pre-fault samples (indices 0..=49)
+    dss.command("New Fault.f1 phases=3 bus1=mbus");
+    dss.command("Solve number=50"); // 50 fault samples
+    assert!(dss.errors().is_empty(), "fault run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("mvars").expect("mvars monitor");
+    assert_eq!(m.sample_count, 100);
+    let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
+
+    // Pre-fault (sample 49) the motor sits at the slipping equilibrium.
+    assert!(rel(at(6, 49), 0.015974108) < 1e-5, "pre-fault Slip");
+    // First fault step (sample 50): voltage collapse → large inrush.
+    assert!(
+        rel(at(13, 50), 8044.474) < 1e-4,
+        "fault Is1 = {}",
+        at(13, 50)
+    );
+    assert!(
+        rel(at(6, 50), 0.016010445) < 1e-4,
+        "fault Slip = {}",
+        at(6, 50)
+    );
+    // End of fault (sample 99): slip risen, rotor frequency fallen, decelerating.
+    assert!(
+        rel(at(6, 99), 0.019402187) < 1e-4,
+        "end Slip = {}",
+        at(6, 99)
+    );
+    assert!(
+        rel(at(0, 99), 58.83587) < 1e-4,
+        "end Frequency (Hz) = {}",
+        at(0, 99)
+    );
+    assert!(
+        rel(at(1, 99), -77.1814) < 1e-4,
+        "end Theta (deg) = {}",
+        at(1, 99)
+    );
+    // The rotor decelerates throughout the fault (slip non-decreasing).
+    for s in 51..100 {
+        assert!(
+            at(6, s) >= at(6, s - 1) - 1.0e-6,
+            "slip must rise under fault; dropped at sample {s}: {} -> {}",
+            at(6, s - 1),
+            at(6, s)
+        );
+    }
+}

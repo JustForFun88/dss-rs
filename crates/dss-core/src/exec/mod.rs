@@ -35,7 +35,7 @@ pub(crate) use crate::elements::general::{
 pub(crate) use crate::elements::meter::energymeter;
 pub(crate) use crate::elements::meter::monitor;
 pub(crate) use crate::elements::meter::sensor;
-pub(crate) use crate::elements::pc::{generator, load, pvsystem, storage, vsource};
+pub(crate) use crate::elements::pc::{generator, ind_mach012, load, pvsystem, storage, vsource};
 pub(crate) use crate::elements::pd::{capacitor, fault, fuse, line, reactor, transformer};
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 pub(crate) use crate::obj::base::DssObject;

@@ -52,6 +52,14 @@ impl PropFlags {
     /// unit logs the upstream error and leaves the field unchanged. Used by
     /// InvControl `AvgWindowLen` / `DynReacAvgWindowLen`.
     pub const INTERVAL_UNITS: Self = Self(1 << 14);
+    /// Pascal `SilentReadOnly` on a `ReadByFunction` double whose function needs a
+    /// solved solution (IndMach012 `pf` → `PowerFactor(Power[1])`): a set is
+    /// silently ignored, and the **text dump renders empty** — the oracle's
+    /// `Power[1]` raises "solution not initialized" on the unsolved props-probe
+    /// circuit, which the `?` query renders as `""`. The Rust `&self` getter has no
+    /// solution access either, so the dump is empty to match. (The value is still
+    /// available as a dynamics state variable, computed where the solution exists.)
+    pub const SILENT_READ_ONLY: Self = Self(1 << 15);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);
