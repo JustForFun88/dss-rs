@@ -192,8 +192,8 @@ impl IndMach012 {
     }
 
     /// Pascal `TIndMach012Obj.GetAllVariables` (fills `states[0..22]` from the 22
-    /// `Get_Variable` cases). `Power[1]` is computed once and cached for the
-    /// read-only `pf` property getter.
+    /// `Get_Variable` cases). `Power[1]` is computed once (here it exists, with a
+    /// solved solution) for state vars #21/#22.
     pub(super) fn get_all_variables_impl(
         &mut self,
         sys: &SysCtx,
@@ -201,7 +201,6 @@ impl IndMach012 {
         states: &mut [f64],
     ) {
         let power1 = self.terminal_power(sys, node_v, 1);
-        self.power1 = power1;
         let stator_losses = self.get_stator_losses();
         let rotor_losses = self.get_rotor_losses();
 

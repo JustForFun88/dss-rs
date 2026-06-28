@@ -35,7 +35,7 @@ use crate::elements::pc::generator::{Connection, default_recalc_ctx};
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
-use crate::util::{CDOUBLEONE, sqrt3};
+use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 mod accessors;
 mod dynamics;
@@ -193,7 +193,6 @@ pub struct IndMach012 {
     pub speed_history: f64,       // integration history
     pub theta_history: f64,       //
     pub p_nominal_per_phase: f64, // power-flow shaft-power target (W/phase)
-    pub power1: Complex64,        // cached Power[1] (W,var) for the read-only PF getter
 
     // Harmonic spectrum (PCClass tail). `DoHarmonicMode` injects ~0 (the Pascal
     // spectrum lines are commented out), but the property is stored/dumped.
@@ -296,7 +295,6 @@ impl IndMach012 {
             speed_history: 0.0,
             theta_history: 0.0,
             p_nominal_per_phase: 0.0,
-            power1: Complex64::ZERO,
             spectrum: "default".to_string(), // TPCElement: SpectrumClass.DefaultGeneral
             spectrum_obj: None,
             yearly_shape: String::new(),
@@ -333,10 +331,12 @@ impl IndMach012 {
         self.s2 = 2.0 - self.s1;
     }
 
-    /// Pascal `PropertySideEffects(kV)`: update `VBase`.
+    /// Pascal `PropertySideEffects(kV)`: update `VBase`. Pascal multiplies by the
+    /// precomputed `InvSQRT3x1000 = 1000/Sqrt(3)` constant (same grouping as the
+    /// Generator port), not `(kV·1000)/Sqrt(3)`.
     pub(super) fn update_vbase(&mut self) {
         self.v_base = match self.cd.nphases {
-            2 | 3 => self.kv_generator_base * 1000.0 / sqrt3(),
+            2 | 3 => self.kv_generator_base * inv_sqrt3_x1000(),
             _ => self.kv_generator_base * 1000.0,
         };
     }
