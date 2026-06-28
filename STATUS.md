@@ -82,7 +82,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 681**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 687**, **`solvable_now` 85** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -126,7 +126,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 681, golden_feeders 1,
+cargo test --workspace      # dss-core lib 687, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -642,8 +642,28 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   `skipped_oracle_issue`) or don't converge on either engine (`vsctest`, near-short).
   lib 680 → **681**; `solvable_now` 84. (Fork-drafted; oracle bug + numerics
   independently re-verified in the main loop before commit.)
-- **next:** VCCS (the voltage-controlled current source — real ring-buffer z-domain
-  filter dynamics, 5 corpus decks), then UPFC + UPFCControl, then ESPVLControl.
+- **VCCS (`pc/vccs/`) — done, gate-green.** The HW-inverter voltage-controlled
+  current source — a full 1:1 port incl. the z-domain ring-buffer filter dynamics.
+  Power flow: ideal current source (`YPrim = 0`) injecting `BaseCurr` at the
+  terminal-voltage angle (the `BP1`→scale→`BP2` PWL map of the pos-seq voltage,
+  XYcurve refs). Dynamics: **both** the time-domain **waveform** ring-buffer path
+  (`InitStateVars`/`IntegrateStates`, predictor/corrector via `IterationFlag`) **and**
+  the **RMS/PLL** path (`InitPhasorStates`/`IntegratePhasorStates`, `RmsMode=true`) +
+  the 6-var mode-3 interface; the ring buffers (`z`/`whist`/`zlast`/`wlast`/`y2`) kept
+  1-indexed so the error-prone `MapIdx`/`OffsetIdx` wraparound ports verbatim. 13 props.
+  `MakePosSequence` NOT_PORTED (the shared deferral); no oracle bugs found (KCL-clean).
+  New `SysCtx.dyna_t` (`DynaVars.t`). **Gate:** `HWtest.dss` (snapshot) migrated to
+  `solvable_now` (full-model live oracle match) — `solvable_now` 84 → **85**; +
+  `exec/tests/vccs.rs` 3 oracle-pinned mode-3 dynamics tests (HWDyn waveform +
+  HWPLL/HWPLL3 RMS, each pinning the t=0.1 s fault transient — the discriminating
+  ring-buffer check; **independently re-verified in the main loop** by re-probing
+  dss-python 0.15.7 — the HWDyn sample-50 fault transient matched the pins bit-for-bit)
+  + `props/vccs.json`. `HWDyn`/`HWPLL`/`HWPLL3` stay `skipped_unsupported` (built-in
+  `set mode=dynamic; solve` + `plot`, not snapshot-gateable); `DG_Prot_Fdr` now
+  converges (only `plot`-blocked). lib 681 → **687**. (Fresh-agent-drafted; numerics
+  re-verified before commit.)
+- **next:** UPFC + UPFCControl (power-flow FACTS controller, 1 corpus deck), then
+  ESPVLControl.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

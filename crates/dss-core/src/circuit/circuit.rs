@@ -55,6 +55,7 @@ pub enum ElemKind {
     Storage,
     IndMach012,
     VsConverter,
+    Vccs,
     Meter,
     EnergyMeter,
     Sensor,
@@ -321,6 +322,10 @@ impl Circuit {
             // VSConverter (Phase 7, WP7.8): a power-flow PC element; no dedicated
             // list (nothing iterates them specifically).
             ElemKind::VsConverter => self.pc_elements.push(r),
+            // VCCS (Phase 7): a current-source PC element with dynamics state vars;
+            // in `pc_elements` (the dynamics driver + monitor mode-3 walk that
+            // list), no dedicated list.
+            ElemKind::Vccs => self.pc_elements.push(r),
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),

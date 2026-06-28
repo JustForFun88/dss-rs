@@ -2128,6 +2128,52 @@ SCENARIOS = [
             "New VSConverter.v1 like=base bus1=c.1.2.3.4",
         ],
     },
+    # --- VCCS (Phase 7) -----------------------------------------------------
+    # The HW-inverter voltage-controlled current source. The bp1/bp2/filter
+    # curves are XYcurve object references (the dump shows the referenced curve's
+    # name); RMSMode is a Boolean. Defaults: phases=1, Prated=250, Vrated=208,
+    # Ppct=100, FSample=5000, RMSMode=No, IMaxpu=1.1, VRMSTau=IRMSTau=0.0015,
+    # Spectrum=default. MakeLike copies the curve refs + the rating/filter scalars
+    # (but, per Pascal, not via RecalcElementData side effects).
+    {
+        "name": "vccs_default",
+        "target": "VCCS.v1",
+        "commands": ["New VCCS.v1 bus1=b"],
+    },
+    {
+        "name": "vccs_full",
+        "target": "VCCS.v1",
+        "commands": [
+            "New XYcurve.bp1 npts=3 xarray=[-0.82 0 0.82] yarray=[-0.788 0 0.788]",
+            "New XYcurve.bp2 npts=5 xarray=[-0.4 -0.225 0 0.225 0.4] yarray=[2.5 1 0 -1 -2.5]",
+            "New XYcurve.zf npts=3 xarray=[1.0 -1.9852 0.9853] yarray=[0.0 0.0148 -0.0147]",
+            "New VCCS.v1 bus1=b phases=1 prated=3000 vrated=208 ppct=100 "
+            "bp1=bp1 bp2=bp2 filter=zf fsample=10000 rmsmode=true imaxpu=1.15 "
+            "vrmstau=0.01 irmstau=0.05",
+        ],
+    },
+    {
+        # 3-phase rating + the all-default filter (no curves): exercises the
+        # phases side effect (NConds := Fnphases) and the no-filter path.
+        "name": "vccs_3phase",
+        "target": "VCCS.v1",
+        "commands": ["New VCCS.v1 bus1=b phases=3 prated=3000 vrated=360 ppct=50"],
+    },
+    {
+        # MakeLike copies the curve references (the derived dump shows the same
+        # curve names) plus the rating/filter scalars + RMSMode.
+        "name": "vccs_makelike",
+        "target": "VCCS.v1",
+        "commands": [
+            "New XYcurve.bp1 npts=3 xarray=[-0.82 0 0.82] yarray=[-0.788 0 0.788]",
+            "New XYcurve.bp2 npts=5 xarray=[-0.4 -0.225 0 0.225 0.4] yarray=[2.5 1 0 -1 -2.5]",
+            "New XYcurve.zf npts=3 xarray=[1.0 -1.9852 0.9853] yarray=[0.0 0.0148 -0.0147]",
+            "New VCCS.base bus1=b phases=1 prated=190 vrated=208 ppct=89.5 "
+            "bp1=bp1 bp2=bp2 filter=zf fsample=10000 rmsmode=true imaxpu=1.2 "
+            "vrmstau=0.02 irmstau=0.03",
+            "New VCCS.v1 like=base bus1=c",
+        ],
+    },
     # --- DynamicExp (WP7.3 step 0) -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps

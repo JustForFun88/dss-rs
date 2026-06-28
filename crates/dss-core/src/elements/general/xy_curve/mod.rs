@@ -118,6 +118,17 @@ impl XyCurveObj {
         &self.y_values
     }
 
+    /// The curve's `X` values (Pascal `XValues`, indexed `1..NumPoints`). Used by
+    /// VCCS's z-domain filter (`Ffilter.Xvalue_pt[k]` denominator taps).
+    pub fn x_values(&self) -> &[f64] {
+        &self.x_values
+    }
+
+    /// The number of points in the curve (Pascal `FNumPoints` / `NumPoints`).
+    pub fn num_points(&self) -> usize {
+        self.n()
+    }
+
     /// Pascal `TXYcurveObj.InterpolatePoints`: linear interpolation between the
     /// `i`-th and `j`-th points (0-based). When the abscissae coincide the
     /// abscissa-array value is undefined, so the `i`-th ordinate is returned.

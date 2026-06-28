@@ -828,28 +828,23 @@
     },
     {
       "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
-      "tag": "unsupported_class=Fault,Fuse,Recloser,Relay,vccs",
-      "note": "New Command: Object Type \"vccs\" not found."
+      "tag": "unsupported_command=Plot",
+      "note": "Protection feeder with a VCCS DG; now converges (VCCS + Fault/Fuse/Recloser/Relay ported). Uses the unported `plot` command, so it is not a clean corpus_live snapshot case."
     },
     {
       "path": "Version8/Distrib/Examples/VCCS/HWDyn.dss",
-      "tag": "unsupported_class=vccs",
-      "note": "Version8/Distrib/Examples/VCCS/HWDyn.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"vccs\\\" not found.\", \"Unknown parameter \\\"bp1\\\" (value \\\"bp1_micro\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown parameter \\\"bp2\\\" (value \\\"bp2_micro\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown pa"
+      "tag": "deferred=vccs-dynamics-gated-by-unit-test",
+      "note": "VCCS waveform-dynamics deck (embeds `set mode=dynamic; solve`). VCCS is ported; the dynamics trajectory is gated against the oracle by the dedicated mode-3 monitor test exec::tests::vccs::vccs_waveform_dynamics_mode3_matches_oracle, not the snapshot corpus_live gate (which re-solves after compile and does not fit an embedded-dynamics deck)."
     },
     {
       "path": "Version8/Distrib/Examples/VCCS/HWPLL.dss",
-      "tag": "unsupported_class=vccs",
-      "note": "Version8/Distrib/Examples/VCCS/HWPLL.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"vccs\\\" not found.\", \"Unknown parameter \\\"filter\\\" (value \\\"z_pll\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown parameter \\\"fsample\\\" (value \\\"10000\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown paramet"
+      "tag": "unsupported_command=Plot",
+      "note": "VCCS RMS-mode (PLL) dynamics deck; uses the unported `plot` command. VCCS is ported; the dynamics trajectory is gated by exec::tests::vccs::vccs_rmsmode_dynamics_mode3_matches_oracle_1phase."
     },
     {
       "path": "Version8/Distrib/Examples/VCCS/HWPLL3.dss",
-      "tag": "unsupported_class=vccs",
-      "note": "Version8/Distrib/Examples/VCCS/HWPLL3.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"vccs\\\" not found.\", \"Unknown parameter \\\"filter\\\" (value \\\"z_pll\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown parameter \\\"fsample\\\" (value \\\"10000\\\") for object \\\"XYcurve.z_pll\\\"\", \"Unknown parame"
-    },
-    {
-      "path": "Version8/Distrib/Examples/VCCS/HWtest.dss",
-      "tag": "unsupported_class=VCCS",
-      "note": "Version8/Distrib/Examples/VCCS/HWtest.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"VCCS\\\" not found.\", \"Unknown parameter \\\"Ppct\\\" (value \\\"100\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown parameter \\\"bp1\\\" (value \\\"bp1_1phase\\\") for object \\\"XYcurve.z_micro\\\"\", \"Unknown param"
+      "tag": "unsupported_command=Plot",
+      "note": "VCCS 3-phase RMS-mode (PLL) dynamics deck; uses the unported `plot` command. VCCS is ported; the dynamics trajectory is gated by exec::tests::vccs::vccs_rmsmode_dynamics_mode3_matches_oracle_3phase."
     },
     {
       "path": "Version8/Distrib/Examples/VSConverter/vsctest.dss",

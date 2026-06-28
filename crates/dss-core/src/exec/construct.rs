@@ -195,6 +195,14 @@ impl Dss {
                 |name| Box::new(vs_converter::VsConverter::new(name)),
                 ElemKind::VsConverter,
             ),
+            // VCCS (Pascal DSSClassDefs.pas VCCS_ELEMENT) — a voltage-controlled
+            // current-source PC element (HW inverter model) with z-filter dynamics;
+            // no node-order dependence (creation order).
+            DssClass::ckt_class(
+                vccs::class_props(&enums),
+                |name| Box::new(vccs::Vccs::new(name)),
+                ElemKind::Vccs,
+            ),
             // InvControl registers after PVSystem (Pascal DSSClassDefs.pas:273;
             // the UPFC/GICsource/AutoTrans classes between PVSystem and InvControl
             // are unported, so among ported classes it follows IndMach012).
