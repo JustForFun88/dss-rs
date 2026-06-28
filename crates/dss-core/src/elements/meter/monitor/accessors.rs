@@ -215,6 +215,7 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
         .as_ckt_element()
         .expect("element= resolves to a ckt elem");
     let cd = elem.cd();
+    let num_variables = elem.num_variables();
     let (kind, num_windings, num_steps) =
         if let Some(t) = obj.as_any().downcast_ref::<Transformer>() {
             (
@@ -255,6 +256,8 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
         buses: (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect(),
         num_windings,
         num_steps,
-        num_variables: 0,
+        num_variables,
+        // Pascal `VariableName(i)` for i := 1..NumVariables (1-based).
+        variable_names: (1..=num_variables).map(|i| elem.variable_name(i)).collect(),
     }
 }

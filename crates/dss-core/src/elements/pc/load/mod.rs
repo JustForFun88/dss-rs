@@ -441,5 +441,6 @@ pub fn default_recalc_ctx() -> SysCtx {
         positive_sequence: false,
         time_of_day: 0.0,
         dyna_h: 0.0,
+        iteration_flag: crate::support::dynamics::IterationFlag::NewTimeStep,
     }
 }

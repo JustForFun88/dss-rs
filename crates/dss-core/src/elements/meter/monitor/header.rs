@@ -97,7 +97,13 @@ impl Monitor {
                 self.header.push("Tap (pu)".into());
             }
             3 => {
-                self.record_size = snap.num_variables; // 0 in Phase 6
+                // Pascal `ClearMonitorStream` mode 3 (Monitor.pas l.727-731):
+                // RecordSize := Length(StateBuffer) (= NumVariables), then
+                // Header.Add(VariableName(i)) for i := 1 to RecordSize.
+                self.record_size = snap.num_variables;
+                for name in &snap.variable_names {
+                    self.header.push(name.clone());
+                }
             }
             4 => {
                 self.record_size = 2 * nphases;

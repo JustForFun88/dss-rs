@@ -22,10 +22,11 @@ impl Generator {
         let nphases = self.cd.nphases;
         let nconds = self.cd.nconds;
 
-        if sys.is_harmonic_model {
-            // Harmonic/dynamic YPrim: `Y := Yeq` (the L-N subtransient admittance
-            // set in `InitHarmonics`), `EPSILON` if the generator is off; positive
-            // (not negated like the power-flow path).
+        if sys.is_dynamic_model || sys.is_harmonic_model {
+            // Harmonic/dynamic YPrim (Pascal `CalcYPrimMatrix` l.1280:
+            // `IsDynamicModel or IsHarmonicModel`): `Y := Yeq` (the L-N admittance
+            // set in `InitHarmonics`/`InitStateVars`), `EPSILON` if the generator
+            // is off; positive (not negated like the power-flow path).
             let mut y = if self.gen_on {
                 self.yeq
             } else {
@@ -133,7 +134,7 @@ impl Generator {
     }
 
     /// Pascal `CalcYPrimContribution`: `InjCurrent = Yprim · V(node)`.
-    fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
+    pub(super) fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
         let cd = &mut self.cd;
         if let Some(yprim) = &cd.yprim {
@@ -402,6 +403,13 @@ impl Generator {
         errors: &mut Vec<String>,
     ) {
         self.cd.iterminal_updated = false;
+        // Pascal `CalcGenModelContribution` dispatches `DoDynamicMode` first when
+        // the solution is in dynamics mode (the generator behind Xd' as a voltage
+        // source), before the harmonic check and the power-flow models.
+        if sys.is_dynamic_model {
+            self.do_dynamic_mode(sys, node_v, errors);
+            return;
+        }
         // Above the fundamental, harmonics mode injects the spectrum-scaled
         // Thevenin source through YPrim instead of the power-flow model (Pascal
         // `if IsHarmonicModel and (Frequency <> Fundamental) then DoHarmonicMode`).
@@ -409,10 +417,6 @@ impl Generator {
             self.do_harmonic_mode(sys, node_v);
             return;
         }
-        // Pascal dispatches `DoDynamicMode` first for `IsDynamicModel`; that is
-        // WP7.7 and unreachable today (the Dynamic/FaultStudy/MonteFault solve
-        // modes error "Unknown solution mode" before any element injects —
-        // `dispatch.rs`), so only the harmonic check is ported here.
         match self.gen_model {
             1 => self.do_constant_pq_gen(sys, node_v),
             2 => self.do_constant_z_gen(sys, node_v),

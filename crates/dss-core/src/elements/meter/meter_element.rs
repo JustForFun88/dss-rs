@@ -45,9 +45,11 @@ pub struct MeteredSnapshot {
     pub num_windings: usize,
     /// `CapacitorObj.NumSteps` (mode 6 header sizing).
     pub num_steps: usize,
-    /// `PCElement.NumVariables` (mode 3 header sizing; 0 in Phase 6 — the
-    /// dynamics state set is Phase 7).
+    /// `PCElement.NumVariables` (mode 3 header sizing).
     pub num_variables: usize,
+    /// `PCElement.VariableName(i)` for `i := 1..NumVariables` (mode 3 header
+    /// labels). Empty for elements with no state variables.
+    pub variable_names: Vec<String>,
 }
 
 /// `TMeterElement` shared state (the base-class fields every meter carries).

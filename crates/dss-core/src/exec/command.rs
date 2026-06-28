@@ -274,9 +274,7 @@ impl Dss {
             ));
             return;
         };
-        // `term` then `cond` (Pascal `NextParam; IntValue` — empty => 0). A
-        // non-positive index maps to 0/out-of-range, which the setters' guards
-        // ignore exactly as Pascal's index guards do.
+        // `term` then `cond` (Pascal `NextParam; IntValue` — empty => 0).
         self.parser.next_param(&self.vars);
         let terminal = self.parser.make_integer(&self.vars).unwrap_or(0).max(0) as usize;
         self.parser.next_param(&self.vars);
@@ -290,12 +288,21 @@ impl Dss {
                 .as_ckt_element_mut()
                 .expect("set_active_ckt_element returned a circuit element")
                 .cd_mut();
-            // Pascal `ActiveTerminalIdx := Terminal; Closed[Conductor] := …`
-            // (cond 0 => the whole terminal). `Closed[…]` raises YPrimInvalid.
+            // Pascal `ActiveTerminalIdx := Terminal; Closed[Conductor] := …`.
+            // `Set_ActiveTerminal` (CktElement.pas:253) only adopts a terminal in
+            // `1..Nterms`; an omitted/out-of-range `term=` leaves the active
+            // terminal unchanged (default = terminal 1, `FActiveTerminal = 0`).
+            // `Closed[Conductor]` (cond 0 => all phases) then acts on that *active*
+            // terminal — so `Open class.name` with no `term=` opens terminal 1; it
+            // is NOT a no-op. (Each `Closed[…]` raises YPrimInvalid.)
+            if terminal >= 1 && terminal <= cd.nterms {
+                cd.active_terminal = terminal - 1;
+            }
+            let active = cd.active_terminal + 1; // 1-based for the setters
             if conductor == 0 {
-                cd.set_terminal_closed(terminal, close);
+                cd.set_terminal_closed(active, close);
             } else {
-                cd.set_conductor_closed(terminal, conductor, close);
+                cd.set_conductor_closed(active, conductor, close);
             }
             cd.yprim_invalid && cd.enabled
         };
