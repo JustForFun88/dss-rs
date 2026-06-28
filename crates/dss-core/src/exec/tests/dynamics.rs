@@ -747,6 +747,65 @@ fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
 // WP7.7 step 3a — IndMach012 (induction machine) dynamics.
 // ===========================================================================
 
+/// WP7.7 step-3a regression: the snapshot power flow of the induction motor at
+/// the **default** node-voltage tolerance (1e-4) matches the pinned dss-python
+/// 0.15.7 oracle exactly. The slip-Newton uses a fixed `dSdP` slope, so it lags
+/// the node-voltage convergence and the snapshot stops at a not-fully-settled
+/// operating point (slip 0.0159858, P 1200.687 kW — *not* the 1200 kW target).
+/// Both engines must stop at that *same* point. Before the fix Rust took one
+/// extra slip step at power-read time because `do_indmach_model` set
+/// `iterminal_updated` without the Pascal `set_ITerminalUpdated` stamp of
+/// `IterminalSolutionCount`; the post-solve `ComputeIterminal` then re-ran the
+/// stateful `CalcPFlow` (a 5th slip step), landing ~5e-4 past the oracle in P.
+/// The oracle values below are the pinned engine's `Powers`/`Currents` at 1e-4.
+#[test]
+fn indmach012_snapshot_default_tol_matches_oracle() {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.indtest basekv=12.47 pu=1.0 phases=3 bus1=src \
+         mvasc3=20000 mvasc1=21000",
+    );
+    dss.command(
+        "New Transformer.tg phases=3 windings=2 buses=(src, mbus) \
+         conns=(delta,wye) kvs=(12.47,0.48) kvas=(1500,1500) xhl=5",
+    );
+    dss.command("New Capacitor.cg conn=wye bus1=mbus phases=3 kvar=600 kv=0.48");
+    dss.command(
+        "New IndMach012.m1 bus1=mbus kV=0.48 kW=1200 conn=delta kVA=1500 H=6 \
+         puRs=0.048 puXs=0.075 puRr=0.018 puXr=0.12 puXm=3.8 slip=0.02 \
+         SlipOption=variableslip",
+    );
+    dss.command("set voltagebases=[12.47, 0.48]");
+    dss.command("calcv");
+    // Default tolerance (1e-4) — the conditions that exposed the extra-slip-step bug.
+    dss.command("Set tolerance=1e-4 maxiterations=100");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "snapshot: {:?}", dss.errors());
+
+    // The oracle stops at iteration 4 (one control iteration, no controls).
+    assert_eq!(
+        dss.circuit().unwrap().solution.iteration,
+        4,
+        "iteration count"
+    );
+
+    let snaps = dss.snapshot_elements();
+    let m = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case("IndMach012.m1"))
+        .expect("motor element");
+    // Terminal-1 three-phase power and the phase-a terminal current magnitude
+    // (oracle dss-python 0.15.7 `Powers`/`Currents`, default tol 1e-4). The 5th
+    // slip step would land P at 1200.1275 kW / |Ia| at 1593.2895 A — ~4.7e-4 off.
+    let p1 = m.powers[0] + m.powers[2] + m.powers[4];
+    let q1 = m.powers[1] + m.powers[3] + m.powers[5];
+    let i1a = (m.currents[0].powi(2) + m.currents[1].powi(2)).sqrt();
+    assert!(rel(p1, 1200.686713) < 1e-6, "P1 (kW) = {p1}");
+    assert!(rel(q1, 552.830142) < 1e-6, "Q1 (kvar) = {q1}");
+    assert!(rel(i1a, 1594.017119) < 1e-6, "|I1a| (A) = {i1a}");
+}
+
 /// IndMach012 dynamics deck (self-contained reproduction of the corpus
 /// `Version8/.../InductionMachine` example: a 12.47 kV source → 1500 kVA step-down
 /// transformer → a 600 kvar shunt cap and a 1200 kW delta induction motor). Solved
@@ -771,10 +830,13 @@ fn indmach_dyn_dss() -> Dss {
     dss.command("set voltagebases=[12.47, 0.48]");
     dss.command("calcv");
     // The IndMach012 slip-Newton (fixed `dSdP` slope) converges slower than the
-    // node-voltage tolerance: at the default 1e-4 the slip is still settling, so
-    // faer and KLU stop at different iter-4 operating points (~5e-4 apart). Tighten
-    // the tolerance so both reach the true fixpoint (P = the 1200 kW target,
-    // dSpeed ≈ 0) — proven by a tolerance sweep (STATUS WP7.7 step 3a).
+    // node-voltage tolerance: at the default 1e-4 the network test trips at iter 4
+    // while the slip is still ~1e-4 from its root, so the snapshot stops short of
+    // the true electromechanical equilibrium (P = the 1200 kW target, dSpeed ≈ 0).
+    // Rust now lands on the *same* iter-4 point as the oracle (the spurious extra
+    // slip step at power-read time is fixed — see
+    // `indmach012_snapshot_default_tol_matches_oracle`), but to start dynamics from
+    // the clean fixpoint we tighten the tolerance so both engines fully settle.
     dss.command("Set tolerance=1e-8 maxiterations=100");
     dss.command("solve");
     assert!(
