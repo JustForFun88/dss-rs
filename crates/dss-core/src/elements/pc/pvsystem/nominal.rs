@@ -83,7 +83,7 @@ impl PVSystem {
 
     /// Pascal `ComputePanelPower`: DC panel kW = irradiance · shape · `Pmpp` ·
     /// temperature-derate.
-    fn compute_panel_power(&mut self) {
+    pub(super) fn compute_panel_power(&mut self) {
         self.temp_factor = 1.0;
         if let Some(c) = self.power_temp_curve_obj.as_mut() {
             // pu Pmpp vs T (actual).

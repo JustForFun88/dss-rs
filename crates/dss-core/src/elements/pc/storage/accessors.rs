@@ -78,6 +78,28 @@ impl CktElement for Storage {
         self.init_harmonics_impl(sys, node_v);
     }
 
+    /// Pascal `TStorageObj.InitStateVars`.
+    fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.init_state_vars_impl(sys, node_v);
+    }
+
+    /// Pascal `TStorageObj.IntegrateStates`.
+    fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.integrate_states_impl(sys, node_v);
+    }
+
+    fn num_variables(&self) -> usize {
+        self.num_storage_variables()
+    }
+
+    fn variable_name(&self, i: usize) -> String {
+        self.storage_variable_name(i)
+    }
+
+    fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        self.get_all_storage_variables(sys, node_v, states);
+    }
+
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
         self.spectrum_obj.as_ref()
     }

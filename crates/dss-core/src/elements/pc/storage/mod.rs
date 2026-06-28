@@ -50,6 +50,7 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
 mod accessors;
+mod dynamics;
 mod nominal;
 mod registers;
 mod solve;

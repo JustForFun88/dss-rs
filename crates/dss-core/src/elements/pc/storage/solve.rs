@@ -129,7 +129,7 @@ impl Storage {
     }
 
     /// Pascal `CalcYPrimContribution`: `InjCurrent = Yprim · V(node)`.
-    fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
+    pub(super) fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
         let cd = &mut self.cd;
         if let Some(yprim) = &cd.yprim {
@@ -247,6 +247,11 @@ impl Storage {
         node_v: &[Complex64],
         errors: &mut Vec<String>,
     ) {
+        // Dynamics mode: delegate entirely to DoDynamicMode (Pascal dispatch order).
+        if sys.is_dynamic_model {
+            self.do_dynamic_mode(sys, node_v, errors);
+            return;
+        }
         self.cd.iterminal_updated = false;
         // Harmonics (above the fundamental) inject the spectrum-scaled Thevenin
         // source — checked before GFM, matching Pascal's dispatch order.

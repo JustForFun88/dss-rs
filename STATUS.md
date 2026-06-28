@@ -13,8 +13,10 @@ constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
 InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), WP7.5
 (DER C: InvControl + ExpControl), and WP7.6 (Harmonics) COMPLETE**; **WP7.7
 (Dynamics core) IN PROGRESS — step 1 (the `SolveDynamic` predictor/corrector
-driver) + step 2a (Generator dynamics state machinery + Monitor mode 3 + a real
-`Open`-verb bug fix, oracle-pinned on the Kundur Ex.13.1 swing) done.** WP7.6 ran
+driver) + step 2a (Generator dynamics + Monitor mode 3 + a real `Open`-verb bug
+fix) + step 2b (PVSystem/Storage grid-following inverter dynamics +
+`InvDynamics.TInvDynamicVars` + the 22/34-var mode-3 interface + a Storage SOC
+dynamics fix) done, oracle-pinned.** WP7.6 ran
 in three steps. Step 1 landed the harmonics solve mode
 for the
 current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
@@ -43,8 +45,11 @@ variables), **Monitor mode 3** (the real state-variable sample body), and a **re
 `Open`-verb bug fix** (`Open class.name` with no `term=` was a no-op; now opens the
 active terminal, Pascal `DoOpenCmd`). Oracle-pinned on the canonical Kundur Ex.13.1
 deck (steady mode-3 trajectory + fault response + the full undamped swing matching
-the oracle to 5 digits). **next = WP7.7 step 2b (PVSystem/Storage inverter dynamics,
-`InvDynamics.TInvDynamicVars`), then step 3 (IndMach012 + DynEqPCE).**
+the oracle to 5 digits). Step 2b added the PVSystem/Storage grid-following inverter
+dynamics (the shared `TInvDynamicVars` current loop + the full mode-3 state-variable
+interface + a latent Storage SOC-in-dynamics fix), oracle-pinned on 4 PV/Storage
+mode-3 decks. **next = WP7.7 step 3 (IndMach012 + DynEqPCE integration — the
+`DynamicEqObj <> NIL` path).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -55,7 +60,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md).
-Current scores: dss-core **lib 662**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 666**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -93,13 +98,13 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix, oracle-pinned on Kundur) done**; **next = WP7.7 step 2b (PVSystem/Storage inverter dynamics)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) done, oracle-pinned**; **next = WP7.7 step 3 (IndMach012 + DynEqPCE)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 662, golden_feeders 1,
+cargo test --workspace      # dss-core lib 666, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -623,9 +628,48 @@ and all six audit follow-ups) archived at
     min/max by ~0.34/0.27 rel (≈3400× the 1e-4 tolerance) → the test fails. Tolerances
     tight, no smoke/skip/ignore, the deck transcription (inlined `@Zbase`, `enabled=no`
     for `Disable`) is empirically equivalent. No test fix needed.
-- **next:** step 2b — PVSystem/Storage inverter dynamics (`InvDynamics.pas`
-  `TInvDynamicVars`: per-phase `it`/`dit`/`Vgrid`, `InitStateVars`/`IntegrateStates`/
-  `DoDynamicMode`; GFM deferred), then step 3 (IndMach012 + DynEqPCE integration).
+- **step 2b — PVSystem + Storage grid-following (GFL) inverter dynamics.** Ported the
+  classic (`DynamicEqObj = NIL`) inverter dynamics for both DER PCEs + the shared
+  `TInvDynamicVars` machinery (`Shared/InvDynamics.pas`). **`inv_based_pce.rs`:** the
+  per-phase arrays (`vgrid`/`dit`/`it`/`it_history`/`m`/`isp_delta`/`ang_delta`/
+  `sf_mode_phase`) on `InvDynamicVars` + a `pi_ctrl: Vec<PiCtrl>` on `InvBasedPceData`
+  (kept disjoint for the per-phase borrow), and `init_dyn_arrays`/`solve_modulation`/
+  `solve_dynamic_step`/`get_inv_dyn_value`/`get_inv_dyn_name`/`set_inv_dyn_value`
+  (`NUM_INV_DYN_VARS = 9`). **`pvsystem/dynamics.rs` + `storage/dynamics.rs`:**
+  `InitStateVars` (PICtrl seed `kNum=0.9502`/`kDen=0.04979`/`kP`, `BaseZt`/`MaxVS`/
+  `MinVS`/`MinAmps`/`iMaxPPhase`, `pctX`→50 default, `Zthev`/`Yeq`/`LS`, per-phase
+  `Vgrid`/`it`/`m` seed; Storage gated on `FState = DISCHARGING`), `IntegrateStates`
+  (the `it`/`dit`/`itHistory` trapezoidal current loop via `SolveDynamicStep`; PV
+  recomputes `iMaxPPhase` from `PanelkW`; Storage MinVS/MaxVS idle-trip), and
+  `DoDynamicMode` (the `topolar(iActual, Vgrid.ang)` injection; PV `it<=iMaxPPhase`
+  clamp, Storage `MinAmps` cutoff + non-discharge idling current). The full mode-3
+  state-variable interface: **PV 22 vars** (13 classic + 9 InvDyn), **Storage 34**
+  (25 + 9) — incl. Storage loss getters (`get_inverter_losses`/`get_kw_chdch_losses`/
+  `get_kw_total_losses`/`get_kw_desired`, `update_efficiency_factor`).
+  `calc_{pvsystem,storage}_model_contribution` now dispatch `do_dynamic_mode` first
+  under `is_dynamic_model` (Pascal `CalcPVSystemModelContribution` l.1999 order).
+  GFM, the `DynamicEqObj`/`DynamicExp` path (step 3) and UserModel/DynaModel DLLs stay
+  NOT_PORTED; `VDelta` (GFM-only) is absent.
+  - **Real fix (latent WP7.4 simplification).** `update_storage` early-returned on
+    `is_dynamic_model`, but Pascal `UpdateStorage` (l.2496) exits only for
+    `IsDynamicModel AND IsUserModel`; user models are NOT_PORTED (always false), so the
+    SOC **must** integrate during dynamics. Removed the early-return — the oracle's
+    discharging-storage `kWh` drops 1000→999.98 over the run, which the new gate pins.
+    (Unexercised before step 2b: WP7.4 ran only power-flow.)
+  - **Compat note.** Storage `IntegrateStates` non-discharge `OFFVal` is uninitialised
+    in Pascal when `Vgrid.mag < MinVS AND NOT ResetIBR`; ported as `0.0` + `TODO(compat)`
+    (unreachable in the gated decks).
+  - **Gate:** 4 oracle-pinned tests in `exec/tests/dynamics.rs` (dss-python 0.15.7,
+    1e-4/1e-5): PV **steady mode-3** (all 22 vars; the duty rails at 1, `it` relaxes
+    20.55→6.17, `di/dt`→0) + **safe-mode under fault** (Vgrid collapses <MinVS → `it`/
+    duty→0, target→0.01); Storage **steady mode-3** (all 34 vars incl. the SOC
+    trajectory + discharge/idle/total loss split; PI-ramped `it` 0→44.98, `kWOut`→500)
+    + **idle-trip under fault** (State 1→0, output→0). lib **662 → 666**;
+    `solvable_now` **84** (no corpus migration — every PV/Storage dynamics deck is
+    also blocked on Phase-8 `BatchEdit`/`DynamicExp`-integration/GFM, recon-confirmed).
+- **next:** step 3 — IndMach012 (`pc/ind_mach012.rs`) + DynEqPCE (`pc/dyneq_pce.rs`)
+  integration (the `DynamicEqObj <> NIL` path + `DynOut` selection; flips Generator's
+  Phase-6 `NOT_PORTED` `DynamicEq` to the real ref).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
