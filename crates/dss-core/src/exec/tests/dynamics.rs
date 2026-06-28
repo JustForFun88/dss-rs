@@ -1398,6 +1398,15 @@ fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
     assert_eq!(m.channels.len(), 8);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
+    // The deterministic first dynamics step (sample 0): a single trapezoidal
+    // half-step from the classic GFL init seed through the user equation — `it`/`dit`
+    // are large because the seed is far from the equation's fixpoint and the filter L
+    // is tiny, `modul` is still the init duty (1.0). (Samples 1..99 ring too hard to
+    // pin at f32 — the stiff start-up — but step 0 is one deterministic step.)
+    assert!(rel(at(0, 0), 673.266) < 1e-6, "PV it@0 = {}", at(0, 0));
+    assert!(rel(at(1, 0), 1055150.8) < 1e-6, "PV dit@0 = {}", at(1, 0));
+    assert!(rel(at(4, 0), 1.0) < 1e-6, "PV modul@0 = {}", at(4, 0));
+
     // Settled state (sample 100 = past the stiff start-up; sample 200 = end). All
     // pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md; channels are f32).
     // `it` (DynOut[0]) relaxes to the ISP current setpoint; `dit` → exactly 0; the
@@ -1526,4 +1535,83 @@ fn storage_dynexp_dynamics_mode3_matches_oracle() {
             at(0, s)
         );
     }
+}
+
+/// PVSystem DynExp dynamics under a bolted 3-phase fault at the PV bus: the grid
+/// voltage `vac` collapses below MinVS, so the inverter enters safe mode — the
+/// `SolveModulation` safe-mode branch (reached through the equation's `mod` calc
+/// value) drives the duty cycle `modul` to 0, and the user equation settles `it` at
+/// its safe-mode limit. The post-fault state is settled (flat over the last fault
+/// steps), so it is value-pinned against the oracle. This exercises the
+/// `DynamicEqObj <> NIL` integration branch under a genuine disturbance (parity with
+/// the classic `pvsystem_dynamics_safe_mode_under_fault` gate). Oracle: dss-python
+/// 0.15.7.
+#[test]
+fn pvsystem_dynexp_dynamics_safe_mode_under_fault_matches_oracle() {
+    let mut dss = pv_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=200");
+    dss.command("New Fault.F1 phases=3 Bus1=pvbus");
+    dss.command("Solve number=100");
+    assert!(dss.errors().is_empty(), "pv fault run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("pvvars").expect("pvvars monitor");
+    assert_eq!(m.sample_count, 301);
+    let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // Pinned at the standard monitor `1e-6` (the post-fault state is settled).
+    // `vac` collapses (the bolted fault crushes the bus voltage), `modul` → exactly 0
+    // (safe mode zeroed the duty), and the equation holds `it`/`dit` at the safe-mode
+    // limit (distinct from the classic safe-mode `it → 0` because the user equation,
+    // not `SolveDynamicStep`, governs `dit`).
+    assert!(
+        rel(last(6), 4.3389945) < 1e-6,
+        "PV vac (faulted) = {}",
+        last(6)
+    );
+    assert!(last(4).abs() < 1e-6, "PV modul (safe) = {}", last(4));
+    assert!(
+        rel(last(0), -7.4471335) < 1e-6,
+        "PV it (safe) = {}",
+        last(0)
+    );
+    assert!(
+        rel(last(1), -4298.7295) < 1e-6,
+        "PV dit (safe) = {}",
+        last(1)
+    );
+}
+
+/// Storage DynExp dynamics under a bolted 3-phase fault at the Storage bus: the
+/// grid voltage collapses, so the discharging unit trips to IDLING. In idle the
+/// `IntegrateStates` else-branch runs (not the DynExp path), so the equation memory
+/// stops updating and the `it` slot freezes at its last discharging value, while the
+/// `modul` slot drops to 0 (safe). Pins the trip path (parity with the classic
+/// `storage_dynamics_trips_to_idle_under_fault` gate). Oracle: dss-python 0.15.7.
+#[test]
+fn storage_dynexp_dynamics_trips_under_fault_matches_oracle() {
+    let mut dss = sto_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=200");
+    dss.command("New Fault.F1 phases=3 Bus1=stobus");
+    dss.command("Solve number=100");
+    assert!(dss.errors().is_empty(), "sto fault run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("stovars").expect("stovars monitor");
+    assert_eq!(m.sample_count, 301);
+    let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // `vac` collapses; `modul` → exactly 0 (safe). The DynExp `it` slot freezes at the
+    // pre-trip discharging value (23.14571) because the idle else-branch stops feeding
+    // the equation memory; `dit` holds the last discharging derivative.
+    assert!(
+        rel(last(6), 4.340462) < 1e-6,
+        "STO vac (faulted) = {}",
+        last(6)
+    );
+    assert!(last(4).abs() < 1e-6, "STO modul (idle) = {}", last(4));
+    assert!(
+        rel(last(0), 23.14571) < 1e-6,
+        "STO it (frozen) = {}",
+        last(0)
+    );
+    assert!(rel(last(1), -17256.26) < 1e-6, "STO dit = {}", last(1));
 }
