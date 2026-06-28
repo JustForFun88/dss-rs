@@ -6,7 +6,7 @@
 
 mod harness;
 
-use harness::{Golden, Tolerances, assert_complex_close};
+use harness::{Golden, assert_complex_close, tol_for};
 
 const CASES: &[&str] = &["ieee13", "ieee34mod1", "ieee37", "ieee123"];
 
@@ -41,14 +41,14 @@ fn goldens_load_and_are_self_consistent() {
 #[test]
 fn tolerance_comparator_accepts_identity_and_rejects_perturbation() {
     let g = Golden::load("ieee13");
-    let tol = Tolerances::default();
+    let tol = tol_for("feeder");
 
     // Identity comparison must pass.
     assert_complex_close(
         &g.node_voltages,
         &g.node_voltages,
-        tol.voltage_rel,
-        tol.voltage_abs_floor,
+        tol.v_rel,
+        tol.v_abs,
         "ieee13 node voltages (identity)",
     );
 
@@ -59,8 +59,8 @@ fn tolerance_comparator_accepts_identity_and_rejects_perturbation() {
         assert_complex_close(
             &perturbed,
             &g.node_voltages,
-            tol.voltage_rel,
-            tol.voltage_abs_floor,
+            tol.v_rel,
+            tol.v_abs,
             "ieee13 node voltages (perturbed)",
         );
     })

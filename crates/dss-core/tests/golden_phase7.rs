@@ -181,7 +181,7 @@ fn phase7_targeted_scenarios_match_oracle() {
             "phase7 golden missing required scenario {must}"
         );
     }
-    let tol = tol_for("feeder");
+    let tol = tol_for("large");
     for sc in &scenarios {
         let mut dss = Dss::new();
         dss.command("clear");

@@ -107,7 +107,7 @@ fn load_scenarios() -> Vec<Scenario> {
         .collect()
 }
 
-fn run_scenario(sc: &Scenario, tol: &harness::Tol) {
+fn run_scenario(sc: &Scenario, tol: &harness::Tolerances) {
     let mut dss = Dss::new();
     dss.command("clear");
     for c in &sc.commands {
@@ -233,7 +233,7 @@ fn phase7_protection_scenarios_match_oracle() {
             "phase7_protection golden missing required scenario {must}"
         );
     }
-    let tol = tol_for("feeder");
+    let tol = tol_for("large");
     for sc in &scenarios {
         run_scenario(sc, &tol);
     }

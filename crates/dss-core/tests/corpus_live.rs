@@ -401,7 +401,7 @@ fn run_and_compare(
             compare_monitor(&dss, m, &tol, &ctx);
         }
         for m in &cp.meters {
-            compare_meter(&dss, m, &ctx);
+            compare_meter(&dss, m, &tol, &ctx);
         }
     }
 }
