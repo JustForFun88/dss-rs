@@ -106,6 +106,9 @@ pub struct SysCtx {
     /// `Solution.DynaVars.h` — the dynamics step size in seconds (Storage
     /// charge-time tolerance window).
     pub dyna_h: f64,
+    /// `Solution.DynaVars.t` — seconds from the top of the hour (the dynamics
+    /// clock the VCCS waveform integrator samples `w·t` against).
+    pub dyna_t: f64,
     /// `Solution.DynaVars.IterationFlag` — the predictor (`NewTimeStep`) /
     /// corrector (`SameTimeStep`) selector consumed by `IntegrateStates`.
     pub iteration_flag: IterationFlag,

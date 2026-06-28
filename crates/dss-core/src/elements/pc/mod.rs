@@ -12,6 +12,7 @@ pub mod inv_based_pce;
 pub mod load;
 pub mod pvsystem;
 pub mod storage;
+pub mod vccs;
 pub mod vs_converter;
 pub mod vsource;
 
@@ -21,5 +22,6 @@ pub use inv_based_pce::{InvBasedPce, InvBasedPceData};
 pub use load::Load;
 pub use pvsystem::PVSystem;
 pub use storage::Storage;
+pub use vccs::Vccs;
 pub use vs_converter::VsConverter;
 pub use vsource::VSource;

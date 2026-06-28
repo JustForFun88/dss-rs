@@ -386,6 +386,7 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         positive_sequence: ckt.positive_sequence,
         time_of_day: s.time_of_day(),
         dyna_h: s.h,
+        dyna_t: s.t,
         iteration_flag: s.iteration_flag,
     }
 }

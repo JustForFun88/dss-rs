@@ -601,6 +601,15 @@
       "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
       "kind": "feeder",
       "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/VCCS/HWtest.dss",
+      "kind": "feeder",
+      "n_steps": 1,
+      "selected_elements": [
+        "VCCS.PV1",
+        "VCCS.PV3"
+      ]
     }
   ]
 }
