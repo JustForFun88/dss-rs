@@ -56,8 +56,10 @@ impl PVSystem {
         // USEDAILY/USEYEARLY/USEDUTY cases are UNREACHABLE here (SolveMode
         // is Dynamic → no load-shape dispatch). Mirrors the `SolveMode::Dynamic
         // => {}` no-op in `nominal.rs::set_nominal_der_output`.
+        // Pascal's USENONE branch sets only `ShapeFactor := CDOUBLEONE`; it does
+        // NOT touch `TShapeValue` (`ComputePanelPower` reuses the prior value,
+        // which on a normal snapshot→dynamics entry already equals `FTemperature`).
         self.base.shape_factor = CDOUBLEONE;
-        self.t_shape_value = self.f_temperature;
 
         self.compute_panel_power();
 
@@ -296,7 +298,8 @@ impl PVSystem {
         let nphases = self.cd.nphases;
         // NOT_PORTED: DynamicEqObj <> NIL path — WP7.7 step 3.
         match i {
-            1 => self.f_irradiance,
+            // Pascal `PresentIrradiance = FIrradiance * ShapeFactor.re` (l.2421/2132).
+            1 => self.present_irradiance(),
             2 => self.panel_kw,
             3 => self.temp_factor,
             4 => self.eff_factor,
@@ -328,11 +331,9 @@ impl PVSystem {
         }
     }
 
-    /// Pascal `TPVsystemObj.Set_Variable` (l.2489) (1-based, internal use).
-    /// `pub(super)` — only used when a control writes to our state variables
-    /// (e.g. InvControl writes `Vreg`, `Vavg`, `*Operation`).
+    /// Pascal `TPVsystemObj.Set_Variable` (l.2489) (1-based). The write side of
+    /// the state-variable interface, reached via the `set_variable` trait method.
     /// NOT_PORTED: DynamicEqObj and UserModel paths.
-    #[allow(dead_code)]
     pub(super) fn set_pv_variable(&mut self, i: usize, value: f64) {
         match i {
             1 => self.f_irradiance = value,
