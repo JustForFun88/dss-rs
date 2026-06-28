@@ -66,9 +66,11 @@ its built-in shaft model, oracle-pinned on the Kundur DynExp deck (steady + the 
 swing, reproducing the classic gate's physics exactly); step 3b cont. (PVSystem/Storage
 `DynamicEq` integration — `InvBasedPceData` now embeds the shared `DynEqPceData`, the
 per-phase inverter `InitStateVars`/`IntegrateStates` `DynamicEqObj <> NIL` branches +
-the DynExp variable interface) done, oracle-pinned. **next = WP7.7 step 4 (dynamics
-corpus burn-down + the targeted offline `phase7/dynamics*.json` golden); the GFM
-inverter mode stays deferred (NOT_PORTED, loud abort).**
+the DynExp variable interface) done, oracle-pinned; step 4 (gate finalize — the
+focused gate is `exec/tests/dynamics.rs`; dynamics corpus burn-down 0-migratable)
+done. **WP7.7 (Dynamics core) COMPLETE.** **next = WP7.8 (VCCS, UPFC + UPFCControl,
+VSConverter, ESPVLControl — the converter/FACTS dynamics family).** The GFM
+inverter mode + the Generic/TD21 relay Sample stay deferred (tracked-open, §1e).
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -118,7 +120,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) done, oracle-pinned**; **next = WP7.7 step 4 (dynamics corpus burn-down + offline golden); GFM deferred**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) + step 4 (gate finalize, 0-migratable burn-down) done — WP7.7 COMPLETE; WP7.8 (converter/FACTS family) IN PROGRESS**; **next = WP7.8**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
@@ -544,7 +546,7 @@ and all six audit follow-ups) archived at
   FaultStudy-blocked, not harmonics-blocked (2 stale `Swtcontrol` tags refreshed).
   lib 653 → 656; golden_phase7 **60**; `solvable_now` **84**.
 
-**WP7.7 (Dynamics core) — 🚧 IN PROGRESS.** Full per-step records (decisions,
+**WP7.7 (Dynamics core) — ✅ COMPLETE (steps 1–4).** Full per-step records (decisions,
 the real-port-bug write-ups — the `Open`-verb no-op, the `set_ITerminalUpdated`
 stamp sweep, the per-step InvControl `FFlagVWOperates` reset — the
 dynamics-tolerance reviews, and every audit follow-up) archived at
@@ -591,11 +593,32 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   readback slot / skipped `SolveModulation` each fail on both PCEs); added the two fault
   gates + the PV sample-0 pin. lib 676 → 680; `solvable_now` **84** (the corpus
   GFL_IEEE123 DynExp deck is a daily/`Plot`-blocked Phase-8 case — no migration).
-- **next:** WP7.7 step 4 — the dynamics corpus burn-down (probe the `Test/`/`Version8`
-  dynamics decks for any now-migratable case) + the targeted offline
-  `phase7/dynamics*.json` golden (the focused regression guard the live gate doesn't
-  replace). The **GFM grid-forming inverter mode** stays deferred (NOT_PORTED loud
-  abort across Generator/PVSystem/Storage `DoDynamicMode`).
+- **step 4 — dynamics gate finalize + corpus burn-down (WP7.7 COMPLETE).** The
+  focused dynamics gate is **`exec/tests/dynamics.rs`** (the comprehensive
+  oracle-pinned mode-3 + fault tests for Generator / PVSystem / Storage / IndMach012
+  / the DynExp variants — already the gate for steps 2a–3b cont.); a separate
+  `phase7/dynamics*.json` command-replay golden would be redundant (the harness pins
+  power-flow/control monitors, not dynamics mode-3 — the exec tests are the stronger
+  guard). **Corpus burn-down = 0 migratable** (recon-confirmed): all 20 dynamics-mode
+  corpus decks are blocked by a Phase-8 verb or a deferral, **not** by the dynamics
+  engine — e.g. `DistanceRelayTest` *converges* on Rust (2 iters) and is blocked only
+  by trailing `Plot`; the others by `var`/`@Zbase` (Kundur), `BatchEdit` (GFL_IEEE123),
+  `MakeBusList`/`Plot` + `LoadShape action=normalize` (InductionMachine), the GFM mode
+  (deferred), the `WindGen` class (Phase 9), or an oracle-side missing data file.
+  `solvable_now` stays **84**. **WP7.7 (Dynamics core) is COMPLETE** (steps 1–3b cont.
+  + this finalize). The **GFM grid-forming inverter mode** stays deferred (NOT_PORTED
+  loud abort across Generator/PVSystem/Storage `DoDynamicMode`).
+  - **Tracked-open (Generic/TD21 relay Sample).** A WP7.2 carry-forward: the dynamics
+    machinery these need landed in WP7.7, so both are now *portable*, but they stay
+    deferred — every Generic/TD21 (and Distance) corpus deck is Phase-8 `Plot`-blocked
+    so they can never enter `solvable_now`, and the corpus-backed WP7.8 classes take
+    precedence. GenericLogic is ~26 Pascal lines (reads `MonitoredElement.Variable[idx]`
+    via the now-live state-var interface); TD21Logic is ~253 lines (a ring-buffer
+    time-domain distance relay). The `NOT_PORTED` message text was updated to the
+    honest framing (Phase-8 `Plot`-blocked, not "needs WP7.7"). Revisit in a focused
+    follow-up or once Phase-8 `Plot` lands a no-op.
+- **next:** WP7.8 (VCCS, UPFC + UPFCControl, VSConverter, ESPVLControl) — the
+  converter/FACTS dynamics family.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

@@ -610,10 +610,15 @@ impl Relay {
             return;
         }
         self.not_ported_logged = true;
+        // The dynamics machinery these need (PC state variables / the dynamics
+        // step loop) landed in WP7.7, so both are now *portable*; they stay
+        // deferred only because every Generic/TD21 corpus deck is Phase-8
+        // `Plot`-blocked (can never enter `solvable_now`), so the corpus-backed
+        // WP7.8 classes take precedence. Tracked-open in STATUS §1e.
         let what = if self.control_type == ctype::GENERIC {
-            "Type=Generic (needs WP7.7 PC state variables)"
+            "Type=Generic (PC state-variable relay — deferred, Phase-8 Plot-blocked)"
         } else {
-            "Type=TD21 (needs WP7.7 dynamics step)"
+            "Type=TD21 (time-distance relay — deferred, Phase-8 Plot-blocked)"
         };
         ctx.errors.push(format!(
             "Relay \"{}\": {what} Sample is NOT_PORTED.",
