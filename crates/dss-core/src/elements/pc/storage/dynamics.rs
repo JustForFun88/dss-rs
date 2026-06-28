@@ -8,12 +8,13 @@
 //! current `it` are advanced by a PI controller using the trapezoidal
 //! predictor/corrector in `SolveDynamic`.
 //!
-//! Scope: the classic `DynamicEqObj = NIL` / `DynaModel.Exists = FALSE` /
-//! `UserModel.Exists = FALSE` / non-GFM path only.
-//! NOT_PORTED defers: GFM, DynamicEqObj, DynaModel/UserModel DLLs.
+//! Scope: the classic GFL path and the external `DynamicEqObj` / `DynamicExp`
+//! integration (WP7.7 step 3b — the user equation replaces `SolveDynamicStep`).
+//! NOT_PORTED defers: GFM, DynaModel/UserModel DLLs.
 
 use num_complex::Complex64;
 
+use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::pc::inv_based_pce::{InvDynamicVars, NUM_INV_DYN_VARS};
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::complexutil::{c_to_polar, pclx, to_polar};
@@ -116,7 +117,16 @@ impl Storage {
             self.base.dyn_vars.isp_delta[i] = 0.0;
             self.base.dyn_vars.ang_delta[i] = 0.0;
         }
-        // NOT_PORTED: DynamicEqObj <> NIL init loop — WP7.7 step 3.
+
+        // DynamicEqObj <> NIL: zero the derivative column of the equation memory
+        // (Pascal Storage.pas l.2834). Reached only for a discharging unit (the
+        // `FState <> STORE_DISCHARGING` early-return above); the per-phase `it`/
+        // `Vgrid`/`m` seeded by the classic loop *are* the state.
+        if self.base.dyneq.has_dynamic_eq() {
+            for row in self.base.dyneq.dynamic_eq_vals.iter_mut() {
+                row[1] = 0.0;
+            }
+        }
     }
 
     /// Pascal `TStorageObj.IntegrateStates` (l.2840) — advance the GFL
@@ -181,15 +191,19 @@ impl Storage {
                     self.base.dyn_vars.isp = i_max_p_phase;
                 }
 
-                // NOT_PORTED: DynamicEqObj <> NIL branch — WP7.7 step 3.
+                if self.base.dyneq.has_dynamic_eq() {
+                    // DynamicEqObj <> NIL: integrate the user equation in place of
+                    // `SolveDynamicStep` (Pascal Storage.pas l.2919).
+                    self.integrate_dyn_eq_phase(sys, node_v, i, iteration_flag);
+                } else {
+                    let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
+                    self.base
+                        .dyn_vars
+                        .solve_dynamic_step(iteration_flag, i, &mut pi);
+                    self.base.pi_ctrl[i] = pi;
+                }
 
-                let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
-                self.base
-                    .dyn_vars
-                    .solve_dynamic_step(iteration_flag, i, &mut pi);
-                self.base.pi_ctrl[i] = pi;
-
-                // Trapezoidal integration.
+                // Trapezoidal integration (common to both paths).
                 self.base.dyn_vars.it[i] =
                     self.base.dyn_vars.it_history[i] + 0.5 * h * self.base.dyn_vars.dit[i];
             } else {
@@ -215,6 +229,84 @@ impl Storage {
             p_idling,
             reset_ibr,
         );
+    }
+
+    /// Pascal `TStorageObj.IntegrateStates`'s `DynamicEqObj <> NIL` body for one
+    /// phase `i` (l.2919-2951): load `it[i]`/`dit[i]` into the `DynOut[0]` memory
+    /// slot, load the calculated values the equation refers to, `SolveEq`, and read
+    /// the integrated derivative back into `dit[i]`. Identical to the PVSystem body
+    /// (the shared inverter calc-value cases: Vgrid per phase, RatedVDC, modulation).
+    fn integrate_dyn_eq_phase(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        i: usize,
+        iteration_flag: IterationFlag,
+    ) {
+        let out0 = self.base.dyneq.dyn_out[0];
+        self.base.dyneq.dynamic_eq_vals[out0][0] = self.base.dyn_vars.it[i];
+        self.base.dyneq.dynamic_eq_vals[out0][1] = self.base.dyn_vars.dit[i];
+
+        let num_pairs = self.base.dyneq.dynamic_eq_pair.len() / 2;
+        for j in 0..num_pairs {
+            let var_idx = self.base.dyneq.dynamic_eq_pair[j * 2] as usize;
+            let code = self.base.dyneq.dynamic_eq_pair[j * 2 + 1];
+            if DynEqPceData::is_init_val(code) {
+                continue; // initialization value — applied only in InitStateVars
+            }
+            match code {
+                2 => self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.vgrid[i].mag,
+                4 => {} // nothing for this object — the current is the DynOut[0] state
+                10 => self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.rated_vdc,
+                11 => {
+                    let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
+                    self.base
+                        .dyn_vars
+                        .solve_modulation(iteration_flag, i, &mut pi);
+                    self.base.pi_ctrl[i] = pi;
+                    self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.m[i];
+                }
+                _ => {
+                    let val = self.get_pce_value(sys, node_v, code);
+                    self.base.dyneq.dynamic_eq_vals[var_idx][0] = val;
+                }
+            }
+        }
+
+        self.base.dyneq.solve_eq();
+        self.base.dyn_vars.dit[i] = self.base.dyneq.dynamic_eq_vals[out0][1];
+    }
+
+    /// Pascal `TDSSCktElement.Get_PCE_Value(1, ValType)` (CktElement.pas l.828):
+    /// the model-derived value a `DynamicExp` operand refers to, at terminal 1.
+    /// The inverter `IntegrateStates` intercepts codes 2/4/10/11, so only P/Q/Vang/
+    /// Iang/S reach here; ported in full for fidelity. Storage is not a transformer,
+    /// so `MaxVoltage` reads the node voltage at the max-current phase directly.
+    fn get_pce_value(&mut self, sys: &SysCtx, node_v: &[Complex64], code: i32) -> f64 {
+        match code {
+            0 | 7 => -self.terminal_power(sys, node_v, 1).re, // P, P0
+            1 | 8 => -self.terminal_power(sys, node_v, 1).im, // Q, Q0
+            6 => self.terminal_power(sys, node_v, 1).norm(),  // S
+            2..=5 => {
+                self.compute_iterminal(sys, node_v);
+                let mut max_curr = 0.0_f64;
+                let mut max_phase = 0usize;
+                for k in 0..self.cd.nphases {
+                    let mag = self.cd.iterminal[k].norm();
+                    if mag > max_curr {
+                        max_curr = mag;
+                        max_phase = k;
+                    }
+                }
+                match code {
+                    2 => node_v[self.cd.node_ref[max_phase]].norm(),
+                    3 => crate::support::complexutil::cang(node_v[self.cd.node_ref[max_phase]]),
+                    4 => max_curr,
+                    _ => crate::support::complexutil::cang(self.cd.iterminal[max_phase]),
+                }
+            }
+            _ => 0.0,
+        }
     }
 
     /// Pascal `TStorageObj.DoDynamicMode` (l.2119) — inject the GFL current.
@@ -369,9 +461,9 @@ impl Storage {
     // State-variable interface
     // -----------------------------------------------------------------------
 
-    /// Pascal `TStorageObj.NumVariables` (l.3203) — 34 (25 base + 9 InvDynVars).
-    /// Inherited `DynamicEqObj.NumVariables` returns 0 (DynamicEqObj = NIL);
-    /// UserModel/DynaModel are NOT_PORTED (= 0).
+    /// Pascal `TStorageObj.NumVariables` (l.3203) — the 34 classic variables
+    /// (25 base + 9 InvDynVars). The linked-`DynamicExp` count is dispatched ahead
+    /// of this in the `num_variables` accessor; UserModel/DynaModel are NOT_PORTED.
     pub(super) fn num_storage_variables(&self) -> usize {
         NUM_STORAGE_VARS // = 34
     }
@@ -415,8 +507,7 @@ impl Storage {
     }
 
     /// Pascal `TStorageObj.Get_Variable` (l.2977) (1-based).
-    /// Returns -9999.99 for out-of-range `i`.
-    /// NOT_PORTED: DynamicEqObj, UserModel, DynaModel paths.
+    /// Returns -9999.99 for out-of-range `i`. UserModel/DynaModel are NOT_PORTED.
     pub(super) fn get_storage_variable(
         &mut self,
         i: usize,
@@ -424,7 +515,15 @@ impl Storage {
         node_v: &[Complex64],
     ) -> f64 {
         let nphases = self.cd.nphases;
-        // NOT_PORTED: DynamicEqObj <> NIL path — WP7.7 step 3.
+        // DynamicEqObj <> NIL: read the equation memory directly (Pascal l.2989).
+        // The `1..=` guard avoids the `i = 0` underflow Pascal leaves as UB; an
+        // out-of-range index returns the same sentinel as the classic path.
+        if self.base.dyneq.has_dynamic_eq() {
+            if (1..=self.base.dyneq.num_variables()).contains(&i) {
+                return self.base.dyneq.get_dynamic_eq_val(i - 1);
+            }
+            return -9999.99;
+        }
         match i {
             1 => self.kwh_stored,
             2 => {
@@ -493,8 +592,9 @@ impl Storage {
     }
 
     /// Pascal `TStorageObj.GetAllVariables` (l.3176): fill `states[0..33]`
-    /// (0-based) with `Variable[1..34]` (1-based).
-    /// NOT_PORTED: DynamicEqObj, UserModel, DynaModel paths.
+    /// (0-based) with `Variable[1..34]` (1-based). The `DynamicEqObj` memory dump is
+    /// handled by the `get_all_variables` accessor short-circuit; UserModel/DynaModel
+    /// are NOT_PORTED.
     pub(super) fn get_all_storage_variables(
         &mut self,
         sys: &SysCtx,
@@ -510,8 +610,18 @@ impl Storage {
 
     /// Pascal `TStorageObj.Set_Variable` (l.3110) (1-based). The write side of the
     /// state-variable interface, reached via the `set_variable` trait method.
-    /// NOT_PORTED: DynamicEqObj, UserModel, DynaModel paths.
+    /// A linked `DynamicExp` makes every state variable read-only (msg 566, below);
+    /// UserModel/DynaModel are NOT_PORTED.
     pub(super) fn set_storage_variable(&mut self, i: usize, value: f64) {
+        // DynamicEqObj <> NIL: state variables are read-only — the equation drives
+        // them (Pascal Set_Variable, msg 566).
+        if self.base.dyneq.has_dynamic_eq() {
+            self.cd.obj.push_error(format!(
+                "Storage.{}: cannot set state variable when using DynamicEq.",
+                self.cd.obj.name()
+            ));
+            return;
+        }
         match i {
             1 => self.kwh_stored = value,
             2 => self.f_state = value.trunc() as i32,

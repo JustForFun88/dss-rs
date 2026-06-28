@@ -8,13 +8,14 @@
 //! are advanced by a PI controller (`TInvDynamicVars.SolveDynamicStep`) using
 //! the trapezoidal predictor/corrector in `SolveDynamic`.
 //!
-//! Scope: the classic `DynamicEqObj = NIL` / `UserModel.Exists = FALSE` path
-//! only. The external `DynamicEqObj` / `DynamicExp` path, the user-written DLL
-//! model (`UserModel`, VoltageModel=3) and the grid-forming (GFM) inverter mode
-//! are NOT_PORTED — see guards below.
+//! Scope: the classic GFL path and the external `DynamicEqObj` / `DynamicExp`
+//! integration (WP7.7 step 3b — the user equation replaces `SolveDynamicStep`).
+//! The user-written DLL model (`UserModel`, VoltageModel=3) and the grid-forming
+//! (GFM) inverter mode are NOT_PORTED — see guards below.
 
 use num_complex::Complex64;
 
+use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::pc::inv_based_pce::{InvDynamicVars, NUM_INV_DYN_VARS};
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::complexutil::{c_to_polar, pclx, to_polar};
@@ -128,7 +129,16 @@ impl PVSystem {
             self.base.dyn_vars.isp_delta[i] = 0.0;
             self.base.dyn_vars.ang_delta[i] = 0.0;
         }
-        // NOT_PORTED: DynamicEqObj <> NIL init loop — WP7.7 step 3 (DynEqPCE).
+
+        // DynamicEqObj <> NIL: zero the derivative column of the equation memory
+        // (Pascal PVsystem.pas l.2258). Unlike the Generator, the inverter applies
+        // no init-value seeding here — the per-phase `it`/`Vgrid`/`m` seeded by the
+        // classic loop above *are* the state, loaded into `DynOut[0]` each step.
+        if self.base.dyneq.has_dynamic_eq() {
+            for row in self.base.dyneq.dynamic_eq_vals.iter_mut() {
+                row[1] = 0.0;
+            }
+        }
     }
 
     /// Pascal `TPVsystemObj.IntegrateStates` (l.2264) — advance the GFL
@@ -177,21 +187,107 @@ impl PVSystem {
                 self.base.dyn_vars.isp = 0.01; // turn off the inverter
             }
 
-            // NOT_PORTED: DynamicEqObj <> NIL branch — WP7.7 step 3.
+            if self.base.dyneq.has_dynamic_eq() {
+                // DynamicEqObj <> NIL: integrate the user equation in place of
+                // `SolveDynamicStep` (Pascal PVsystem.pas l.2356). Bring the present
+                // per-phase current into the `DynOut[0]` slot, load the calculated
+                // values, solve, then read the derivative back into `dit[i]`.
+                self.integrate_dyn_eq_phase(sys, node_v, i, iteration_flag);
+            } else {
+                // Borrow-checker note: `pi_ctrl` and `dyn_vars` are both on `base`;
+                // use mem::take to borrow them disjointly.
+                let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
+                self.base
+                    .dyn_vars
+                    .solve_dynamic_step(iteration_flag, i, &mut pi);
+                self.base.pi_ctrl[i] = pi;
+            }
 
-            // Borrow-checker note: `pi_ctrl` and `dyn_vars` are both on `base`;
-            // use mem::take to borrow them disjointly.
-            let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
-            self.base
-                .dyn_vars
-                .solve_dynamic_step(iteration_flag, i, &mut pi);
-            self.base.pi_ctrl[i] = pi;
-
-            // Trapezoidal integration.
+            // Trapezoidal integration (common to both paths).
             self.base.dyn_vars.it[i] =
                 self.base.dyn_vars.it_history[i] + 0.5 * h * self.base.dyn_vars.dit[i];
         }
         let _ = (i_max_p_phase, min_vs); // suppress unused-variable lint
+    }
+
+    /// Pascal `TPVsystemObj.IntegrateStates`'s `DynamicEqObj <> NIL` body for one
+    /// phase `i` (l.2356-2391): load `it[i]`/`dit[i]` into the `DynOut[0]` memory
+    /// slot, load the calculated values the equation refers to, `SolveEq`, and read
+    /// the integrated derivative back into `dit[i]`. The calc-value cases mirror
+    /// the inverter overrides (Vgrid per phase, RatedVDC, the modulation `m[i]`);
+    /// everything else falls through to the generic `Get_PCE_Value`.
+    fn integrate_dyn_eq_phase(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        i: usize,
+        iteration_flag: IterationFlag,
+    ) {
+        let out0 = self.base.dyneq.dyn_out[0];
+        self.base.dyneq.dynamic_eq_vals[out0][0] = self.base.dyn_vars.it[i];
+        self.base.dyneq.dynamic_eq_vals[out0][1] = self.base.dyn_vars.dit[i];
+
+        let num_pairs = self.base.dyneq.dynamic_eq_pair.len() / 2;
+        for j in 0..num_pairs {
+            let var_idx = self.base.dyneq.dynamic_eq_pair[j * 2] as usize;
+            let code = self.base.dyneq.dynamic_eq_pair[j * 2 + 1];
+            if DynEqPceData::is_init_val(code) {
+                continue; // initialization value — applied only in InitStateVars
+            }
+            match code {
+                2 => self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.vgrid[i].mag,
+                4 => {} // nothing for this object — the current is the DynOut[0] state
+                10 => self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.rated_vdc,
+                11 => {
+                    let mut pi = std::mem::take(&mut self.base.pi_ctrl[i]);
+                    self.base
+                        .dyn_vars
+                        .solve_modulation(iteration_flag, i, &mut pi);
+                    self.base.pi_ctrl[i] = pi;
+                    self.base.dyneq.dynamic_eq_vals[var_idx][0] = self.base.dyn_vars.m[i];
+                }
+                _ => {
+                    let val = self.get_pce_value(sys, node_v, code);
+                    self.base.dyneq.dynamic_eq_vals[var_idx][0] = val;
+                }
+            }
+        }
+
+        self.base.dyneq.solve_eq();
+        self.base.dyn_vars.dit[i] = self.base.dyneq.dynamic_eq_vals[out0][1];
+    }
+
+    /// Pascal `TDSSCktElement.Get_PCE_Value(1, ValType)` (CktElement.pas l.828):
+    /// the model-derived value a `DynamicExp` operand refers to, at the active
+    /// terminal (terminal 1). The inverter `IntegrateStates` intercepts codes
+    /// 2/4/10/11 (Vgrid/current/RatedVDC/modulation) before this, so only P/Q/Vang/
+    /// Iang/S reach here; ported in full for fidelity. PVSystem is not a transformer,
+    /// so `MaxVoltage` reads the node voltage at the max-current phase directly.
+    fn get_pce_value(&mut self, sys: &SysCtx, node_v: &[Complex64], code: i32) -> f64 {
+        match code {
+            0 | 7 => -self.terminal_power(sys, node_v, 1).re, // P, P0
+            1 | 8 => -self.terminal_power(sys, node_v, 1).im, // Q, Q0
+            6 => self.terminal_power(sys, node_v, 1).norm(),  // S
+            2..=5 => {
+                self.compute_iterminal(sys, node_v);
+                let mut max_curr = 0.0_f64;
+                let mut max_phase = 0usize;
+                for k in 0..self.cd.nphases {
+                    let mag = self.cd.iterminal[k].norm();
+                    if mag > max_curr {
+                        max_curr = mag;
+                        max_phase = k;
+                    }
+                }
+                match code {
+                    2 => node_v[self.cd.node_ref[max_phase]].norm(),
+                    3 => crate::support::complexutil::cang(node_v[self.cd.node_ref[max_phase]]),
+                    4 => max_curr,
+                    _ => crate::support::complexutil::cang(self.cd.iterminal[max_phase]),
+                }
+            }
+            _ => 0.0,
+        }
     }
 
     /// Pascal `TPVsystemObj.DoDynamicMode` (l.1838) — inject the GFL current
@@ -266,9 +362,9 @@ impl PVSystem {
         let _ = sys;
     }
 
-    /// Pascal `TPVsystemObj.NumVariables` (l.2562) — 22 classic variables
-    /// (13 base + 9 InvDynVars). Inherited `DynamicEqObj.NumVariables` returns
-    /// 0 (DynamicEqObj = NIL); `UserModel.FNumVars` is NOT_PORTED (= 0).
+    /// Pascal `TPVsystemObj.NumVariables` (l.2562) — the 22 classic variables
+    /// (13 base + 9 InvDynVars). The linked-`DynamicExp` count is dispatched ahead
+    /// of this in the `num_variables` accessor; `UserModel.FNumVars` is NOT_PORTED.
     pub(super) fn num_pv_variables(&self) -> usize {
         NUM_PV_VARS // = 22
     }
@@ -301,7 +397,16 @@ impl PVSystem {
     /// Returns -9999.99 for out-of-range `i`.
     pub(super) fn get_pv_variable(&self, i: usize) -> f64 {
         let nphases = self.cd.nphases;
-        // NOT_PORTED: DynamicEqObj <> NIL path — WP7.7 step 3.
+        // DynamicEqObj <> NIL: read the equation memory directly (Pascal l.2409).
+        // The `1..=` guard avoids the `i = 0` underflow Pascal leaves as UB; an
+        // out-of-range index returns the same sentinel as the classic path (Pascal
+        // pushes msg 565 and exits with the seeded `Result`, no error channel here).
+        if self.base.dyneq.has_dynamic_eq() {
+            if (1..=self.base.dyneq.num_variables()).contains(&i) {
+                return self.base.dyneq.get_dynamic_eq_val(i - 1);
+            }
+            return -9999.99;
+        }
         match i {
             // Pascal `PresentIrradiance = FIrradiance * ShapeFactor.re` (l.2421/2132).
             1 => self.present_irradiance(),
@@ -326,8 +431,9 @@ impl PVSystem {
     }
 
     /// Pascal `TPVsystemObj.GetAllVariables` (l.2543): fill `states[0..21]`
-    /// (0-based) with `Variable[1..22]` (1-based).
-    /// NOT_PORTED: DynamicEqObj and UserModel paths.
+    /// (0-based) with `Variable[1..22]` (1-based). The `DynamicEqObj` memory dump is
+    /// handled by the `get_all_variables` accessor short-circuit; UserModel is
+    /// NOT_PORTED.
     pub(super) fn get_all_pv_variables(&self, states: &mut [f64]) {
         for i in 1..=NUM_PV_VARS {
             if i - 1 < states.len() {
@@ -338,8 +444,18 @@ impl PVSystem {
 
     /// Pascal `TPVsystemObj.Set_Variable` (l.2489) (1-based). The write side of
     /// the state-variable interface, reached via the `set_variable` trait method.
-    /// NOT_PORTED: DynamicEqObj and UserModel paths.
+    /// A linked `DynamicExp` makes every state variable read-only (msg 566, below);
+    /// UserModel is NOT_PORTED.
     pub(super) fn set_pv_variable(&mut self, i: usize, value: f64) {
+        // DynamicEqObj <> NIL: state variables are read-only — the equation drives
+        // them (Pascal Set_Variable l.2498, msg 566).
+        if self.base.dyneq.has_dynamic_eq() {
+            self.cd.obj.push_error(format!(
+                "PVSystem.{}: cannot set state variable when using DynamicEq.",
+                self.cd.obj.name()
+            ));
+            return;
+        }
         match i {
             1 => self.f_irradiance = value,
             2..=4 => {} // read-only in Pascal

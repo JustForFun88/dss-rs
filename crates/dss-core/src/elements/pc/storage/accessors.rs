@@ -88,15 +88,39 @@ impl CktElement for Storage {
         self.integrate_states_impl(sys, node_v);
     }
 
+    /// Pascal `TStorageObj.NumVariables` — the linked `DynamicExp` count first
+    /// (inherited `TDynEqPCE.NumVariables`), else 34 (25 base + 9 InvDynVars).
     fn num_variables(&self) -> usize {
-        self.num_storage_variables()
+        let n = self.base.dyneq.num_variables();
+        if n != 0 {
+            n
+        } else {
+            self.num_storage_variables()
+        }
     }
 
+    /// Pascal `TStorageObj.VariableName` (1-based): the `DynamicExp` memory-slot
+    /// name first (inherited), else the classic name table.
     fn variable_name(&self, i: usize) -> String {
+        if let Some(name) = self.base.dyneq.variable_name(i) {
+            return name;
+        }
         self.storage_variable_name(i)
     }
 
+    /// Pascal `TStorageObj.GetAllVariables`: the `DynamicExp` memory dump first
+    /// (Pascal l.3176), else the classic 34 variables.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        if self.base.dyneq.has_dynamic_eq() {
+            for (i, s) in states
+                .iter_mut()
+                .enumerate()
+                .take(self.base.dyneq.num_variables())
+            {
+                *s = self.base.dyneq.get_dynamic_eq_val(i);
+            }
+            return;
+        }
         self.get_all_storage_variables(sys, node_v, states);
     }
 
@@ -361,7 +385,7 @@ impl DssObject for Storage {
             YEARLY => self.base.yearly_shape.clone(),
             DAILY => self.base.daily_shape.clone(),
             DUTY => self.base.duty_shape.clone(),
-            DYNAMIC_EQ => self.base.dynamic_eq.clone(),
+            DYNAMIC_EQ => self.base.dyneq.dynamic_eq.clone(),
             DYNA_DLL => self.dyna_model_name.clone(),
             DYNA_DATA => self.dyna_model_edit.clone(),
             USERMODEL => self.base.user_model_name.clone(),
@@ -388,27 +412,23 @@ impl DssObject for Storage {
         }
     }
 
-    /// `DynOut` (Pascal `StringListProperty`): the dynamics output-variable
-    /// selection. Stored as written; its resolution + dynamics effect is WP7.7.
+    /// `DynOut` (Pascal `StringListProperty` via `Set/GetDynOutputNames`): the
+    /// dynamics output-variable selection, resolved against the linked
+    /// `DynamicExp` to output indices and reconstructed for the dump.
     fn get_string_list(&self, idx: usize) -> Vec<String> {
         match idx {
-            prop::DYN_OUT => {
-                if self.base.dyn_out.is_empty() {
-                    Vec::new()
-                } else {
-                    self.base
-                        .dyn_out
-                        .split(',')
-                        .map(|s| s.to_string())
-                        .collect()
-                }
-            }
+            prop::DYN_OUT => self.base.dyneq.get_dyn_output_names(),
             _ => unreachable!("Storage has no string-list property {idx}"),
         }
     }
     fn set_string_list(&mut self, idx: usize, value: Vec<String>) {
         match idx {
-            prop::DYN_OUT => self.base.dyn_out = value.join(","),
+            prop::DYN_OUT => {
+                let errors = self.base.dyneq.set_dyn_output_names(&value);
+                for e in errors {
+                    self.cd.obj.push_error(e);
+                }
+            }
             _ => unreachable!("Storage has no string-list property {idx}"),
         }
     }
@@ -456,9 +476,9 @@ impl DssObject for Storage {
                 self.base.duty_shape_obj = load_shape();
             }
             DYNAMIC_EQ => {
-                self.base.dynamic_eq = name;
-                self.base.dynamic_eq_ref = elem_ref;
-                self.base.dynamic_eq_obj =
+                self.base.dyneq.dynamic_eq = name;
+                self.base.dyneq.dynamic_eq_ref = elem_ref;
+                self.base.dyneq.dynamic_eq_obj =
                     resolved.and_then(|(_, o)| o.as_any().downcast_ref::<DynamicExpObj>().cloned());
             }
             _ => unreachable!("Storage has no resolved object-ref property {idx}"),
@@ -523,6 +543,9 @@ impl DssObject for Storage {
                 }
                 self.cd.yprim_invalid = true;
             }
+            // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
+            // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
+            DYNAMIC_EQ => self.base.dyneq.on_dynamic_eq_set(),
             _ => {}
         }
     }
@@ -621,7 +644,28 @@ impl DssObject for Storage {
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
+    /// Pascal `TDynEqPCE.ParseDynVar`: a `name=value` whose `name` is a state
+    /// variable of the linked `DynamicExp` (the inline `it=imag vdc=kvdc …`
+    /// initializers in a GFL-DynExp deck).
+    fn parse_dyn_var(
+        &mut self,
+        variable: &str,
+        value: &str,
+        vars: &dss_parser::ParserVars,
+    ) -> bool {
+        self.base.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+impl crate::elements::pc::dyneq_pce::DynEqPce for Storage {
+    fn dyneq(&self) -> &crate::elements::pc::dyneq_pce::DynEqPceData {
+        &self.base.dyneq
+    }
+    fn dyneq_mut(&mut self) -> &mut crate::elements::pc::dyneq_pce::DynEqPceData {
+        &mut self.base.dyneq
     }
 }

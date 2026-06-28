@@ -1284,3 +1284,246 @@ fn indmach012_dynamics_fault_response_matches_oracle() {
         );
     }
 }
+
+// ===========================================================================
+// WP7.7 step 3b cont. — PVSystem / Storage driven by a user `DynamicExp` instead
+// of the built-in GFL inverter `SolveDynamicStep`. The mode-3 monitor now records
+// the DynamicExp memory slots (NVariables × [value, derivative]) instead of the
+// 22/34 classic vars. The equation `it dt = (1/L)·(modul·vdc − R·it − vac)`
+// (transcribed verbatim from the corpus GFL_IEEE123 DynExp deck's myDiffEq /
+// myDiffEq2) reproduces the inverter filter ODE with the user's own L/R, so the
+// per-phase current `it` (DynOut[0]) integrates to the same ISP current setpoint
+// the classic gate reaches — but through the user equation, not the built-in step.
+// Oracle: dss-python 0.15.7.
+// ===========================================================================
+
+/// PVSystem grid-following DynExp deck: the `pv_dyn_dss` micro feeder with the
+/// PV's inverter model replaced by `DynamicExp.myDiffEq`. `DynamicEq=` must precede
+/// the inline calc-value bindings (`it=imag vdc=kvdc …`) and `DynOut` in the `New`
+/// so the equation resolves/sizes first (the bindings fall through to `ParseDynVar`).
+fn pv_dynexp_dss() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.pvdynexp basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+         mvasc3=20000 mvasc1=21000",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=pvbus length=0.5 units=km r1=0.1 x1=0.3");
+    dss.command(
+        "New DynamicExp.myDiffEq nvariables=4 varnames=[it vdc modul vac] \
+         expression=[it dt = 1 0.61059E-3 / ( -0.230187 it * modul vdc * + vac - ) *]",
+    );
+    dss.command(
+        "New PVSystem.pv1 phases=3 bus1=pvbus kv=12.47 kVA=600 Pmpp=500 \
+         irradiance=1 %cutin=0.1 %cutout=0.1 kvar=0 DynamicEq=myDiffEq \
+         it=imag vdc=kvdc modul=mod vac=vmag DynOut=[it]",
+    );
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(
+        dss.errors().is_empty(),
+        "pv dynexp steady solve: {:?}",
+        dss.errors()
+    );
+    dss.command("New Monitor.pvvars PVSystem.pv1 Term=1 mode=3");
+    dss
+}
+
+/// Storage grid-following DynExp deck: the `sto_dyn_dss` micro feeder with the
+/// discharging Storage driven by `DynamicExp.myDiffEq2` (the corpus Storage filter
+/// L/R).
+fn sto_dynexp_dss() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.stodynexp basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+         mvasc3=20000 mvasc1=21000",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=stobus length=0.5 units=km r1=0.1 x1=0.3");
+    dss.command(
+        "New DynamicExp.myDiffEq2 nvariables=4 varnames=[it vdc modul vac] \
+         expression=[it dt = 1 0.50882E-3 / ( -0.1918225 it * modul vdc * + vac - ) *]",
+    );
+    dss.command(
+        "New Storage.st1 phases=3 bus1=stobus kv=12.47 kWrated=500 kWhrated=1000 \
+         kWhstored=1000 %stored=100 state=discharging %discharge=100 \
+         %cutin=0.1 %cutout=0.1 DynamicEq=myDiffEq2 \
+         it=imag vdc=kvdc modul=mod vac=vmag DynOut=[it]",
+    );
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(
+        dss.errors().is_empty(),
+        "sto dynexp steady solve: {:?}",
+        dss.errors()
+    );
+    dss.command("New Monitor.stovars Storage.st1 Term=1 mode=3");
+    dss
+}
+
+/// The 8 DynamicExp memory-slot names (`it vdc modul vac`, each value+derivative)
+/// the mode-3 monitor records for both DynExp inverter decks.
+const DYNEXP_INV_SLOTS: [&str; 8] = ["it", "dit", "vdc", "dvdc", "modul", "dmodul", "vac", "dvac"];
+
+/// PVSystem DynExp dynamics, undisturbed: the user equation integrates the filter
+/// current `it` to the same ISP setpoint the built-in model reaches. The mode-3
+/// monitor records the 8 DynamicExp slots (not the 22 classic PV vars). The PV's
+/// tiny filter L (0.61 mH) makes the start-up stiff (a fast transient in the first
+/// ~50 ms), so the binding pins are the *settled* slots (sample 100+) where Rust
+/// and the oracle share the algebraic fixpoint; the header + count prove the
+/// variable interface switched to the DynamicExp memory. Oracle: dss-python 0.15.7.
+#[test]
+fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
+    let mut dss = pv_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    assert!(
+        dss.errors().is_empty(),
+        "enter dynamics: {:?}",
+        dss.errors()
+    );
+    dss.command("Solve number=200");
+    assert!(dss.errors().is_empty(), "dynamic run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("pvvars").expect("pvvars monitor");
+    // The mode-3 header tail is the DynamicExp memory-slot names (NVariables=4 →
+    // 8 slots), replacing the 22 classic PV variable names.
+    assert_eq!(
+        &m.header[2..],
+        DYNEXP_INV_SLOTS,
+        "mode-3 header tail = the 8 DynamicExp memory slots"
+    );
+    assert_eq!(m.sample_count, 201);
+    assert_eq!(m.channels.len(), 8);
+    let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
+
+    // Settled state (sample 100 = past the stiff start-up; sample 200 = end). All
+    // pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md; channels are f32).
+    // `it` (DynOut[0]) relaxes to the ISP current setpoint; `dit` → exactly 0; the
+    // duty cycle `modul` settles; `vdc` is the constant Rated VDC; `vac` is the
+    // grid voltage. The user L/R differ from the built-in, so `it`'s 23.14571 is
+    // distinct from the classic gate's 23.148539 — i.e. the *equation* drove it.
+    assert!(
+        rel(at(0, 100), 23.145702) < 1e-6,
+        "PV it@100 = {}",
+        at(0, 100)
+    );
+    assert!(
+        rel(at(0, 200), 23.14571) < 1e-6,
+        "PV it@200 = {}",
+        at(0, 200)
+    );
+    assert!(at(1, 200).abs() < 1e-6, "PV dit (settled) = {}", at(1, 200));
+    assert!(rel(at(2, 0), 8000.0) < 1e-6, "PV vdc@0 = {}", at(2, 0));
+    assert!(
+        rel(at(2, 200), 8000.0) < 1e-6,
+        "PV vdc@200 = {}",
+        at(2, 200)
+    );
+    assert!(
+        rel(at(4, 100), 0.90076077) < 1e-6,
+        "PV modul@100 = {}",
+        at(4, 100)
+    );
+    assert!(
+        rel(at(4, 200), 0.90076077) < 1e-6,
+        "PV modul@200 = {}",
+        at(4, 200)
+    );
+    assert!(
+        rel(at(6, 200), 7200.7583) < 1e-6,
+        "PV vac@200 = {}",
+        at(6, 200)
+    );
+
+    // The fixpoint holds across the settled tail (samples 100..=200): `it` stays
+    // at the ISP setpoint (oracle span 23.145702..23.145716, all within 1e-6).
+    for s in 100..=200 {
+        assert!(
+            rel(at(0, s), 23.14571) < 1e-6,
+            "PV it drifted at sample {s}: {}",
+            at(0, s)
+        );
+    }
+}
+
+/// Storage DynExp dynamics, undisturbed: a discharging Storage seeds `it = 0`, so
+/// the user equation ramps the current up smoothly (no stiff overshoot) to the ISP
+/// setpoint. Pins both the ramp (sample 0: `it = 0`, the first derivative `dit`,
+/// the seed duty cycle) and the settled state. Oracle: dss-python 0.15.7.
+#[test]
+fn storage_dynexp_dynamics_mode3_matches_oracle() {
+    let mut dss = sto_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    assert!(
+        dss.errors().is_empty(),
+        "enter dynamics: {:?}",
+        dss.errors()
+    );
+    dss.command("Solve number=200");
+    assert!(dss.errors().is_empty(), "dynamic run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("stovars").expect("stovars monitor");
+    assert_eq!(
+        &m.header[2..],
+        DYNEXP_INV_SLOTS,
+        "mode-3 header tail = the 8 DynamicExp memory slots"
+    );
+    assert_eq!(m.sample_count, 201);
+    assert_eq!(m.channels.len(), 8);
+    let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
+
+    // The ramp from rest (sample 0): `it` starts at exactly 0 (the discharging
+    // seed), `dit` is the first equation derivative (deterministic from the init
+    // seed: (1/L)·(modul·vdc − R·0 − vac)), and `modul`/`vac` are the seed values.
+    assert!(at(0, 0).abs() < 1e-6, "STO it@0 = {}", at(0, 0));
+    assert!(rel(at(1, 0), 2358.4167) < 1e-6, "STO dit@0 = {}", at(1, 0));
+    assert!(
+        rel(at(4, 0), 0.9000948) < 1e-6,
+        "STO modul@0 = {}",
+        at(4, 0)
+    );
+    assert!(rel(at(6, 0), 7199.558) < 1e-6, "STO vac@0 = {}", at(6, 0));
+
+    // Settled state (samples 100/200): `it` reaches the ISP setpoint, `dit` → 0.
+    assert!(
+        rel(at(0, 100), 23.14571) < 1e-6,
+        "STO it@100 = {}",
+        at(0, 100)
+    );
+    assert!(
+        rel(at(0, 200), 23.14571) < 1e-6,
+        "STO it@200 = {}",
+        at(0, 200)
+    );
+    assert!(
+        at(1, 200).abs() < 1e-6,
+        "STO dit (settled) = {}",
+        at(1, 200)
+    );
+    assert!(
+        rel(at(2, 200), 8000.0) < 1e-6,
+        "STO vdc@200 = {}",
+        at(2, 200)
+    );
+    assert!(
+        rel(at(4, 200), 0.9006498) < 1e-6,
+        "STO modul@200 = {}",
+        at(4, 200)
+    );
+    assert!(
+        rel(at(6, 200), 7200.7583) < 1e-6,
+        "STO vac@200 = {}",
+        at(6, 200)
+    );
+
+    // The fixpoint holds across the settled tail.
+    for s in 100..=200 {
+        assert!(
+            rel(at(0, s), 23.14571) < 1e-6,
+            "STO it drifted at sample {s}: {}",
+            at(0, s)
+        );
+    }
+}
