@@ -653,15 +653,43 @@ fn storage_dynamics_mode3_matches_oracle() {
     }
     assert!(at(7, 200).abs() < 1e-4, "STO kWInvLosses = {}", at(7, 200)); // ideal inverter
     assert!(at(3, 200).abs() < 1e-4, "STO kWIn = {}", at(3, 200));
+    // Full-interface parity (audit-tests follow-up): pin the remaining classic
+    // channels by value, not only by header name — the InvControl op-flag defaults
+    // (9999), the VW kW limit, and the static caps. A regression corrupting any of
+    // these on Storage would otherwise slip past on the name check alone.
+    for ch in [13usize, 14, 15, 16, 17, 18, 19, 20, 22] {
+        assert!(
+            rel(at(ch, 200), 9999.0) < 1e-5,
+            "STO default ch{ch} = {}",
+            at(ch, 200)
+        );
+    }
+    assert!(
+        rel(at(23, 200), 500.0) < 1e-5,
+        "STO Limit kWOut = {}",
+        at(23, 200)
+    );
+    assert!(
+        rel(at(33, 200), 23.149570) < 1e-4,
+        "STO Max. Amps = {}",
+        at(33, 200)
+    );
+    assert!(at(4, 200).abs() < 1e-4, "STO kvarOut = {}", at(4, 200));
+    assert!(
+        at(10, 200) < 0.0 && at(10, 200).abs() < 1e-3,
+        "STO kWh Chng = {}",
+        at(10, 200)
+    );
 
-    // The current ramp from rest (sample 0) is PI-controlled, not railed.
+    // The current ramp from rest (sample 0) is PI-controlled, not railed. (it[0]
+    // is sub-unity, so an absolute band distinguishes it from 0/frozen — audit-tests.)
     assert!(
         rel(at(26, 0), 2.9092627) < 1e-4,
         "STO di/dt[0] = {}",
         at(26, 0)
     );
     assert!(
-        rel(at(27, 0), 0.0014546313) < 5e-3,
+        (at(27, 0) - 0.0014546313).abs() < 1e-4,
         "STO it[0] = {}",
         at(27, 0)
     );
