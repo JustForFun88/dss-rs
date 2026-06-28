@@ -250,6 +250,13 @@ impl Generator {
             }
         }
 
+        // NB: deliberately *not* stamping `iterminal_solution_count` here. Pascal
+        // `TGeneratorObj.DoDynamicMode` does **not** set `ITerminalUpdated` (only the
+        // model-7 PF path does), so the post-solve `GetCurrents` recomputes the model
+        // at the final node voltage. Leaving the count stale reproduces that recompute
+        // (unlike Storage/PVSystem `DoDynamicMode`, which *do* `set_ITerminalUpdated`).
+        // Do not add a `set_iterminal_updated`-style stamp here — it would wrongly
+        // switch this to the cached value and diverge from the oracle.
         self.cd.iterminal_updated = true;
 
         // Add it into the inj current array.

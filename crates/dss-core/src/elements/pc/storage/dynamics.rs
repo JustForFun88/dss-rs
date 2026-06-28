@@ -293,8 +293,12 @@ impl Storage {
             self.cd.inj_current[i] -= self.cd.iterminal[i];
         }
 
+        // Pascal `set_ITerminalUpdated(TRUE)` (Storage.pas, end of `DoDynamicMode`)
+        // sets the flag *and* stamps `IterminalSolutionCount := SolutionCount`, so a
+        // post-solve `ComputeIterminal`/`GetCurrents` reuses the cached terminal
+        // current instead of recomputing the model (mirrors `put_curr`).
         self.cd.iterminal_updated = true;
-        let _ = sys;
+        self.cd.iterminal_solution_count = sys.solution_count;
     }
 
     // -----------------------------------------------------------------------
