@@ -739,29 +739,39 @@ and all six audit follow-ups) archived at
     The dynamics gate keeps `tolerance=1e-8` — now just a clean
     electromechanical-fixpoint start, **not** a bug workaround.
   - **Cross-element 1:1 sweep of the `set_ITerminalUpdated` stamp.** The stamp
-    (`IterminalSolutionCount := SolutionCount` set by the Pascal `ITerminalUpdated`
-    property setter) makes a post-solve `ComputeIterminal`/`GetCurrents` reuse the
-    **cached** terminal current instead of **recomputing** the model; without it the
-    count stays stale and the read recomputes. It only changes *numbers* when the
-    recompute is **stateful** — and `IndMach012.CalcPFlow` (the per-call slip step) is
-    the only stateful recompute in the engine (why only it produced a visible bug).
-    But a 1:1 port must match Pascal's cache-vs-recompute choice at *every* site, so
-    audited all of them. Pascal Load/Storage/PVSystem/IndMach012 stamp (cache) in
-    **every** model path (PF + dynamics + harmonic) via `ITerminalUpdated`/
-    `set_ITerminalUpdated`; Generator stamps only its model-7 PF path (models 1-6 +
-    dynamics recompute). Rust's PF paths already stamped, but **Storage/PVSystem
-    `DoDynamicMode` + Load `DoHarmonicMode` were flag-without-stamp** (so they
-    recomputed where Pascal caches) — now stamped to match (`storage/dynamics.rs`,
-    `pvsystem/dynamics.rs`, `load/solve.rs`; full gate incl. live oracle stays green,
-    i.e. they land on the oracle's cached value). **Generator** is left as-is: its
-    `DoDynamicMode` recompute already matches Pascal (Pascal also recomputes there),
-    and the one residual infidelity — `put_curr` caching PF **models 1-6** where
-    Pascal recomputes@N — is a Phase-3 caching-strategy choice, **sub-tolerance**
-    (green at 1e-6) and behavior-neutral, whose 1:1 fix means making `put_curr`
-    model-7-only (restructuring validated code); deferred to the §6 cleanup, tracked
-    here. Net: the missing-stamp bug existed at 4 sites (IndMach012 PF + 3 cache
-    paths); all fixed. Generator PF-1-6 over-cache is the one known remaining
-    (sub-tolerance) divergence.
+    (`IterminalSolutionCount := SolutionCount`, set by the Pascal `ITerminalUpdated`
+    property setter / `set_ITerminalUpdated`) makes a post-solve `ComputeIterminal`/
+    `GetCurrents` reuse the **cached** terminal current instead of **recomputing** the
+    model; without it the count stays stale and the read recomputes. It only changes
+    *numbers* when the recompute is **stateful** — `IndMach012.CalcPFlow` (the per-call
+    slip step) is why only it produced a kW-scale bug — but model-3 generators
+    (`DoPVTypeGen`'s per-call dQ/dV var step) are stateful too, so a 1:1 port must
+    match Pascal's cache choice at *every* site. Audited all sites **case-insensitively**
+    (a case-sensitive `grep` for `ITerminalUpdated` first hid the lowercase-`t`
+    `IterminalUpdated` assignments and wrongly suggested Generator only cached
+    model-7 — corrected). Pascal **every** PC element caches in **every** PF model +
+    dynamics (Generator `DoConstantPQGen`..`DoCurrentLimitedPQ` *and* `DoDynamicMode`
+    at generator.pas:1990; Load/Storage/PVSystem likewise) plus Load `DoHarmonicMode`;
+    only the bare harmonic injections (Generator/IndMach012 `DoHarmonicMode`) recompute.
+    The Rust ports had the stamp **missing at 5 model-contribution sites**: IndMach012
+    PF (the visible bug), **Storage/PVSystem `DoDynamicMode`, Load `DoHarmonicMode`,
+    and Generator `DoDynamicMode`** — all now stamped to match Pascal (full gate incl.
+    live oracle + the model-3 PV snapshot stays green). The interim mistake of making
+    Generator PF models 1-6 *recompute* (from the bad grep) broke the oracle-pinned
+    `generator_model3_pv_snapshot` (the stateful dQ/dV) and was reverted — its failure
+    is exactly why the case-insensitive re-audit happened. Net: **all 5 missing-stamp
+    sites fixed; no remaining known divergence.**
+  - **Regression coverage for the stamp.** Only the two **stateful** recomputes are
+    numerically observable, and both now have tight, oracle-pinned guards that FAIL if
+    the stamp is dropped: IndMach012 PF (`indmach012_snapshot_default_tol_matches_oracle`)
+    and model-3 generator dQ/dV (`generator_model3_pv_snapshot` tightened to 1e-3 +
+    the dedicated `generator_model3_power_read_uses_cached_stamp_vs_oracle`, both
+    verified to fail without the `put_curr` stamp). The other three stamps
+    (Storage/PVSystem `DoDynamicMode`, Load `DoHarmonicMode`) are **behavior-neutral**
+    (idempotent recompute = cached value) — empirically confirmed by removing the
+    Generator `DoDynamicMode` stamp and seeing **no** test move — so they have no
+    distinguishing numeric test; the existing oracle dynamics/harmonics gates cover
+    them against gross regressions. They are kept stamped purely for 1:1 fidelity.
   - **audit-tests follow-up (the stamp fix):** verdict **genuine, non-vacuous,
     oracle-pinned** — independently reproduced the pinned-oracle baseline byte-for-byte
     and confirmed `indmach012_snapshot_default_tol_matches_oracle` FAILS without the
