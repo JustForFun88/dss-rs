@@ -914,6 +914,22 @@ and all six audit follow-ups) archived at
     **actual value** (a stronger guard than `abs < ε ≈ 0`), and TOLERANCE_NOTES.md
     documents the dynamics monitor policy + the residual rationale. No new exception;
     the dynamics tests now obey the standard monitor-channel tolerance. lib stays **676**.
+  - **Tolerance review, part 2 (extended to PVSystem/Storage/IndMach012 on a
+    follow-up request).** Same treatment for the other dynamics gates (step 2b/3a),
+    which also carried copied `1e-4`/`1e-5` bounds: measured every pinned channel
+    (steady + fault) — all match the oracle to **~1e-8 or tighter** — and tightened
+    them to **1e-6**. The IndMach `dSpeed` residual is pinned against the oracle's
+    actual `1.742747e-5` (same fixpoint-residual reasoning as Kundur, oracle-probed).
+    Storage SOC@100-drop literal corrected `0.0046997 → 0.004699707` (the 5-sf value
+    couldn't support 1e-6); `kWInvLosses` shown exactly 0 by the loss decomposition.
+    The few channels left looser are documented, not slack: the IndMach Is2/Ir2
+    negative-seq quiescence is a `<1e-5` *upper bound* on a ~4.79e-7 quantity, and the
+    near-zero kW/kvar (Storage kWIn/kvarOut) sit at the 1e-4 monitor abs floor.
+    **Clarification (also requested): all computation is f64**; only the monitor
+    *recording buffer* is f32 — a 1:1 port of Pascal `TMonitorObj.MonBuffer:
+    pSingleArray` (`AddDblToBuffer` narrows `Double`→`Single`) — so the mode-3 reads
+    on both sides are f32, which sets the ~1e-7 comparison floor (hence 1e-6, ≈10× it,
+    is the tightest meaningful monitor tolerance). lib stays **676**.
 - **next:** step 3b cont. — PVSystem/Storage `DynamicEq` integration. They already
   resolve the `DynamicExp` ref (WP7.3/7.4); refactor `InvBasedPceData` to embed the
   shared `DynEqPceData`, add the per-phase inverter `IntegrateStates`/`InitStateVars`
