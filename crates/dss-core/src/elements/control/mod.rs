@@ -14,6 +14,7 @@ pub mod relay;
 pub mod roll_avg_window;
 pub mod storage_controller;
 pub mod swt_control;
+pub mod upfc_control;
 
 pub use cap_control::CapControl;
 pub use control_elem::{ControlElemData, RefSnapshot};
@@ -26,3 +27,4 @@ pub use relay::Relay;
 pub use roll_avg_window::RollAvgWindow;
 pub use storage_controller::StorageController;
 pub use swt_control::SwtControl;
+pub use upfc_control::UpfcControl;

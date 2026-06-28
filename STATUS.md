@@ -82,7 +82,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 687**, **`solvable_now` 85** (the live corpus gate;
+Current scores: dss-core **lib 693**, **`solvable_now` 85** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -126,7 +126,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 687, golden_feeders 1,
+cargo test --workspace      # dss-core lib 693, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -662,8 +662,35 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   `set mode=dynamic; solve` + `plot`, not snapshot-gateable); `DG_Prot_Fdr` now
   converges (only `plot`-blocked). lib 681 → **687**. (Fresh-agent-drafted; numerics
   re-verified before commit.)
-- **next:** UPFC + UPFCControl (power-flow FACTS controller, 1 corpus deck), then
-  ESPVLControl.
+- **UPFC + UPFCControl (`pc/upfc/` + `control/upfc_control/`) — done, gate-green.**
+  The unified power-flow controller (PC element, power-flow only — the `Sr0`/`Sr1`
+  shift registers are persistent control state, not differential) + its control
+  element. UPFC: 17 props, the series `Xs` YPrim block, the 5-mode `GetOutputCurr`
+  (dead-band / `VpqMax`-clamp / loss-curve; mode 1 = voltage regulator is what the
+  corpus exercises), `GetInputCurr`/`CalcUPFCPowers`/`CalcUPFCLosses`, 14 mode-3 vars.
+  UPFCControl: the `UPFCList` + `CheckStatus`→`Sample`→`UploadCurrents` control-sweep
+  coupling (a dynamic fleet via a `UpfcDispatchEnv`, the GenDispatcher pattern; lazy
+  list resolution). New `exec/view.rs::element_variables` (live f64 `AllVariableValues`
+  analogue). **4 proven upstream oracle bugs, NOT reproduced** (oracle-probed): (1) a
+  **2nd UPFC crashes** the oracle (Access Violation — `TUPFCObj.Create` casts the
+  first UPFC to `TUPFCControlObj`, UB) → no UPFC MakeLike scenario; (2) `MakeUPFCList`'s
+  name-list branch is dead+broken (clears then reads `FUPFCNameList`); (3) a loss-curve
+  MakeLike self-assign no-op; (4) mode-3 monitor records nothing in a snapshot
+  (`SampleCount=0`) → the 14 vars are pinned against the live f64 `AllVariableValues`,
+  not the empty f32 channel (CLAUDE.md). **Convergence floor proven, not fudged:**
+  `Vbin`/`Vbout` are mid-iteration snapshots, so at the default 1e-4 tol the engines
+  stop ~4e-5 rel apart in the convergence band — but tightening to **1e-12** collapses
+  the gap (both reach the identical fixpoint `Vbin = 236.41620285` to 12 digits in the
+  **same 17 iterations**, oracle-probed), the CLAUDE.md proof of a shared fixpoint; the
+  gate pins the tight-tol fixpoint. **Gate:** `exec/tests/upfc.rs` (transcribed
+  UPFC_test_3 snapshot — `show`/`plot`-blocked so no corpus migration) pins the 14
+  mode-3 vars + UPFC currents/powers + the controlled transformers' powers + the
+  mode-3 header, all against dss-python 0.15.7 (**independently re-verified in the main
+  loop**: 17 iters + all 14 vars + currents + powers matched the pins bit-for-bit) +
+  `props/{upfc,upfccontrol}.json`. lib 687 → **693**. (Fresh-agent-drafted; numerics +
+  oracle-bug claims re-verified before commit.)
+- **next:** ESPVLControl (the storage/PV local controller — no corpus deck, synthetic
+  oracle gate) — the last WP7.8 class.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

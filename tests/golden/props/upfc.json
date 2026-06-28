@@ -1,0 +1,72 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "upfc",
+ "scenarios": [
+  {
+   "name": "upfc_default",
+   "commands": [
+    "New UPFC.u1 bus1=a bus2=b"
+   ],
+   "target": "UPFC.u1",
+   "properties": {
+    "Bus1": "a",
+    "Bus2": "b",
+    "RefkV": "0.24",
+    "PF": "1",
+    "Frequency": "60",
+    "Phases": "1",
+    "Xs": "0.754",
+    "Tol1": "0.02",
+    "Mode": "1",
+    "VpqMax": "24",
+    "LossCurve": "",
+    "VHLimit": "300",
+    "VLLimit": "125",
+    "CLimit": "265",
+    "refkV2": "0",
+    "kvarLimit": "5",
+    "Element": "",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "upfc_full",
+   "commands": [
+    "New XYcurve.lc npts=3 xarray=[0.9 1 1.1] yarray=[1.01 1.0 1.01]",
+    "New Line.mon bus1=x bus2=y phases=1 r1=1 x1=1 length=1",
+    "New UPFC.u1 bus1=ba bus2=bb refkV=0.48 PF=0.95 Frequency=50 Phases=1 Xs=0.05 Tol1=0.005 mode=3 VpqMax=30 LossCurve=lc VHLimit=320 VLLimit=110 CLimit=300 refkV2=0.46 kvarLimit=8 Element=Line.mon"
+   ],
+   "target": "UPFC.u1",
+   "properties": {
+    "Bus1": "ba",
+    "Bus2": "bb",
+    "RefkV": "0.48",
+    "PF": "0.95",
+    "Frequency": "50",
+    "Phases": "1",
+    "Xs": "0.05",
+    "Tol1": "0.005",
+    "Mode": "3",
+    "VpqMax": "30",
+    "LossCurve": "lc",
+    "VHLimit": "320",
+    "VLLimit": "110",
+    "CLimit": "300",
+    "refkV2": "0.46",
+    "kvarLimit": "8",
+    "Element": "Line.mon",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

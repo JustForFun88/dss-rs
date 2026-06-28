@@ -157,6 +157,34 @@ impl Dss {
         out
     }
 
+    /// Read a circuit element's dynamic/state variables — the dss-python
+    /// `ActiveCktElement.AllVariableValues` surface (`TPCElement.GetAllVariables`).
+    /// `name` is the element full name (`Class.name`, case-insensitive). Returns
+    /// `None` if no such element exists; an empty vec for elements with no
+    /// variables. The live f64 read the Monitor mode-3 f32 channel hides.
+    pub fn element_variables(&mut self, name: &str) -> Option<Vec<f64>> {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let ckt = circuit.as_ref()?;
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = ckt.solution.node_v.clone();
+        for class in classes.iter_mut() {
+            let cn = class.props.class_name();
+            for obj in class.objects.iter_mut() {
+                let full = format!("{}.{}", cn, obj.data().name());
+                if full.eq_ignore_ascii_case(name) {
+                    let elem = obj.as_ckt_element_mut()?;
+                    let n = elem.num_variables();
+                    let mut states = vec![0.0; n];
+                    elem.get_all_variables(&sys, &node_v, &mut states);
+                    return Some(states);
+                }
+            }
+        }
+        None
+    }
+
     /// Read a monitor's recorded data — the dss-python `Monitors.Header` /
     /// `SampleCount` / `Channel(i)` / `dblHour` surface (tests/goldens).
     /// `name` may be `"m1"` or `"Monitor.m1"` (case-insensitive). `None` if no

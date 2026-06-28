@@ -26,7 +26,7 @@ pub(crate) use dss_parser::{Parser, ParserVars};
 pub(crate) use crate::circuit::{Circuit, ElemKind};
 pub(crate) use crate::elements::control::{
     cap_control, exp_control, gen_dispatcher, inv_control, recloser, reg_control, relay,
-    storage_controller, swt_control,
+    storage_controller, swt_control, upfc_control,
 };
 pub(crate) use crate::elements::general::{
     conductor_data, dynamic_exp, growth_shape, line_code, line_geometry, line_spacing, load_shape,
@@ -36,7 +36,7 @@ pub(crate) use crate::elements::meter::energymeter;
 pub(crate) use crate::elements::meter::monitor;
 pub(crate) use crate::elements::meter::sensor;
 pub(crate) use crate::elements::pc::{
-    generator, ind_mach012, load, pvsystem, storage, vccs, vs_converter, vsource,
+    generator, ind_mach012, load, pvsystem, storage, upfc, vccs, vs_converter, vsource,
 };
 pub(crate) use crate::elements::pd::{capacitor, fault, fuse, line, reactor, transformer};
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};

@@ -2174,6 +2174,59 @@ SCENARIOS = [
             "New VCCS.v1 like=base bus1=c",
         ],
     },
+    # --- UPFC (Phase 7) -----------------------------------------------------
+    # A two-terminal voltage-regulating PC element (Bus1 input, Bus2 output).
+    # Defaults: refkV=0.24, PF=1, Frequency=60, Phases=1, Xs=0.754, Tol1=0.02,
+    # Mode=1 (the MappedIntEnum dumps the integer ordinal), VpqMax=24, VHLimit=300,
+    # VLLimit=125, CLimit=265, refkV2=0, kvarLimit=5, Spectrum=default. LossCurve is
+    # an XYcurve object ref; Element is a monitored circuit element (PF modes).
+    # NOTE: there is **no MakeLike scenario** — creating a *second* UPFC triggers an
+    # upstream access violation (`TUPFCObj.Create` casts the first UPFC object to a
+    # TUPFCControlObj to clear its list; UPFC.pas l.396), so any `like=` (or any
+    # multi-UPFC circuit) crashes the oracle. The Rust port does not reproduce that
+    # UB (it cannot be expressed in safe Rust), so a single UPFC is the only
+    # comparable state.
+    {
+        "name": "upfc_default",
+        "target": "UPFC.u1",
+        "commands": ["New UPFC.u1 bus1=a bus2=b"],
+    },
+    {
+        "name": "upfc_full",
+        "target": "UPFC.u1",
+        "commands": [
+            "New XYcurve.lc npts=3 xarray=[0.9 1 1.1] yarray=[1.01 1.0 1.01]",
+            "New Line.mon bus1=x bus2=y phases=1 r1=1 x1=1 length=1",
+            "New UPFC.u1 bus1=ba bus2=bb refkV=0.48 PF=0.95 Frequency=50 Phases=1 "
+            "Xs=0.05 Tol1=0.005 mode=3 VpqMax=30 LossCurve=lc VHLimit=320 VLLimit=110 "
+            "CLimit=300 refkV2=0.46 kvarLimit=8 Element=Line.mon",
+        ],
+    },
+    # --- UPFCControl (Phase 7) ----------------------------------------------
+    # Drives a UPFC fleet. The only class property is UPFCList (a StringList that
+    # round-trips but never actually filters the fleet — ListSize is never set from
+    # it upstream). MakeLike copies only the phase/terminal/element refs (not the
+    # list); it also logs a #749 "Invalid number of terminals" on the derived
+    # object (the control carries no terminals), captured via allow_errors.
+    {
+        "name": "upfccontrol_default",
+        "target": "UPFCControl.c1",
+        "commands": ["New UPFCControl.c1"],
+    },
+    {
+        "name": "upfccontrol_list",
+        "target": "UPFCControl.c1",
+        "commands": ["New UPFCControl.c1 UPFCList=[ua, ub]"],
+    },
+    {
+        "name": "upfccontrol_makelike",
+        "target": "UPFCControl.c1",
+        "allow_errors": True,
+        "commands": [
+            "New UPFCControl.base UPFCList=[ua, ub]",
+            "New UPFCControl.c1 like=base",
+        ],
+    },
     # --- DynamicExp (WP7.3 step 0) -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps

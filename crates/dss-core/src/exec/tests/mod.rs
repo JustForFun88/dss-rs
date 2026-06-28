@@ -25,5 +25,6 @@ mod reliability;
 mod solve;
 mod storage;
 mod time_series;
+mod upfc;
 mod vccs;
 mod vs_converter;

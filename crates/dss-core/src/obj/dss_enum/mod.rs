@@ -91,6 +91,8 @@ pub struct EnumRegistry {
     pub ind_mach_slip_option: EnumId,
     /// 'VSConverter: Control Mode' (VSConverter.pas `ModeEnum`).
     pub vsc_mode: EnumId,
+    /// 'UPFC: Mode' (UPFC.pas `UPFCModeEnum`; Off..DoubleReference_Dual, 0..5).
+    pub upfc_mode: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,

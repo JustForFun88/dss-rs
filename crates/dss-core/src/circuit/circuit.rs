@@ -56,6 +56,7 @@ pub enum ElemKind {
     IndMach012,
     VsConverter,
     Vccs,
+    Upfc,
     Meter,
     EnergyMeter,
     Sensor,
@@ -100,6 +101,10 @@ pub struct Circuit {
     /// IndMach012 (induction machine) elements (Phase 7, WP7.7): PC elements; in
     /// `pc_elements` and this list.
     pub ind_machines: Vec<ElemRef>,
+    /// UPFC elements (Phase 7): PC elements; in `pc_elements` and this list. The
+    /// list is walked in creation order by `UPFCControl.MakeUPFCList` (the control
+    /// scans every enabled UPFC).
+    pub upfcs: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
@@ -218,6 +223,7 @@ impl Circuit {
             pv_systems: Vec::new(),
             storages: Vec::new(),
             ind_machines: Vec::new(),
+            upfcs: Vec::new(),
             controls: Vec::new(),
             monitors: Vec::new(),
             energy_meters: Vec::new(),
@@ -326,6 +332,12 @@ impl Circuit {
             // in `pc_elements` (the dynamics driver + monitor mode-3 walk that
             // list), no dedicated list.
             ElemKind::Vccs => self.pc_elements.push(r),
+            // UPFC (Phase 7): a power-flow PC element controlled by UPFCControl;
+            // in `pc_elements` and its own list (the control scans `upfcs`).
+            ElemKind::Upfc => {
+                self.pc_elements.push(r);
+                self.upfcs.push(r);
+            }
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),

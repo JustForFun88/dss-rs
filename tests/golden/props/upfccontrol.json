@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "upfccontrol",
+ "scenarios": [
+  {
+   "name": "upfccontrol_default",
+   "commands": [
+    "New UPFCControl.c1"
+   ],
+   "target": "UPFCControl.c1",
+   "properties": {
+    "UPFCList": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "upfccontrol_list",
+   "commands": [
+    "New UPFCControl.c1 UPFCList=[ua, ub]"
+   ],
+   "target": "UPFCControl.c1",
+   "properties": {
+    "UPFCList": "[ua, ub]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "upfccontrol_makelike",
+   "commands": [
+    "New UPFCControl.base UPFCList=[ua, ub]",
+    "New UPFCControl.c1 like=base"
+   ],
+   "target": "UPFCControl.c1",
+   "properties": {
+    "UPFCList": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   },
+   "allow_errors": true
+  }
+ ]
+}
