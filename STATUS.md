@@ -738,6 +738,30 @@ and all six audit follow-ups) archived at
     operating point against the pinned oracle (fails by ~4.7e-4 without the stamp).
     The dynamics gate keeps `tolerance=1e-8` — now just a clean
     electromechanical-fixpoint start, **not** a bug workaround.
+  - **Cross-element scope check (is the missing stamp a general bug?).** Audited
+    every `iterminal_updated = true` site vs Pascal. The stamp matters *numerically*
+    only when the post-solve `ComputeIterminal`/`GetCurrents` recompute is
+    **stateful** — and `IndMach012.CalcPFlow` (the per-call slip-Newton step) is the
+    **only** stateful current recompute in the engine. Generator/Load/Storage/PVSystem
+    current models (all PF models + dynamics) are **idempotent**: recomputing at the
+    same V returns the same current and changes no state, so a missing stamp there is
+    at most a redundant recompute, never a numeric divergence — confirmed by the green
+    live-oracle gate. (Pascal's own stamping is itself uneven: Load/Storage/PVSystem
+    stamp in every path via the `ITerminalUpdated`/`set_ITerminalUpdated` setter incl.
+    dynamics + harmonic; Generator only stamps its model-7 PF path. Rust's PF paths
+    already stamp; the Storage/PVSystem dynamics + Load harmonic paths do not — benign
+    idempotent infidelities, left for the §6 `TODO(compat)`-style cleanup pass, not a
+    blanket change here since "same fix for all" is not even well-defined against the
+    uneven Pascal and would be behavior-neutral / unverifiable.) Net: **only
+    IndMach012 needed the fix.**
+  - **audit-tests follow-up (the stamp fix):** verdict **genuine, non-vacuous,
+    oracle-pinned** — independently reproduced the pinned-oracle baseline byte-for-byte
+    and confirmed `indmach012_snapshot_default_tol_matches_oracle` FAILS without the
+    stamp at exactly the buggy `P1 = 1200.1275` (rel 4.66e-4 ≫ 1e-6) and PASSES with
+    it; no coverage loss. Fixed the one Minor finding (a stale "conditioning /
+    different iter-4 points / tolerance sweep" sentence left in the sibling
+    `indmach012_dynamics_mode3_*` docstring) and the Nit (deduped the duplicated deck
+    into a shared `indmach_deck()` builder so the snapshot + dynamics gates can't drift).
   - **Real bug fixed during the port (Monitor mode-3 metered-kind).** Like PVSystem
     (WP7.3) / Storage (WP7.4), the Monitor mode-3 metered-kind classifier had to admit
     IndMach012 (`accessors.rs` downcast list) or a mode-3 monitor aborts "must be a power
