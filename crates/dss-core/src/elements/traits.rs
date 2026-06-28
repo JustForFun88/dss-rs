@@ -212,6 +212,16 @@ pub trait CktElement {
         let _ = (sys, node_v, states);
     }
 
+    /// Pascal `TPCElement.Set_Variable(i, value)` (`PCElement.pas`): write dynamic
+    /// state variable `i` (1-based). The write side of the variable interface
+    /// (`num_variables`/`variable_name`/`get_all_variables`), mirroring the
+    /// `TPCElement` virtual. Default no-op — only machines with settable state
+    /// respond. (No external caller yet — the Rust-native variable-set API that
+    /// replaces the C-API `DSSElement_Set_*` is a later phase.)
+    fn set_variable(&mut self, i: usize, value: f64) {
+        let _ = (i, value);
+    }
+
     /// Pascal `SpectrumObj`: the harmonic spectrum this element injects from, if
     /// one is resolved. Read by the harmonic frequency sweep
     /// (`CollectAllFrequencies`). Default None.

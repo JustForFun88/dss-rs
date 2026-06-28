@@ -179,11 +179,12 @@ impl InvDynamicVars {
         }
 
         let i_error = self.isp - self.it[i];
-        let i_error_pct = if self.isp != 0.0 {
-            i_error / self.isp
-        } else {
-            0.0
-        };
+        // Pascal `iErrorPct := iError / ISP` (InvDynamics.pas l.190) — an
+        // unconditional IEEE division. `ISP` is forced to >= 0.01 (the inverter
+        // "off" value) before this call in every reachable path, so the divisor is
+        // never 0; the bare divide reproduces FPC's inf/NaN on ISP==0 verbatim (a
+        // defensive zero-guard would change the control path the oracle takes).
+        let i_error_pct = i_error / self.isp;
 
         if i_error_pct.abs() > self.ctrl_tol {
             let i_delta = pi.solve_pi(i_error);
@@ -258,7 +259,8 @@ impl InvDynamicVars {
 
     /// Pascal `TInvDynamicVars.Set_InvDynValue` (l.112) — set the state
     /// variable at 0-based index `var_idx`. Indices 0 and 6 are read-only in
-    /// Pascal (bare `;`); mirrored here.
+    /// Pascal (bare `;`); mirrored here. Reached via the element `set_variable`
+    /// trait method (the InvDyn tail of `Set_Variable`).
     pub fn set_inv_dyn_value(&mut self, var_idx: usize, value: f64) {
         match var_idx {
             0 => {} // read-only (Vgrid.mag)

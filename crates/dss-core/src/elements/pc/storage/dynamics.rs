@@ -125,6 +125,16 @@ impl Storage {
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
+        // A Storage that is NOT discharging at dynamics entry skips `InitDynArrays`
+        // (Pascal `InitStateVars` l.2786 `if FState <> STORE_DISCHARGING then Exit`),
+        // leaving the per-phase arrays empty. Pascal then dereferences nil arrays
+        // (access violation) if such an element is integrated, so there is no oracle
+        // baseline; no-op instead of panicking. (A unit that trips to idling *during*
+        // the run kept the arrays sized at its discharging init, so that path runs.)
+        if self.base.dyn_vars.it.len() < self.cd.nphases {
+            return;
+        }
+
         // NOT_PORTED: DynaModel.Exists branch.
 
         // In dynamics mode ActiveLoadShapeClass == USENONE → ShapeFactor = CDOUBLEONE.
@@ -225,6 +235,13 @@ impl Storage {
                  is not ported yet (Phase 7 WP7.7 GFM step).",
                 self.cd.obj.name()
             ));
+            return;
+        }
+
+        // Non-discharging-at-entry Storage skipped `InitDynArrays` (empty per-phase
+        // arrays) — Pascal derefs nil here too; no-op rather than panic (see
+        // `integrate_states_impl`).
+        if self.base.dyn_vars.it.len() < self.cd.nphases {
             return;
         }
 
@@ -356,10 +373,10 @@ impl Storage {
     }
 
     /// Pascal `TStorageObj.VariableName` (l.3220) (1-based).
-    /// Pascal seeds `Result := 'ERROR'` before the inherited check; out-of-range
-    /// stays 'ERROR'.
+    /// Pascal seeds `Result := 'ERROR'` then `Result := inherited VariableName(i)`
+    /// (`''` for `i >= 1` with no DynamicEq): so `i < 1` returns `'ERROR'`, but an
+    /// out-of-range high index (`i > 34`, no UserModel) returns `''`.
     pub(super) fn storage_variable_name(&self, i: usize) -> String {
-        // Pascal seeds 'ERROR'; out-of-range returns 'ERROR'.
         match i {
             1 => "kWh",
             2 => "State",
@@ -387,7 +404,8 @@ impl Storage {
             24 => "Limit kWOut Function",
             25 => "kVA Exceeded",
             26..=34 => InvDynamicVars::get_inv_dyn_name(i - NUM_BASE_STORAGE_VARS - 1),
-            _ => "ERROR",
+            0 => "ERROR", // Pascal `i < 1` exits with the 'ERROR' seed.
+            _ => "",      // i > 34 (no UserModel): the inherited '' (not 'ERROR').
         }
         .to_string()
     }
@@ -486,9 +504,9 @@ impl Storage {
         }
     }
 
-    /// Pascal `TStorageObj.Set_Variable` (l.3110) (1-based, internal use).
+    /// Pascal `TStorageObj.Set_Variable` (l.3110) (1-based). The write side of the
+    /// state-variable interface, reached via the `set_variable` trait method.
     /// NOT_PORTED: DynamicEqObj, UserModel, DynaModel paths.
-    #[allow(dead_code)]
     pub(super) fn set_storage_variable(&mut self, i: usize, value: f64) {
         match i {
             1 => self.kwh_stored = value,

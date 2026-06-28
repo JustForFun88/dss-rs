@@ -100,6 +100,10 @@ impl CktElement for Storage {
         self.get_all_storage_variables(sys, node_v, states);
     }
 
+    fn set_variable(&mut self, i: usize, value: f64) {
+        self.set_storage_variable(i, value);
+    }
+
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
         self.spectrum_obj.as_ref()
     }
