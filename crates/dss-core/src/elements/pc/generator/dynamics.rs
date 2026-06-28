@@ -153,7 +153,6 @@ impl Generator {
     ) {
         // Init InjCurrent array and compute VTerminal (L-N). Inj = -Itotal - Yprim·Vtemp.
         self.calc_yprim_contribution(node_v);
-        let _ = sys;
 
         if self.gen_model == 6 {
             // NOT_PORTED: user-written dynamics model DLL. Pascal sets
@@ -250,14 +249,13 @@ impl Generator {
             }
         }
 
-        // NB: deliberately *not* stamping `iterminal_solution_count` here. Pascal
-        // `TGeneratorObj.DoDynamicMode` does **not** set `ITerminalUpdated` (only the
-        // model-7 PF path does), so the post-solve `GetCurrents` recomputes the model
-        // at the final node voltage. Leaving the count stale reproduces that recompute
-        // (unlike Storage/PVSystem `DoDynamicMode`, which *do* `set_ITerminalUpdated`).
-        // Do not add a `set_iterminal_updated`-style stamp here — it would wrongly
-        // switch this to the cached value and diverge from the oracle.
+        // Pascal `TGeneratorObj.DoDynamicMode` ends with `IterminalUpdated := TRUE`
+        // (generator.pas:1990), which through the `TPCElement` property setter also
+        // stamps `IterminalSolutionCount := SolutionCount`, so a post-solve
+        // `ComputeIterminal`/`GetCurrents` reuses the cached terminal current instead
+        // of recomputing the model (mirrors `put_curr` and Storage/PVSystem dynamics).
         self.cd.iterminal_updated = true;
+        self.cd.iterminal_solution_count = sys.solution_count;
 
         // Add it into the inj current array.
         let nconds = self.cd.nconds;

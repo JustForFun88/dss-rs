@@ -64,12 +64,11 @@ fn generator_model1_pq_snapshot() {
     }
 }
 
-/// Generator model 3 (constant P, |V|) exercises the DQDV var-control
-/// machinery (`SetGeneratordQdV`): a 300 kW PV generator holds |V| ≈ 1 pu
-/// and absorbs/produces vars to do it, landing at −100.003 kW, −64.728
-/// kvar per phase (oracle dss-python 0.15.7).
-#[test]
-fn generator_model3_pv_snapshot() {
+/// A model-3 (constant P, |V|) "PV bus" generator on a stiff source → line →
+/// constant-PQ-load feeder, built (not solved). The 300 kW PV generator holds
+/// |V| ≈ 1 pu by absorbing/producing vars via the DQDV machinery
+/// (`SetGeneratordQdV` + `DoPVTypeGen`). Shared by the snapshot and stamp tests.
+fn model3_pv_dss() -> Dss {
     let mut dss = Dss::new();
     dss.command(
         "New circuit.t1 basekv=12.47 bus1=sourcebus pu=1.0 \
@@ -85,6 +84,16 @@ fn generator_model3_pv_snapshot() {
              Vpu=1.0 maxkvar=200 minkvar=-200",
     );
     dss.command("Set controlmode=off");
+    dss
+}
+
+/// Generator model 3 (constant P, |V|) exercises the DQDV var-control machinery
+/// (`SetGeneratordQdV`): a 300 kW PV generator holds |V| ≈ 1 pu and
+/// absorbs/produces vars to do it, landing at −100.002748 kW, −64.728196 kvar per
+/// phase (oracle dss-python 0.15.7).
+#[test]
+fn generator_model3_pv_snapshot() {
+    let mut dss = model3_pv_dss();
     dss.command("Solve");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     assert!(dss.circuit().unwrap().is_solved);
@@ -96,15 +105,57 @@ fn generator_model3_pv_snapshot() {
         .expect("generator snapshot");
     for ph in 0..3 {
         assert!(
-            (g.powers[2 * ph] - (-100.00275)).abs() < 1e-2,
+            (g.powers[2 * ph] - (-100.002748)).abs() < 1e-3,
             "phase {ph} P {}",
             g.powers[2 * ph]
         );
         assert!(
-            (g.powers[2 * ph + 1] - (-64.7282)).abs() < 1e-2,
+            (g.powers[2 * ph + 1] - (-64.728196)).abs() < 1e-3,
             "phase {ph} Q {}",
             g.powers[2 * ph + 1]
         );
+    }
+}
+
+/// Regression guard for the `put_curr` `IterminalSolutionCount` stamp on a
+/// **stateful** generator model. Model 3 (`DoPVTypeGen`) advances its var output
+/// by one dQ/dV step *each time the model current is computed* — exactly the
+/// stateful-recompute shape of the IndMach012 slip-Newton (see
+/// `indmach012_snapshot_default_tol_matches_oracle`). Pascal sets
+/// `IterminalUpdated := TRUE` in `DoPVTypeGen` (generator.pas:1649), which stamps
+/// `IterminalSolutionCount` so the post-solve `GetCurrents` reuses the **cached**
+/// terminal current; without the stamp the first power read would recompute the
+/// model and take an **extra dQ/dV step**, shifting Q well past 1e-2 kvar. This
+/// pins the snapshot power (read through `snapshot_elements` → `compute_iterminal`,
+/// the stamp-gated path) to the oracle's cached value at a tolerance tight enough
+/// (1e-3 kvar) to fail if that stamp is dropped. (Empirically: removing the
+/// generator stamp shifts Q to ≈ the recompute value and breaks this.)
+#[test]
+fn generator_model3_power_read_uses_cached_stamp_vs_oracle() {
+    let mut dss = model3_pv_dss();
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Two consecutive snapshot reads: both must equal the oracle's cached value
+    // (the stamp makes the read idempotent — no per-read dQ/dV drift).
+    for pass in 0..2 {
+        let snap = dss.snapshot_elements();
+        let g = snap
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("Generator.g1"))
+            .expect("generator snapshot");
+        for ph in 0..3 {
+            assert!(
+                (g.powers[2 * ph] - (-100.002748)).abs() < 1e-3,
+                "pass {pass} phase {ph} P {}",
+                g.powers[2 * ph]
+            );
+            assert!(
+                (g.powers[2 * ph + 1] - (-64.728196)).abs() < 1e-3,
+                "pass {pass} phase {ph} Q {}",
+                g.powers[2 * ph + 1]
+            );
+        }
     }
 }
 
