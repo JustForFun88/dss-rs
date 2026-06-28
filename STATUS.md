@@ -744,6 +744,20 @@ and all six audit follow-ups) archived at
     Master.DSS is also blocked on a `LoadShape action=normalize` CSV + `Plot`; the
     `Test/indmachtest` deck uses a NOT_PORTED user model — both step-4/Phase-8). lib
     **666 → 671**; `solvable_now` **84**.
+  - **audit-code follow-up:** verdict **faithful, no real bug** — every formula
+    confirmed line-for-line against `IndMach012.pas` (the swing sign/abs,
+    `Pshaft=+Power[1].re`, the D/Dpu undamped wiring, the commented-out harmonic `E`,
+    the wye no-neutral diagonal stamping + delta floating-trick, `MakeLike`'s copy
+    subset), and the conditioning claim independently re-confirmed by an oracle
+    tolerance sweep (the oracle's *own* operating point moves with tolerance, converging
+    to the pinned values). Fixed 3 Minor items: (1) **infidelity** — `update_vbase` used
+    `(kV·1000)/√3` instead of Pascal's `kV·InvSQRT3x1000` constant (sub-ULP, but now uses
+    the `inv_sqrt3_x1000()` helper like the Generator port); (2) removed the write-only
+    `power1` cache (its only reader, `get_f64(PF)`, is unreachable — the dump is
+    intercepted by `SILENT_READ_ONLY`; the `&self` getter has no solution access, so the
+    arm now returns the unsolved `PowerFactor(0)=1` placeholder with a comment; the live
+    PF stays state var #21); (3) documented the `calc_model` `<3`-phase zero-padding
+    (well-defined vs Pascal's read-past-buffer UB, unreachable in the corpus).
 - **next:** step 3b — DynEqPCE (`pc/dyneq_pce.rs`) integration (the `DynamicEqObj <> NIL`
   path + `DynOut` selection; flips Generator's Phase-6 `NOT_PORTED` `DynamicEq` to the
   real ref; PVSystem/Storage already carry the real ref).

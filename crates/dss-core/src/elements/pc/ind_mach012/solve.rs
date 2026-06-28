@@ -190,6 +190,10 @@ impl IndMach012 {
         let sc = SymComp::default();
         let yorder = self.cd.yorder;
 
+        // Pascal `Phase2SymComp` always reads 3 elements; for a 1-/2-phase machine
+        // it reads past `Vterminal` (upstream UB). Zero-pad instead — well-defined
+        // and unreachable in the corpus (3-phase default; dynamics is 1-/3-phase
+        // only, mirroring the documented 1-phase guard in `init_state_vars_impl`).
         let mut vph = [Complex64::ZERO; 3];
         for (i, v) in vph.iter_mut().enumerate() {
             if i < yorder {
