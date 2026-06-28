@@ -698,6 +698,8 @@ fn pvsystem_dynamics_mode3_matches_oracle() {
     assert_eq!(m.channels.len(), 22);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
+    // All channels pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md;
+    // measured Rust↔oracle match ~1e-8 on every channel).
     // Classic vars 1..13 are constant over the undisturbed run (no InvControl).
     for (ch, want) in [
         (0, 1.0),        // Irradiance
@@ -709,12 +711,12 @@ fn pvsystem_dynamics_mode3_matches_oracle() {
         (17, 8000.0),    // Rated VDC
         (21, 23.149570), // Max. Amps (phase)
     ] {
-        assert!(rel(at(ch, 200), want) < 1e-5, "PV ch{ch} = {}", at(ch, 200));
+        assert!(rel(at(ch, 200), want) < 1e-6, "PV ch{ch} = {}", at(ch, 200));
     }
     // The InvControl op-flag vars (5..11) sit at the 9999 default.
     for ch in 5..=11 {
         assert!(
-            rel(at(ch, 200), 9999.0) < 1e-5,
+            rel(at(ch, 200), 9999.0) < 1e-6,
             "PV op ch{ch} = {}",
             at(ch, 200)
         );
@@ -722,59 +724,61 @@ fn pvsystem_dynamics_mode3_matches_oracle() {
 
     // Inverter-dynamics channels at the start of the run (sample 0).
     assert!(
-        rel(at(13, 0), 7200.5923) < 1e-4,
+        rel(at(13, 0), 7200.5923) < 1e-6,
         "PV Vgrid[0] = {}",
         at(13, 0)
     );
     assert!(
-        rel(at(14, 0), -5193.585) < 1e-4,
+        rel(at(14, 0), -5193.585) < 1e-6,
         "PV di/dt[0] = {}",
         at(14, 0)
     );
-    assert!(rel(at(15, 0), 20.548918) < 1e-4, "PV it[0] = {}", at(15, 0));
+    assert!(rel(at(15, 0), 20.548918) < 1e-6, "PV it[0] = {}", at(15, 0));
     assert!(
-        rel(at(16, 0), 23.145710) < 1e-4,
+        rel(at(16, 0), 23.145710) < 1e-6,
         "PV itHist[0] = {}",
         at(16, 0)
     );
     assert!(
-        rel(at(19, 0), 23.146244) < 1e-4,
+        rel(at(19, 0), 23.146244) < 1e-6,
         "PV ISP[0] = {}",
         at(19, 0)
     );
     // ...and at the settled end (sample 200).
     assert!(
-        rel(at(13, 200), 7199.8784) < 1e-4,
+        rel(at(13, 200), 7199.8784) < 1e-6,
         "PV Vgrid = {}",
         at(13, 200)
     );
+    // di/dt → exactly 0 at the railed steady state (the PI loop converged m so the
+    // physical current derivative is 0).
     assert!(
-        at(14, 200).abs() < 1e-3,
+        at(14, 200).abs() < 1e-6,
         "PV di/dt settled = {}",
         at(14, 200)
     );
     assert!(
-        rel(at(15, 200), 6.1745348) < 1e-4,
+        rel(at(15, 200), 6.1745348) < 1e-6,
         "PV it = {}",
         at(15, 200)
     );
     assert!(
-        rel(at(16, 200), 6.1745348) < 1e-4,
+        rel(at(16, 200), 6.1745348) < 1e-6,
         "PV itHist = {}",
         at(16, 200)
     );
     assert!(
-        rel(at(18, 200), 1.0) < 1e-5,
+        rel(at(18, 200), 1.0) < 1e-6,
         "PV duty (rail) = {}",
         at(18, 200)
     );
     assert!(
-        rel(at(19, 200), 23.148539) < 1e-4,
+        rel(at(19, 200), 23.148539) < 1e-6,
         "PV ISP = {}",
         at(19, 200)
     );
     assert!(
-        rel(at(20, 200), 0.34373245) < 1e-5,
+        rel(at(20, 200), 0.34373245) < 1e-6,
         "PV Series L = {}",
         at(20, 200)
     );
@@ -796,16 +800,18 @@ fn pvsystem_dynamics_safe_mode_under_fault_matches_oracle() {
     let m = dss.monitor_view("pvvars").expect("pvvars monitor");
     assert_eq!(m.sample_count, 301);
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // Pinned at the standard monitor `1e-6` (measured ~1e-8). The safe-mode branch
+    // forces it/di/dt/itHist/duty to *exactly* 0, and ISP to the 0.01 A "off" value.
     assert!(
-        rel(last(13), 4.3397388) < 1e-3,
+        rel(last(13), 4.3397388) < 1e-6,
         "PV Vgrid (faulted) = {}",
         last(13)
     );
-    assert!(last(14).abs() < 1e-3, "PV di/dt (safe) = {}", last(14));
-    assert!(last(15).abs() < 1e-4, "PV it (safe) = {}", last(15));
-    assert!(last(16).abs() < 1e-4, "PV itHist (safe) = {}", last(16));
-    assert!(last(18).abs() < 1e-4, "PV duty (safe) = {}", last(18));
-    assert!(rel(last(19), 0.01) < 1e-4, "PV ISP (off) = {}", last(19));
+    assert!(last(14).abs() < 1e-6, "PV di/dt (safe) = {}", last(14));
+    assert!(last(15).abs() < 1e-6, "PV it (safe) = {}", last(15));
+    assert!(last(16).abs() < 1e-6, "PV itHist (safe) = {}", last(16));
+    assert!(last(18).abs() < 1e-6, "PV duty (safe) = {}", last(18));
+    assert!(rel(last(19), 0.01) < 1e-6, "PV ISP (off) = {}", last(19));
 }
 
 /// Storage grid-following dynamics, undisturbed: a discharging Storage ramps its
@@ -838,42 +844,51 @@ fn storage_dynamics_mode3_matches_oracle() {
     // SOC integrates during the dynamics run (the WP7.4 `is_dynamic_model`
     // early-return in `update_storage` was a latent simplification corrected here):
     // kWh starts at the rated 1000 and drops monotonically as the unit discharges.
+    // All value channels pinned at the standard monitor `1e-6` (measured ~1e-8).
     assert!(rel(at(0, 0), 1000.0) < 1e-9, "SOC[0] = {}", at(0, 0));
     assert!(
-        rel(1000.0 - at(0, 100), 0.0046997) < 2e-3,
+        rel(1000.0 - at(0, 100), 0.004699707) < 1e-6,
         "SOC drop@100 = {}",
         1000.0 - at(0, 100)
     );
     assert!(
-        rel(1000.0 - at(0, 200), 0.020080566) < 2e-3,
+        rel(1000.0 - at(0, 200), 0.020080566) < 1e-6,
         "SOC drop@200 = {}",
         1000.0 - at(0, 200)
     );
 
     // Last-sample state vector (steady discharge at rated power).
-    for (ch, want, tol) in [
-        (1usize, 1.0, 1e-5),    // State = DISCHARGING
-        (2, 500.08337, 1e-4),   // kWOut
-        (5, 500.08337, 1e-4),   // DCkW
-        (6, 61.120377, 1e-4),   // kWTotalLosses
-        (8, 5.0, 1e-4),         // kWIdlingLosses
-        (9, 56.120377, 1e-4),   // kWChDchLosses
-        (11, 1.0, 1e-5),        // InvEff
-        (12, 1.0, 1e-5),        // InverterON
-        (21, 500.0, 1e-5),      // kWDesired
-        (24, 1.0, 1e-5),        // kVA Exceeded
-        (25, 7200.7583, 1e-4),  // Grid voltage
-        (26, 111.64898, 1e-4),  // di/dt
-        (27, 44.981205, 1e-4),  // it
-        (28, 44.925381, 1e-4),  // it History
-        (29, 8000.0, 1e-5),     // Rated VDC
-        (30, 0.90585142, 1e-4), // Avg duty cycle
-        (31, 23.145710, 1e-4),  // Target (Amps)
-        (32, 0.41247895, 1e-5), // Series L
+    for (ch, want) in [
+        (1usize, 1.0),    // State = DISCHARGING
+        (2, 500.08337),   // kWOut
+        (5, 500.08337),   // DCkW
+        (6, 61.120377),   // kWTotalLosses
+        (8, 5.0),         // kWIdlingLosses
+        (9, 56.120377),   // kWChDchLosses
+        (11, 1.0),        // InvEff
+        (12, 1.0),        // InverterON
+        (21, 500.0),      // kWDesired
+        (24, 1.0),        // kVA Exceeded
+        (25, 7200.7583),  // Grid voltage
+        (26, 111.64898),  // di/dt
+        (27, 44.981205),  // it
+        (28, 44.925381),  // it History
+        (29, 8000.0),     // Rated VDC
+        (30, 0.90585142), // Avg duty cycle
+        (31, 23.145710),  // Target (Amps)
+        (32, 0.41247895), // Series L
     ] {
-        assert!(rel(at(ch, 200), want) < tol, "STO ch{ch} = {}", at(ch, 200));
+        assert!(
+            rel(at(ch, 200), want) < 1e-6,
+            "STO ch{ch} = {}",
+            at(ch, 200)
+        );
     }
-    assert!(at(7, 200).abs() < 1e-4, "STO kWInvLosses = {}", at(7, 200)); // ideal inverter
+    // kWInvLosses is exactly 0 (ideal inverter — the loss decomposition
+    // 61.120377 = 56.120377 + 5.0 + 0 pins it). kWIn (discharging) and kvarOut
+    // (no kvar dispatched) are near-zero kW/kvar at the monitor abs floor (1e-4,
+    // TOLERANCE_NOTES.md — a flat kW floor for a value that is physically 0).
+    assert!(at(7, 200).abs() < 1e-6, "STO kWInvLosses = {}", at(7, 200));
     assert!(at(3, 200).abs() < 1e-4, "STO kWIn = {}", at(3, 200));
     // Full-interface parity (audit-tests follow-up): pin the remaining classic
     // channels by value, not only by header name — the InvControl op-flag defaults
@@ -881,22 +896,22 @@ fn storage_dynamics_mode3_matches_oracle() {
     // these on Storage would otherwise slip past on the name check alone.
     for ch in [13usize, 14, 15, 16, 17, 18, 19, 20, 22] {
         assert!(
-            rel(at(ch, 200), 9999.0) < 1e-5,
+            rel(at(ch, 200), 9999.0) < 1e-6,
             "STO default ch{ch} = {}",
             at(ch, 200)
         );
     }
     assert!(
-        rel(at(23, 200), 500.0) < 1e-5,
+        rel(at(23, 200), 500.0) < 1e-6,
         "STO Limit kWOut = {}",
         at(23, 200)
     );
     assert!(
-        rel(at(33, 200), 23.149570) < 1e-4,
+        rel(at(33, 200), 23.149570) < 1e-6,
         "STO Max. Amps = {}",
         at(33, 200)
     );
-    assert!(at(4, 200).abs() < 1e-4, "STO kvarOut = {}", at(4, 200));
+    assert!(at(4, 200).abs() < 1e-4, "STO kvarOut = {}", at(4, 200)); // ~0 (monitor floor)
     assert!(
         at(10, 200) < 0.0 && at(10, 200).abs() < 1e-3,
         "STO kWh Chng = {}",
@@ -904,31 +919,32 @@ fn storage_dynamics_mode3_matches_oracle() {
     );
 
     // The current ramp from rest (sample 0) is PI-controlled, not railed. (it[0]
-    // is sub-unity, so an absolute band distinguishes it from 0/frozen — audit-tests.)
+    // is sub-unity, so the `rel` denominator floors to 1 → a 1e-6 absolute band,
+    // which still distinguishes it from 0/frozen — audit-tests.)
     assert!(
-        rel(at(26, 0), 2.9092627) < 1e-4,
+        rel(at(26, 0), 2.9092627) < 1e-6,
         "STO di/dt[0] = {}",
         at(26, 0)
     );
     assert!(
-        (at(27, 0) - 0.0014546313).abs() < 1e-4,
+        rel(at(27, 0), 0.0014546313) < 1e-6,
         "STO it[0] = {}",
         at(27, 0)
     );
-    assert!(at(28, 0).abs() < 1e-5, "STO itHist[0] = {}", at(28, 0));
+    assert!(at(28, 0).abs() < 1e-6, "STO itHist[0] = {}", at(28, 0)); // exactly 0 at init
     assert!(
-        rel(at(30, 0), 0.90009481) < 1e-4,
+        rel(at(30, 0), 0.90009481) < 1e-6,
         "STO duty[0] = {}",
         at(30, 0)
     );
     // Mid-run the inverter is still ramping (kWOut < rated).
     assert!(
-        rel(at(2, 100), 415.29892) < 1e-4,
+        rel(at(2, 100), 415.29892) < 1e-6,
         "STO kWOut@100 = {}",
         at(2, 100)
     );
     assert!(
-        rel(at(27, 100), 19.225319) < 1e-4,
+        rel(at(27, 100), 19.225319) < 1e-6,
         "STO it@100 = {}",
         at(27, 100)
     );
@@ -950,16 +966,18 @@ fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
     let m = dss.monitor_view("stovars").expect("stovars monitor");
     assert_eq!(m.sample_count, 301);
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // The idle state forces State/kWOut/kWDesired to exactly 0; SOC is frozen.
+    // Pinned at the standard monitor `1e-6` (measured ~1e-8).
     assert!(
         (last(1) - 0.0).abs() < 1e-6,
         "STO State (idle) = {}",
         last(1)
     );
-    assert!(last(2).abs() < 1e-4, "STO kWOut (idle) = {}", last(2));
-    assert!(last(21).abs() < 1e-4, "STO kWDesired (idle) = {}", last(21));
+    assert!(last(2).abs() < 1e-6, "STO kWOut (idle) = {}", last(2));
+    assert!(last(21).abs() < 1e-6, "STO kWDesired (idle) = {}", last(21));
     // SOC stopped discharging near where it was when the fault hit.
     assert!(
-        rel(last(0), 999.9797) < 1e-5,
+        rel(last(0), 999.9797) < 1e-6,
         "STO SOC (frozen) = {}",
         last(0)
     );
@@ -1124,55 +1142,60 @@ fn indmach012_dynamics_mode3_holds_operating_point_vs_oracle() {
     let last = |ch: usize| at(ch, m.channels[ch].len() - 1);
 
     // The slipping equilibrium: the electrical state is constant across the run and
-    // matches the oracle. (Oracle dss-python 0.15.7, tol 1e-8.)
+    // matches the oracle, pinned at the standard monitor `1e-6` (measured ~1e-8).
+    // (Oracle dss-python 0.15.7, tol 1e-8.)
+    assert!(rel(last(0), 59.041553) < 1e-6, "Frequency = {}", last(0));
+    assert!(rel(last(2), 0.8986012) < 1e-6, "E1 (pu) = {}", last(2));
+    assert!(rel(last(3), 1200000.1) < 1e-6, "Pshaft (W) = {}", last(3));
+    assert!(rel(last(6), 0.015974108) < 1e-6, "Slip = {}", last(6));
+    assert!(rel(last(13), 1593.1091) < 1e-6, "Is1 (A) = {}", last(13));
+    assert!(rel(last(15), 1531.1659) < 1e-6, "Ir1 (A) = {}", last(15));
     assert!(
-        (last(0) - 59.041553).abs() < 1e-4,
-        "Frequency = {}",
-        last(0)
-    );
-    assert!(rel(last(2), 0.8986012) < 1e-5, "E1 (pu) = {}", last(2));
-    assert!(rel(last(3), 1200000.1) < 1e-5, "Pshaft (W) = {}", last(3));
-    assert!(rel(last(6), 0.015974108) < 1e-5, "Slip = {}", last(6));
-    assert!(rel(last(13), 1593.1091) < 1e-5, "Is1 (A) = {}", last(13));
-    assert!(rel(last(15), 1531.1659) < 1e-5, "Ir1 (A) = {}", last(15));
-    assert!(
-        rel(last(17), 56136.43) < 1e-5,
+        rel(last(17), 56136.43) < 1e-6,
         "Stator Losses = {}",
         last(17)
     );
     assert!(
-        rel(last(18), 19445.965) < 1e-5,
+        rel(last(18), 19445.965) < 1e-6,
         "Rotor Losses = {}",
         last(18)
     );
-    assert!(rel(last(19), 1605.7596) < 1e-5, "Shaft hp = {}", last(19));
+    assert!(rel(last(19), 1605.7596) < 1e-6, "Shaft hp = {}", last(19));
     assert!(
-        rel(last(20), 0.90832734) < 1e-5,
+        rel(last(20), 0.90832734) < 1e-6,
         "Power Factor = {}",
         last(20)
     );
     assert!(
-        rel(last(21), 93.70147) < 1e-5,
+        rel(last(21), 93.70147) < 1e-6,
         "Efficiency % = {}",
         last(21)
     );
-    assert!(rel(last(5), -6.022097) < 1e-5, "dTheta (deg) = {}", last(5));
-    // dSpeed sits at numerical-noise zero on the undisturbed run.
-    assert!(last(4).abs() < 1e-3, "dSpeed (deg/s) = {}", last(4));
+    assert!(rel(last(5), -6.022097) < 1e-6, "dTheta (deg) = {}", last(5));
+    // dSpeed is the slipping-equilibrium residual, not zero — the oracle reproduces
+    // it (1.742747e-5 deg/s; Rust matches to ~2.5e-9), so it is pinned against the
+    // oracle's actual value (cf. the Kundur dSpeed residual).
+    assert!(
+        rel(last(4), 1.742747e-5) < 1e-6,
+        "dSpeed (deg/s) = {}",
+        last(4)
+    );
     // The induction-machine rotor slips, so Theta drifts linearly: pin both ends.
     assert!(
-        rel(at(1, 0), -41.16823) < 1e-5,
+        rel(at(1, 0), -41.16823) < 1e-6,
         "Theta@0 (deg) = {}",
         at(1, 0)
     );
     assert!(
-        rel(last(1), -58.075226) < 1e-5,
+        rel(last(1), -58.075226) < 1e-6,
         "Theta@49 (deg) = {}",
         last(1)
     );
 
-    // The balanced source keeps the negative sequence quiescent across the run
-    // (the oracle holds Is2/Ir2 at ~4.79e-7; this bound is ~20× over that).
+    // The balanced source keeps the negative sequence quiescent across the run.
+    // This is a "stays small" upper bound (the oracle holds Is2/Ir2 at ~4.79e-7,
+    // so the 1e-5 threshold is ~20× over it) — not an oracle value pin, so it stays
+    // at 1e-5 (a 1e-6 threshold would be only ~2× over the quiescent level).
     for s in 0..m.channels[14].len() {
         assert!(at(14, s) < 1e-5, "Is2 grew at sample {s}: {}", at(14, s));
         assert!(at(16, s) < 1e-5, "Ir2 grew at sample {s}: {}", at(16, s));
@@ -1180,7 +1203,7 @@ fn indmach012_dynamics_mode3_holds_operating_point_vs_oracle() {
     // The electrical equilibrium holds for the whole run, not just the endpoints.
     for s in 0..m.channels[6].len() {
         assert!(
-            rel(at(6, s), 0.015974108) < 1e-5,
+            rel(at(6, s), 0.015974108) < 1e-6,
             "Slip drifted at sample {s}: {}",
             at(6, s)
         );
@@ -1205,32 +1228,34 @@ fn indmach012_dynamics_fault_response_matches_oracle() {
     assert_eq!(m.sample_count, 100);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
+    // Pinned at the standard monitor `1e-6` (measured ~1e-8; the literals are the
+    // exact oracle f32 values).
     // Pre-fault (sample 49) the motor sits at the slipping equilibrium.
-    assert!(rel(at(6, 49), 0.015974108) < 1e-5, "pre-fault Slip");
+    assert!(rel(at(6, 49), 0.015974108) < 1e-6, "pre-fault Slip");
     // First fault step (sample 50): voltage collapse → large inrush.
     assert!(
-        rel(at(13, 50), 8044.474) < 1e-4,
+        rel(at(13, 50), 8044.474) < 1e-6,
         "fault Is1 = {}",
         at(13, 50)
     );
     assert!(
-        rel(at(6, 50), 0.016010445) < 1e-4,
+        rel(at(6, 50), 0.016010445) < 1e-6,
         "fault Slip = {}",
         at(6, 50)
     );
     // End of fault (sample 99): slip risen, rotor frequency fallen, decelerating.
     assert!(
-        rel(at(6, 99), 0.019402187) < 1e-4,
+        rel(at(6, 99), 0.019402187) < 1e-6,
         "end Slip = {}",
         at(6, 99)
     );
     assert!(
-        rel(at(0, 99), 58.83587) < 1e-4,
+        rel(at(0, 99), 58.83587) < 1e-6,
         "end Frequency (Hz) = {}",
         at(0, 99)
     );
     assert!(
-        rel(at(1, 99), -77.1814) < 1e-4,
+        rel(at(1, 99), -77.1814) < 1e-6,
         "end Theta (deg) = {}",
         at(1, 99)
     );

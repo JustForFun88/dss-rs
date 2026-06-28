@@ -163,14 +163,20 @@ the policy above applies unchanged. Two gate-specific points:
   (`SolveSnap_uSecs` / `TimeStep_uSecs`) are not modeled and are skipped.
 
 - **Dynamics mode-3 state-variable trajectories — same monitor policy, 1e-6
-  (`exec/tests/dynamics.rs`).** The dynamics gates (Kundur generator — classic and
-  DynamicExp — plus PV/Storage/IndMach012) record state variables through the same
-  f32 monitor stream, so they follow the monitor-channel policy above. The realized
-  Rust↔oracle match on the Kundur gates is ~1e-8 on **every** channel (the swing
-  extrema over 11071 steps included), so they are pinned at the standard **1e-6
-  rel**, not the looser `1e-5` PORTING_PLAN §Phase 7 *allows* for dynamics (that is
-  an upper bound we do not need). Two subtleties, both pinned against the oracle's
-  *actual* value rather than against 0:
+  (`exec/tests/dynamics.rs`).** All the dynamics gates (Generator — classic and
+  DynamicExp — plus PVSystem / Storage / IndMach012, steady and fault) record state
+  variables through the same f32 monitor stream, so they follow the monitor-channel
+  policy above. The realized Rust↔oracle match is ~1e-8 on **every** channel (the
+  Kundur swing extrema over 11071 steps included), so **all** value pins are at the
+  standard **1e-6 rel** — not the looser `1e-5` PORTING_PLAN §Phase 7 *allows* for
+  dynamics (that is an upper bound we do not need). Computation is f64 throughout;
+  only the monitor *recording buffer* is f32 (1:1 with Pascal `TMonitorObj.MonBuffer:
+  pSingleArray`), which is why the comparison floor is the f32 ULP (~1e-7) and not
+  tighter. A few channels stay looser, each for a stated reason, **not** slack:
+  the IndMach Is2/Ir2 negative-sequence quiescence is a `<1e-5` *upper bound* on a
+  ~4.79e-7 quantity (a value pin would be ~2× over the level); near-zero kW/kvar
+  (Storage kWIn / kvarOut) sit at the 1e-4 monitor abs floor. Two subtleties, both
+  pinned against the oracle's *actual* value rather than against 0:
   - the swing-equation **fixpoint residual** channels (`dSpeed`, `dTheta`, `speed`,
     `dspeed`) are not zero at steady state — `dSpeed = (Pshaft + electrical_power)/
     Mmass` where `Pshaft` is fixed at init but the electrical power is recomputed
