@@ -179,11 +179,20 @@ impl Dss {
                 |name| Box::new(pvsystem::PVSystem::new(name)),
                 ElemKind::PVSystem,
             ),
+            // IndMach012 registers after PVSystem, before InvControl (Pascal
+            // DSSClassDefs.pas:255 INDMACH012_ELEMENT; the UPFC/GICsource/AutoTrans
+            // classes around it are unported). Registration order does not affect
+            // node ordering, which follows element creation order.
+            DssClass::ckt_class(
+                ind_mach012::class_props(&enums),
+                |name| Box::new(ind_mach012::IndMach012::new(name)),
+                ElemKind::IndMach012,
+            ),
             // InvControl registers after PVSystem (Pascal DSSClassDefs.pas:273;
-            // the UPFC/IndMach012/GICsource/AutoTrans classes between PVSystem
-            // and InvControl are unported, so among ported classes it follows
-            // PVSystem directly). Registration order does not affect node
-            // ordering, which follows element creation order.
+            // the UPFC/GICsource/AutoTrans classes between PVSystem and InvControl
+            // are unported, so among ported classes it follows IndMach012).
+            // Registration order does not affect node ordering, which follows
+            // element creation order.
             DssClass::ckt_class(
                 inv_control::class_props(&enums),
                 |name| Box::new(inv_control::InvControl::new(name)),

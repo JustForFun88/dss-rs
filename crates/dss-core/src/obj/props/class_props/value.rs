@@ -18,6 +18,12 @@ impl ClassProps {
         if pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx) {
             return "----".to_string();
         }
+        // A `ReadByFunction` value that needs a solved solution dumps empty (the
+        // oracle raises "solution not initialized" pre-solve → `""`); see
+        // [`PropFlags::SILENT_READ_ONLY`].
+        if pd.flags.contains(PropFlags::SILENT_READ_ONLY) {
+            return String::new();
+        }
         match pd.ptype {
             PropType::Double => {
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {

@@ -1,0 +1,181 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "indmach012",
+ "scenarios": [
+  {
+   "name": "indmach012_default",
+   "commands": [
+    "New IndMach012.m1 bus1=b"
+   ],
+   "target": "IndMach012.m1",
+   "properties": {
+    "Phases": "3",
+    "Bus1": "b",
+    "kV": "12.47",
+    "kW": "1000",
+    "PF": "",
+    "Conn": "delta",
+    "kVA": "1200",
+    "H": "1",
+    "D": "1",
+    "puRs": "0.0053",
+    "puXs": "0.106",
+    "puRr": "0.007",
+    "puXr": "0.12",
+    "puXm": "4",
+    "Slip": "0.007",
+    "MaxSlip": "0.1",
+    "SlipOption": "VariableSlip",
+    "Yearly": "",
+    "Daily": "",
+    "Duty": "",
+    "DebugTrace": "No",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "indmach012_full",
+   "commands": [
+    "New IndMach012.m1 bus1=mbus kV=0.48 kW=1200 conn=delta kVA=1500 H=6 D=2 puRs=0.048 puXs=0.075 puRr=0.018 puXr=0.12 puXm=3.8 slip=0.02 MaxSlip=0.12 SlipOption=variableslip"
+   ],
+   "target": "IndMach012.m1",
+   "properties": {
+    "Phases": "3",
+    "Bus1": "mbus",
+    "kV": "0.48",
+    "kW": "1200",
+    "PF": "",
+    "Conn": "delta",
+    "kVA": "1500",
+    "H": "6",
+    "D": "2",
+    "puRs": "0.048",
+    "puXs": "0.075",
+    "puRr": "0.018",
+    "puXr": "0.12",
+    "puXm": "3.8",
+    "Slip": "0.02",
+    "MaxSlip": "0.12",
+    "SlipOption": "VariableSlip",
+    "Yearly": "",
+    "Daily": "",
+    "Duty": "",
+    "DebugTrace": "No",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "indmach012_wye_fixedslip",
+   "commands": [
+    "New IndMach012.m1 bus1=b phases=3 kV=0.48 kW=500 conn=wye kVA=600 slip=0.03 SlipOption=fixedslip"
+   ],
+   "target": "IndMach012.m1",
+   "properties": {
+    "Phases": "3",
+    "Bus1": "b",
+    "kV": "0.48",
+    "kW": "500",
+    "PF": "",
+    "Conn": "wye",
+    "kVA": "600",
+    "H": "1",
+    "D": "1",
+    "puRs": "0.0053",
+    "puXs": "0.106",
+    "puRr": "0.007",
+    "puXr": "0.12",
+    "puXm": "4",
+    "Slip": "0.03",
+    "MaxSlip": "0.1",
+    "SlipOption": "FixedSlip",
+    "Yearly": "",
+    "Daily": "",
+    "Duty": "",
+    "DebugTrace": "No",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "indmach012_slip_clamp",
+   "commands": [
+    "New IndMach012.m1 bus1=b kV=0.48 kW=300 MaxSlip=0.08 slip=0.5"
+   ],
+   "target": "IndMach012.m1",
+   "properties": {
+    "Phases": "3",
+    "Bus1": "b",
+    "kV": "0.48",
+    "kW": "300",
+    "PF": "",
+    "Conn": "delta",
+    "kVA": "1200",
+    "H": "1",
+    "D": "1",
+    "puRs": "0.0053",
+    "puXs": "0.106",
+    "puRr": "0.007",
+    "puXr": "0.12",
+    "puXm": "4",
+    "Slip": "0.08",
+    "MaxSlip": "0.08",
+    "SlipOption": "VariableSlip",
+    "Yearly": "",
+    "Daily": "",
+    "Duty": "",
+    "DebugTrace": "No",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "indmach012_makelike",
+   "commands": [
+    "New IndMach012.base bus1=b kV=0.48 kW=900 kVA=1100 H=4 puRs=0.05 puXs=0.08 puRr=0.02 puXr=0.13 puXm=3.5 MaxSlip=0.11",
+    "New IndMach012.m1 like=base bus1=c"
+   ],
+   "target": "IndMach012.m1",
+   "properties": {
+    "Phases": "3",
+    "Bus1": "c",
+    "kV": "0.48",
+    "kW": "900",
+    "PF": "",
+    "Conn": "delta",
+    "kVA": "1100",
+    "H": "4",
+    "D": "1",
+    "puRs": "0.05",
+    "puXs": "0.08",
+    "puRr": "0.02",
+    "puXr": "0.13",
+    "puXm": "3.5",
+    "Slip": "0.007",
+    "MaxSlip": "0.11",
+    "SlipOption": "VariableSlip",
+    "Yearly": "",
+    "Daily": "",
+    "Duty": "",
+    "DebugTrace": "No",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

@@ -16,6 +16,7 @@ pub(super) struct PcEnums {
     pub(super) inv_control_mode: EnumId,
     pub(super) storage_state: EnumId,
     pub(super) storage_dispatch_mode: EnumId,
+    pub(super) ind_mach_slip_option: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
@@ -152,6 +153,19 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
     sdm.default_value = 0;
     let storage_dispatch_mode = push(sdm);
 
+    // IndMach012.pas TIndMach012.Create: `SlipOptionEnum` (DefaultValue 0 =
+    // VariableSlip; the FixedSlip field is a LongBool, mapped 0/1).
+    let mut sopt = DssEnum::new(
+        "IndMach012: Slip Option",
+        true,
+        1,
+        1,
+        &["VariableSlip", "FixedSlip"],
+        &[0, 1],
+    );
+    sopt.default_value = 0;
+    let ind_mach_slip_option = push(sopt);
+
     PcEnums {
         connection,
         vsource_model,
@@ -164,5 +178,6 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         inv_control_mode,
         storage_state,
         storage_dispatch_mode,
+        ind_mach_slip_option,
     }
 }

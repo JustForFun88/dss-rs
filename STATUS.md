@@ -16,7 +16,8 @@ InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), WP7.5
 driver) + step 2a (Generator dynamics + Monitor mode 3 + a real `Open`-verb bug
 fix) + step 2b (PVSystem/Storage grid-following inverter dynamics +
 `InvDynamics.TInvDynamicVars` + the 22/34-var mode-3 interface + a Storage SOC
-dynamics fix) done, oracle-pinned.** WP7.6 ran
+dynamics fix) done, oracle-pinned; step 3a (IndMach012 induction machine — power flow + dynamics +
+the 22 mode-3 state vars) done, oracle-pinned.** WP7.6 ran
 in three steps. Step 1 landed the harmonics solve mode
 for the
 current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
@@ -48,8 +49,12 @@ deck (steady mode-3 trajectory + fault response + the full undamped swing matchi
 the oracle to 5 digits). Step 2b added the PVSystem/Storage grid-following inverter
 dynamics (the shared `TInvDynamicVars` current loop + the full mode-3 state-variable
 interface + a latent Storage SOC-in-dynamics fix), oracle-pinned on 4 PV/Storage
-mode-3 decks. **next = WP7.7 step 3 (IndMach012 + DynEqPCE integration — the
-`DynamicEqObj <> NIL` path).**
+mode-3 decks. Step 3a added the **IndMach012** induction machine
+(`pc/ind_mach012/`) — an equivalent-circuit motor (slip-Newton power flow) and a
+voltage source behind `Zsp` in dynamics (pos/neg-seq `E1`/`E2` + shaft swing,
+trapezoidal), with 22 mode-3 state variables; oracle-pinned on a self-contained
+InductionMachine deck (steady equilibrium + 3-phase-fault response). **next = WP7.7
+step 3b (DynEqPCE integration — the `DynamicEqObj <> NIL` path + `DynOut`).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -60,7 +65,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md).
-Current scores: dss-core **lib 666**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 671**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -98,13 +103,13 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) done, oracle-pinned**; **next = WP7.7 step 3 (IndMach012 + DynEqPCE)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) done, oracle-pinned**; **next = WP7.7 step 3b (DynEqPCE)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 666, golden_feeders 1,
+cargo test --workspace      # dss-core lib 671, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -691,9 +696,57 @@ and all six audit follow-ups) archived at
     SOC test fails if the `update_storage` fix is reverted. Hardened two Minor items:
     pinned all 34 Storage mode-3 channels by value (was 21/34) and tightened the
     near-vacuous `it[0]` tolerance to an absolute band.
-- **next:** step 3 — IndMach012 (`pc/ind_mach012.rs`) + DynEqPCE (`pc/dyneq_pce.rs`)
-  integration (the `DynamicEqObj <> NIL` path + `DynOut` selection; flips Generator's
-  Phase-6 `NOT_PORTED` `DynamicEq` to the real ref).
+- **step 3a — IndMach012 (the symmetrical-component induction machine).** Ported
+  `PCElements/IndMach012.pas` as `pc/ind_mach012/` (mod/solve/dynamics/accessors) on
+  the Generator template, reusing `TGeneratorVars` (flattened as the `MachineData`
+  shaft fields). Power flow: an equivalent-circuit motor whose slip floats to the
+  shaft-power target (`Get_PFlowModelCurrent` + the fixed-slope `dSdP` slip-Newton in
+  `CalcPFlow`; symmetrical-component `CalcModel`). Dynamics: a voltage source behind
+  the transient reactance `Zsp` whose pos/neg-seq internal voltages `E1`/`E2`
+  (`Integrate`, trapezoidal) and shaft speed/angle (`IntegrateStates`) are integrated;
+  `InitStateVars` seeds them from the converged PF; the harmonic/dynamic
+  `CalcYPrimMatrix` `Y=Yeq` branch (wye = diagonal-only, no neutral; the delta
+  floating-trick). 22 mode-3 state variables + `Set_Variable`. New `ElemKind::IndMach012`
+  + `Circuit.ind_machines`; registered after PVSystem; Monitor mode-3 metered-kind admits
+  it; new `SlipOption` enum. NOT_PORTED: DebugTrace CSV, `MakePosSequence` (empty
+  upstream), the `IndMach012SwitchOpen` Open flag (carried, never set — the latent
+  Generator `gen_switch_open` gap). `DoHarmonicMode` ported verbatim incl. the upstream
+  commented-out-`E` quirk (injects ~0). The `DynamicEqObj <> NIL` path is step 3b.
+  - **Conditioning proven, not a bug (CLAUDE.md discipline).** The IndMach012 PF
+    operating point differed Rust↔oracle ~5e-4 at the default tolerance with the *same*
+    iteration count (4). A tolerance sweep on the oracle proved the cause: the
+    fixed-slope slip-Newton converges *slower* than the node-voltage tolerance, so at
+    1e-4 the slip is still settling and faer vs KLU stop at different iter-4 points;
+    tightening to 1e-7/1e-10 collapses both to the true fixpoint (slip 0.0159741,
+    P = the 1200 kW target, dSpeed≈0). The focused gate solves at `tolerance=1e-8` so
+    both reach the fixpoint. (A corpus IndMach012 deck at the default tolerance may
+    therefore need its own tolerance handling at migration time — step 4 / a future
+    `needs_investigation` note, not a port bug.)
+  - **Real bug fixed during the port (Monitor mode-3 metered-kind).** Like PVSystem
+    (WP7.3) / Storage (WP7.4), the Monitor mode-3 metered-kind classifier had to admit
+    IndMach012 (`accessors.rs` downcast list) or a mode-3 monitor aborts "must be a power
+    conversion element". Caught by the focused gate.
+  - **New prop-flag (`SILENT_READ_ONLY`).** IndMach012 `pf` is Pascal
+    `[SilentReadOnly, ReadByFunction]` → `PowerFactor(Power[1])`; the oracle raises
+    "solution not initialized" on the unsolved props-probe circuit, so the `?` dump is
+    `""`. Added the behavioral flag (set ignored; text dump empty) — the `&self` getter
+    has no solution access either, so empty is the faithful match. The PF *value* is
+    state variable #21, computed where the solution exists.
+  - **Gate (focused step-3a oracle gate):** 2 oracle-pinned IndMach012-dynamics tests
+    (`exec/tests/dynamics.rs`, dss-python 0.15.7, tol 1e-8) on a self-contained
+    reproduction of the corpus `InductionMachine` example (12.47 kV source → 1500 kVA
+    step-down xfmr → 600 kvar cap + 1200 kW delta motor): (1) **steady mode-3** — all 22
+    variables, the slipping equilibrium holds (slip/currents/losses/power constant, Theta
+    drifts linearly, dSpeed≈0, neg-seq quiescent) matching the oracle at 1e-5; (2)
+    **3-phase fault** — the inrush + deceleration (slip rises, rotor frequency falls)
+    matches elementwise through 50 fault steps. Plus 3 construction/slip-clamp unit tests
+    and `props/indmach012.json` (5 scenarios). **No corpus migration** (the `InductionMachine`
+    Master.DSS is also blocked on a `LoadShape action=normalize` CSV + `Plot`; the
+    `Test/indmachtest` deck uses a NOT_PORTED user model — both step-4/Phase-8). lib
+    **666 → 671**; `solvable_now` **84**.
+- **next:** step 3b — DynEqPCE (`pc/dyneq_pce.rs`) integration (the `DynamicEqObj <> NIL`
+  path + `DynOut` selection; flips Generator's Phase-6 `NOT_PORTED` `DynamicEq` to the
+  real ref; PVSystem/Storage already carry the real ref).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

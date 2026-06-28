@@ -2053,6 +2053,49 @@ SCENARIOS = [
             "New Storage.s1 like=base bus1=c",
         ],
     },
+    # --- IndMach012 (WP7.7 step 3a) ----------------------------------------
+    # The symmetrical-component induction machine. `pf` is read-only (computed
+    # PowerFactor(Power[1]) → 1 on an unsolved circuit); `slip` write goes through
+    # set_Localslip (clamped to ±MaxSlip outside dynamics); `conn` defaults to
+    # delta, `SlipOption` to VariableSlip.
+    {
+        "name": "indmach012_default",
+        "target": "IndMach012.m1",
+        "commands": ["New IndMach012.m1 bus1=b"],
+    },
+    {
+        "name": "indmach012_full",
+        "target": "IndMach012.m1",
+        "commands": [
+            "New IndMach012.m1 bus1=mbus kV=0.48 kW=1200 conn=delta kVA=1500 H=6 "
+            "D=2 puRs=0.048 puXs=0.075 puRr=0.018 puXr=0.12 puXm=3.8 "
+            "slip=0.02 MaxSlip=0.12 SlipOption=variableslip",
+        ],
+    },
+    {
+        # Wye connection (no neutral) + fixed-slip option.
+        "name": "indmach012_wye_fixedslip",
+        "target": "IndMach012.m1",
+        "commands": [
+            "New IndMach012.m1 bus1=b phases=3 kV=0.48 kW=500 conn=wye kVA=600 "
+            "slip=0.03 SlipOption=fixedslip",
+        ],
+    },
+    {
+        # The slip clamp: a slip above MaxSlip is clamped to MaxSlip (set_Localslip).
+        "name": "indmach012_slip_clamp",
+        "target": "IndMach012.m1",
+        "commands": ["New IndMach012.m1 bus1=b kV=0.48 kW=300 MaxSlip=0.08 slip=0.5"],
+    },
+    {
+        "name": "indmach012_makelike",
+        "target": "IndMach012.m1",
+        "commands": [
+            "New IndMach012.base bus1=b kV=0.48 kW=900 kVA=1100 H=4 "
+            "puRs=0.05 puXs=0.08 puRr=0.02 puXr=0.13 puXm=3.5 MaxSlip=0.11",
+            "New IndMach012.m1 like=base bus1=c",
+        ],
+    },
     # --- DynamicExp (WP7.3 step 0) -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps

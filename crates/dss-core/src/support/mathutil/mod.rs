@@ -116,6 +116,18 @@ pub fn terminal_power_in(v: &[Complex64], i: &[Complex64], nphases: usize) -> Co
     result
 }
 
+/// Power factor of a complex power `S` (Pascal `Utilities.PowerFactor`):
+/// `sign(S.re·S.im) · |S.re| / |S|`, or `1.0` if either part is zero (so an
+/// unsolved element with `S = 0` reports unity, as the oracle does).
+pub fn power_factor(s: Complex64) -> f64 {
+    if s.re != 0.0 && s.im != 0.0 {
+        let sign = if s.re * s.im < 0.0 { -1.0 } else { 1.0 };
+        sign * s.re.abs() / s.norm()
+    } else {
+        1.0
+    }
+}
+
 /// Per-conductor complex power in kW/kvar: `kwkvar[j] = V[j]·conj(I[j])·0.001`
 /// (Pascal `CalcKPowers`).
 pub fn calc_k_powers(kwkvar: &mut [Complex64], v: &[Complex64], i: &[Complex64], n: usize) {
