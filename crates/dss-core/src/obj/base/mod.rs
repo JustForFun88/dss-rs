@@ -465,6 +465,24 @@ pub trait DssObject {
         let _ = (ordinal, errors);
     }
 
+    /// Pascal `TDSSObject.ParseDynVar` (DSSObject.pas l.242, overridden by
+    /// `TDynEqPCE`): handle a `name=value` pair whose `name` is **not** a class
+    /// property but may be a state variable of a linked `DynamicExp` (the
+    /// `DynamicEq=`/`DynOut=` hosts: Generator/PVSystem/Storage). The edit loop
+    /// calls this on the "unknown parameter" fallback (Pascal `DSSClass.Edit`
+    /// l.1656); `true` means it was consumed, `false` ⇒ report the unknown
+    /// parameter. `vars` re-evaluates the value with the executive's `Var`
+    /// substitutions. Default `false` (the base `TDSSObject`).
+    fn parse_dyn_var(
+        &mut self,
+        variable: &str,
+        value: &str,
+        vars: &dss_parser::ParserVars,
+    ) -> bool {
+        let _ = (variable, value, vars);
+        false
+    }
+
     /// Pascal per-class `EndEdit`: recompute derived state once an edit block
     /// finishes (e.g. `ReCalcYearMult`, `SetMultArray`). No-op by default.
     fn end_edit(&mut self) {}

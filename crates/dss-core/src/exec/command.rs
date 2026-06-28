@@ -530,7 +530,12 @@ impl Dss {
             }
 
             if param_pointer <= 0 || param_pointer as usize > props.num_properties() {
-                if param_name.is_empty() {
+                // Not a class property, but may still be a dynamic-equation
+                // variable for some classes (Pascal `DSSClass.Edit` l.1656 →
+                // `Obj.ParseDynVar`).
+                if objects[oi].parse_dyn_var(&param_name, &param, vars) {
+                    // Consumed as a DynamicExp state-variable initializer.
+                } else if param_name.is_empty() {
                     errors.push(format!(
                         "Unknown parameter for value \"{param}\" in object \"{}.{}\"",
                         props.class_name(),
