@@ -601,6 +601,28 @@ and all six audit follow-ups) archived at
     line 2 kept carrying 1480 A instead of 0) — **not** conditioning, **not** the
     `UpdateVBus` path — and root-caused to the `Open`-verb no-op above. lib
     **659 → 662**; `solvable_now` **84** (the full Kundur deck migration is step 4).
+  - **audit-code follow-up:** verdict **faithful** — the `InitStateVars`/
+    `IntegrateStates`/`DoDynamicMode`/`Get_Variable` ports and the `Open` fix were
+    confirmed line-for-line against Pascal (incl. the `active_terminal`↔`FActiveTerminal`
+    persistence). Two **surfaced-not-fixed** edge cases (out of corpus, the pre-existing
+    Generator error-swallowing convention — recorded, not a regression): a bare
+    `Model=6` generator in dynamics, and a **>3-phase** generator in dynamics, push a
+    NOT_PORTED error into `inj_currents`'s local `errors` vec, which is *dropped* — so
+    the solve continues silently instead of Pascal's `SolutionAbort` (the >3-phase case
+    additionally leaves `m_mass = 0`, so a following `integrate_states` would yield NaN).
+    Both unreachable in the vendored corpus (1-/3-phase, `UserModel` un-configurable);
+    the misleading "mirror the error path" comments were corrected to state this
+    honestly, with `TODO(WP7.7)` to surface a loud abort if a case ever forces it. Fixed
+    one cosmetic nit (the out-of-range `VariableName` returns `"ERROR"` like Pascal, not
+    `""`). The model-6 dynamics message text differs from Pascal msg 5671 but is not
+    oracle-pinned (left as the clearer NOT_PORTED wording).
+  - **audit-tests follow-up:** verdict **sound + strictly additive** — the auditor
+    independently re-ran the deck on the pinned dss-python 0.15.7 oracle and confirmed
+    **every** pinned constant bit-for-bit (steady/fault/swing), and **proved the swing
+    test is a non-vacuous guard for the `Open` fix**: reverting the fix moves the swing
+    min/max by ~0.34/0.27 rel (≈3400× the 1e-4 tolerance) → the test fails. Tolerances
+    tight, no smoke/skip/ignore, the deck transcription (inlined `@Zbase`, `enabled=no`
+    for `Disable`) is empirically equivalent. No test fix needed.
 - **next:** step 2b — PVSystem/Storage inverter dynamics (`InvDynamics.pas`
   `TInvDynamicVars`: per-phase `it`/`dit`/`Vgrid`, `InitStateVars`/`IntegrateStates`/
   `DoDynamicMode`; GFM deferred), then step 3 (IndMach012 + DynEqPCE integration).

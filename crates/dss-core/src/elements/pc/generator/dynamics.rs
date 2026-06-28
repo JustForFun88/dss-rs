@@ -82,12 +82,13 @@ impl Generator {
             }
             _ => {
                 // Pascal sets DSS.SolutionAbort := TRUE (msg 5672) here, but
-                // `init_state_vars` has no error channel in this port.
-                // TODO(WP7.7): >3-phase generator dynamics abort is not surfaced
-                // through init_state_vars; the DoDynamicMode errors-vec path
-                // (msg 5671) catches it at inject time. The machine is left at its
-                // initialized (zero) state rather than silently producing wrong
-                // numbers. (Corpus dynamics cases are 1- or 3-phase.)
+                // `init_state_vars` has no error channel in this port. The machine
+                // is left zero-initialized, so `w0`/`m_mass` stay 0 and a following
+                // `integrate_states` would divide by `m_mass = 0` (NaN) — worse than
+                // Pascal's clean abort, but unreachable: the vendored dynamics corpus
+                // is all 1-/3-phase, and `do_dynamic_mode` records the >3-phase error
+                // at inject time. TODO(WP7.7): surface a real abort (init_state_vars
+                // needs an error channel) if a >3-phase dynamics case appears.
                 return;
             }
         }
@@ -155,8 +156,14 @@ impl Generator {
         let _ = sys;
 
         if self.gen_model == 6 {
-            // NOT_PORTED: user-written dynamics model DLL (Pascal aborts with
-            // msg 5671 "Dynamics model missing"). Mirror the model-6 error path.
+            // NOT_PORTED: user-written dynamics model DLL. Pascal sets
+            // `DSS.SolutionAbort := TRUE` (msg 5671); this records the error
+            // best-effort, exactly like the model-6 *power-flow* path
+            // (`calc_gen_model_contribution`), but the generator's `inj_currents`
+            // drops its local `errors` vec, so the abort is not surfaced. A bare
+            // `Model=6` generator in dynamics is unreachable in the vendored corpus
+            // (no UserModel can be configured — the prop is NOT_PORTED). TODO(WP7.7):
+            // surface as a loud abort if a corpus case ever needs it.
             errors.push(format!(
                 "{}.{} model designated to use user-written dynamics model, but \
                  user-written model is not defined.",
@@ -286,6 +293,9 @@ impl Generator {
     }
 
     /// Pascal `TGeneratorObj.VariableName(i)` (1-based, the 6 classic names).
+    /// Pascal seeds `Result := 'ERROR'` and returns it for any out-of-range index
+    /// (the monitor header only ever asks for `1..=NumVariables`, so this is the
+    /// unreachable guard value, matched here for fidelity).
     pub(super) fn gen_variable_name(&self, i: usize) -> String {
         match i {
             1 => "Frequency",
@@ -294,7 +304,7 @@ impl Generator {
             4 => "PShaft",
             5 => "dSpeed (Deg/sec)",
             6 => "dTheta (Deg)",
-            _ => "",
+            _ => "ERROR",
         }
         .to_string()
     }
