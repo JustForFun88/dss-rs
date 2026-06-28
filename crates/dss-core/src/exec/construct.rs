@@ -188,6 +188,13 @@ impl Dss {
                 |name| Box::new(ind_mach012::IndMach012::new(name)),
                 ElemKind::IndMach012,
             ),
+            // VSConverter (Pascal DSSClassDefs.pas VS_CONVERTER) — a power-flow
+            // AC/DC bridge PC element; no node-order dependence (creation order).
+            DssClass::ckt_class(
+                vs_converter::class_props(&enums),
+                |name| Box::new(vs_converter::VsConverter::new(name)),
+                ElemKind::VsConverter,
+            ),
             // InvControl registers after PVSystem (Pascal DSSClassDefs.pas:273;
             // the UPFC/GICsource/AutoTrans classes between PVSystem and InvControl
             // are unported, so among ported classes it follows IndMach012).

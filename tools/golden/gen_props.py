@@ -2101,6 +2101,33 @@ SCENARIOS = [
             "New IndMach012.m1 like=base bus1=c",
         ],
     },
+    # --- VSConverter (WP7.8) -----------------------------------------------
+    # A 2-terminal AC/DC bridge PC element. Defaults: phases=4, Ndc=1, kVac=kVdc=
+    # kW=1, m0=0.5, Mmin=0.1, Mmax=0.9, Iacmax=Idcmax=2, VscMode=Fixed. Setting
+    # bus1 defaults bus2 to the grounded node list (Bus1base.0.0.0.0).
+    {
+        "name": "vsconverter_default",
+        "target": "VSConverter.v1",
+        "commands": ["New VSConverter.v1 bus1=b.1.2.3.4"],
+    },
+    {
+        "name": "vsconverter_full",
+        "target": "VSConverter.v1",
+        "commands": [
+            "New VSConverter.v1 phases=4 Ndc=1 bus1=b.1.2.3.4 kVac=0.48 kVdc=1.0 "
+            "kW=50 Rac=0.05 Xac=0.2 m0=0.6 d0=5 Mmin=0.2 Mmax=0.95 Iacmax=1.5 "
+            "Idcmax=1.5 Vacref=277 Pacref=50 Qacref=10 Vdcref=1000 VscMode=PacQac",
+        ],
+    },
+    {
+        "name": "vsconverter_makelike",
+        "target": "VSConverter.v1",
+        "commands": [
+            "New VSConverter.base phases=4 Ndc=1 bus1=b.1.2.3.4 kVac=0.48 kVdc=1.2 "
+            "kW=75 Rac=0.03 Xac=0.15 m0=0.7 VscMode=VdcVac",
+            "New VSConverter.v1 like=base bus1=c.1.2.3.4",
+        ],
+    },
     # --- DynamicExp (WP7.3 step 0) -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps

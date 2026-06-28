@@ -17,6 +17,7 @@ pub(super) struct PcEnums {
     pub(super) storage_state: EnumId,
     pub(super) storage_dispatch_mode: EnumId,
     pub(super) ind_mach_slip_option: EnumId,
+    pub(super) vsc_mode: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
@@ -166,6 +167,18 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
     sopt.default_value = 0;
     let ind_mach_slip_option = push(sopt);
 
+    // VSConverter.pas TVSConverter.Create: `ModeEnum` (DefaultValue 0 = Fixed).
+    let mut vscm = DssEnum::new(
+        "VSConverter: Control Mode",
+        true,
+        1,
+        4,
+        &["Fixed", "PacVac", "PacQac", "VdcVac", "VdcQac"],
+        &[0, 1, 2, 3, 4],
+    );
+    vscm.default_value = 0;
+    let vsc_mode = push(vscm);
+
     PcEnums {
         connection,
         vsource_model,
@@ -179,5 +192,6 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         storage_state,
         storage_dispatch_mode,
         ind_mach_slip_option,
+        vsc_mode,
     }
 }

@@ -1,0 +1,107 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "vsconverter",
+ "scenarios": [
+  {
+   "name": "vsconverter_default",
+   "commands": [
+    "New VSConverter.v1 bus1=b.1.2.3.4"
+   ],
+   "target": "VSConverter.v1",
+   "properties": {
+    "Phases": "4",
+    "Bus1": "b.1.2.3.4",
+    "kVAC": "1",
+    "kVDC": "1",
+    "kW": "1",
+    "NDC": "1",
+    "RAC": "1E-12",
+    "XAC": "0",
+    "M0": "0.5",
+    "d0": "0",
+    "MMin": "0.1",
+    "MMax": "0.9",
+    "IACMax": "2",
+    "IDCMax": "2",
+    "VACRef": "0",
+    "PACRef": "0",
+    "QACRef": "0",
+    "VDCRef": "0",
+    "VSCMode": "Fixed",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "vsconverter_full",
+   "commands": [
+    "New VSConverter.v1 phases=4 Ndc=1 bus1=b.1.2.3.4 kVac=0.48 kVdc=1.0 kW=50 Rac=0.05 Xac=0.2 m0=0.6 d0=5 Mmin=0.2 Mmax=0.95 Iacmax=1.5 Idcmax=1.5 Vacref=277 Pacref=50 Qacref=10 Vdcref=1000 VscMode=PacQac"
+   ],
+   "target": "VSConverter.v1",
+   "properties": {
+    "Phases": "4",
+    "Bus1": "b.1.2.3.4",
+    "kVAC": "0.48",
+    "kVDC": "1",
+    "kW": "50",
+    "NDC": "1",
+    "RAC": "0.05",
+    "XAC": "0.2",
+    "M0": "0.6",
+    "d0": "5",
+    "MMin": "0.2",
+    "MMax": "0.95",
+    "IACMax": "1.5",
+    "IDCMax": "1.5",
+    "VACRef": "277",
+    "PACRef": "50",
+    "QACRef": "10",
+    "VDCRef": "1000",
+    "VSCMode": "PacQac",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "vsconverter_makelike",
+   "commands": [
+    "New VSConverter.base phases=4 Ndc=1 bus1=b.1.2.3.4 kVac=0.48 kVdc=1.2 kW=75 Rac=0.03 Xac=0.15 m0=0.7 VscMode=VdcVac",
+    "New VSConverter.v1 like=base bus1=c.1.2.3.4"
+   ],
+   "target": "VSConverter.v1",
+   "properties": {
+    "Phases": "4",
+    "Bus1": "c.1.2.3.4",
+    "kVAC": "0.48",
+    "kVDC": "1.2",
+    "kW": "75",
+    "NDC": "1",
+    "RAC": "0.03",
+    "XAC": "0.15",
+    "M0": "0.7",
+    "d0": "0",
+    "MMin": "0.1",
+    "MMax": "0.9",
+    "IACMax": "2",
+    "IDCMax": "2",
+    "VACRef": "0",
+    "PACRef": "0",
+    "QACRef": "0",
+    "VDCRef": "0",
+    "VSCMode": "VdcVac",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

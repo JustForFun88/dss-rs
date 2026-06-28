@@ -82,7 +82,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 680**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 681**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -126,7 +126,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 680, golden_feeders 1,
+cargo test --workspace      # dss-core lib 681, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -619,6 +619,31 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
     follow-up or once Phase-8 `Plot` lands a no-op.
 - **next:** WP7.8 (VCCS, UPFC + UPFCControl, VSConverter, ESPVLControl) — the
   converter/FACTS dynamics family.
+
+**WP7.8 (Converter/FACTS family) — 🚧 IN PROGRESS.**
+- **VSConverter (`pc/vs_converter/`) — done, gate-green.** A 2-terminal AC/DC bridge
+  (power-flow only, no dynamics state): the first `phases-Ndc` conductors are AC (a
+  voltage source `Vdc·0.353553·m0∠d0` behind `Rac+jXac`, a `YPrim_series` block), the
+  last `Ndc` are DC (a power-balance current source `Idc = Pac/|Vdc|` clamped to
+  `±IDCMax·kW/kVDC`). 19 props + the `VSCMode` enum (the 5 modes parse/dump but Pascal
+  `GetInjCurrents` only ever uses the fixed `m0/d0` — no mode-dependent behavior).
+  **Proven upstream oracle bug (NOT reproduced).** `VSConverter.GetCurrents` →
+  `GetInjCurrents(ComplexBuffer)` self-aliases `YPrim.MVMult(Curr, ComplexBuffer)`
+  (`Curr == ComplexBuffer`) then re-reads the post-mult buffer for the `Pac` estimate,
+  so the oracle's *reported* converter currents violate KCL (oracle-probed:
+  |I_ac| ≈ 1248 A self-report vs the physical ≈ 390 A; the oracle's *source* current is
+  the correct 390 A and ≠ −(self-report)). The port computes the physically-correct,
+  KCL-consistent current and deliberately does **not** reproduce the self-report bug
+  (cf. WP7.6 "не порти баг эталона"). Gate: `exec/tests/vs_converter.rs` pins the
+  oracle's correctly-reported **source** currents + the KCL tie + the DC power-balance +
+  the term-2 series mirror (a non-vacuous oracle gate that sidesteps the buggy
+  self-report); + `props/vsconverter.json` (3 scenarios). **No corpus migration** — the
+  3 VSConverter corpus decks compare the oracle's buggy currents (`vsc0/vsc1test` →
+  `skipped_oracle_issue`) or don't converge on either engine (`vsctest`, near-short).
+  lib 680 → **681**; `solvable_now` 84. (Fork-drafted; oracle bug + numerics
+  independently re-verified in the main loop before commit.)
+- **next:** VCCS (the voltage-controlled current source — real ring-buffer z-domain
+  filter dynamics, 5 corpus decks), then UPFC + UPFCControl, then ESPVLControl.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

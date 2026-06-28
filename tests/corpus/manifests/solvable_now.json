@@ -1,606 +1,606 @@
 {
- "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[].",
- "cases": [
-  {
-   "path": "Test/CapacitorConfigs.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/IEEE13_Assets.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/IEEE13_LineAndCableSpacing.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/IEEE13_LineGeometry.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/IEEE13_LineSpacing.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/IEEE13_SpacingGeometry.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/LoadTest.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/Master_TestCapInterface.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/ReactorConfigs.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/Stevenson.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/TextTsCable750MCM.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Test/XYCurvetest.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kVAlimitation-PV2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kvarlimitation-PV2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_pctPmpplimitation-PV2.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/VSConverter/SG2012.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
-   "kind": "large",
-   "post": [
-    "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
-    "Load.s1a.daily=day",
-    "Load.s2b.daily=day",
-    "Load.s4c.daily=day",
-    "Load.s5c.daily=day",
-    "Load.s6c.daily=day",
-    "Load.s7a.daily=day",
-    "Load.s9a.daily=day",
-    "Load.s10a.daily=day",
-    "Load.s11a.daily=day",
-    "Load.s12b.daily=day",
-    "Load.s16c.daily=day",
-    "Load.s17c.daily=day",
-    "Load.s19a.daily=day",
-    "Load.s20a.daily=day",
-    "Load.s22b.daily=day",
-    "Load.s24c.daily=day",
-    "Load.s28a.daily=day",
-    "Load.s29a.daily=day",
-    "Load.s30c.daily=day",
-    "Load.s31c.daily=day",
-    "Load.s32c.daily=day",
-    "Load.s33a.daily=day",
-    "Load.s34c.daily=day",
-    "Load.s35a.daily=day",
-    "Load.s37a.daily=day",
-    "Load.s38b.daily=day",
-    "Load.s39b.daily=day",
-    "Load.s41c.daily=day",
-    "Load.s42a.daily=day",
-    "Load.s43b.daily=day",
-    "Load.s45a.daily=day",
-    "Load.s46a.daily=day",
-    "Load.s47.daily=day",
-    "Load.s48.daily=day",
-    "Load.s49a.daily=day",
-    "Load.s49b.daily=day",
-    "Load.s49c.daily=day",
-    "Load.s50c.daily=day",
-    "Load.s51a.daily=day",
-    "Load.s52a.daily=day",
-    "Load.s53a.daily=day",
-    "Load.s55a.daily=day",
-    "Load.s56b.daily=day",
-    "Load.s58b.daily=day",
-    "Load.s59b.daily=day",
-    "Load.s60a.daily=day",
-    "Load.s62c.daily=day",
-    "Load.s63a.daily=day",
-    "Load.s64b.daily=day",
-    "Load.s65a.daily=day",
-    "Load.s65b.daily=day",
-    "Load.s65c.daily=day",
-    "Load.s66c.daily=day",
-    "Load.s68a.daily=day",
-    "Load.s69a.daily=day",
-    "Load.s70a.daily=day",
-    "Load.s71a.daily=day",
-    "Load.s73c.daily=day",
-    "Load.s74c.daily=day",
-    "Load.s75c.daily=day",
-    "Load.s76a.daily=day",
-    "Load.s76b.daily=day",
-    "Load.s76c.daily=day",
-    "Load.s77b.daily=day",
-    "Load.s79a.daily=day",
-    "Load.s80b.daily=day",
-    "Load.s82a.daily=day",
-    "Load.s83c.daily=day",
-    "Load.s84c.daily=day",
-    "Load.s85c.daily=day",
-    "Load.s86b.daily=day",
-    "Load.s87b.daily=day",
-    "Load.s88a.daily=day",
-    "Load.s90b.daily=day",
-    "Load.s92c.daily=day",
-    "Load.s94a.daily=day",
-    "Load.s95b.daily=day",
-    "Load.s96b.daily=day",
-    "Load.s98a.daily=day",
-    "Load.s99b.daily=day",
-    "Load.s100c.daily=day",
-    "Load.s102c.daily=day",
-    "Load.s103c.daily=day",
-    "Load.s104c.daily=day",
-    "Load.s106b.daily=day",
-    "Load.s107b.daily=day",
-    "Load.s109a.daily=day",
-    "Load.s111a.daily=day",
-    "Load.s112a.daily=day",
-    "Load.s113a.daily=day",
-    "Load.s114a.daily=day",
-    "New energymeter.m1 element=line.l115 terminal=1",
-    "New monitor.m_vi element=line.l115 terminal=1 mode=0",
-    "New monitor.m_pq element=line.l115 terminal=1 mode=1",
-    "New monitor.m_tap element=transformer.reg1a terminal=1 mode=2",
-    "set mode=daily stepsize=1h number=1"
-   ],
-   "n_steps": 24,
-   "selected_elements": [
-    "transformer.reg1a",
-    "line.l115"
-   ],
-   "check_meters_monitors": true
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
-   "kind": "feeder",
-   "post": [
-    "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
-    "Load.671.daily=day",
-    "Load.634a.daily=day",
-    "Load.634b.daily=day",
-    "Load.634c.daily=day",
-    "Load.645.daily=day",
-    "Load.646.daily=day",
-    "Load.692.daily=day",
-    "Load.675a.daily=day",
-    "Load.675b.daily=day",
-    "Load.675c.daily=day",
-    "Load.611.daily=day",
-    "Load.652.daily=day",
-    "Load.670a.daily=day",
-    "Load.670b.daily=day",
-    "Load.670c.daily=day",
-    "New energymeter.m1 element=line.650632 terminal=1",
-    "New monitor.m_vi element=line.650632 terminal=1 mode=0",
-    "New monitor.m_pq element=line.650632 terminal=1 mode=1",
-    "New monitor.m_tap element=transformer.reg1 terminal=1 mode=2",
-    "set mode=daily stepsize=1h number=1"
-   ],
-   "n_steps": 24,
-   "selected_elements": [
-    "line.650632",
-    "transformer.reg1"
-   ],
-   "check_meters_monitors": true
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
-   "kind": "feeder",
-   "post": [
-    "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
-    "Load.s701a.daily=day",
-    "Load.s701b.daily=day",
-    "Load.s701c.daily=day",
-    "Load.s712c.daily=day",
-    "Load.s713c.daily=day",
-    "Load.s714a.daily=day",
-    "Load.s714b.daily=day",
-    "Load.s718a.daily=day",
-    "Load.s720c.daily=day",
-    "Load.s722b.daily=day",
-    "Load.s722c.daily=day",
-    "Load.s724b.daily=day",
-    "Load.s725b.daily=day",
-    "Load.s727c.daily=day",
-    "Load.s728.daily=day",
-    "Load.s729a.daily=day",
-    "Load.s730c.daily=day",
-    "Load.s731b.daily=day",
-    "Load.s732c.daily=day",
-    "Load.s733a.daily=day",
-    "Load.s734c.daily=day",
-    "Load.s735c.daily=day",
-    "Load.s736b.daily=day",
-    "Load.s737a.daily=day",
-    "Load.s738a.daily=day",
-    "Load.s740c.daily=day",
-    "Load.s741c.daily=day",
-    "Load.s742a.daily=day",
-    "Load.s742b.daily=day",
-    "Load.s744a.daily=day",
-    "New energymeter.m1 element=line.l35 terminal=1",
-    "New monitor.m_vi element=line.l35 terminal=1 mode=0",
-    "New monitor.m_pq element=line.l35 terminal=1 mode=1",
-    "New monitor.m_tap element=transformer.reg1a terminal=1 mode=2",
-    "set mode=daily stepsize=1h number=1"
-   ],
-   "n_steps": 24,
-   "selected_elements": [
-    "transformer.reg1a",
-    "line.l35"
-   ],
-   "check_meters_monitors": true
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
-   "kind": "large",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
-   "kind": "large",
-   "post": [
-    "Set Maxiterations=20"
-   ],
-   "n_steps": 1,
-   "selected_elements": [
-    "line.ln5815900-1"
-   ]
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  }
- ]
+  "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[].",
+  "cases": [
+    {
+      "path": "Test/CapacitorConfigs.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/IEEE13_Assets.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/IEEE13_LineAndCableSpacing.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/IEEE13_LineGeometry.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/IEEE13_LineSpacing.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/IEEE13_SpacingGeometry.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/LoadTest.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/Master_TestCapInterface.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/ReactorConfigs.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/Stevenson.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/TextTsCable750MCM.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Test/XYCurvetest.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kVAlimitation-PV2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kvarlimitation-PV2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_pctPmpplimitation-PV2.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/VSConverter/SG2012.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+      "kind": "large",
+      "post": [
+        "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
+        "Load.s1a.daily=day",
+        "Load.s2b.daily=day",
+        "Load.s4c.daily=day",
+        "Load.s5c.daily=day",
+        "Load.s6c.daily=day",
+        "Load.s7a.daily=day",
+        "Load.s9a.daily=day",
+        "Load.s10a.daily=day",
+        "Load.s11a.daily=day",
+        "Load.s12b.daily=day",
+        "Load.s16c.daily=day",
+        "Load.s17c.daily=day",
+        "Load.s19a.daily=day",
+        "Load.s20a.daily=day",
+        "Load.s22b.daily=day",
+        "Load.s24c.daily=day",
+        "Load.s28a.daily=day",
+        "Load.s29a.daily=day",
+        "Load.s30c.daily=day",
+        "Load.s31c.daily=day",
+        "Load.s32c.daily=day",
+        "Load.s33a.daily=day",
+        "Load.s34c.daily=day",
+        "Load.s35a.daily=day",
+        "Load.s37a.daily=day",
+        "Load.s38b.daily=day",
+        "Load.s39b.daily=day",
+        "Load.s41c.daily=day",
+        "Load.s42a.daily=day",
+        "Load.s43b.daily=day",
+        "Load.s45a.daily=day",
+        "Load.s46a.daily=day",
+        "Load.s47.daily=day",
+        "Load.s48.daily=day",
+        "Load.s49a.daily=day",
+        "Load.s49b.daily=day",
+        "Load.s49c.daily=day",
+        "Load.s50c.daily=day",
+        "Load.s51a.daily=day",
+        "Load.s52a.daily=day",
+        "Load.s53a.daily=day",
+        "Load.s55a.daily=day",
+        "Load.s56b.daily=day",
+        "Load.s58b.daily=day",
+        "Load.s59b.daily=day",
+        "Load.s60a.daily=day",
+        "Load.s62c.daily=day",
+        "Load.s63a.daily=day",
+        "Load.s64b.daily=day",
+        "Load.s65a.daily=day",
+        "Load.s65b.daily=day",
+        "Load.s65c.daily=day",
+        "Load.s66c.daily=day",
+        "Load.s68a.daily=day",
+        "Load.s69a.daily=day",
+        "Load.s70a.daily=day",
+        "Load.s71a.daily=day",
+        "Load.s73c.daily=day",
+        "Load.s74c.daily=day",
+        "Load.s75c.daily=day",
+        "Load.s76a.daily=day",
+        "Load.s76b.daily=day",
+        "Load.s76c.daily=day",
+        "Load.s77b.daily=day",
+        "Load.s79a.daily=day",
+        "Load.s80b.daily=day",
+        "Load.s82a.daily=day",
+        "Load.s83c.daily=day",
+        "Load.s84c.daily=day",
+        "Load.s85c.daily=day",
+        "Load.s86b.daily=day",
+        "Load.s87b.daily=day",
+        "Load.s88a.daily=day",
+        "Load.s90b.daily=day",
+        "Load.s92c.daily=day",
+        "Load.s94a.daily=day",
+        "Load.s95b.daily=day",
+        "Load.s96b.daily=day",
+        "Load.s98a.daily=day",
+        "Load.s99b.daily=day",
+        "Load.s100c.daily=day",
+        "Load.s102c.daily=day",
+        "Load.s103c.daily=day",
+        "Load.s104c.daily=day",
+        "Load.s106b.daily=day",
+        "Load.s107b.daily=day",
+        "Load.s109a.daily=day",
+        "Load.s111a.daily=day",
+        "Load.s112a.daily=day",
+        "Load.s113a.daily=day",
+        "Load.s114a.daily=day",
+        "New energymeter.m1 element=line.l115 terminal=1",
+        "New monitor.m_vi element=line.l115 terminal=1 mode=0",
+        "New monitor.m_pq element=line.l115 terminal=1 mode=1",
+        "New monitor.m_tap element=transformer.reg1a terminal=1 mode=2",
+        "set mode=daily stepsize=1h number=1"
+      ],
+      "n_steps": 24,
+      "selected_elements": [
+        "transformer.reg1a",
+        "line.l115"
+      ],
+      "check_meters_monitors": true
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+      "kind": "feeder",
+      "post": [
+        "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
+        "Load.671.daily=day",
+        "Load.634a.daily=day",
+        "Load.634b.daily=day",
+        "Load.634c.daily=day",
+        "Load.645.daily=day",
+        "Load.646.daily=day",
+        "Load.692.daily=day",
+        "Load.675a.daily=day",
+        "Load.675b.daily=day",
+        "Load.675c.daily=day",
+        "Load.611.daily=day",
+        "Load.652.daily=day",
+        "Load.670a.daily=day",
+        "Load.670b.daily=day",
+        "Load.670c.daily=day",
+        "New energymeter.m1 element=line.650632 terminal=1",
+        "New monitor.m_vi element=line.650632 terminal=1 mode=0",
+        "New monitor.m_pq element=line.650632 terminal=1 mode=1",
+        "New monitor.m_tap element=transformer.reg1 terminal=1 mode=2",
+        "set mode=daily stepsize=1h number=1"
+      ],
+      "n_steps": 24,
+      "selected_elements": [
+        "line.650632",
+        "transformer.reg1"
+      ],
+      "check_meters_monitors": true
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
+      "kind": "feeder",
+      "post": [
+        "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
+        "Load.s701a.daily=day",
+        "Load.s701b.daily=day",
+        "Load.s701c.daily=day",
+        "Load.s712c.daily=day",
+        "Load.s713c.daily=day",
+        "Load.s714a.daily=day",
+        "Load.s714b.daily=day",
+        "Load.s718a.daily=day",
+        "Load.s720c.daily=day",
+        "Load.s722b.daily=day",
+        "Load.s722c.daily=day",
+        "Load.s724b.daily=day",
+        "Load.s725b.daily=day",
+        "Load.s727c.daily=day",
+        "Load.s728.daily=day",
+        "Load.s729a.daily=day",
+        "Load.s730c.daily=day",
+        "Load.s731b.daily=day",
+        "Load.s732c.daily=day",
+        "Load.s733a.daily=day",
+        "Load.s734c.daily=day",
+        "Load.s735c.daily=day",
+        "Load.s736b.daily=day",
+        "Load.s737a.daily=day",
+        "Load.s738a.daily=day",
+        "Load.s740c.daily=day",
+        "Load.s741c.daily=day",
+        "Load.s742a.daily=day",
+        "Load.s742b.daily=day",
+        "Load.s744a.daily=day",
+        "New energymeter.m1 element=line.l35 terminal=1",
+        "New monitor.m_vi element=line.l35 terminal=1 mode=0",
+        "New monitor.m_pq element=line.l35 terminal=1 mode=1",
+        "New monitor.m_tap element=transformer.reg1a terminal=1 mode=2",
+        "set mode=daily stepsize=1h number=1"
+      ],
+      "n_steps": 24,
+      "selected_elements": [
+        "transformer.reg1a",
+        "line.l35"
+      ],
+      "check_meters_monitors": true
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
+      "kind": "large",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
+      "kind": "large",
+      "post": [
+        "Set Maxiterations=20"
+      ],
+      "n_steps": 1,
+      "selected_elements": [
+        "line.ln5815900-1"
+      ]
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
+      "kind": "feeder",
+      "n_steps": 1
+    }
+  ]
 }

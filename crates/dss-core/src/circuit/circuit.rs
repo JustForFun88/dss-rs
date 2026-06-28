@@ -54,6 +54,7 @@ pub enum ElemKind {
     PVSystem,
     Storage,
     IndMach012,
+    VsConverter,
     Meter,
     EnergyMeter,
     Sensor,
@@ -317,6 +318,9 @@ impl Circuit {
                 self.pc_elements.push(r);
                 self.ind_machines.push(r);
             }
+            // VSConverter (Phase 7, WP7.8): a power-flow PC element; no dedicated
+            // list (nothing iterates them specifically).
+            ElemKind::VsConverter => self.pc_elements.push(r),
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),

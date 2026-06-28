@@ -89,6 +89,8 @@ pub struct EnumRegistry {
     pub storage_dispatch_mode: EnumId,
     /// 'IndMach012: Slip Option' (IndMach012.pas `SlipOptionEnum`).
     pub ind_mach_slip_option: EnumId,
+    /// 'VSConverter: Control Mode' (VSConverter.pas `ModeEnum`).
+    pub vsc_mode: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,
