@@ -408,17 +408,21 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
     assert_eq!(m.channels.len(), 12);
 
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // Oracle DynExp steady values (the swing-equation fixpoint).
-    assert!(last(0).abs() < 1e-3, "speed = {}", last(0)); // ~0
+    // Oracle DynExp steady values (the swing-equation fixpoint). The ~0 channels
+    // sit at numerical-noise zero (~2e-7); `damp` (deck-set 0, no equation) is
+    // exactly 0.
+    assert!(last(0).abs() < 1e-5, "speed = {}", last(0)); // ~0
+    assert!(last(1).abs() < 1e-5, "dspeed = {}", last(1)); // ~0
     assert!(rel(last(2), 41221132.0) < 1e-5, "mass = {}", last(2)); // 2HS/w0
     assert!(rel(last(4), 1.9979999e9) < 1e-5, "pshaft = {}", last(4));
     assert!(rel(last(6), 1.998e9) < 1e-5, "pterm = {}", last(6));
+    assert!(last(8).abs() < 1e-9, "damp = {}", last(8)); // exactly 0
     assert!(
         rel(last(10), 0.7290715) < 1e-5,
         "theta (rad) = {}",
         last(10)
     );
-    assert!(last(11).abs() < 1e-3, "dtheta = {}", last(11)); // ~0
+    assert!(last(11).abs() < 1e-5, "dtheta = {}", last(11)); // ~0
 
     // theta (rad) here equals the classic gate's Theta (41.77272 deg) — the DynExp
     // reproduces the built-in shaft model exactly.
@@ -427,11 +431,56 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
         "DynExp theta must equal the classic Theta in degrees"
     );
 
-    // The fixpoint holds for the whole run.
+    // The fixpoint holds for the whole run (≤1 f32 ULP drift, matching the classic
+    // sibling's 1e-5 bound).
     for (s, &v) in m.channels[10].iter().enumerate() {
         assert!(
-            rel(v as f64, 0.7290715) < 1e-4,
+            rel(v as f64, 0.7290715) < 1e-5,
             "theta drifted at sample {s}: {v}"
+        );
+    }
+}
+
+/// The DynamicExp fault response (parity with the classic `fault_response` gate):
+/// a 3-phase bolted fault at HT drops electrical power, so the rotor accelerates
+/// and the `theta` slot climbs monotonically. Exercises the `SolveEq` integration
+/// under a genuine disturbance (not the fixpoint hold of the steady test) and pins
+/// the fault-end `theta`/`speed` against the oracle.
+#[test]
+fn generator_dynexp_dynamics_fault_response_matches_oracle() {
+    let mut dss = kundur_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=1000");
+    dss.command("New fault.F1 phases=3 Bus1=HT");
+    dss.command("Solve number=70");
+    assert!(dss.errors().is_empty(), "fault run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("g1vars").expect("g1vars monitor");
+    assert_eq!(m.sample_count, 1 + 1000 + 70);
+    let theta = &m.channels[10]; // radians
+    let speed = &m.channels[0]; // rad/s relative to synchronous
+
+    // Pre-fault the rotor sits at the steady angle; the fault accelerates it.
+    // Oracle (dss-python 0.15.7): theta 0.7290715 -> 0.84611225 rad
+    // (= 41.77272 -> 48.478657 deg, the classic gate's 48.47866); speed -> 3.368602.
+    assert!(rel(theta[1000] as f64, 0.7290715) < 1e-5, "pre-fault theta");
+    assert!(
+        rel(theta[1070] as f64, 0.84611225) < 1e-4,
+        "end-of-fault theta (rad) = {}",
+        theta[1070]
+    );
+    assert!(
+        rel(speed[1070] as f64, 3.368602) < 1e-4,
+        "end-of-fault speed = {}",
+        speed[1070]
+    );
+    // The rotor accelerates throughout the fault (theta non-decreasing).
+    for s in 1001..=1070 {
+        assert!(
+            theta[s] >= theta[s - 1] - 1.0e-7,
+            "theta must rise under fault; dropped at sample {s}: {} -> {}",
+            theta[s - 1],
+            theta[s]
         );
     }
 }

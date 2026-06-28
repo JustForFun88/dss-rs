@@ -72,7 +72,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md).
-Current scores: dss-core **lib 675**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 676**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -861,18 +861,29 @@ and all six audit follow-ups) archived at
   on the Generator. The edit loop (`exec/command.rs`) gained the Pascal `DSSClass.Edit`
   l.1656 `ParseDynVar` fallback on the "unknown parameter" branch, via a new
   `DssObject::parse_dyn_var` (default `false`).
-  - **Gate:** 2 oracle-pinned tests (`exec/tests/dynamics.rs`, dss-python 0.15.7) on
+  - **Gate:** 3 oracle-pinned tests (`exec/tests/dynamics.rs`, dss-python 0.15.7) on
     the corpus `Dynamic_Expressions/Dynamic_KundurDynExp.dss` (Kundur Ex.13.1 with the
     6-var swing `DynamicExp` replacing `H`/`D`): **steady mode-3** — the 12 DynamicExp
     memory slots (named from the lowercased varnames) hold the swing fixpoint across
     1001 samples (theta 0.7290715 rad, mass 41221132, pshaft 1.9979999e9, pterm 1.998e9)
-    at 1e-5; **full swing** — fault + clear-by-`Open`, the undamped theta slot (radians)
-    swings 0.42211992 → 1.7127246 rad. Both also assert the DynExp trajectory **equals
-    the classic Kundur gate** scaled by 180/π (theta_rad·180/π = the classic Theta in
+    at 1e-5; **fault response** — the 70-step bolted fault accelerates the rotor
+    (theta 0.7290715 → 0.84611225 rad = 41.77 → 48.48 deg, speed → 3.368602, monotonic);
+    **full swing** — fault + clear-by-`Open`, the undamped theta slot (radians) swings
+    0.42211992 → 1.7127246 rad. Each also asserts the DynExp trajectory **equals the
+    classic Kundur gate** scaled by 180/π (theta_rad·180/π = the classic Theta in
     degrees), proving the user equation reproduces the built-in shaft model exactly.
-    lib **673 → 675**; `solvable_now` **84** (the `Dynamic_KundurDynExp` deck is also
+    lib **673 → 676**; `solvable_now` **84** (the `Dynamic_KundurDynExp` deck is also
     `Plot`/`Export`-blocked — Phase-8). `props/generator.json` is unaffected (default
     `DynamicEq`/`DynOut` dumps stay empty).
+  - **audit-tests follow-up:** verdict **sound + non-vacuous** — the auditor
+    independently re-ran the pinned oracle and reproduced **every** constant
+    bit-for-bit (steady/swing) and confirmed the value pins sit ~100–1000 f32 ULPs
+    above the quantization floor (real constraints, not noise). Acted on its three
+    Minors: added the **fault-response** test (parity with the classic 3-test set;
+    oracle-pinned theta/speed @1070 + monotonic rise), pinned the two meaningful
+    unpinned channels (**ch1 `dspeed`** ~0 + **ch8 `damp`** exactly 0), and tightened
+    the per-sample fixpoint-hold loop **1e-4 → 1e-5** (the classic sibling's bound; the
+    real drift is ≤1 ULP). lib **675 → 676**.
 - **next:** step 3b cont. — PVSystem/Storage `DynamicEq` integration. They already
   resolve the `DynamicExp` ref (WP7.3/7.4); refactor `InvBasedPceData` to embed the
   shared `DynEqPceData`, add the per-phase inverter `IntegrateStates`/`InitStateVars`
