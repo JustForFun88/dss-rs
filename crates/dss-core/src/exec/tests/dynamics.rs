@@ -320,3 +320,397 @@ fn generator_dynamics_swing_matches_oracle_kundur() {
         "Theta swing max (deg) = {tmax}"
     );
 }
+
+// ===========================================================================
+// WP7.7 step 2b — PVSystem / Storage grid-following inverter dynamics
+// (InvDynamics.TInvDynamicVars). The classic-+inverter state-variable interface
+// (PVSystem 22 vars = 13 classic + 9 InvDyn; Storage 34 = 25 + 9) is recorded by
+// a mode-3 monitor and pinned against the dss-python 0.15.7 oracle. The decks are
+// transcribed verbatim from `tools/golden`'s oracle probe (scratchpad
+// probe_inv_dyn.py); GFM / DynamicEq / UserModel paths are NOT exercised (deferred).
+// ===========================================================================
+
+/// PVSystem grid-following dynamics deck: a quasi-ideal source → short line → a
+/// 3-phase PVSystem, solved to steady state and ready to enter dynamics. A mode-3
+/// monitor `pvvars` records the 22 PVSystem state variables.
+fn pv_dyn_dss() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.pvdyn basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+         mvasc3=20000 mvasc1=21000",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=pvbus length=0.5 units=km r1=0.1 x1=0.3");
+    dss.command(
+        "New PVSystem.pv1 phases=3 bus1=pvbus kv=12.47 kVA=600 Pmpp=500 \
+         irradiance=1 %cutin=0.1 %cutout=0.1 kvar=0",
+    );
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(
+        dss.errors().is_empty(),
+        "pv steady solve: {:?}",
+        dss.errors()
+    );
+    dss.command("New Monitor.pvvars PVSystem.pv1 Term=1 mode=3");
+    dss
+}
+
+/// Storage grid-following dynamics deck: a discharging 3-phase Storage on a short
+/// feeder, solved to steady and ready to enter dynamics. A mode-3 monitor
+/// `stovars` records the 34 Storage state variables (incl. the SOC `kWh`, which
+/// must integrate during the dynamics run — Pascal `UpdateStorage` exits early
+/// only for `IsDynamicModel AND IsUserModel`, and user models are NOT_PORTED).
+fn sto_dyn_dss() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.stodyn basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+         mvasc3=20000 mvasc1=21000",
+    );
+    dss.command("New Line.l1 bus1=sourcebus bus2=stobus length=0.5 units=km r1=0.1 x1=0.3");
+    dss.command(
+        "New Storage.st1 phases=3 bus1=stobus kv=12.47 kWrated=500 kWhrated=1000 \
+         kWhstored=1000 %stored=100 state=discharging %discharge=100 \
+         %cutin=0.1 %cutout=0.1",
+    );
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(
+        dss.errors().is_empty(),
+        "sto steady solve: {:?}",
+        dss.errors()
+    );
+    dss.command("New Monitor.stovars Storage.st1 Term=1 mode=3");
+    dss
+}
+
+const PV_VAR_NAMES: [&str; 22] = [
+    "Irradiance",
+    "PanelkW",
+    "P_TFactor",
+    "Efficiency",
+    "Vreg",
+    "Vavg (DRC)",
+    "volt-var",
+    "volt-watt",
+    "DRC",
+    "VV_DRC",
+    "watt-pf",
+    "watt-var",
+    "kW_out_desired",
+    "Grid voltage",
+    "di/dt",
+    "it",
+    "it History",
+    "Rated VDC",
+    "Avg duty cycle",
+    "Target (Amps)",
+    "Series L",
+    "Max. Amps (phase)",
+];
+
+const STO_VAR_NAMES: [&str; 34] = [
+    "kWh",
+    "State",
+    "kWOut",
+    "kWIn",
+    "kvarOut",
+    "DCkW",
+    "kWTotalLosses",
+    "kWInvLosses",
+    "kWIdlingLosses",
+    "kWChDchLosses",
+    "kWh Chng",
+    "InvEff",
+    "InverterON",
+    "Vref",
+    "Vavg (DRC)",
+    "VV Oper",
+    "VW Oper",
+    "DRC Oper",
+    "VV_DRC Oper",
+    "WP Oper",
+    "WV Oper",
+    "kWDesired",
+    "kW VW Limit",
+    "Limit kWOut Function",
+    "kVA Exceeded",
+    "Grid voltage",
+    "di/dt",
+    "it",
+    "it History",
+    "Rated VDC",
+    "Avg duty cycle",
+    "Target (Amps)",
+    "Series L",
+    "Max. Amps (phase)",
+];
+
+/// PVSystem dynamics, undisturbed: the grid-following inverter integrates its
+/// filter current to the steady operating point. The mode-3 monitor trajectory
+/// (every InvDyn + classic variable) matches the oracle. The duty cycle saturates
+/// at 1, so `it` relaxes from its init value (20.55) to the rail-limited steady
+/// value (6.17) while `di/dt` decays to 0 — a genuine integration transient.
+#[test]
+fn pvsystem_dynamics_mode3_matches_oracle() {
+    let mut dss = pv_dyn_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    assert!(
+        dss.errors().is_empty(),
+        "enter dynamics: {:?}",
+        dss.errors()
+    );
+    dss.command("Solve number=200");
+    assert!(dss.errors().is_empty(), "dynamic run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("pvvars").expect("pvvars monitor");
+    assert_eq!(
+        &m.header[2..],
+        PV_VAR_NAMES,
+        "mode-3 header = 22 PV var names"
+    );
+    assert_eq!(m.sample_count, 201);
+    assert_eq!(m.channels.len(), 22);
+    let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
+
+    // Classic vars 1..13 are constant over the undisturbed run (no InvControl).
+    for (ch, want) in [
+        (0, 1.0),        // Irradiance
+        (1, 500.0),      // PanelkW
+        (2, 1.0),        // P_TFactor
+        (3, 1.0),        // Efficiency
+        (4, 9999.0),     // Vreg
+        (12, 500.0),     // kW_out_desired
+        (17, 8000.0),    // Rated VDC
+        (21, 23.149570), // Max. Amps (phase)
+    ] {
+        assert!(rel(at(ch, 200), want) < 1e-5, "PV ch{ch} = {}", at(ch, 200));
+    }
+    // The InvControl op-flag vars (5..11) sit at the 9999 default.
+    for ch in 5..=11 {
+        assert!(
+            rel(at(ch, 200), 9999.0) < 1e-5,
+            "PV op ch{ch} = {}",
+            at(ch, 200)
+        );
+    }
+
+    // Inverter-dynamics channels at the start of the run (sample 0).
+    assert!(
+        rel(at(13, 0), 7200.5923) < 1e-4,
+        "PV Vgrid[0] = {}",
+        at(13, 0)
+    );
+    assert!(
+        rel(at(14, 0), -5193.585) < 1e-4,
+        "PV di/dt[0] = {}",
+        at(14, 0)
+    );
+    assert!(rel(at(15, 0), 20.548918) < 1e-4, "PV it[0] = {}", at(15, 0));
+    assert!(
+        rel(at(16, 0), 23.145710) < 1e-4,
+        "PV itHist[0] = {}",
+        at(16, 0)
+    );
+    assert!(
+        rel(at(19, 0), 23.146244) < 1e-4,
+        "PV ISP[0] = {}",
+        at(19, 0)
+    );
+    // ...and at the settled end (sample 200).
+    assert!(
+        rel(at(13, 200), 7199.8784) < 1e-4,
+        "PV Vgrid = {}",
+        at(13, 200)
+    );
+    assert!(
+        at(14, 200).abs() < 1e-3,
+        "PV di/dt settled = {}",
+        at(14, 200)
+    );
+    assert!(
+        rel(at(15, 200), 6.1745348) < 1e-4,
+        "PV it = {}",
+        at(15, 200)
+    );
+    assert!(
+        rel(at(16, 200), 6.1745348) < 1e-4,
+        "PV itHist = {}",
+        at(16, 200)
+    );
+    assert!(
+        rel(at(18, 200), 1.0) < 1e-5,
+        "PV duty (rail) = {}",
+        at(18, 200)
+    );
+    assert!(
+        rel(at(19, 200), 23.148539) < 1e-4,
+        "PV ISP = {}",
+        at(19, 200)
+    );
+    assert!(
+        rel(at(20, 200), 0.34373245) < 1e-5,
+        "PV Series L = {}",
+        at(20, 200)
+    );
+}
+
+/// PVSystem dynamics under a bolted 3-phase fault at the PV bus: the terminal
+/// voltage collapses below MinVS, so the inverter enters safe mode — `it`/`di/dt`
+/// drive to 0, the duty cycle drops to 0, and the current target is forced to the
+/// 0.01 A "off" value. Pins the safe-mode branch of `SolveModulation`.
+#[test]
+fn pvsystem_dynamics_safe_mode_under_fault_matches_oracle() {
+    let mut dss = pv_dyn_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=200");
+    dss.command("New Fault.F1 phases=3 Bus1=pvbus");
+    dss.command("Solve number=100");
+    assert!(dss.errors().is_empty(), "pv fault run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("pvvars").expect("pvvars monitor");
+    assert_eq!(m.sample_count, 301);
+    let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    assert!(
+        rel(last(13), 4.3397388) < 1e-3,
+        "PV Vgrid (faulted) = {}",
+        last(13)
+    );
+    assert!(last(14).abs() < 1e-3, "PV di/dt (safe) = {}", last(14));
+    assert!(last(15).abs() < 1e-4, "PV it (safe) = {}", last(15));
+    assert!(last(16).abs() < 1e-4, "PV itHist (safe) = {}", last(16));
+    assert!(last(18).abs() < 1e-4, "PV duty (safe) = {}", last(18));
+    assert!(rel(last(19), 0.01) < 1e-4, "PV ISP (off) = {}", last(19));
+}
+
+/// Storage grid-following dynamics, undisturbed: a discharging Storage ramps its
+/// inverter current to deliver its rated 500 kW, the duty cycle is PI-controlled
+/// (not railed), and the state of charge `kWh` integrates downward. Every mode-3
+/// channel — incl. the discharge/idle/total/inverter loss breakdown and the SOC
+/// trajectory — matches the oracle.
+#[test]
+fn storage_dynamics_mode3_matches_oracle() {
+    let mut dss = sto_dyn_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    assert!(
+        dss.errors().is_empty(),
+        "enter dynamics: {:?}",
+        dss.errors()
+    );
+    dss.command("Solve number=200");
+    assert!(dss.errors().is_empty(), "dynamic run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("stovars").expect("stovars monitor");
+    assert_eq!(
+        &m.header[2..],
+        STO_VAR_NAMES,
+        "mode-3 header = 34 Storage var names"
+    );
+    assert_eq!(m.sample_count, 201);
+    assert_eq!(m.channels.len(), 34);
+    let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
+
+    // SOC integrates during the dynamics run (the WP7.4 `is_dynamic_model`
+    // early-return in `update_storage` was a latent simplification corrected here):
+    // kWh starts at the rated 1000 and drops monotonically as the unit discharges.
+    assert!(rel(at(0, 0), 1000.0) < 1e-9, "SOC[0] = {}", at(0, 0));
+    assert!(
+        rel(1000.0 - at(0, 100), 0.0046997) < 2e-3,
+        "SOC drop@100 = {}",
+        1000.0 - at(0, 100)
+    );
+    assert!(
+        rel(1000.0 - at(0, 200), 0.020080566) < 2e-3,
+        "SOC drop@200 = {}",
+        1000.0 - at(0, 200)
+    );
+
+    // Last-sample state vector (steady discharge at rated power).
+    for (ch, want, tol) in [
+        (1usize, 1.0, 1e-5),    // State = DISCHARGING
+        (2, 500.08337, 1e-4),   // kWOut
+        (5, 500.08337, 1e-4),   // DCkW
+        (6, 61.120377, 1e-4),   // kWTotalLosses
+        (8, 5.0, 1e-4),         // kWIdlingLosses
+        (9, 56.120377, 1e-4),   // kWChDchLosses
+        (11, 1.0, 1e-5),        // InvEff
+        (12, 1.0, 1e-5),        // InverterON
+        (21, 500.0, 1e-5),      // kWDesired
+        (24, 1.0, 1e-5),        // kVA Exceeded
+        (25, 7200.7583, 1e-4),  // Grid voltage
+        (26, 111.64898, 1e-4),  // di/dt
+        (27, 44.981205, 1e-4),  // it
+        (28, 44.925381, 1e-4),  // it History
+        (29, 8000.0, 1e-5),     // Rated VDC
+        (30, 0.90585142, 1e-4), // Avg duty cycle
+        (31, 23.145710, 1e-4),  // Target (Amps)
+        (32, 0.41247895, 1e-5), // Series L
+    ] {
+        assert!(rel(at(ch, 200), want) < tol, "STO ch{ch} = {}", at(ch, 200));
+    }
+    assert!(at(7, 200).abs() < 1e-4, "STO kWInvLosses = {}", at(7, 200)); // ideal inverter
+    assert!(at(3, 200).abs() < 1e-4, "STO kWIn = {}", at(3, 200));
+
+    // The current ramp from rest (sample 0) is PI-controlled, not railed.
+    assert!(
+        rel(at(26, 0), 2.9092627) < 1e-4,
+        "STO di/dt[0] = {}",
+        at(26, 0)
+    );
+    assert!(
+        rel(at(27, 0), 0.0014546313) < 5e-3,
+        "STO it[0] = {}",
+        at(27, 0)
+    );
+    assert!(at(28, 0).abs() < 1e-5, "STO itHist[0] = {}", at(28, 0));
+    assert!(
+        rel(at(30, 0), 0.90009481) < 1e-4,
+        "STO duty[0] = {}",
+        at(30, 0)
+    );
+    // Mid-run the inverter is still ramping (kWOut < rated).
+    assert!(
+        rel(at(2, 100), 415.29892) < 1e-4,
+        "STO kWOut@100 = {}",
+        at(2, 100)
+    );
+    assert!(
+        rel(at(27, 100), 19.225319) < 1e-4,
+        "STO it@100 = {}",
+        at(27, 100)
+    );
+}
+
+/// Storage dynamics under a bolted 3-phase fault: the terminal voltage collapses,
+/// so the discharging inverter trips to IDLING (State 1 → 0), output goes to 0,
+/// and the SOC stops discharging. Pins the `IntegrateStates` MinVS/MaxVS trip
+/// branch and the state-flip path.
+#[test]
+fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
+    let mut dss = sto_dyn_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=200");
+    dss.command("New Fault.F1 phases=3 Bus1=stobus");
+    dss.command("Solve number=100");
+    assert!(dss.errors().is_empty(), "sto fault run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("stovars").expect("stovars monitor");
+    assert_eq!(m.sample_count, 301);
+    let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    assert!(
+        (last(1) - 0.0).abs() < 1e-6,
+        "STO State (idle) = {}",
+        last(1)
+    );
+    assert!(last(2).abs() < 1e-4, "STO kWOut (idle) = {}", last(2));
+    assert!(last(21).abs() < 1e-4, "STO kWDesired (idle) = {}", last(21));
+    // SOC stopped discharging near where it was when the fault hit.
+    assert!(
+        rel(last(0), 999.9797) < 1e-5,
+        "STO SOC (frozen) = {}",
+        last(0)
+    );
+}

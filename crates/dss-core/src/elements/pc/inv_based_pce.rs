@@ -30,6 +30,12 @@ use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::ElemRef;
+use crate::support::complexutil::Polar;
+use crate::support::dynamics::IterationFlag;
+use crate::support::mathutil::PiCtrl;
+
+/// Pascal `NumInvDynVars = 9` (InvDynamics.pas l.61).
+pub const NUM_INV_DYN_VARS: usize = 9;
 
 /// Pascal `Connection: Integer` on `TInvBasedPCE` (0 = line-neutral/wye,
 /// 1 = delta). Mirrors `generator::Connection`; kept local so the inverter base
@@ -41,13 +47,8 @@ pub enum Connection {
 }
 
 /// Pascal `TInvDynamicVars` (`Shared/InvDynamics.pas`) — the per-inverter
-/// dynamics/GFM state record. Only the **scalar** fields are ported here (they
-/// back catalog properties and the base `Create` defaults); the per-phase array
-/// fields (`Vgrid`/`it`/`dit`/`itHistory`/`VDelta`/`ISPDelta`/`AngDelta`/`m`/
-/// `SfModePhase`) and every method (`SolveDynamicStep`/`SolveModulation`/
-/// `FixPhaseAngle`/`CalcGFMYprim`/`CalcGFMVoltage`/`InitDynArrays`/
-/// `Get_InvDynValue`/`Set_InvDynValue`/`Get_InvDynName`) are dynamics-only —
-/// WP7.7.
+/// dynamics/GFM state record. Scalars back catalog properties; per-phase arrays
+/// and methods are the GFL dynamics machinery (WP7.7 step 2b).
 #[derive(Debug, Clone)]
 pub struct InvDynamicVars {
     /// `iMaxPPhase` — max amps per phase (dynamics target).
@@ -94,12 +95,31 @@ pub struct InvDynamicVars {
     pub reset_ibr: bool,
     /// `SafeMode` — inverter entered safe mode (property `SafeMode`).
     pub safe_mode: bool,
+
+    // --- per-phase array fields (WP7.7 step 2b; GFL dynamics) ---
+    // `VDelta` (GFM-only) is intentionally absent.
+    /// `Vgrid` — grid voltage at the point of connection per phase (polar).
+    pub vgrid: Vec<Polar>,
+    /// `dit` — current first derivative per phase.
+    pub dit: Vec<f64>,
+    /// `it` — current integration per phase.
+    pub it: Vec<f64>,
+    /// `itHistory` — shift register for `it`.
+    pub it_history: Vec<f64>,
+    /// `m` — average duty cycle per phase.
+    pub m: Vec<f64>,
+    /// `ISPDelta` — GFM current-target delta; zeroed in GFL init (GFM: WP7.7 later).
+    pub isp_delta: Vec<f64>,
+    /// `AngDelta` — phase-angle correction (GFM); zeroed in GFL init.
+    pub ang_delta: Vec<f64>,
+    /// `SfModePhase` — per-phase safe-mode flag.
+    pub sf_mode_phase: Vec<bool>,
 }
 
 impl InvDynamicVars {
     /// Pascal `TInvBasedPCE.Create`'s `with dynVars` block: `ILimit := -1`
     /// (no amps limit), `IComp := 0`, `VError := 0.8`. Every other scalar starts
-    /// at 0/false and is set by the concrete subclass `Create`/`RecalcElementData`.
+    /// at 0/false; per-phase arrays are empty until `init_dyn_arrays` sizes them.
     pub fn new() -> Self {
         Self {
             i_max_p_phase: 0.0,
@@ -123,6 +143,156 @@ impl InvDynamicVars {
             discharging: false,
             reset_ibr: false,
             safe_mode: false,
+            vgrid: Vec::new(),
+            dit: Vec::new(),
+            it: Vec::new(),
+            it_history: Vec::new(),
+            m: Vec::new(),
+            isp_delta: Vec::new(),
+            ang_delta: Vec::new(),
+            sf_mode_phase: Vec::new(),
+        }
+    }
+
+    /// Pascal `TInvDynamicVars.InitDynArrays` (l.304): resize and zero all
+    /// per-phase arrays. Called by `InitStateVars` of both PVSystem and Storage.
+    pub fn init_dyn_arrays(&mut self, nphases: usize) {
+        self.dit = vec![0.0; nphases];
+        self.it = vec![0.0; nphases];
+        self.it_history = vec![0.0; nphases];
+        self.vgrid = vec![Polar { mag: 0.0, ang: 0.0 }; nphases];
+        self.m = vec![0.0; nphases];
+        self.isp_delta = vec![0.0; nphases];
+        self.ang_delta = vec![0.0; nphases];
+        self.sf_mode_phase = vec![false; nphases];
+        self.safe_mode = false;
+        // VDelta is GFM-only — NOT_PORTED (WP7.7 GFM step).
+    }
+
+    /// Pascal `TInvDynamicVars.SolveModulation` (l.178) — update the duty cycle
+    /// for phase `i` using the PI controller `pi`. Runs only on the corrector
+    /// pass: Pascal `if IterationFlag=0 then Exit` (0 == `NewTimeStep`), so we
+    /// return early on the predictor.
+    pub fn solve_modulation(&mut self, iteration_flag: IterationFlag, i: usize, pi: &mut PiCtrl) {
+        if iteration_flag == IterationFlag::NewTimeStep {
+            return;
+        }
+
+        let i_error = self.isp - self.it[i];
+        let i_error_pct = if self.isp != 0.0 {
+            i_error / self.isp
+        } else {
+            0.0
+        };
+
+        if i_error_pct.abs() > self.ctrl_tol {
+            let i_delta = pi.solve_pi(i_error);
+            let d_cycle = self.m[i] + i_delta;
+
+            if self.vgrid[i].mag > self.min_vs || self.min_vs == 0.0 {
+                if self.safe_mode || self.sf_mode_phase[i] {
+                    // Coming back from safe operation — boost duty cycle.
+                    self.m[i] = ((self.rs * self.it[i]) + self.vgrid[i].mag) / self.rated_vdc;
+                    self.safe_mode = false;
+                    self.sf_mode_phase[i] = false;
+                } else if d_cycle <= 1.0 && d_cycle > 0.0 {
+                    self.m[i] = d_cycle;
+                }
+            } else {
+                self.m[i] = 0.0;
+                self.it[i] = 0.0;
+                self.it_history[i] = 0.0;
+                self.safe_mode = true;
+                self.sf_mode_phase[i] = true;
+            }
+        }
+    }
+
+    /// Pascal `TInvDynamicVars.SolveDynamicStep` (l.168): call
+    /// `solve_modulation` then compute `dit[i]`.
+    pub fn solve_dynamic_step(&mut self, iteration_flag: IterationFlag, i: usize, pi: &mut PiCtrl) {
+        self.solve_modulation(iteration_flag, i, pi);
+        if self.safe_mode {
+            self.dit[i] = 0.0;
+        } else {
+            self.dit[i] =
+                ((self.m[i] * self.rated_vdc) - (self.rs * self.it[i]) - self.vgrid[i].mag)
+                    / self.ls;
+        }
+    }
+
+    /// Pascal `TInvDynamicVars.Get_InvDynValue` (l.69) — return the state
+    /// variable at 0-based index `var_idx`. Reports the **last** phase
+    /// (`num_phases - 1`) for the per-phase arrays, exactly as Pascal does.
+    pub fn get_inv_dyn_value(&self, var_idx: usize, num_phases: usize) -> f64 {
+        let last = num_phases.saturating_sub(1);
+        match var_idx {
+            0 => self.vgrid.get(last).map_or(0.0, |p| p.mag),
+            1 => *self.dit.get(last).unwrap_or(&0.0),
+            2 => *self.it.get(last).unwrap_or(&0.0),
+            3 => *self.it_history.get(last).unwrap_or(&0.0),
+            4 => self.rated_vdc,
+            5 => *self.m.first().unwrap_or(&0.0),
+            6 => self.isp,
+            7 => self.ls,
+            8 => self.i_max_p_phase,
+            _ => 0.0,
+        }
+    }
+
+    /// Pascal `TInvDynamicVars.Get_InvDynName` (l.140).
+    pub fn get_inv_dyn_name(var_idx: usize) -> &'static str {
+        match var_idx {
+            0 => "Grid voltage",
+            1 => "di/dt",
+            2 => "it",
+            3 => "it History",
+            4 => "Rated VDC",
+            5 => "Avg duty cycle",
+            6 => "Target (Amps)",
+            7 => "Series L",
+            8 => "Max. Amps (phase)",
+            _ => "Unknown variable",
+        }
+    }
+
+    /// Pascal `TInvDynamicVars.Set_InvDynValue` (l.112) — set the state
+    /// variable at 0-based index `var_idx`. Indices 0 and 6 are read-only in
+    /// Pascal (bare `;`); mirrored here.
+    pub fn set_inv_dyn_value(&mut self, var_idx: usize, value: f64) {
+        match var_idx {
+            0 => {} // read-only (Vgrid.mag)
+            1 => {
+                if let Some(v) = self.dit.first_mut() {
+                    *v = value;
+                }
+            }
+            2 => {
+                if let Some(v) = self.it.first_mut() {
+                    *v = value;
+                }
+            }
+            3 => {
+                if let Some(v) = self.it_history.first_mut() {
+                    *v = value;
+                }
+            }
+            4 => {
+                self.rated_vdc = value;
+            }
+            5 => {
+                if let Some(v) = self.m.first_mut() {
+                    *v = value;
+                }
+            }
+            6 => {} // read-only (ISP)
+            7 => {
+                self.ls = value;
+            }
+            8 => {
+                self.i_max_p_phase = value;
+            }
+            _ => {} // no-op (Pascal TODO: error out)
         }
     }
 }
@@ -138,8 +308,12 @@ impl Default for InvDynamicVars {
 /// set its fields in their own `Create`/`RecalcElementData`.
 #[derive(Debug, Clone)]
 pub struct InvBasedPceData {
-    /// `dynVars` — the dynamics/GFM scalar state (arrays/methods: WP7.7).
+    /// `dynVars` — the dynamics/GFM state record (scalars + per-phase arrays).
     pub dyn_vars: InvDynamicVars,
+    /// `PICtrl` array — one PI controller per phase, sized by `InitStateVars`.
+    /// Kept separate from `dyn_vars` so both can be borrowed independently in
+    /// the per-phase dynamics loop.
+    pub pi_ctrl: Vec<PiCtrl>,
     /// `GFM_Mode` — grid-forming-inverter mode flag.
     pub gfm_mode: bool,
     /// `InverterON` — inverter currently energized.
@@ -288,6 +462,7 @@ impl InvBasedPceData {
     pub fn new() -> Self {
         Self {
             dyn_vars: InvDynamicVars::new(),
+            pi_ctrl: Vec::new(),
             gfm_mode: false,
             inverter_on: false,
             var_mode: 0,

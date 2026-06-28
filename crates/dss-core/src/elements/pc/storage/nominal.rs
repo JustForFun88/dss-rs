@@ -157,7 +157,7 @@ impl Storage {
 
     /// Pascal `ComputePresentkW`: derive the present terminal kW from the state +
     /// dispatch. Idling output is only the idling losses.
-    fn compute_present_kw(&mut self) {
+    pub(super) fn compute_present_kw(&mut self) {
         let old_state = self.f_state;
         self.state_desired = old_state;
         match self.f_state {

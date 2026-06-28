@@ -112,7 +112,7 @@ impl Storage {
     }
 
     /// Pascal `Get_kWIdlingLosses`.
-    fn kw_idling_losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+    pub(super) fn kw_idling_losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         if self.f_state == STORE_IDLING {
             self.dckw(sys, node_v).abs() // consistency with voltage variations
         } else {
@@ -121,7 +121,7 @@ impl Storage {
     }
 
     /// `DCkW` property (recomputes `ComputeDCkW`, like the Pascal `Get_DCkW`).
-    fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+    pub(super) fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         self.compute_dckw(sys, node_v);
         self.f_dckw
     }
@@ -132,10 +132,10 @@ impl Storage {
     pub fn update_storage(&mut self, sys: &SysCtx, node_v: &[Complex64], interval_hrs: f64) {
         self.kwh_before_update = self.kwh_stored; // keep for the "kWh Chng" variable
 
-        // The user model handles SOC in dynamics mode (never ported here).
-        if sys.is_dynamic_model {
-            return;
-        }
+        // Pascal: `if IsDynamicModel and IsUserModel then Exit`.
+        // `IsUserModel` (DynaModel.Exists) is NOT_PORTED (always false), so the
+        // SOC update runs in dynamics mode too (GFL inverter delivers real power).
+        // Do not skip here.
 
         match self.f_state {
             STORE_DISCHARGING => {

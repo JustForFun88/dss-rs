@@ -123,7 +123,7 @@ impl PVSystem {
     }
 
     /// Pascal `CalcYPrimContribution`: `InjCurrent = Yprim · V(node)`.
-    fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
+    pub(super) fn calc_yprim_contribution(&mut self, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
         let cd = &mut self.cd;
         if let Some(yprim) = &cd.yprim {
@@ -233,13 +233,9 @@ impl PVSystem {
     }
 
     /// Pascal `CalcPVSystemModelContribution`: dispatch the power-flow model.
-    /// The dynamics (`DoDynamicMode`) and harmonic (`DoHarmonicMode`)
-    /// contributions are genuinely unreachable from a power-flow solve (those
-    /// solve modes still error before any element runs) and land in WP7.6/7.7.
-    /// The grid-forming (`DoGFM_Mode`) contribution is **also** WP7.7, but
-    /// `ControlMode=GFM` is a settable per-element property, so it *is* reachable
-    /// — guarded with an explicit "not ported" error rather than silently running
-    /// the regular PQ model (which would give plausible-but-wrong numbers).
+    /// The dynamics (`DoDynamicMode`) guard fires FIRST (Pascal checks
+    /// `IsDynamicModel` before harmonics or GFM). Harmonics and GFM are
+    /// checked next. The remaining branches are the power-flow models.
     pub(super) fn calc_pvsystem_model_contribution(
         &mut self,
         sys: &SysCtx,
@@ -247,6 +243,13 @@ impl PVSystem {
         errors: &mut Vec<String>,
     ) {
         self.cd.iterminal_updated = false;
+
+        // Dynamics guard — mirrors generator/solve.rs l.404-415.
+        if sys.is_dynamic_model {
+            self.do_dynamic_mode(sys, node_v, errors);
+            return;
+        }
+
         // Harmonics (above the fundamental) inject the spectrum-scaled Thevenin
         // source — checked before GFM, matching Pascal's dispatch order.
         if sys.is_harmonic_model && sys.frequency != sys.fundamental {
