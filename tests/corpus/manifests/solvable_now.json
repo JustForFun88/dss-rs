@@ -123,17 +123,17 @@
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
-   "kind": "feeder",
+   "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
-   "kind": "feeder",
+   "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
-   "kind": "feeder",
+   "kind": "large",
    "n_steps": 1
   },
   {
@@ -368,7 +368,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
-   "kind": "feeder",
+   "kind": "large",
    "post": [
     "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
     "Load.s1a.daily=day",
@@ -583,7 +583,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
-   "kind": "feeder",
+   "kind": "large",
    "n_steps": 1
   },
   {

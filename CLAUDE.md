@@ -86,6 +86,13 @@ read feeders from that vendored corpus, never from `.inputs/` at runtime.
   Such a floor is NOT a `TODO(compat)` and must not be "fixed" — forcing the
   residual to 0 *diverges* from the oracle = a real port bug. (Documented at the
   `dSpeed` pins in `exec/tests/dynamics.rs`.)
+- **Never loosen a test tolerance to make a failing oracle comparison pass — no
+  fudging.** The tier floors in `tests/harness` (`Tolerances`/`tol_for`, see
+  `tests/TOLERANCE_NOTES.md`) are calibrated to *proven* f64/f32/faer-vs-KLU
+  reality. A Rust↔oracle gap above its floor is a porting **bug**: find and fix the
+  root cause (per the two rules above), never widen the band to hide it. Tolerances
+  change only with empirical proof of the floor — they tighten far more often than
+  they loosen, and are *never* relaxed to mask a divergence.
 - **Commit messages: keep them short.** A concise subject line plus, only if
   needed, 1–3 short bullets — not half a page. State *what changed and why* in a
   sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not

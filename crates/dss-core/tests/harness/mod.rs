@@ -102,31 +102,6 @@ impl Golden {
     }
 }
 
-/// Tolerance policy from PORTING_PLAN.md §4. Discrete states (taps, switch
-/// positions, iteration counts) are compared exactly, not through this.
-#[derive(Debug, Clone, Copy)]
-pub struct Tolerances {
-    /// Relative tolerance for node voltages.
-    pub voltage_rel: f64,
-    /// Absolute floor below which voltage differences are ignored (volts).
-    pub voltage_abs_floor: f64,
-    /// Relative tolerance for powers and losses.
-    pub power_rel: f64,
-    /// Relative tolerance for energy-meter accumulations.
-    pub energy_rel: f64,
-}
-
-impl Default for Tolerances {
-    fn default() -> Self {
-        Self {
-            voltage_rel: 1e-6,
-            voltage_abs_floor: 1e-9,
-            power_rel: 1e-6,
-            energy_rel: 1e-4,
-        }
-    }
-}
-
 /// Split a value string into its non-numeric "skeleton" (each number replaced
 /// by `#`) and the list of numbers it contains — the property-dump comparator
 /// (PORTING_PLAN.md §4: numbers with tolerance, structure exactly).
@@ -240,8 +215,8 @@ pub fn assert_complex_close(
 // committed schema-2 goldens) and the live corpus gate (`corpus_live.rs`,
 // against the pinned oracle at test time). Both compare the captured electrical
 // model — system Y, element YPrim, injection vector, element currents/powers,
-// and discrete control state — using the same tolerance policy (`Tol`/
-// `tol_for`). See tests/TOLERANCE_NOTES.md for the per-field rationale.
+// and discrete control state — using the same tolerance policy
+// (`Tolerances`/`tol_for`). See tests/TOLERANCE_NOTES.md for the per-field rationale.
 // ---------------------------------------------------------------------------
 
 /// Full assembled-Y CSC coordinates (micro/feeder scenarios); `(rows[k],
@@ -293,9 +268,17 @@ pub struct Injection {
     pub im: Vec<f64>,
 }
 
-/// Per-scenario-kind tolerances (see tests/TOLERANCE_NOTES.md). Discrete state
-/// is always exact and never goes through this.
-pub struct Tol {
+/// Tolerance policy (PORTING_PLAN.md §4; per-field rationale in
+/// tests/TOLERANCE_NOTES.md): the per-scenario-kind relative/absolute tolerances,
+/// built by [`tol_for`]. Discrete state (taps, switch positions, iteration
+/// counts) is always compared exactly and never goes through this.
+///
+/// DO NOT loosen these to make a failing oracle comparison pass. Every floor is
+/// calibrated to *proven* f64/f32/faer-vs-KLU reality; a Rust↔oracle gap above its
+/// floor is a porting **bug** — find the cause, never widen the band to hide it
+/// (CLAUDE.md §"conditioning"). They tighten with proof, never loosen to mask a
+/// divergence.
+pub struct Tolerances {
     pub v_rel: f64,
     pub v_abs: f64,
     pub y_rel: f64,
@@ -303,32 +286,62 @@ pub struct Tol {
     /// Currents (A) and powers (kW/kvar) of elements + the injection vector.
     pub i_rel: f64,
     pub i_abs: f64,
+    /// EnergyMeter register accumulations (kWh/kvarh/...): the integration policy
+    /// (PORTING_PLAN §4), looser than the per-step electrical quantities because
+    /// rounding accumulates over the run.
+    pub energy_rel: f64,
+    pub energy_abs: f64,
 }
 
 /// Map a scenario `kind` to its tolerance class.
-pub fn tol_for(kind: &str) -> Tol {
+pub fn tol_for(kind: &str) -> Tolerances {
     match kind {
         // Micro circuits: everything to ~1e-9 rel; small abs floors below
         // physical significance (volts / siemens / amps).
-        "micro" => Tol {
+        "micro" => Tolerances {
             v_rel: 1e-9,
             v_abs: 1e-6,
             y_rel: 1e-9,
             y_abs: 1e-6,
             i_rel: 1e-9,
             i_abs: 1e-6,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
         },
-        // Feeders / large networks: voltages/admittances/currents 1e-6 rel. The
-        // abs floors absorb dead-end / cancellation quantities (µA branch
-        // currents, kW that sum to ~0) where 1e-6-rel voltage agreement caps
-        // absolute agreement.
-        _ => Tol {
-            v_rel: 1e-6,
+        // Standard feeders (IEEE13/37/123 and the simpler Test/ circuits): the
+        // assembled Y is deterministic (1e-8); voltages hold 1e-8 and
+        // currents/powers 1e-7 rel / 1e-5 abs — empirically verified over every
+        // feeder-kind corpus case (corpus_live). The stiff minority that can't make
+        // this floor is reclassified `large` (below): 4Bus-YYD voltages match only
+        // ~7e-8, and the PVSystem `CurrentkvarLimite` `Vsource` current differs
+        // ~1.2e-4 A.
+        "feeder" => Tolerances {
+            v_rel: 1e-8,
             v_abs: 1e-6,
-            y_rel: 1e-6,
-            y_abs: 1e-3,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-7,
+            i_abs: 1e-5,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
+        // Large / numerically-stiff networks (EPRI ckt5, 8500-node, A-Diakoptics
+        // torn zones, inverter cases, 4Bus-YYD): voltages 1e-7; the deterministic Y
+        // still holds 1e-8. Currents/powers stay 1e-6 rel / 1e-4 abs — their
+        // faer-vs-KLU floor (EPRI ckt5 `Line.mdv201_c_1_266_abc8079` conductor power
+        // ~1.3e-6; a PVSystem `Vsource` current ~1.2e-4 A; high-voltage near-zero
+        // through-currents ×20 kV). The abs floors absorb dead-end / cancellation
+        // quantities (µA branch currents, kW that sum to ~0). Also the safe default
+        // for an unrecognized kind.
+        _ => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 1e-6,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
             i_rel: 1e-6,
             i_abs: 1e-4,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
         },
     }
 }
@@ -345,7 +358,13 @@ fn y_coord_map(y: &YMat) -> BTreeMap<(usize, usize), Complex64> {
 /// Compare the assembled system Y entry-by-entry over the union of both
 /// patterns. Reports the worst offenders (largest |rel|) with node names, the
 /// nnz on each side, and whether the sparsity pattern changed.
-pub fn compare_system_y(dss: &mut Dss, exp: &YMat, node_order: &[String], tol: &Tol, ctx: &str) {
+pub fn compare_system_y(
+    dss: &mut Dss,
+    exp: &YMat,
+    node_order: &[String],
+    tol: &Tolerances,
+    ctx: &str,
+) {
     let (n, coords) = dss
         .system_y_csc()
         .unwrap_or_else(|| panic!("{ctx}: Rust has no assembled system Y"));
@@ -434,7 +453,7 @@ pub fn compare_system_y(dss: &mut Dss, exp: &YMat, node_order: &[String], tol: &
 
 /// Compare the assembled-Y fingerprint: nnz (above floor) exact, Frobenius
 /// norm / trace / max|diag| at `y_rel`. The cheap structural+magnitude guard.
-pub fn compare_fingerprint(dss: &mut Dss, exp: &YFingerprint, tol: &Tol, ctx: &str) {
+pub fn compare_fingerprint(dss: &mut Dss, exp: &YFingerprint, tol: &Tolerances, ctx: &str) {
     const FLOOR: f64 = 1e-9;
     let (_n, coords) = dss
         .system_y_csc()
@@ -477,7 +496,7 @@ pub fn compare_fingerprint(dss: &mut Dss, exp: &YFingerprint, tol: &Tol, ctx: &s
 
 /// Compare a selected element's YPrim block (column-major flat, same layout on
 /// both sides).
-pub fn compare_yprim(dss: &Dss, exp: &YPrim, tol: &Tol, ctx: &str) {
+pub fn compare_yprim(dss: &Dss, exp: &YPrim, tol: &Tolerances, ctx: &str) {
     let (yorder, flat) = dss
         .element_yprim(&exp.name)
         .unwrap_or_else(|| panic!("{ctx}: no element {} (or no Yprim)", exp.name));
@@ -512,7 +531,7 @@ pub fn compare_yprim(dss: &Dss, exp: &YPrim, tol: &Tol, ctx: &str) {
 }
 
 /// Compare the node injection-current vector (nodes 1..n; slot 0 = ground).
-pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tol, ctx: &str) {
+pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tolerances, ctx: &str) {
     let cur = dss.node_injection_currents();
     let n = exp.re.len();
     assert!(
@@ -590,7 +609,7 @@ pub fn assert_power_close(actual: &[f64], exp: &ElementCap, rel: f64, abs_floor:
 }
 
 /// Compare one element's terminal currents and powers against a capture.
-pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tol, ctx: &str) {
+pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolerances, ctx: &str) {
     let snap = snaps
         .iter()
         .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
@@ -720,7 +739,7 @@ pub struct MeterCap {
 /// same policy `golden_phase6.rs` uses). Channels listed in `exp.skip_channels`
 /// (the mode-5 wall-clock timings) are skipped; the live gate leaves it empty
 /// (it captures only deterministic modes, so every channel is compared).
-pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tol, ctx: &str) {
+pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str) {
     let view = dss
         .monitor_view(&exp.name)
         .unwrap_or_else(|| panic!("{ctx}: no monitor {}", exp.name));
@@ -770,10 +789,10 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tol, ctx: &str) {
     }
 }
 
-/// Compare an EnergyMeter's registers (names exact, values 1e-4 rel — the
-/// energy-accumulation policy, PORTING_PLAN §4) and zone branch/end/PCE counts
-/// (exact).
-pub fn compare_meter(dss: &Dss, exp: &MeterCap, ctx: &str) {
+/// Compare an EnergyMeter's registers (names exact, values within the
+/// energy-accumulation policy `tol.energy_rel`/`energy_abs` — PORTING_PLAN §4) and
+/// zone branch/end/PCE counts (exact).
+pub fn compare_meter(dss: &Dss, exp: &MeterCap, tol: &Tolerances, ctx: &str) {
     let regs = dss
         .meter_registers(&exp.name)
         .unwrap_or_else(|| panic!("{ctx}: no meter {}", exp.name));
@@ -790,11 +809,13 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, ctx: &str) {
             exp.name
         );
         let e = exp.register_values[i];
-        let allowed = 1e-4 * e.abs().max(1.0);
+        let allowed = tol.energy_abs + tol.energy_rel * e.abs();
         assert!(
             (value - e).abs() <= allowed,
-            "{ctx}: meter {} register {name} differs: {value} vs {e}",
-            exp.name
+            "{ctx}: meter {} register {name} differs: {value} vs {e} \
+             (|diff|={:.3e} > allowed {allowed:.3e})",
+            exp.name,
+            (value - e).abs()
         );
     }
     let zone = dss

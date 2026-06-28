@@ -252,7 +252,7 @@ fn ieee8500_matches_oracle() {
 
     // Per-step feeder-head P/Q over the daily segment: pins each hour against the
     // oracle (not only the cumulative registers above), via the shared comparator.
-    let tol = tol_for("feeder");
+    let tol = tol_for("large");
     for m in &golden.monitors {
         compare_monitor(&dss, m, &tol, "ieee8500");
     }
