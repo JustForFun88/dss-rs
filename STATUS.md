@@ -667,6 +667,30 @@ and all six audit follow-ups) archived at
     + **idle-trip under fault** (State 1→0, output→0). lib **662 → 666**;
     `solvable_now` **84** (no corpus migration — every PV/Storage dynamics deck is
     also blocked on Phase-8 `BatchEdit`/`DynamicExp`-integration/GFM, recon-confirmed).
+  - **audit-code follow-up:** verdict **mostly faithful** (variable interfaces, loss
+    getters, node-ref indexing, iMaxPPhase, GFM/DynEq/UserModel deferrals, the
+    `update_storage` SOC fix all confirmed line-for-line). Fixes: (1) **real
+    deviation** — `SolveModulation` had an `ISP!=0` divide guard; Pascal
+    (`InvDynamics.pas:190`) divides unconditionally → reverted to verbatim
+    `iError/ISP` (the divergence is unobservable: `ISP==0 ⟹ PanelkW==0 ⟹ it→0 ⟹
+    iError→0`, so guard and verbatim agree — an `irradiance=0` probe confirmed no
+    discriminating trajectory, so no test added); (2) PV `Get_Variable(1)` now
+    returns `PresentIrradiance` (`irradiance*ShapeFactor.re`), not raw `FIrradiance`;
+    (3) dropped a spurious `TShapeValue` reset in PV `InitStateVars` (Pascal USENONE
+    leaves it); (4) Storage `VariableName` out-of-range-high → `""` (Pascal), not
+    `"ERROR"`; (5) a non-discharging Storage entering dynamics has empty per-phase
+    arrays (Pascal skips `InitDynArrays` then derefs nil = crash, no oracle baseline)
+    → added a no-op guard instead of a Rust panic. **Set_Variable decision:** the
+    auditor flagged `set_pv_variable`/`set_storage_variable`/`set_inv_dyn_value` as
+    dead code behind `#[allow(dead_code)]`; first dropped, then **restored** (1:1
+    fidelity) and wired through a new `CktElement::set_variable` trait method — now
+    reachable, no `#[allow]`. (Generator's symmetric `Set_Variable` is still absent —
+    a pre-existing step-2a gap, noted for a later sweep.)
+  - **audit-tests follow-up:** verdict **sound + non-vacuous** — the auditor
+    re-derived every pinned constant from the pinned oracle and proved the Storage
+    SOC test fails if the `update_storage` fix is reverted. Hardened two Minor items:
+    pinned all 34 Storage mode-3 channels by value (was 21/34) and tightened the
+    near-vacuous `it[0]` tolerance to an absolute band.
 - **next:** step 3 — IndMach012 (`pc/ind_mach012.rs`) + DynEqPCE (`pc/dyneq_pce.rs`)
   integration (the `DynamicEqObj <> NIL` path + `DynOut` selection; flips Generator's
   Phase-6 `NOT_PORTED` `DynamicEq` to the real ref).
