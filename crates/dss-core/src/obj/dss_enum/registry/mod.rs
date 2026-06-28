@@ -66,6 +66,7 @@ impl EnumRegistry {
             storage_state: pc.storage_state,
             storage_dispatch_mode: pc.storage_dispatch_mode,
             ind_mach_slip_option: pc.ind_mach_slip_option,
+            vsc_mode: pc.vsc_mode,
             monitor_action: general.monitor_action,
             energy_meter_action: general.energy_meter_action,
             storage_ctrl_discharge_mode: control.storage_ctrl_discharge_mode,
