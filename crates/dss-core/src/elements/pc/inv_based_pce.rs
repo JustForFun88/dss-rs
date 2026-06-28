@@ -13,11 +13,12 @@
 //! `kP`, `PITol`, `SafeVoltage`, `AmpLimit`, `AmpLimitGain`, `SafeMode` — so they
 //! must exist before those classes land), and the power-flow-relevant shared
 //! methods (`StickCurrInTerminalArray`, `Get_Presentkvar`, `UsingCIMDynamics`).
-//! The grid-forming-mode (GFM) / dynamics machinery — the `TInvDynamicVars`
-//! arrays + `SolveDynamicStep`/`SolveModulation`/`CalcGFM*`/`InitDynArrays`, the
-//! `PICtrl` PI-controller array, `CheckAmpsLimit`, the GFM `GetCurrents`
-//! override, and the `DynEqPCE` dynamics memory (`DynamicEqVals`/`DynamicEqPair`/
-//! `UserDynInit`) — is WP7.7 (dynamics).
+//! The GFL dynamics machinery — the `TInvDynamicVars` arrays +
+//! `SolveDynamicStep`/`SolveModulation`/`InitDynArrays`, the `PICtrl`
+//! PI-controller array, and (WP7.7 step 3b) the embedded [`DynEqPceData`] memory
+//! that integrates a user `DynamicExp` — landed in WP7.7. The grid-forming-mode
+//! (GFM) `CalcGFM*`/`GetCurrents` override and `CheckAmpsLimit` are still
+//! NOT_PORTED.
 //!
 //! [`Generator`]: crate::elements::pc::generator::Generator
 
@@ -26,9 +27,9 @@ mod tests;
 
 use num_complex::Complex64;
 
-use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::traits::ElemRef;
 use crate::support::complexutil::Polar;
 use crate::support::dynamics::IterationFlag;
@@ -444,17 +445,14 @@ pub struct InvBasedPceData {
     /// `FirstSampleAfterReset`.
     pub first_sample_after_reset: bool,
 
-    // DynEqPCE-inherited fields.
-    /// `DynamicEqObj` — the linked `DynamicExp` object. Name kept for the dump;
-    /// the object is a snapshot clone (WP4.2/WP5.3 pattern). The dynamics memory
-    /// it integrates (`DynamicEqVals`/`DynamicEqPair`/`UserDynInit`) is WP7.7.
-    pub dynamic_eq: String,
-    pub dynamic_eq_obj: Option<DynamicExpObj>,
-    pub dynamic_eq_ref: Option<ElemRef>,
-    /// `DynOut` — output-variable selection (the `DynOut=` string as written;
-    /// its resolution to `DynamicExp` output indices and dynamics effect is
-    /// WP7.7).
-    pub dyn_out: String,
+    /// `TDynEqPCE` data the parent class contributes — the linked `DynamicExp`
+    /// (`DynamicEq=`), its `DynamicEqVals`/`DynamicEqPair` integration memory, and
+    /// the resolved `DynOut` output indices. Embedded here (rather than as the
+    /// former bare `DynamicEq`/`DynOut` strings) so PVSystem/Storage share the same
+    /// machinery as [`Generator`], driving `solve_eq` during a dynamics solve.
+    ///
+    /// [`Generator`]: crate::elements::pc::generator::Generator
+    pub dyneq: DynEqPceData,
 }
 
 impl InvBasedPceData {
@@ -525,10 +523,7 @@ impl InvBasedPceData {
             user_model_name: String::new(),
             user_model_edit: String::new(),
             first_sample_after_reset: true,
-            dynamic_eq: String::new(),
-            dynamic_eq_obj: None,
-            dynamic_eq_ref: None,
-            dyn_out: String::new(),
+            dyneq: DynEqPceData::new(),
         }
     }
 

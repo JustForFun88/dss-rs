@@ -69,18 +69,35 @@ impl CktElement for PVSystem {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TPVsystemObj.NumVariables` — 22 (13 base + 9 InvDynVars).
+    /// Pascal `TPVsystemObj.NumVariables` — the linked `DynamicExp` count first
+    /// (inherited `TDynEqPCE.NumVariables`), else 22 (13 base + 9 InvDynVars).
     fn num_variables(&self) -> usize {
-        self.num_pv_variables()
+        let n = self.base.dyneq.num_variables();
+        if n != 0 { n } else { self.num_pv_variables() }
     }
 
-    /// Pascal `TPVsystemObj.VariableName` (1-based).
+    /// Pascal `TPVsystemObj.VariableName` (1-based): the `DynamicExp` memory-slot
+    /// name first (inherited), else the classic name table.
     fn variable_name(&self, i: usize) -> String {
+        if let Some(name) = self.base.dyneq.variable_name(i) {
+            return name;
+        }
         self.pv_variable_name(i)
     }
 
-    /// Pascal `TPVsystemObj.GetAllVariables`.
+    /// Pascal `TPVsystemObj.GetAllVariables`: the `DynamicExp` memory dump first
+    /// (Pascal l.2543), else the classic 22 variables.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        if self.base.dyneq.has_dynamic_eq() {
+            for (i, s) in states
+                .iter_mut()
+                .enumerate()
+                .take(self.base.dyneq.num_variables())
+            {
+                *s = self.base.dyneq.get_dynamic_eq_val(i);
+            }
+            return;
+        }
         let _ = (sys, node_v);
         self.get_all_pv_variables(states);
     }
@@ -316,7 +333,7 @@ impl DssObject for PVSystem {
             TDUTY => self.duty_t_shape.clone(),
             EFF_CURVE => self.base.inverter_curve.clone(),
             P_T_CURVE => self.power_temp_curve.clone(),
-            DYNAMIC_EQ => self.base.dynamic_eq.clone(),
+            DYNAMIC_EQ => self.base.dyneq.dynamic_eq.clone(),
             USERMODEL => self.base.user_model_name.clone(),
             USERDATA => self.base.user_model_edit.clone(),
             SPECTRUM => self.spectrum.clone(),
@@ -335,28 +352,23 @@ impl DssObject for PVSystem {
         }
     }
 
-    /// `DynOut` (Pascal `StringListProperty`): the dynamics output-variable
-    /// selection. Stored as written; its resolution to `DynamicExp` outputs and
-    /// dynamics effect is WP7.7.
+    /// `DynOut` (Pascal `StringListProperty` via `Set/GetDynOutputNames`): the
+    /// dynamics output-variable selection, resolved against the linked
+    /// `DynamicExp` to output indices and reconstructed for the dump.
     fn get_string_list(&self, idx: usize) -> Vec<String> {
         match idx {
-            prop::DYN_OUT => {
-                if self.base.dyn_out.is_empty() {
-                    Vec::new()
-                } else {
-                    self.base
-                        .dyn_out
-                        .split(',')
-                        .map(|s| s.to_string())
-                        .collect()
-                }
-            }
+            prop::DYN_OUT => self.base.dyneq.get_dyn_output_names(),
             _ => unreachable!("PVSystem has no string-list property {idx}"),
         }
     }
     fn set_string_list(&mut self, idx: usize, value: Vec<String>) {
         match idx {
-            prop::DYN_OUT => self.base.dyn_out = value.join(","),
+            prop::DYN_OUT => {
+                let errors = self.base.dyneq.set_dyn_output_names(&value);
+                for e in errors {
+                    self.cd.obj.push_error(e);
+                }
+            }
             _ => unreachable!("PVSystem has no string-list property {idx}"),
         }
     }
@@ -426,9 +438,9 @@ impl DssObject for PVSystem {
                 self.power_temp_curve_obj = xy_curve();
             }
             DYNAMIC_EQ => {
-                self.base.dynamic_eq = name;
-                self.base.dynamic_eq_ref = elem_ref;
-                self.base.dynamic_eq_obj = resolved.and_then(|(_, o)| {
+                self.base.dyneq.dynamic_eq = name;
+                self.base.dyneq.dynamic_eq_ref = elem_ref;
+                self.base.dyneq.dynamic_eq_obj = resolved.and_then(|(_, o)| {
                     o.as_any()
                         .downcast_ref::<crate::elements::general::dynamic_exp::DynamicExpObj>()
                         .cloned()
@@ -485,6 +497,9 @@ impl DssObject for PVSystem {
                 // is the observable power-flow effect.
                 self.cd.yprim_invalid = true;
             }
+            // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
+            // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
+            DYNAMIC_EQ => self.base.dyneq.on_dynamic_eq_set(),
             _ => {}
         }
     }
@@ -572,7 +587,28 @@ impl DssObject for PVSystem {
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
+    /// Pascal `TDynEqPCE.ParseDynVar`: a `name=value` whose `name` is a state
+    /// variable of the linked `DynamicExp` (the inline `it=imag vdc=kvdc …`
+    /// initializers in a GFL-DynExp deck).
+    fn parse_dyn_var(
+        &mut self,
+        variable: &str,
+        value: &str,
+        vars: &dss_parser::ParserVars,
+    ) -> bool {
+        self.base.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+impl crate::elements::pc::dyneq_pce::DynEqPce for PVSystem {
+    fn dyneq(&self) -> &crate::elements::pc::dyneq_pce::DynEqPceData {
+        &self.base.dyneq
+    }
+    fn dyneq_mut(&mut self) -> &mut crate::elements::pc::dyneq_pce::DynEqPceData {
+        &mut self.base.dyneq
     }
 }
