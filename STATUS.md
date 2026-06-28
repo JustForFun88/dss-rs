@@ -17,7 +17,8 @@ driver) + step 2a (Generator dynamics + Monitor mode 3 + a real `Open`-verb bug
 fix) + step 2b (PVSystem/Storage grid-following inverter dynamics +
 `InvDynamics.TInvDynamicVars` + the 22/34-var mode-3 interface + a Storage SOC
 dynamics fix) done, oracle-pinned; step 3a (IndMach012 induction machine — power flow + dynamics +
-the 22 mode-3 state vars) done, oracle-pinned.** WP7.6 ran
+the 22 mode-3 state vars) done, oracle-pinned; step 3b (DynEqPCE — the Generator
+`DynamicEq`/`DynamicExp` integration) done, oracle-pinned.** WP7.6 ran
 in three steps. Step 1 landed the harmonics solve mode
 for the
 current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
@@ -53,8 +54,14 @@ mode-3 decks. Step 3a added the **IndMach012** induction machine
 (`pc/ind_mach012/`) — an equivalent-circuit motor (slip-Newton power flow) and a
 voltage source behind `Zsp` in dynamics (pos/neg-seq `E1`/`E2` + shaft swing,
 trapezoidal), with 22 mode-3 state variables; oracle-pinned on a self-contained
-InductionMachine deck (steady equilibrium + 3-phase-fault response). **next = WP7.7
-step 3b (DynEqPCE integration — the `DynamicEqObj <> NIL` path + `DynOut`).**
+InductionMachine deck (steady equilibrium + 3-phase-fault response). **Step 3b
+landed the `DynEqPCE` integration for the Generator** (`pc/dyneq_pce.rs`
+`DynEqPceData` + the edit-loop `ParseDynVar` fallback): a Generator driven by a
+user `DynamicExp` (`DynamicEq=`/`DynOut=`/inline state-var initializers) instead of
+its built-in shaft model, oracle-pinned on the Kundur DynExp deck (steady + the full
+swing, reproducing the classic gate's physics exactly). **next = WP7.7 step 3b cont.
+(PVSystem/Storage `DynamicEq` integration — they already carry the real ref; reuse
+the shared `DynEqPceData` + the per-phase inverter integration).**
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -65,7 +72,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md).
-Current scores: dss-core **lib 671**, **`solvable_now` 84** (the live corpus gate;
+Current scores: dss-core **lib 675**, **`solvable_now` 84** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -103,7 +110,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) done, oracle-pinned**; **next = WP7.7 step 3b (DynEqPCE)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) done, oracle-pinned**; **next = WP7.7 step 3b cont. (PVSystem/Storage DynamicEq)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
@@ -836,9 +843,42 @@ and all six audit follow-ups) archived at
     Is2/Ir2 quiescence bound `1e-3 → 1e-5` (~20× over the ~4.79e-7 actual); (3) added a
     value pin for the `dTheta` state var (`rel(last(5), -6.022097) < 1e-5`) — previously
     only `dSpeed` among the rate vars was checked. No corpus migration (recon-confirmed).
-- **next:** step 3b — DynEqPCE (`pc/dyneq_pce.rs`) integration (the `DynamicEqObj <> NIL`
-  path + `DynOut` selection; flips Generator's Phase-6 `NOT_PORTED` `DynamicEq` to the
-  real ref; PVSystem/Storage already carry the real ref).
+- **step 3b — DynEqPCE integration (Generator).** Ported `PCElements/DynEqPCE.pas`
+  (`TDynEqPCE`) as the shared `pc/dyneq_pce.rs` `DynEqPceData` (+ the `DynEqPce`
+  host trait): the `DynamicEqObj`/`DynamicEqVals`/`DynamicEqPair`/`DynOut`/`UserDynInit`
+  memory, `ParseDynVar` (the inline `<dynvar>=<value>` initializers — calc-value
+  operands → `DynamicEqPair`, constants → `DynamicEqVals` via an RPN `make_double`),
+  `Set/GetDynOutputNames` (resolve `DynOut=[..]` to output indices / reconstruct for
+  the dump), the `DynamicEq=` sizing side effect, and the `NumVariables`/`VariableName`/
+  `GetAllVariables`/`SolveEq` surface. **Generator** now embeds `DynEqPceData` (its
+  Phase-6 `NOT_PORTED` `DynamicEq`/`DynOut` strings flipped to a real `object_ref_class`
+  + `string_list`), resolves the `DynamicExp` snapshot-clone like its shape refs, and
+  its `dynamics.rs` `InitStateVars`/`IntegrateStates` branch on `DynamicEqObj <> NIL`
+  (zero the derivatives + apply `IsInitVal` P0/Q0/edp seeds; per-step load the
+  calc-values [`Get_PCE_Value` for P/Q/Vmag/.../S; `Cang(Edp)` for edp] → `SolveEq` →
+  trapezoidal `Speed`/`Theta` from `DynOut[0]`/`DynOut[1]` written back to GenVars so
+  `DoDynamicMode` reads the new angle). `Get_PCE_Value` (CktElement.pas l.828) ported
+  on the Generator. The edit loop (`exec/command.rs`) gained the Pascal `DSSClass.Edit`
+  l.1656 `ParseDynVar` fallback on the "unknown parameter" branch, via a new
+  `DssObject::parse_dyn_var` (default `false`).
+  - **Gate:** 2 oracle-pinned tests (`exec/tests/dynamics.rs`, dss-python 0.15.7) on
+    the corpus `Dynamic_Expressions/Dynamic_KundurDynExp.dss` (Kundur Ex.13.1 with the
+    6-var swing `DynamicExp` replacing `H`/`D`): **steady mode-3** — the 12 DynamicExp
+    memory slots (named from the lowercased varnames) hold the swing fixpoint across
+    1001 samples (theta 0.7290715 rad, mass 41221132, pshaft 1.9979999e9, pterm 1.998e9)
+    at 1e-5; **full swing** — fault + clear-by-`Open`, the undamped theta slot (radians)
+    swings 0.42211992 → 1.7127246 rad. Both also assert the DynExp trajectory **equals
+    the classic Kundur gate** scaled by 180/π (theta_rad·180/π = the classic Theta in
+    degrees), proving the user equation reproduces the built-in shaft model exactly.
+    lib **673 → 675**; `solvable_now` **84** (the `Dynamic_KundurDynExp` deck is also
+    `Plot`/`Export`-blocked — Phase-8). `props/generator.json` is unaffected (default
+    `DynamicEq`/`DynOut` dumps stay empty).
+- **next:** step 3b cont. — PVSystem/Storage `DynamicEq` integration. They already
+  resolve the `DynamicExp` ref (WP7.3/7.4); refactor `InvBasedPceData` to embed the
+  shared `DynEqPceData`, add the per-phase inverter `IntegrateStates`/`InitStateVars`
+  `DynamicEqObj <> NIL` branches (`it[i]`/`dit[i]` ↔ `DynOut[0]`; vmag/kvdc/mod calc
+  values) + the `NumVariables`/`GetAllVariables` DynExp surface; gate on the GFL_IEEE123
+  DynExp deck.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

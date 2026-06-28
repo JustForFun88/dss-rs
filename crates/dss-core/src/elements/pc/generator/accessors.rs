@@ -63,18 +63,35 @@ impl CktElement for Generator {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TGeneratorObj.NumVariables`.
+    /// Pascal `TGeneratorObj.NumVariables`: the linked `DynamicExp` count first,
+    /// else the classic GenVars count.
     fn num_variables(&self) -> usize {
-        self.num_gen_variables()
+        let n = self.dyneq.num_variables();
+        if n != 0 { n } else { self.num_gen_variables() }
     }
 
-    /// Pascal `TGeneratorObj.VariableName`.
+    /// Pascal `TGeneratorObj.VariableName`: the `DynamicExp` name first, else the
+    /// classic name table.
     fn variable_name(&self, i: usize) -> String {
+        if let Some(name) = self.dyneq.variable_name(i) {
+            return name;
+        }
         self.gen_variable_name(i)
     }
 
-    /// Pascal `TGeneratorObj.GetAllVariables`.
+    /// Pascal `TGeneratorObj.GetAllVariables`: the `DynamicExp` memory dump first,
+    /// else the classic GenVars.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        if self.dyneq.has_dynamic_eq() {
+            for (i, s) in states
+                .iter_mut()
+                .enumerate()
+                .take(self.dyneq.num_variables())
+            {
+                *s = self.dyneq.get_dynamic_eq_val(i);
+            }
+            return;
+        }
         let _ = (sys, node_v);
         self.get_gen_variables(states);
     }
@@ -283,8 +300,7 @@ impl DssObject for Generator {
             USERDATA => self.user_data.clone(),
             SHAFTMODEL => self.shaft_model_name.clone(),
             SHAFTDATA => self.shaft_data.clone(),
-            DYNAMICEQ => self.dynamic_eq.clone(),
-            DYNOUT => self.dyn_out.clone(),
+            DYNAMICEQ => self.dyneq.dynamic_eq.clone(),
             SPECTRUM => self.spectrum.clone(),
             _ => unreachable!("Generator has no string property {idx}"),
         }
@@ -293,15 +309,36 @@ impl DssObject for Generator {
         use prop::*;
         match idx {
             // The NOT_PORTED string props error in the parser before reaching
-            // here; the setters exist for completeness/MakeLike.
+            // here; the setters exist for completeness/MakeLike. (DynamicEq is an
+            // object ref → set_object_ref; DynOut is a string list →
+            // set_string_list.)
             USERMODEL => self.user_model_name = value,
             USERDATA => self.user_data = value,
             SHAFTMODEL => self.shaft_model_name = value,
             SHAFTDATA => self.shaft_data = value,
-            DYNAMICEQ => self.dynamic_eq = value,
-            DYNOUT => self.dyn_out = value,
             SPECTRUM => self.spectrum = value,
             _ => unreachable!("Generator has no string property {idx}"),
+        }
+    }
+
+    /// `DynOut` (Pascal `StringListProperty` via `Set/GetDynOutputNames`): the
+    /// dynamics output-variable selection, resolved against the linked
+    /// `DynamicExp` to output indices and reconstructed for the dump.
+    fn get_string_list(&self, idx: usize) -> Vec<String> {
+        match idx {
+            prop::DYNOUT => self.dyneq.get_dyn_output_names(),
+            _ => unreachable!("Generator has no string-list property {idx}"),
+        }
+    }
+    fn set_string_list(&mut self, idx: usize, value: Vec<String>) {
+        match idx {
+            prop::DYNOUT => {
+                let errors = self.dyneq.set_dyn_output_names(&value);
+                for e in errors {
+                    self.cd.obj.push_error(e);
+                }
+            }
+            _ => unreachable!("Generator has no string-list property {idx}"),
         }
     }
 
@@ -338,6 +375,15 @@ impl DssObject for Generator {
                 self.duty_shape = name;
                 self.duty_shape_ref = elem_ref;
                 self.duty_shape_obj = load_shape();
+            }
+            DYNAMICEQ => {
+                self.dyneq.dynamic_eq = name;
+                self.dyneq.dynamic_eq_ref = elem_ref;
+                self.dyneq.dynamic_eq_obj = resolved.and_then(|(_, o)| {
+                    o.as_any()
+                        .downcast_ref::<crate::elements::general::dynamic_exp::DynamicExpObj>()
+                        .cloned()
+                });
             }
             _ => unreachable!("Generator has no resolved object-ref property {idx}"),
         }
@@ -401,6 +447,9 @@ impl DssObject for Generator {
                 }
             }
             KVA | MVA => self.kva_not_set = false,
+            // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
+            // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
+            DYNAMICEQ => self.dyneq.on_dynamic_eq_set(),
             _ => {}
         }
     }
@@ -478,7 +527,28 @@ impl DssObject for Generator {
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
+    /// Pascal `TDynEqPCE.ParseDynVar`: a `name=value` whose `name` is a state
+    /// variable of the linked `DynamicExp` (the inline `Speed=0 PShaft=P0 …`
+    /// initializers).
+    fn parse_dyn_var(
+        &mut self,
+        variable: &str,
+        value: &str,
+        vars: &dss_parser::ParserVars,
+    ) -> bool {
+        self.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+impl crate::elements::pc::dyneq_pce::DynEqPce for Generator {
+    fn dyneq(&self) -> &crate::elements::pc::dyneq_pce::DynEqPceData {
+        &self.dyneq
+    }
+    fn dyneq_mut(&mut self) -> &mut crate::elements::pc::dyneq_pce::DynEqPceData {
+        &mut self.dyneq
     }
 }

@@ -24,6 +24,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -161,9 +162,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%Reserve"),
         // BooleanActionProperty: setting it `yes` refuels; the getter is 0.
         PropDef::boolean("Refuel"),
-        // Dynamics machinery → Phase 7.
-        PropDef::string("DynamicEq").flags(PropFlags::NOT_PORTED),
-        PropDef::string("DynOut").flags(PropFlags::NOT_PORTED),
+        // Dynamics machinery (WP7.7 step 3b): the linked DynamicExp + its output
+        // variable selection (the `DynEqPCE` base; resolved/integrated like
+        // PVSystem/Storage).
+        PropDef::object_ref_class("DynamicExp", "DynamicEq"),
+        PropDef::string_list("DynOut"),
         // PCClass tail:
         PropDef::object_ref("spectrum"),
         // CktElementClass tail:
@@ -285,13 +288,13 @@ pub struct Generator {
     pub derivatives: [f64; NUM_GEN_REGISTERS],
     pub first_sample_after_reset: bool,
 
-    // Strings (NOT_PORTED DLL/dynamics references, stored for the dump).
+    // Strings (NOT_PORTED DLL references, stored for the dump).
     pub user_model_name: String,
     pub user_data: String,
     pub shaft_model_name: String,
     pub shaft_data: String,
-    pub dynamic_eq: String,
-    pub dyn_out: String,
+    /// `DynEqPCE` base: the linked `DynamicExp` + its dynamics memory (WP7.7 step 3b).
+    pub dyneq: DynEqPceData,
     pub spectrum: String,
     /// Resolved harmonic spectrum (Pascal `SpectrumObj := SpectrumClass.DefaultGen`
     /// or an explicit `spectrum=`), snapshot-cloned in at edit-completion.
@@ -428,8 +431,7 @@ impl Generator {
             user_data: String::new(),
             shaft_model_name: String::new(),
             shaft_data: String::new(),
-            dynamic_eq: String::new(),
-            dyn_out: String::new(),
+            dyneq: DynEqPceData::new(),
             spectrum: "defaultgen".to_string(),
             spectrum_obj: None,
             yearly_shape: String::new(),

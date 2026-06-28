@@ -11,6 +11,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::complexutil::{cang, pclx};
 use crate::support::dynamics::IterationFlag;
@@ -93,8 +94,38 @@ impl Generator {
             }
         }
 
-        // DynamicEqObj = NIL path. (The DynamicEqObj <> NIL branch is
-        // NOT_PORTED — WP7.7 step 3.)
+        // DynamicEqObj <> NIL: seed the user equation's memory and exit (the
+        // shaft GenVars Theta/w0/Mmass/D/Pshaft/Speed are unused — the equation
+        // drives Speed/Theta through DynOut). Pascal generator.pas l.2400.
+        if self.dyneq.has_dynamic_eq() {
+            // Initialize the derivative column of every variable to 0.
+            for row in self.dyneq.dynamic_eq_vals.iter_mut() {
+                row[1] = 0.0;
+            }
+            // Apply initializations that use calculated values (P0/Q0/edp).
+            let num_pairs = self.dyneq.dynamic_eq_pair.len() / 2;
+            for i in 0..num_pairs {
+                let var_idx = self.dyneq.dynamic_eq_pair[i * 2] as usize;
+                let code = self.dyneq.dynamic_eq_pair[i * 2 + 1];
+                if !DynEqPceData::is_init_val(code) {
+                    continue;
+                }
+                if code == 9 {
+                    // edp: the angle of the pos-seq voltage behind Xd'.
+                    let val = cang(self.edp);
+                    self.dyneq.dynamic_eq_vals[var_idx][0] = val;
+                    if self.gen_model == 7 {
+                        self.model7_last_angle = val;
+                    }
+                } else {
+                    let val = self.get_pce_value(sys, node_v, code);
+                    self.dyneq.dynamic_eq_vals[var_idx][0] = val;
+                }
+            }
+            return;
+        }
+
+        // DynamicEqObj = NIL path.
         // Theta is the angle of Edp relative to the system reference.
         self.theta = cang(self.edp);
         if self.gen_model == 7 {
@@ -121,8 +152,56 @@ impl Generator {
 
         let h = sys.dyna_h;
 
-        // DynamicEqObj = NIL path. (The DynamicEqObj <> NIL branch is
-        // NOT_PORTED — WP7.7 step 3.)
+        // DynamicEqObj <> NIL: integrate the user equation (Pascal generator.pas
+        // l.2483). DynOut[0] is the speed variable, DynOut[1] the angle.
+        if self.dyneq.has_dynamic_eq() {
+            let out0 = self.dyneq.dyn_out[0];
+            let out1 = self.dyneq.dyn_out[1];
+            if sys.iteration_flag == IterationFlag::NewTimeStep {
+                // First iteration of a new time step.
+                self.speed_history = self.dyneq.dynamic_eq_vals[out0][0]
+                    + 0.5 * h * self.dyneq.dynamic_eq_vals[out0][1];
+                self.theta_history = self.dyneq.dynamic_eq_vals[out1][0]
+                    + 0.5 * h * self.dyneq.dynamic_eq_vals[out1][1];
+            }
+
+            // Load calculated values (P/Q/VMag/...) that are not initializations.
+            let num_pairs = self.dyneq.dynamic_eq_pair.len() / 2;
+            for i in 0..num_pairs {
+                let var_idx = self.dyneq.dynamic_eq_pair[i * 2] as usize;
+                let code = self.dyneq.dynamic_eq_pair[i * 2 + 1];
+                if DynEqPceData::is_init_val(code) {
+                    continue;
+                }
+                let val = match code {
+                    0 => {
+                        -terminal_power_in(&self.cd.vterminal, &self.cd.iterminal, self.cd.nphases)
+                            .re
+                    }
+                    1 => {
+                        -terminal_power_in(&self.cd.vterminal, &self.cd.iterminal, self.cd.nphases)
+                            .im
+                    }
+                    _ => self.get_pce_value(sys, node_v, code),
+                };
+                self.dyneq.dynamic_eq_vals[var_idx][0] = val;
+            }
+
+            // Solve the differential equation with the loaded values.
+            self.dyneq.solve_eq();
+
+            // Trapezoidal method — write the results back into GenVars so the
+            // injection (DoDynamicMode → CalcVthev_Dyn) reads the new angle.
+            self.speed = self.speed_history + 0.5 * h * self.dyneq.dynamic_eq_vals[out0][1];
+            self.theta = self.theta_history + 0.5 * h * self.dyneq.dynamic_eq_vals[out1][1];
+
+            // Save the integrated values back into the memory space.
+            self.dyneq.dynamic_eq_vals[out0][0] = self.speed;
+            self.dyneq.dynamic_eq_vals[out1][0] = self.theta;
+            return;
+        }
+
+        // DynamicEqObj = NIL path.
         if sys.iteration_flag == IterationFlag::NewTimeStep {
             // First iteration of a new time step.
             self.theta_history = self.theta + 0.5 * h * self.dtheta;
@@ -264,6 +343,38 @@ impl Generator {
         }
 
         // NOT_PORTED: GenModel = 6 ShaftModel FCalc (mech power to shaft).
+    }
+
+    /// Pascal `TDSSCktElement.Get_PCE_Value(1, ValType)` (CktElement.pas l.828):
+    /// the model-derived value a `DynamicExp` operand refers to (P/Q/Vmag/.../S),
+    /// at the active terminal (terminal 1). Generators are not transformers, so the
+    /// `MaxVoltage` branch reads the node voltage at the max-current phase directly.
+    fn get_pce_value(&mut self, sys: &SysCtx, node_v: &[Complex64], code: i32) -> f64 {
+        match code {
+            0 | 7 => -self.terminal_power(sys, node_v, 1).re, // P, P0
+            1 | 8 => -self.terminal_power(sys, node_v, 1).im, // Q, Q0
+            6 => self.terminal_power(sys, node_v, 1).norm(),  // S
+            2..=5 => {
+                // VMag / VAng / IMag / IAng — the phase carrying the max current.
+                self.compute_iterminal(sys, node_v);
+                let mut max_curr = 0.0_f64;
+                let mut max_phase = 0usize;
+                for i in 0..self.cd.nphases {
+                    let mag = self.cd.iterminal[i].norm();
+                    if mag > max_curr {
+                        max_curr = mag;
+                        max_phase = i;
+                    }
+                }
+                match code {
+                    2 => node_v[self.cd.node_ref[max_phase]].norm(),
+                    3 => cang(node_v[self.cd.node_ref[max_phase]]),
+                    4 => max_curr,
+                    _ => cang(self.cd.iterminal[max_phase]),
+                }
+            }
+            _ => 0.0,
+        }
     }
 
     /// Pascal `TGeneratorObj.CalcVthev_Dyn`: `Vthev = pclx(VthevMag, Theta)`.

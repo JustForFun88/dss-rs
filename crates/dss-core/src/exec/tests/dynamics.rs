@@ -322,6 +322,162 @@ fn generator_dynamics_swing_matches_oracle_kundur() {
 }
 
 // ===========================================================================
+// WP7.7 step 3b — DynEqPCE: the Generator driven by a user DynamicExp instead of
+// its built-in shaft model. The Kundur Example 13.1 deck (corpus
+// `Dynamic_Expressions/Dynamic_KundurDynExp.dss`) replaces `H/D` with a 6-variable
+// DynamicExp whose swing equation `Speed dt = -(Pterm + Damp*Speed - Pshaft)/Mass;
+// theta dt = Speed` is mathematically identical to the built-in model — so the
+// DynExp trajectory matches the classic Kundur gate (above) *and* the oracle's
+// DynExp mode-3 monitor. The mode-3 monitor now records the 12 DynamicExp memory
+// slots (6 vars × [value, derivative]) instead of the 6 GenVars.
+// ===========================================================================
+
+/// The Kundur deck with the shaft model replaced by a `DynamicExp`. `DynamicEq=`
+/// must precede the inline state-variable initializers (`PShaft=P0 …`) and `DynOut`
+/// in the `New` so the equation object is resolved/sized first (the inline
+/// initializers fall through to `ParseDynVar`). @Zbase=53.615 inlined as in
+/// `kundur_dss`.
+fn kundur_dynexp_dss() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.SimpleDemo BasekV=345 pu=0.90081 phases=3 \
+         Angle=0.0 Model=ideal puZideal=[1.0e-7, 0.00001] BaseMVA=2220",
+    );
+    dss.command(
+        "New Line.Source_HT_1 Bus1=SourceBus Bus2=HT R1=0 X1=(0.5 53.615 *) \
+         R0=0 X0=(0.5 53.615 *) C1=0 C0=0 length=1 Units=mi",
+    );
+    dss.command(
+        "New Line.Source_HT_2 Bus1=SourceBus Bus2=HT R1=0 X1=(0.93 53.615 *) \
+         R0=0 X0=(0.93 53.615 *) C1=0 C0=0 length=1 Units=mi",
+    );
+    dss.command(
+        "New Transformer.Step_Up Phases=3 Windings=2 XHL=15 ppm=0 \
+         buses=(HT LT) conns='wye wye' kvs=\"345 24\" kvas=\"2220000 2220000\" %Loadloss=0",
+    );
+    dss.command(
+        "New DynamicExp.myDiffEq nvariables=6 varnames=[Speed Mass PShaft Pterm Damp theta] \
+         expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed]",
+    );
+    dss.command(
+        "New Generator.G1 Bus1=LT kV=24 kW=(2220000 0.9 *) kvar=(2220000 0.436 *) \
+         Model=1 vminpu=0.80 Vmaxpu=1.4 DynamicEq=myDiffEq MVA=2220 XRdp=1e12 Xdp=0.3 Xdpp=0.25 \
+         Damp=0 PShaft=P0 Pterm=P Speed=0 theta=Edp Mass=(3.5 2 * 2220000000 376.99112 / *) \
+         DynOut=[Speed theta]",
+    );
+    dss.command("set voltagebases=[345, 24]");
+    dss.command("calcv");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "kundur dynexp steady solve: {:?}",
+        dss.errors()
+    );
+    dss.command("New Monitor.g1vars Generator.G1 Term=1 mode=3");
+    dss
+}
+
+/// The DynamicExp generator's mode-3 monitor records the 12 memory slots, named
+/// from the `DynamicExp` variables (value + derivative per variable), undisturbed
+/// at the swing-equation fixpoint. Oracle (dss-python 0.15.7) on the corpus deck.
+#[test]
+fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
+    let mut dss = kundur_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    assert!(
+        dss.errors().is_empty(),
+        "enter dynamics: {:?}",
+        dss.errors()
+    );
+    dss.command("Solve number=1000");
+    assert!(dss.errors().is_empty(), "dynamic run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("g1vars").expect("g1vars monitor");
+    // The mode-3 header tail is the DynamicExp memory-slot names (lowercased on the
+    // DynamicExp varnames); the two leading time columns are kept offline (WP7.6).
+    assert_eq!(
+        &m.header[2..],
+        [
+            "speed", "dspeed", "mass", "dmass", "pshaft", "dpshaft", "pterm", "dpterm", "damp",
+            "ddamp", "theta", "dtheta"
+        ],
+        "mode-3 header tail = the 12 DynamicExp memory slots"
+    );
+    assert_eq!(m.sample_count, 1001);
+    assert_eq!(m.channels.len(), 12);
+
+    let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // Oracle DynExp steady values (the swing-equation fixpoint).
+    assert!(last(0).abs() < 1e-3, "speed = {}", last(0)); // ~0
+    assert!(rel(last(2), 41221132.0) < 1e-5, "mass = {}", last(2)); // 2HS/w0
+    assert!(rel(last(4), 1.9979999e9) < 1e-5, "pshaft = {}", last(4));
+    assert!(rel(last(6), 1.998e9) < 1e-5, "pterm = {}", last(6));
+    assert!(
+        rel(last(10), 0.7290715) < 1e-5,
+        "theta (rad) = {}",
+        last(10)
+    );
+    assert!(last(11).abs() < 1e-3, "dtheta = {}", last(11)); // ~0
+
+    // theta (rad) here equals the classic gate's Theta (41.77272 deg) — the DynExp
+    // reproduces the built-in shaft model exactly.
+    assert!(
+        (last(10) * 180.0 / std::f64::consts::PI - 41.77272).abs() < 1e-3,
+        "DynExp theta must equal the classic Theta in degrees"
+    );
+
+    // The fixpoint holds for the whole run.
+    for (s, &v) in m.channels[10].iter().enumerate() {
+        assert!(
+            rel(v as f64, 0.7290715) < 1e-4,
+            "theta drifted at sample {s}: {v}"
+        );
+    }
+}
+
+/// The full Kundur transient swing, DynamicExp-driven: 3-phase fault at HT,
+/// cleared after 70 ms by opening the weaker line, then a 10 s undamped swing.
+/// The rotor-angle `theta` (state-variable slot, in radians) oscillates between
+/// the oracle's trough and first peak — matching the classic gate's swing scaled
+/// by π/180 (the classic reports degrees, the DynExp slot is the raw radian state).
+#[test]
+fn generator_dynexp_dynamics_swing_matches_oracle_kundur() {
+    let mut dss = kundur_dynexp_dss();
+    dss.command("solve mode=dynamic h=0.001 number=1");
+    dss.command("Solve number=1000");
+    dss.command("New fault.F1 phases=3 Bus1=HT");
+    dss.command("Solve number=70");
+    dss.command("Edit Fault.F1 enabled=no");
+    dss.command("Open Line.Source_HT_2");
+    dss.command("Solve Number=10000");
+    assert!(dss.errors().is_empty(), "swing run: {:?}", dss.errors());
+
+    let m = dss.monitor_view("g1vars").expect("g1vars monitor");
+    assert_eq!(m.sample_count, 1 + 1000 + 70 + 10000);
+    let theta = &m.channels[10]; // theta state slot, radians
+    let tmin = theta.iter().fold(f64::INFINITY, |a, &b| a.min(b as f64));
+    let tmax = theta
+        .iter()
+        .fold(f64::NEG_INFINITY, |a, &b| a.max(b as f64));
+    // Oracle (dss-python 0.15.7): theta swings between 0.42211992 and 1.7127246 rad
+    // (= 24.18569 / 98.131889 deg, the classic gate's values).
+    assert!(
+        rel(tmin, 0.42211992) < 1e-4,
+        "theta swing min (rad) = {tmin}"
+    );
+    assert!(
+        rel(tmax, 1.7127246) < 1e-4,
+        "theta swing max (rad) = {tmax}"
+    );
+    assert!(
+        (tmin * 180.0 / std::f64::consts::PI - 24.18569).abs() < 1e-2
+            && (tmax * 180.0 / std::f64::consts::PI - 98.131889).abs() < 1e-2,
+        "DynExp swing must equal the classic Kundur swing in degrees"
+    );
+}
+
+// ===========================================================================
 // WP7.7 step 2b — PVSystem / Storage grid-following inverter dynamics
 // (InvDynamics.TInvDynamicVars). The classic-+inverter state-variable interface
 // (PVSystem 22 vars = 13 classic + 9 InvDyn; Storage 34 = 25 + 9) is recorded by

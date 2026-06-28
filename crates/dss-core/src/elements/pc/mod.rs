@@ -5,6 +5,7 @@
 //!
 //! [`CktElement`]: crate::elements::traits::CktElement
 
+pub mod dyneq_pce;
 pub mod generator;
 pub mod ind_mach012;
 pub mod inv_based_pce;

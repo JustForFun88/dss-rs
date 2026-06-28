@@ -96,9 +96,16 @@ impl DynamicExpObj {
         }
     }
 
+    /// Pascal `NVariables` property — the declared variable count
+    /// (`nvariables=`). `TDynEqPCE` sizes its `DynamicEqVals` memory and its
+    /// `NumVariables` by this (`* DYN_SLOT_LENGTH`), not by `var_names.len()`.
+    pub fn n_variables(&self) -> i32 {
+        self.n_variables
+    }
+
     /// Pascal `Get_Var_Idx`: the index of `var_name` in the state-variable list,
     /// or [`CONST_CODE`] if it parses as a numeric constant, or -1 otherwise.
-    fn get_var_idx(&self, var_name: &str) -> i32 {
+    pub fn get_var_idx(&self, var_name: &str) -> i32 {
         let lower = var_name.to_lowercase();
         if let Some(i) = self.var_names.iter().position(|n| *n == lower) {
             return i as i32;
