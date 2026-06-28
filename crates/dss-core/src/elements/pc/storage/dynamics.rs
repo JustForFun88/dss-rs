@@ -31,9 +31,9 @@ pub(super) const NUM_STORAGE_VARS: usize = NUM_BASE_STORAGE_VARS + NUM_INV_DYN_V
 
 impl Storage {
     /// Pascal `TStorageObj.InitStateVars` (l.2742) — seed the GFL inverter
-    /// state from the present power-flow operating point. Only runs the
-    /// discharging path (Pascal `if FState <> STORE_DISCHARGING then Exit`).
-    /// NOT_PORTED: DynaModel, DynamicEqObj.
+    /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
+    /// derivative zero-out at the tail). Only runs the discharging path (Pascal
+    /// `if FState <> STORE_DISCHARGING then Exit`). NOT_PORTED: DynaModel.
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let _ = node_v; // used below via self.cd.node_ref
         self.cd.yprim_invalid = true;
@@ -130,8 +130,9 @@ impl Storage {
     }
 
     /// Pascal `TStorageObj.IntegrateStates` (l.2840) — advance the GFL
-    /// inverter state by one trapezoidal half-step.
-    /// NOT_PORTED: DynaModel, GFM, DynamicEqObj, DebugTrace.
+    /// inverter state by one trapezoidal half-step (dispatching to
+    /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked).
+    /// NOT_PORTED: DynaModel, GFM, DebugTrace.
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
