@@ -4,10 +4,10 @@
 //! magnitude/angle (the Thevenin `Vthev`) is driven by the shaft swing equation,
 //! integrated by the trapezoidal predictor/corrector in `SolveDynamic`.
 //!
-//! Scope: the classic `DynamicEqObj = NIL` path only. The external
-//! `DynamicEqObj`/`DynamicExp` integration path, the user-written `UserModel`/
-//! `ShaftModel` DLLs and the grid-forming (GFM) inverter mode are NOT_PORTED
-//! (WP7.7 step 3 / never).
+//! Scope: the built-in shaft model (`DynamicEqObj = NIL`) and the external
+//! `DynamicExp` integration (`DynamicEqObj <> NIL`, WP7.7 step 3b). The
+//! user-written `UserModel`/`ShaftModel` DLLs and the grid-forming (GFM) inverter
+//! mode are NOT_PORTED (never / WP7.7 GFM step).
 
 use num_complex::Complex64;
 
@@ -29,8 +29,8 @@ const RADIANS_TO_DEGREES: f64 = 180.0 / std::f64::consts::PI;
 
 impl Generator {
     /// Pascal `TGeneratorObj.InitStateVars` — seed the shaft/Thevenin state from
-    /// the present (power-flow) operating point. Ports only the
-    /// `DynamicEqObj = NIL` branch.
+    /// the present (power-flow) operating point (both the built-in shaft model and
+    /// the `DynamicEqObj <> NIL` user-equation seeding).
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.cd.yprim_invalid = true; // Force rebuild of YPrims
 
@@ -145,7 +145,8 @@ impl Generator {
     }
 
     /// Pascal `TGeneratorObj.IntegrateStates` — advance the shaft state by one
-    /// trapezoidal half-step. Ports only the `DynamicEqObj = NIL` branch.
+    /// trapezoidal half-step (both the built-in shaft model and the
+    /// `DynamicEqObj <> NIL` user-equation integration).
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         // Compute derivatives and then integrate.
         self.compute_iterminal(sys, node_v);
@@ -426,8 +427,9 @@ impl Generator {
     }
 
     /// Pascal `TGeneratorObj.Get_Variable` for the 6 classic GenVars, filled into
-    /// `states[0..6]` (the `GetAllVariables` loop). UserModel/ShaftModel variables
-    /// and the DynamicEqObj path are NOT_PORTED.
+    /// `states[0..6]` (the `GetAllVariables` loop). The `DynamicEqObj` memory dump is
+    /// handled by the `get_all_variables` accessor short-circuit; UserModel/ShaftModel
+    /// variables are NOT_PORTED.
     pub(super) fn get_gen_variables(&mut self, states: &mut [f64]) {
         states[0] = (self.w0 + self.speed) / TWO_PI; // Frequency, Hz
         states[1] = self.theta * RADIANS_TO_DEGREES; // Theta, deg

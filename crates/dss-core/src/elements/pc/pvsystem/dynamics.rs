@@ -32,8 +32,8 @@ pub(super) const NUM_PV_VARS: usize = NUM_BASE_PV_VARS + NUM_INV_DYN_VARS; // = 
 
 impl PVSystem {
     /// Pascal `TPVsystemObj.InitStateVars` (l.2170) — seed the GFL inverter
-    /// state from the present power-flow operating point. Ports only the
-    /// `DynamicEqObj = NIL` / `UserModel.Exists = FALSE` path.
+    /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
+    /// derivative zero-out at the tail). `UserModel.Exists` is NOT_PORTED.
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.cd.yprim_invalid = true; // force rebuild of YPrims
 
@@ -142,8 +142,9 @@ impl PVSystem {
     }
 
     /// Pascal `TPVsystemObj.IntegrateStates` (l.2264) — advance the GFL
-    /// inverter state by one trapezoidal half-step. Ports only the
-    /// `DynamicEqObj = NIL` / `UserModel.Exists = FALSE` / non-GFM path.
+    /// inverter state by one trapezoidal half-step (dispatching to
+    /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked). The
+    /// `UserModel.Exists` / non-GFM-only restrictions stay NOT_PORTED.
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
