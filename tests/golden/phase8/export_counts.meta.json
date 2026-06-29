@@ -1,0 +1,10 @@
+{
+  "report": "Counts",
+  "fixture": "counts8",
+  "deck": [
+    "new circuit.counts8 basekv=12.47 bus1=src",
+    "new line.l1 bus1=src bus2=b",
+    "new line.l2 bus1=b bus2=c",
+    "new load.ld1 bus1=c kv=12.47 kw=100"
+  ]
+}

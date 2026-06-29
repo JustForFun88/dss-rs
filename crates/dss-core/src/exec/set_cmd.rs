@@ -3,6 +3,33 @@
 
 use super::*;
 
+/// Pascal `SetDataPath` (DSSGlobals.pas:540): create the dir if missing (#907 on
+/// failure → leave dirs unchanged), then point both the working dir and the
+/// report `OutputDirectory` at it. Allowed with or without a circuit (it touches
+/// the DSS context, not the circuit). The non-writable-dir → scratch fallback is
+/// NOT_PORTED (no corpus deck writes to a non-writable dir); empty `DataPath=` is
+/// a no-op here (Pascal clears DataDirectory; unexercised).
+///
+/// Uses single-level `create_dir` (not `create_dir_all`) to match Pascal's RTL
+/// `CreateDir`, which fails — #907, dirs unchanged — when a *parent* is missing.
+fn apply_data_path(
+    param: &str,
+    current_dir: &mut PathBuf,
+    output_directory: &mut PathBuf,
+    errors: &mut Vec<String>,
+) {
+    if param.is_empty() {
+        return;
+    }
+    let p = PathBuf::from(param);
+    if p.is_dir() || std::fs::create_dir(&p).is_ok() {
+        *current_dir = p.clone();
+        *output_directory = p;
+    } else {
+        errors.push(format!("Cannot create directory: \"{param}\""));
+    }
+}
+
 impl Dss {
     /// Pascal `DoSetCmd(SolveOption)`: parse `option=value` pairs, then run
     /// the solve when called from the `Solve` command.
@@ -25,6 +52,7 @@ impl Dss {
                 default_earth_model,
                 max_allocation_iterations,
                 current_dir,
+                output_directory,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -388,6 +416,9 @@ impl Dss {
                         }
                     }
                     opt::CASE_NAME => ckt.case_name = param.clone(),
+                    opt::DATA_PATH => {
+                        apply_data_path(&param, current_dir, output_directory, errors)
+                    }
                     opt::LOG => ckt.log_events = interpret_yes_no(&param),
                     opt::DEFAULT_BASE_FREQUENCY => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
@@ -435,6 +466,8 @@ impl Dss {
             vars,
             errors,
             default_base_freq,
+            current_dir,
+            output_directory,
             ..
         } = self;
         let mut pointer: usize = 0;
@@ -458,6 +491,10 @@ impl Dss {
                         *default_base_freq = v;
                     }
                 }
+                // `Set DataPath=` is legal before a circuit exists (Pascal
+                // operates on the DSS context, not the circuit) — a common
+                // pattern at the top of a script.
+                opt::DATA_PATH => apply_data_path(&param, current_dir, output_directory, errors),
                 _ => {
                     errors.push(
                         "You must create a new circuit object first: \"new circuit.mycktname\" to execute this Set command."

@@ -860,3 +860,162 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, tol: &Tolerances, ctx: &str) {
     cmp_members(&zone.all_end_elements, &exp.ends, "end");
     cmp_members(&zone.zone_pce, &exp.pce, "PCE");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8: text/CSV report comparison (PHASE8_PLAN §2.3).
+//
+// Compares an oracle-written report file against the Rust-written one after
+// parsing numbers out (never a raw float-string diff): a fixed header block is
+// matched verbatim, then each data row is split on the report's separator and
+// compared field-by-field — numbers within tolerance, identifiers
+// case-insensitively. Element/row ordering is the report's contract (Pascal
+// iteration order is observable) unless `RustSubsetByKey` is used.
+// ---------------------------------------------------------------------------
+
+/// Row-set matching policy for [`compare_export`].
+pub enum RowPolicy {
+    /// Rust and oracle data rows are identical and in the same order (the
+    /// report's contract — Pascal iteration order is observable).
+    ExactOrdered,
+    /// The Rust file's rows must be a **subset** of the oracle's, matched by the
+    /// `key`-th field, with matching value fields. Used by `Export Counts`
+    /// during the port: the Rust class registry is a *proper subset* of the
+    /// oracle's (only a subset of classes is ported), so this pins every ported
+    /// class's count against the oracle without failing on the classes we do not
+    /// yet register. Documented in `tests/TOLERANCE_NOTES.md`.
+    ///
+    /// `require` lists lowercased key values that **must** appear in the Rust
+    /// rows — without it the subset check (which iterates only the Rust rows)
+    /// would silently pass an empty/under-reporting Rust body (a dropped class
+    /// is just absent, not a mismatch). Pass the deck-created + default-item keys
+    /// so a registry-walk regression cannot hide (audit-tests WP8.1).
+    RustSubsetByKey { key: usize, require: Vec<String> },
+}
+
+/// Policy for [`compare_export`].
+pub struct ExportPolicy {
+    /// Field separator: `','` for CSV, `'='` for the `Counts` key=value text.
+    pub sep: char,
+    /// Leading non-blank lines compared **verbatim** (fixed headers / column
+    /// row), no number parsing.
+    pub header_lines: usize,
+    /// Row-set policy.
+    pub rows: RowPolicy,
+    /// Per-number relative / absolute tolerance for value fields.
+    pub rel: f64,
+    pub abs: f64,
+}
+
+/// Split a report into non-blank, `\r`-stripped lines.
+fn report_lines(s: &str) -> Vec<String> {
+    s.lines()
+        .map(|l| l.trim_end().to_string())
+        .filter(|l| !l.trim().is_empty())
+        .collect()
+}
+
+/// A field is numeric iff it parses *whole* as `f64` (so a class name like
+/// `IndMach012` stays text while a count `2` is a number).
+fn field_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+    match (actual.trim().parse::<f64>(), expected.trim().parse::<f64>()) {
+        (Ok(_), Ok(_)) => assert_value_matches_tol(actual.trim(), expected.trim(), rel, abs, ctx),
+        _ => assert!(
+            actual.trim().eq_ignore_ascii_case(expected.trim()),
+            "{ctx}: text field differs (actual {:?} vs expected {:?})",
+            actual.trim(),
+            expected.trim()
+        ),
+    }
+}
+
+/// Compare two report bodies (oracle vs Rust) per [`ExportPolicy`] (§2.3).
+pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str) {
+    let ol = report_lines(oracle);
+    let rl = report_lines(rust);
+    assert!(
+        ol.len() >= policy.header_lines && rl.len() >= policy.header_lines,
+        "{ctx}: file shorter than the {} header line(s)",
+        policy.header_lines
+    );
+    // Fixed header block: verbatim.
+    for i in 0..policy.header_lines {
+        assert_eq!(rl[i], ol[i], "{ctx}: header line {i} differs");
+    }
+    let split = |line: &str| -> Vec<String> {
+        line.split(policy.sep)
+            .map(|f| f.trim().to_string())
+            .collect()
+    };
+    let odata = &ol[policy.header_lines..];
+    let rdata = &rl[policy.header_lines..];
+
+    match &policy.rows {
+        RowPolicy::ExactOrdered => {
+            assert_eq!(
+                rdata.len(),
+                odata.len(),
+                "{ctx}: data row count differs (rust {} vs oracle {})",
+                rdata.len(),
+                odata.len()
+            );
+            for (i, (r, o)) in rdata.iter().zip(odata).enumerate() {
+                let (rf, of) = (split(r), split(o));
+                assert_eq!(rf.len(), of.len(), "{ctx}: row {i} field count differs");
+                for (j, (a, e)) in rf.iter().zip(&of).enumerate() {
+                    field_eq(
+                        a,
+                        e,
+                        policy.rel,
+                        policy.abs,
+                        &format!("{ctx}: row {i} field {j}"),
+                    );
+                }
+            }
+        }
+        RowPolicy::RustSubsetByKey { key, require } => {
+            // Oracle rows keyed by the lowercased key field.
+            let mut omap: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for o in odata {
+                let f = split(o);
+                if let Some(k) = f.get(*key) {
+                    omap.insert(k.to_lowercase(), f);
+                }
+            }
+            let mut rust_keys: BTreeSet<String> = BTreeSet::new();
+            for (i, r) in rdata.iter().enumerate() {
+                let rf = split(r);
+                let k = rf
+                    .get(*key)
+                    .unwrap_or_else(|| panic!("{ctx}: rust row {i} has no key field"));
+                rust_keys.insert(k.to_lowercase());
+                let of = omap.get(&k.to_lowercase()).unwrap_or_else(|| {
+                    panic!("{ctx}: rust row {i} key {k:?} absent from the oracle file")
+                });
+                assert_eq!(
+                    rf.len(),
+                    of.len(),
+                    "{ctx}: row key {k:?} field count differs"
+                );
+                for (j, (a, e)) in rf.iter().zip(of).enumerate() {
+                    field_eq(
+                        a,
+                        e,
+                        policy.rel,
+                        policy.abs,
+                        &format!("{ctx}: row {k:?} field {j}"),
+                    );
+                }
+            }
+            // Presence guard: a subset compare that iterates only the Rust rows
+            // cannot see a *dropped* row, so an empty/under-reporting Rust body
+            // would pass silently. Require the must-emit keys explicitly.
+            for k in require {
+                assert!(
+                    rust_keys.contains(&k.to_lowercase()),
+                    "{ctx}: required key {k:?} missing from the Rust output \
+                     (a dropped class / empty report body)"
+                );
+            }
+        }
+    }
+}

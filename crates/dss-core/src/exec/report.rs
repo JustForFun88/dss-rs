@@ -35,9 +35,81 @@ impl Dss {
                 .push(format!("Error: Unknown Export command: \"{parm1}\""));
             return;
         }
-        let name = EXPORT_OPTIONS[ptr - 1];
-        self.errors
-            .push(format!("Export \"{name}\" is not ported yet (Phase 8)."));
+        // The optional trailing filename (Pascal reads it after any per-report
+        // pre-parsing; the only ported report, Counts (26), has no pre-parsing).
+        // TODO(WP8.2): reports 8/9/15/17/19/20-21/32/51 consume a `Parm2` (kVA/MVA
+        // flag, monitor name, meter, …) BEFORE the filename (`ExportOptions.pas:190`).
+        // When they land, move their per-report pre-parsing ahead of this read so
+        // their `Parm2` is not mis-consumed as the filename.
+        self.parser.next_param(&self.vars);
+        let explicit = self.parser.make_string(&self.vars);
+
+        match ptr {
+            26 => self.export_counts_to_file(&explicit), // Counts (WP8.1)
+            _ => {
+                let name = EXPORT_OPTIONS[ptr - 1];
+                self.errors
+                    .push(format!("Export \"{name}\" is not ported yet (Phase 8)."));
+            }
+        }
+    }
+
+    /// `Export Counts` (Pascal `ExportCounts`): dump every class + its instance
+    /// count to `<OutputDirectory><CircuitName_>EXP_Counts.csv` (or the explicit
+    /// filename). No solve dependency — the count is over the live registry.
+    fn export_counts_to_file(&mut self, explicit: &str) {
+        let class_counts: Vec<(String, usize)> = self
+            .classes
+            .iter()
+            .map(|c| (c.props.class_name().to_string(), c.objects.len()))
+            .collect();
+        let content = crate::report::export::export_counts(&class_counts);
+        // CircuitName_ = <CaseName>_ (Pascal `Set_CaseName`); CaseName defaults
+        // to the circuit name.
+        let case = self
+            .circuit
+            .as_ref()
+            .map(|c| c.case_name.clone())
+            .unwrap_or_default();
+        let circuit_name_ = format!("{case}_");
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &circuit_name_,
+            explicit,
+            "EXP_Counts.csv",
+        );
+        if self.write_report(&path, &content) {
+            // Pascal `DoExportCmd` adds the **export-specific** `@lastexportfile`
+            // (`ExportOptions.pas:636`) on top of `SetLastResultFile`. Show/Save
+            // do NOT set it (Show sets neither; Save sets `@lastfile` +
+            // `GlobalResult`), so it stays here in the export path, not in the
+            // generic `write_report`.
+            let p = self.last_result_file.clone();
+            self.vars.add("@lastexportfile", &p);
+        }
+    }
+
+    /// Write a finished report to `path` and record it as the last result file
+    /// (Pascal `SetLastResultFile`: `@lastfile` + `LastResultFile`). Returns
+    /// whether the write succeeded (a failure is recorded, not swallowed). The
+    /// generic writer shared by `Export`/`Show`/`Save`; the per-verb extras
+    /// (`@lastexportfile` / `GlobalResult`) are set by the caller.
+    fn write_report(&mut self, path: &Path, content: &str) -> bool {
+        match std::fs::write(path, content) {
+            Ok(()) => {
+                let p = path.to_string_lossy().into_owned();
+                self.vars.add("@lastfile", &p);
+                self.last_result_file = p;
+                true
+            }
+            Err(e) => {
+                self.errors.push(format!(
+                    "Error writing report file \"{}\": {e}",
+                    path.display()
+                ));
+                false
+            }
+        }
     }
 
     /// Pascal `DoShowCmd` (`ShowOptions.pas:89`): read the report keyword and
