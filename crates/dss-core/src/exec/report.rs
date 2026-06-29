@@ -56,19 +56,37 @@ impl Dss {
             return;
         }
 
-        // The optional trailing filename (Pascal reads it after any per-report
-        // pre-parsing; none of the WP8.2 step-1 exports pre-parse a `Parm2`).
-        // TODO(WP8.2): reports 8/9/15/17/19/20-21/32/51 consume a `Parm2` (kVA/MVA
-        // flag, monitor name, meter, …) BEFORE the filename (`ExportOptions.pas:190`).
-        // When they land, move their per-report pre-parsing ahead of this read so
-        // their `Parm2` is not mis-consumed as the filename.
+        // Per-report pre-parse of an option flag BEFORE the trailing filename
+        // (Pascal `ExportOptions.pas:190-298`). In this WP only `Powers`(9) /
+        // `P_byphase`(19) consume one — the MVA/kVA flag (`m…` → MVA, else kVA).
+        // The other Parm2-consuming reports (8 UE-only / 15 monitor name / 17
+        // triplet flag / 20-21 CIM / 32 profile phases / 51 meter) land in later
+        // WPs; each must likewise pre-parse here, ahead of the filename read, so
+        // its `Parm2` is not mis-consumed as the filename.
+        let mut mva_opt = 0;
+        if matches!(ptr, 9 | 19) {
+            self.parser.next_param(&self.vars);
+            let parm2 = self.parser.make_string(&self.vars).to_lowercase();
+            if parm2.starts_with('m') {
+                mva_opt = 1;
+            }
+        }
+
+        // The optional trailing filename (Pascal `ExportOptions.pas:300-305`).
         self.parser.next_param(&self.vars);
         let explicit = self.parser.make_string(&self.vars);
 
         use crate::report::export;
         match ptr {
             1 => self.export_with(&explicit, "EXP_VOLTAGES.csv", export::export_voltages),
+            9 => self.export_with_mut(&explicit, "EXP_POWERS.csv", |c, ckt, sys, nv| {
+                export::export_powers(c, ckt, sys, nv, mva_opt)
+            }),
+            19 => self.export_with_mut(&explicit, "EXP_P_BYPHASE.csv", |c, ckt, sys, nv| {
+                export::export_p_by_phase(c, ckt, sys, nv, mva_opt)
+            }),
             23 => self.export_with(&explicit, "EXP_BUSCOORDS.csv", export::export_bus_coords),
+            24 => self.export_with_mut(&explicit, "EXP_LOSSES.csv", export::export_losses),
             26 => self.export_counts_to_file(&explicit), // Counts (WP8.1)
             39 => self.export_with(&explicit, "EXP_NodeNames.csv", export::export_node_names),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
@@ -87,6 +105,34 @@ impl Dss {
     /// including the ones that skip the solution guard (e.g. NodeNames, ptr 39).
     fn export_with(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
         let content = f(self.circuit.as_ref().expect("post-circuit dispatch"));
+        self.write_export(explicit, default_name, &content);
+    }
+
+    /// Like [`Dss::export_with`] but for the **element** exports, which call the
+    /// mutating terminal getters (`ComputeIterminal`/`ComputeVterminal`/`Power`/
+    /// `GetLosses`). Hands the formatter the disjoint `(&mut classes, &circuit,
+    /// &sys, &node_v)` borrow (the `snapshot_elements` pattern) so it can walk the
+    /// `Sources`/`PDElements`/`Faults`/`PCElements` lists and recompute each
+    /// element's terminal quantities, then writes the produced text. The circuit
+    /// is always present (the generic pre-circuit #301 guard already fired).
+    fn export_with_mut<F>(&mut self, explicit: &str, default_name: &str, f: F)
+    where
+        F: FnOnce(
+            &mut [crate::exec::registry::DssClass],
+            &Circuit,
+            &crate::elements::traits::SysCtx,
+            &[num_complex::Complex64],
+        ) -> String,
+    {
+        let content = {
+            let Dss {
+                classes, circuit, ..
+            } = self;
+            let ckt = circuit.as_ref().expect("post-circuit dispatch");
+            let sys = crate::solution::solution::sys_ctx(ckt);
+            let node_v = ckt.solution.node_v.clone();
+            f(classes, ckt, &sys, &node_v)
+        };
         self.write_export(explicit, default_name, &content);
     }
 

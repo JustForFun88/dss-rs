@@ -51,7 +51,7 @@ mod command;
 mod construct;
 mod get_cmd;
 mod helpers;
-mod registry;
+pub(crate) mod registry;
 mod report;
 mod set_cmd;
 mod solve;

@@ -276,3 +276,63 @@ fn export_ynodelist_matches_oracle() {
     };
     run_feeder_export("export_ynodelist", &policy);
 }
+
+// --- WP8.2 sub-step 2a: the real-power element exports ----------------------
+// These walk the Sources/PDElements/Faults/PCElements lists calling the mutating
+// terminal getters (`Power`/`GetLosses`/`ComputeVterminal`/`ComputeIterminal`).
+// All columns are real (kW/kvar/W) — no angle/sequence columns — so the floors
+// are the plain fixed-decimal / `%g` printing floors, NOT a physics relaxation:
+// the engine's V/I/P physics is pinned to 1e-8 by `corpus_live.rs`; here we gate
+// the report layout (header, column set, element order, scaling).
+// (tests/TOLERANCE_NOTES.md)
+
+/// `Export Powers` (Pascal `ExportPowers`): per-terminal kW/kvar of every PD then
+/// PC element, plus each PD's terminal-1 normal/emergency excess kVA. Every value
+/// column is `%11.1f` (one decimal): an additive ±0.1 last-digit boundary between
+/// two independent solves, so `rel = 0` / `abs = 0.11` is the exact printing floor
+/// (the integer Terminal column is exact within it).
+#[test]
+fn export_powers_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.11,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_powers", &policy);
+}
+
+/// `Export Losses` (Pascal `ExportLosses`): per-PD-element total / load / no-load
+/// losses in W and var, `%.7g` (7 sig). The default `%g` floor (`EXPORT_REL`)
+/// clears the 7-sig printing plus the two solves with margin.
+#[test]
+fn export_losses_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_losses", &policy);
+}
+
+/// `Export P_byphase` (Pascal `ExportPbyphase`): per-conductor kW/kvar over the
+/// full Yorder. Values are `%10.3f` (three decimals); the additive 1-ulp floor is
+/// `abs = 0.0011`, with `rel = EXPORT_REL` covering the larger values (the integer
+/// NumTerminals/NumConductors/NumPhases columns are exact within abs).
+#[test]
+fn export_p_byphase_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 0.0011,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_p_byphase", &policy);
+}

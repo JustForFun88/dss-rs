@@ -87,6 +87,10 @@ FEEDER_REPORTS = [
     ("buscoords", "EXP_BUSCOORDS.csv", "export_buscoords"),
     ("nodenames", "EXP_NodeNames.csv", "export_nodenames"),
     ("ynodelist", "EXP_YNodeList.csv", "export_ynodelist"),
+    # WP8.2 sub-step 2a — the aggregate PD/PC power exports (kW/kvar/W, no angles).
+    ("powers", "EXP_POWERS.csv", "export_powers"),
+    ("losses", "EXP_LOSSES.csv", "export_losses"),
+    ("p_byphase", "EXP_P_BYPHASE.csv", "export_p_byphase"),
 ]
 
 
