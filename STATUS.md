@@ -89,7 +89,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 712**, **`solvable_now` 88** (the live corpus gate;
+Current scores: dss-core **lib 713**, **`solvable_now` 88** (the live corpus gate;
 WP7.9 step 1 migrated the 3 ShortCircuitCases FaultStudy decks); oracle pinned to
 dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
@@ -736,6 +736,30 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   (`ieee37_SC_Currents`, `ieee34Mod2_SC_Case_II`, `IEEE123Master-SC`) classify
   **solvable** (full-model live oracle match — the post-study `NodeV` is the last
   `ComputeYsc` column on both engines and agrees). lib 711 → **712**.
+  - **audit-code:** verdict **clean** (no blocker/major) — the port is loop-for-loop
+    faithful (order, `ComputeYsc` indices + ground convention, single-LU factor reuse,
+    bit-faithful singular invert, dynamics-entry timing all re-verified vs the oracle).
+    Confirmed `LoadModel=ADMITTANCE` is **faithful but inert for `Zsc`**: Pascal
+    `TLoadObj.CalcYPrim` runs identical code in the POWERFLOW/ADMITTANCE branches, so
+    the load YPrim (already in Y from the snapshot) is LoadModel-independent. Fixed a
+    `BusScView` doc nit (`vbus` is the stored `VBus`/Voc, **not** dss-python
+    `Bus.Voltages`, which returns the live residual `NodeV`).
+  - **audit-tests:** verdict **sound + non-vacuous** (every pin independently
+    re-derived from dss-python 0.15.7). Both audits flagged that the **corpus
+    migration validates the full power-flow model + FaultStudy mode behavior (node
+    order, residual `NodeV`, Y, element I/P) but NOT the per-bus `Zsc`/`Ysc`/`Isc`
+    deliverable** — that is the targeted test's job, and the Phase-8 `Export/Show
+    FaultStudy` reports (WP8.3/8.4) will systematically gate the formatted Zsc/Isc on
+    the corpus (a dedicated corpus Zsc capture now would duplicate that and need a
+    bespoke tolerance for the near-singular delta-isolated `Zsc0`). **Fix applied:**
+    extended `exec/tests/fault_study.rs` with a second oracle-pinned deck covering the
+    paths the balanced anchor can't — a **single-phase** bus (the `n=1`
+    `avg_off_diagonal`=0 branch + 1×1 invert), an **asymmetric** bus behind a
+    full-matrix line (non-circulant `Ysc` → distinct per-node `Isc`, exercising
+    `Ysc·VBus` + the `Zsc[j,i]` indexing), and a **delta-isolated** bus (near-singular
+    `Zsc0`≈5.2e7j — the deliberately-ignored `invert()` failure path; pinned as the
+    robust facts: well-conditioned `Zsc1` tight + `Zsc0` blows up + fault `Isc`
+    matches). lib 712 → **713**.
 - **step 2 — AutoAdd / MonteCarlo / LoadDuration / MonteFault — kept deferred (no
   port).** Corpus probe found **zero** decks using `mode=autoadd`/`A`, `mode=M1/M2/M3`
   (MonteCarlo), `mode=MF` (MonteFault), or `mode=LD1/LD2` (LoadDuration). Per the
