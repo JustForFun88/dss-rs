@@ -91,10 +91,10 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 713, golden_feeders 1,
+cargo test --workspace      # dss-core lib 719, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1,
+                            # golden_phase7_protection 1, golden_phase8 10,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1022,7 +1022,8 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     the *snapshot report-layer transform*. **Nit 3:** the unit test now sets a
     scratch `datapath` (defensive — every branch errors before a write, but a future
     write-reaching branch must not pollute the source tree).
-- **sub-step 2a — the aggregate PD/PC power exports — done, gate-green.** The first
+- **sub-step 2a — the aggregate PD/PC power exports — done, gate-green** (`bce68cc` +
+  audit follow-ups `b7e7a47`/`817696f`). The first
   **element** exports (read/compute over the solved circuit, PHASE8_PLAN §2.1 plan-step
   2): `Powers` (`ExportPowers:1075` — per-terminal kW/kvar of every PD then PC element
   + each PD's terminal-1 normal/emergency excess kVA), `Losses` (`ExportLosses:1185` —
