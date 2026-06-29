@@ -28,6 +28,7 @@
 
 mod dispatch;
 mod dynamics;
+mod fault_study;
 mod harmonics;
 mod power_flow;
 mod set_mode;

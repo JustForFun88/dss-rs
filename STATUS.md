@@ -71,8 +71,13 @@ focused gate is `exec/tests/dynamics.rs`; dynamics corpus burn-down 0-migratable
 done. **WP7.7 (Dynamics core) COMPLETE.** **WP7.8 (Converter/FACTS family) COMPLETE**
 — VSConverter, VCCS, UPFC + UPFCControl, ESPVLControl all ported, gate-green
 (fork/fresh-agent-drafted, numerics + every oracle-bug claim re-verified in the main
-loop before commit). **next = WP7.9 (FaultStudy + AutoAdd modes + Feeder).** The GFM
-inverter mode + the Generic/TD21 relay Sample stay deferred (tracked-open, §1e).
+loop before commit). **WP7.9 (FaultStudy + AutoAdd + Feeder) IN PROGRESS — step 1
+(the `SolveFaultStudy` mode + per-bus `Zsc`/`Ysc`/`Isc` machinery) done,
+oracle-pinned** (bus `Zsc1`/`Zsc0`/`Isc` match dss-python 0.15.7; the 3 corpus
+ShortCircuitCases decks — IEEE123/IEEE34/IEEE37 — migrated to `solvable_now`,
+full-model live-matched). **next = WP7.9 step 2 (AutoAdd/MonteCarlo — probe; likely
+keep deferred) + step 3 (Feeder).** The GFM inverter mode + the Generic/TD21 relay
+Sample stay deferred (tracked-open, §1e).
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -84,10 +89,9 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 711**, **`solvable_now` 85** (the live corpus gate;
-the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
-WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
-`tools/golden/PIN.txt`).
+Current scores: dss-core **lib 712**, **`solvable_now` 88** (the live corpus gate;
+WP7.9 step 1 migrated the 3 ShortCircuitCases FaultStudy decks); oracle pinned to
+dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
 Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
 §Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
@@ -122,7 +126,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) + step 4 (gate finalize, 0-migratable burn-down) done — WP7.7 COMPLETE; WP7.8 (converter/FACTS family) COMPLETE (VSConverter/VCCS/UPFC+UPFCControl/ESPVLControl)**; **next = WP7.9 (FaultStudy + AutoAdd)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) + step 4 (gate finalize, 0-migratable burn-down) done — WP7.7 COMPLETE; WP7.8 (converter/FACTS family) COMPLETE (VSConverter/VCCS/UPFC+UPFCControl/ESPVLControl); WP7.9 (FaultStudy + AutoAdd + Feeder) IN PROGRESS — step 1 (FaultStudy mode + per-bus Zsc/Ysc/Isc) done, 3 ShortCircuitCases decks migrated**; **next = WP7.9 step 2 (AutoAdd probe) + step 3 (Feeder)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
@@ -709,8 +713,29 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   incl. the with==without byte-identity) + `props/espvlcontrol.json`. lib 693 → **711**.
   (Fresh-agent-drafted; the no-op + oracle behavior re-verified before commit.)
 - **WP7.8 (Converter/FACTS family) COMPLETE** — VSConverter, VCCS, UPFC + UPFCControl,
-  ESPVLControl all done, gate-green. **next = WP7.9** (FaultStudy + AutoAdd modes +
-  Feeder).
+  ESPVLControl all done, gate-green.
+
+**WP7.9 (FaultStudy + AutoAdd + Feeder) — 🚧 IN PROGRESS.**
+- **step 1 — FaultStudy mode (`solution/solution/fault_study.rs`) — done, gate-green.**
+  Ported `TSolutionAlgs.SolveFaultStudy` and its `TSolutionObj` helpers
+  (`DisableAllFaults` → `SolveDirect` for the open-circuit Voc → `AllocateAllSCParms`
+  → `UpdateVBus` → `ComputeAllYsc` → `ComputeIsc`). Each bus's `Zsc` is built column
+  by column by injecting 1 A at each node and re-solving the **already-factored**
+  system Y (`SparseSet::solve` reuses the cached LU), i.e. each `Zsc` column is a
+  column of `Y⁻¹` restricted to the bus's nodes; `Ysc = Zsc⁻¹` (reusing
+  `support/cmatrix` `Invert`, whose singular path matches Pascal — degenerate buses
+  e.g. a delta-isolated zero sequence leave `Ysc` partially transformed, exactly like
+  upstream); `Isc = Ysc·VBus`. New `Bus` fields `zsc`/`ysc` (`Option<CMatrix>`) +
+  `allocate_bus_quantities`/`get_zsc1`/`get_zsc0`; new `exec/view.rs::bus_short_circuit`
+  (dss-python `Bus.Zsc1`/`Zsc0`/`Isc`). `SolveFaultStudy` sets `LoadModel=ADMITTANCE`
+  (faithful; no corpus FaultStudy deck has active loads). `MonteFault` still errors
+  (no corpus case). **Gate:** `exec/tests/fault_study.rs` — a self-contained radial
+  feeder whose bus `Zsc1`/`Zsc0` are the analytic series sums (e.g. b2 = source
+  0.5+2.0j + line 0.2+0.6j = 0.7+2.6j), pinned to dss-python 0.15.7 along with the
+  full-complex `Isc`. **Corpus 85 → 88:** the 3 `ShortCircuitCases` decks
+  (`ieee37_SC_Currents`, `ieee34Mod2_SC_Case_II`, `IEEE123Master-SC`) classify
+  **solvable** (full-model live oracle match — the post-study `NodeV` is the last
+  `ComputeYsc` column on both engines and agrees). lib 711 → **712**.
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

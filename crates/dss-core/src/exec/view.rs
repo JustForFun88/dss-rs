@@ -61,6 +61,23 @@ pub struct ElementSnapshot {
 /// coordinates, returned by [`Dss::system_y_csc`].
 pub type SystemYCsc = (usize, Vec<(usize, usize, num_complex::Complex64)>);
 
+/// A bus's short-circuit results after a FaultStudy solve — the dss-python
+/// `Bus.Zsc1`/`Zsc0`/`Isc` surface (`TDSSBus`). `isc`/`vbus` are empty until a
+/// FaultStudy has allocated the bus quantities.
+#[derive(Debug, Clone)]
+pub struct BusScView {
+    /// User node numbers on the bus (`Nodes`).
+    pub nodes: Vec<i32>,
+    /// `Zsc1`: positive-sequence short-circuit impedance.
+    pub zsc1: num_complex::Complex64,
+    /// `Zsc0`: zero-sequence short-circuit impedance.
+    pub zsc0: num_complex::Complex64,
+    /// `Isc` / `BusCurrent`: per-node short-circuit current (= `Ysc · VBus`).
+    pub isc: Vec<num_complex::Complex64>,
+    /// `VBus`: the open-circuit (Voc) voltage captured during the study.
+    pub vbus: Vec<num_complex::Complex64>,
+}
+
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -183,6 +200,22 @@ impl Dss {
             }
         }
         None
+    }
+
+    /// Read a bus's short-circuit results after a FaultStudy solve — the
+    /// dss-python `Bus.Zsc1`/`Zsc0`/`Isc`/`Voltages` surface. `name` is the bus
+    /// name (case-insensitive). `None` if no such bus exists.
+    pub fn bus_short_circuit(&self, name: &str) -> Option<BusScView> {
+        let ckt = self.circuit.as_ref()?;
+        let idx = ckt.bus_list.find(name)?;
+        let b = &ckt.buses[idx];
+        Some(BusScView {
+            nodes: b.nodes.clone(),
+            zsc1: b.get_zsc1(),
+            zsc0: b.get_zsc0(),
+            isc: b.bus_current.clone(),
+            vbus: b.vbus.clone(),
+        })
     }
 
     /// Read a monitor's recorded data — the dss-python `Monitors.Header` /
