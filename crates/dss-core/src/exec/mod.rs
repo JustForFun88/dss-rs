@@ -52,6 +52,7 @@ mod construct;
 mod get_cmd;
 mod helpers;
 mod registry;
+mod report;
 mod set_cmd;
 mod solve;
 mod tables;
@@ -69,6 +70,12 @@ pub struct Dss {
     class_by_name: HashMap<String, usize>,
     commands: CommandList,
     option_list: CommandList,
+    /// `DSS.DSSExecutive.ExportCommands` — the `Export` report keyword list
+    /// (Pascal `ExportOptions.DefineOptions`), abbreviation-matched (WP8.1).
+    export_commands: CommandList,
+    /// `DSS.DSSExecutive.ShowCommands` — the `Show` report keyword list
+    /// (Pascal `ShowOptions.DefineOptions`), abbreviation-matched (WP8.1).
+    show_commands: CommandList,
     /// Main parser driving the command/edit loop (`DSS.Parser`).
     parser: Parser,
     /// Scratch parser for property values (`DSS.AuxParser`/`PropParser`).

@@ -16,6 +16,7 @@ pub mod circuit;
 pub mod elements;
 pub mod exec;
 pub mod obj;
+pub mod report;
 pub mod solution;
 pub mod support;
 pub mod util;

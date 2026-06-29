@@ -7,16 +7,19 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-29 — **Phase 7 COMPLETE** (all WP7.1–WP7.10 landed,
-gate-green on branch `phase-7-extended-elements`; **NOT merged to `main` — the
-per-phase `--no-ff` merge is the explicit-request-only HARD STOP**). Plus a
-**retro audit** of the WP7.7 step 4 → WP7.8 range (the skipped `/audit-code` +
-`/audit-tests` ritual, run inline) — verdict faithful, no Critical/Major bug; see
-the §1e "Retro audit" note under WP7.8. **next =
-Phase 8** (reporting/exports/Save; `PHASE8_PLAN.md` is drafted). Tracked-open
-Phase-7 deferrals (both zero-corpus-payoff, Plot-blocked): the **GFM grid-forming
-inverter mode** (NOT_PORTED loud abort across Generator/PVSystem/Storage
-`DoDynamicMode`) and the **Generic/TD21 relay `Sample`** logic.
+Last updated: 2026-06-29 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
+reporting/exports/Save). **WP8.1 sub-step 1 landed, gate-green**: the `report/`
+module + the `Export`/`Show`/`Save`/`Dump`/`Plot`/`Visualize` dispatch skeleton
+(no real report formatting yet — that is WP8.2–8.5). Detail in the §1f Phase 8
+record. The work sits in the working tree on branch `phase-7-extended-elements`
+(**uncommitted** — per-step commits + the Phase-8 branch `phase-8-reporting` are
+explicit-request-only, like the Phase-7 `--no-ff` merge). **Phase 7 is COMPLETE
+but NOT merged to `main`** (the per-phase merge is the explicit-request-only HARD
+STOP); its retro audit (WP7.7 step 4 → WP7.8) found no Critical/Major bug (§1e
+"Retro audit" under WP7.8). Tracked-open Phase-7 deferrals (both zero-corpus-payoff,
+Plot-blocked): the **GFM grid-forming inverter mode** (NOT_PORTED loud abort across
+Generator/PVSystem/Storage `DoDynamicMode`) and the **Generic/TD21 relay `Sample`**
+logic.
 
 All ten work packages landed gate-green: **WP7.1** (line constants & geometry),
 **WP7.2** (protection: Fault/Fuse/Recloser/Relay/SwtControl + reliability
@@ -75,7 +78,8 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). **next = Phase 8** (`PHASE8_PLAN.md` drafted). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 sub-step 1 landed, gate-green** (the `report/` module + Export/Show/Save/Dump/Plot/Visualize dispatch skeleton; no real report formatting yet). Working tree on `phase-7-extended-elements`, uncommitted. **next = WP8.1 sub-step 2** (output paths + `format.rs` + the CSV/text golden harness + the `Export Counts` self-test). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -810,6 +814,75 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
 
 ---
 
+## 1f. Phase 8 record (`PHASE8_PLAN.md`) — 🚧 IN PROGRESS
+
+Execution plan: **`PHASE8_PLAN.md`** (WP8.1–WP8.8, the reporting/output + full
+executive layer). Per-step cadence = the full ritual in `PHASE8_PLAN.md §0` (gate
+→ STATUS + commit → `/audit-code` + `/audit-tests` as independent agents → fix +
+commit → STATUS sync → stop). Phase 8 is almost entirely *read-and-format*: no
+new electrical math, no new solve mode — the risk is faithful report layout and
+**not silently faking output**.
+
+**WP8.1 (Report infrastructure) — 🚧 IN PROGRESS.**
+- **sub-step 1 — dispatch skeleton + GUI no-ops — done, gate-green (uncommitted).**
+  The new top-level **`crate::report`** module (`report/mod.rs`): the
+  `EXPORT_OPTIONS` (57, ADIAKOPTICS-off → `High=Laplacian`; confirmed: the pinned
+  build defines `DSS_CAPI_ADIAKOPTICS_DISABLED`, `common-release.cfg:6`) and
+  `SHOW_OPTIONS` (34) name tables in exact `TExportOption`/`TShowOption` ordinal
+  order, each built into a `CommandList` (abbreviation-matched like the oracle's
+  `ExportCommands`/`ShowCommands`). The routers live in **`exec/report.rs`**
+  (`impl Dss`, like every other command router — they drive the private
+  parser/circuit/error state and delegate formatting to `crate::report`):
+  `do_export_cmd` (keyword match → unknown-keyword #24713 → scoped `NOT_PORTED`
+  per keyword), `do_show_cmd` (keyword match → faithful **silent** no-op),
+  `do_save_cmd`/`do_dump_cmd` (scoped `NOT_PORTED`). `command.rs` routes
+  `Export`/`Save`/`Dump`/`Show` and the `Plot`/`Visualize` **headless no-op** in
+  the **post-circuit** dispatch. No real report formatting yet (WP8.2–8.5).
+  - **The Show-silent vs Export/Save/Dump-loud asymmetry is forced + correct.**
+    The always-on live gate (`corpus_live.rs`) asserts `errors().is_empty()`, and
+    **44 `solvable_now` decks** run `Show Power`/`Show Voltage`/`Show f` (all
+    valid `TShowOption` keywords). So the unported-`Show` path is a **silent**
+    no-op — faithful per §2.5 (a `Show` changes no electrical state; WP8.4 lands
+    the real formatters + the 24700/24701/24702/999 errors + a targeted text
+    golden, which is what proves it non-fake). `Export`/`Save`/`Dump` decks are
+    all in `skipped_unsupported` (never in the live gate), so they **loudly**
+    record a scoped `NOT_PORTED` — a half-ported `Export` never silently emits
+    nothing (the plan's §WP8.1-step-1 intent). Audit-code swept the **whole**
+    corpus (incl. redirected sub-files): the 21 distinct `Show` keywords are all
+    valid — no `panel`, no unknown — so deferring those errors to WP8.4 is proven
+    safe.
+  - **audit-code (independent agent): one MAJOR, fixed.** `Plot`/`Visualize` were
+    first placed in the *pre-circuit* no-op arm, which swallowed the oracle's #301
+    "create a circuit first" guard — the oracle's dispatch gate errors #301 for
+    `plot`/`visualize`/`show` *before* a circuit exists (oracle-probed:
+    dss-python 0.15.7). **Fixed** by moving `Plot`/`Visualize`/`Show` to the
+    **post-circuit** dispatch, so before a circuit they fall through to the
+    generic #301 guard (matching the oracle) and after a circuit they are clean
+    no-ops; the `report_verbs_before_circuit_error_301` test now pins the #301.
+    Verified-correct: all option names/ordinals, the `cmd` ordinals
+    (SAVE=7/PLOT=12/DUMP=16/EXPORT=34/VISUALIZE=73), `do_export_cmd`'s #24713
+    message + the 1-based `ParamPointer` convention, and the module split.
+  - **audit-tests (independent agent): sound + non-vacuous** (mutation-verified —
+    forcing `do_show_cmd` to error fails the silent-no-op test; forcing
+    `do_export_cmd` to no-op fails the loud-stub test). Strengthened: pin the
+    *quoted* `"Voltages"` (not a substring that 4 siblings share), assert the
+    plot snapshot is non-empty, pin the full #24713 message.
+  - **Tracked-deferred (not bugs):** the `Export` circuit/solution gates
+    (#24711/#24712) land with the real exporters in WP8.2; the `Show`
+    panel/unknown/solution errors (999/24700/24701/24702) + real formatters in
+    WP8.4; `Visualize` on an *unsolved* circuit errors #24722 on the oracle —
+    not reproduced (no corpus deck reaches it; Visualize is a §2.5 no-op).
+    Out-of-scope (pre-existing): `EXEC_COMMANDS` is missing `Abort`(124)/`Clone`
+    (125) from the pinned PM build (no effect on any current ordinal/abbreviation;
+    future corpus-hygiene pass). lib stays **713**; `solvable_now` **88**.
+- **next — WP8.1 sub-step 2:** `report/output.rs` (the `DataPath`/`CaseName`
+  output-path machinery), `report/format.rs` (the Pascal number/string
+  formatters), the `csv` workspace dep, the **`compare_export` text/CSV golden
+  harness** (PHASE8_PLAN §2.3) + `golden_phase8.rs` + `gen_phase8.py` skeleton,
+  and the `Export Counts` end-to-end self-test through the new golden path.
+
+---
+
 ## 2. What Phase 3 built (file-by-file map) — archived
 
 The Phase-3 vertical-slice **file-by-file architectural map** moved to
@@ -924,7 +997,11 @@ Yearly/Duty call sites (Phase 6); the **dynamics** (WP7.7), **harmonics/harmonic
 (WP7.6) and **faultstudy** (WP7.9) solve modes are **ported**; the Newton algorithm
 and the Monte-Carlo/load-duration/AutoAdd/`SolveGeneralTime` solve modes keep the
 "Unknown solution mode" error (no corpus case — WP7.9 empirical decision);
-`Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported" (Phase 8).
+the report verbs are **routed (WP8.1 sub-step 1)**: `Export`/`Save`/`Dump` record
+a scoped `NOT_PORTED` per keyword (real formatters in WP8.2–8.5), `Show` is a
+faithful silent no-op (real `ShowResults` in WP8.4), `Plot`/`Visualize` are
+headless no-ops (§2.5); `Select`/... remaining executive verbs still record
+"not ported" (Phase 8 WP8.6).
 
 ---
 

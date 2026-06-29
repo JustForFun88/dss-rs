@@ -9,6 +9,8 @@ impl Dss {
         let enums = EnumRegistry::new();
         let commands = CommandList::new(EXEC_COMMANDS.iter().copied());
         let option_list = CommandList::new(EXEC_OPTIONS.iter().copied());
+        let export_commands = CommandList::new(crate::report::EXPORT_OPTIONS.iter().copied());
+        let show_commands = CommandList::new(crate::report::SHOW_OPTIONS.iter().copied());
 
         // Class registry. More classes are registered here as they are ported.
         let classes = vec![
@@ -272,6 +274,8 @@ impl Dss {
             class_by_name,
             commands,
             option_list,
+            export_commands,
+            show_commands,
             parser: Parser::new(),
             aux_parser: Parser::new(),
             vars: ParserVars::new(),
