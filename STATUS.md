@@ -7,77 +7,23 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-29 — **Phase 7 IN PROGRESS** (branch
-`phase-7-extended-elements`). Completed work packages this phase: **WP7.1 (line
-constants & geometry), WP7.2 (protection), WP7.3 (DER A: DynamicExp +
-InvBasedPceData + PVSystem), WP7.4 (DER B: Storage + StorageController), WP7.5
-(DER C: InvControl + ExpControl), and WP7.6 (Harmonics) COMPLETE**; **WP7.7
-(Dynamics core) IN PROGRESS — step 1 (the `SolveDynamic` predictor/corrector
-driver) + step 2a (Generator dynamics + Monitor mode 3 + a real `Open`-verb bug
-fix) + step 2b (PVSystem/Storage grid-following inverter dynamics +
-`InvDynamics.TInvDynamicVars` + the 22/34-var mode-3 interface + a Storage SOC
-dynamics fix) done, oracle-pinned; step 3a (IndMach012 induction machine — power flow + dynamics +
-the 22 mode-3 state vars) done, oracle-pinned; step 3b (DynEqPCE — the Generator
-`DynamicEq`/`DynamicExp` integration) done, oracle-pinned; step 3b cont. (DynEqPCE
-— the PVSystem/Storage inverter `DynamicEq` integration: `InvBasedPceData` now
-embeds the shared `DynEqPceData`, the per-phase `InitStateVars`/`IntegrateStates`
-`DynamicEqObj <> NIL` branches + the DynExp variable interface) done,
-oracle-pinned.** WP7.6 ran
-in three steps. Step 1 landed the harmonics solve mode
-for the
-current-source family (VSource + Load): `Spectrum.SetMultArray`/`GetMult`, the
-`harmonic = frequency/fundamental` fix, `Set/Get Harmonics=` + `DoAllHarmonics`, the
-`SolveHarmonic`/`SolveHarmonicT` drivers (`CollectAllFrequencies`/`AddFrequency` +
-the in-memory `savePresentVoltages`/`RetrieveSavedVoltages`), `InitializeForHarmonics`
-on the `Set mode=harmonics` entry, the VSource harmonic `GetVterminalForSource`
-branch and the Load `InitHarmonics`/`DoHarmonicMode`. **Step 2 landed the Thevenin
-DER family (Generator/PVSystem/Storage `InitHarmonics`/`DoHarmonicMode` + the
-harmonic `CalcYPrimMatrix` Y=Yeq branch + the `SetNominalGeneration` harmonic guard):
-each is a voltage source behind its subtransient reactance (Generator Xd"; PV/Storage
-%R/%X), injecting the spectrum-scaled, phase-rotated Thevenin voltage through YPrim.
-The `guard_unported_harmonic_der` loud abort is removed.** **Step 3 landed the
-monitor harmonic header (`ClearMonitorStream` labels the two time columns
-`Freq`/`Harmonic` in harmonics mode) and the `Set mode=` monitor/meter reset (the
-Pascal `Set_Mode` tail), and confirmed the harmonics corpus burn-down is maximal:
-0 migratable — all 4 corpus harmonics decks are Phase-8 (`Export`/`Show`) /
-`Isource` / FaultStudy-blocked, not harmonics-blocked (2 stale `Swtcontrol` tags
-refreshed).** **WP7.7 step 1** wired `SolveMode::Dynamic` → `solve_dynamic`
-(`solution/solution/dynamics.rs`): the predictor/corrector step loop over
-`DynaVars.h` (`IterationFlag` 0/1), `IntegratePCStates`, and the
-`calcInitialMachineStates` dynamics-entry hook on the `Set mode=dynamic` handler.
-**Step 2a** landed the **Generator** dynamics state machinery
-(`InitStateVars`/`IntegrateStates`/`DoDynamicMode` + the 6 GenVars state
-variables), **Monitor mode 3** (the real state-variable sample body), and a **real
-`Open`-verb bug fix** (`Open class.name` with no `term=` was a no-op; now opens the
-active terminal, Pascal `DoOpenCmd`). Oracle-pinned on the canonical Kundur Ex.13.1
-deck (steady mode-3 trajectory + fault response + the full undamped swing matching
-the oracle to 5 digits). Step 2b added the PVSystem/Storage grid-following inverter
-dynamics (the shared `TInvDynamicVars` current loop + the full mode-3 state-variable
-interface + a latent Storage SOC-in-dynamics fix), oracle-pinned on 4 PV/Storage
-mode-3 decks. Step 3a added the **IndMach012** induction machine
-(`pc/ind_mach012/`) — an equivalent-circuit motor (slip-Newton power flow) and a
-voltage source behind `Zsp` in dynamics (pos/neg-seq `E1`/`E2` + shaft swing,
-trapezoidal), with 22 mode-3 state variables; oracle-pinned on a self-contained
-InductionMachine deck (steady equilibrium + 3-phase-fault response). **Step 3b
-landed the `DynEqPCE` integration for the Generator** (`pc/dyneq_pce.rs`
-`DynEqPceData` + the edit-loop `ParseDynVar` fallback): a Generator driven by a
-user `DynamicExp` (`DynamicEq=`/`DynOut=`/inline state-var initializers) instead of
-its built-in shaft model, oracle-pinned on the Kundur DynExp deck (steady + the full
-swing, reproducing the classic gate's physics exactly); step 3b cont. (PVSystem/Storage
-`DynamicEq` integration — `InvBasedPceData` now embeds the shared `DynEqPceData`, the
-per-phase inverter `InitStateVars`/`IntegrateStates` `DynamicEqObj <> NIL` branches +
-the DynExp variable interface) done, oracle-pinned; step 4 (gate finalize — the
-focused gate is `exec/tests/dynamics.rs`; dynamics corpus burn-down 0-migratable)
-done. **WP7.7 (Dynamics core) COMPLETE.** **WP7.8 (Converter/FACTS family) COMPLETE**
-— VSConverter, VCCS, UPFC + UPFCControl, ESPVLControl all ported, gate-green
-(fork/fresh-agent-drafted, numerics + every oracle-bug claim re-verified in the main
-loop before commit). **WP7.9 (FaultStudy + AutoAdd + Feeder) IN PROGRESS — step 1
-(the `SolveFaultStudy` mode + per-bus `Zsc`/`Ysc`/`Isc` machinery) done,
-oracle-pinned** (bus `Zsc1`/`Zsc0`/`Isc` match dss-python 0.15.7; the 3 corpus
-ShortCircuitCases decks — IEEE123/IEEE34/IEEE37 — migrated to `solvable_now`,
-full-model live-matched). **next = WP7.9 step 2 (AutoAdd/MonteCarlo — probe; likely
-keep deferred) + step 3 (Feeder).** The GFM inverter mode + the Generic/TD21 relay
-Sample stay deferred (tracked-open, §1e).
+Last updated: 2026-06-29 — **Phase 7 COMPLETE** (all WP7.1–WP7.10 landed,
+gate-green on branch `phase-7-extended-elements`; **NOT merged to `main` — the
+per-phase `--no-ff` merge is the explicit-request-only HARD STOP**). **next =
+Phase 8** (reporting/exports/Save; `PHASE8_PLAN.md` is drafted). Tracked-open
+Phase-7 deferrals (both zero-corpus-payoff, Plot-blocked): the **GFM grid-forming
+inverter mode** (NOT_PORTED loud abort across Generator/PVSystem/Storage
+`DoDynamicMode`) and the **Generic/TD21 relay `Sample`** logic.
+
+All ten work packages landed gate-green: **WP7.1** (line constants & geometry),
+**WP7.2** (protection: Fault/Fuse/Recloser/Relay/SwtControl + reliability
+activation), **WP7.3** (DER A: DynamicExp + InvBasedPceData + PVSystem), **WP7.4**
+(DER B: Storage + StorageController), **WP7.5** (DER C: InvControl + ExpControl),
+**WP7.6** (Harmonics solve mode), **WP7.7** (Dynamics core: `SolveDynamic` driver +
+Generator/PVSystem/Storage/IndMach012 state vars + Monitor mode 3 + DynEqPCE), **WP7.8**
+(Converter/FACTS: VSConverter/VCCS/UPFC+UPFCControl/ESPVLControl), **WP7.9** (FaultStudy
+mode; AutoAdd/MonteCarlo/LoadDuration/Feeder kept deferred — zero corpus cases), and
+**WP7.10** (phase exit: marker sweep + gate + COVERAGE refresh).
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
 real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
@@ -126,13 +72,13 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) + step 4 (gate finalize, 0-migratable burn-down) done — WP7.7 COMPLETE; WP7.8 (converter/FACTS family) COMPLETE (VSConverter/VCCS/UPFC+UPFCControl/ESPVLControl); WP7.9 (FaultStudy + AutoAdd + Feeder) IN PROGRESS — step 1 (FaultStudy mode + per-bus Zsc/Ysc/Isc) done, 3 ShortCircuitCases decks migrated**; **next = WP7.9 step 2 (AutoAdd probe) + step 3 (Feeder)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). **next = Phase 8** (`PHASE8_PLAN.md` drafted). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 711, golden_feeders 1,
+cargo test --workspace      # dss-core lib 713, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -303,15 +249,14 @@ lean. They are frozen history, superseded only by the code and tests:
   predictor/corrector driver + per-element dynamics state machinery for Generator /
   PVSystem / Storage / IndMach012, Monitor mode 3, the `Open`-verb fix, the
   `set_ITerminalUpdated` stamp sweep, and the DynEqPCE user-`DynamicExp` integration
-  for all three PCE families. **🚧 IN PROGRESS** (steps 1–3b cont. done +
-  oracle-pinned; next = step 4 dynamics corpus burn-down + offline golden; GFM
-  deferred). The completed-step detail (incl. all audit follow-ups) is archived; the
-  live §1e keeps the concise per-step summary + the active frontier.
+  for all three PCE families. **✅ COMPLETE** (steps 1–4; GFM deferred,
+  tracked-open). The completed-step detail (incl. all audit follow-ups) is archived;
+  the live §1e keeps the concise per-step summary.
   → [`docs/phase-records/phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md)
 
 ---
 
-## 1e. Phase 7 record (branch `phase-7-extended-elements`) — IN PROGRESS
+## 1e. Phase 7 record (branch `phase-7-extended-elements`) — ✅ COMPLETE
 
 Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence — the full
 ritual in `PHASE7_PLAN.md §0`, run autonomously per step: gate green → update this
@@ -715,7 +660,7 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
 - **WP7.8 (Converter/FACTS family) COMPLETE** — VSConverter, VCCS, UPFC + UPFCControl,
   ESPVLControl all done, gate-green.
 
-**WP7.9 (FaultStudy + AutoAdd + Feeder) — 🚧 IN PROGRESS.**
+**WP7.9 (FaultStudy + AutoAdd + Feeder) — ✅ COMPLETE.**
 - **step 1 — FaultStudy mode (`solution/solution/fault_study.rs`) — done, gate-green.**
   Ported `TSolutionAlgs.SolveFaultStudy` and its `TSolutionObj` helpers
   (`DisableAllFaults` → `SolveDirect` for the open-circuit Voc → `AllocateAllSCParms`
@@ -772,9 +717,25 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   `New Feeder.` instantiations; `Feeder.pas` is largely dead upstream (Phase 6 found
   `DoFeederStuff` remnants dead). Nothing to port. **WP7.9 COMPLETE** (FaultStudy is
   the only real deliverable; AutoAdd/Feeder are empirical no-ops per the plan).
-- **next = WP7.10 (Phase 7 exit): TODO/NOT_PORTED sweep, full gate + live re-classify,
-  COVERAGE refresh, STATUS rewrite. Merge to `main` is the per-phase HARD STOP —
-  explicit user request only.**
+
+**WP7.10 (Phase 7 exit) — ✅ COMPLETE (docs/verification only, no code change).**
+- **Marker sweep clean:** no `TODO`/`NOT_PORTED` orphan points at WP7.9/7.10. The
+  remaining deferrals all have a documented home — **GFM** grid-forming mode (the one
+  Phase-7-planned item descoped, tracked-open, NOT_PORTED loud abort) and the
+  **Generic/TD21** relay `Sample` (tracked-open) — both **Plot-blocked with zero
+  corpus payoff**; DLLs/UserModel = "never"; `MakePosSequence` = on-demand;
+  AutoAdd/Monte/LD/Feeder = no corpus case (WP7.9); 39 `TODO(compat)` = the deliberate
+  upstream-inexactness set wiped in the dedicated post-acceptance §6 pass (PORTING_PLAN
+  §6), not now. 3 residual `TODO(WP7.7)` are unreachable-edge-case hardening notes
+  (>3-phase dynamics, Model=6 UserModel generator).
+- **Gate:** full three-command gate + the always-on live corpus gate (88 cases) green;
+  `tests/corpus/COVERAGE.md` refreshed (solvable_now 85 → **88**, 26.3% of entry
+  points; the WP7.9 burn-down = the 3 ShortCircuitCases decks).
+- **No code/test audit:** WP7.10 changed only `STATUS.md` (docs/verification), so there
+  is nothing for `/audit-code`/`/audit-tests` to review.
+- **Phase 7 COMPLETE.** **next = Phase 8** (`PHASE8_PLAN.md` drafted). **Merge to
+  `main` (`--no-ff`, per-phase convention) is the HARD STOP — explicit user request
+  only; not done.**
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
@@ -875,7 +836,7 @@ lists; `yprim` stays `None` and the Y build skips them.
 
 ## 5. `TODO(compat)` / deferrals
 
-Grep `rg "TODO\(compat\)"` for the full marker list (26 sites). Notable:
+Grep `rg "TODO\(compat\)"` for the full marker list (39 sites). Notable:
 truncated `CALPHA`/`pi`/`0.001732`/`57.29577951` constants, FPC banker's
 `Round` shims, LineCode `Repair`=0 default, the `DoubleSymMatrix` zero-matrix
 getter.
@@ -910,10 +871,11 @@ control loop (WP5.7)**; RegControl/ControlQueue debug-trace files (flag
 stored, no file — port with Monitors, Phase 6+); `MakePosSequence` everywhere
 (Phase 6+); `BusCoords` **ported (WP5.8)**; Monitors/EnergyMeters
 `sample_all`/`EndOfTimeStepCleanup` are no-op hook stubs at the SolveDaily/
-Yearly/Duty call sites (Phase 6); Newton algorithm, dynamics/faultstudy/
-Monte-Carlo/load-duration/`SolveGeneralTime` solve modes (Phase 7; the
-**harmonics**/`harmonicT` modes are **ported, WP7.6**);
-`Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported".
+Yearly/Duty call sites (Phase 6); the **dynamics** (WP7.7), **harmonics/harmonicT**
+(WP7.6) and **faultstudy** (WP7.9) solve modes are **ported**; the Newton algorithm
+and the Monte-Carlo/load-duration/AutoAdd/`SolveGeneralTime` solve modes keep the
+"Unknown solution mode" error (no corpus case — WP7.9 empirical decision);
+`Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported" (Phase 8).
 
 ---
 
