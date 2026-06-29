@@ -193,6 +193,14 @@ impl Dss {
                 |name| Box::new(upfc_control::UpfcControl::new(name)),
                 ElemKind::Control,
             ),
+            // ESPVLControl registers directly after UPFCControl (Pascal
+            // DSSClassDefs.pas:261, before IndMach012). Registration order does
+            // not affect node ordering, which follows element creation order.
+            DssClass::ckt_class(
+                espvl_control::class_props(&enums),
+                |name| Box::new(espvl_control::EspvlControl::new(name)),
+                ElemKind::Control,
+            ),
             // IndMach012 registers after PVSystem, before InvControl (Pascal
             // DSSClassDefs.pas:264 INDMACH012_ELEMENT; the GICsource/AutoTrans
             // classes around it are unported). Registration order does not affect

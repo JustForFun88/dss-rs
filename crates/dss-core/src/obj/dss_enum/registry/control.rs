@@ -26,6 +26,7 @@ pub(super) struct ControlEnums {
     pub(super) invcontrol_roc: EnumId,
     pub(super) invcontrol_reac_power: EnumId,
     pub(super) invcontrol_model: EnumId,
+    pub(super) espvl_control_type: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums {
@@ -270,6 +271,17 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         &["Linear", "Exponential"],
         &[0, 1],
     ));
+    // ESPVLControl.pas TESPVLControl.Create: TypeEnum (SequentialOrdinals=True,
+    // min=max=1). SystemController=1 LocalController=2; the default Ftype=0 is
+    // outside the enum, so it dumps '' (probed).
+    let espvl_control_type = push(DssEnum::new(
+        "ESPVLControl: Type",
+        true,
+        1,
+        1,
+        &["SystemController", "LocalController"],
+        &[1, 2],
+    ));
     ControlEnums {
         reg_control_phase,
         mon_phase,
@@ -292,5 +304,6 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         invcontrol_roc,
         invcontrol_reac_power,
         invcontrol_model,
+        espvl_control_type,
     }
 }

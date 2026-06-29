@@ -2227,6 +2227,54 @@ SCENARIOS = [
             "New UPFCControl.c1 like=base",
         ],
     },
+    # --- ESPVLControl (Phase 8) ---------------------------------------------
+    # An Energy-Storage/PV local controller. There is NO kWLimit property
+    # (FkWLimit is hardcoded 8000, unsettable); the default Type (Ftype=0) dumps
+    # ''; kvarLimit defaults to FkWLimit/2 = 4000. The three subordinate lists +
+    # their IndirectCount weight arrays round-trip (a list set without weights
+    # leaves the weights NIL → dumps ''). MakeLike copies only the
+    # phase/terminal/monitored refs (Type/bands/lists revert to ctor defaults).
+    {
+        "name": "espvlcontrol_default",
+        "target": "ESPVLControl.e1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New ESPVLControl.e1 element=Line.l1",
+        ],
+    },
+    {
+        "name": "espvlcontrol_full",
+        "target": "ESPVLControl.e1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New ESPVLControl.e1 element=Line.l1 terminal=1 type=LocalController "
+            "kWBand=250 kvarlimit=1500 PVSystemList=[pv1, pv2] PVSystemWeights=[2, 3] "
+            "StorageList=[st1] StorageWeights=[5] LocalControlList=[lc1, lc2] "
+            "LocalControlWeights=[1.5, 2.5]",
+        ],
+    },
+    {
+        # SystemController with a LocalControlList but no explicit weights: the
+        # side-effect levels uniform 1.0 weights (dumps '[ 1 1 1]').
+        "name": "espvlcontrol_system",
+        "target": "ESPVLControl.e1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New ESPVLControl.e1 element=Line.l1 terminal=1 type=SystemController "
+            "LocalControlList=[lc1, lc2, lc3]",
+        ],
+    },
+    {
+        "name": "espvlcontrol_makelike",
+        "target": "ESPVLControl.e1",
+        "commands": [
+            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+            "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+            "New ESPVLControl.base element=Line.l1 terminal=1 type=LocalController "
+            "kWBand=300 kvarlimit=2000 PVSystemList=[pv1] PVSystemWeights=[7]",
+            "New ESPVLControl.e1 like=base element=Line.l2",
+        ],
+    },
     # --- DynamicExp (WP7.3 step 0) -----------------------------------------
     # Setting Expression compiles it (InterpretDiffEq); a valid one keeps the
     # verbatim input text, a bad one is cleared. VarNames is lowercased and dumps

@@ -132,6 +132,8 @@ pub struct EnumRegistry {
     pub invcontrol_reac_power: EnumId,
     /// 'InvControl: Control Model' (InvControl.pas `ControlModelEnum`).
     pub invcontrol_model: EnumId,
+    /// 'ESPVLControl: Type' (ESPVLControl.pas `TypeEnum`; SystemController/LocalController).
+    pub espvl_control_type: EnumId,
     /// 'AutoAdd Device Type' (`DSS.AddTypeEnum`, GENADD/CAPADD).
     pub add_type: EnumId,
     /// 'DynamicExp: Domain' (DynamicExp.pas `DomainEnum`).
