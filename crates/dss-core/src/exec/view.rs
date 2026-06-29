@@ -74,7 +74,10 @@ pub struct BusScView {
     pub zsc0: num_complex::Complex64,
     /// `Isc` / `BusCurrent`: per-node short-circuit current (= `Ysc · VBus`).
     pub isc: Vec<num_complex::Complex64>,
-    /// `VBus`: the open-circuit (Voc) voltage captured during the study.
+    /// The bus's stored `VBus` — the open-circuit (Voc) voltage captured by
+    /// `UpdateVBus` during the study. Note this is **not** dss-python
+    /// `Bus.Voltages`, which returns the live `NodeV` (after a FaultStudy that is
+    /// the last `ComputeYsc` unit-injection residual, not the Voc).
     pub vbus: Vec<num_complex::Complex64>,
 }
 
@@ -203,8 +206,8 @@ impl Dss {
     }
 
     /// Read a bus's short-circuit results after a FaultStudy solve — the
-    /// dss-python `Bus.Zsc1`/`Zsc0`/`Isc`/`Voltages` surface. `name` is the bus
-    /// name (case-insensitive). `None` if no such bus exists.
+    /// dss-python `Bus.Zsc1`/`Zsc0`/`Isc` surface. `name` is the bus name
+    /// (case-insensitive). `None` if no such bus exists.
     pub fn bus_short_circuit(&self, name: &str) -> Option<BusScView> {
         let ckt = self.circuit.as_ref()?;
         let idx = ckt.bus_list.find(name)?;
