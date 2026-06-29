@@ -14,6 +14,7 @@ mod controls;
 mod dynamics;
 mod energymeter_registers;
 mod energymeter_zones;
+mod espvl_control;
 mod harmonics;
 mod lifecycle;
 mod line_fetch;

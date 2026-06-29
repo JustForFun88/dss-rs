@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::control::espvl_control::{EspvlControl, EspvlDispatchEnv};
 use crate::elements::control::exp_control::{ExpControl, ExpDispatchEnv, PvFind, PvSnap};
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::inv_control::{
@@ -100,6 +101,15 @@ enum ControlKind {
     /// registry); `Sample` polls every UPFC's `CheckStatus`, `Action` uploads
     /// their currents, `Reset` is a no-op.
     Upfc,
+    /// ESPVLControl supervises a *dynamic* fleet of other ESPVLControl objects
+    /// (the ESPVLControl class itself); `Sample` is a faithful no-op on the
+    /// circuit (it writes only a phantom field — see the element's module note),
+    /// never queues an action, and `DoPendingAction`/`Reset` are no-ops. Reached
+    /// through the class registry like the other fleet controls.
+    Espvl {
+        monitored: Option<ElemRef>,
+        element_terminal: usize,
+    },
 }
 
 /// The dispatch core: split the borrows, downcast, and invoke `Sample` /
@@ -198,6 +208,15 @@ pub(super) fn dispatch_control(
             (
                 ControlKind::Upfc,
                 format!("UPFCControl.{}", uc.ccd.cd.obj.name()),
+            )
+        } else if let Some(ec) = obj.as_any().downcast_ref::<EspvlControl>() {
+            (
+                ControlKind::Espvl {
+                    monitored: ec.ccd.monitored_element,
+                    // 1-based terminal; `.max(1)` guards an unset/0 terminal.
+                    element_terminal: ec.ccd.element_terminal.max(1) as usize,
+                },
+                format!("ESPVLControl.{}", ec.ccd.cd.obj.name()),
             )
         } else {
             return Err(format!(
@@ -500,6 +519,56 @@ pub(super) fn dispatch_control(
         return Ok(());
     }
 
+    // ESPVLControl supervises a *dynamic* fleet of other ESPVLControl objects, so
+    // — like the fleet controls above — it reaches that fleet through the whole
+    // class registry and none of the `CtrlCtx`; handle it here. `Sample` is a
+    // faithful no-op on the circuit (it writes only the entries' phantom field —
+    // see ESPVLControl's module note) and never queues an action, so
+    // `ControlIterations` stays 1. `DoPendingAction`/`Reset` are no-ops upstream.
+    if let ControlKind::Espvl {
+        monitored,
+        element_terminal,
+    } = kind
+    {
+        if let ControlOp::Sample = op {
+            // Clone the control out so the store can be borrowed mutably for the
+            // fleet; `Sample` mutates the cached pointer list + phantom field,
+            // copied back afterwards.
+            let mut ec = store
+                .obj(r)
+                .as_any()
+                .downcast_ref::<EspvlControl>()
+                .expect("kind matched above")
+                .clone();
+            // The fleet = every ESPVLControl object (Pascal scans `ParentClass`),
+            // in creation order.
+            let espvls: Vec<ElemRef> = ckt
+                .controls
+                .iter()
+                .copied()
+                .filter(|&c| store.obj(c).as_any().is::<EspvlControl>())
+                .collect();
+            {
+                let mut env = EspvlDispEnv {
+                    store: &mut **store,
+                    node_v: &ckt.solution.node_v,
+                    sys: &sys,
+                    monitored,
+                    element_terminal,
+                    espvls,
+                };
+                // Return ignored: ESPVLControl never pushes a control action.
+                ec.sample(&mut env);
+            }
+            *store
+                .obj_mut(r)
+                .as_any_mut()
+                .downcast_mut::<EspvlControl>()
+                .expect("kind matched above") = ec;
+        }
+        return Ok(());
+    }
+
     // Build the shared control context from disjoint Solution fields.
     let Solution {
         node_v,
@@ -534,6 +603,7 @@ pub(super) fn dispatch_control(
         ControlKind::Inv => unreachable!("InvControl handled above"),
         ControlKind::Exp => unreachable!("ExpControl handled above"),
         ControlKind::Upfc => unreachable!("UPFCControl handled above"),
+        ControlKind::Espvl { .. } => unreachable!("ESPVLControl handled above"),
         ControlKind::Swt { controlled } => {
             match op {
                 ControlOp::Sample => {
@@ -1064,6 +1134,73 @@ impl GenDispatchEnv for GenDispEnv<'_> {
     }
     fn set_gen_kvar_base(&mut self, g: ElemRef, value: f64) {
         Self::generator_mut(self.store, g).kvar_base = value;
+    }
+}
+
+/// [`EspvlDispatchEnv`] over the store: the monitored element's terminal power and
+/// the ESPVLControl "fleet" (every ESPVLControl object — the Pascal `ParentClass`
+/// scan), reached through the class registry. The fleet list `espvls` is the
+/// creation-ordered subset of `ckt.controls` that downcasts to `EspvlControl`
+/// (built by the caller so the store can be borrowed freely). The phantom kW base
+/// is a non-electrical field (see ESPVLControl's module note), so these writes are
+/// unobservable on the circuit.
+struct EspvlDispEnv<'a> {
+    store: &'a mut dyn ElemStore,
+    node_v: &'a [Complex64],
+    sys: &'a SysCtx,
+    monitored: Option<ElemRef>,
+    element_terminal: usize,
+    espvls: Vec<ElemRef>,
+}
+
+impl EspvlDispEnv<'_> {
+    fn espvl(store: &dyn ElemStore, r: ElemRef) -> &EspvlControl {
+        store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<EspvlControl>()
+            .expect("ESPVLControl fleet entry is an ESPVLControl")
+    }
+    fn espvl_mut(store: &mut dyn ElemStore, r: ElemRef) -> &mut EspvlControl {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<EspvlControl>()
+            .expect("ESPVLControl fleet entry is an ESPVLControl")
+    }
+}
+
+impl EspvlDispatchEnv for EspvlDispEnv<'_> {
+    fn monitored_power(&mut self) -> Complex64 {
+        match self.monitored {
+            Some(m) => self.store.ckt_elem_mut(m).terminal_power(
+                self.sys,
+                self.node_v,
+                self.element_terminal,
+            ),
+            // A safe stand-in for Pascal's NIL deref (only reached by a
+            // misconfigured System Controller without an Element).
+            None => Complex64::ZERO,
+        }
+    }
+    fn find_enabled_espvl(&self, name: &str) -> Option<ElemRef> {
+        let r = self
+            .store
+            .find_ckt_element(&format!("espvlcontrol.{name}"))?;
+        self.store.ckt_elem(r).cd().enabled.then_some(r)
+    }
+    fn all_enabled_espvls(&self) -> Vec<ElemRef> {
+        self.espvls
+            .iter()
+            .copied()
+            .filter(|&c| self.store.ckt_elem(c).cd().enabled)
+            .collect()
+    }
+    fn local_kw_base(&self, r: ElemRef) -> f64 {
+        Self::espvl(self.store, r).phantom_kw_base()
+    }
+    fn set_local_kw_base(&mut self, r: ElemRef, value: f64) {
+        Self::espvl_mut(self.store, r).set_phantom_kw_base(value);
     }
 }
 

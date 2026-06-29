@@ -88,6 +88,7 @@ impl EnumRegistry {
             invcontrol_roc: control.invcontrol_roc,
             invcontrol_reac_power: control.invcontrol_reac_power,
             invcontrol_model: control.invcontrol_model,
+            espvl_control_type: control.espvl_control_type,
             add_type: solution.add_type,
             dynamic_exp_domain: general.dynamic_exp_domain,
         }

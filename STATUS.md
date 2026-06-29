@@ -68,8 +68,10 @@ swing, reproducing the classic gate's physics exactly); step 3b cont. (PVSystem/
 per-phase inverter `InitStateVars`/`IntegrateStates` `DynamicEqObj <> NIL` branches +
 the DynExp variable interface) done, oracle-pinned; step 4 (gate finalize — the
 focused gate is `exec/tests/dynamics.rs`; dynamics corpus burn-down 0-migratable)
-done. **WP7.7 (Dynamics core) COMPLETE.** **next = WP7.8 (VCCS, UPFC + UPFCControl,
-VSConverter, ESPVLControl — the converter/FACTS dynamics family).** The GFM
+done. **WP7.7 (Dynamics core) COMPLETE.** **WP7.8 (Converter/FACTS family) COMPLETE**
+— VSConverter, VCCS, UPFC + UPFCControl, ESPVLControl all ported, gate-green
+(fork/fresh-agent-drafted, numerics + every oracle-bug claim re-verified in the main
+loop before commit). **next = WP7.9 (FaultStudy + AutoAdd modes + Feeder).** The GFM
 inverter mode + the Generic/TD21 relay Sample stay deferred (tracked-open, §1e).
 
 Per-WP and per-step detail (decisions, audits, gate descriptions, the
@@ -82,7 +84,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 693**, **`solvable_now` 85** (the live corpus gate;
+Current scores: dss-core **lib 711**, **`solvable_now` 85** (the live corpus gate;
 the harmonics corpus family is Phase-8/`Isource`/FaultStudy-blocked — 0 migratable,
 WP7.6 step 3); oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
@@ -120,13 +122,13 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) + step 4 (gate finalize, 0-migratable burn-down) done — WP7.7 COMPLETE; WP7.8 (converter/FACTS family) IN PROGRESS**; **next = WP7.8**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | 🚧 in progress — `PHASE7_PLAN.md` (WP7.1–WP7.10); branch `phase-7-extended-elements`; **WP7.1–WP7.5 done (all DER + protection + line constants); WP7.6 (Harmonics) COMPLETE; WP7.7 (Dynamics core) IN PROGRESS — step 1 (driver) + step 2a (Generator dynamics + Monitor mode 3 + `Open`-verb fix) + step 2b (PVSystem/Storage GFL inverter dynamics + mode-3 22/34-var interface + Storage SOC fix) + step 3a (IndMach012 induction machine) + step 3b (DynEqPCE — Generator DynamicExp) + step 3b cont. (DynEqPCE — PVSystem/Storage DynamicExp) + step 4 (gate finalize, 0-migratable burn-down) done — WP7.7 COMPLETE; WP7.8 (converter/FACTS family) COMPLETE (VSConverter/VCCS/UPFC+UPFCControl/ESPVLControl)**; **next = WP7.9 (FaultStudy + AutoAdd)**. Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 693, golden_feeders 1,
+cargo test --workspace      # dss-core lib 711, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1,
@@ -620,7 +622,7 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
 - **next:** WP7.8 (VCCS, UPFC + UPFCControl, VSConverter, ESPVLControl) — the
   converter/FACTS dynamics family.
 
-**WP7.8 (Converter/FACTS family) — 🚧 IN PROGRESS.**
+**WP7.8 (Converter/FACTS family) — ✅ COMPLETE.**
 - **VSConverter (`pc/vs_converter/`) — done, gate-green.** A 2-terminal AC/DC bridge
   (power-flow only, no dynamics state): the first `phases-Ndc` conductors are AC (a
   voltage source `Vdc·0.353553·m0∠d0` behind `Rac+jXac`, a `YPrim_series` block), the
@@ -689,8 +691,26 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   loop**: 17 iters + all 14 vars + currents + powers matched the pins bit-for-bit) +
   `props/{upfc,upfccontrol}.json`. lib 687 → **693**. (Fresh-agent-drafted; numerics +
   oracle-bug claims re-verified before commit.)
-- **next:** ESPVLControl (the storage/PV local controller — no corpus deck, synthetic
-  oracle gate) — the last WP7.8 class.
+- **ESPVLControl (`control/espvl_control/`) — done, gate-green. WP7.8 COMPLETE.**
+  The storage/PV "local controller" — a **faithful no-op on circuit state** (oracle
+  proven). The premise that `Sample` redispatches generators is a Pascal misread:
+  `MakeLocalControlList` populates from *other ESPVLControl* objects, then `Sample`
+  type-confuses each as a `TGeneratorObj` and writes `Gen.kWBase` onto another control's
+  non-electrical memory (modeled as an unobservable `phantom_kw_base` field). There is
+  no `kWLimit` prop (hardcoded 8000); only a `SystemController` acts; `Sample` never
+  pushes a control action. Net: with vs without the control the solution is
+  **byte-identical** and `ControlIterations` stays 1 (independently re-verified vs
+  dss-python 0.15.7). Ported all 11 props + the lazy `MakeLocalControlList` (Ftype-1
+  gate, name-list/scan-all, uniform weights) + `Sample`/`RecalcElementData` (err
+  371/372)/`MakeLike`; the dead PVSystem/Storage pointer lists round-trip but never
+  dispatch; `MakePosSequence` NOT_PORTED (shared deferral). Not a `TODO(compat)` — the
+  type-confusion is dead/harmless upstream code with no golden-pinned value (prose-doc,
+  per the convention). **Gate:** `exec/tests/espvl_control.rs` (6 synthetic oracle tests
+  incl. the with==without byte-identity) + `props/espvlcontrol.json`. lib 693 → **711**.
+  (Fresh-agent-drafted; the no-op + oracle behavior re-verified before commit.)
+- **WP7.8 (Converter/FACTS family) COMPLETE** — VSConverter, VCCS, UPFC + UPFCControl,
+  ESPVLControl all done, gate-green. **next = WP7.9** (FaultStudy + AutoAdd modes +
+  Feeder).
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every

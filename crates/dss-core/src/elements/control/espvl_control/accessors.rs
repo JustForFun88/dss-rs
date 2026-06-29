@@ -1,0 +1,262 @@
+//! The `CktElement` and `DssObject` trait impls for `EspvlControl`: the zero
+//! Yprim/currents control-element surface, the typed property accessors, the
+//! `element=` resolution, `PropertySideEffects`, `EndEdit` and `MakeLike`.
+
+use num_complex::Complex64;
+
+use crate::elements::control::control_elem::RefSnapshot;
+use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::obj::base::{DssObjData, DssObject};
+
+use super::{EspvlControl, prop};
+
+impl CktElement for EspvlControl {
+    fn cd(&self) -> &crate::elements::ckt::CktElementData {
+        &self.ccd.cd
+    }
+    fn cd_mut(&mut self) -> &mut crate::elements::ckt::CktElementData {
+        &mut self.ccd.cd
+    }
+
+    fn recalc_element_data(&mut self, _sys: &SysCtx) {
+        self.recalc();
+    }
+
+    /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
+    fn calc_yprim(&mut self, _sys: &SysCtx) {}
+
+    /// Pascal `TControlElem.GetCurrents`: always zero.
+    fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
+        curr.fill(Complex64::ZERO);
+    }
+}
+
+impl DssObject for EspvlControl {
+    fn data(&self) -> &DssObjData {
+        &self.ccd.cd.obj
+    }
+    fn data_mut(&mut self) -> &mut DssObjData {
+        &mut self.ccd.cd.obj
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
+        Some(self)
+    }
+    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
+        Some(self)
+    }
+
+    fn get_f64(&self, idx: usize) -> f64 {
+        use prop::*;
+        match idx {
+            KW_BAND => self.f_kw_band,
+            KVAR_LIMIT => self.f_kvar_limit,
+            BASE_FREQ => self.ccd.cd.base_frequency,
+            _ => unreachable!("ESPVLControl has no double property {idx}"),
+        }
+    }
+    fn set_f64(&mut self, idx: usize, value: f64) {
+        use prop::*;
+        match idx {
+            KW_BAND => self.f_kw_band = value,
+            KVAR_LIMIT => self.f_kvar_limit = value,
+            BASE_FREQ => self.ccd.cd.base_frequency = value,
+            _ => unreachable!("ESPVLControl has no double property {idx}"),
+        }
+    }
+
+    fn get_i32(&self, idx: usize) -> i32 {
+        use prop::*;
+        match idx {
+            TERMINAL => self.ccd.element_terminal,
+            TYP => self.f_type,
+            _ => unreachable!("ESPVLControl has no integer property {idx}"),
+        }
+    }
+    fn set_i32(&mut self, idx: usize, value: i32) {
+        use prop::*;
+        match idx {
+            TERMINAL => self.ccd.element_terminal = value,
+            TYP => self.f_type = value,
+            _ => unreachable!("ESPVLControl has no integer property {idx}"),
+        }
+    }
+
+    fn get_bool(&self, idx: usize) -> bool {
+        match idx {
+            prop::ENABLED => self.ccd.cd.enabled,
+            _ => unreachable!("ESPVLControl has no boolean property {idx}"),
+        }
+    }
+    fn set_bool(&mut self, idx: usize, value: bool) {
+        match idx {
+            prop::ENABLED => self.ccd.cd.enabled = value,
+            _ => unreachable!("ESPVLControl has no boolean property {idx}"),
+        }
+    }
+
+    fn get_string(&self, idx: usize) -> String {
+        match idx {
+            prop::ELEMENT => self.monitored_full_name.clone(),
+            _ => unreachable!("ESPVLControl has no string property {idx}"),
+        }
+    }
+
+    fn get_string_list(&self, idx: usize) -> Vec<String> {
+        use prop::*;
+        match idx {
+            LOCAL_CONTROL_LIST => self.local_control_name_list.clone(),
+            PV_SYSTEM_LIST => self.pv_system_name_list.clone(),
+            STORAGE_LIST => self.storage_name_list.clone(),
+            _ => unreachable!("ESPVLControl has no string-list property {idx}"),
+        }
+    }
+    fn set_string_list(&mut self, idx: usize, value: Vec<String>) {
+        use prop::*;
+        match idx {
+            LOCAL_CONTROL_LIST => self.local_control_name_list = value,
+            PV_SYSTEM_LIST => self.pv_system_name_list = value,
+            STORAGE_LIST => self.storage_name_list = value,
+            _ => unreachable!("ESPVLControl has no string-list property {idx}"),
+        }
+    }
+
+    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+        use prop::*;
+        // Pascal weight arrays are NIL until allocated; a NIL array dumps as ""
+        // (not "[]"), so report an empty list as absent (probed: a list set
+        // without weights dumps '').
+        match idx {
+            LOCAL_CONTROL_WEIGHTS => (!self.local_control_weights.is_empty())
+                .then_some(self.local_control_weights.as_slice()),
+            PV_SYSTEM_WEIGHTS => {
+                (!self.pv_system_weights.is_empty()).then_some(self.pv_system_weights.as_slice())
+            }
+            STORAGE_WEIGHTS => {
+                (!self.storage_weights.is_empty()).then_some(self.storage_weights.as_slice())
+            }
+            _ => unreachable!("ESPVLControl has no double-array property {idx}"),
+        }
+    }
+    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+        use prop::*;
+        match idx {
+            LOCAL_CONTROL_WEIGHTS => self.local_control_weights = value,
+            PV_SYSTEM_WEIGHTS => self.pv_system_weights = value,
+            STORAGE_WEIGHTS => self.storage_weights = value,
+            _ => unreachable!("ESPVLControl has no double-array property {idx}"),
+        }
+    }
+    /// Pascal weights IndirectCount: each weight array's element count comes from
+    /// its companion name list (`PropertyOffset3 = @F*NameList`).
+    fn array_size(&self, idx: usize) -> usize {
+        use prop::*;
+        match idx {
+            LOCAL_CONTROL_WEIGHTS => self.local_control_name_list.len(),
+            PV_SYSTEM_WEIGHTS => self.pv_system_name_list.len(),
+            STORAGE_WEIGHTS => self.storage_name_list.len(),
+            _ => unreachable!("ESPVLControl has no function-sized array {idx}"),
+        }
+    }
+
+    /// `element=` resolution (any circuit element by full name): keep the
+    /// `ElemRef` plus a shape snapshot for `RecalcElementData`.
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(ElemRef, &dyn DssObject)>,
+    ) {
+        match idx {
+            prop::ELEMENT => {
+                // `name` is the FullName ("Class.name") for the dump.
+                self.monitored_full_name = name.clone();
+                match resolved {
+                    Some((r, obj)) => {
+                        self.ccd.monitored_element = Some(r);
+                        let elem = obj
+                            .as_ckt_element()
+                            .expect("element= resolves against circuit classes");
+                        self.mon_snap = Some(RefSnapshot::capture(name, elem));
+                    }
+                    None => {
+                        self.ccd.monitored_element = None;
+                        self.mon_snap = None;
+                    }
+                }
+            }
+            _ => unreachable!("ESPVLControl has no object-ref property {idx}"),
+        }
+    }
+
+    fn set_bus_name(&mut self, terminal: usize, value: &str) {
+        self.ccd.cd.set_bus(terminal, value);
+    }
+    fn get_bus_name(&self, terminal: usize) -> String {
+        self.ccd.cd.get_bus(terminal).to_string()
+    }
+
+    /// Pascal `TESPVLControlObj.PropertySideEffects`.
+    fn side_effects(&mut self, idx: usize, _prev_int: i32) {
+        use prop::*;
+        match idx {
+            PV_SYSTEM_LIST => {
+                self.pv_system_list_size = self.pv_system_name_list.len() as i32;
+                // Pascal only resizes when the weights are already allocated
+                // (`FPVSystemWeights <> NIL`); leave a NIL (empty) array untouched.
+                if !self.pv_system_weights.is_empty() {
+                    self.pv_system_weights
+                        .resize(self.pv_system_list_size.max(0) as usize, 0.0);
+                }
+            }
+            STORAGE_LIST => {
+                self.storage_list_size = self.storage_name_list.len() as i32;
+                if !self.storage_weights.is_empty() {
+                    self.storage_weights
+                        .resize(self.storage_list_size.max(0) as usize, 0.0);
+                }
+            }
+            LOCAL_CONTROL_LIST => {
+                // Levelize the list (clear pointer cache for a re-resolve on the
+                // next Sample; set uniform weights).
+                self.local_control_pointer_list.clear();
+                self.local_control_list_size = self.local_control_name_list.len() as i32;
+                self.local_control_weights =
+                    vec![1.0; self.local_control_list_size.max(0) as usize];
+            }
+            _ => {}
+        }
+    }
+
+    /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
+    fn end_edit(&mut self) {
+        self.recalc();
+    }
+
+    /// Pascal `TESPVLControlObj.MakeLike` — copies *only* the phase count,
+    /// monitored element, and terminal (plus the base `PrpSequence`); `Type`, the
+    /// bands, and every list are deliberately **not** copied, so a `like=` control
+    /// keeps the ctor defaults for them (oracle-proven, like GenDispatcher).
+    fn make_like(&mut self, other: &dyn DssObject) {
+        let Some(other) = other.as_any().downcast_ref::<EspvlControl>() else {
+            return;
+        };
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ccd.element_terminal = other.ccd.element_terminal;
+    }
+
+    fn clone_box(&self) -> Box<dyn DssObject> {
+        Box::new(self.clone())
+    }
+}
