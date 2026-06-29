@@ -10,13 +10,16 @@
 Last updated: 2026-06-29 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
 skeleton `1a47161`, output-path machinery + `Export Counts` + the `compare_export`
-golden harness `53cf8cf`). **WP8.2 sub-step 1 landed, gate-green** (`6dd6d25` + audit follow-up):
-the first **solution exports** — `Export Voltages`/`BusCoords`/`NodeNames`/`YNodeList`
-on solved IEEE13, the shared `report/format.rs` Pascal number formatters, the
-`Export` solution guard (#24712), and the harness's per-column tolerance
-(`ColTol`). Detail in the §1f Phase 8 record. Phase 8 lives on its own branch
-**`phase-8-reporting`** (commit `1a47161`,
-branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
+golden harness `53cf8cf`). **WP8.2 IN PROGRESS:** sub-step 1 (`6dd6d25`) landed the
+bus/node solution exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`);
+**sub-step 2a landed, gate-green** — the aggregate PD/PC **power exports**
+`Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra
+(`for_each_enabled_elem` + `export_with_mut`, the `snapshot_elements` disjoint
+borrow) + the `Powers`/`P_byphase` MVA/kVA `Parm2` pre-parse. `ElemPowers` was
+deferred into 2c (the `WriteElem*` family) after an oracle probe showed its Vsource
+power is an intrinsic `WriteElemPowers` artifact (≠ `CktElement.Powers`). Detail in
+the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
+(branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
 reporting` builds on top of `phase-7-extended-elements`); its retro audit (WP7.7 step 4 → WP7.8) found no Critical/Major bug (§1e
 "Retro audit" under WP7.8). Tracked-open Phase-7 deferrals (both zero-corpus-payoff,
@@ -82,7 +85,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `1a47161`; output-path machinery + `Export Counts` + the `compare_export` golden harness `53cf8cf`). **WP8.2 sub-step 1 landed** (`6dd6d25` + audit follow-up): the bus/node solution exports `Voltages`/`BusCoords`/`NodeNames`/`YNodeList` on solved IEEE13 + `report/format.rs` + the #24712 solution guard + per-column tolerance. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2** (element exports — Currents/Powers/Seq*/Losses/Taps/Elem*). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `1a47161`; output-path machinery + `Export Counts` + the `compare_export` golden harness `53cf8cf`). **WP8.2 IN PROGRESS:** sub-step 1 (`6dd6d25`) = bus/node solution exports; **sub-step 2a** = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2b** (the sequence family — `SeqVoltages`/`SeqCurrents`/`SeqPowers`). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -1019,11 +1022,56 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     the *snapshot report-layer transform*. **Nit 3:** the unit test now sets a
     scratch `datapath` (defensive — every branch errors before a write, but a future
     write-reaching branch must not pollute the source tree).
-- **next — WP8.2 sub-step 2:** the element exports (`Currents`/`Powers`/`SeqCurrents`/
-  `SeqPowers`/`P_byphase`/`Elem{Currents,Voltages,Powers}`/`Losses`/`Taps`/`NodeOrder`,
-  + `SeqVoltages`) — walk elements in creation order, reuse the I/P/loss getters +
-  the symmetrical-component helper; settles the `%9.5g`/`%8.4g` current columns and
-  the `9, 19` MVA / `8` UE-only `Parm2` pre-parsing (`ExportOptions.pas:190`).
+- **sub-step 2a — the aggregate PD/PC power exports — done, gate-green.** The first
+  **element** exports (read/compute over the solved circuit, PHASE8_PLAN §2.1 plan-step
+  2): `Powers` (`ExportPowers:1075` — per-terminal kW/kvar of every PD then PC element
+  + each PD's terminal-1 normal/emergency excess kVA), `Losses` (`ExportLosses:1185` —
+  per-PD total/load/no-load losses in W/var via `GetLosses`), `P_byphase`
+  (`ExportPbyphase:1224` — per-conductor kW/kvar over the full `Yorder`, **no**
+  positive-seq `×3`, formed directly from `ComputeVterminal`/`ComputeIterminal`).
+  - **The mutable element-walk infrastructure** (the defining new piece): the element
+    exports call the mutating terminal getters (`Power`/`GetLosses`/`ComputeIterminal`/
+    `ComputeVterminal`), so they can't use the read-only `fn(&Circuit)` formatter shape.
+    New `report::export::for_each_enabled_elem(&mut [DssClass], &[ElemRef], f)` walks a
+    circuit element list under the `if Enabled` guard, and `Dss::export_with_mut` hands
+    the formatter the disjoint `(&mut classes, &circuit, &sys, &node_v)` borrow (the
+    `snapshot_elements` pattern). `exec::registry` is now `pub(crate) mod` so the report
+    formatters can name `DssClass`. The element formatters are `pub(crate)` (they expose
+    the `pub(crate)` `DssClass`).
+  - **The `Powers`/`P_byphase` MVA/kVA `Parm2` pre-parse** (`ExportOptions.pas:190-199`):
+    `do_export_cmd` now consumes the `m…`→MVA flag for ptr 9/19 **before** the trailing
+    filename, fixing the WP8.1 `TODO(WP8.2)` hoist (the other Parm2-consuming reports
+    8/15/17/20-21/32/51 land in later WPs). The dispatch arms 9/19/24 route through
+    `export_with_mut`.
+  - **`ElemPowers` deferred to sub-step 2c** (the `WriteElem*` family). An oracle probe
+    found its Vsource power is an **intrinsic `WriteElemPowers` artifact**: `Export
+    ElemPowers` writes the Vsource `−612.936` even in complete isolation, ≠ the oracle's
+    own `CktElement.Powers` (`−612.729`, which `corpus_live` already pins and the Rust
+    matches) — `WriteElemPowers`'s `ComputeVterminal; ComputeIterminal` sequence
+    re-derives the source current differently from the canonical terminal power.
+    `ElemCurrents` (probe-confirmed) does **not** have the quirk (it matches canonical),
+    so the three `Elem*` reports go together in 2c where the source-element semantics can
+    be settled (port-the-bug vs canonical, the WP7.6 / VSConverter precedent).
+  - **Gate:** `gen_phase8.py` captures the oracle's `Powers`/`Losses`/`P_byphase` on
+    solved IEEE13 → `tests/golden/phase8/export_{powers,losses,p_byphase}.{txt,meta.json}`;
+    `golden_phase8.rs` replays + diffs via `compare_export` (`ExactOrdered`). All real
+    columns (kW/kvar/W) — no angle/sequence — so the floors are the plain printing floors
+    (`Powers` `%11.1f` → `rel 0`/`abs 0.11`; `P_byphase` `%10.3f` → `abs 0.0011`; `Losses`
+    `%.7g` → the default `%g` floor), documented in `tests/TOLERANCE_NOTES.md`, **not** a
+    physics relaxation (the engine V/I/P is pinned to 1e-8 by `corpus_live`). golden_phase8
+    **5→8**; lib stays **719** (formatters gated end-to-end, no new inline tests);
+    `solvable_now` **88** (no migration — the `Export` decks need the full export set; the
+    migration lands at the WP8.2 completion gate).
+  - **Coverage note (tracked for 2c/completion):** IEEE13 has no overloaded PD element, so
+    the `Powers` excess-kVA columns are all `0.0` — the `excess_kva_*` overload branch
+    (`factor > 0`) is structurally emitted but its non-zero value path is not exercised by
+    this golden (the trait methods are pre-existing).
+- **next — WP8.2 sub-step 2b:** the sequence family — `SeqVoltages` (`ExportSeqVoltages:177`,
+  bus-based read-only), `SeqCurrents` (`ExportSeqCurrents:431`), `SeqPowers`
+  (`ExportSeqPowers:1311`) — the symmetrical-component helper + `PctNemaUnbalance` + PD
+  ratings (`%Normal`/`%Emergency`); all angle-free magnitude/ratio columns. Then 2c =
+  `Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` (the mag/angle
+  column-pair comparator work + RegControl accessors + the `WriteElemPowers` quirk).
 
 ---
 
