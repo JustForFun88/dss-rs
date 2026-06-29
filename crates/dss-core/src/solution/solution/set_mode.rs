@@ -22,8 +22,8 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
     // machine-state initialization behind a *successful* entry
     // (`calcInitialMachineStates` / `InitializeForHarmonics`) runs in the
     // executive `Set mode=` handler after this returns `true` (set_cmd.rs). The
-    // Dynamic and Harmonic(T) solves are ported (WP7.7 / WP7.6); the
-    // MonteFault/FaultStudy solves are still WP7.9 and `Solve` errors on them.
+    // Dynamic, Harmonic(T) and FaultStudy solves are ported (WP7.7 / WP7.6 /
+    // WP7.9); the MonteFault solve still errors (no corpus case, WP7.9).
     let value_is_dynamic = matches!(
         value,
         SolveMode::MonteFault | SolveMode::Dynamic | SolveMode::FaultStudy

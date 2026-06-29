@@ -610,6 +610,21 @@
         "VCCS.PV1",
         "VCCS.PV3"
       ]
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss",
+      "kind": "feeder",
+      "n_steps": 1
+    },
+    {
+      "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
+      "kind": "feeder",
+      "n_steps": 1
     }
   ]
 }

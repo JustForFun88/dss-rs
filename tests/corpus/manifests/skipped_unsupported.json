@@ -959,21 +959,6 @@
       "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS",
       "tag": "unsupported_feature=file-backed-arrays",
       "note": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"sngfile=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"dblfile=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"dblfile=\\\") are not support"
-    },
-    {
-      "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
-      "tag": "unsupported_mode=faultstudy",
-      "note": "Rust engine errors after compile: Unknown solution mode (faultstudy, not ported in Phase 5)"
-    },
-    {
-      "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss",
-      "tag": "unsupported_mode=faultstudy",
-      "note": "Rust engine errors after compile: Unknown solution mode (faultstudy, not ported in Phase 5)"
-    },
-    {
-      "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
-      "tag": "unsupported_mode=faultstudy",
-      "note": "Rust engine errors after compile: Unknown solution mode (faultstudy, not ported in Phase 5)"
     }
   ]
 }
