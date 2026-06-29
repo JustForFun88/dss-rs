@@ -215,12 +215,16 @@ fn export_voltages_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: EXPORT_REL,
         abs: EXPORT_ABS,
-        // The `Angle%d` columns are `%6.1f` (one decimal); two independent solves
-        // round that last 0.1 digit independently → a ±0.1 formatting floor. The
-        // magnitude/pu columns keep the tight default. (tests/TOLERANCE_NOTES.md)
+        // The `Angle%d` columns are `%6.1f` (one decimal). The floor is purely
+        // additive (a ±0.1 last-digit boundary between two independent solves —
+        // no multiplicative `%f` component), so `rel = 0` / `abs = 0.11` is the
+        // exact proven printing floor; the magnitude/pu columns keep the tight
+        // default. The angle is `arg(V)`, gated by the engine's voltage physics
+        // in `corpus_live`; here it is only a printing-floor layout check.
+        // (tests/TOLERANCE_NOTES.md)
         col_tol: vec![ColTol {
             prefix: "angle".to_string(),
-            rel: 1e-3,
+            rel: 0.0,
             abs: 0.11,
         }],
     };

@@ -6,10 +6,11 @@ use crate::circuit::Circuit;
 
 /// Build the `Export NodeNames` body (Pascal `ExportNodeNames`).
 ///
-/// Pascal keeps the bus name in its original case here (no `AnsiUpperCase`); the
-/// HashList stores only the lowercased name, so the port emits lowercase. The
-/// golden gate compares identifiers case-insensitively (PHASE8_PLAN §2.3), so
-/// this is faithful to the gate.
+/// Unlike most reports this one does **not** `AnsiUpperCase` the bus name. The
+/// `BusList` (a `THashList`, Pascal `HashList.pas:224,241`) lowercases names on
+/// store, so the oracle itself emits the lowercased name here — the port's
+/// lowercase output is byte-identical to the oracle's, not merely
+/// case-insensitively equal.
 pub fn export_node_names(ckt: &Circuit) -> String {
     let mut s = String::from("Node_Name\n");
     for i in 0..ckt.buses.len() {

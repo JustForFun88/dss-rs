@@ -89,11 +89,17 @@ fn show_reports_are_silent_noops() {
 /// decks all sit in `skipped_unsupported`, so this never reaches the live gate.)
 #[test]
 fn export_records_scoped_not_ported() {
+    // Defensive: route any report write to a scratch dir, never the source tree.
+    // Every branch below errors *before* a write, but a future write-reaching
+    // branch must not pollute the tree (audit-tests WP8.2).
+    let set_dp = format!("set datapath=\"{}\"", std::env::temp_dir().display());
+
     // (1) A solution-requiring export (`Voltages`) on an *unsolved* circuit hits
     //     the solution guard (#24712, `ExportOptions.pas:171`) before any output.
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command(&set_dp);
     dss.command("export voltages");
     assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(
@@ -108,6 +114,7 @@ fn export_records_scoped_not_ported() {
     //     ElemCurrents is not solution-guarded, so no solve is needed.
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command(&set_dp);
     dss.command("export elem");
     assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(
@@ -119,6 +126,7 @@ fn export_records_scoped_not_ported() {
     // (3) Unknown keyword → Pascal 24713, with the lowercased keyword echoed back.
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command(&set_dp);
     dss.command("export notareport");
     assert_eq!(
         dss.errors()[0],
