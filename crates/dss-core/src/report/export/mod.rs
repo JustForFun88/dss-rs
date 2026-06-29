@@ -3,6 +3,14 @@
 //! formatter mutates electrical state (PHASE8_PLAN §2.1). Coverage grows per WP
 //! (WP8.1: `Counts`; WP8.2: the solution exports; WP8.3: device/meter/reliability).
 
+mod bus_coords;
 mod counts;
+mod node_names;
+mod voltages;
+mod ynode_list;
 
+pub use bus_coords::export_bus_coords;
 pub use counts::export_counts;
+pub use node_names::export_node_names;
+pub use voltages::export_voltages;
+pub use ynode_list::export_ynode_list;

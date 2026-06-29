@@ -82,38 +82,41 @@ fn show_reports_are_silent_noops() {
     }
 }
 
-/// The unported `Export` verbs record a scoped `NOT_PORTED` (loud, not a silent
-/// fake), and an unknown keyword gets the Pascal 24713 message. (`Export` decks
-/// all sit in `skipped_unsupported`, so this never reaches the live gate.)
+/// The export router's three non-formatting outcomes: the WP8.2 solution guard
+/// (#24712), a still-unported keyword's scoped `NOT_PORTED` (loud, not a silent
+/// fake), and an unknown keyword's Pascal 24713. The *happy* path (a real report
+/// written + diffed vs the oracle) is the `golden_phase8.rs` gate. (`Export`
+/// decks all sit in `skipped_unsupported`, so this never reaches the live gate.)
 #[test]
 fn export_records_scoped_not_ported() {
+    // (1) A solution-requiring export (`Voltages`) on an *unsolved* circuit hits
+    //     the solution guard (#24712, `ExportOptions.pas:171`) before any output.
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
-
     dss.command("export voltages");
-    assert_eq!(dss.errors().len(), 1);
-    // Pin the *quoted* canonical name so the assertion can't be satisfied by a
-    // sibling whose name merely contains "Voltages" (SeqVoltages /
-    // VoltagesElements / YVoltages) — audit-tests WP8.1.
+    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(
-        dss.errors()[0].contains("\"Voltages\"") && dss.errors()[0].contains("not ported"),
+        dss.errors()[0].contains("must be solved"),
         "{:?}",
         dss.errors()
     );
 
-    // Abbreviation resolves like the oracle's ExportCommands (earliest-wins:
-    // `v` → Voltages, not SeqVoltages/VoltagesElements/YVoltages).
+    // (2) A still-unported export records the scoped `NOT_PORTED`, and the
+    //     abbreviation resolves earliest-wins like the oracle's `ExportCommands`
+    //     (`elem` → ElemCurrents(42), not ElemVoltages(43)/ElemPowers(44)).
+    //     ElemCurrents is not solution-guarded, so no solve is needed.
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
-    dss.command("export v");
+    dss.command("export elem");
+    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(
-        dss.errors()[0].contains("\"Voltages\""),
+        dss.errors()[0].contains("\"ElemCurrents\"") && dss.errors()[0].contains("not ported"),
         "{:?}",
         dss.errors()
     );
 
-    // Unknown keyword → Pascal 24713, with the lowercased keyword echoed back.
+    // (3) Unknown keyword → Pascal 24713, with the lowercased keyword echoed back.
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
     dss.command("export notareport");

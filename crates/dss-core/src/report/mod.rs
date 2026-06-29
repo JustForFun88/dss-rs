@@ -18,6 +18,7 @@
 //! electrical state (PHASE8_PLAN §2.1).
 
 pub mod export;
+pub mod format;
 pub mod output;
 
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`

@@ -22,7 +22,7 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::{ExportPolicy, RowPolicy, compare_export};
+use harness::{ColTol, ExportPolicy, RowPolicy, compare_export};
 use serde::Deserialize;
 
 fn phase8_dir() -> PathBuf {
@@ -118,8 +118,157 @@ fn export_counts_matches_oracle() {
         },
         rel: 0.0,
         abs: 0.0, // integer counts — exact
+        col_tol: vec![],
     };
     compare_export(&oracle, &rust, &policy, "export_counts");
 
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Meta for a solution-export golden (a feeder compiled + solved on both
+/// engines, then one report captured): the master to compile (relative to
+/// `tests/corpus/electricdss-tst`), the post commands, the circuit/CaseName, and
+/// the oracle's default-filename suffix.
+#[derive(Debug, Deserialize)]
+struct FeederMeta {
+    report: String,
+    master: String,
+    post: Vec<String>,
+    fixture: String,
+    suffix: String,
+}
+
+/// Drive one solution export: compile the same master the oracle used, replay
+/// the post commands, route the report into a scratch dir, export, and diff the
+/// produced file against the captured oracle file via `compare_export`.
+fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
+    let dir = phase8_dir();
+    let meta: FeederMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("export {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let want = format!("{}_{}", meta.fixture, meta.suffix).to_lowercase();
+    assert!(
+        produced.to_lowercase().ends_with(&want),
+        "{stem}: unexpected produced path {produced:?} (want …{want})"
+    );
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+
+    compare_export(&oracle, &rust, policy, stem);
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Default per-number tolerance for the `%g`-formatted value columns of the
+/// solution exports: the oracle writes 5–6 significant digits, so the report is
+/// known only to ~1e-5 rel; `1e-4` clears that formatting floor plus the two
+/// independent solves with margin. The **primary** voltage-correctness gate is
+/// the live full-model compare (`corpus_live.rs`, 1e-8 rel) — this golden pins
+/// the report *layout* (header, column set/order, row order, scaling), not the
+/// physics. See `tests/TOLERANCE_NOTES.md`.
+const EXPORT_REL: f64 = 1e-4;
+const EXPORT_ABS: f64 = 1e-6;
+
+/// `Export Voltages` (Pascal `ExportVoltages`) on solved IEEE13: per-bus node
+/// magnitude/angle/pu, zero-filled to the max node count.
+#[test]
+fn export_voltages_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        // The `Angle%d` columns are `%6.1f` (one decimal); two independent solves
+        // round that last 0.1 digit independently → a ±0.1 formatting floor. The
+        // magnitude/pu columns keep the tight default. (tests/TOLERANCE_NOTES.md)
+        col_tol: vec![ColTol {
+            prefix: "angle".to_string(),
+            rel: 1e-3,
+            abs: 0.11,
+        }],
+    };
+    run_feeder_export("export_voltages", &policy);
+}
+
+/// `Export BusCoords` (Pascal `ExportBusCoords`): X/Y of every coord-defined bus.
+/// No header row; coordinates are `%-13.11g` (11 sig) loaded from the same file,
+/// so they match tightly.
+#[test]
+fn export_buscoords_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_buscoords", &policy);
+}
+
+/// `Export NodeNames` (Pascal `ExportNodeNames`): `BusName.NodeNum` per line,
+/// pure text (compared case-insensitively).
+#[test]
+fn export_nodenames_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_nodenames", &policy);
+}
+
+/// `Export YNodeList` (Pascal `ExportYNodeList`): node names in Y-matrix order,
+/// quoted, pure text.
+#[test]
+fn export_ynodelist_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_ynodelist", &policy);
 }
