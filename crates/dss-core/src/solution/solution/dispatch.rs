@@ -93,8 +93,13 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::Harmonic => solve_harmonic(ckt, env),
         SolveMode::HarmonicT => solve_harmonic_t(ckt, env),
         _ => {
+            // The remaining modes — AutoAdd, MonteCarlo (Monte1/2/3), MonteFault,
+            // LoadDuration (LD1/LD2) and GeneralTime — have **no corpus deck** that
+            // exercises them (WP7.9 probe), so each keeps the Pascal "Unknown
+            // solution mode." error (`TSolutionObj.Solve` else, #481) rather than a
+            // partial port. Port on demand if a future gate needs one.
             env.errors
-                .push("Unknown solution mode.".to_string() + " (not ported in Phase 5)");
+                .push("Unknown solution mode. (mode not ported — no corpus case)".to_string());
             Ok(())
         }
     };

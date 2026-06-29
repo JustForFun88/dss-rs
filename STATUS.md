@@ -736,6 +736,21 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   (`ieee37_SC_Currents`, `ieee34Mod2_SC_Case_II`, `IEEE123Master-SC`) classify
   **solvable** (full-model live oracle match — the post-study `NodeV` is the last
   `ComputeYsc` column on both engines and agrees). lib 711 → **712**.
+- **step 2 — AutoAdd / MonteCarlo / LoadDuration / MonteFault — kept deferred (no
+  port).** Corpus probe found **zero** decks using `mode=autoadd`/`A`, `mode=M1/M2/M3`
+  (MonteCarlo), `mode=MF` (MonteFault), or `mode=LD1/LD2` (LoadDuration). Per the
+  PHASE7_PLAN §2.6 empirical rule ("port only if a corpus case needs it"), each keeps
+  the Pascal `Unknown solution mode.` error (the `dispatch.rs` catch-all, stale
+  "Phase 5" suffix replaced with an honest "no corpus case" note + a comment naming
+  the deferred modes). The `circuit/auto_add.rs` option skeleton (options round-trip)
+  is unchanged. No code beyond the message/comment.
+- **step 3 — Feeder — documented dead (no port).** Corpus probe found **zero**
+  `New Feeder.` instantiations; `Feeder.pas` is largely dead upstream (Phase 6 found
+  `DoFeederStuff` remnants dead). Nothing to port. **WP7.9 COMPLETE** (FaultStudy is
+  the only real deliverable; AutoAdd/Feeder are empirical no-ops per the plan).
+- **next = WP7.10 (Phase 7 exit): TODO/NOT_PORTED sweep, full gate + live re-classify,
+  COVERAGE refresh, STATUS rewrite. Merge to `main` is the per-phase HARD STOP —
+  explicit user request only.**
 
 **Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
 - **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
