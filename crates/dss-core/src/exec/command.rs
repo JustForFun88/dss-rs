@@ -60,15 +60,6 @@ impl Dss {
             cmd::COMMENT | cmd::HELP | cmd::QUIT | cmd::PANEL | cmd::ABOUT | cmd::COMHELP => {
                 return; // no-ops (comment / GUI-only commands)
             }
-            cmd::SHOW => {
-                // Pascal `DoShowCmd` (ShowResults.pas) is Phase 8
-                // (reporting/exports/Save): it only writes report files and never
-                // alters the electrical solution, so it is stubbed as a no-op here
-                // (like Plot/Panel). The live oracle gate compares the assembled
-                // model, not report text, so this is faithful for the gate and
-                // admits the `Show LineConstants` geometry/cable feeders.
-                return;
-            }
             cmd::CLEAR | cmd::CLEAR_ALL => {
                 self.do_clear_cmd();
                 return;
@@ -136,6 +127,28 @@ impl Dss {
             cmd::RELCALC => self.do_relcalc_cmd(),
             cmd::REDUCE => self.do_reduce_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
+            cmd::EXPORT => self.do_export_cmd(),
+            cmd::SAVE => self.do_save_cmd(),
+            cmd::DUMP => self.do_dump_cmd(),
+            // Pascal `DoShowCmd` (ShowOptions.pas). Post-circuit dispatch (Pascal
+            // `ProcessCommand`), so `Show` before a circuit falls through to the
+            // generic guard above and records the #301 "create a circuit first"
+            // error exactly like the oracle (audit-code WP8.1: the oracle's
+            // dispatch gate errors #301 before `DoShowCmd` runs). With a circuit,
+            // every `Show` report is a faithful headless no-op (writes a file,
+            // changes no electrical state — PHASE8_PLAN §2.5); WP8.4 lands the
+            // real ShowResults formatters + the 24700/24701/24702/999 errors.
+            cmd::SHOW => self.do_show_cmd(),
+            // Pascal `DoPlotCmd`/`DoVisualizeCmd` are GUI commands; in the pinned
+            // headless oracle they produce no engine-observable state, so a
+            // documented no-op is faithful, not a fake (PHASE8_PLAN §2.5; the live
+            // gate compares the assembled model, not any plot). Post-circuit, like
+            // the oracle's dispatch (so before a circuit the generic guard above
+            // emits #301; oracle-probed). NOT_PORTED, tracked for a real WP:
+            // `Visualize` on an *unsolved* circuit errors #24722 on the oracle —
+            // not reproduced here (no corpus deck reaches it; Visualize stays a
+            // documented no-op per §2.5).
+            cmd::PLOT | cmd::VISUALIZE => {}
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_initialized = false;

@@ -24,6 +24,7 @@ mod open_close;
 mod pvsystem;
 mod reduce;
 mod reliability;
+mod report;
 mod solve;
 mod storage;
 mod time_series;

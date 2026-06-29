@@ -141,8 +141,11 @@ pub(crate) mod cmd {
     pub const MORE: usize = 3;
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
+    pub const SAVE: usize = 7;
     pub const SHOW: usize = 8;
     pub const SOLVE: usize = 9;
+    pub const PLOT: usize = 12;
+    pub const DUMP: usize = 16;
     pub const OPEN: usize = 17;
     pub const CLOSE: usize = 18;
     pub const RESET: usize = 13;
@@ -161,6 +164,7 @@ pub(crate) mod cmd {
     pub const BUILD_Y: usize = 31;
     pub const GET: usize = 32;
     pub const INIT: usize = 33;
+    pub const EXPORT: usize = 34;
     pub const FILEEDIT: usize = 35;
     pub const ALLOCATE_LOADS: usize = 45;
     pub const CLASSES: usize = 49;
@@ -171,6 +175,7 @@ pub(crate) mod cmd {
     pub const COMPARE_CASES: usize = 70;
     pub const YEARLY_CURVES: usize = 71;
     pub const CD: usize = 72;
+    pub const VISUALIZE: usize = 73;
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
     pub const REDUCE: usize = 61;
