@@ -91,19 +91,28 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   **value** floors are deliberately the report's own *formatting* resolution, not
   the engine floor: the oracle writes each number with `Format('%…g')` /
   `Format('%…f')`, so the file only knows the value to its printed precision. The
-  primary voltage/current correctness gate stays the live full-model compare
-  (`corpus_live.rs`, 1e-8 rel) — a report bug cannot hide there, and a physics bug
-  shows there first. Concretely (`Export Voltages` on IEEE13):
+  split of duties is precise: **`corpus_live.rs` gates the engine voltage
+  physics** — it compares IEEE13's complex node voltages directly at
+  `tol_for("feeder")` (1e-8 rel) across the daily operating points, so a
+  systematic physics bug surfaces there; **the export golden alone gates the
+  snapshot report-layer transform** (`|V|`, `|V|/kVbase`, `arg(V)`, the `×√3`
+  line-to-line base, zero-fill, column order) — exact arithmetic, so a wrong
+  scale/convention is a gross error caught easily at 1e-4. Concretely
+  (`Export Voltages` on IEEE13):
   - default value columns (`Magnitude%d` `%10.6g`, `pu%d` `%9.5g`, `BasekV`
     `%.5g`): **1e-4 rel, 1e-6 abs** — clears the 5–6-significant-digit `%g`
     rounding floor (~1e-5 rel) plus the two independent solves, with margin.
   - the `Angle%d` columns (`%6.1f`, one decimal): a **per-column override** of
-    **1e-3 rel, 0.11 abs**. Two independent solves round that last 0.1 digit
-    independently, so a ±0.1 boundary difference is a formatting artifact, not a
-    divergence. This is the **only** loosened column and it is named explicitly
-    via `ExportPolicy::col_tol` (a header-name-prefix match) — **not** a blanket
-    relaxation: every magnitude/pu/coordinate column keeps the tight default, and
-    the angle is otherwise pinned by the magnitude+pu it derives from. `BusCoords`
+    **rel 0, abs 0.11**. The `%f` floor is purely *additive* — two independent
+    solves round that last 0.1 digit independently, so a ±0.1 boundary difference
+    is a formatting artifact, not a divergence — hence `rel = 0` (no multiplicative
+    `%f` component) and `abs = 0.11` is the exact proven printing floor. This is
+    the **only** loosened column and it is named explicitly via
+    `ExportPolicy::col_tol` (a header-name-prefix match, applying to `Angle1/2/3`
+    only) — **not** a blanket relaxation: every magnitude/pu/coordinate column
+    keeps the tight default. The angle is `arg(V)`, independent of `|V|`/pu; its
+    engine correctness is gated by the `corpus_live` voltage compare (a gross
+    rad↔deg / sign-flip bug is far above 0.1 and caught either way). `BusCoords`
     (`%-13.11g`, 11 sig, loaded from the same file) and the text reports
     (`NodeNames`/`YNodeList`) need no override.
 

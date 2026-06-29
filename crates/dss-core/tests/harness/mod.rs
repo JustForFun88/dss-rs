@@ -899,10 +899,13 @@ pub enum RowPolicy {
 ///
 /// Used for the fixed-decimal `Angle` columns of the voltage/current reports:
 /// `%.1f` formatting plus two independent solves round the last printed 0.1
-/// digit independently, a ±0.1 floor far coarser than the `%g` magnitude/pu
-/// columns. A *formatting* floor (documented in `tests/TOLERANCE_NOTES.md`), NOT
-/// a relaxation of the magnitude/pu checks — those stay tight, and the primary
-/// voltage-correctness gate is the live model compare (`corpus_live.rs`).
+/// digit independently, a ±0.1 *additive* floor far coarser than the `%g`
+/// magnitude/pu columns (so the override is `rel = 0`, `abs ≈ 0.11`). A
+/// *formatting* floor (documented in `tests/TOLERANCE_NOTES.md`), NOT a
+/// relaxation of the magnitude/pu checks — those stay tight. The angle is
+/// `arg(V)`, independent of `|V|`/pu; its engine-physics correctness is gated by
+/// the live model compare (`corpus_live.rs`, which compares the complex node
+/// voltages directly), so here it is only a report-layout / printing-floor check.
 pub struct ColTol {
     pub prefix: String,
     pub rel: f64,

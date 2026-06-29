@@ -81,8 +81,10 @@ impl Dss {
     }
 
     /// Run a read-only circuit formatter `f` and write its output to the report
-    /// file (the shared path for the solution exports). The circuit is present
-    /// (post-circuit dispatch + the solution guard above).
+    /// file (the shared path for the solution exports). The circuit is always
+    /// present: `ProcessCommand`'s generic pre-circuit guard (#301, `command.rs`)
+    /// dispatches `Export` only after a circuit exists — for *every* keyword,
+    /// including the ones that skip the solution guard (e.g. NodeNames, ptr 39).
     fn export_with(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
         let content = f(self.circuit.as_ref().expect("post-circuit dispatch"));
         self.write_export(explicit, default_name, &content);
