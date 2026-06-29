@@ -116,19 +116,33 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     (`%-13.11g`, 11 sig, loaded from the same file) and the text reports
     (`NodeNames`/`YNodeList`) need no override.
 - **WP8.2 sub-step 2a — the aggregate PD/PC power exports** (`Powers`/`Losses`/
-  `P_byphase` on solved IEEE13). All columns are real (kW/kvar/W) — no angle or
-  sequence columns — so the floors are the plain fixed-decimal / `%g` *printing*
-  floors, **not** a physics relaxation (the engine V/I/P is pinned to 1e-8 by
-  `corpus_live`; here the golden gates only the report layout/scaling/element order):
+  `P_byphase` on solved IEEE13, both kVA and MVA). All columns are real (kW/kvar/W
+  or MW/Mvar) — no angle or sequence columns — so the floors are the plain
+  fixed-decimal / `%g` *printing* floors, **not** a physics relaxation (the engine
+  V/I/P is pinned to 1e-8 by `corpus_live`; here the golden gates only the report
+  layout/scaling/element order). Each floor below is the **empirically measured**
+  max Rust↔oracle divergence with margin (audit-tests WP8.2 mutation-verified each):
   - `Powers` — every value column is `%11.1f` (one decimal); like the `Angle%d`
-    floor this is purely *additive* (two solves round the last 0.1 independently),
-    so the **whole policy** is `rel = 0, abs = 0.11` (the integer `Terminal` column
-    is exact within it). A gross scale/sign bug is ≫0.11 and still caught.
-  - `P_byphase` — values are `%10.3f` (three decimals); `abs = 0.0011` is the
-    additive 1-ulp floor for small conductor powers, with `rel = 1e-4` covering the
-    larger ones (the integer NumTerminals/NumConductors/NumPhases columns are exact).
-  - `Losses` — `%.7g` (7 sig); the default `%g` floor (`rel 1e-4`, `abs 1e-6`)
-    clears the 7-sig printing plus the two solves with margin.
+    floor this is purely *additive*, so the **whole policy** is `rel = 0, abs = 0.11`
+    — measured max divergence 0.0 (identical strings), `rel = 0` so no multiplicative
+    band masks a per-terminal error; the integer `Terminal` column is exact within
+    abs. (MVA twin: same `%11.1f` floor, now in MW.)
+  - `P_byphase` — values are `%10.3f` (three decimals); the floor is purely
+    *additive* (measured max divergence **exactly 1e-3** — one ULP, on the largest
+    −1342.212 conductor; its 7.45e-7 "rel" is just `abs/value`), so the policy is
+    `rel = 0, abs = 0.0011` — a `rel` band would be superfluous and would mask a
+    per-conductor scale drift (mutation-confirmed: 0.005% passes under `rel=1e-4` but
+    fails under `rel=0`). The integer NumTerminals/NumConductors/NumPhases columns are
+    exact within abs. (MVA twin: same `%10.3f` floor, in MW.)
+  - `Losses` — `%.7g` (7 sig), so the floor is the **7-sig printing floor**, not the
+    looser 6-sig `EXPORT_REL` of the Voltages report: measured max divergence on a
+    substantial loss is **1.53e-7 rel** (one ULP at 7 sig, REG2's 65.3 W), so
+    `rel = 1e-6` (≈6× over the floor) is the report's printing resolution. `abs = 1e-6`
+    absorbs a few near-zero no-load/var cells (cancellation noise ≤ 5.6e-9 W) with
+    ~180× margin. No genuine line-loss cancellation floor materializes on IEEE13 (the
+    line/transformer losses agree to the 7-sig printing floor); should a metered feeder
+    later show one, it must be **proven by decomposition** (CLAUDE.md), not by widening
+    `rel`.
 
 ## Live corpus gate (`corpus_live.rs`)
 

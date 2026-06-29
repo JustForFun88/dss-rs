@@ -91,6 +91,11 @@ FEEDER_REPORTS = [
     ("powers", "EXP_POWERS.csv", "export_powers"),
     ("losses", "EXP_LOSSES.csv", "export_losses"),
     ("p_byphase", "EXP_P_BYPHASE.csv", "export_p_byphase"),
+    # The MVA option (`opt=1`): the `m…` Parm2 flag → MW/Mvar headers + the extra
+    # 0.001 scaling. Same default filename per ptr, so each overwrites its kVA
+    # twin's file (read immediately, so no clash).
+    ("powers mva", "EXP_POWERS.csv", "export_powers_mva"),
+    ("p_byphase mva", "EXP_P_BYPHASE.csv", "export_p_byphase_mva"),
 ]
 
 
