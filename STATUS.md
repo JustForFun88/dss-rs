@@ -675,11 +675,14 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   - **WP7.7 step 4** — message-text + comment only (`relay/mod.rs` `Generic`/`TD21`
     NOT_PORTED loud-abort unchanged); no test files touched. Nothing to fix.
   - **VSConverter** — `GetInjCurrents`/`CalcYPrim`/`GetCurrents` 1:1 (incl. the
-    one-iteration `ITerminal` lag, EPSILON, `VscMode` enum). *Surfaced, deferred:*
-    its only gate is the synthetic `vs_converter.rs` at **1e-3 rel** on 5-sig-fig
-    transcribed pins (no corpus deck — the 3 decks are `skipped_oracle_issue` for
-    the self-alias bug we deliberately don't reproduce); the `iteration==3` + KCL
-    ties are exact. Could tighten to 1e-6 with more oracle digits.
+    one-iteration `ITerminal` lag, EPSILON, `VscMode` enum). **FIXED:** the loose
+    `1e-3 rel` on 5-sig-fig pins in `vs_converter.rs` was a transcription artifact,
+    **not** a bug — re-probed dss-python 0.15.7 at full f64 and the Rust source
+    currents match the oracle **bit-for-bit (~1e-10 rel)**; the DC-source current
+    to ~2e-12. The test now pins the full-precision oracle values at the standard
+    **1e-6** current floor (1000× tighter), with the converter's own DC terminal a
+    documented tight regression guard (the oracle masks it via the self-alias bug).
+    No corpus deck still (the 3 decks stay `skipped_oracle_issue`).
   - **VCCS** — the strongest port: ring-buffer `MapIdx`/`OffsetIdx`, all 3 inj
     regimes + both dynamics paths verified; the local-`z_iu` accumulator proven safe
     (`MapIdx(iu-k+1)`, k≥2, never returns `iu`). Gate strong (`HWtest` live +
@@ -698,10 +701,13 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
     writes, and `control_present_equals_control_absent` byte-identity — the no-op is
     *proven*, not rationalized). *Surfaced:* no-op gated only for snapshot solves
     (no multi-step corpus deck).
-  - **No code edits made** — every finding is faithful-by-design, a documented
-    non-reproduction, or a coverage gap justified by the empirical "no corpus case"
-    rule (PHASE7_PLAN §2.6); the deferred items are recorded here, not silently
-    dropped. Only fix applied: this STATUS reconciliation (the UPFC quirk-3 wording).
+  - **Fixes applied:** (1) the VSConverter test tightened to full-precision oracle
+    pins at 1e-6 (above — the only loose oracle tolerance in the range, empirically
+    proven a no-bug); (2) the UPFC quirk-3 STATUS wording reconciled. **Genuinely
+    still open (not "settled" — untested coverage):** the UPFC modes 0/2/3/4/5 +
+    PF-compensation path (only mode 1 oracle-gated) — closing it needs synthetic
+    probe decks. The remaining items (VCCS `>3-phase` RMS edge; ESPVL multi-step)
+    are unreachable/zero-corpus edges justified by PHASE7_PLAN §2.6.
 
 **WP7.9 (FaultStudy + AutoAdd + Feeder) — ✅ COMPLETE.**
 - **step 1 — FaultStudy mode (`solution/solution/fault_study.rs`) — done, gate-green.**
