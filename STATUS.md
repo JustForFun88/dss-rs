@@ -8,12 +8,14 @@
 > frontier.
 
 Last updated: 2026-06-29 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.1 landed, gate-green** (sub-steps 1+2): the `report/`
-module + the `Export`/`Show`/`Save`/`Dump`/`Plot`/`Visualize` dispatch skeleton
-(sub-step 1, committed `1a47161`), then the output-path machinery (`Set DataPath=`
-+ `OutputDirectory`) + the first real report `Export Counts` + the new
-`compare_export` text/CSV golden harness (sub-step 2, uncommitted). Detail in the
-§1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`** (commit `1a47161`,
+reporting/exports/Save). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
+skeleton `1a47161`, output-path machinery + `Export Counts` + the `compare_export`
+golden harness `53cf8cf`). **WP8.2 sub-step 1 landed, gate-green** (`<uncommitted>`):
+the first **solution exports** — `Export Voltages`/`BusCoords`/`NodeNames`/`YNodeList`
+on solved IEEE13, the shared `report/format.rs` Pascal number formatters, the
+`Export` solution guard (#24712), and the harness's per-column tolerance
+(`ColTol`). Detail in the §1f Phase 8 record. Phase 8 lives on its own branch
+**`phase-8-reporting`** (commit `1a47161`,
 branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
 reporting` builds on top of `phase-7-extended-elements`); its retro audit (WP7.7 step 4 → WP7.8) found no Critical/Major bug (§1e
@@ -80,7 +82,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 landed, gate-green** (sub-step 1: dispatch skeleton + GUI no-ops, `1a47161`; sub-step 2: output-path machinery + `Export Counts` + the `compare_export` golden harness, uncommitted). Branch `phase-8-reporting`. **next = WP8.2** (Export solution outputs — Voltages/Currents/Powers/… as CSV on solved IEEE feeders). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `1a47161`; output-path machinery + `Export Counts` + the `compare_export` golden harness `53cf8cf`). **WP8.2 sub-step 1 landed** (`<uncommitted>`): the bus/node solution exports `Voltages`/`BusCoords`/`NodeNames`/`YNodeList` on solved IEEE13 + `report/format.rs` + the #24712 solution guard + per-column tolerance. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2** (element exports — Currents/Powers/Seq*/Losses/Taps/Elem*). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -824,7 +826,7 @@ commit → STATUS sync → stop). Phase 8 is almost entirely *read-and-format*: 
 new electrical math, no new solve mode — the risk is faithful report layout and
 **not silently faking output**.
 
-**WP8.1 (Report infrastructure) — 🚧 IN PROGRESS.**
+**WP8.1 (Report infrastructure) — ✅ COMPLETE, gate-green (sub-steps 1+2).**
 - **sub-step 1 — dispatch skeleton + GUI no-ops — done, gate-green (`1a47161`).**
   The new top-level **`crate::report`** module (`report/mod.rs`): the
   `EXPORT_OPTIONS` (57, ADIAKOPTICS-off → `High=Laplacian`; confirmed: the pinned
@@ -877,7 +879,7 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (125) from the pinned PM build (no effect on any current ordinal/abbreviation;
     future corpus-hygiene pass). lib stays **713**; `solvable_now` **88**.
 - **sub-step 2 — output-path machinery + `Export Counts` end-to-end + the CSV/text
-  golden harness — done, gate-green (uncommitted).** Lands the first **real report**
+  golden harness — done, gate-green (`53cf8cf`).** Lands the first **real report**
   through the whole output path:
   - `report/output.rs` — `export_path` (Pascal `DoExportCmd`: explicit filename wins
     verbatim, else `<OutputDirectory><CircuitName_><default>` where `CircuitName_ =
@@ -941,10 +943,59 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     path): relative explicit filename resolves vs process cwd; no-circuit Counts is
     graceful where the oracle AVs; the scratch/empty-`DataPath` omissions are
     NOT_PORTED.
-- **next — WP8.2:** Export solution outputs (`Voltages`/`Currents`/`Powers`/`Seq*`/
-  `Losses`/`Taps`/`Summary`/…) on solved IEEE13/34/37/123(/8500) — the first CSV
-  exports (adds `report/format.rs` + the `csv` dep + `ExactOrdered` goldens), and the
-  `Export` circuit/solution gates (#24711/#24712).
+**WP8.2 (Export: solution outputs) — 🚧 IN PROGRESS.**
+- **sub-step 1 — bus/node solution exports — done, gate-green (`<uncommitted>`).**
+  The first **real solution reports**, read-only over the solved circuit
+  (PHASE8_PLAN §2.1, plan-step 1):
+  - **`report/format.rs`** — the shared Pascal number formatters: `g(v, sig)`
+    (`Format('%…g')`, delegating to the existing `util::fmt_g`) and `fixed(v,
+    decimals)` (`Format('%…f')`). The width/justification prefixes (`%10.6g`,
+    `%-13.11g`) only space-pad, which the comparator trims, so they're dropped.
+  - **Four exports** in `report/export/` (one file each, loop-faithful to
+    `ExportResults.pas`): `export_voltages` (`ExportVoltages:277` — per-bus
+    node mag/angle/pu, ascending-node-number scan via `FindIdx`, zero-filled to
+    MaxNumNodes), `export_bus_coords` (`ExportBusCoords:3064` — `CheckForBlanks`
+    + `%-13.11g`, no header), `export_node_names` (`ExportNodeNames:3699` —
+    `BusName.NodeNum`, original-case → lowercase since the HashList is lowercase;
+    gate compares identifiers case-insensitively), `export_ynode_list`
+    (`ExportYNodeList:3784` — node names in Y-order via `MapNodeToBus`, quoted
+    uppercase).
+  - **`Export` solution guard (#24712)** wired into `do_export_cmd`
+    (`ExportOptions.pas:163-177`): the solution-reading exports (`ptr` ∈
+    `1..24, 28..32, 35, 46..51`) need `Solution.NodeV` allocated (`node_v.len() >
+    1`), else "The circuit must be solved before you can do this." The **no-circuit**
+    half (#24711) is **unreachable** — `ProcessCommand`'s generic pre-circuit guard
+    (#301, `command.rs`) fires first (Export is not in the OK-before-circuit list,
+    `ExecCommands.pas:364`; the message matches the oracle's #301 verbatim). The
+    router's `write_export` helper resolves the path + writes + sets the
+    export-specific `@lastexportfile` (shared by Counts).
+  - **Harness `ColTol`** (per-column tolerance, `tests/harness`): `ExportPolicy`
+    gains `col_tol`, matched against the header column names. Needed because the
+    `Angle%d` columns are `%6.1f` (one decimal) — two independent solves round
+    that last 0.1 digit independently (a ±0.1 *formatting* floor), while every
+    `%g` magnitude/pu column keeps the tight default. **Not** a blanket
+    relaxation; documented in `tests/TOLERANCE_NOTES.md`. The voltage golden is a
+    **report-layout** gate (header/columns/order/scaling), not the physics gate —
+    voltages stay pinned to 1e-8 by the live `corpus_live` model compare.
+  - **Gate:** `gen_phase8.py` compiles + solves the unmodified IEEE13 master
+    (`tests/corpus`, single-sourced via each report's `meta.json`) and captures
+    the oracle's four reports → `tests/golden/phase8/export_{voltages,buscoords,
+    nodenames,ynodelist}.{txt,meta.json}`; `golden_phase8.rs` replays the same
+    master + `solve`, exports into a scratch `datapath`, and diffs via
+    `compare_export` (`ExactOrdered`). golden_phase8 **1→5**; lib unit-test count
+    unchanged (the formatters are gated end-to-end, no new inline tests). The WP8.1
+    `export_records_scoped_not_ported` unit test updated: `Voltages` is now ported,
+    so it pins the #24712 guard + a still-unported `elem`→ElemCurrents NOT_PORTED.
+  - **Micro-deviation (documented):** the `csv` crate is still **not** added — all
+    four reports are bespoke layouts (`ExportVoltages`'s zero-fill / `%g` columns,
+    the headerless coord/node lists) that `Writeln`-style `String` building
+    expresses directly; `csv` lands if/when a plain RFC-4180 table export makes it
+    pay (re-evaluate at the element exports). `report/format.rs` now exists.
+- **next — WP8.2 sub-step 2:** the element exports (`Currents`/`Powers`/`SeqCurrents`/
+  `SeqPowers`/`P_byphase`/`Elem{Currents,Voltages,Powers}`/`Losses`/`Taps`/`NodeOrder`,
+  + `SeqVoltages`) — walk elements in creation order, reuse the I/P/loss getters +
+  the symmetrical-component helper; settles the `%9.5g`/`%8.4g` current columns and
+  the `9, 19` MVA / `8` UE-only `Parm2` pre-parsing (`ExportOptions.pas:190`).
 
 ---
 

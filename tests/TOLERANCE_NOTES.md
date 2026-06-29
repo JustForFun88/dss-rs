@@ -83,6 +83,29 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   registry **and** the Rust class-registration order reconciled to the oracle's
   `DSSClassList` order (they currently differ) — or an order-independent
   exact-set-by-key variant.
+- **`Export` solution reports are a layout gate, not the physics gate**
+  (`golden_phase8.rs`, `harness::compare_export`). The targeted CSV golden pins
+  the report **structure** — header tokens verbatim, column set/order, row order
+  (Pascal bus/element iteration order), per-field numeric-vs-text classification,
+  the zero-fill, the scaling/getter wiring — against the oracle's exact file. The
+  **value** floors are deliberately the report's own *formatting* resolution, not
+  the engine floor: the oracle writes each number with `Format('%…g')` /
+  `Format('%…f')`, so the file only knows the value to its printed precision. The
+  primary voltage/current correctness gate stays the live full-model compare
+  (`corpus_live.rs`, 1e-8 rel) — a report bug cannot hide there, and a physics bug
+  shows there first. Concretely (`Export Voltages` on IEEE13):
+  - default value columns (`Magnitude%d` `%10.6g`, `pu%d` `%9.5g`, `BasekV`
+    `%.5g`): **1e-4 rel, 1e-6 abs** — clears the 5–6-significant-digit `%g`
+    rounding floor (~1e-5 rel) plus the two independent solves, with margin.
+  - the `Angle%d` columns (`%6.1f`, one decimal): a **per-column override** of
+    **1e-3 rel, 0.11 abs**. Two independent solves round that last 0.1 digit
+    independently, so a ±0.1 boundary difference is a formatting artifact, not a
+    divergence. This is the **only** loosened column and it is named explicitly
+    via `ExportPolicy::col_tol` (a header-name-prefix match) — **not** a blanket
+    relaxation: every magnitude/pu/coordinate column keeps the tight default, and
+    the angle is otherwise pinned by the magnitude+pu it derives from. `BusCoords`
+    (`%-13.11g`, 11 sig, loaded from the same file) and the text reports
+    (`NodeNames`/`YNodeList`) need no override.
 
 ## Live corpus gate (`corpus_live.rs`)
 

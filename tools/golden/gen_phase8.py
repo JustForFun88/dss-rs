@@ -74,6 +74,59 @@ def gen_counts(d) -> None:
     print(f"wrote export_counts.txt ({len(content)} bytes), {content.count(chr(10))} lines")
 
 
+# The solution-export fixture: the unmodified IEEE13 feeder, compiled + solved,
+# then each report captured from the file the oracle writes. The Rust golden
+# (`golden_phase8.rs`) compiles the same master from `tests/corpus`, replays the
+# same post commands, and diffs each report via `compare_export` — so the two
+# fixtures can never drift. Each tuple: (export keyword, oracle default-filename
+# suffix, golden stem).
+FEEDER_MASTER = "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss"
+FEEDER_POST = ["solve"]
+FEEDER_REPORTS = [
+    ("voltages", "EXP_VOLTAGES.csv", "export_voltages"),
+    ("buscoords", "EXP_BUSCOORDS.csv", "export_buscoords"),
+    ("nodenames", "EXP_NodeNames.csv", "export_nodenames"),
+    ("ynodelist", "EXP_YNodeList.csv", "export_ynodelist"),
+]
+
+
+def gen_feeder_reports(d) -> None:
+    """Capture the oracle's solution exports on the solved IEEE13 feeder."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in FEEDER_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name  # CaseName defaults to the circuit name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in FEEDER_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "master": FEEDER_MASTER,
+                "post": FEEDER_POST,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        # `set datapath` moved the engine's cwd into tmp; move it out before
+        # removing the dir, else Windows refuses to delete the locked cwd.
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -81,6 +134,7 @@ def main() -> None:
     from dss import DSS as d
 
     gen_counts(d)
+    gen_feeder_reports(d)
 
 
 if __name__ == "__main__":

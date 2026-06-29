@@ -892,6 +892,23 @@ pub enum RowPolicy {
     RustSubsetByKey { key: usize, require: Vec<String> },
 }
 
+/// A per-column tolerance override for [`compare_export`], keyed by a
+/// case-insensitive **prefix** of the column's header name (from the last header
+/// line, split on the report separator). The first matching prefix wins; columns
+/// with no match use the policy's default `rel`/`abs`.
+///
+/// Used for the fixed-decimal `Angle` columns of the voltage/current reports:
+/// `%.1f` formatting plus two independent solves round the last printed 0.1
+/// digit independently, a ±0.1 floor far coarser than the `%g` magnitude/pu
+/// columns. A *formatting* floor (documented in `tests/TOLERANCE_NOTES.md`), NOT
+/// a relaxation of the magnitude/pu checks — those stay tight, and the primary
+/// voltage-correctness gate is the live model compare (`corpus_live.rs`).
+pub struct ColTol {
+    pub prefix: String,
+    pub rel: f64,
+    pub abs: f64,
+}
+
 /// Policy for [`compare_export`].
 pub struct ExportPolicy {
     /// Field separator: `','` for CSV, `'='` for the `Counts` key=value text.
@@ -901,9 +918,29 @@ pub struct ExportPolicy {
     pub header_lines: usize,
     /// Row-set policy.
     pub rows: RowPolicy,
-    /// Per-number relative / absolute tolerance for value fields.
+    /// Per-number relative / absolute tolerance for value fields (the default;
+    /// overridden per column by [`ExportPolicy::col_tol`]).
     pub rel: f64,
     pub abs: f64,
+    /// Per-column tolerance overrides, matched against the column header names.
+    pub col_tol: Vec<ColTol>,
+}
+
+impl ExportPolicy {
+    /// The (`rel`, `abs`) tolerance for the field in column `j`: the first
+    /// [`ColTol`] whose prefix matches column `j`'s header name, else the
+    /// default. `colnames` is the last header line split on the separator.
+    fn tol_for_col(&self, j: usize, colnames: &[String]) -> (f64, f64) {
+        if let Some(name) = colnames.get(j) {
+            let name = name.trim().to_lowercase();
+            for ct in &self.col_tol {
+                if name.starts_with(&ct.prefix.to_lowercase()) {
+                    return (ct.rel, ct.abs);
+                }
+            }
+        }
+        (self.rel, self.abs)
+    }
 }
 
 /// Split a report into non-blank, `\r`-stripped lines.
@@ -946,6 +983,13 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
             .map(|f| f.trim().to_string())
             .collect()
     };
+    // Column names = the last header line split on the separator (for the
+    // per-column tolerance lookup). Empty when the report has no header block.
+    let colnames: Vec<String> = if policy.header_lines >= 1 {
+        split(&ol[policy.header_lines - 1])
+    } else {
+        Vec::new()
+    };
     let odata = &ol[policy.header_lines..];
     let rdata = &rl[policy.header_lines..];
 
@@ -962,13 +1006,8 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                 let (rf, of) = (split(r), split(o));
                 assert_eq!(rf.len(), of.len(), "{ctx}: row {i} field count differs");
                 for (j, (a, e)) in rf.iter().zip(&of).enumerate() {
-                    field_eq(
-                        a,
-                        e,
-                        policy.rel,
-                        policy.abs,
-                        &format!("{ctx}: row {i} field {j}"),
-                    );
+                    let (rel, abs) = policy.tol_for_col(j, &colnames);
+                    field_eq(a, e, rel, abs, &format!("{ctx}: row {i} field {j}"));
                 }
             }
         }
@@ -997,13 +1036,8 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                     "{ctx}: row key {k:?} field count differs"
                 );
                 for (j, (a, e)) in rf.iter().zip(of).enumerate() {
-                    field_eq(
-                        a,
-                        e,
-                        policy.rel,
-                        policy.abs,
-                        &format!("{ctx}: row {k:?} field {j}"),
-                    );
+                    let (rel, abs) = policy.tol_for_col(j, &colnames);
+                    field_eq(a, e, rel, abs, &format!("{ctx}: row {k:?} field {j}"));
                 }
             }
             // Presence guard: a subset compare that iterates only the Rust rows
