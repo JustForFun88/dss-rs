@@ -1079,6 +1079,26 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     the *emergency* twin `excess_kva_emerg` is all-`0.0` (no IEEE13 line exceeds `EmergAmps`);
     it is byte-identical logic to the gated norm branch (different rating field), so it is
     tracked-minor — `Export Overloads`/`Capacity` (WP8.3) value-exercise the emergency rating.
+  - **audit-tests follow-up (independent agent): sound + non-vacuous, 2 Majors + 1 Minor
+    fixed.** Confirmed the goldens are genuine pinned-oracle captures (`check_pin` 0.15.7/0.14.5,
+    `meta.json` single-sources the deck, Rust diffs *its own* produced file), `ExactOrdered`
+    enforces row count + per-row field count + PD-then-PC order, and Powers `rel=0/abs=0.11`
+    is the correct tight floor (mutation-verified the gate is non-vacuous). **Fixed:**
+    (1) **[Major]** `P_byphase` had a superfluous `rel=1e-4` band that mutation-provably masked
+    a ~0.005% per-conductor scale drift — the `%10.3f` floor is purely additive (empirical max
+    divergence exactly 1e-3, one ULP), so tightened to `rel=0`/`abs=0.0011` (the Powers twin's
+    discipline). (2) **[Major]** the MVA `opt=1` path (the `m…` `Parm2` flag → MW/Mvar headers +
+    the extra `×0.001`) was wired this WP but untested — **added** `export_powers_mva` +
+    `export_p_byphase_mva` goldens (`export powers mva` / `p_byphase mva` on solved IEEE13),
+    backstopping the scale + header (a missing `×0.001` prints kW ~1000× larger and fails loudly).
+    (3) **[Minor]** `Losses` reused the 6-sig Voltages `EXPORT_REL=1e-4`, ~1000× looser than its
+    `%.7g` floor; I **measured** the actual divergence (max 1.53e-7 rel on a substantial loss =
+    the 7-sig 1-ULP floor; the only large-rel cells are near-zero noise ≤5.6e-9 W absorbed by
+    `abs`) and tightened to a dedicated `LOSSES_REL=1e-6` (≈6× over the proven floor), correcting
+    the `TOLERANCE_NOTES.md` rationale (no cancellation floor materializes on IEEE13; if a metered
+    feeder later shows one it must be proven by decomposition, not by widening `rel`). golden_phase8
+    **8→10**. *audit-tests* also confirmed a second feeder adds only engine-physics variety (already
+    gated by `corpus_live`), not report-layout coverage, so IEEE13-only is adequate for §2.3 here.
 - **next — WP8.2 sub-step 2b:** the sequence family — `SeqVoltages` (`ExportSeqVoltages:177`,
   bus-based read-only), `SeqCurrents` (`ExportSeqCurrents:431`), `SeqPowers`
   (`ExportSeqPowers:1311`) — the symmetrical-component helper + `PctNemaUnbalance` + PD

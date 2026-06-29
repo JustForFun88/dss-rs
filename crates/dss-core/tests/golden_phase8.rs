@@ -305,15 +305,21 @@ fn export_powers_matches_oracle() {
 }
 
 /// `Export Losses` (Pascal `ExportLosses`): per-PD-element total / load / no-load
-/// losses in W and var, `%.7g` (7 sig). The default `%g` floor (`EXPORT_REL`)
-/// clears the 7-sig printing plus the two solves with margin.
+/// losses in W and var, `%.7g` (7 sig). The proven floor is the **7-sig printing
+/// floor**: empirically the max Rust↔oracle divergence on a substantial loss is
+/// 1.53e-7 rel (one ULP at 7 sig, on REG2's 65.3 W) — so `rel = 1e-6` (≈6× over
+/// the floor) is the report's printing resolution, **not** the looser `EXPORT_REL`
+/// of the 6-sig Voltages report. `abs = 1e-6` absorbs the handful of near-zero
+/// no-load/var cells (cancellation noise ≤ 5.6e-9 W, e.g. an open-circuit shunt
+/// term) with ~180× margin. (tests/TOLERANCE_NOTES.md)
+const LOSSES_REL: f64 = 1e-6;
 #[test]
 fn export_losses_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
+        rel: LOSSES_REL,
         abs: EXPORT_ABS,
         col_tol: vec![],
     };
@@ -321,18 +327,56 @@ fn export_losses_matches_oracle() {
 }
 
 /// `Export P_byphase` (Pascal `ExportPbyphase`): per-conductor kW/kvar over the
-/// full Yorder. Values are `%10.3f` (three decimals); the additive 1-ulp floor is
-/// `abs = 0.0011`, with `rel = EXPORT_REL` covering the larger values (the integer
-/// NumTerminals/NumConductors/NumPhases columns are exact within abs).
+/// full Yorder. Values are `%10.3f` (three decimals) — a purely **additive** 1-ulp
+/// floor (empirically the max divergence is exactly 1e-3, on the largest −1342.212
+/// conductor; the corresponding 7.45e-7 rel is just `abs/value`). So like the
+/// `Powers` `%11.1f` floor the whole policy is `rel = 0` / `abs = 0.0011`: no
+/// multiplicative band (a per-conductor scale drift ≥ ~0.01% is caught, not
+/// masked — mutation-confirmed), the integer NumTerminals/NumConductors/NumPhases
+/// columns exact within abs. (tests/TOLERANCE_NOTES.md)
 #[test]
 fn export_p_byphase_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
+        rel: 0.0,
         abs: 0.0011,
         col_tol: vec![],
     };
     run_feeder_export("export_p_byphase", &policy);
+}
+
+/// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
+/// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
+/// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`
+/// additive floor as the kVA twin (`rel = 0`, `abs = 0.11`, now in MW): a missing
+/// `×0.001` would print kW values ~1000× larger and fail loudly.
+#[test]
+fn export_powers_mva_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.11,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_powers_mva", &policy);
+}
+
+/// `Export P_byphase mva` (`opt=1`): the MVA option for P_byphase — MW/Mvar header
+/// plus the single extra `×0.001`. Same `%10.3f` additive floor as the kVA twin
+/// (`rel = 0`, `abs = 0.0011`, in MW).
+#[test]
+fn export_p_byphase_mva_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0011,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_p_byphase_mva", &policy);
 }
