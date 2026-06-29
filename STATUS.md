@@ -9,7 +9,10 @@
 
 Last updated: 2026-06-29 — **Phase 7 COMPLETE** (all WP7.1–WP7.10 landed,
 gate-green on branch `phase-7-extended-elements`; **NOT merged to `main` — the
-per-phase `--no-ff` merge is the explicit-request-only HARD STOP**). **next =
+per-phase `--no-ff` merge is the explicit-request-only HARD STOP**). Plus a
+**retro audit** of the WP7.7 step 4 → WP7.8 range (the skipped `/audit-code` +
+`/audit-tests` ritual, run inline) — verdict faithful, no Critical/Major bug; see
+the §1e "Retro audit" note under WP7.8. **next =
 Phase 8** (reporting/exports/Save; `PHASE8_PLAN.md` is drafted). Tracked-open
 Phase-7 deferrals (both zero-corpus-payoff, Plot-blocked): the **GFM grid-forming
 inverter mode** (NOT_PORTED loud abort across Generator/PVSystem/Storage
@@ -622,11 +625,15 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   UPFCControl: the `UPFCList` + `CheckStatus`→`Sample`→`UploadCurrents` control-sweep
   coupling (a dynamic fleet via a `UpfcDispatchEnv`, the GenDispatcher pattern; lazy
   list resolution). New `exec/view.rs::element_variables` (live f64 `AllVariableValues`
-  analogue). **4 proven upstream oracle bugs, NOT reproduced** (oracle-probed): (1) a
-  **2nd UPFC crashes** the oracle (Access Violation — `TUPFCObj.Create` casts the
-  first UPFC to `TUPFCControlObj`, UB) → no UPFC MakeLike scenario; (2) `MakeUPFCList`'s
-  name-list branch is dead+broken (clears then reads `FUPFCNameList`); (3) a loss-curve
-  MakeLike self-assign no-op; (4) mode-3 monitor records nothing in a snapshot
+  analogue). **4 proven upstream oracle quirks, each handled** (oracle-probed): (1)
+  *not reproduced* — a **2nd UPFC crashes** the oracle (Access Violation —
+  `TUPFCObj.Create` casts the first UPFC to `TUPFCControlObj`, UB) → no UPFC MakeLike
+  scenario; (2) *not reproduced* — `MakeUPFCList`'s name-list branch is dead+broken
+  (clears then reads `FUPFCNameList`); (3) ***reproduced faithfully*** — the loss-curve
+  `MakeLike` self-assign no-op (`UPFCLossCurveObj := UPFCLossCurveObj`): the curve is
+  **not** copied to a `like=` UPFC, matching upstream (untestable — a 2nd UPFC crashes
+  the oracle and `props/upfc.json` carries no `like` scenario; prose-doc, not
+  `TODO(compat)`); (4) *not reproduced* — mode-3 monitor records nothing in a snapshot
   (`SampleCount=0`) → the 14 vars are pinned against the live f64 `AllVariableValues`,
   not the empty f32 channel (CLAUDE.md). **Convergence floor proven, not fudged:**
   `Vbin`/`Vbout` are mid-iteration snapshots, so at the default 1e-4 tol the engines
@@ -659,6 +666,42 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
   (Fresh-agent-drafted; the no-op + oracle behavior re-verified before commit.)
 - **WP7.8 (Converter/FACTS family) COMPLETE** — VSConverter, VCCS, UPFC + UPFCControl,
   ESPVLControl all done, gate-green.
+- **Retro audit (WP7.7 step 4 + all of WP7.8, done 2026-06-29).** The mandatory
+  `/audit-code` + `/audit-tests` ritual steps (PHASE7_PLAN §3–4) were skipped from
+  WP7.7 step 4 (`fb0be61`) through WP7.8 (`c8e23d0`); run retroactively here
+  (inline, no agents — full Pascal-vs-Rust read of every element + the targeted
+  tests, 31/31 green). **Verdict: faithful ports, no Critical/Major correctness
+  bug.** Findings, all settled:
+  - **WP7.7 step 4** — message-text + comment only (`relay/mod.rs` `Generic`/`TD21`
+    NOT_PORTED loud-abort unchanged); no test files touched. Nothing to fix.
+  - **VSConverter** — `GetInjCurrents`/`CalcYPrim`/`GetCurrents` 1:1 (incl. the
+    one-iteration `ITerminal` lag, EPSILON, `VscMode` enum). *Surfaced, deferred:*
+    its only gate is the synthetic `vs_converter.rs` at **1e-3 rel** on 5-sig-fig
+    transcribed pins (no corpus deck — the 3 decks are `skipped_oracle_issue` for
+    the self-alias bug we deliberately don't reproduce); the `iteration==3` + KCL
+    ties are exact. Could tighten to 1e-6 with more oracle digits.
+  - **VCCS** — the strongest port: ring-buffer `MapIdx`/`OffsetIdx`, all 3 inj
+    regimes + both dynamics paths verified; the local-`z_iu` accumulator proven safe
+    (`MapIdx(iu-k+1)`, k≥2, never returns `iu`). Gate strong (`HWtest` live +
+    waveform/RMS mode-3 1e-6). *Surfaced:* the `>3-phase` `FrmsMode` branch is an
+    untested unreachable edge.
+  - **UPFC/UPFCControl** — all 5 modes + `CheckStatus`/`checkPF`/`CalcYPrim`/the
+    FPC short-circuit `or` in `Sample` faithful. *Surfaced, deferred (the one
+    Major-level gap):* **only mode 1 (voltage regulator) is oracle-gated**; modes
+    0/2/3/4/5 and the PF-compensation/`MonElm` path (`get_input_curr` 2/3/5) are
+    ported loop-for-loop but behaviorally unverified (no corpus deck; would need
+    synthetic probe decks). *Minor:* `calc_upfc_losses` silently returns `1.0` when
+    no loss curve (Pascal NIL-crashes) — benign fallback, no corpus path. The
+    `MakeLike` self-assign wording above (quirk 3) corrected this pass.
+  - **ESPVLControl** — type-confusion no-op modeled correctly; tests are exemplary
+    (redispatch fires both PDiff signs, cross-object + named-subordinate phantom
+    writes, and `control_present_equals_control_absent` byte-identity — the no-op is
+    *proven*, not rationalized). *Surfaced:* no-op gated only for snapshot solves
+    (no multi-step corpus deck).
+  - **No code edits made** — every finding is faithful-by-design, a documented
+    non-reproduction, or a coverage gap justified by the empirical "no corpus case"
+    rule (PHASE7_PLAN §2.6); the deferred items are recorded here, not silently
+    dropped. Only fix applied: this STATUS reconciliation (the UPFC quirk-3 wording).
 
 **WP7.9 (FaultStudy + AutoAdd + Feeder) — ✅ COMPLETE.**
 - **step 1 — FaultStudy mode (`solution/solution/fault_study.rs`) — done, gate-green.**
