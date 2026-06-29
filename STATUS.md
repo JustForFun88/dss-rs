@@ -8,14 +8,15 @@
 > frontier.
 
 Last updated: 2026-06-29 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.1 sub-step 1 landed, gate-green**: the `report/`
+reporting/exports/Save). **WP8.1 landed, gate-green** (sub-steps 1+2): the `report/`
 module + the `Export`/`Show`/`Save`/`Dump`/`Plot`/`Visualize` dispatch skeleton
-(no real report formatting yet — that is WP8.2–8.5). Detail in the §1f Phase 8
-record. The work sits in the working tree on branch `phase-7-extended-elements`
-(**uncommitted** — per-step commits + the Phase-8 branch `phase-8-reporting` are
-explicit-request-only, like the Phase-7 `--no-ff` merge). **Phase 7 is COMPLETE
-but NOT merged to `main`** (the per-phase merge is the explicit-request-only HARD
-STOP); its retro audit (WP7.7 step 4 → WP7.8) found no Critical/Major bug (§1e
+(sub-step 1, committed `1a47161`), then the output-path machinery (`Set DataPath=`
++ `OutputDirectory`) + the first real report `Export Counts` + the new
+`compare_export` text/CSV golden harness (sub-step 2, uncommitted). Detail in the
+§1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`** (commit `1a47161`,
+branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
+`main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
+reporting` builds on top of `phase-7-extended-elements`); its retro audit (WP7.7 step 4 → WP7.8) found no Critical/Major bug (§1e
 "Retro audit" under WP7.8). Tracked-open Phase-7 deferrals (both zero-corpus-payoff,
 Plot-blocked): the **GFM grid-forming inverter mode** (NOT_PORTED loud abort across
 Generator/PVSystem/Storage `DoDynamicMode`) and the **Generic/TD21 relay `Sample`**
@@ -79,7 +80,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 sub-step 1 landed, gate-green** (the `report/` module + Export/Show/Save/Dump/Plot/Visualize dispatch skeleton; no real report formatting yet). Working tree on `phase-7-extended-elements`, uncommitted. **next = WP8.1 sub-step 2** (output paths + `format.rs` + the CSV/text golden harness + the `Export Counts` self-test). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 landed, gate-green** (sub-step 1: dispatch skeleton + GUI no-ops, `1a47161`; sub-step 2: output-path machinery + `Export Counts` + the `compare_export` golden harness, uncommitted). Branch `phase-8-reporting`. **next = WP8.2** (Export solution outputs — Voltages/Currents/Powers/… as CSV on solved IEEE feeders). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -824,7 +825,7 @@ new electrical math, no new solve mode — the risk is faithful report layout an
 **not silently faking output**.
 
 **WP8.1 (Report infrastructure) — 🚧 IN PROGRESS.**
-- **sub-step 1 — dispatch skeleton + GUI no-ops — done, gate-green (uncommitted).**
+- **sub-step 1 — dispatch skeleton + GUI no-ops — done, gate-green (`1a47161`).**
   The new top-level **`crate::report`** module (`report/mod.rs`): the
   `EXPORT_OPTIONS` (57, ADIAKOPTICS-off → `High=Laplacian`; confirmed: the pinned
   build defines `DSS_CAPI_ADIAKOPTICS_DISABLED`, `common-release.cfg:6`) and
@@ -875,11 +876,75 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     Out-of-scope (pre-existing): `EXEC_COMMANDS` is missing `Abort`(124)/`Clone`
     (125) from the pinned PM build (no effect on any current ordinal/abbreviation;
     future corpus-hygiene pass). lib stays **713**; `solvable_now` **88**.
-- **next — WP8.1 sub-step 2:** `report/output.rs` (the `DataPath`/`CaseName`
-  output-path machinery), `report/format.rs` (the Pascal number/string
-  formatters), the `csv` workspace dep, the **`compare_export` text/CSV golden
-  harness** (PHASE8_PLAN §2.3) + `golden_phase8.rs` + `gen_phase8.py` skeleton,
-  and the `Export Counts` end-to-end self-test through the new golden path.
+- **sub-step 2 — output-path machinery + `Export Counts` end-to-end + the CSV/text
+  golden harness — done, gate-green (uncommitted).** Lands the first **real report**
+  through the whole output path:
+  - `report/output.rs` — `export_path` (Pascal `DoExportCmd`: explicit filename wins
+    verbatim, else `<OutputDirectory><CircuitName_><default>` where `CircuitName_ =
+    <CaseName>_`). `report/export/counts.rs` — `ExportCounts` (Pascal
+    `ExportResults.pas:2965`): the `Format: DSS Class Name = Instance Count` text
+    dump of every class + instance count, in registration order.
+  - **Output-dir state on `Dss`:** `output_directory` (Pascal `OutputDirectory`,
+    only `Set DataPath=` moves it — not `Compile`/`Redirect`, which move only
+    `current_dir`) + `last_result_file` (`SetLastResultFile`, exposed via
+    `Dss::last_result_file()` so the golden harness reads the produced file).
+    **`Set DataPath=` wired** (`apply_data_path`, Pascal `SetDataPath`: create-dir +
+    #907, both with and without a circuit — a common top-of-script pattern; the
+    non-writable→scratch fallback is NOT_PORTED). `do_export_cmd` Counts(26) →
+    write the file + `@lastexportfile`.
+  - **The new golden harness `compare_export`** (PHASE8_PLAN §2.3, in `tests/harness`):
+    tokenizes both files by the report separator, matches a fixed header block
+    verbatim, then compares each data row field-by-field — numbers within tolerance
+    (reusing `assert_value_matches_tol`), identifiers case-insensitively. Two row
+    policies: `ExactOrdered` (the contract for most exports) and `RustSubsetByKey`
+    (Counts: the Rust class registry is a **proven proper subset** of the oracle's,
+    so every ported class's count is pinned exactly while the not-yet-registered
+    oracle classes are ignored — documented in `tests/TOLERANCE_NOTES.md`, **not** a
+    blanket relaxation; tightens to `ExactOrdered` once the registry is complete).
+  - **Gate:** `gen_phase8.py` captures the oracle's `Export Counts` →
+    `tests/golden/phase8/export_counts.{txt,meta.json}` (the meta carries the deck so
+    the Rust + oracle fixtures can't drift); `golden_phase8.rs` replays the deck,
+    exports to a process-unique temp dir, and subset-compares vs the oracle (the
+    default-item counts `TCC_Curve=10`/`Spectrum=7` + the fixture `Line=2`/`Load=1`
+    pinned). Self-test green. lib stays **713** (713→**714** with the new
+    `counts.rs` unit test); golden_phase8 **1**; `solvable_now` 88.
+  - **Micro-deviations from the plan (documented):** (1) the `csv` crate is **not**
+    added yet — `Counts` is `=`-separated text, not CSV; `csv` lands in WP8.2 with the
+    first real CSV export (avoids an unused dep). (2) `report/format.rs` is **not**
+    created yet — `Counts` needs no float formatting; `format.rs` lands in WP8.2 when
+    the first numeric export needs it. (3) the test uses a process-unique
+    `std::env::temp_dir()` subdir, **not** the `tempfile` dev-dep (dependency-free;
+    `tempfile` can be adopted later if isolation needs grow).
+  - **audit-tests follow-up (one MAJOR, fixed).** `RowPolicy::RustSubsetByKey`
+    iterated only the Rust rows, so a *dropped* class / empty report body passed
+    silently (mutation-proven: header-only + missing-`Line`/`Load` bodies both
+    passed) — a "report bug that hides" (PHASE8_PLAN §1). **Fixed:** the policy now
+    takes a `require` key set (the deck-created + default-item classes —
+    line/load/vsource/tcc_curve/spectrum/loadshape/growthshape) asserted present in
+    the Rust output. The auditor confirmed the baseline is a genuine pinned-oracle
+    capture (not self-generated), the deck is single-sourced via `meta.json`, and a
+    wrong count / extra Rust class / bad header all fail correctly. Minor: the
+    "tightens to `ExactOrdered`" claim also needs the Rust registration order
+    reconciled to the oracle `DSSClassList` (they differ) — TOLERANCE_NOTES updated.
+  - **audit-code follow-up (no Critical/Major; 2 Minors fixed).** Faithful port of
+    `ExportCounts`/the path resolution/`SetDataPath`/`SetLastResultFile` confirmed
+    (incl. `objects.len() == ElementList.Count`, the `casename_` filename prefix,
+    no-circuit `DataPath` allowance, write-failure surfaced not swallowed). **Fixed:**
+    (1) `apply_data_path` used `create_dir_all` (creates missing parents) vs Pascal's
+    single-level `CreateDir` (#907 if a parent is missing) → switched to `create_dir`;
+    (2) `write_report` baked in the **Export-specific** `@lastexportfile` — moved to
+    the export router so reusing the generic writer for Show/Save (WP8.4/8.5) won't
+    wrongly set it (Show sets neither; Save sets `@lastfile` + `GlobalResult`).
+    Surfaced-not-fixed (latent, documented): the trailing-filename read is hoisted
+    before the per-report pre-parse — a `TODO(WP8.2)` now warns that reports
+    8/9/15/17/… must move their `Parm2` parse ahead of it. Nits (no fix, no corpus
+    path): relative explicit filename resolves vs process cwd; no-circuit Counts is
+    graceful where the oracle AVs; the scratch/empty-`DataPath` omissions are
+    NOT_PORTED.
+- **next — WP8.2:** Export solution outputs (`Voltages`/`Currents`/`Powers`/`Seq*`/
+  `Losses`/`Taps`/`Summary`/…) on solved IEEE13/34/37/123(/8500) — the first CSV
+  exports (adds `report/format.rs` + the `csv` dep + `ExactOrdered` goldens), and the
+  `Export` circuit/solution gates (#24711/#24712).
 
 ---
 

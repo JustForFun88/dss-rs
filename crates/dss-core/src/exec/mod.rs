@@ -98,6 +98,16 @@ pub struct Dss {
     max_allocation_iterations: i32,
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.
     current_dir: PathBuf,
+    /// `DSS.OutputDirectory`: where reports are written (Pascal
+    /// `GetOutputDirectory`). Defaults to the startup cwd; only `Set DataPath=`
+    /// changes it (Pascal `SetDataPath` — *not* `Compile`/`Redirect`, which move
+    /// only `current_dir`). The non-writable-dir scratch fallback is NOT_PORTED
+    /// (no corpus deck writes to a non-writable dir).
+    output_directory: PathBuf,
+    /// `DSS.LastResultFile` / `@lastfile` (Pascal `SetLastResultFile`): the path
+    /// of the most recently written report (`Export`/`Show`/`Save`). Surfaced via
+    /// [`Dss::last_result_file`] so the golden harness can read the produced file.
+    last_result_file: String,
     /// `DSS.In_Redirect` / `DSS.Redirect_Abort`.
     in_redirect: bool,
     redirect_abort: bool,
@@ -121,6 +131,12 @@ impl Dss {
 
     pub fn circuit_mut(&mut self) -> Option<&mut Circuit> {
         self.circuit.as_mut()
+    }
+
+    /// The path of the most recently written report (`DSS.LastResultFile`),
+    /// empty until the first `Export`/`Show`/`Save` writes a file.
+    pub fn last_result_file(&self) -> &str {
+        &self.last_result_file
     }
 }
 

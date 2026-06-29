@@ -17,6 +17,9 @@
 //! Reports are read-only over the solved circuit — no formatter mutates shared
 //! electrical state (PHASE8_PLAN §2.1).
 
+pub mod export;
+pub mod output;
+
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`
 /// `DefineOptions` → `GetEnumName`), the **non-`DSS_CAPI_ADIAKOPTICS`** build
 /// (`High(TExportOption) = Laplacian`, so 57 options; `ZLL`/`ZCC`/`Contours`/

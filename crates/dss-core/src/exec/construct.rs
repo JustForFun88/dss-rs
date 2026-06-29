@@ -288,6 +288,8 @@ impl Dss {
             default_earth_model: 3, // DERI (Pascal `DSSClass.pas:1284`)
             max_allocation_iterations: 2,
             current_dir: std::env::current_dir().unwrap_or_default(),
+            output_directory: std::env::current_dir().unwrap_or_default(),
+            last_result_file: String::new(),
             in_redirect: false,
             redirect_abort: false,
         };

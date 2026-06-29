@@ -67,6 +67,22 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
   pin is a stronger guard than an `abs < ε` bound.
+- **`Export Counts` is a `RustSubsetByKey` compare** (`golden_phase8.rs`,
+  `harness::compare_export`): the report lists every DSS class + its instance
+  count, but the Rust class registry is a **proper subset** of the oracle's (only
+  a subset of classes is ported so far). So the Rust file is required to be a
+  *subset by class name* of the oracle file, with every shared class's count
+  pinned **exactly** (integers, zero tolerance). This is **not** a blanket
+  relaxation: it pins every ported class against the oracle and fails if the Rust
+  engine ever reports a class the oracle doesn't have or a wrong count; the only
+  thing ignored is the oracle's rows for classes we have not yet registered
+  (`Isource`/`GICsource`/`AutoTrans`/`GICLine`/`GICTransformer`, …). A `require`
+  key set (the deck-created + default-item classes) is additionally asserted
+  present in the Rust output, so a dropped class / empty body cannot pass
+  silently. Tightening to a full `ExactOrdered` compare needs **both** a complete
+  registry **and** the Rust class-registration order reconciled to the oracle's
+  `DSSClassList` order (they currently differ) — or an order-independent
+  exact-set-by-key variant.
 
 ## Live corpus gate (`corpus_live.rs`)
 
