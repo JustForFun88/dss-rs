@@ -24,7 +24,7 @@ pub(crate) fn export_losses(
         let (total, load, noload) = elem.get_losses_split(sys, node_v);
         s.push_str(&format!(
             "{}, {}, {}, {}, {}, {}, {}\n",
-            name.to_uppercase(),
+            format::upper_elem_name(name),
             format::g(total.re, 7),
             format::g(total.im, 7),
             format::g(load.re, 7),

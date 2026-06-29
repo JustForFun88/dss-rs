@@ -35,7 +35,7 @@ pub(crate) fn export_p_by_phase(
         let cd = elem.cd();
         s.push_str(&format!(
             "\"{}\", {}, {}, {}",
-            name.to_uppercase(),
+            format::upper_elem_name(name),
             cd.nterms,
             cd.nconds,
             cd.nphases,
