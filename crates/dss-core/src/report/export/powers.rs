@@ -47,7 +47,7 @@ pub(crate) fn export_powers(
             let power = elem.terminal_power(sys, node_v, j);
             s.push_str(&format!(
                 "\"{}\", {:3}, {}, {}",
-                name.to_uppercase(),
+                format::upper_elem_name(name),
                 j,
                 format::fixed(power.re * pscale, 1),
                 format::fixed(power.im * pscale, 1),
@@ -74,7 +74,7 @@ pub(crate) fn export_powers(
             let power = elem.terminal_power(sys, node_v, j);
             s.push_str(&format!(
                 "\"{}\", {:3}, {}, {}\n",
-                name.to_uppercase(),
+                format::upper_elem_name(name),
                 j,
                 format::fixed(power.re * pscale, 1),
                 format::fixed(power.im * pscale, 1),

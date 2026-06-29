@@ -23,3 +23,14 @@ pub fn g(v: f64, sig: usize) -> String {
 pub fn fixed(v: f64, decimals: usize) -> String {
     format!("{v:.decimals$}")
 }
+
+/// Pascal `DSSClassName + '.' + AnsiUpperCase(Name)` (`ExportResults.pas`): the
+/// element full name with **only the element-name part uppercased**, the class
+/// name left in its native case (e.g. `Transformer.SUB`, `Line.650632`). The
+/// element name is a single token, so split on the first `.`.
+pub fn upper_elem_name(full_name: &str) -> String {
+    match full_name.split_once('.') {
+        Some((cls, name)) => format!("{cls}.{}", name.to_uppercase()),
+        None => full_name.to_uppercase(),
+    }
+}

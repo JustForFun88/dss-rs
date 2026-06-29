@@ -1062,10 +1062,23 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     **5→8**; lib stays **719** (formatters gated end-to-end, no new inline tests);
     `solvable_now` **88** (no migration — the `Export` decks need the full export set; the
     migration lands at the WP8.2 completion gate).
-  - **Coverage note (tracked for 2c/completion):** IEEE13 has no overloaded PD element, so
-    the `Powers` excess-kVA columns are all `0.0` — the `excess_kva_*` overload branch
-    (`factor > 0`) is structurally emitted but its non-zero value path is not exercised by
-    this golden (the trait methods are pre-existing).
+  - **audit-code follow-up (independent agent): faithful — no Critical/Major, 1 nit fixed,
+    1 coverage gap → audit-tests.** Verified field-by-field vs Pascal: the headers (incl. the
+    double spaces), the PD-then-PC iteration order, the excess-kVA terminal-1 gating, the
+    MVA/kVA `Parm2` pre-parse (incl. the Pascal non-`m`-token-swallowed-as-Parm2 quirk), and
+    the highest-risk **`Power[j]`-`×3` vs `P_byphase`-no-`×3`** distinction — all correct. The
+    Vsource omission from the Powers PC section is probe-confirmed correct (`ElemKind::Source`
+    files into `sources`, never `pc_elements`), and the `ElemPowers` deferral is probe-confirmed
+    real. **Fixed (nit):** the formatters uppercased the whole `Class.Name`; Pascal uppercases
+    only the element name (`DSSClassName.UPPER(Name)`) — added `format::upper_elem_name` (split
+    on the first `.`, uppercase only the suffix) so the raw output is byte-faithful, not merely
+    case-insensitively equal. The MVA-path coverage gap is handled in the audit-tests follow-up.
+  - **Coverage note (audit-corrected):** `excess_kva_norm` **is** value-exercised — IEEE13's
+    XFM1 + lines 650632/632670/670671 carry above-`NormAmps` current, so the `Powers`
+    `P_Normal`/`Q_Normal` columns are non-zero (the overload `factor > 0` branch is gated). Only
+    the *emergency* twin `excess_kva_emerg` is all-`0.0` (no IEEE13 line exceeds `EmergAmps`);
+    it is byte-identical logic to the gated norm branch (different rating field), so it is
+    tracked-minor — `Export Overloads`/`Capacity` (WP8.3) value-exercise the emergency rating.
 - **next — WP8.2 sub-step 2b:** the sequence family — `SeqVoltages` (`ExportSeqVoltages:177`,
   bus-based read-only), `SeqCurrents` (`ExportSeqCurrents:431`), `SeqPowers`
   (`ExportSeqPowers:1311`) — the symmetrical-component helper + `PctNemaUnbalance` + PD
