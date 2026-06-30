@@ -39,6 +39,30 @@ fn duplicate_entries_accumulate() {
     assert!((x[0] - c(2.0, 0.0)).norm() < 1e-14);
 }
 
+/// Duplicate `(row, col)` stamps must be summed in **insertion order**, like
+/// KLUSolve/CSparse `cs_dupl` — not faer's triplet-dedup order. f64 addition
+/// isn't associative, so the order sets the last bit; matching it keeps the
+/// assembled system Y bit-identical to the Pascal oracle on cells fed by several
+/// elements. These three values are the real parts of the three line
+/// contributions to `Y[632.1,632.1]` in IEEE13: summed in stamp order they give
+/// the oracle's bits, a different order is 1 ULP off.
+#[test]
+fn duplicates_sum_in_insertion_order() {
+    let (a, b, d) = (1.1451220523783028, 3.4336493324686748, 5.564622525570931);
+    let mut s = SparseSet::new(1);
+    s.add_element(0, 0, c(a, 0.0));
+    s.add_element(0, 0, c(b, 0.0));
+    s.add_element(0, 0, c(d, 0.0));
+    let got = s.get_element(0, 0).unwrap().re;
+    assert_eq!(
+        got.to_bits(),
+        ((a + b) + d).to_bits(),
+        "must sum in stamp order"
+    );
+    // The order genuinely matters: stamping a,d,b instead is 1 ULP off.
+    assert_ne!(((a + b) + d).to_bits(), ((a + d) + b).to_bits());
+}
+
 /// A structurally singular matrix (empty column) reports the column.
 #[test]
 fn singular_matrix_reports_column() {
