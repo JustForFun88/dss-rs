@@ -910,15 +910,18 @@ pub struct ColTol {
     pub prefix: String,
     pub rel: f64,
     pub abs: f64,
-    /// Optional **denominator gate** `(col, threshold)`: skip this cell entirely
-    /// when `|oracle[col]| < threshold`. For symmetrical-component ratio columns
-    /// (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator (`I1`) is a near-zero
-    /// *cancellation residual* at an open/unloaded terminal — there `I1`/`I2`/`I0`
-    /// are ~1e-12 noise (pinned to 0 by the magnitude columns' `abs`), so their
-    /// ratio is a faer-vs-KLU noise/noise form that carries no information. The
-    /// magnitude columns stay tightly checked; only the *ratio* is skipped, and
-    /// only where its denominator is below the meaningful physical scale. A proven
-    /// cancellation floor, NOT a relaxation (tests/TOLERANCE_NOTES.md).
+    /// Optional **denominator gate** `(col, threshold)`: skip this cell only when
+    /// the oracle's denominator is a *near-zero but nonzero* cancellation residual,
+    /// `0 < |oracle[col]| < threshold`. For symmetrical-component ratio columns
+    /// (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator (`I1`) at an open/unloaded
+    /// terminal is ~1e-12 noise (pinned to 0 by the magnitude columns' `abs`), so
+    /// their ratio is a faer-vs-KLU noise/noise form that carries no information.
+    /// The **`= 0` case is deliberately NOT gated**: there Pascal's `if I1 > 0`
+    /// guard prints the ratio as exactly `0`, which `0 == 0` checks perfectly — so
+    /// only the genuine-noise row is skipped, not the many exactly-zero-current
+    /// rows. The magnitude columns stay tightly checked on every row; only the
+    /// *ratio* is skipped, and only at a nonzero-but-sub-physical denominator. A
+    /// proven cancellation floor, NOT a relaxation (tests/TOLERANCE_NOTES.md).
     pub gate: Option<(usize, f64)>,
 }
 
@@ -967,10 +970,14 @@ impl ExportPolicy {
         for ct in &self.col_tol {
             if name.starts_with(&ct.prefix.to_lowercase()) {
                 return match ct.gate {
+                    // Band-limit: skip only a *nonzero* sub-threshold denominator
+                    // (`0 < |v| < thresh`). An exactly-zero denominator prints the
+                    // ratio as `0` (Pascal `if I1 > 0`), which `0 == 0` checks — so
+                    // those rows stay verified (see [`ColTol::gate`]).
                     Some((col, thresh)) => oracle_fields
                         .get(col)
                         .and_then(|f| f.trim().parse::<f64>().ok())
-                        .is_some_and(|v| v.abs() < thresh),
+                        .is_some_and(|v| v != 0.0 && v.abs() < thresh),
                     None => false,
                 };
             }
