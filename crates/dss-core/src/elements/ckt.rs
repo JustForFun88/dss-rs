@@ -12,7 +12,7 @@ use num_complex::Complex64;
 use crate::circuit::Terminal;
 use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObjData;
-use crate::support::cmatrix::CMatrix;
+use crate::support::cmatrix::{CMatrix, cdiv_fpc};
 use crate::util::EPSILON;
 
 /// Element status flags — the element-level subset of Pascal
@@ -423,7 +423,10 @@ impl CktElementData {
                                 if !row_eliminated[jj] {
                                     let yij = ymatrix.get(ii, jj);
                                     let ynj = ymatrix.get(elim, jj);
-                                    let v = yij - (yin * ynj) / ynn;
+                                    // FPC ucomplex `/` (Smith), as Pascal
+                                    // `DoYPrimCalcs` uses — same cancellation-
+                                    // sensitive Kron term as `CMatrix::kron`.
+                                    let v = yij - cdiv_fpc(yin * ynj, ynn);
                                     ymatrix.set(ii, jj, v);
                                     ymatrix.set(jj, ii, v);
                                 }
