@@ -71,6 +71,16 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 //
 // `Cabs`/`cmod`: `sqrt(re*re+im*im)` (DSSUcomplex `Cabs`, ucomplex `cmod`), NOT
 // `hypot`.
+//
+// TODO(compat): these three reproduce FPC's *less precise* forms only to match
+// the oracle bit-for-bit — `num_complex`'s `hypot` modulus and polar `sqrt`/`ln`
+// are marginally more accurate (measured vs the correctly-rounded value: csqrt 1
+// vs 2 ULP; `cmod` via overflow-safe `hypot` vs naive `√(re²+im²)`). The clean
+// fix is to drop all three for `num_complex`'s `.norm()`/`.sqrt()`/`.ln()` in
+// the §6 precision pass, regenerating the geometry/DERI/cable goldens
+// deliberately. `cdiv_fpc` is deliberately NOT in this set: Smith's division is
+// both more accurate (2 ULP, vs naive 4 / `Complex::fdiv` 9) and overflow-robust,
+// so it stays permanently.
 #[inline]
 fn cabs_fpc(z: Complex64) -> f64 {
     (z.re * z.re + z.im * z.im).sqrt()
