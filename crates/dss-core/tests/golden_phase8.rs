@@ -226,6 +226,7 @@ fn export_voltages_matches_oracle() {
             prefix: "angle".to_string(),
             rel: 0.0,
             abs: 0.11,
+            gate: None,
         }],
     };
     run_feeder_export("export_voltages", &policy);
@@ -379,4 +380,89 @@ fn export_p_byphase_mva_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_export("export_p_byphase_mva", &policy);
+}
+
+// --- WP8.2 sub-step 2b: the symmetrical-component family ---------------------
+// `Phase2SymComp` + `PctNemaUnbalance` + PD ratings. Magnitude columns are `%g`
+// (V1/V2/V0/Vresidual, I1/I2/I0/Iresidual = 6 sig); the ratio/unbalance columns
+// (`%V2/V1`, `%V0/V1`, `%NEMA`, `%Normal`, `%Emergency`, `%I2/I1`, `%I0/I1`) are
+// `%8.4g` = 4 sig. The sequence quantities V0/V2/I0/I2 are *near-cancellation
+// residuals* of three balanced phasors: each phasor is pinned to 1e-8 rel by
+// `corpus_live`, so the residual's ABSOLUTE error is ~phase_scale·1e-8, while its
+// relative error is large — hence an `abs` floor on the magnitude columns and the
+// 4-sig printing floor (`rel = 1e-3`) on the ratio columns. The physics is gated
+// by `corpus_live` (node V / Iterminal to 1e-8); this golden pins report layout.
+// (tests/TOLERANCE_NOTES.md)
+
+/// `%g` ratio-column override: the `%8.4g` (4-sig) printing floor is `rel ≈ 1e-3`
+/// (one ulp in the 4th significant digit); `abs` absorbs the near-zero ratios of a
+/// balanced feeder (`%V0/V1`, `%I0/I1` ≈ 1e-9–1e-2). `gate` (the denominator
+/// column + a meaningful-magnitude threshold) skips a ratio cell where its
+/// denominator is a near-zero cancellation residual (an open/unloaded terminal);
+/// `None` when the denominator is never near-zero (`SeqVoltages`' V1 is always
+/// kV-scale), `Some((I1_col, …))` for `SeqCurrents`.
+fn pct_ratio_tol(gate: Option<(usize, f64)>) -> ColTol {
+    ColTol {
+        prefix: "%".to_string(),
+        rel: 1e-3,
+        abs: 1e-3,
+        gate,
+    }
+}
+
+/// `Export SeqVoltages` (Pascal `ExportSeqVoltages`): per-bus V1/pu/baseKV/V2/
+/// %V2V1/V0/%V0V1/Vresidual/%NEMA. The magnitude columns keep the 6-sig default
+/// (`abs` absorbs the volt-scale cancellation residual of V0/V2/Vresidual on a
+/// balanced bus); the `%`-prefixed ratio columns use the 4-sig printing floor.
+#[test]
+fn export_seqvoltages_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 1e-3,
+        col_tol: vec![pct_ratio_tol(None)],
+    };
+    run_feeder_export("export_seqvoltages", &policy);
+}
+
+/// `Export SeqCurrents` (Pascal `ExportSeqCurrents`): per-terminal I1/%Normal/
+/// %Emergency/I2/%I2I1/I0/%I0I1/Iresidual/%NEMA over Sources→PD→PC→Faults. Same
+/// floor structure as SeqVoltages (6-sig magnitudes + 4-sig ratios); `abs`
+/// absorbs the amp-scale residual of I0/I2/Iresidual. The ratio columns are
+/// **gated on I1 (col 2)**: at an open/unloaded terminal (e.g. `Line.671680.2`,
+/// the open 680 end) I1/I2/I0 are ~1e-12 cancellation noise pinned to 0 by `abs`,
+/// so `%I2/I1`/`%I0/I1`/`%NEMA` are a faer-vs-KLU noise/noise form (147.7 vs 61.8)
+/// — uncheckable, skipped where `|I1| < 1e-6 A` (a proven cancellation floor; the
+/// magnitudes stay tight). (tests/TOLERANCE_NOTES.md)
+#[test]
+fn export_seqcurrents_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 1e-3,
+        col_tol: vec![pct_ratio_tol(Some((2, 1e-6)))],
+    };
+    run_feeder_export("export_seqcurrents", &policy);
+}
+
+/// `Export SeqPowers` (Pascal `ExportSeqPowers`): per-terminal sequence powers
+/// P1/Q1/P2/Q2/P0/Q0 (+ PD excess columns on terminal 1). All value columns are
+/// `…:1` (one decimal), so — like `Powers` — the floor is the additive ±0.1
+/// last-digit boundary: `rel = 0`, `abs = 0.11`. PD rows carry 12 fields (the
+/// excess columns), PC rows 8; the comparator pins each row's field count.
+#[test]
+fn export_seqpowers_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.11,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_seqpowers", &policy);
 }

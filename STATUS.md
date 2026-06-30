@@ -12,12 +12,16 @@ reporting/exports/Save). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
 skeleton `82b50fe`, output-path machinery + `Export Counts` + the `compare_export`
 golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) landed the
 bus/node solution exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`);
-**sub-step 2a landed, gate-green** — the aggregate PD/PC **power exports**
-`Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra
+sub-step 2a (`668bd18`) landed the aggregate PD/PC **power exports**
+`Powers`/`Losses`/`P_byphase` + the mutable element-walk infra
 (`for_each_enabled_elem` + `export_with_mut`, the `snapshot_elements` disjoint
-borrow) + the `Powers`/`P_byphase` MVA/kVA `Parm2` pre-parse. `ElemPowers` was
-deferred into 2c (the `WriteElem*` family) after an oracle probe showed its Vsource
-power is an intrinsic `WriteElemPowers` artifact (≠ `CktElement.Powers`). Detail in
+borrow) + the `Powers`/`P_byphase` MVA/kVA `Parm2` pre-parse; **sub-step 2b landed,
+gate-green** — the **symmetrical-component family** `SeqVoltages`/`SeqCurrents`/`SeqPowers`
+(`Phase2SymComp` + `PctNemaUnbalance` + PD `%Normal`/`%Emergency` ratings + the new
+`ColTol::gate` denominator-gate harness machinery for noise/noise ratio cells).
+`ElemPowers` was deferred into 2c (the `WriteElem*` family) after an oracle probe
+showed its Vsource power is an intrinsic `WriteElemPowers` artifact
+(≠ `CktElement.Powers`). Detail in
 the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
 (branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
@@ -85,7 +89,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; **sub-step 2a** = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2b** (the sequence family — `SeqVoltages`/`SeqCurrents`/`SeqPowers`). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2c** (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps`). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -94,7 +98,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 719, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 10,
+                            # golden_phase7_protection 1, golden_phase8 13,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1100,12 +1104,42 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     feeder later shows one it must be proven by decomposition, not by widening `rel`). golden_phase8
     **8→10**. *audit-tests* also confirmed a second feeder adds only engine-physics variety (already
     gated by `corpus_live`), not report-layout coverage, so IEEE13-only is adequate for §2.3 here.
-- **next — WP8.2 sub-step 2b:** the sequence family — `SeqVoltages` (`ExportSeqVoltages:177`,
-  bus-based read-only), `SeqCurrents` (`ExportSeqCurrents:431`), `SeqPowers`
-  (`ExportSeqPowers:1311`) — the symmetrical-component helper + `PctNemaUnbalance` + PD
-  ratings (`%Normal`/`%Emergency`); all angle-free magnitude/ratio columns. Then 2c =
-  `Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` (the mag/angle
-  column-pair comparator work + RegControl accessors + the `WriteElemPowers` quirk).
+- **sub-step 2b — the symmetrical-component family — done, gate-green** (`<2b>`). The
+  three sequence exports on solved IEEE13: `SeqVoltages` (`ExportSeqVoltages:177`,
+  bus read-only — `Phase2SymComp` over named nodes 1/2/3 + `PctNemaUnbalance` over the
+  line-to-line voltages), `SeqCurrents` (`ExportSeqCurrents:431` + `CalcAndWriteSeqCurrents:352`
+  — element walk Sources→PD→PC→Faults; the PD pass alone writes the `%Normal`/`%Emergency`
+  rating columns on terminal 1), `SeqPowers` (`ExportSeqPowers:1311` — PD then PC, sequence
+  powers `S = V012·conj(I012)` printed `S.re·0.003` = per-seq VA→3φ kW, PD rows carry the
+  4 excess-kVA columns on terminal 1). Files `report/export/seq_{voltages,currents,powers}.rs`;
+  dispatch arms ptr 2/4/10 (`SeqPowers` ptr 10 never pre-parses the MVA flag — `ExportOptions.pas:191`
+  traps only 9/19 — so `opt = 0` always; the MVA path is ported-but-unreached). The existing
+  `mathutil::pct_nema_unbalance` + `SymComp::default()` (`phase_to_sym`) are reused.
+  - **`TODO(compat)` (`seq_currents.rs`):** `Iresidual` sums the *terminal-1* conductors for
+    **every** terminal row (Pascal `CalcAndWriteSeqCurrents` indexes `cBuffer^[i]`, not
+    `cBuffer^[(j-1)*Ncond+i]`) — an upstream quirk reproduced verbatim; clean fix = per-terminal
+    slice.
+  - **New harness machinery — `ColTol::gate` (denominator gate).** `SeqCurrents`' ratio columns
+    (`%I2/I1`/`%I0/I1`/`%NEMA`) divide by `I1`, which at an open/unloaded terminal is a near-zero
+    cancellation residual (~1e-12 A): there I1/I2/I0 are noise (pinned to 0 by the magnitudes'
+    `abs`) so the ratio is a faer-vs-KLU **noise/noise** form (`Line.671680.2`: oracle `%I2/I1=147.7`
+    vs Rust `61.8`). `ColTol::gate = Some((col, thresh))` skips a ratio cell only where the
+    oracle's denominator `|I1| < thresh`. On IEEE13 the gate skips **1** genuine-noise row + 32
+    rows where `I1` is *exactly* 0 (single-phase, non-positive-seq → ratio trivially `0=0`),
+    leaving **22** meaningful rows checked at the 4-sig `rel=1e-3` printing floor (min meaningful
+    `I1 = 5.8e-4 A`, 581× above the `1e-6` gate); magnitude columns are checked on every row. A
+    proven cancellation floor (decomposition), **not** a relaxation — `tests/TOLERANCE_NOTES.md`.
+  - **Gate:** `gen_phase8.py` captures the oracle's `SeqVoltages`/`SeqCurrents`/`SeqPowers` →
+    `tests/golden/phase8/export_seq{voltages,currents,powers}.{txt,meta.json}`; `golden_phase8.rs`
+    replays + diffs (`ExactOrdered`). SeqVoltages/SeqCurrents = 6-sig magnitudes (`EXPORT_REL=1e-4`,
+    `abs=1e-3` for the volt/amp-scale residual) + 4-sig ratio columns (`%`-prefix `ColTol`,
+    `rel=1e-3`); SeqPowers = the `Powers` additive floor (`rel=0`, `abs=0.11`). golden_phase8
+    **10→13**; lib stays **719** (formatters gated end-to-end). `solvable_now` **88** (no
+    migration — the `Export` decks need the full export set; migration at the WP8.2 completion
+    gate).
+- **next — WP8.2 sub-step 2c:** `Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/
+  `Taps` (the mag/angle column-pair comparator work + RegControl accessors + the `WriteElemPowers`
+  Vsource quirk surfaced in 2a).
 
 ---
 
