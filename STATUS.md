@@ -1104,7 +1104,7 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     feeder later shows one it must be proven by decomposition, not by widening `rel`). golden_phase8
     **8→10**. *audit-tests* also confirmed a second feeder adds only engine-physics variety (already
     gated by `corpus_live`), not report-layout coverage, so IEEE13-only is adequate for §2.3 here.
-- **sub-step 2b — the symmetrical-component family — done, gate-green** (`<2b>`). The
+- **sub-step 2b — the symmetrical-component family — done, gate-green** (`5eb351a`). The
   three sequence exports on solved IEEE13: `SeqVoltages` (`ExportSeqVoltages:177`,
   bus read-only — `Phase2SymComp` over named nodes 1/2/3 + `PctNemaUnbalance` over the
   line-to-line voltages), `SeqCurrents` (`ExportSeqCurrents:431` + `CalcAndWriteSeqCurrents:352`
@@ -1123,20 +1123,43 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (`%I2/I1`/`%I0/I1`/`%NEMA`) divide by `I1`, which at an open/unloaded terminal is a near-zero
     cancellation residual (~1e-12 A): there I1/I2/I0 are noise (pinned to 0 by the magnitudes'
     `abs`) so the ratio is a faer-vs-KLU **noise/noise** form (`Line.671680.2`: oracle `%I2/I1=147.7`
-    vs Rust `61.8`). `ColTol::gate = Some((col, thresh))` skips a ratio cell only where the
-    oracle's denominator `|I1| < thresh`. On IEEE13 the gate skips **1** genuine-noise row + 32
-    rows where `I1` is *exactly* 0 (single-phase, non-positive-seq → ratio trivially `0=0`),
-    leaving **22** meaningful rows checked at the 4-sig `rel=1e-3` printing floor (min meaningful
-    `I1 = 5.8e-4 A`, 581× above the `1e-6` gate); magnitude columns are checked on every row. A
-    proven cancellation floor (decomposition), **not** a relaxation — `tests/TOLERANCE_NOTES.md`.
+    vs Rust `61.8`; the live f64 confirms both engines compute I1≈I2≈2e-12 there, terminal 1 matches
+    to 6 sig, Iresidual matches exactly — proven cancellation floor, not a port bug). `ColTol::gate`
+    skips a ratio cell only where the oracle's denominator is `0 < |I1| < thresh` (the **band-limit**
+    lower bound keeps the 32 *exactly*-zero rows' `0==0` checks — Pascal prints those ratios as 0).
+    Net on IEEE13: **1** genuine-noise row skipped, **54** rows' ratios still checked; magnitude
+    columns checked on every row. A proven cancellation floor (decomposition), **not** a relaxation —
+    `tests/TOLERANCE_NOTES.md`.
   - **Gate:** `gen_phase8.py` captures the oracle's `SeqVoltages`/`SeqCurrents`/`SeqPowers` →
     `tests/golden/phase8/export_seq{voltages,currents,powers}.{txt,meta.json}`; `golden_phase8.rs`
     replays + diffs (`ExactOrdered`). SeqVoltages/SeqCurrents = 6-sig magnitudes (`EXPORT_REL=1e-4`,
-    `abs=1e-3` for the volt/amp-scale residual) + 4-sig ratio columns (`%`-prefix `ColTol`,
-    `rel=1e-3`); SeqPowers = the `Powers` additive floor (`rel=0`, `abs=0.11`). golden_phase8
+    `abs=1e-9`/`1e-8` = the **measured** volt/amp residual floor) + 4-sig ratio columns (`%`-prefix
+    `ColTol`, `rel=1e-3`); SeqPowers = the `Powers` additive floor (`rel=0`, `abs=0.11`). golden_phase8
     **10→13**; lib stays **719** (formatters gated end-to-end). `solvable_now` **88** (no
     migration — the `Export` decks need the full export set; migration at the WP8.2 completion
     gate).
+  - **audit-code follow-up (independent agent): faithful — no Critical/Major/Minor, no fixes.**
+    Verified field-by-field vs Pascal: header byte-exactness (incl. double spaces / `p.u.,Base kV`),
+    the Sources→PD→PC→Faults vs PD→PC iteration orders, `k=(j-1)*ncond+i` indexing, the zero/pos/neg
+    `v012[0]/[1]/[2]`↔`V012[1]/[2]/[3]` mapping, `S.re·0.003` (+ excess no-`0.003`, PD-term-1-only,
+    12-vs-8 fields), the ratings `>0` guards, the NEMA LL-vs-phase input split, and the `Iresidual`
+    `TODO(compat)`. Settled **[Question]** SymComp `precise()` vs official → confirmed correct
+    (oracle default is `precise()`; "official" only under the off-by-default `BadPrecision` compat
+    flag). **[Nit]** `norm_amps`/`emerg_amps` fetched before the `do_ratings` guard — harmless (no
+    side effects, consumed only under the guard). Tracked-untested-but-faithful: the Faults walk
+    (no Fault objects in IEEE13) + the `<3`-node/positive-sequence else-branches.
+  - **audit-tests follow-up (independent agent): sound + non-vacuous, 2 Minors fixed + 1 tracked.**
+    Mutation-confirmed the gate catches a real per-row ratio scale error, a magnitude error on a
+    gated row, and a `%Normal` error, while ignoring genuine noise. **Fixed:** (1) **[Minor]** the
+    gate `|I1|<1e-6` over-skipped the 32 *exactly*-zero rows (a planted nonzero `%NEMA` there passed
+    silently — mutation-proven); **band-limited** to `0 < |I1| < 1e-6` so those rows' `0==0` ratios
+    stay checked (only the 1 genuine-noise row is now skipped). (2) **[Minor]** the `SeqCurrents`
+    `abs=1e-3` magnitude floor was ~6 orders too loose (looser than the smallest real printed
+    `I1=5.8e-4 A`); **measured** the actual per-column residual (max abs 1e-11 V / 1e-9 A) and
+    tightened to `abs=1e-9` (SeqVoltages) / `1e-8` (SeqCurrents) — proven floor, not a guess.
+    **(3) tracked [Minor]:** the `SeqPowers` MVA path is unreachable by dispatch (no golden possible);
+    the Faults walk + 2-phase nonzero-`%NEMA` path need a synthesized fixture (deferred — no corpus
+    deck). golden_phase8 stays **13** (tighter floors, no new tests).
 - **next — WP8.2 sub-step 2c:** `Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/
   `Taps` (the mag/angle column-pair comparator work + RegControl accessors + the `WriteElemPowers`
   Vsource quirk surfaced in 2a).

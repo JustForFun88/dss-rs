@@ -395,25 +395,29 @@ fn export_p_byphase_mva_matches_oracle() {
 // (tests/TOLERANCE_NOTES.md)
 
 /// `%g` ratio-column override: the `%8.4g` (4-sig) printing floor is `rel ≈ 1e-3`
-/// (one ulp in the 4th significant digit); `abs` absorbs the near-zero ratios of a
-/// balanced feeder (`%V0/V1`, `%I0/I1` ≈ 1e-9–1e-2). `gate` (the denominator
-/// column + a meaningful-magnitude threshold) skips a ratio cell where its
-/// denominator is a near-zero cancellation residual (an open/unloaded terminal);
-/// `None` when the denominator is never near-zero (`SeqVoltages`' V1 is always
-/// kV-scale), `Some((I1_col, …))` for `SeqCurrents`.
-fn pct_ratio_tol(gate: Option<(usize, f64)>) -> ColTol {
+/// (one ulp in the 4th significant digit); `abs` absorbs the *near-zero* ratio of
+/// a small numerator over a healthy denominator (e.g. `%I0/I1` of a residual `I0`
+/// over a loaded `I1`, measured max abs 1.2e-10). `gate` (the denominator column +
+/// a meaningful-magnitude threshold) skips a ratio cell where its denominator is a
+/// nonzero near-zero cancellation residual (an open/unloaded terminal); `None`
+/// when the denominator is never near-zero (`SeqVoltages`' V1 is always kV-scale),
+/// `Some((I1_col, …))` for `SeqCurrents`.
+fn pct_ratio_tol(abs: f64, gate: Option<(usize, f64)>) -> ColTol {
     ColTol {
         prefix: "%".to_string(),
         rel: 1e-3,
-        abs: 1e-3,
+        abs,
         gate,
     }
 }
 
 /// `Export SeqVoltages` (Pascal `ExportSeqVoltages`): per-bus V1/pu/baseKV/V2/
-/// %V2V1/V0/%V0V1/Vresidual/%NEMA. The magnitude columns keep the 6-sig default
-/// (`abs` absorbs the volt-scale cancellation residual of V0/V2/Vresidual on a
-/// balanced bus); the `%`-prefixed ratio columns use the 4-sig printing floor.
+/// %V2V1/V0/%V0V1/Vresidual/%NEMA. Magnitudes keep the 6-sig/5-sig `EXPORT_REL`
+/// default; `abs = 1e-9` absorbs the volt-scale cancellation residual of
+/// V0/V2/Vresidual (**measured** max abs divergence on a balanced bus is 1e-11 V at
+/// the source bus's V0, so 1e-9 is a 100× proven floor — far tighter than a guess);
+/// the `%`-prefixed ratio columns use the 4-sig `%8.4g` printing floor (no gate —
+/// every bus's V1 denominator is kV-scale).
 #[test]
 fn export_seqvoltages_matches_oracle() {
     let policy = ExportPolicy {
@@ -421,21 +425,26 @@ fn export_seqvoltages_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: EXPORT_REL,
-        abs: 1e-3,
-        col_tol: vec![pct_ratio_tol(None)],
+        abs: 1e-9,
+        col_tol: vec![pct_ratio_tol(1e-9, None)],
     };
     run_feeder_export("export_seqvoltages", &policy);
 }
 
 /// `Export SeqCurrents` (Pascal `ExportSeqCurrents`): per-terminal I1/%Normal/
 /// %Emergency/I2/%I2I1/I0/%I0I1/Iresidual/%NEMA over Sources→PD→PC→Faults. Same
-/// floor structure as SeqVoltages (6-sig magnitudes + 4-sig ratios); `abs`
-/// absorbs the amp-scale residual of I0/I2/Iresidual. The ratio columns are
-/// **gated on I1 (col 2)**: at an open/unloaded terminal (e.g. `Line.671680.2`,
-/// the open 680 end) I1/I2/I0 are ~1e-12 cancellation noise pinned to 0 by `abs`,
-/// so `%I2/I1`/`%I0/I1`/`%NEMA` are a faer-vs-KLU noise/noise form (147.7 vs 61.8)
-/// — uncheckable, skipped where `|I1| < 1e-6 A` (a proven cancellation floor; the
-/// magnitudes stay tight). (tests/TOLERANCE_NOTES.md)
+/// floor structure as SeqVoltages (6-sig magnitudes + 4-sig ratios); `abs = 1e-8`
+/// absorbs the amp-scale residual of I0/I2/Iresidual (**measured** max abs
+/// divergence 1e-9 A on a near-zero Iresidual, so 1e-8 is a 10× proven floor — and
+/// it is *below* the smallest real printed magnitude, `I1 = 5.8e-4 A`, so those
+/// cells stay pinned, unlike the earlier loose 1e-3). The ratio columns are
+/// **gated on I1 (col 2)**: at an open/unloaded terminal (e.g. `Line.671680.2`, the
+/// open 680 end) I1/I2/I0 are ~1e-12 cancellation noise pinned to 0 by `abs`, so
+/// `%I2/I1`/`%I0/I1`/`%NEMA` are a faer-vs-KLU noise/noise form (147.7 vs 61.8) —
+/// uncheckable, skipped where `0 < |I1| < 1e-6 A` (the band-limit keeps the 32
+/// *exactly*-zero-current rows' `0 == 0` ratio checks; only the 1 genuine-noise row
+/// is skipped). A proven cancellation floor; the magnitudes stay tight on every
+/// row. (tests/TOLERANCE_NOTES.md)
 #[test]
 fn export_seqcurrents_matches_oracle() {
     let policy = ExportPolicy {
@@ -443,8 +452,8 @@ fn export_seqcurrents_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: EXPORT_REL,
-        abs: 1e-3,
-        col_tol: vec![pct_ratio_tol(Some((2, 1e-6)))],
+        abs: 1e-8,
+        col_tol: vec![pct_ratio_tol(1e-8, Some((2, 1e-6)))],
     };
     run_feeder_export("export_seqcurrents", &policy);
 }
