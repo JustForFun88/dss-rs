@@ -12,7 +12,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::support::cmatrix::CMatrix;
+use crate::support::cmatrix::{CMatrix, cdiv_fpc};
 use crate::support::line_units::LineUnits;
 use crate::support::mathutil::{bessel_i0, bessel_i1};
 use num_complex::Complex64;
@@ -59,6 +59,48 @@ const TWOPI: f64 = 6.283185307;
 #[inline]
 fn cmplx(re: f64, im: f64) -> Complex64 {
     Complex64::new(re, im)
+}
+
+// FPC RTL `ucomplex.pp` complex primitives, ported verbatim. `num_complex`'s
+// `.sqrt()`/`.ln()`/`.norm()` use the polar/trig (`from_polar`) and `hypot`
+// forms; FPC uses the algebraic Numerical-Recipes `csqrt`, the naive
+// `sqrt(re²+im²)` modulus, and `ln(cmod)+j·arctan2`. They round the last bit
+// differently, so a faithful 1:1 port of the DERI/cable earth terms (which call
+// `Csqrt`/`Cln`/`Cabs`) must use these — exactly as the matrix inverse uses
+// `cdiv_fpc`. Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL.
+//
+// `Cabs`/`cmod`: `sqrt(re*re+im*im)` (DSSUcomplex `Cabs`, ucomplex `cmod`), NOT
+// `hypot`.
+#[inline]
+fn cabs_fpc(z: Complex64) -> f64 {
+    (z.re * z.re + z.im * z.im).sqrt()
+}
+
+/// FPC `ucomplex` `csqrt` — the Numerical-Recipes stable square root
+/// (`root = √(½(|re|+|z|))`, the other component `= im/(2·root)`), branch-split
+/// on the signs so the robust component is the directly-rooted one.
+#[inline]
+fn csqrt_fpc(z: Complex64) -> Complex64 {
+    if z.re != 0.0 || z.im != 0.0 {
+        let root = (0.5 * (z.re.abs() + cabs_fpc(z))).sqrt();
+        let q = z.im / (2.0 * root);
+        if z.re >= 0.0 {
+            Complex64::new(root, q)
+        } else if z.im < 0.0 {
+            Complex64::new(-q, -root)
+        } else {
+            Complex64::new(q, root)
+        }
+    } else {
+        z
+    }
+}
+
+/// FPC `ucomplex` `cln` — `ln(cmod(z)) + j·arctan2(im, re)` (the modulus is the
+/// naive `cabs_fpc`, not `hypot`).
+#[inline]
+fn cln_fpc(z: Complex64) -> Complex64 {
+    Complex64::new(cabs_fpc(z).ln(), z.im.atan2(z.re))
 }
 
 /// Pascal `TLineConstants`: the conductor coordinate/parameter arrays plus the
@@ -248,7 +290,7 @@ impl LineConstants {
     fn set_frequency(&mut self, value: f64) {
         self.ffrequency = value;
         self.fw = TWOPI * self.ffrequency;
-        self.fme = cmplx(0.0, self.fw * MU0 / self.frho_earth).sqrt();
+        self.fme = csqrt_fpc(cmplx(0.0, self.fw * MU0 / self.frho_earth));
     }
 
     /// `Set_Frhoearth`.
@@ -258,7 +300,7 @@ impl LineConstants {
         }
         self.frho_earth = value;
         if self.ffrequency >= 0.0 {
-            self.fme = cmplx(0.0, self.fw * MU0 / self.frho_earth).sqrt();
+            self.fme = csqrt_fpc(cmplx(0.0, self.fw * MU0 / self.frho_earth));
         }
     }
 
@@ -271,10 +313,10 @@ impl LineConstants {
                 // with skin effect model; assume round conductor
                 let c1_j1 = cmplx(1.0, 1.0);
                 let alpha = c1_j1 * (self.ffrequency * MU0 / self.frdc[i]).sqrt();
-                let i0i1 = if alpha.norm() > 35.0 {
+                let i0i1 = if cabs_fpc(alpha) > 35.0 {
                     Complex64::new(1.0, 0.0)
                 } else {
-                    bessel_i0(alpha) / bessel_i1(alpha)
+                    cdiv_fpc(bessel_i0(alpha), bessel_i1(alpha))
                 };
                 c1_j1 * i0i1 * ((self.frdc[i] * self.ffrequency * MU0).sqrt() / 2.0)
             }
@@ -341,11 +383,11 @@ impl LineConstants {
                 if i != j {
                     let hterm = cmplx(fyi + fyj, 0.0) + self.fme.inv() * 2.0;
                     let xterm = cmplx(self.fx[i] - self.fx[j], 0.0);
-                    let ln_arg = (hterm * hterm + xterm * xterm).sqrt();
-                    cmplx(0.0, self.fw * MU0 / TWOPI) * ln_arg.ln()
+                    let ln_arg = csqrt_fpc(hterm * hterm + xterm * xterm);
+                    cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(ln_arg)
                 } else {
                     let hterm = cmplx(fyi, 0.0) + self.fme.inv();
-                    cmplx(0.0, self.fw * MU0 / TWOPI) * (hterm * 2.0).ln()
+                    cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(hterm * 2.0)
                 }
             }
         }
