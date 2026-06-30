@@ -7,10 +7,10 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-29 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
+Last updated: 2026-06-30 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
-skeleton `1a47161`, output-path machinery + `Export Counts` + the `compare_export`
-golden harness `53cf8cf`). **WP8.2 IN PROGRESS:** sub-step 1 (`6dd6d25`) landed the
+skeleton `82b50fe`, output-path machinery + `Export Counts` + the `compare_export`
+golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) landed the
 bus/node solution exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`);
 **sub-step 2a landed, gate-green** — the aggregate PD/PC **power exports**
 `Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra
@@ -85,7 +85,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `1a47161`; output-path machinery + `Export Counts` + the `compare_export` golden harness `53cf8cf`). **WP8.2 IN PROGRESS:** sub-step 1 (`6dd6d25`) = bus/node solution exports; **sub-step 2a** = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2b** (the sequence family — `SeqVoltages`/`SeqCurrents`/`SeqPowers`). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; **sub-step 2a** = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` on solved IEEE13 + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2b** (the sequence family — `SeqVoltages`/`SeqCurrents`/`SeqPowers`). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -830,7 +830,7 @@ new electrical math, no new solve mode — the risk is faithful report layout an
 **not silently faking output**.
 
 **WP8.1 (Report infrastructure) — ✅ COMPLETE, gate-green (sub-steps 1+2).**
-- **sub-step 1 — dispatch skeleton + GUI no-ops — done, gate-green (`1a47161`).**
+- **sub-step 1 — dispatch skeleton + GUI no-ops — done, gate-green (`82b50fe`).**
   The new top-level **`crate::report`** module (`report/mod.rs`): the
   `EXPORT_OPTIONS` (57, ADIAKOPTICS-off → `High=Laplacian`; confirmed: the pinned
   build defines `DSS_CAPI_ADIAKOPTICS_DISABLED`, `common-release.cfg:6`) and
@@ -882,7 +882,7 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (125) from the pinned PM build (no effect on any current ordinal/abbreviation;
     future corpus-hygiene pass). lib stays **713**; `solvable_now` **88**.
 - **sub-step 2 — output-path machinery + `Export Counts` end-to-end + the CSV/text
-  golden harness — done, gate-green (`53cf8cf`).** Lands the first **real report**
+  golden harness — done, gate-green (`929145c`).** Lands the first **real report**
   through the whole output path:
   - `report/output.rs` — `export_path` (Pascal `DoExportCmd`: explicit filename wins
     verbatim, else `<OutputDirectory><CircuitName_><default>` where `CircuitName_ =
@@ -947,7 +947,7 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     graceful where the oracle AVs; the scratch/empty-`DataPath` omissions are
     NOT_PORTED.
 **WP8.2 (Export: solution outputs) — 🚧 IN PROGRESS.**
-- **sub-step 1 — bus/node solution exports — done, gate-green (`6dd6d25`).**
+- **sub-step 1 — bus/node solution exports — done, gate-green (`71067f7`).**
   The first **real solution reports**, read-only over the solved circuit
   (PHASE8_PLAN §2.1, plan-step 1):
   - **`report/format.rs`** — the shared Pascal number formatters: `g(v, sig)`
@@ -1022,8 +1022,8 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     the *snapshot report-layer transform*. **Nit 3:** the unit test now sets a
     scratch `datapath` (defensive — every branch errors before a write, but a future
     write-reaching branch must not pollute the source tree).
-- **sub-step 2a — the aggregate PD/PC power exports — done, gate-green** (`bce68cc` +
-  audit follow-ups `b7e7a47`/`817696f`). The first
+- **sub-step 2a — the aggregate PD/PC power exports — done, gate-green** (`668bd18` +
+  audit follow-ups `1fda0a6`/`91a091c`). The first
   **element** exports (read/compute over the solved circuit, PHASE8_PLAN §2.1 plan-step
   2): `Powers` (`ExportPowers:1075` — per-terminal kW/kvar of every PD then PC element
   + each PD's terminal-1 normal/emergency excess kVA), `Losses` (`ExportLosses:1185` —
