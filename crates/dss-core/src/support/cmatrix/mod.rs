@@ -16,9 +16,10 @@ use num_complex::Complex64;
 /// is the naive `(ac+bd)/(c²+d²)` form, which rounds the last bit differently
 /// from Smith's — invisible in robust entries but a 1–3 ULP gap in the
 /// cancellation-sensitive (resistance) part of an inverted impedance matrix.
-/// Pascal `packages/rtl-extra/src/inc/ucomplex.pp` `operator /`.
+/// Pascal `packages/rtl-extra/src/inc/ucomplex.pp` `operator /`. Shared with the
+/// Carson DERI `Get_Zint` Bessel ratio `I0(α)/I1(α)`, which uses the same `/`.
 #[inline]
-fn cdiv_fpc(num: Complex64, den: Complex64) -> Complex64 {
+pub(crate) fn cdiv_fpc(num: Complex64, den: Complex64) -> Complex64 {
     if den.re.abs() > den.im.abs() {
         let tmp = den.im / den.re;
         let denom = den.re + den.im * tmp;
