@@ -10,6 +10,32 @@ mod tests;
 
 use num_complex::Complex64;
 
+/// Complex division bit-faithful to FPC's `ucomplex` `/` operator (Smith's
+/// overflow-safe abs-ratio algorithm), which the Pascal `TcMatrix.Invert`
+/// cross-term `A[i,j] - A[i,k]*A[k,j]/A[k,k]` uses. `num_complex`'s `/` operator
+/// is the naive `(ac+bd)/(c²+d²)` form, which rounds the last bit differently
+/// from Smith's — invisible in robust entries but a 1–3 ULP gap in the
+/// cancellation-sensitive (resistance) part of an inverted impedance matrix.
+/// Pascal `packages/rtl-extra/src/inc/ucomplex.pp` `operator /`.
+#[inline]
+fn cdiv_fpc(num: Complex64, den: Complex64) -> Complex64 {
+    if den.re.abs() > den.im.abs() {
+        let tmp = den.im / den.re;
+        let denom = den.re + den.im * tmp;
+        Complex64::new(
+            (num.re + num.im * tmp) / denom,
+            (num.im - num.re * tmp) / denom,
+        )
+    } else {
+        let tmp = den.re / den.im;
+        let denom = den.im + den.re * tmp;
+        Complex64::new(
+            (num.im + num.re * tmp) / denom,
+            (-num.re + num.im * tmp) / denom,
+        )
+    }
+}
+
 /// Error from [`CMatrix::invert`]. Pascal reported this through the
 /// `InvertError` field: 1 = allocation failure (impossible here), 2 = singular.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,8 +263,10 @@ impl CMatrix {
                 if i != k {
                     for j in 0..l {
                         if j != k {
+                            // Pascal: A[i,j] - (A[i,k]*A[k,j]) / A[k,k], where `/`
+                            // is FPC ucomplex Smith's division (see cdiv_fpc).
                             a[idx(i, j)] =
-                                a[idx(i, j)] - a[idx(i, k)] * a[idx(k, j)] / a[idx(k, k)];
+                                a[idx(i, j)] - cdiv_fpc(a[idx(i, k)] * a[idx(k, j)], a[idx(k, k)]);
                         }
                     }
                 }
@@ -283,10 +311,12 @@ impl CMatrix {
                 if j == elim {
                     continue;
                 }
+                // Pascal: get(i,j) - (get(i,elim)*get(elim,j)) / nn, where `/`
+                // is FPC ucomplex Smith's division (see cdiv_fpc).
                 result.set(
                     ii,
                     jj,
-                    self.get(i, j) - self.get(i, elim) * self.get(elim, j) / nn,
+                    self.get(i, j) - cdiv_fpc(self.get(i, elim) * self.get(elim, j), nn),
                 );
                 jj += 1;
             }
