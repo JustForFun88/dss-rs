@@ -133,18 +133,19 @@ fn run_monitors(sc: &Scenario, dss: &Dss) {
     // 1e-4 abs, PHASE6_PLAN §1.2). Header strings, SampleCount and the discrete
     // structure are matched exactly; the mode-5 wall-clock channels are skipped
     // via `skip_channels`. Identical comparator as the live corpus gate.
-    let tol = tol_for("feeder");
+    let tol = tol_for("large");
     for m in &sc.monitors {
         compare_monitor(dss, m, &tol, &sc.name);
     }
 }
 
 fn run_meters(sc: &Scenario, dss: &Dss) {
-    // Registers at 1e-4 rel (PORTING_PLAN §4 energy-accumulation policy), names
-    // exact, zone branch/end/PCE counts exact. Identical comparator as the live
-    // corpus gate.
+    // Registers at the energy-accumulation policy (PORTING_PLAN §4
+    // `energy_rel`/`energy_abs`), names exact, zone branch/end/PCE counts exact.
+    // Identical comparator as the live corpus gate.
+    let tol = tol_for("large");
     for m in &sc.meters {
-        compare_meter(dss, m, &sc.name);
+        compare_meter(dss, m, &tol, &sc.name);
     }
 }
 

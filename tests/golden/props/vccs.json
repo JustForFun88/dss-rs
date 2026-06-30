@@ -1,0 +1,121 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "vccs",
+ "scenarios": [
+  {
+   "name": "vccs_default",
+   "commands": [
+    "New VCCS.v1 bus1=b"
+   ],
+   "target": "VCCS.v1",
+   "properties": {
+    "Bus1": "b",
+    "Phases": "1",
+    "PRated": "250",
+    "VRated": "208",
+    "Ppct": "100",
+    "BP1": "",
+    "BP2": "",
+    "Filter": "",
+    "FSample": "5000",
+    "RMSMode": "No",
+    "IMaxpu": "1.1",
+    "VRMSTau": "0.0015",
+    "IRMSTau": "0.0015",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "vccs_full",
+   "commands": [
+    "New XYcurve.bp1 npts=3 xarray=[-0.82 0 0.82] yarray=[-0.788 0 0.788]",
+    "New XYcurve.bp2 npts=5 xarray=[-0.4 -0.225 0 0.225 0.4] yarray=[2.5 1 0 -1 -2.5]",
+    "New XYcurve.zf npts=3 xarray=[1.0 -1.9852 0.9853] yarray=[0.0 0.0148 -0.0147]",
+    "New VCCS.v1 bus1=b phases=1 prated=3000 vrated=208 ppct=100 bp1=bp1 bp2=bp2 filter=zf fsample=10000 rmsmode=true imaxpu=1.15 vrmstau=0.01 irmstau=0.05"
+   ],
+   "target": "VCCS.v1",
+   "properties": {
+    "Bus1": "b",
+    "Phases": "1",
+    "PRated": "3000",
+    "VRated": "208",
+    "Ppct": "100",
+    "BP1": "bp1",
+    "BP2": "bp2",
+    "Filter": "zf",
+    "FSample": "10000",
+    "RMSMode": "Yes",
+    "IMaxpu": "1.15",
+    "VRMSTau": "0.01",
+    "IRMSTau": "0.05",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "vccs_3phase",
+   "commands": [
+    "New VCCS.v1 bus1=b phases=3 prated=3000 vrated=360 ppct=50"
+   ],
+   "target": "VCCS.v1",
+   "properties": {
+    "Bus1": "b",
+    "Phases": "3",
+    "PRated": "3000",
+    "VRated": "360",
+    "Ppct": "50",
+    "BP1": "",
+    "BP2": "",
+    "Filter": "",
+    "FSample": "5000",
+    "RMSMode": "No",
+    "IMaxpu": "1.1",
+    "VRMSTau": "0.0015",
+    "IRMSTau": "0.0015",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "vccs_makelike",
+   "commands": [
+    "New XYcurve.bp1 npts=3 xarray=[-0.82 0 0.82] yarray=[-0.788 0 0.788]",
+    "New XYcurve.bp2 npts=5 xarray=[-0.4 -0.225 0 0.225 0.4] yarray=[2.5 1 0 -1 -2.5]",
+    "New XYcurve.zf npts=3 xarray=[1.0 -1.9852 0.9853] yarray=[0.0 0.0148 -0.0147]",
+    "New VCCS.base bus1=b phases=1 prated=190 vrated=208 ppct=89.5 bp1=bp1 bp2=bp2 filter=zf fsample=10000 rmsmode=true imaxpu=1.2 vrmstau=0.02 irmstau=0.03",
+    "New VCCS.v1 like=base bus1=c"
+   ],
+   "target": "VCCS.v1",
+   "properties": {
+    "Bus1": "c",
+    "Phases": "1",
+    "PRated": "190",
+    "VRated": "208",
+    "Ppct": "89.5",
+    "BP1": "bp1",
+    "BP2": "bp2",
+    "Filter": "zf",
+    "FSample": "10000",
+    "RMSMode": "Yes",
+    "IMaxpu": "1.2",
+    "VRMSTau": "0.02",
+    "IRMSTau": "0.03",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

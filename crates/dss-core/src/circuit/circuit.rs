@@ -48,8 +48,15 @@ pub enum ElemKind {
     Transformer,
     Capacitor,
     Reactor,
+    Fault,
     Control,
     Generator,
+    PVSystem,
+    Storage,
+    IndMach012,
+    VsConverter,
+    Vccs,
+    Upfc,
     Meter,
     EnergyMeter,
     Sensor,
@@ -81,7 +88,23 @@ pub struct Circuit {
     pub transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
     pub reactors: Vec<ElemRef>,
+    /// Fault elements (`FAULTOBJECT or NON_PCPD_ELEM`): a YPrim that stamps into
+    /// the system Y, but *excluded* from `pd_elements` (Pascal `AddCktElement`);
+    /// only this list (walked by `Check_Fault_Status` / `DoResetFaults`).
+    pub faults: Vec<ElemRef>,
     pub generators: Vec<ElemRef>,
+    /// PVSystem elements (Phase 7): PC elements; in `pc_elements` and this list.
+    pub pv_systems: Vec<ElemRef>,
+    /// Storage elements (Phase 7): PC elements; in `pc_elements` and this list.
+    /// Walked by `StorageClass.UpdateAll` in the time-step cleanup.
+    pub storages: Vec<ElemRef>,
+    /// IndMach012 (induction machine) elements (Phase 7, WP7.7): PC elements; in
+    /// `pc_elements` and this list.
+    pub ind_machines: Vec<ElemRef>,
+    /// UPFC elements (Phase 7): PC elements; in `pc_elements` and this list. The
+    /// list is walked in creation order by `UPFCControl.MakeUPFCList` (the control
+    /// scans every enabled UPFC).
+    pub upfcs: Vec<ElemRef>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
     pub controls: Vec<ElemRef>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
@@ -195,7 +218,12 @@ impl Circuit {
             transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
             reactors: Vec::new(),
+            faults: Vec::new(),
             generators: Vec::new(),
+            pv_systems: Vec::new(),
+            storages: Vec::new(),
+            ind_machines: Vec::new(),
+            upfcs: Vec::new(),
             controls: Vec::new(),
             monitors: Vec::new(),
             energy_meters: Vec::new(),
@@ -278,9 +306,37 @@ impl Circuit {
                 self.pd_elements.push(r);
                 self.reactors.push(r);
             }
+            // Fault is NON_PCPD: stamped via ckt_elements but kept off pd_elements
+            // (Pascal `AddCktElement`). Only the Faults list tracks it.
+            ElemKind::Fault => self.faults.push(r),
             ElemKind::Generator => {
                 self.pc_elements.push(r);
                 self.generators.push(r);
+            }
+            ElemKind::PVSystem => {
+                self.pc_elements.push(r);
+                self.pv_systems.push(r);
+            }
+            ElemKind::Storage => {
+                self.pc_elements.push(r);
+                self.storages.push(r);
+            }
+            ElemKind::IndMach012 => {
+                self.pc_elements.push(r);
+                self.ind_machines.push(r);
+            }
+            // VSConverter (Phase 7, WP7.8): a power-flow PC element; no dedicated
+            // list (nothing iterates them specifically).
+            ElemKind::VsConverter => self.pc_elements.push(r),
+            // VCCS (Phase 7): a current-source PC element with dynamics state vars;
+            // in `pc_elements` (the dynamics driver + monitor mode-3 walk that
+            // list), no dedicated list.
+            ElemKind::Vccs => self.pc_elements.push(r),
+            // UPFC (Phase 7): a power-flow PC element controlled by UPFCControl;
+            // in `pc_elements` and its own list (the control scans `upfcs`).
+            ElemKind::Upfc => {
+                self.pc_elements.push(r);
+                self.upfcs.push(r);
             }
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).

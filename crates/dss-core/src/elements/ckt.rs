@@ -161,6 +161,13 @@ pub struct CktElementData {
     pub accumulated_miles_downstream: f64,
     /// `BranchSectionID`: feeder section this branch belongs to.
     pub branch_section_id: i32,
+    /// `GetOCPDeviceType` ordinal of the over-current-protection control at the
+    /// head of this branch's section: 0=none, 1=Fuse, 2=Recloser, 3=Relay. Set
+    /// when an enabled Relay/Recloser/Fuse resolves its controlled element (the
+    /// first OCP control registered wins, matching Pascal `GetOCPDeviceType`'s
+    /// `ControlElementList` scan, which stops at the first match). Read only by
+    /// the reliability sweep when `HAS_OCP_DEVICE` is set.
+    pub ocp_device_type: i32,
 }
 
 impl CktElementData {
@@ -209,6 +216,7 @@ impl CktElementData {
             accumulated_br_flt_rate: 0.0,
             accumulated_miles_downstream: 0.0,
             branch_section_id: 0,
+            ocp_device_type: 0,
         }
     }
 
@@ -326,6 +334,62 @@ impl CktElementData {
             .all(|t| t.conductors_closed.iter().all(|&c| c))
     }
 
+    /// Pascal `ActiveTerminalIdx := terminal; Set_ConductorClosed(0, value)`:
+    /// open/close **every phase conductor** of the 1-based `terminal` (the
+    /// `Closed[0]` "all conductors" branch) and mark YPrim invalid (Pascal's
+    /// `Set_ConductorClosed` raises the global `SystemYChanged`; the caller
+    /// propagates `yprim_invalid`). Used by SwtControl (and the protection
+    /// devices) to switch a controlled element's terminal. Out-of-range
+    /// terminals are ignored, matching Pascal's index guards.
+    pub fn set_terminal_closed(&mut self, terminal: usize, value: bool) {
+        if terminal >= 1 && terminal <= self.nterms {
+            self.active_terminal = terminal - 1;
+            let t = &mut self.terminals[terminal - 1];
+            for i in 0..self.nphases {
+                t.conductors_closed[i] = value;
+            }
+            self.yprim_invalid = true;
+        }
+    }
+
+    /// Pascal `ActiveTerminalIdx := terminal; Set_ConductorClosed(index, value)`
+    /// for a **single** 1-based conductor (`index > 0`): set only that conductor of
+    /// `terminal` and mark YPrim invalid. Pascal guards `Index <= Fnconds`
+    /// (`CktElement.pas`), so the `Open`/`Close` exec verbs can open a neutral
+    /// conductor (`cond > Nphases`); the Fuse's per-phase blow only ever passes
+    /// `1..=Nphases`. Out-of-range terminals/conductors are ignored, like Pascal.
+    pub fn set_conductor_closed(&mut self, terminal: usize, conductor: usize, value: bool) {
+        if terminal >= 1 && terminal <= self.nterms && conductor >= 1 && conductor <= self.nconds {
+            self.active_terminal = terminal - 1;
+            self.terminals[terminal - 1].conductors_closed[conductor - 1] = value;
+            self.yprim_invalid = true;
+        }
+    }
+
+    /// Pascal `Get_ConductorClosed(index)` for a **single** 1-based conductor of
+    /// `terminal`: `true` iff that conductor is closed (Pascal guards
+    /// `Index <= Fnconds`). An out-of-range terminal/conductor reads as open
+    /// (`false`).
+    pub fn conductor_closed(&self, terminal: usize, conductor: usize) -> bool {
+        if terminal >= 1 && terminal <= self.nterms && conductor >= 1 && conductor <= self.nconds {
+            self.terminals[terminal - 1].conductors_closed[conductor - 1]
+        } else {
+            false
+        }
+    }
+
+    /// Pascal `Get_ConductorClosed(0)` with the active terminal set to the
+    /// 1-based `terminal`: `true` iff every phase conductor of that terminal is
+    /// closed. An out-of-range terminal reads as open (`false`).
+    pub fn terminal_all_phases_closed(&self, terminal: usize) -> bool {
+        if terminal >= 1 && terminal <= self.nterms {
+            let t = &self.terminals[terminal - 1];
+            (0..self.nphases).all(|i| t.conductors_closed[i])
+        } else {
+            false
+        }
+    }
+
     /// Pascal `TDSSCktElement.DoYprimCalcs`: Kron-reduce rows/columns of open
     /// conductors out of `ymatrix`, then zero them and pin a tiny epsilon on
     /// the diagonal; finally add epsilon to all remaining diagonals so no bus
@@ -413,5 +477,35 @@ impl CktElementData {
         self.obj.copy_prp_sequence_from(&other.obj);
         self.base_frequency = other.base_frequency;
         self.enabled = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pascal `Set_/Get_ConductorClosed(index > 0)` guard `Index <= Fnconds`, not
+    /// `Fnphases` (`CktElement.pas`). On a 4-conductor element (3 phases + a
+    /// neutral) the `Open`/`Close` exec verbs must be able to open conductor 4 (the
+    /// neutral); a `Nphases` guard would silently reject it. Pins the audit fix.
+    #[test]
+    fn conductor_closed_guard_is_nconds_not_nphases() {
+        let mut cd = CktElementData::new("e", 0);
+        cd.set_nconds(4); // 3 phases + neutral
+        cd.set_nterms(2);
+        assert_eq!(cd.nphases, 3);
+        assert_eq!(cd.nconds, 4);
+
+        // The neutral conductor (4 > Nphases) is a valid index and starts closed.
+        assert!(cd.conductor_closed(1, 4));
+        cd.set_conductor_closed(1, 4, false);
+        assert!(!cd.conductor_closed(1, 4), "neutral conductor 4 must open");
+        assert!(cd.yprim_invalid, "opening a conductor invalidates YPrim");
+        // Phases are untouched, and a truly out-of-range conductor (> Nconds) is a
+        // no-op read/write, matching Pascal's `Index <= Fnconds` guard.
+        assert!(cd.conductor_closed(1, 1));
+        assert!(!cd.conductor_closed(1, 5));
+        cd.set_conductor_closed(1, 5, false); // ignored — out of range
+        assert!(!cd.conductor_closed(1, 5));
     }
 }

@@ -1,0 +1,218 @@
+//! Power-conversion enum registrations — the wye/delta connection, the VSource
+//! model, the Load model/status, and the Generator dispatch-mode/status/model.
+//! Split out of `registry/mod.rs` (no behavioral change).
+
+use super::super::{DssEnum, EnumId};
+
+pub(super) struct PcEnums {
+    pub(super) connection: EnumId,
+    pub(super) vsource_model: EnumId,
+    pub(super) load_model: EnumId,
+    pub(super) load_status: EnumId,
+    pub(super) gen_disp_mode: EnumId,
+    pub(super) gen_status: EnumId,
+    pub(super) gen_model: EnumId,
+    pub(super) pvsystem_model: EnumId,
+    pub(super) inv_control_mode: EnumId,
+    pub(super) storage_state: EnumId,
+    pub(super) storage_dispatch_mode: EnumId,
+    pub(super) ind_mach_slip_option: EnumId,
+    pub(super) vsc_mode: EnumId,
+    pub(super) upfc_mode: EnumId,
+}
+
+pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
+    let connection = push(DssEnum::new(
+        "Connection",
+        true,
+        1,
+        2,
+        &["wye", "delta", "y", "ln", "ll"],
+        &[0, 1, 0, 0, 1],
+    ));
+
+    let vsource_model = push(DssEnum::new(
+        "VSource: Model",
+        true,
+        1,
+        1,
+        &["Thevenin", "Ideal"],
+        &[0, 1],
+    ));
+
+    let load_model = push(DssEnum::new(
+        "Load: Model",
+        true,
+        0,
+        0,
+        &[
+            "Constant PQ",
+            "Constant Z",
+            "Motor (constant P, quadratic Q)",
+            "CVR (linear P, quadratic Q)",
+            "Constant I",
+            "Constant P, fixed Q",
+            "Constant P, fixed X",
+            "ZIPV",
+        ],
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    ));
+
+    let mut status = DssEnum::new(
+        "Load: Status",
+        true,
+        1,
+        1,
+        &["Variable", "Fixed", "Exempt"],
+        &[0, 1, 2],
+    );
+    status.default_value = 0;
+    let load_status = push(status);
+    // generator.pas TGenerator.Create: GenDispModeEnum / GenStatusEnum /
+    // GenModelEnum.
+    let mut gdm = DssEnum::new(
+        "Generator: Dispatch Mode",
+        true,
+        1,
+        1,
+        &["Default", "LoadLevel", "Price"],
+        &[0, 1, 2],
+    );
+    gdm.default_value = 0;
+    let gen_disp_mode = push(gdm);
+
+    let mut gst = DssEnum::new(
+        "Generator: Status",
+        true,
+        1,
+        1,
+        &["Variable", "Fixed"],
+        &[0, 1],
+    );
+    gst.default_value = 0;
+    let gen_status = push(gst);
+
+    let gen_model = push(DssEnum::new(
+        "Generator: Model",
+        true,
+        0,
+        0,
+        &[
+            "Constant PQ",
+            "Constant Z",
+            "Constant P|V|",
+            "Constant P, fixed Q",
+            "Constant P, fixed X",
+            "User model",
+            "Approximate inverter model",
+        ],
+        &[1, 2, 3, 4, 5, 6, 7],
+    ));
+
+    // PVsystem.pas TPVsystem.Create: `PVSystemModelEnum` (JSONUseNumbers).
+    let pvsystem_model = push(DssEnum::new(
+        "PVSystem: Model",
+        true,
+        0,
+        0,
+        &["Constant P, PF", "Constant Y", "User model"],
+        &[1, 2, 3],
+    ));
+
+    // DSSClass.pas TDSSClassesHelper: `InvControlModeEnum` (DefaultValue 0 = GFL).
+    let mut icm = DssEnum::new(
+        "Inverter Control Mode",
+        true,
+        1,
+        1,
+        &["GFL", "GFM"],
+        &[0, 1],
+    );
+    icm.default_value = 0;
+    let inv_control_mode = push(icm);
+
+    // Storage.pas TStorage.Create: `StateEnum` (DefaultValue 0 = Idling).
+    let mut sst = DssEnum::new(
+        "Storage: State",
+        true,
+        1,
+        1,
+        &["Charging", "Idling", "Discharging"],
+        &[-1, 0, 1],
+    );
+    sst.default_value = 0;
+    let storage_state = push(sst);
+
+    // Storage.pas TStorage.Create: `DispatchModeEnum` (DefaultValue 0 = Default).
+    let mut sdm = DssEnum::new(
+        "Storage: Dispatch Mode",
+        true,
+        1,
+        1,
+        &["Default", "LoadLevel", "Price", "External", "Follow"],
+        &[0, 1, 2, 3, 4],
+    );
+    sdm.default_value = 0;
+    let storage_dispatch_mode = push(sdm);
+
+    // IndMach012.pas TIndMach012.Create: `SlipOptionEnum` (DefaultValue 0 =
+    // VariableSlip; the FixedSlip field is a LongBool, mapped 0/1).
+    let mut sopt = DssEnum::new(
+        "IndMach012: Slip Option",
+        true,
+        1,
+        1,
+        &["VariableSlip", "FixedSlip"],
+        &[0, 1],
+    );
+    sopt.default_value = 0;
+    let ind_mach_slip_option = push(sopt);
+
+    // VSConverter.pas TVSConverter.Create: `ModeEnum` (DefaultValue 0 = Fixed).
+    let mut vscm = DssEnum::new(
+        "VSConverter: Control Mode",
+        true,
+        1,
+        4,
+        &["Fixed", "PacVac", "PacQac", "VdcVac", "VdcQac"],
+        &[0, 1, 2, 3, 4],
+    );
+    vscm.default_value = 0;
+    let vsc_mode = push(vscm);
+
+    // UPFC.pas TUPFC.Create: `UPFCModeEnum` (JSONUseNumbers; sequential 0..5). The
+    // text dump of the MappedIntEnum `Mode` property renders the integer ordinal
+    // directly (probed), so these names only feed the JSON/ordinal-to-string path.
+    let upfc_mode = push(DssEnum::new(
+        "UPFC: Mode",
+        true,
+        0,
+        0,
+        &[
+            "Off",
+            "Voltage Regulator",
+            "Phase Angle Regulator",
+            "Dual Regulator",
+            "Double Reference (Voltage)",
+            "Double Reference (Dual)",
+        ],
+        &[0, 1, 2, 3, 4, 5],
+    ));
+
+    PcEnums {
+        connection,
+        vsource_model,
+        load_model,
+        load_status,
+        gen_disp_mode,
+        gen_status,
+        gen_model,
+        pvsystem_model,
+        inv_control_mode,
+        storage_state,
+        storage_dispatch_mode,
+        ind_mach_slip_option,
+        vsc_mode,
+        upfc_mode,
+    }
+}

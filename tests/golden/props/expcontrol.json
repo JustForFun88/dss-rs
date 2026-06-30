@@ -1,0 +1,117 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "expcontrol",
+ "scenarios": [
+  {
+   "name": "expcontrol_default",
+   "commands": [
+    "New ExpControl.e1"
+   ],
+   "target": "ExpControl.e1",
+   "properties": {
+    "PVSystemList": "",
+    "VReg": "1",
+    "Slope": "50",
+    "VRegTau": "1200",
+    "QBias": "0",
+    "VRegMin": "0.95",
+    "VRegMax": "1.05",
+    "QMaxLead": "0.44",
+    "QMaxLag": "0.44",
+    "EventLog": "No",
+    "DeltaQ_Factor": "0.7",
+    "PreferQ": "No",
+    "TResponse": "0",
+    "DERList": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "expcontrol_full",
+   "commands": [
+    "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+    "New ExpControl.e1 derlist=[pvsystem.pv1] deltaq_factor=0.3 vreg=1.0 slope=22 vregtau=300 tresponse=5 qbias=-0.3 vregmin=0.94 vregmax=1.06 qmaxlead=0.4 qmaxlag=0.45 preferq=yes eventlog=yes"
+   ],
+   "target": "ExpControl.e1",
+   "properties": {
+    "PVSystemList": "[pv1]",
+    "VReg": "1",
+    "Slope": "22",
+    "VRegTau": "300",
+    "QBias": "-0.3",
+    "VRegMin": "0.94",
+    "VRegMax": "1.06",
+    "QMaxLead": "0.4",
+    "QMaxLag": "0.45",
+    "EventLog": "Yes",
+    "DeltaQ_Factor": "0.3",
+    "PreferQ": "Yes",
+    "TResponse": "5",
+    "DERList": "[pvsystem.pv1]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "expcontrol_pvsystemlist",
+   "commands": [
+    "New PVSystem.pv1 bus1=b1 kV=12.47 kVA=500 Pmpp=500",
+    "New ExpControl.e1 pvsystemlist=[pv1]"
+   ],
+   "target": "ExpControl.e1",
+   "properties": {
+    "PVSystemList": "[pv1]",
+    "VReg": "1",
+    "Slope": "50",
+    "VRegTau": "1200",
+    "QBias": "0",
+    "VRegMin": "0.95",
+    "VRegMax": "1.05",
+    "QMaxLead": "0.44",
+    "QMaxLag": "0.44",
+    "EventLog": "No",
+    "DeltaQ_Factor": "0.7",
+    "PreferQ": "No",
+    "TResponse": "0",
+    "DERList": "[PVSystem.pv1]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "expcontrol_makelike",
+   "commands": [
+    "New ExpControl.base vreg=1.02 slope=30 vregtau=600 qbias=-0.2 vregmin=0.93 vregmax=1.07 qmaxlead=0.4 qmaxlag=0.45 deltaq_factor=0.5 preferq=yes tresponse=8 eventlog=yes",
+    "New ExpControl.e1 like=base"
+   ],
+   "target": "ExpControl.e1",
+   "properties": {
+    "PVSystemList": "",
+    "VReg": "1.02",
+    "Slope": "30",
+    "VRegTau": "600",
+    "QBias": "-0.2",
+    "VRegMin": "0.93",
+    "VRegMax": "1.07",
+    "QMaxLead": "0.4",
+    "QMaxLag": "0.45",
+    "EventLog": "No",
+    "DeltaQ_Factor": "0.5",
+    "PreferQ": "Yes",
+    "TResponse": "0",
+    "DERList": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

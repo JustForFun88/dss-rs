@@ -5,6 +5,8 @@
 
 use num_complex::Complex64;
 
+use crate::support::cmatrix::CMatrix;
+
 /// A single bus. Local node indices are 0-based; node *numbers* (the
 /// user-facing `.1.2.3` designations) and global node references keep the
 /// Pascal 1-based/ground-0 conventions.
@@ -20,6 +22,14 @@ pub struct Bus {
     pub vbus: Vec<Complex64>,
     /// `BusCurrent`.
     pub bus_current: Vec<Complex64>,
+    /// `Zsc`: the node-frame short-circuit impedance matrix, allocated and
+    /// filled by the FaultStudy solve (`AllocateBusQuantities`/`ComputeYsc`);
+    /// `None` until then. (Pascal's `Zsc012` 3×3 sequence matrix is computed
+    /// only by the Phase-8 `Export`/`Show FaultStudy` reports, so it is not
+    /// carried here.)
+    pub zsc: Option<CMatrix>,
+    /// `Ysc`: the bus short-circuit admittance matrix (= `Zsc⁻¹`).
+    pub ysc: Option<CMatrix>,
     /// Base kV line-to-ground (`kVBase`); 0.0 = not set.
     pub kv_base: f64,
     pub x: f64,
@@ -59,6 +69,8 @@ impl Bus {
             ref_no: Vec::new(),
             vbus: Vec::new(),
             bus_current: Vec::new(),
+            zsc: None,
+            ysc: None,
             kv_base: 0.0,
             x: 0.0,
             y: 0.0,
@@ -120,5 +132,34 @@ impl Bus {
     pub fn allocate_bus_state(&mut self) {
         self.vbus = vec![Complex64::ZERO; self.nodes.len()];
         self.bus_current = vec![Complex64::ZERO; self.nodes.len()];
+    }
+
+    /// Pascal `TDSSBus.AllocateBusQuantities`: (re)allocate the short-circuit
+    /// matrices `Zsc`/`Ysc` to `NumNodesThisBus × NumNodesThisBus` and the bus
+    /// state vectors. Performed by the FaultStudy solve before `ComputeYsc`.
+    pub fn allocate_bus_quantities(&mut self) {
+        let n = self.nodes.len();
+        self.ysc = Some(CMatrix::new(n));
+        self.zsc = Some(CMatrix::new(n));
+        self.allocate_bus_state();
+    }
+
+    /// Pascal `TDSSBus.Get_Zsc1` (`= Zs − Zm`): positive-sequence short-circuit
+    /// impedance, the average diagonal minus the average off-diagonal of `Zsc`.
+    /// Zero when `Zsc` is not allocated (no FaultStudy has run).
+    pub fn get_zsc1(&self) -> Complex64 {
+        match &self.zsc {
+            Some(z) => z.avg_diagonal() - z.avg_off_diagonal(),
+            None => Complex64::ZERO,
+        }
+    }
+
+    /// Pascal `TDSSBus.Get_Zsc0` (`= Zs + 2·Zm`): zero-sequence short-circuit
+    /// impedance. Zero when `Zsc` is not allocated.
+    pub fn get_zsc0(&self) -> Complex64 {
+        match &self.zsc {
+            Some(z) => z.avg_diagonal() + z.avg_off_diagonal() * 2.0,
+            None => Complex64::ZERO,
+        }
     }
 }

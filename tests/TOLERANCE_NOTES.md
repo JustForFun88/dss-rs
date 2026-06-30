@@ -1,145 +1,86 @@
 # Tolerance notes
 
-The numeric tolerance policy for the golden gates (PORTING_PLAN.md §4) and every
-**field-specific exception** to it. The baseline is:
+Numeric tolerance policy for the golden / live gates (PORTING_PLAN.md §4).
+Discrete state — taps/tap-numbers, switch & capacitor states, control-action and
+island counts — is always compared **exactly** and never appears here. Text
+outputs compare by numeric skeleton (structure exact, numbers with tolerance).
 
-> pure math 1e-12..1e-9 abs · node voltages 1e-6 rel (floor 1e-9 pu) ·
-> angles 1e-6 rad · powers/losses 1e-6 rel · energymeter accumulations 1e-4 rel ·
-> discrete states (taps, switch states, control-action counts, island counts)
-> **exact** · text outputs compared by numeric skeleton.
+> **Do not loosen a tolerance to make a failing oracle comparison pass.** Every
+> floor here is calibrated to *proven* f64 / f32 / faer-vs-KLU reality. A
+> Rust↔oracle gap that exceeds its floor is a porting **bug** — find and fix the
+> root cause, never widen the band to hide it. Floors change only with empirical
+> proof (and tighten far more often than they loosen); they are never relaxed to
+> mask a divergence. (CLAUDE.md, §"conditioning".)
 
-Discrete state is always compared exactly and never appears below. Everything
-listed here is a deliberate, scoped loosening with its reason; there are no
-blanket relaxations.
+## Tolerance classes (`harness::tol_for`)
 
-## Checkpointed-model gate (`golden_checkpoints.rs` / `gen_checkpoints.py`)
+The assembled-model gate (`golden_checkpoints.rs` + the live `corpus_live.rs`)
+tiers tolerances by **conditioning**, not size:
 
-This gate captures the **assembled electrical model** after every committed time
-step (the system Y, selected element YPrim blocks, the injection vector, node
-voltages, and discrete control state) and compares it to the pinned oracle. See
-the gate's module doc for the per-step structure.
+- **micro** — tiny synthetic circuits.
+- **feeder** — well-conditioned standard feeders (IEEE13/37, simpler `Test/`
+  circuits).
+- **large** — large or numerically-stiff networks (EPRI ckt5 / 8500-Node /
+  A-Diakoptics torn zones / inverter cases / IEEE123 / 4Bus-YYD). Also the safe
+  default for an unrecognized `kind`.
 
-| Quantity | Micro circuits | Large feeders (IEEE13/123/…) |
-|---|---|---|
-| node voltages | 1e-9 rel, abs floor 1e-6 V | 1e-6 rel, abs floor 1e-6 V |
-| selected element currents / powers; injection vector | 1e-9 rel, abs floor 1e-6 | 1e-6 rel, abs floor 1e-4 |
-| assembled Y values; selected YPrim values | 1e-9 rel, abs floor 1e-6 S | 1e-6 rel, abs floor 1e-3 S |
-| Y fingerprint (Frobenius / trace / max\|diag\|) | — | 1e-6 rel |
-| Y `nnz` (above 1e-9 floor), sparsity pattern, taps/tap-numbers/cap-states | exact | exact |
+| Quantity | micro | feeder | large |
+|---|---|---|---|
+| node voltages | 1e-9 rel, abs 1e-6 V | 1e-8 rel, abs 1e-6 V | 1e-7 rel, abs 1e-6 V |
+| element currents / powers; injection | 1e-9 rel, abs 1e-6 | 1e-7 rel, abs 1e-5 | 1e-6 rel, abs 1e-4 |
+| assembled Y / selected YPrim | 1e-9 rel, abs 1e-6 S | 1e-8 rel, abs 1e-6 S | 1e-8 rel, abs 1e-6 S |
+| energymeter registers | 1e-4 rel, abs 1e-4 | 1e-4 rel, abs 1e-4 | 1e-4 rel, abs 1e-4 |
+| Y `nnz` / sparsity pattern | exact | exact | exact |
 
-Field-specific points:
+The currents/powers floor cannot tighten below the `large` values on the stiff
+cases (faer↔KLU floor: ckt5 conductor power ~1.3e-6 rel, a PVSystem `Vsource`
+current ~1.2e-4 A, IEEE123's `S2` monitor channel ~1.1e-7 rel). The assembled Y
+is deterministic (same YPrim stamps both engines, not a solver output), so it
+holds 1e-8 in every class.
 
-- **The assembled Y is compared *unfactored*.** Oracle side:
-  `YMatrix.getYSparse(factor=False)`. Rust side: `Dss::system_y_csc`, which reads
-  the assembled `SparseSet` matrix *before* the KLU-style row equilibration that
-  `dss-sparse` applies only to the factored copy. So the solver's scaling never
-  enters the comparison — the Y check is solver-independent, and the two sides
-  match to f64 assembly-summation order (~1e-9 rel) because they sum the same
-  ported element YPrims. A stale/leftover admittance is an order-1 relative miss
-  at the affected entry and is caught immediately.
+**Maintenance:** a new corpus case defaults to `large`; promote it to `feeder`
+only after `corpus_live` confirms it holds the tighter floor. Golden tests that
+drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios in
+`golden_phase6/7`) pass `"large"` explicitly.
 
-- **YPrim layout.** Compared column-major on both sides (`out[col*yorder+row]`),
-  the raw layout of the oracle `CktElement.Yprim` (Pascal `TcMatrix`) and of
-  `CMatrix`'s own storage — no transpose reasoning, so an asymmetric (e.g.
-  regulator) block can't hide a transpose.
+## Field-specific exceptions
 
-- **Sparsity pattern** is compared over the *union* of both patterns with the
-  1e-9 abs floor: an entry present on one side but below the floor on the other
-  counts as agreement; a genuine pattern change is reported (and flagged
-  `SPARSITY PATTERN CHANGED`). `nnz` is counted above the same floor on both
-  sides, so an explicit numerical zero kept by one solver and dropped by the
-  other is not a spurious failure.
+- **Y compared unfactored** — oracle `YMatrix.getYSparse(factor=False)` vs Rust
+  `Dss::system_y_csc` (before `dss-sparse` row equilibration), so the comparison
+  is solver-independent and a stale admittance is an order-1 relative miss.
+- **Sparsity** compared over the union of both patterns with the abs floor; an
+  entry below the floor on one side counts as agreement, a real pattern change is
+  flagged.
+- **Power abs floor is voltage-scaled** (`assert_power_close`): `P = V·conj(I)`,
+  so the tolerated current error `i_abs` (A) maps to `|V|·i_abs` (VA). Using
+  `|V_kv| = |P_kW|/|I_A|` keeps the power floor the exact image of the
+  already-accepted current floor — without it, high-voltage near-zero
+  through-currents (connector lines) would trip a flat kW floor.
+- **Tap float 1e-12 rel** (`golden_feeders_controls.rs` / `golden_phase5.rs`):
+  the discrete `tap_number` is exact; only the accumulated float differs by an ulp
+  when regulators partition the same net movement differently.
+- **Monitor channels are f32** (1:1 with Pascal `MonBuffer: pSingleArray`), so
+  the comparison floor is the f32 ULP — monitor/dynamics channels at `i_rel`/`i_abs`
+  (`golden_phase6.rs`, `exec/tests/dynamics.rs`). The mode-5 wall-clock channels
+  are skipped.
+- **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
+  the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
+  electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
+  pin is a stronger guard than an `abs < ε` bound.
 
-- **Currents / powers / injection abs floor (large feeders, 1e-4).** Dead-end
-  branch currents and powers that sum to ~0 are differences of nearly equal
-  quantities; 1e-6-rel voltage agreement caps their absolute agreement at the
-  µA / fraction-of-a-watt scale. Same rationale as the Phase-4/5 feeder gate.
+## Live corpus gate (`corpus_live.rs`)
 
-- **Large feeders use the Y fingerprint, not the full CSC.** Storing the full
-  assembled-Y CSC every step does not scale (the golden would balloon), so large
-  feeders pin a compact fingerprint (`nnz`, Frobenius norm, complex trace,
-  max\|diag\|) plus **full-precision YPrim blocks for selected elements**
-  (regulators + a load bus). The fingerprint is the cheap structural/magnitude
-  guard; the selected YPrim blocks are the precise stale-Y catch at scale (a
-  handful of changed diagonal entries do not move a feeder-scale Frobenius norm,
-  but they show up exactly in the element's YPrim). The 8500-node snapshot stays
-  in its own dedicated gate (`golden_ieee8500.rs`) — duplicating its ~8.5k-node
-  voltage/injection arrays here would add ~1 MB for no extra coverage, since the
-  fingerprint code path is identical at any scale.
-
-- **Tap float value: 1e-12 rel (not bitwise).** The regulators may partition the
-  same net tap movement into different step sequences (node voltages differing at
-  the ~1e-9 level can shift a banker's-rounding boundary in one control
-  iteration), so the accumulated tap *float* differs by an ulp. The **discrete**
-  position is the exact `tap_number` check; the float is 1e-12 rel. Shared with
-  `golden_feeders_controls.rs` / `golden_phase5.rs`.
-
-## Live corpus gate (`corpus_live.rs` / `tools/oracle/oracle_server.py`)
-
-The opt-in live gate (CORPUS_TEST_PLAN.md) reuses this gate's comparison layer
-and tolerance classes verbatim (`harness::{compare_system_y, compare_yprim,
-compare_injection, compare_element, compare_discrete}`, `harness::tol_for`), so
-the policy above applies unchanged. Two gate-specific points:
-
-- **Full Y, every case — no fingerprint substitution.** Unlike the checkpoint
-  goldens (which store only a fingerprint for large feeders to keep the committed
-  file small), the live gate compares the **full** assembled Y entry-by-entry for
-  every case (nothing is stored, so size is irrelevant). The fingerprint is still
-  checked as a cheap additional guard. There is no exception to the full Y / full
-  voltage / full current comparison.
-
-- **Element set compared for equality.** The gate asserts the Rust and oracle
-  element name sets are identical (case-insensitive) before comparing each
-  element's currents/powers, so an element present on only one side is a failure,
-  never a silent omission. Control elements (RegControl, …) carry empty terminal
-  arrays on both sides and compare trivially.
-
-- **Monitors / EnergyMeter registers / zones — compared live, opt-in per case.**
-  Three cases (`IEEE13Nodeckt`, `ieee37`, `IEEE123Master`) are promoted to 24-step
-  daily runs, each with a meter (`m1`) and three deterministic-mode monitors
-  (mode 0/1/2) plus `selected_elements` (so they exercise the multi-step per-step
-  path **and** YPrim **and** meters/monitors live, across wye / open-delta-LDC /
-  multi-bank-regulator control topologies). `compare_monitor` (header + sample
-  count exact, channels at `i_rel`/`i_abs` = 1e-6/1e-4) and `compare_meter`
-  (register names exact, values 1e-4 rel, zone branch/end/PCE counts exact) are
-  the **same** comparators (`harness/mod.rs`) `golden_phase6.rs` routes through —
-  one implementation, no drift. Comparison is gated by a per-case
-  `check_meters_monitors` flag (`solvable_now.json`), set only for cases that
-  define meters/monitors in **deterministic** modes; the always-on
-  `solvable_now_has_multistep_depth` test pins that ≥1 such case persists.
-- **Why opt-in (oracle quirk, not a Rust gap).** Comparing *every* master's
-  incidental monitors would spuriously fail: the pinned dss-python returns a
-  **phantom** element from `Monitors.Channel(i)` for an *unsampled* monitor
-  (`SampleCount == 0` but `len(Channel(i)) == 1`, verified on EPRI J1's `subVI`,
-  which `monitors.dss` defines after the master's only `Solve`). Rust is
-  self-consistent there (`channel().len() == sample_count == 0`), so the
-  divergence is an oracle artifact, not an engine bug — hence only cases that
-  actually sample their monitors (deterministic modes, ≥1 step) opt in. The full
-  Y / voltage / current / power / YPrim / injection / discrete comparison has
-  **no** such exception and runs on every case.
-
-## Pre-existing exceptions in other gates
-
-- **Property dumps — abs floor 1e-9 (`golden_feeders_controls.rs`).** A few
-  per-element property dumps are near-zero cancellation quantities (e.g. a
-  near-balanced transformer's ~5e-5 A winding current) whose last printed digit
-  sits at the LU solver's backward-error floor and flips under any solve-path
-  change (the `dss-sparse` row equilibration). 1e-9 amps/volts/watts is below
-  physical significance; the 1e-9 *relative* term keeps significant quantities
-  tight.
-
-- **Monitor channels — f32, 1e-6 rel / 1e-4 abs (`golden_phase6.rs`).** Monitor
-  data is stored f32 by design (matching the engine); the underlying f64 daily
-  trajectory tracks the oracle to ~1e-9, so the narrowed samples match to a few
-  ULPs at 1e-6 rel / 1e-4 abs. The mode-5 wall-clock timing channels
-  (`SolveSnap_uSecs` / `TimeStep_uSecs`) are not modeled and are skipped.
-
-- **EnergyMeter registers — 1e-4 rel (`golden_phase6.rs`, 8500 gate).** The
-  PORTING_PLAN §4 energy-accumulation policy.
+Reuses the same comparators and classes verbatim. Differences from the checkpoint
+goldens: the **full** assembled Y is compared every case (nothing is stored, so
+size is irrelevant — checkpoints store only a fingerprint for large feeders); the
+Rust/oracle element name sets must be identical; monitors/meters are compared live
+only for cases that sample them in deterministic modes (`check_meters_monitors` in
+`solvable_now.json`) — an unsampled monitor returns a phantom channel from the
+pinned oracle, an artifact, not an engine gap.
 
 ## `TODO(compat)`
 
-Tolerances absorb f64/ULP differences. They are **not** the mechanism for
-deliberately-reproduced upstream inexactnesses — those are marked `TODO(compat)`
-in the code and pinned by exact golden values, to be removed in one pass after
-the 1:1 port reaches final acceptance (PORTING_PLAN.md §4.1 / §6).
+Tolerances absorb f64/ULP differences only. Deliberately-reproduced upstream
+inexactnesses are **not** handled here — they are marked `TODO(compat)` in the
+code and pinned by exact golden values, removed in one pass after the 1:1 port
+reaches final acceptance (PORTING_PLAN.md §4.1 / §6).

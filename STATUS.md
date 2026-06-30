@@ -7,50 +7,57 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-14, **Phase 6 COMPLETE (WP6.1–WP6.10) and MERGED to
-`main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
-origin). The branch `phase-6-meters-topology` carried WP6.1–WP6.9 through
-`d1cc68c` + the Yeq/checkpoint follow-ups, the live-corpus infra
-`19a5493`/`593420f`, WP6.10 phase-exit `207b9cb`, and the post-exit live-gate
-deepening + audit hardening through `cc6d2e2`. Phase 5 had merged earlier
-(`10d3550`).
-Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10: meters/monitors/topology/
-Generator, 8500-node gate). **The phase gate passes: the unmodified IEEE
-8500-Node master (+ `Energymeter.m1` + a 24-step daily run) converges in 67
-iterations with `YNodeOrder` exact (8531 nodes), node voltages / total power /
-losses at 1e-6 rel, all 12 RegControl tap numbers + 10 capacitor states exact,
-and all 67 EnergyMeter registers at 1e-4 rel.** All WPs done: **WP6.1 (topology
-foundations), WP6.2 (Generator), WP6.3 (MeterElement + Monitor), WP6.4
-(EnergyMeter + zone build), WP6.5 (EnergyMeter registers + TakeSample), WP6.6
-(reliability: fault-rate sweep + `RelCalc`), WP6.7 (Sensor + load allocation),
-WP6.8 (GenDispatcher + StorageController & AutoAdd skeletons + ReduceAlgs
-basic), WP6.9 (goldens + the 8500-node gate), WP6.10 (phase exit)** — see §1d.
-**Next: Phase 7 — write `PHASE7_PLAN.md` first** (DER, protection, line
-constants, harmonics, dynamics; PORTING_PLAN.md §Phase 7).
+Last updated: 2026-06-29 — **Phase 7 COMPLETE** (all WP7.1–WP7.10 landed,
+gate-green on branch `phase-7-extended-elements`; **NOT merged to `main` — the
+per-phase `--no-ff` merge is the explicit-request-only HARD STOP**). **next =
+Phase 8** (reporting/exports/Save; `PHASE8_PLAN.md` is drafted). Tracked-open
+Phase-7 deferrals (both zero-corpus-payoff, Plot-blocked): the **GFM grid-forming
+inverter mode** (NOT_PORTED loud abort across Generator/PVSystem/Storage
+`DoDynamicMode`) and the **Generic/TD21 relay `Sample`** logic.
 
-Earlier — **Phase 5 COMPLETE (WP5.1–WP5.10), gate-green, merged** —
-the **phase gate passes: the unmodified IEEE13/IEEE37/IEEE123 masters
-(controls ACTIVE) compile, solve and match the Phase-0 goldens** — iteration
-counts exact (ieee13: 11), final taps / RegControl tap numbers / capacitor
-states, node voltages and per-element powers/currents at 1e-6 rel, and every
-element's full property dump (numeric skeleton). **The ieee34mod1 stretch goal
-also passes.** The `phase5.json` command-replay gate (daily/duty/event-log/
-capcontrol scenarios) matches the oracle — the 24-hour tap-change trajectory is
-event-log-identical. See §1c.
+All ten work packages landed gate-green: **WP7.1** (line constants & geometry),
+**WP7.2** (protection: Fault/Fuse/Recloser/Relay/SwtControl + reliability
+activation), **WP7.3** (DER A: DynamicExp + InvBasedPceData + PVSystem), **WP7.4**
+(DER B: Storage + StorageController), **WP7.5** (DER C: InvControl + ExpControl),
+**WP7.6** (Harmonics solve mode), **WP7.7** (Dynamics core: `SolveDynamic` driver +
+Generator/PVSystem/Storage/IndMach012 state vars + Monitor mode 3 + DynEqPCE), **WP7.8**
+(Converter/FACTS: VSConverter/VCCS/UPFC+UPFCControl/ESPVLControl), **WP7.9** (FaultStudy
+mode; AutoAdd/MonteCarlo/LoadDuration/Feeder kept deferred — zero corpus cases), and
+**WP7.10** (phase exit: marker sweep + gate + COVERAGE refresh).
 
-Earlier — **Phase 4 COMPLETE (WP4.1–WP4.10)** — all core PD
-elements (Transformer/Capacitor/Reactor), catalog objects
-(LineCode/XfmrCode/GrowthShape), the Line→LineCode fetch path, parse-only
-RegControl/CapControl, the `define_properties!` macro (bounded scope), and the
-**phase gate: the IEEE13/IEEE37/IEEE123 controls-off feeders solve and match
-the oracle** (exact iteration counts + node order; voltages, per-element
-powers/currents, total power and losses at 1e-6 rel). Merged to `main`
-(`5f27a25`); developed on branch `phase-4-pd-elements`.
+Per-WP and per-step detail (decisions, audits, gate descriptions, the
+real-port-bug write-ups) lives in **§1e** (one-line-per-step summaries) and the
+archives under `docs/phase-records/`:
+[`phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md),
+[`phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md),
+[`phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md),
+[`phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md),
+[`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
+[`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
+[`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
+Current scores: dss-core **lib 713**, **`solvable_now` 88** (the live corpus gate;
+WP7.9 step 1 migrated the 3 ShortCircuitCases FaultStudy decks); oracle pinned to
+dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
-> **Working cadence (per PHASE4_PLAN §0.8):** finish one small step → run the
-> full gate → update this file → **stop and wait for explicit user
-> confirmation** before the next step. (WP4.7–4.10 were executed in one pass on
-> explicit user instruction.)
+Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
+§Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
+**Phase 6** (WP6.1–WP6.10 — meters/monitors/topology/Generator + the 8500-node gate
++ the live corpus gate; `--no-ff` `b98223a`, `main` not pushed to origin)
+→ [record](docs/phase-records/phase-6.md); **Phase 5** (`10d3550`), **Phase 4**
+(`5f27a25`). Their full logs and the per-WP detail live under `docs/phase-records/`
+(§1b–1d indexes them) and the §1 table below.
+
+**Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
+matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
+carries `#![allow(clippy::collapsible_match)]` (`d85d026`): clippy 0.1.96 (now on
+stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
+{..} }` port idiom, and its autofix even drops `else` branches.
+
+> **Working cadence:** finish one small step → run the full gate → update this
+> file → **stop and wait for explicit user confirmation** before the next step.
+> The full per-step ritual (gate, STATUS sync, the two audits) is
+> **`PHASE7_PLAN.md §0`**, run per **§1e**. (Earlier phases sometimes executed
+> several WPs in one pass on explicit user instruction.)
 
 ---
 
@@ -65,51 +72,40 @@ powers/currents, total power and losses at 1e-6 rel). Merged to `main`
 | **4** | **Transformer/Capacitor/Reactor/LineCode + controls (parse-only) + macro + feeder gate** | ✅ done (merged to main, `5f27a25`); `PHASE4_PLAN.md` |
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
-| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ⏭️ next — write `PHASE7_PLAN.md` first (PORTING_PLAN.md §Phase 7) |
+| 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). **next = Phase 8** (`PHASE8_PLAN.md` drafted). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 319, golden_feeders 1,
+cargo test --workspace      # dss-core lib 713, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
-                            # golden_phase6 1, golden_checkpoints 1,
-                            # golden_ieee8500 1, golden_reliability 1,
-                            # golden_allocation 1, golden_gendispatcher 1,
-                            # golden_autoadd_reduce 1, golden_slice 2,
-                            # golden_smoke 3, props_roundtrip 1,
+                            # golden_phase6 1, golden_phase7 1,
+                            # golden_phase7_protection 1,
+                            # golden_checkpoints 1, golden_ieee8500 1,
+                            # golden_reliability 1, golden_allocation 1,
+                            # golden_gendispatcher 1, golden_autoadd_reduce 1,
+                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
                             # corpus_manifest 1, corpus_live 3
-                            #   (solvable_now_has_multistep_depth always-on;
-                            #    solvable + classify auto-skip w/o
-                            #    DSS_LIVE_ORACLE / DSS_LIVE_CLASSIFY),
+                            #   (corpus_live_solvable_cases_match_oracle +
+                            #    solvable_now_has_multistep_depth run
+                            #    UNCONDITIONALLY — the pinned oracle MUST be
+                            #    installed (it fails, not skips, without it);
+                            #    only corpus_live_classify is opt-in, via
+                            #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
                             # dss-parser 62+1, dss-sparse 5
 ```
 
-### Phase 5 gate — green
-- `golden_feeders_controls.rs`: the **unmodified** IEEE13/IEEE37/IEEE123
-  masters (controls active; IEEE123 issues the `post: ["solve"]` from
-  `cases.json`) match the committed Phase-0 goldens
-  `tests/golden/{ieee13,ieee37,ieee123}.json`: converged + total iterations
-  **exact** (ieee13: 11), `YNodeOrder` exact, RegControl `tap_number` and
-  capacitor `states` **exact**, final transformer taps at 1e-12 rel (not
-  bitwise: the engines' ~1e-9 sparse-solver voltage differences can shift a
-  banker's-rounding boundary and repartition the *same net* tap movement into
-  a different step sequence, leaving the float accumulation an ulp apart —
-  the integer tap_number is the exact discrete check), node voltages /
-  element powers / currents at 1e-6 rel, total power + losses at 1e-6, and
-  **every element's full property dump** via the numeric-skeleton comparator.
-  **`ieee34mod1` (stretch) passes too** — no `#[ignore]` needed.
-- `golden_phase5.rs` vs `tests/golden/phase5/*.json` (one file per scenario;
-  `tools/golden/gen_phase5.py`,
-  command-replay like slice.json): `daily_ieee13` (24 hourly steps, every load
-  on a 24-pt shape, regcontrol event logs on), `duty_2bus` (12×300 s steps,
-  TIMEDRIVEN), `eventlog_ieee13` (`Set Log=yes`), `capcontrol_micro` (kvar
-  control opens Cap1). Per-step `dblHour` exact; **the event logs match the
-  oracle line-for-line** (normalized), pinning every tap change/cap switch of
-  the trajectories; final taps/tap numbers/states exact. **Per-step iteration
-  counts exact on every step and per-step voltages at 1e-6 rel** — the whole
-  daily trajectory tracks the oracle since `build_y_matrix` restamps each
-  load's shape-scaled `Yeq` per Y build (commit `a6903f1`).
+### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*
+- `golden_feeders_controls.rs`: the unmodified IEEE13/IEEE37/IEEE123 masters
+  (controls active) + `ieee34mod1` match the Phase-0 goldens — converged + total
+  iterations exact, `YNodeOrder` exact, RegControl `tap_number` / capacitor
+  `states` exact, final taps 1e-12 rel (the integer `tap_number` is the exact
+  discrete check), V/I/P 1e-6, and every element's full property dump.
+- `golden_phase5.rs` vs `tests/golden/phase5/*.json` (`gen_phase5.py`):
+  `daily_ieee13`, `duty_2bus`, `eventlog_ieee13`, `capcontrol_micro` — per-step
+  `dblHour` + iteration counts exact, **event logs line-for-line** (normalized),
+  per-step V 1e-6 (the shape-scaled `Yeq` restamp per Y build, `a6903f1`).
 
 ### Checkpointed-model gate (`crates/dss-core/tests/golden_checkpoints.rs`) — green
 - `gen_checkpoints.py` → `tests/golden/checkpoints/<scenario>.json` (schema 2,
@@ -139,9 +135,10 @@ depend on the temporary `.inputs/electricdss-tst`.
   `not_an_entry_point`). `corpus_manifest.rs` enforces the bijection — no silent
   omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
   it until the file is classified.
-- **Live comparison (`DSS_LIVE_ORACLE=1`; runs in the `live-oracle` CI job).**
-  For each of the **17** `solvable_now` cases the gate compiles+solves on the Rust
-  engine and on the pinned dss-python oracle (`tools/oracle/oracle_server.py`, a
+- **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
+  be installed).** For each of the **84** `solvable_now` cases the gate
+  compiles+solves on the Rust engine and on the pinned dss-python oracle
+  (`tools/oracle/oracle_server.py`, a
   one-shot subprocess over JSON), and compares the full assembled model per step —
   node order, **full** system Y (entry-by-entry, no fingerprint substitution),
   node voltages, **every** element's currents/powers, selected YPrim blocks (a
@@ -181,1317 +178,595 @@ depend on the temporary `.inputs/electricdss-tst`.
   right skip bucket). `tools/corpus/coverage_report.py` →
   `tests/corpus/COVERAGE.md` tracks the burn-down toward 100% of entry points.
 
-### Phase 4 gate (`crates/dss-core/tests/golden_feeders.rs`) — green
-The three committed **controls-off variants** (`tests/golden/phase4/
-{ieee13,ieee37,ieee123}_controlsoff.dss`, generated from the unmodified IEEE
-masters by `tools/golden/gen_phase4.py`) compile and solve in both engines;
-against `tests/golden/phase4.json` (pinned oracle) the Rust engine matches:
-- converged flag and fixed-point iteration counts **exactly** (3/3/3);
-- `YNodeOrder` **exactly** (41 / 117 / 278 nodes — control elements attach to
-  existing buses and add none);
-- node voltages within **1e-6 rel** (1e-9 abs floor);
-- **every element's** terminal powers and currents within 1e-6 rel
-  (1e-4 abs floor — dead-end branch currents are differences of nearly equal
-  voltages, so 1e-6-rel voltage agreement caps absolute current agreement at
-  the µA scale), in the oracle's First/Next (= creation) order, names checked;
-- total power and total losses within 1e-6 rel.
-
-The Phase 3 gate (`golden_slice.rs`, 13 scenarios) stays green, and the CLI
-runs the real masters end to end: `cargo run -p dss-cli -- script.dss`.
+### Phase 4 gate (`golden_feeders.rs`) — green  *(detail → `docs/phase-records/phase-4.md`)*
+The controls-off IEEE13/37/123 variants (`gen_phase4.py`) match `phase4.json`
+(pinned oracle): converged + iterations exact (3/3/3), `YNodeOrder` exact
+(41/117/278), V 1e-6, every element's I/P 1e-6 (creation order), total
+power/losses 1e-6. The Phase-3 `golden_slice.rs` (13 scenarios) stays green; the
+CLI runs the real masters (`cargo run -p dss-cli -- script.dss`).
 
 ---
 
-## 1b. Phase 4 record (branch `phase-4-pd-elements`)
+## 1b–1d. Completed-phase records (archived)
 
-Execution plan: **`PHASE4_PLAN.md`** (WP4.1–WP4.10).
+The full work-package logs for the completed, merged phases (and completed
+Phase-7 work packages) live under `docs/phase-records/` to keep this handoff
+lean. They are frozen history, superseded only by the code and tests:
 
-**WP4.1 — LineCode — ✅ committed.** Files:
-- `src/elements/general/line_code.rs` (`TLineCodeObj`): props 1–27 + Like;
-  `CalcMatricesFromZ1Z0` (no 1-phase special case), `Set_NumPhases`,
-  `DoKronReduction`, `PropertySideEffects`, `EndEdit`, `MakeLike`; 6 inline tests.
-- **Shared engine additions:** `PropFlags::CONDITIONAL_VALUE` +
-  `DssObject::prop_conditional` (sym scalars render `----` under a matrix
-  model); sym-matrix getter format `[v |v v |...]`; deferred-error buffer on
-  `DssObjData` (`push_error`/`take_errors`, drained in `exec::edit_active`).
-- **`TODO(compat)`:** LineCode `Repair` defaults to `0` (oracle getter)
-  although the Pascal ctor sets 3; deprecated/unused field.
-
-**WP4.2 — ObjectRef resolution + Line→LineCode fetch — ✅ committed.**
-- `PropDef::object_ref_class(class, name)` resolves at parse time;
-  `ForeignClassesView` trait + `PropEngine::foreign` (read view of every class
-  except the one being edited, built in `edit_active` via `split_at_mut`);
-  `DssObject::set_object_ref(idx, name, resolved)` lets the element copy data
-  immediately (the `FetchLineCode` pattern). Pascal 401 message on miss.
-- `elements/pd/line.rs`: `fetch_line_code` verbatim (units reconversion,
-  norm/emerg, matrix copy/resize, set-order clearing); earth-model default
-  fixed to DERI.
-
-**WP4.3a — GrowthShape — ✅ committed.** `general/growth_shape.rs`: props 1–6,
-`APPLY_ROUND` (FPC banker's rounding) on `Year`, `get_mult`/`recalc_year_mult`
-verbatim. `CSVFile`/`SngFile`/`DblFile` are `NOT_PORTED` (file input).
-
-**WP4.3b — XfmrCode — ✅ committed.** `pd/winding.rs` (shared `Winding` =
-Pascal `TWinding`, incl. `compute_anti_float_adder`) +
-`general/xfmr_code.rs`: props 1–39, winding-edit state machine, XSC handling.
-**Shared engine:** `DoubleVArray` (function-sized, `DssObject::array_size`),
-`DoubleArrayOnStruct`, `EnumArrayOnStruct` prop types + struct-array accessors.
-
-**WP4.4 — Transformer — ✅ committed.** `pd/transformer.rs` (`TTransfObj`):
-props 1–49, `SetNumWindings`, winding-edit side-effect web, `RecalcElementData`
-(DeltaDirection, per-winding VBase, Rdc on the transformer VABase, anti-float
-adders, ratings), `SetTermRef` (incl. delta `RotatePhases`), `CalcY_Terminal`
-(ZB → `Y_1Volt = AT·ZB⁻¹·A` → magnetizing branch → `Y_Term`), `CalcYPrim`
-(`BuildYPrimComponent` + `AddNeutralToY`), `FetchXfmrCode`,
-`Get/Set_PresentTap`, `WdgCurrents`. **Shared engine:** `BusOnStruct`/
-`BusesOnStruct` prop types, `core_type`/`lead_lag` enums,
-`ElemKind::Transformer` + circuit list. GIC path (<0.51 Hz) deferred (Phase 7).
-
-**WP4.5 — Capacitor — ✅ committed.** `pd/capacitor.rs` (`TCapacitorObj`):
-2-terminal shunt/series, 3 spec types (kvar/Cuf/CMatrix), per-step YPrim with
-series-filter ZL, NumSteps split, `States`/`FindLastStepInService`. **Shared
-engine:** `IntegerArray` + `DoubleSymMatrix` prop types,
-`ElemKind::Capacitor` + `shunt_capacitors` list. **Oracle bug (traced):** the
-`DoubleSymMatrixProperty` *getter* (`DSSObjectHelper.pas:2318`) reads a field
-address instead of the heap array → always garbage; canonicalized to zeros on
-both sides (`zero_garbage` in `gen_props.py`, `TODO(compat)` zero matrix in the
-Rust getter); the real matrix→YPrim path is unit-tested instead.
-
-**WP4.6 — Reactor — ✅ committed (`c45719a`).** `pd/reactor.rs`
-(`TReactorObj`): 4 spec types (kvar / R+jX (`Z`/`LmH`) / R,X matrices /
-Z1Z2Z0), `Parallel` R∥X via `etk_invert`, `Rp`, GIC R-only path, shunt
-diagonal mirror with the 1φ-grounding-reactor exception. Same
-`DoubleSymMatrix` oracle-getter bug (RMatrix/XMatrix zeroed in goldens).
-`TODO(compat)` for the truncated `CALPHA` literal. RCurve/LCurve `NOT_PORTED`
-(XYcurve, Phase 5).
-
-**WP4.7 — ControlElem + RegControl/CapControl (parse-only) — ✅ NEW.** Files:
-- `src/elements/control/control_elem.rs`: `ControlElemData` (embeds
-  `CktElementData`; `element_terminal`, `controlled_element`/
-  `monitored_element: Option<ElemRef>`, `time_delay`, `show_event_log`) and
-  `RefSnapshot` — a parse-time shape snapshot (full name, nphases, nterms,
-  terminal buses) of the referenced element, captured in `set_object_ref`
-  because `RecalcElementData` runs at `EndEdit`, after the foreign-class view
-  is gone. Staleness semantics match Pascal: a control's bus string is only
-  refreshed by its *own* next recalc.
-- `src/elements/control/reg_control.rs` (`TRegControlObj`): props 1–32 + tails
-  (`transformer=` resolves against the Transformer class; AutoTrans not ported
-  so the proxy is single-class), `PropertySideEffects` (winding→tapwinding,
-  ptratio→RemotePTRatio, maxtapchange clamp, revThreshold×1000),
-  `RecalcElementData` (LDC/regulated-bus flags, nphases/nconds from the
-  transformer, PTphase reset, winding validation 122, `SetBus(1, <winding
-  bus>)`; errors 124/122 as deferred messages), **`TapNum` get/set ported now**
-  (`Get_TapNum`/`Set_TapNum` arithmetic vs the per-winding tap snapshot, FPC
-  `Round` → `round_ties_even` `TODO(compat)`), `Reset` action property,
-  `Set_Enabled` override (no BusNameRedefined), `MakeLike` (incl. the
-  `TapNum := Other.TapNum` property-setter copy). 3 inline tests.
-- `src/elements/control/cap_control.rs` (`TCapControlObj`): props 1–23 + tails
-  (`element=` is the any-class full-name reference; `capacitor=` resolves
-  against Capacitor), PF-mode On/Off translation (range check), CT/PT phase
-  validation, VBus lowercase+flag, `RecalcElementData` (nphases from the
-  capacitor, Time/Follow force terminal 1 + monitor the capacitor, terminal
-  validation 362, bus from the effective element, the parse-time
-  Voverride-bus warning + flag revert — bus list does not exist during parse,
-  same as Pascal), `MakeLike`. `UserModel`/`UserData` `NOT_PORTED` (no DLLs
-  ever); `ControlSignal` `NOT_PORTED` (LoadShape — Phase 5). 3 inline tests.
-- **Shared engine additions:**
-  - `PropDef::object_ref_any(name)` (`object_class: Some("")` = Pascal
-    `PropertyOffset2 = 0`): the value carries `Class.Name`, resolved against
-    any circuit class via the new `ForeignClassesView::find_full` (canonical
-    `FullName` returned for dumps; error 402 on miss).
-  - **Deferred cross-element writes**: `RefAction` enum +
-    `DssObject::{take_ref_actions, apply_ref_action}`. Pascal pokes a foreign
-    object through a live pointer mid-parse (RegControl `TapNum` →
-    `tr.PresentTap[w] :=`); the property engine only holds a read view, so the
-    setter queues the write and `edit_active` applies it right after the edit
-    (plus target-side flag propagation). Nothing reads the target in between,
-    so the timing shift is unobservable. Transformer implements the target
-    side (`set_present_tap`, identical clamp to the control's local snapshot
-    update, so dumps agree).
-  - `EnumRegistry`: `reg_control_phase` ('RegControl: Phase Selection',
-    hybrid min/max→−3/−2), `mon_phase` ('Monitored Phase', hybrid
-    min/max/avg→−3/−2/−1), `cap_control_type` (Current/Voltage/kvar/Time/
-    PowerFactor/Follow → 0..5; upstream comments out UserControl).
-  - `ElemKind::Control` + `Circuit::controls` list (device list + own list;
-    **not** PD/PC). `ymatrix.rs` already skips `yprim: None` elements; controls
-    keep `yprim = None` forever (`calc_yprim` no-op, `get_currents` zeros).
-- **Node-order check (the "silent killer")**: exec test
-  `reg_control_does_not_change_node_order` builds the same circuit with and
-  without a RegControl — `YNodeOrder` and iteration counts equal, control bus
-  = the transformer's winding bus, no Yprim. The WP4.9 feeders re-verify at
-  scale.
-- **Goldens:** 11 RegControl/CapControl scenarios in `gen_props.py` (basic,
-  full, ptphase=max+regulated-bus, **tapnum=5** (probed: moves the
-  transformer tap to 1.03125 and reads back 5), makelike-with-override ×2,
-  current/kvar+voltoverride/voltage+phases/time-forces-terminal/pf);
-  `props.json` regenerated (pure insertions). `props_roundtrip` green.
-- DoD check: the unmodified-except-variant IEEE13 master parses end-to-end
-  through dss-cli with zero errors (38 devices) up to `Solve`.
-
-**WP4.8 — `define_properties!` macro — ✅ NEW (bounded outcome).**
-- `obj/props.rs::define_properties!`: generates the 1-based ordinal consts
-  (`pub mod prop` incl. `NUM_PROPS`) and `class_props(&EnumRegistry)` from one
-  declarative listing (`ordinal CONST => <PropDef builder expr>;`), so
-  ordinals and table can never drift. Builder expressions keep the full
-  `PropDef` API (scale/flags/`enums.<id>`) without macro ceremony.
-- **Consumers:** TCC_Curve and Spectrum retrofitted (purely mechanical;
-  `props.json` untouched and `props_roundtrip` green against the same file —
-  zero behavior change).
-- **Fallback note (per §3.4):** the accessor-arm part (goal (c)) was
-  deliberately dropped — in every ported class the non-trivial arms
-  (spec-type side effects, clamping, redundant aliases, cross-field writes)
-  dominate, so a field-mapping macro needs an escape hatch per arm and stops
-  paying for itself. Retry in Phase 5 only if the new catalog classes
-  (LoadShape/XYcurve) turn out accessor-trivial.
-
-**WP4.9 — Controls-off feeder gate — ✅ NEW (the phase gate).**
-- `tools/golden/gen_phase4.py`: writes the three variants to
-  `tests/golden/phase4/` (master copied line-by-line; `solve`/`buscoords`
-  dropped; top-level `redirect`/`compile` args rewritten relative to the
-  variant dir — computed via `os.path.relpath`, nested redirects untouched
-  because the current dir follows the chain; `Set controlmode=OFF` + `Solve`
-  appended) and captures `tests/golden/phase4.json` (converged, iterations,
-  YNodeOrder, voltages, TotalPower, Losses, **ordered** per-element
-  powers/currents lists).
-- `crates/dss-core/tests/golden_feeders.rs`: compiles the same committed
-  variants and asserts the gate (§1 above). Engine support added:
-  `Dss::snapshot_elements()` (CAPI `Alt_CE_Get_Powers` = `GetPhasePower`×1e-3
-  + `Iterminal`, creation order, `Class.name`), `Dss::total_power()` (CAPI
-  `Circuit_Get_TotalPower` = Σ sources `Power[1]`·1e-3), `Dss::losses()`.
-- **One genuine bug found by the gate:** `Circuit::losses` summed *all* PD
-  elements; Pascal `TDSSCircuit.Get_Losses` skips `IsShunt` elements. Added
-  `CktElement::is_shunt()` (default false; Capacitor/Reactor return their
-  shunt flag) — reactive losses then matched to 1e-9.
-
-**WP4.10 — phase exit — ✅ this update.** `TODO(compat)`/`NOT_PORTED` sweeps
-clean (every deferral points at its phase, see §5); full gate green.
+- **Phase 3** — the vertical-slice file-by-file map (circuit model / element base /
+  solution / executive / property engine) — still the architectural reference §2
+  points to. → [`docs/phase-records/phase-3.md`](docs/phase-records/phase-3.md)
+- **Phase 4** — PD elements (Transformer/Capacitor/Reactor), catalog objects
+  (LineCode/XfmrCode/GrowthShape), the Line→LineCode fetch path, parse-only
+  RegControl/CapControl, the `define_properties!` macro, and the controls-off
+  feeder gate. → [`docs/phase-records/phase-4.md`](docs/phase-records/phase-4.md)
+- **Phase 5** — controls + time series: XYcurve / LoadShape / TShape /
+  PriceShape, ControlQueue + event log, RegControl/CapControl behavior, the
+  control loop (`Sample_DoControlActions`), and the time-series solve modes.
+  → [`docs/phase-records/phase-5.md`](docs/phase-records/phase-5.md)
+- **Phase 6** — meters + topology: CktTree, Generator, Monitor, EnergyMeter +
+  zone build, registers/TakeSample, reliability (`RelCalc`), Sensor + load
+  allocation, the GenDispatcher/StorageController/AutoAdd/ReduceAlgs skeletons,
+  and the 8500-node gate. Merged to `main` `b98223a`.
+  → [`docs/phase-records/phase-6.md`](docs/phase-records/phase-6.md)
+- **Phase 7 WP7.1** (Line constants & geometry) — the Carson engine, the
+  WireData/CNData/TSData/LineSpacing/LineGeometry catalog, Line's geometry/spacing
+  Carson path, the corpus migration, and the offline geometry golden. **Complete +
+  gate-green on the `phase-7-extended-elements` branch (not yet merged);** the live
+  §1e keeps a step summary + the tracked-open plural-cable note.
+  → [`docs/phase-records/phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md)
+- **Phase 7 WP7.2** (Protection) — Fault, SwtControl, Fuse, Recloser, Relay (9
+  sub-types), reliability activation (`HasOCPDevice` + live `RelCalc`), and the
+  step-4 gate (the `phase7_protection` trip/reclose golden, the `Open`/`Close` exec
+  verbs, the SwtControl corpus migration). **Complete + gate-green on the
+  `phase-7-extended-elements` branch (not yet merged);** the live §1e keeps a
+  per-step summary + the Phase-7 carry-forward rules + the `DG_Prot_Fdr` tracked-open.
+  → [`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md)
+- **Phase 7 WP7.3** (DER A) — `DynamicExp` (the diff-eq catalog object + its RPN
+  expression interpreter), `InvBasedPceData` (the shared inverter PC-element base),
+  and `PVSystem` (the power-flow PV element + zone admission + the Monitor mode-3
+  fix + the GFM loud-abort). **Complete + gate-green on the branch (not yet merged).**
+  → [`docs/phase-records/phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md)
+- **Phase 7 WP7.4** (DER B) — the `Storage` element (the charge/idle/discharge state
+  machine + integrated SOC) and the real `StorageController` fleet/dispatch (replacing
+  the WP6.8 skeleton), plus the Storage-specific YPrim-rebuild fix. **Complete +
+  gate-green on the branch (not yet merged).**
+  → [`docs/phase-records/phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md)
+- **Phase 7 WP7.5** (DER C, steps 1–4) — `RollAvgWindow`, the full `InvControl` (8
+  modes + LPF/RiseFall + MonBus, both PVSystem and Storage DERs), `ExpControl`
+  (the adaptive-`Vreg` volt-var control), and the step-4 corpus burn-down review.
+  **COMPLETE + gate-green on the branch (not yet merged).**
+  → [`docs/phase-records/phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md)
+- **Phase 7 WP7.6** (Harmonics, steps 1–3) — the harmonics solve mode: the
+  current-source family (VSource + Load) + the `SolveHarmonic`/`SolveHarmonicT`
+  driver, the Thevenin DER family (Generator/PVSystem/Storage behind their
+  subtransient reactance), and the monitor harmonic header + the `Set mode=`
+  monitor/meter reset (Pascal `Set_Mode` tail); harmonics corpus burn-down is 0
+  migratable (Phase-8/`Isource`/FaultStudy-blocked). **COMPLETE + gate-green on the
+  branch (not yet merged).**
+  → [`docs/phase-records/phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md)
+- **Phase 7 WP7.7** (Dynamics core, steps 1–3b cont.) — the `SolveDynamic`
+  predictor/corrector driver + per-element dynamics state machinery for Generator /
+  PVSystem / Storage / IndMach012, Monitor mode 3, the `Open`-verb fix, the
+  `set_ITerminalUpdated` stamp sweep, and the DynEqPCE user-`DynamicExp` integration
+  for all three PCE families. **✅ COMPLETE** (steps 1–4; GFM deferred,
+  tracked-open). The completed-step detail (incl. all audit follow-ups) is archived;
+  the live §1e keeps the concise per-step summary.
+  → [`docs/phase-records/phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md)
 
 ---
 
-## 1c. Phase 5 record (branch `phase-5-controls-timeseries`)
+## 1e. Phase 7 record (branch `phase-7-extended-elements`) — ✅ COMPLETE
 
-Execution plan: **`PHASE5_PLAN.md`** (WP5.1–WP5.10).
+Execution plan: **`PHASE7_PLAN.md`** (WP7.1–WP7.10). Per-WP cadence — the full
+ritual in `PHASE7_PLAN.md §0`, run autonomously per step: gate green → update this
+file + commit → `/audit-code <step scope>` → fix + commit → `/audit-tests <step
+scope>` → fix + commit → **full `STATUS.md` review + sync + archive-cleanup** +
+commit → **then** stop for confirmation.
 
-**WP5.1 — XYcurve — ✅ done, gate-green.** Files:
-- `src/elements/general/xy_curve.rs` (`TXYcurveObj`): props 1–13 via
-  `define_properties!`; parallel `XValues`/`YValues` arrays; `GetYValue`
-  (hunt-cache linear interp + end-extrapolation, ported verbatim 0-based),
-  `GetXValue` (axes-swapped, no cache), the `X`/`Y` scalar accessors with the
-  `FX/FY` + shift/scale synch (`Set_X`→`GetYValue`, `Set_Y`→`GetXValue`),
-  `SetPoints`/`GetPoints`, `PropertySideEffects` (npts realloc, `Xarray`/`Yarray`
-  → first-point `X`/`Y` sync, `LastValueAccessed` reset over props 2–7),
-  `MakeLike`. 6 inline tests. `CSVFile`/`SngFile`/`DblFile` `NOT_PORTED`.
-- **Shared engine additions:** `PropType::DoublePoints` (interleaved `(x,y)`
-  list) + `PropDef::double_points`, routed through new
-  `DssObject::get_points`/`set_points`; `util::interpret_dbl_array_dynamic`
-  (read all doubles, count unbounded — the `DoubleDArrayProperty` parse path).
-- **Oracle bug (traced):** `points=` (write) raises an **access violation** in
-  the pinned oracle (a dss_capi `DoubleDArrayProperty` bug, both `(...)` and
-  `[...]` forms). Goldens therefore drive the arrays via `XArray`/`YArray` and
-  validate the `Points` *getter* by readback; the `SetPoints` path is ported
-  faithfully and covered by a Rust-only unit test. The `Points` getter's NIL
-  fallback is `[ 0 0]` (a single `(0,0)` point), reproduced exactly.
-- **Goldens:** 7 XYcurve scenarios in `gen_props.py` (default, arrays, abbrev,
-  shift+scale, x-accessor edit, npts-shrink, makelike); `props.json` regenerated
-  (pure insertions); `props_roundtrip` green. dss-core lib tests 132 → 138.
-- Reactor `RCurve`/`LCurve` stay `NOT_PORTED` (only consumed by the harmonic
-  `CalcYPrim`, Phase 7); the module note was updated to say so.
+**WP7.1 (Line constants & geometry) — ✅ COMPLETE (steps 1–5), gate-green.** The
+detailed per-step records are archived at
+[`docs/phase-records/phase-7-wp1.md`](docs/phase-records/phase-7-wp1.md); the
+header frontier paragraph summarizes the deliverable. In brief:
+- **step 1** — the Carson line-constants engine `support/line_constants/`
+  (`LineConstants` + OH/CN/TS/cable specializations, `Calc(f)` → Z/Yc, Kron),
+  **frequency-parameterized — the WP7.6 harmonics hook** (`z_matrix(f)`/`yc_matrix(f)`).
+- **step 2** — the catalog classes `WireData`/`CNData`/`TSData` (`conductor_data/`),
+  `LineSpacing`, `LineGeometry` (object + per-conductor edit state machine +
+  `UpdateLineGeometryData`/`CalcMatrices`); new prop kind `PropType::ObjectRefArray`.
+- **step 3** — Line's `geometry=`/`spacing=`/`wires=`/`cncables=`/`tscables=` Carson
+  path (the `total_z_path` branch in `CalcYPrim`; total Z/Yc with length+units folded in).
+- **step 4** — geometry/cable corpus feeder migration (`solvable_now` 17→35), incl.
+  the new `Set EarthModel=Carson|FullCarson|Deri` option and the EPRI/ADiakoptics
+  power-floor fix (`c7c6649`/`6d3b9ac`, the 3 meshed cases, `solvable_now` 32→35).
+- **step 5** — the targeted offline golden `phase7/line_geometry*.json`
+  (`gen_phase7.py` + `golden_phase7.rs`, 5 scenarios pinning the Carson Line YPrim
+  entry-by-entry — the focused regression guard the live gate doesn't replace).
+- **Tracked-open (un-pinned, needs investigation):** the **plural-cable**
+  `cncables=`/`tscables=` active-conductor reset diverges between the vendored
+  `LineGeometry.pas` (`istop`) and the pinned 0.14.5 binary (`Cond=1`); the scalar
+  CN/TS *data* paths are covered, so the plural forms stay un-pinned pending that
+  source/binary reconciliation (full note in the archive).
 
-**WP5.2a — LoadShape (in-memory core) — ✅ done, gate-green.** Files:
-- `src/elements/general/load_shape.rs` (`TLoadShapeObj`): props 1–22 via
-  `define_properties!`; fixed/variable-interval data (`p_mult`/`q_mult`/`hour`
-  as `Option<Vec<f64>>` = Pascal `Assigned` semantics, empty parse = NIL),
-  `GetMultAtHour` (even-interval wraparound with FPC-`Round` `TODO(compat)`;
-  hour-array hunt-cache interpolation incl. `Avg`/`Edge`; `Set_Result_im`),
-  `Normalize` (`BaseP`/`BaseQ` vs peak), `SetMaxPandQ` (peak P + coincident Q),
-  lazy `Mean`/`StdDev` (recomputed unless set; `RCDMeanAndStdDev` even-interval
-  / `CurveMeanAndStdDev` over `hour`), `SInterval`/`MInterval` scale-aliases of
-  `Interval`, `MakeLike`. 13 inline tests. Single arrays (`sP`/`sH`/`sQ`) + MMF
-  not ported; **`CSVFile`/`SngFile`/`DblFile`/`PQCSVFile` `NOT_PORTED`** here
-  (CSVFile → WP5.2b once the executive can resolve the path).
-- **Shared engine additions:**
-  - `PropType::Action` (Pascal `StringEnumActionProperty`): the parsed value
-    maps to an enum ordinal and immediately runs `DssObject::do_action`
-    (default no-op); the getter is always `""`. `PropDef::action(name, enum)`.
-  - `define_properties!` gained an **`enums <ident>` clause** so builder
-    expressions can reference the registry (`enums.load_shape_action`) under
-    the caller's hygiene — the no-enums form is unchanged (xy/tcc/spectrum).
-  - `EnumRegistry`: `load_shape_action` (Normalize/DblSave/SngSave→0/1/2) and
-    `load_shape_interp` (Avg/Edge→0/1).
-- **Oracle facts:** `Action` getter is `""`; reading `Mean`/`StdDev` on an
-  *empty* shape **raises 61107** (no data) — `gen_props.py` gained a
-  `skip_props` hook to omit them for the `loadshape_default` scenario only.
-  `QMax` (when not set) = Q at the index where |P| peaks (not max Q).
-  `SetMaxPandQ` overrides `pmax=` when data is present.
-- **Goldens:** 12 LoadShape scenarios in `gen_props.py` (default, fixed,
-  abbrev, p+q, s/m-interval, hour-array, normalize ×2, interp=edge,
-  explicit mean/stddev, makelike); `props.json` regenerated (pure insertions);
-  `props_roundtrip` green. dss-core lib tests 138 → 151.
+**WP7.2 (Protection) — ✅ COMPLETE.** Steps **1 (`Fault`), 2a (`SwtControl`),
+2b (`Fuse`), 2c (`Recloser`), 2d (`Relay`), 3 (reliability activation), 4
+(protection gate + corpus migration) done + gate-green**. Full per-step records
+(decisions, audits, gate detail) archived at
+[`docs/phase-records/phase-7-wp2.md`](docs/phase-records/phase-7-wp2.md). In brief:
+- **step 1 — `Fault` (`pd/fault.rs`):** an uncoupled multi-phase **conductance**
+  branch (`G=1/r` / `Gmatrix`) + the FaultStudy input (WP7.9); `ElemKind::Fault` +
+  `Circuit.faults`, `check_fault_status`/`reset_faults` control-loop wiring.
+- **step 2a — `SwtControl`:** a manual whole-terminal switch; lands the generic
+  `set_terminal_closed` + `RefAction::SetSwitchClosed` and the **dirty-edge rule**.
+- **step 2b — `Fuse` (`pd/fuse/`):** per-phase TCC; **`TccCurveObj::get_tcc_time`
+  ported**, per-conductor `set_conductor_closed`, `MappedStringEnumArray`.
+- **step 2c — `Recloser`:** whole-terminal trip + reclose to `Shots`, fast→delayed;
+  `PropFlags::ARRAY_MAX_SIZE` + integer-dump `VALUE_OFFSET`.
+- **step 2d — `Relay`:** the general control (`Relay.pas`, 9 `Type=` sub-types);
+  `Current`/`Voltage`/`ReversePower`/`46`/`47`/`Distance`/`DOC` live, `Generic`/`TD21`
+  parse+dump but defer `Sample` to WP7.7 (`NOT_PORTED`). `get_ov_time`/`get_uv_time`,
+  `PropFlags::ALLOW_NONE`; event log gated on `ShowEventLog`.
+- **step 3 — reliability activation:** enabled Relay/Recloser/Fuse set
+  `Flg.HasOCPDevice` (+ `HasAutoOCPDevice` for the auto-reclosers) via a deferred
+  `RefAction::SetOcpDevice`; `GetOCPDeviceType` live; the Phase-6 `RelCalc`
+  SAIFI/SAIDI/section math runs (no more #52902 abort on a protected zone).
+- **step 4 — protection gate + corpus migration:** the targeted golden
+  `phase7_protection/*.json` (`gen_phase7_protection.py` + `golden_phase7_protection.rs`,
+  **5 trip/reclose scenarios** — event log line-for-line + per-step + final-state vs
+  the pinned oracle, reproduced exactly first-run); the **`Open`/`Close` exec verbs**
+  ported (`do_open_close_cmd`, reusing the protection switching machinery; 4
+  oracle-pinned tests); **`civanlar` + `IEEE_519` (SwtControl) migrated into
+  `solvable_now` (35→37)**, `COVERAGE.md` refreshed. *audit-code:* faithful, fixed
+  the `set_/get_conductor_closed` guard (`Nphases` → `Nconds`, matching Pascal's
+  `Fnconds` — the new `Open` neutral-conductor path) + a unit test. *audit-tests:*
+  real oracle-pinned gates; strengthened the golden with element-name-set equality.
+  **Tracked-open:** `DG_Prot_Fdr.dss` compiles now but the live system Y diverges
+  ~3e-5 rel at a **line** node — a WP7.1 Carson line-constants precision item (not a
+  protection/`Open` regression), parked in `needs_investigation`. lib **502 → 514**
+  across steps 2d–4.
 
-**WP5.2b — LoadShape `CSVFile` — ✅ done, gate-green.** Files:
-- `load_shape.rs`: `CSVFile` un-`NOT_PORTED`; `read_csv_file` = Pascal
-  `ReadCSVFile` (double, non-MMF): one row per point via the comma/whitespace
-  aux parser, fixed-interval = one `mult`, variable (`Interval=0`) =
-  `hour, mult`; reads ≤ `NumPoints` rows and shrinks `NumPoints` to the count
-  read. `side_effects(CSVFile)` queues the read; `take_file_loads`/
-  `apply_file_load` do it. 5 new tests incl. a full executive round-trip
-  (temp CSV resolved via `current_dir`, oracle-transcribed values) and the 613
-  missing-file path. (`SngFile`/`DblFile`/`PQCSVFile` stay `NOT_PORTED`.)
-- **Shared engine addition — deferred file loads (`FileLoad`):** a property
-  setter that names a data file can't reach the filesystem/current dir, so it
-  queues a `FileLoad { prop, filename }` (parallel to `RefAction`); the
-  executive drains it **before `end_edit`**, resolves the path relative to
-  `current_dir` (like Redirect), reads the text, and calls
-  `DssObject::apply_file_load` so the object parses it. `edit_active` binds
-  `current_dir` and runs the loop; a missing file is Pascal error 613.
-- **No props golden for CSVFile:** the command embeds a file path that resolves
-  against the cwd, which differs between the oracle (repo root) and the Rust
-  test (crate root) — a portable shared command string isn't possible, so the
-  full path is validated by the executive integration test instead (values
-  transcribed from the pinned oracle). dss-core lib tests 151 → 156.
+**WP7.3 (DER A: DynamicExp + InvBasedPCE + PVSystem) — ✅ COMPLETE.** Full per-step
+records (decisions, audits, gate detail) archived at
+[`docs/phase-records/phase-7-wp3.md`](docs/phase-records/phase-7-wp3.md). In brief:
+- **step 0 — `DynamicExp` (`general/dynamic_exp.rs`):** the user-defined diff-eq
+  catalog object + its RPN expression interpreter (`InterpretDiffEq` → a flat `cmds`
+  array, `SolveEq` stack machine over `[value, derivative]` memory); registered
+  before Generator/PVSystem/Storage. Numeric pinning is spec-pinned here (the oracle
+  exposes no `cmds`/`SolveEq` outside a dynamics run, WP7.7). Gate: 9 oracle props
+  scenarios + 13 interpreter unit tests. lib **514 → 527**.
+- **step 1 — `InvBasedPceData` (`pc/inv_based_pce.rs`):** the shared inverter PC base
+  (`TInvBasedPCE` + the scalar `TInvDynamicVars`), an abstract base PVSystem/Storage
+  embed (flattened like `GenVars`); the three power-flow shared methods
+  (`StickCurrInTerminalArray`, `Get_Presentkvar`, `UsingCIMDynamics`). The per-phase
+  dynamics arrays + GFM are deferred to WP7.7. Gate: 6 spec-pinned unit tests. lib
+  **527 → 534**.
+- **step 2 — `PVSystem` (`pc/pvsystem/`) + steps 3–4 (zone + gate):** the power-flow
+  PV element on the Generator template with the InvBasedPceData base embedded
+  (`ComputePanelPower` → `ComputeInverterPower`'s clamp cascade → `kWOut_Calc`;
+  `SetNominalDEROutput`; the two models + the `ForceBalanced` path;
+  registers/TakeSample); `ElemKind::PVSystem` + zone admission. Fixed a **real**
+  Monitor mode-3 metered-kind bug (PVSystem now classifies as `PcElement`) and a GFM
+  silent-degradation (now a loud pre-solve abort, WP7.7). GFM/harmonics/dynamics/
+  UserModel/`MakePosSequence` deferred. Gate: `props/pvsystem.json` (10 scenarios) +
+  goldens `phase7/pvsystem_{snapshot,curves,clamps}`; **corpus 37 → 44** (7 PVSystem
+  cases). lib **534 → 543** (incl. audit follow-ups).
 
-**WP5.2c — TempShape (`TShape`) + PriceShape — ✅ done, gate-green.** Files:
-- `scalar_shape.rs` (`ScalarShapeCore`): the data + the three byte-identical
-  algorithms shared by both classes — `get_value_at_hour` (Pascal
-  `GetTemperature`/`GetPrice`), the lazy `mean`/`std_dev` (`CalcMeanandStdDev`),
-  and `read_csv_file` (`DoCSVFile`). These are the **legacy 1-based** Pascal
-  lookups (init `LastValueAccessed := 1`, loop `for i := LastValueAccessed + 1`,
-  fall-through returns the **last** point) — deliberately *not* derived from
-  LoadShape's modernized 0-based `GetMultAtHour` (which falls through to the
-  second-to-last point). Same FPC-`Round` `TODO(compat)` on the even-interval
-  index.
-- `temp_shape.rs` (`TShapeObj`, class **`TShape`**) and `price_shape.rs`
-  (`PriceShapeObj`): the per-class property tables (props 1–12: `NPts, Interval,
-  Temp|Price, Hour, Mean, StdDev, CSVFile, SngFile, DblFile, SInterval,
-  MInterval, Action`) and the differing `PropertySideEffects`. Thin `DssObject`
-  impls delegating to the core. 10 + 7 inline tests.
-- **Oracle facts / class differences (probed, then pinned):**
-  - Empty-shape `Mean`/`StdDev` return **0** with no error (unlike LoadShape's
-    61107 — `CalcMeanandStdDev` sets the calculated flag even at `npts=0`), so
-    no `skip_props` is needed.
-  - **TempShape has no `Hour→Interval:=0` coupling**: giving `Hour` without an
-    explicit `interval=0` leaves it a fixed-interval curve (golden
-    `tshape_hour_no_interval` pins `Interval=1`, `Mean=2.333…`). **PriceShape
-    auto-zeroes** `Interval` on `Hour` (golden `priceshape_hour` →
-    `Interval=0`, trapezoid `Mean=2.5`), and drops the hour array when a
-    positive `Interval` is set.
-  - PriceShape's `Interval`/`SInterval`/`MInterval` are **not** `NonNegative`
-    (TempShape's are); both classes' `Action` is only `DblSave`/`SngSave`
-    (binary output) → `do_action` records a `NOT_PORTED` message (no
-    `Normalize`).
-  - `CSVFile` reuses the WP5.2b deferred-`FileLoad` path verbatim;
-    `SngFile`/`DblFile` (binary input) stay `NOT_PORTED`.
-- **Shared engine:** two enums added to `EnumRegistry`
-  (`t_shape_action`/`price_shape_action`, both `DblSave/SngSave`); both classes
-  registered in the executive.
-- **Goldens:** 8 TShape + 6 PriceShape scenarios in `gen_props.py`;
-  `props.json` regenerated (pure insertions, +310 lines); `props_roundtrip`
-  green. dss-core lib tests 156 → 173.
+**WP7.4 (DER B: Storage + StorageController) — ✅ COMPLETE.** Full per-step records
+archived at [`docs/phase-records/phase-7-wp4.md`](docs/phase-records/phase-7-wp4.md).
+In brief:
+- **step 1 — the `Storage` element (`pc/storage/`):** `TStorageObj` (the largest PC
+  element) on the Generator template with the InvBasedPceData base — the
+  charge/idle/discharge state machine (`FState`) + the integrated SOC
+  (`kWhStored`/`%stored`, advanced in `EndOfTimeStepCleanup` via `UpdateStorage`, with
+  the efficiency-curve `ComputeDCkW`/`QuadSolver` DC solve). Registered
+  (`ElemKind::Storage`, `is_zone_pce`, the Monitor mode-3 + GFM-guard mirrors of
+  PVSystem). GFM/harmonics/dynamics/UserModel deferred. Gate: `props/storage.json` +
+  goldens `phase7/storage_{snapshot,clamps,daily,daily_charge}` (the SOC trajectory
+  exact). **Corpus stays 44.** lib **543 → 557**.
+- **step 2 — the real `StorageController` (`control/storage_controller/`):** replaces
+  the WP6.8 parse-only skeleton with `MakeFleetList`, the `SetFleet*` helpers + fleet
+  aggregates, `GetControlPower`/`GetControlCurrent`, and all the `Sample` dispatch
+  modes (`DoLoadFollowMode` Peakshave/Follow/Support/I-Peakshave, `DoTimeMode`,
+  `DoScheduleMode`, `DoLoadShapeMode`, `DoPeakShaveModeLow`) + `DoPendingAction`/
+  `Reset`. The fleet resolves lazily through a `StorageDispatchEnv` (the GenDispatcher
+  pattern). One `TODO(compat)` (the `if not FleetState = …` precedence bug) +
+  SeasonalRating NOT_PORTED. Gate: goldens `phase7/storagecontroller_{daily,peakshave}`
+  + 19 mock `sample_*` tests + 2 exec tests. **Corpus stays 44.** lib **557 → 572**.
+- **The YPrim-rebuild fix** (post-audit): a Storage state flip (idle→discharging)
+  changes its Norton `Yeq` but the port never propagated `yprim_invalid` to
+  `system_y_changed`, so the solve ran a stale idle YPrim against the discharging
+  injection (~1.8e-6 drift + an extra iteration). Restored that side effect at the
+  StorageController dispatch env and `Storage::inj_currents` (via a new
+  `InjCtx.system_y_changed`); the snapshot golden now matches bit-for-bit. **Scope is
+  Storage-specific** — PVSystem/InvControl dispatch kvar/kW setpoints, not discrete
+  state, so they never invalidate YPrim.
 
-**WP5.3 — shapes wired into Load + VSource — ✅ done, gate-green.** Files:
-- `pc/load.rs`: the five shape refs (`yearly`/`daily`/`duty`/`CVRcurve` →
-  `LoadShape`, `growth` → `GrowthShape`) became resolved `object_ref_class`
-  props. Each is **snapshot-cloned** into the Load at `set_object_ref` time
-  (`*_shape_obj: Option<LoadShapeObj/GrowthShapeObj>` + the resolved `ElemRef`),
-  exactly like `FetchLineCode` (§3.4): the solve path only carries scalar
-  `SysCtx`, so the owned clone is what `SetNominalLoad` drives through
-  `GetMultAtHour`. Ported `CalcDailyMult`/`CalcDutyMult` (daily fallback)/
-  `CalcYearlyMult`/`CalcCVRMult` setting `shape_factor`/`shape_is_actual`;
-  `GrowthFactor` now reads `GrowthShapeObj.GetMult(Year)`; `SetkWkvar` +
-  the `UseActual` shape side effects (`yearly`/`daily`/`duty` set kW/kvar to the
-  shape's peak demand; `daily` seeds an unset `yearly`); the full `SetNominalLoad`
-  mode dispatch (SNAPSHOT/HARMONIC unchanged; DAILY/YEARLY/DUTYCYCLE now consult
-  the shape; CVR loads add `CalcCVRMult` in YEARLY). `MakeLike` copies the
-  resolved shapes. 5 inline tests probed against the oracle.
-- `pc/vsource.rs`: same conversion for `yearly`/`daily`/`duty` (LoadShape only),
-  `CalcDailyMult`/`Duty`/`Yearly`, and the loadshape-mode magnitude in
-  `GetVterminalForSource` (`Vmag = kVBase·ShapeFactor.re·…`, or `1000·re` when
-  `UseActual`). 2 inline tests.
-- **Shared engine:** none — reuses Phase 4's `object_ref_class`/`set_object_ref`
-  resolution and the `SolveMode` enum. `LoadShapeObj` gained `use_actual()`/
-  `max_p()`/`max_q()` accessors.
-- **Oracle facts (probed, then pinned in the unit tests):** in DAILY/YEARLY/DUTY
-  the per-conductor power is `kW·mult·1000/Nphases` (Q scales the same when no
-  QMult); a `UseActual` daily shape sets the load to `(MaxP, coincident MaxQ)`
-  and the ObjectRef getter renders `YearlyShapeObj.Name` (so `daily=d1` with no
-  `yearly` makes `Get yearly` return `d1`). No new goldens: the existing feeders
-  reference no shapes (snapshot paths stay byte-identical), and a daily-mode
-  `solve` can't run until the WP5.8 dispatcher lands — `SetNominalLoad` is
-  validated directly with a `SolveMode::Daily` `SysCtx`.
-- **Snapshot-clone limitation:** a later `edit loadshape.x` is not seen by loads
-  that already resolved it (Pascal keeps a live pointer). Documented; no corpus
-  case re-edits a referenced shape. The circuit's built-in `default` LoadShape +
-  `DefaultDailyShapeObj`/`DefaultYearlyShapeObj` and the global `DefaultHourMult`
-  path are **deferred to WP5.8** (only `SolveDaily` consumes them).
-  dss-core lib tests 173 → 181 (+7 element + 1 executive resolution).
+**WP7.5 (DER C: InvControl + ExpControl) — ✅ COMPLETE (steps 1–4).** Full
+per-step records (incl. the two real-port-bug write-ups and the Storage
+smart-inverter follow-up) archived at
+[`docs/phase-records/phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md). In brief:
+- **step 1 — `RollAvgWindow` (`control/roll_avg_window.rs`):** the fixed-capacity FIFO
+  with O(1) running sums backing InvControl's volt-var/DRC rolling-average voltage;
+  ported 1:1 (incl. the faithfully-reproduced asymmetric `accum_sec` drift, whose only
+  reader is dead upstream — a plain comment, not `TODO(compat)`). 4 spec-pinned tests.
+  lib **572 → 577**.
+- **step 2 — `InvControl` (`control/inv_control/`):** the single largest unit in the
+  phase (`InvControl.pas`, 3586 lines), ported across sub-steps — **2a** parse-only
+  skeleton (34 props + 7 enums + `ValidateXYCurve` + MakeLike), **2b** VOLTVAR, **2c**
+  VOLTWATT + VV_VW, **2d** DRC + VV_DRC (+ the `IntervalUnits` time-suffix parse),
+  **2e-i** WATTPF + WATTVAR, **2e-ii** AVR, **2e-iii** LPF/RiseFall rate-of-change +
+  the explicit-`MonBus` path — on the StorageController clone-out `InvDispatchEnv`
+  dispatch pattern (the fleet resolves lazily; the terminal bus is resolved at
+  parse-time edit-completion). Storage AVR/WATTPF/WATTVAR ported to working (Storage
+  VOLTWATT/VV_VW stay loudly guarded). Gate: `props/invcontrol.json` (20 scenarios) +
+  a large `phase7/invcontrol_*` golden family (per-mode, daily, 24h, LPF/RiseFall,
+  MonBus, Storage — and the per-step monitor comparison now runs on every multi-step
+  phase7 golden) + many mock-env tests; **corpus 44 → 83**. lib **577 → 623**. **Two
+  real port bugs found + fixed here** (each a [[dont-rationalize-conditioning]]
+  instance): the cross-step `FFlagVWOperates` latch (the missing `UpdateInvControl`
+  per-step reset — daily VOLTWATT diverged ~kW) and the missing `LoadsNeedUpdating :=
+  TRUE` after `DoPendingAction` (without it AVR's iter-2 read a stale kvar = 0 →
+  `DQDV = 0` → never converged).
+- **step 3 — `ExpControl` (`control/exp_control/`):** the adaptive-`Vreg` volt-var
+  control over a PVSystem-only fleet (`ExpControl.pas`, "adapted and simplified from
+  InvControl") — the 14 props + the PVSystemList↔DERList sync, `MakePVSystemList`,
+  `Sample`, `DoPendingAction` (slope-at-`Vreg` + `Qbias` → headroom/`PreferQ` curtail
+  → `FOpenTau` low-pass → `DeltaQ_Factor` step), and `UpdateExpControl` (the per-step
+  `Vreg` slew by `VregTau`). Gate: `props/expcontrol.json` + goldens
+  `phase7/expcontrol_{daily,daily_preferq,24h,duty}` (the duty golden is the only
+  `FOpenTau` LPF gate — daily runs under `CTRLSTATIC` gate it off) + 16 mock tests.
+  One `TODO(compat)` (`FOpenTau := Tresponse/2.3026`, the truncated ln(10)). **Corpus
+  stays 83.** lib **623 → 639**.
+- **step 4 — the gate / corpus burn-down review (DER C).** No Rust code change (lib
+  stays **639**); the gate is green and the DER-C corpus migration is confirmed
+  **maximal**. A fresh `DSS_LIVE_CLASSIFY=1` re-probe of **all 48**
+  InvControl/ExpControl-tagged `skipped_unsupported` cases (the bulk migrated in steps
+  2b–2e; many of the rest still carried *stale* `unsupported_class=InvControl`/`PVSystem`
+  tags from before the class landed) found exactly **1 newly-solvable** case —
+  `…/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss` (a near-ideal-Thevenin
+  snapshot: PVSystem + VOLTVAR InvControl regulating kvar from the file-set `kvar=500`
+  to the curve zero-crossing at v≈1.0 pu, 56 control iters; full-model live-compared to
+  the oracle, **corpus 83 → 84**). **Commit delta: 1 migrated + 39 stale tags
+  refreshed** to the genuine current blocker (the other 8 of the 47 still-blocked cases
+  already carried a correct `Export,Plot` tag). The **47 still-blocked** cases are
+  blocked by Phase-8 / later work, **not** by DER-C numerics — current-state breakdown:
+  **42** by a Phase-8 command (Export / Export+Plot — the Daily/MonitoredVoltage
+  families), **3** GFM-mode-7 cases (`unsupported_command=BatchEdit; deferred=gfm-WP7.7`,
+  also `File=`-blocked), **1** `ExpControl/Master.dss`
+  (`unsupported_feature=file-backed-arrays`), and **1** `11_2_kWRatedViolation`
+  (`deferred=storage-voltwatt-WP7.5`, the loud Storage-VOLTWATT guard from step 2c).
+  `tools/corpus/COVERAGE.md` regenerated (84 → **25.1%** of entry points); the
+  `corpus_manifest` bijection holds. *(The stale tags were a documentation-honesty fix
+  only — they never affected the gate, which keys on the bijection + the `solvable_now`
+  live compare.)*
+  - **audit-code follow-up:** verdict **correct** — the full live gate matched all 84
+    cases, the migrated VV case is non-trivial (the regulator moved kvar 500 → ~0 over
+    56 iters, not an empty pass), the 39 refreshed tags each match the genuine re-probed
+    Rust-engine error, and no hidden-migratable DER-C case was left behind (all 40
+    InvControl/PVSystem candidates still error; the only solvable one is migrated). Two
+    doc-only fixes applied: (1) the **GFM tags** were committed as plain
+    `unsupported_command=BatchEdit` (the classify report truncates the reason at 400
+    chars, dropping the `mode=7 … (GFM)` clause my appender keyed on), out of sync with
+    this record's claim — re-set to `unsupported_command=BatchEdit; deferred=gfm-WP7.7`
+    with a hand-transcribed full-blocker note; (2) this record's accounting was
+    sharpened to separate the *commit delta* (1 migrated + 39 retagged) from the
+    *current-state* family breakdown. **Surfaced-not-fixed (out of DER-C scope, tracked
+    for a future corpus-hygiene pass):** ~16 *non*-DER-C `skipped_unsupported` cases
+    (line-constants / `Show` / `Open`/`Close`) now compile+solve clean on the Rust
+    engine but still carry possibly-stale tags — a clean Rust compile ≠ migratable (the
+    gate also needs the oracle full-model match), so these need their own
+    `DSS_LIVE_CLASSIFY` re-probe, not a blind migration.
+  - **audit-tests follow-up:** verdict **sound + strictly additive** — the new case
+    adds real verification (the harness pins the exact 56 control iters Rust↔oracle and
+    the full unrelaxed model compare), it is **not flaky** (the gate ran green twice,
+    84/84), and nothing was weakened (no tolerance loosened, no case removed/downgraded,
+    the depth guard + bijection hold). **Minor (recorded, no fix):** the near-ideal-source
+    `currentkvarLimit` *family* is borderline as a class (a sibling under
+    `…/NewFeatures/varCapability/` is parked `live_mismatch_near_ideal_source`), but the
+    migrated `_VV` variant sits in its stable zone — VOLTVAR drives Q→0 at v=1.0 pu so
+    the reactive source current is ~1e-4 A and the ill-conditioned-Y mismatch never
+    amplifies past tolerance (the parked siblings force a fixed `kvar=` → ~20 A reactive
+    → the mismatch that parks them). No offline golden was added (the live gate is the
+    pin); **no fix needed**.
+- **next:** WP7.6 (Harmonics) — the first cross-cutting solve mode.
 
-**WP5.4 — ControlQueue + event log — ✅ done, gate-green.** Files:
-- `src/solution/control_queue.rs` (`TControlQueue`): `TimeRec`
-  (`hour`/`sec` + `to_time`), private `ActionRecord`, and `ControlQueue`
-  (ordered `Vec`, `ctrl_handle` serial). Ported verbatim: `push` (Sec>3600
-  hour-normalization + insert-before-first-`>=`-time, so a later equal-time
-  push lands *ahead* of an earlier one — tie-break is observable), `push_delay`
-  (the `Delay` overload), private `pop` (linear scan for earliest time `<= t`),
-  `delete` by handle, `clear`/`is_empty`/`queue_size`, and the three
-  pure-queue dispatchers `do_all_actions`/`do_nearest_actions`/`do_actions`.
-  Dispatch routes through the **`ControlActioner` trait** (`do_pending_action(
-  control: ElemRef, code, proxy, &mut ControlQueue)`): because `pop` returns
-  owned (`Copy`) record data, the queue hands *itself* to the actioner, so an
-  action may push/delete further records mid-sweep (RegControl EVENTDRIVEN
-  re-arm). 7 inline tests (handle/time ordering, equal-time tie-break,
-  Sec>3600, delete-by-handle, nearest-bucket-only, mid-sweep re-arm,
-  do_all+clear) hand-traced from the Pascal — no oracle exposes the queue.
-- `src/solution/event_log.rs` (`EventLog` = `DSS.EventStrings`): the two
-  producers ported with exact `Format` strings — `log_this_event` (Pascal
-  `TDSSContext.LogThisEvent`, `Hour=…, Sec=%-.8g, Iteration=…, ControlIter=…,
-  Event=…`) and `append` (`TDSSObject.AppendToEventLog`, `Hour=…, Sec=%-.5g,
-  ControlIter=…, Element=…, Action=…` with `AnsiUpperCase(action)`). 2 inline
-  tests. The gate normalizes numbers out, so the `%g` time fields are faithful
-  but not load-bearing.
-- **Shared engine:** `Solution` grew `control_queue: ControlQueue` and
-  `event_log: EventLog` (constructed in `new`; driven by WP5.5/5.7);
-  `Dss::event_log()` surfaces the lines (oracle reads `Solution.EventLog`).
-  `util::fmt_g(v, sig)` = C `%.*g` (sci for exp `<-4`/`>=sig`, trailing-zero
-  strip) for the event-log time fields.
-- **Deferred to WP5.7/5.8:** `do_multi_rate` (Pascal `DoMultiRate` needs
-  `Pop_Time`/keepIn plus mid-sweep `SolveCircuit`/`SampleControlDevices` and
-  DynaVars `Recalc/Restore_Time_Step` — none exist until the control loop +
-  DynaVars land); the queue's `DebugTrace`/`WriteTraceRecord` file (RegControl
-  debug-trace, WP5.5+); `WriteQueue`/`QueueItem` (Show, Phase 8); the
-  `EventLogDefault` global (default `False` already matches controls'
-  `show_event_log` default — wire when a gate flips it). dss-core lib tests
-  181 → 190 (+7 control_queue + 2 event_log).
+**WP7.6 (Harmonics) — ✅ COMPLETE (steps 1–3).** Full per-step records (decisions,
+the two real-port-bug write-ups, the `capture_element` oracle-quirk investigation,
+and all six audit follow-ups) archived at
+[`docs/phase-records/phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md). In brief:
+- **step 1 — current-source family (VSource + Load) + the solve-mode driver:**
+  `SolveHarmonic`/`SolveHarmonicT`, `InitializeForHarmonics` + the in-memory
+  fundamental save/restore, `Spectrum.SetMultArray`/`GetMult`, the `harmonic =
+  frequency/fundamental` fix, the VSource short-at-harmonics branch, and the Load
+  `InitHarmonics`/`DoHarmonicMode` + the harmonic YPrim `%SeriesRL` split (the ~40%
+  load-admittance bug the golden caught, not the smoke test). lib 639 → 650.
+- **step 2 — Thevenin DER family (Generator/PVSystem/Storage):** each a voltage
+  source behind its subtransient reactance — `InitHarmonics` (Yeq + the
+  `Vthevharm`/`ThetaHarm` capture) + `DoHarmonicMode` (spectrum-scaled,
+  phase-rotated injection through YPrim) + the harmonic `CalcYPrimMatrix` Y=Yeq
+  branch + the `SetNominalGeneration` harmonic guard; the `guard_unported_harmonic_der`
+  removed. The `capture_element` `Powers`-before-`Currents` swap pins the oracle's
+  consistent harmonic power past a confirmed upstream stale-`Iterminal` engine bug
+  (write-up in `investigations/`, git-ignored). lib 650 → 653.
+- **step 3 — monitor harmonic header + the `Set mode=` reset + the corpus
+  burn-down:** `ClearMonitorStream` labels the two time columns `Freq`/`Harmonic`
+  in harmonics mode (offline-gated — the C-API `Monitors_Get_Header` strips them),
+  and the `Set Mode=` handler now runs the full Pascal `Set_Mode` reset tail
+  (monitors + meters ahead of faults + controls). Harmonics corpus burn-down is
+  **0 migratable** — all 4 decks are Phase-8 (`Export`) / `Isource` /
+  FaultStudy-blocked, not harmonics-blocked (2 stale `Swtcontrol` tags refreshed).
+  lib 653 → 656; golden_phase7 **60**; `solvable_now` **84**.
 
-**WP5.5 — RegControl behavior — ✅ done, gate-green.** Files:
-- `reg_control.rs`: ported `Sample` (top-to-bottom: maxtapchange-0 early exit,
-  the reverse/cogen power-direction block incl. `ReverseNeutral`, the
-  regulated-bus vs `GetWindingVoltages` control-voltage paths, `GetControlVoltage`
-  PTphase selection, the Vlimit local-bus check, R+jX / Beckwith `LDC_Z` line-drop
-  compensation, the band test with the InReverse tap-divide, the
-  `Round(BoostNeeded/Increment)·Increment` pending-tap + winding/reverse
-  direction flip, and the arm/disarm queue push/delete) and `DoPendingAction`
-  (CTRLSTATIC `AtLeastOneTap`; EVENT/TIME/MULTIRATE `OneInDirectionOf` + re-push;
-  `ACTION_REVERSE` mode toggle), plus `AtLeastOneTap`/`OneInDirectionOf`/
-  `ComputeTimeDelay`/`GetControlVoltage`/`set_PendingTapChange`/`VLimitActive`.
-  New runtime fields (`last_change`, `control_action_handle`, `rev_handle`/
-  `rev_back_handle`, `in_reverse_mode`/`reverse_pending`/`in_cogen_mode`,
-  `controlled_phase`). The pending-tap `Round` uses `round_ties_even`
-  (`TODO(compat)` FPC banker's rounding — **the single most tap-sensitive line**).
-  `sample`/`do_pending_action` are `pub(crate)` + `#[allow(dead_code)]` (wired by
-  the control loop in WP5.7). 7 inline tests against a mock transformer
-  (out-of-band-high arms a downward tap, in-band disarm, CTRLSTATIC ≥1-tap apply
-  + `system_y_changed`, EVENTDRIVEN one-tap + re-push, event-log line,
-  inverse-time delay, maxtapchange=0 exit).
-- **Shared engine:** the controls' shared `CtrlCtx` (PHASE5_PLAN §2.1 disjoint
-  borrow: `node_v`/`sys`/`queue`/`events`/`errors`/`system_y_changed` + the
-  `int_hour`/`t`/`dbl_hour`/`control_iter` scalars + `control_mode` + `self_ref`)
-  and the `CTRL_NONE`/`OPEN`/`CLOSE` action codes live in `control_elem.rs`.
-  Transformer gained the **`ControlledTransformer` trait** (`Sample`/`DoPending`'s
-  read/mutate surface — `winding_voltages` = `GetWindingVoltages`, `power_into_re`
-  = `Power[t].re`, `terminal_currents` = `GetCurrents`, tap getters/`set_present_tap`,
-  `wdg_connection`/`base_voltage`/`rotate_phases`) so the regulator logic is
-  unit-testable against a mock; `set_present_tap` now returns "Y must rebuild"
-  (Pascal `Set_YprimInvalid`'s `SystemYChanged` trigger, gated by `Enabled`).
-  Control-mode ordinals `EVENTDRIVEN`/`TIMEDRIVEN`/`MULTIRATE` added to
-  `solution`. **Indexing note:** the control's voltage/current buffers and
-  `controlled_phase` are 0-based in the port (Pascal `VBuffer`/`CBuffer`/
-  `ControlledPhase` are 1-based); the LDC pickup index is
-  `nconds·(term−1) + controlled_phase`.
-- **Deferred:** `RegWriteTraceRecord`/`RegWriteDebugRecord` debug-trace file
-  (DebugTrace flag stored, no file); `MakePosSequence`. dss-core lib tests
-  190 → 197 (+7 RegControl behavior).
+**WP7.7 (Dynamics core) — ✅ COMPLETE (steps 1–4).** Full per-step records (decisions,
+the real-port-bug write-ups — the `Open`-verb no-op, the `set_ITerminalUpdated`
+stamp sweep, the per-step InvControl `FFlagVWOperates` reset — the
+dynamics-tolerance reviews, and every audit follow-up) archived at
+[`docs/phase-records/phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md). In brief:
+- **step 1 — the `SolveDynamic` predictor/corrector driver**
+  (`solution/solution/dynamics.rs`): `SolveMode::Dynamic` → `solve_dynamic`, the step
+  loop over `DynaVars.h` (`IntegratePCStates` + the pre-`set_mode`
+  `calcInitialMachineStates` entry hook), and the Load `GENERALTIME`/`DYNAMICMODE`
+  `SetNominalLoad` arm. lib 656 → 659.
+- **step 2a — Generator dynamics + Monitor mode 3 + the `Open`-verb fix:** the classic
+  (`DynamicEqObj = NIL`) shaft-swing machinery (voltage source behind `Zthev`,
+  trapezoidal `Speed`/`Theta`), Monitor mode 3's real sample body, and a real
+  `Open class.name` (omitted `term=`) no-op bug fix. Oracle-pinned on Kundur Ex.13.1
+  (steady + fault + the full undamped swing). lib 659 → 662.
+- **step 2b — PVSystem/Storage GFL inverter dynamics** (`InvDynamics.TInvDynamicVars`):
+  the shared per-phase PI current loop + the 22/34-var mode-3 interface + a latent
+  Storage SOC-in-dynamics fix; oracle-pinned on 4 PV/Storage decks. lib 662 → 666.
+- **step 3a — IndMach012** (`pc/ind_mach012/`): the symmetrical-component induction
+  machine (slip-Newton power flow + voltage-behind-`Zsp` dynamics, 22 mode-3 vars).
+  Found + fixed the missing `set_ITerminalUpdated` stamp (a stateful extra slip step
+  first mis-filed as "conditioning" — a [[dont-rationalize-conditioning]] catch),
+  then swept the stamp across all 5 model-contribution sites. lib 666 → 672.
+- **step 3b — DynEqPCE integration for the Generator** (`pc/dyneq_pce.rs`
+  `DynEqPceData` + the edit-loop `ParseDynVar` fallback): a Generator driven by a user
+  `DynamicExp` (`DynamicEq=`/`DynOut=`/inline initializers) instead of its built-in
+  shaft model; oracle-pinned on the Kundur DynExp deck, reproducing the classic gate's
+  physics exactly. Plus the two-part dynamics-tolerance review (all monitor pins
+  tightened to 1e-6; the `dSpeed`/`dTheta` cancellation-floor residuals pinned against
+  the oracle's actual value, not ≈0). lib 672 → 676.
+- **step 3b cont. — DynEqPCE integration for the inverters (PVSystem + Storage):**
+  `InvBasedPceData` now embeds the shared `DynEqPceData` (dropping its bare
+  `DynamicEq`/`DynOut` fields), so PVSystem/Storage get the same machinery as the
+  Generator (the `DynEqPce` trait, `parse_dyn_var`, `DynOut` resolution, the
+  `DynamicEq=` sizing side effect). The per-phase `InitStateVars`/`IntegrateStates`
+  `DynamicEqObj <> NIL` branches (`it[i]`/`dit[i]` ↔ `DynOut[0]`; the inverter
+  calc-value overrides `2`→`Vgrid[i].mag` / `4`→nothing / `10`→`RatedVDC` /
+  `11`→`SolveModulation`+`m[i]`, else `Get_PCE_Value`) + the DynExp
+  `NumVariables`/`VariableName`/`GetAllVariables`/`Get_Variable`/`Set_Variable`
+  interface. Oracle-pinned on self-contained PV/Storage GFL-DynExp mode-3 decks (the
+  corpus `myDiffEq`/`myDiffEq2` filter equations) — steady + the two fault/disturbance
+  gates + the PV sample-0 step — matched first-run, no fudging. *audit-code:* faithful
+  (no behavioral deviation); fixed 8 stale `NOT_PORTED: DynamicEqObj` docs (4 inverter
+  + 4 Generator). *audit-tests:* sound + non-vacuous (mutation-verified: a wrong
+  readback slot / skipped `SolveModulation` each fail on both PCEs); added the two fault
+  gates + the PV sample-0 pin. lib 676 → 680; `solvable_now` **84** (the corpus
+  GFL_IEEE123 DynExp deck is a daily/`Plot`-blocked Phase-8 case — no migration).
+- **step 4 — dynamics gate finalize + corpus burn-down (WP7.7 COMPLETE).** The
+  focused dynamics gate is **`exec/tests/dynamics.rs`** (the comprehensive
+  oracle-pinned mode-3 + fault tests for Generator / PVSystem / Storage / IndMach012
+  / the DynExp variants — already the gate for steps 2a–3b cont.); a separate
+  `phase7/dynamics*.json` command-replay golden would be redundant (the harness pins
+  power-flow/control monitors, not dynamics mode-3 — the exec tests are the stronger
+  guard). **Corpus burn-down = 0 migratable** (recon-confirmed): all 20 dynamics-mode
+  corpus decks are blocked by a Phase-8 verb or a deferral, **not** by the dynamics
+  engine — e.g. `DistanceRelayTest` *converges* on Rust (2 iters) and is blocked only
+  by trailing `Plot`; the others by `var`/`@Zbase` (Kundur), `BatchEdit` (GFL_IEEE123),
+  `MakeBusList`/`Plot` + `LoadShape action=normalize` (InductionMachine), the GFM mode
+  (deferred), the `WindGen` class (Phase 9), or an oracle-side missing data file.
+  `solvable_now` stays **84**. **WP7.7 (Dynamics core) is COMPLETE** (steps 1–3b cont.
+  + this finalize). The **GFM grid-forming inverter mode** stays deferred (NOT_PORTED
+  loud abort across Generator/PVSystem/Storage `DoDynamicMode`).
+  - **Tracked-open (Generic/TD21 relay Sample).** A WP7.2 carry-forward: the dynamics
+    machinery these need landed in WP7.7, so both are now *portable*, but they stay
+    deferred — every Generic/TD21 (and Distance) corpus deck is Phase-8 `Plot`-blocked
+    so they can never enter `solvable_now`, and the corpus-backed WP7.8 classes take
+    precedence. GenericLogic is ~26 Pascal lines (reads `MonitoredElement.Variable[idx]`
+    via the now-live state-var interface); TD21Logic is ~253 lines (a ring-buffer
+    time-domain distance relay). The `NOT_PORTED` message text was updated to the
+    honest framing (Phase-8 `Plot`-blocked, not "needs WP7.7"). Revisit in a focused
+    follow-up or once Phase-8 `Plot` lands a no-op.
+- **next:** WP7.8 (VCCS, UPFC + UPFCControl, VSConverter, ESPVLControl) — the
+  converter/FACTS dynamics family.
 
-**WP5.6 — CapControl behavior — ✅ done, gate-green.** Files:
-- `cap_control.rs`: ported `Sample` (PresentState from the bank's `Closed[0]`;
-  the voltage-override block; the `ControlType` dispatch —
-  Current/Voltage/kvar/Time/PF; the `Delay`/`DelayOff`/`DeadTime` arm-on-queue
-  + the `Armed && PendingChange=None` disarm/delete) and `DoPendingAction`
-  (open/close all phases + AddStep/SubtractStep, multi-step step-up/down, event
-  log), plus `GetControlCurrent`/`GetControlVoltage` (the `mon_phase`
-  avg/max/min → −1/−2/−3 selection, delta L-L on the controlled cap's
-  connection), `Set_PendingChange`, the `pf_1to2` PF mapping, and
-  `TimeOfDay(useEpsilon)` for time control. New runtime fields
-  (`pending_change`, `present_state`/`initial_state`, `armed`,
-  `voverride_event`, `control_action_handle`). `sample`/`do_pending_action` are
-  `pub(crate)` + `#[allow(dead_code)]` (wired by the control loop in WP5.7). 10
-  inline tests against mock cap + mock monitored element (kvar arm-close/
-  arm-open/in-band, single-step open/close, multi-step step-down, time-window
-  close, PF leading-room close, event-log line, `pf_1to2`).
-- **Shared engine:**
-  - **`ControlledCapacitor` trait** (`capacitor.rs`, mirroring
-    `ControlledTransformer`): `num_steps`/`available_steps`/`total_kvar`/
-    `connection`/`is_closed`/`set_closed`/`add_step`/`subtract_step`/
-    `full_name`, with `Capacitor` the production implementor. New private
-    Capacitor methods `add_step`/`subtract_step` (Pascal verbatim — `set_states`
-    invalidates Y on change), `available_steps`, and terminal-1 conductor
-    open/close (`Closed[0]` get/set → `cd.yprim_invalid`).
-  - Two **default `CktElement` methods** for the *generic* monitored element:
-    `get_term_voltages` (Pascal `TDSSCktElement.GetTermVoltages`) and
-    `terminal_power` (Pascal `Get_Power(idxTerm)`).
-- **Design note — Sample's two trait objects:** `sample(cap: &mut dyn
-  ControlledCapacitor, mon: &mut dyn CktElement, ctx)`. For Current/Voltage/
-  kvar/PF the monitored element ≠ the capacitor; for Time control `mon` is the
-  capacitor and is **not** read. WP5.7 must obtain both from the foreign view
-  (the same-`ElemRef`/double-`&mut` case only arises for Time control, where
-  `mon` is unused — pass a scratch).
-- **Deferred:** `VOverrideBus` voltage path (`GetBusVoltages` from a named bus
-  needs solve-time bus resolution; `VoverrideBusSpecified` is always reverted at
-  parse, so the branch is unreachable — sense the monitored terminal instead);
-  `FOLLOWCONTROL` (ControlSignal/LoadShape is `NOT_PORTED` — Pascal aborts the
-  solution when unset, which is always the case here, so `Sample` records that
-  error); `USERCONTROL` (no DLLs); `Reset`'s `Closed[0]` restore (needs the
-  cap — control-loop reset path, WP5.7); `MakePosSequence`. dss-core lib tests
-  197 → 207 (+10 CapControl behavior).
+**WP7.8 (Converter/FACTS family) — ✅ COMPLETE.**
+- **VSConverter (`pc/vs_converter/`) — done, gate-green.** A 2-terminal AC/DC bridge
+  (power-flow only, no dynamics state): the first `phases-Ndc` conductors are AC (a
+  voltage source `Vdc·0.353553·m0∠d0` behind `Rac+jXac`, a `YPrim_series` block), the
+  last `Ndc` are DC (a power-balance current source `Idc = Pac/|Vdc|` clamped to
+  `±IDCMax·kW/kVDC`). 19 props + the `VSCMode` enum (the 5 modes parse/dump but Pascal
+  `GetInjCurrents` only ever uses the fixed `m0/d0` — no mode-dependent behavior).
+  **Proven upstream oracle bug (NOT reproduced).** `VSConverter.GetCurrents` →
+  `GetInjCurrents(ComplexBuffer)` self-aliases `YPrim.MVMult(Curr, ComplexBuffer)`
+  (`Curr == ComplexBuffer`) then re-reads the post-mult buffer for the `Pac` estimate,
+  so the oracle's *reported* converter currents violate KCL (oracle-probed:
+  |I_ac| ≈ 1248 A self-report vs the physical ≈ 390 A; the oracle's *source* current is
+  the correct 390 A and ≠ −(self-report)). The port computes the physically-correct,
+  KCL-consistent current and deliberately does **not** reproduce the self-report bug
+  (cf. WP7.6 "не порти баг эталона"). Gate: `exec/tests/vs_converter.rs` pins the
+  oracle's correctly-reported **source** currents + the KCL tie + the DC power-balance +
+  the term-2 series mirror (a non-vacuous oracle gate that sidesteps the buggy
+  self-report); + `props/vsconverter.json` (3 scenarios). **No corpus migration** — the
+  3 VSConverter corpus decks compare the oracle's buggy currents (`vsc0/vsc1test` →
+  `skipped_oracle_issue`) or don't converge on either engine (`vsctest`, near-short).
+  lib 680 → **681**; `solvable_now` 84. (Fork-drafted; oracle bug + numerics
+  independently re-verified in the main loop before commit.)
+- **VCCS (`pc/vccs/`) — done, gate-green.** The HW-inverter voltage-controlled
+  current source — a full 1:1 port incl. the z-domain ring-buffer filter dynamics.
+  Power flow: ideal current source (`YPrim = 0`) injecting `BaseCurr` at the
+  terminal-voltage angle (the `BP1`→scale→`BP2` PWL map of the pos-seq voltage,
+  XYcurve refs). Dynamics: **both** the time-domain **waveform** ring-buffer path
+  (`InitStateVars`/`IntegrateStates`, predictor/corrector via `IterationFlag`) **and**
+  the **RMS/PLL** path (`InitPhasorStates`/`IntegratePhasorStates`, `RmsMode=true`) +
+  the 6-var mode-3 interface; the ring buffers (`z`/`whist`/`zlast`/`wlast`/`y2`) kept
+  1-indexed so the error-prone `MapIdx`/`OffsetIdx` wraparound ports verbatim. 13 props.
+  `MakePosSequence` NOT_PORTED (the shared deferral); no oracle bugs found (KCL-clean).
+  New `SysCtx.dyna_t` (`DynaVars.t`). **Gate:** `HWtest.dss` (snapshot) migrated to
+  `solvable_now` (full-model live oracle match) — `solvable_now` 84 → **85**; +
+  `exec/tests/vccs.rs` 3 oracle-pinned mode-3 dynamics tests (HWDyn waveform +
+  HWPLL/HWPLL3 RMS, each pinning the t=0.1 s fault transient — the discriminating
+  ring-buffer check; **independently re-verified in the main loop** by re-probing
+  dss-python 0.15.7 — the HWDyn sample-50 fault transient matched the pins bit-for-bit)
+  + `props/vccs.json`. `HWDyn`/`HWPLL`/`HWPLL3` stay `skipped_unsupported` (built-in
+  `set mode=dynamic; solve` + `plot`, not snapshot-gateable); `DG_Prot_Fdr` now
+  converges (only `plot`-blocked). lib 681 → **687**. (Fresh-agent-drafted; numerics
+  re-verified before commit.)
+- **UPFC + UPFCControl (`pc/upfc/` + `control/upfc_control/`) — done, gate-green.**
+  The unified power-flow controller (PC element, power-flow only — the `Sr0`/`Sr1`
+  shift registers are persistent control state, not differential) + its control
+  element. UPFC: 17 props, the series `Xs` YPrim block, the 5-mode `GetOutputCurr`
+  (dead-band / `VpqMax`-clamp / loss-curve; mode 1 = voltage regulator is what the
+  corpus exercises), `GetInputCurr`/`CalcUPFCPowers`/`CalcUPFCLosses`, 14 mode-3 vars.
+  UPFCControl: the `UPFCList` + `CheckStatus`→`Sample`→`UploadCurrents` control-sweep
+  coupling (a dynamic fleet via a `UpfcDispatchEnv`, the GenDispatcher pattern; lazy
+  list resolution). New `exec/view.rs::element_variables` (live f64 `AllVariableValues`
+  analogue). **4 proven upstream oracle bugs, NOT reproduced** (oracle-probed): (1) a
+  **2nd UPFC crashes** the oracle (Access Violation — `TUPFCObj.Create` casts the
+  first UPFC to `TUPFCControlObj`, UB) → no UPFC MakeLike scenario; (2) `MakeUPFCList`'s
+  name-list branch is dead+broken (clears then reads `FUPFCNameList`); (3) a loss-curve
+  MakeLike self-assign no-op; (4) mode-3 monitor records nothing in a snapshot
+  (`SampleCount=0`) → the 14 vars are pinned against the live f64 `AllVariableValues`,
+  not the empty f32 channel (CLAUDE.md). **Convergence floor proven, not fudged:**
+  `Vbin`/`Vbout` are mid-iteration snapshots, so at the default 1e-4 tol the engines
+  stop ~4e-5 rel apart in the convergence band — but tightening to **1e-12** collapses
+  the gap (both reach the identical fixpoint `Vbin = 236.41620285` to 12 digits in the
+  **same 17 iterations**, oracle-probed), the CLAUDE.md proof of a shared fixpoint; the
+  gate pins the tight-tol fixpoint. **Gate:** `exec/tests/upfc.rs` (transcribed
+  UPFC_test_3 snapshot — `show`/`plot`-blocked so no corpus migration) pins the 14
+  mode-3 vars + UPFC currents/powers + the controlled transformers' powers + the
+  mode-3 header, all against dss-python 0.15.7 (**independently re-verified in the main
+  loop**: 17 iters + all 14 vars + currents + powers matched the pins bit-for-bit) +
+  `props/{upfc,upfccontrol}.json`. lib 687 → **693**. (Fresh-agent-drafted; numerics +
+  oracle-bug claims re-verified before commit.)
+- **ESPVLControl (`control/espvl_control/`) — done, gate-green. WP7.8 COMPLETE.**
+  The storage/PV "local controller" — a **faithful no-op on circuit state** (oracle
+  proven). The premise that `Sample` redispatches generators is a Pascal misread:
+  `MakeLocalControlList` populates from *other ESPVLControl* objects, then `Sample`
+  type-confuses each as a `TGeneratorObj` and writes `Gen.kWBase` onto another control's
+  non-electrical memory (modeled as an unobservable `phantom_kw_base` field). There is
+  no `kWLimit` prop (hardcoded 8000); only a `SystemController` acts; `Sample` never
+  pushes a control action. Net: with vs without the control the solution is
+  **byte-identical** and `ControlIterations` stays 1 (independently re-verified vs
+  dss-python 0.15.7). Ported all 11 props + the lazy `MakeLocalControlList` (Ftype-1
+  gate, name-list/scan-all, uniform weights) + `Sample`/`RecalcElementData` (err
+  371/372)/`MakeLike`; the dead PVSystem/Storage pointer lists round-trip but never
+  dispatch; `MakePosSequence` NOT_PORTED (shared deferral). Not a `TODO(compat)` — the
+  type-confusion is dead/harmless upstream code with no golden-pinned value (prose-doc,
+  per the convention). **Gate:** `exec/tests/espvl_control.rs` (6 synthetic oracle tests
+  incl. the with==without byte-identity) + `props/espvlcontrol.json`. lib 693 → **711**.
+  (Fresh-agent-drafted; the no-op + oracle behavior re-verified before commit.)
+- **WP7.8 (Converter/FACTS family) COMPLETE** — VSConverter, VCCS, UPFC + UPFCControl,
+  ESPVLControl all done, gate-green.
 
-**WP5.7 — control loop + `Sample_DoControlActions` — ✅ done, gate-green.**
-- `src/solution/controls.rs` (new): `sample_do_control_actions` /
-  `sample_control_devices` / `do_control_actions` (`Solution.pas` l.1941–2008),
-  `reset_all_controls` (`Utilities.DoResetControls`) and the verbatim
-  `do_multi_rate` (`ControlQueue.DoMultiRate` incl. `Recalc/Restore_Time_Step`
-  and the `Temp_Int`/`Temp_dbl` scratch choreography; it solves the circuit and
-  re-samples mid-sweep, so it lives at the solution level, not on the queue).
-  All four control modes dispatch (CTRLSTATIC nearest-ignoring-time /
-  EVENTDRIVEN advancing `intHour`/`t` / TIMEDRIVEN `do_actions` / MULTIRATE).
-- **The dispatch core** (`dispatch_control`): resolves the control's `ElemRef`s
-  against the registry and splits the mutable borrows per PHASE5_PLAN §2.1 —
-  `ElemStore` grew `obj`/`pair_mut`/`triple_mut` (implemented in the
-  executive's `ClassStore` via `get_disjoint_mut` at the class and object
-  levels), `DssObject` grew **`as_any_mut`** (all 17 classes). RegControl
-  pairs with its Transformer; CapControl triples with capacitor + monitored
-  element; for Time/Follow control (monitored == controlled) the monitored
-  role gets a *clone* of the capacitor (read-only role; covers the
-  voverride-with-time branch the WP5.6 "scratch" note missed). The control
-  queue is `std::mem::take`n out of the solution per sweep, so actions can
-  push/delete further records mid-sweep exactly like Pascal.
-- `check_controls` (real): converged → log "Control Iteration N" (gated
-  `ckt.LogEvents`) → sample/act → Y rebuild keeping voltages;
-  `solve_snap` gained the exact 485 warning ("Warning Max Control Iterations
-  Exceeded.\nTip: …") + `solution_abort` and the "Solution Done" log.
-  **All Pascal `LogThisEvent` call sites ported** (probed: the oracle's
-  `Set Log=yes` log includes them): "Solution Iteration N" / "Solve Sparse Set
-  DoNormalSolution ..." (DoNormalSolution), "Initializing Solution"
-  (DoPFLOWsolution), "Solve Sparse Set ZeroLoadSnapshot ...", and Ymatrix's
-  "Recalc All/Invalid Yprims" / "Building Whole/Series Y Matrix" /
-  "Reallocating Solution Arrays".
-- RegControl `do_pending_action` now **syncs `tap_snap`** after applying a tap
-  (Pascal's `Get_TapNum` reads the live transformer; our snapshot must track
-  the control-action mutation path or the `TapNum` getter/dump goes stale).
-  CapControl gained `reset_with(cap)` (the full Pascal `Reset` incl. the
-  `Closed[0] := InitialState` restore). `Set mode=` now runs
-  `reset_all_controls` (the Pascal `Set_Mode` tail).
-- **External-command abort reset:** CAPI `Text_Set_Command` clears
-  `SolutionAbort` per command from outside; `Dss::command` now does the same
-  when not inside a Redirect (nested redirects also keep `in_redirect` via
-  save/restore now). Probed: after a 485 abort the oracle's next `solve` runs
-  (and exceeds again) rather than reporting "Solution aborted.".
-- **Oracle-pinned unit tests** (exec): 2-bus regulator drives to tap 1.01875
-  in 6 total iterations; `maxcontroliter=2` + `maxtapchange=1` stops at 4
-  iterations, tap 1.00625, 485 warning, abort + external reset.
+**WP7.9 (FaultStudy + AutoAdd + Feeder) — ✅ COMPLETE.**
+- **step 1 — FaultStudy mode (`solution/solution/fault_study.rs`) — done, gate-green.**
+  Ported `TSolutionAlgs.SolveFaultStudy` and its `TSolutionObj` helpers
+  (`DisableAllFaults` → `SolveDirect` for the open-circuit Voc → `AllocateAllSCParms`
+  → `UpdateVBus` → `ComputeAllYsc` → `ComputeIsc`). Each bus's `Zsc` is built column
+  by column by injecting 1 A at each node and re-solving the **already-factored**
+  system Y (`SparseSet::solve` reuses the cached LU), i.e. each `Zsc` column is a
+  column of `Y⁻¹` restricted to the bus's nodes; `Ysc = Zsc⁻¹` (reusing
+  `support/cmatrix` `Invert`, whose singular path matches Pascal — degenerate buses
+  e.g. a delta-isolated zero sequence leave `Ysc` partially transformed, exactly like
+  upstream); `Isc = Ysc·VBus`. New `Bus` fields `zsc`/`ysc` (`Option<CMatrix>`) +
+  `allocate_bus_quantities`/`get_zsc1`/`get_zsc0`; new `exec/view.rs::bus_short_circuit`
+  (dss-python `Bus.Zsc1`/`Zsc0`/`Isc`). `SolveFaultStudy` sets `LoadModel=ADMITTANCE`
+  (faithful; no corpus FaultStudy deck has active loads). `MonteFault` still errors
+  (no corpus case). **Gate:** `exec/tests/fault_study.rs` — a self-contained radial
+  feeder whose bus `Zsc1`/`Zsc0` are the analytic series sums (e.g. b2 = source
+  0.5+2.0j + line 0.2+0.6j = 0.7+2.6j), pinned to dss-python 0.15.7 along with the
+  full-complex `Isc`. **Corpus 85 → 88:** the 3 `ShortCircuitCases` decks
+  (`ieee37_SC_Currents`, `ieee34Mod2_SC_Case_II`, `IEEE123Master-SC`) classify
+  **solvable** (full-model live oracle match — the post-study `NodeV` is the last
+  `ComputeYsc` column on both engines and agrees). lib 711 → **712**.
+  - **audit-code:** verdict **clean** (no blocker/major) — the port is loop-for-loop
+    faithful (order, `ComputeYsc` indices + ground convention, single-LU factor reuse,
+    bit-faithful singular invert, dynamics-entry timing all re-verified vs the oracle).
+    Confirmed `LoadModel=ADMITTANCE` is **faithful but inert for `Zsc`**: Pascal
+    `TLoadObj.CalcYPrim` runs identical code in the POWERFLOW/ADMITTANCE branches, so
+    the load YPrim (already in Y from the snapshot) is LoadModel-independent. Fixed a
+    `BusScView` doc nit (`vbus` is the stored `VBus`/Voc, **not** dss-python
+    `Bus.Voltages`, which returns the live residual `NodeV`).
+  - **audit-tests:** verdict **sound + non-vacuous** (every pin independently
+    re-derived from dss-python 0.15.7). Both audits flagged that the **corpus
+    migration validates the full power-flow model + FaultStudy mode behavior (node
+    order, residual `NodeV`, Y, element I/P) but NOT the per-bus `Zsc`/`Ysc`/`Isc`
+    deliverable** — that is the targeted test's job, and the Phase-8 `Export/Show
+    FaultStudy` reports (WP8.3/8.4) will systematically gate the formatted Zsc/Isc on
+    the corpus (a dedicated corpus Zsc capture now would duplicate that and need a
+    bespoke tolerance for the near-singular delta-isolated `Zsc0`). **Fix applied:**
+    extended `exec/tests/fault_study.rs` with a second oracle-pinned deck covering the
+    paths the balanced anchor can't — a **single-phase** bus (the `n=1`
+    `avg_off_diagonal`=0 branch + 1×1 invert), an **asymmetric** bus behind a
+    full-matrix line (non-circulant `Ysc` → distinct per-node `Isc`, exercising
+    `Ysc·VBus` + the `Zsc[j,i]` indexing), and a **delta-isolated** bus (near-singular
+    `Zsc0`≈5.2e7j — the deliberately-ignored `invert()` failure path; pinned as the
+    robust facts: well-conditioned `Zsc1` tight + `Zsc0` blows up + fault `Isc`
+    matches). lib 712 → **713**.
+- **step 2 — AutoAdd / MonteCarlo / LoadDuration / MonteFault — kept deferred (no
+  port).** Corpus probe found **zero** decks using `mode=autoadd`/`A`, `mode=M1/M2/M3`
+  (MonteCarlo), `mode=MF` (MonteFault), or `mode=LD1/LD2` (LoadDuration). Per the
+  PHASE7_PLAN §2.6 empirical rule ("port only if a corpus case needs it"), each keeps
+  the Pascal `Unknown solution mode.` error (the `dispatch.rs` catch-all, stale
+  "Phase 5" suffix replaced with an honest "no corpus case" note + a comment naming
+  the deferred modes). The `circuit/auto_add.rs` option skeleton (options round-trip)
+  is unchanged. No code beyond the message/comment.
+- **step 3 — Feeder — documented dead (no port).** Corpus probe found **zero**
+  `New Feeder.` instantiations; `Feeder.pas` is largely dead upstream (Phase 6 found
+  `DoFeederStuff` remnants dead). Nothing to port. **WP7.9 COMPLETE** (FaultStudy is
+  the only real deliverable; AutoAdd/Feeder are empirical no-ops per the plan).
 
-**WP5.8 — time-series modes + time options + BusCoords — ✅ done, gate-green.**
-- `Solution` grew the live DynaVars fields `int_hour`/`t`/`h` (+ existing
-  `dbl_hour`), `update_dbl_hour`, `increment_time` (exact modulo roll).
-  `set_mode` is now the **full Pascal `Set_Mode`** (free fn over the circuit):
-  clock reset, `OK_for_Dynamics`/`OK_for_Harmonics` guards (486/487 on
-  unsolved; the machine-state init behind a successful dynamics/harmonics
-  entry is Phase 7), default-control/load-model reverts, and the per-mode
-  defaults block (PEAKDAY/DAILY h=3600 n=24; YEARLY n=8760; DUTYCYCLE h=1 +
-  TIMEDRIVEN; HARMONIC CONTROLSOFF+ADMITTANCE; LD1/LD2 trapezoidal; ...).
-- `solve()` dispatches DAILY/YEARLY/DUTYCYCLE/PEAKDAY → `solve_daily`/
-  `solve_yearly`/`solve_duty`/`solve_peak_day` (SolutionAlgs.pas verbatim:
-  IncrementTime → `DefaultHourMult` from the circuit's default shape →
-  PriceShape signal → SolveSnap → monitor/meter `sample_all` hooks (no-op
-  stubs, Phase 6) → `EndOfTimeStepCleanup` (empty body, call sites kept)).
-- **Default DSS items**: `Dss::new` (and `Clear`) now runs the verbatim
-  `CreateDefaultDSSItems` command list (loadshape.default, growthshape.default,
-  spectrum.default/…, TCC_Curve.A/D/TLink/…); `New circuit.` resolves
-  `DefaultDailyShapeObj`/`DefaultYearlyShapeObj` to `loadshape.default`
-  (snapshot-cloned, same staleness as the WP5.3 shape refs). Circuit grew
-  `default_hour_mult` (FPC zero-init reproduced), `price_signal` (25.0),
-  `price_curve_obj`, `trapezoidal_integration`, `control_bus_name_redefined`
-  (raised by `set_bus_name_redefined`, cleared by the control loop).
-- **Set/Get options**: `hour`/`sec`/`stepsize` (+ alias `h`, `interpretTimeStepSize`
-  with the exact h/m/s suffix rules)/`time` (2-vector, FPC-Round hour,
-  `[ %d, %-g ] !... %-g (hours)` Get format)/`number`/`defaultdaily`/
-  `defaultyearly`/`pricesignal`/`pricecurve`. All round-trips oracle-pinned in
-  a unit test.
-- **`BusCoords` command** (`DoBusCoordsCmd`): aux-parser `bus, x, y` rows,
-  file resolved against `current_dir`, unknown buses silently skipped,
-  read errors abort the file (275-style message). Coordinates survive
-  `reprocess_bus_defs` (Phase 3 restore path). The unmodified masters need it.
-- **Property-dump fix found by the gate:** Pascal `GetPropertyValue` renders
-  `MappedIntEnumProperty` as the **ordinal** (`IntToStr`) — only string enums
-  dump the name (`DSSObjectHelper.pas` l.2241). Load `Model` now dumps "5",
-  not "Constant I". Also Transformer `WdgCurrents` now uses the exact
-  `%.7g, (%.5g), ` Pascal format. dss-core lib tests 207 → 212.
+**WP7.10 (Phase 7 exit) — ✅ COMPLETE (docs/verification only, no code change).**
+- **Marker sweep clean:** no `TODO`/`NOT_PORTED` orphan points at WP7.9/7.10. The
+  remaining deferrals all have a documented home — **GFM** grid-forming mode (the one
+  Phase-7-planned item descoped, tracked-open, NOT_PORTED loud abort) and the
+  **Generic/TD21** relay `Sample` (tracked-open) — both **Plot-blocked with zero
+  corpus payoff**; DLLs/UserModel = "never"; `MakePosSequence` = on-demand;
+  AutoAdd/Monte/LD/Feeder = no corpus case (WP7.9); 39 `TODO(compat)` = the deliberate
+  upstream-inexactness set wiped in the dedicated post-acceptance §6 pass (PORTING_PLAN
+  §6), not now. 3 residual `TODO(WP7.7)` are unreachable-edge-case hardening notes
+  (>3-phase dynamics, Model=6 UserModel generator).
+- **Gate:** full three-command gate + the always-on live corpus gate (88 cases) green;
+  `tests/corpus/COVERAGE.md` refreshed (solvable_now 85 → **88**, 26.3% of entry
+  points; the WP7.9 burn-down = the 3 ShortCircuitCases decks).
+- **No code/test audit:** WP7.10 changed only `STATUS.md` (docs/verification), so there
+  is nothing for `/audit-code`/`/audit-tests` to review.
+- **Phase 7 COMPLETE.** **next = Phase 8** (`PHASE8_PLAN.md` drafted). **Merge to
+  `main` (`--no-ff`, per-phase convention) is the HARD STOP — explicit user request
+  only; not done.**
 
-**WP5.9 — goldens + gate tests — ✅ done (the phase gate).** See "Phase 5
-gate" in §1 above. Generator facts:
-- There is **no `LogEvents` Set option** — the option is `Log` (TExecOption 66,
-  `ckt.LogEvents`); PHASE5_PLAN's `Set LogEvents=yes` spelling raises 130 in
-  the oracle. Scenarios use `set log=yes`.
-- The phase5 scenarios inline the IEEE13 master (controls active) with the
-  `IEEELineCodes.DSS` redirect dropped — the master only uses its inline
-  mtx601..607 codes, and command-replay goldens must be self-contained.
-- `capcontrol_micro` probe: `type=kvar onsetting=500 offsetting=300` on
-  `line.692675` opens Cap1 (the plan's 150/−225 suggestion never toggles).
-
-**WP5.10 — phase exit — ✅ this update.** Marker sweeps clean (every
-`TODO(compat)`/`NOT_PORTED` site points at its phase); stale "not ported in
-Phase 3" executive messages reworded; full gate green.
-
----
-
-## 1d. Phase 6 record (branch `phase-6-meters-topology` → merged to `main` `b98223a`)
-
-Execution plan: **`PHASE6_PLAN.md`** (WP6.1–WP6.10).
-
-**WP6.1 — Topology foundations — ✅ done, gate-green.** Files:
-- `src/circuit/ckt_tree.rs` (new): `CktTree`/`TreeNode`/`ZoneEndsList` as an
-  index arena (Pascal pointers → `ElemRef`/node indices), traversal ported
-  verbatim — `Add` (root: parent link but *not* in the parent's child list),
-  `AddNewChild`, `AddNewObject`, `PushAllChildren`+`GoForward` (LIFO stack:
-  **the last-added child is visited first**, and children added mid-sweep are
-  picked up via `ChildAdded` — observable as the meter `SequenceList` order),
-  `GoBackward`/`First`/`StartHere`/`Level`, the stateful
-  `Get_ToBusReference` cursor semantics (single entry always returned;
-  multi-entry iterates → `None` → resets). 6 inline tests hand-traced from
-  the Pascal. Plus `BuildActiveBusAdjacencyLists` (`build_active_bus_adjacency_lists`):
-  enabled non-shunt PD branches bucketed at **every** terminal bus (only if
-  `AllTerminalsClosed` = ≥1 closed conductor among the first nphases per
-  terminal); PC elements **and shunt capacitors/reactors** on the terminal-1
-  PC list. Verified: VSource is `NON_PCPD_ELEM` — in *neither* list (that is
-  why Pascal's zone build has the special `GetSourcesConnectedToBus` sweep);
-  exec test `bus_adjacency_lists_bucket_elements` pins all of this.
-- `elements/ckt.rs`: `ElemFlags` bitset (element-level subset of Pascal
-  `TDSSObjectFlag` — Checked/Flag/HasEnergyMeter/HasSensorObj/IsIsolated/
-  HasControl/IsMonitored/HasOCPDevice/HasAutoOCPDevice; the property-engine
-  flags are handled by other mechanisms) + the meter-zone fields on
-  `CktElementData` (`from_terminal` (init 1, Pascal TPDElement ctor),
-  `to_terminal`, `parent_pd`, `meter_obj`, `sensor_obj`,
-  `branch_num_customers`, `branch_total_customers`) — on the shared base
-  because Pascal puts `MeterObj`/`SensorObj` on TPCElement too.
-- `circuit/bus.rs`: the 7 reliability accumulators (`BusFltRate`,
-  `Bus_Num_Interrupt`, `BusCustInterrupts`, `BusCustDurations`,
-  `BusTotalNumCustomers`, `BusTotalMiles`, `BusSectionID`) +
-  `zero_reliability_accums` (`BusSectionID := -1`).
-- `GetIsolatedSubArea`/`GetSourcesConnectedToBus`/`FindAllChildBranches`
-  (CktTree.pas l.471-676) deliberately not ported yet: the WP6.4 meter zone
-  build has its own loop; port them with `Circuit.GetTopology` when a
-  consumer lands. dss-core lib tests 212 → 219.
-
-**WP6.2 — Generator — ✅ done, gate-green.** Files:
-- `elements/pc/generator.rs` (new): `TGeneratorObj` power-flow port (scope
-  PHASE6_PLAN §2.5). Full 44-prop table + spectrum/basefreq/enabled tails;
-  ctor defaults (kW=1000, kvar=60, kV=12.47, Vbase=7200 L-N, kVArating=
-  kW·1.2, puXd/Xdp/Xdpp=1/0.28/0.20, Vminpu/max=0.90/1.10, PVFactor=0.1,
-  pctReserve=20); `SetNominalGeneration` (dispatch ON/OFF via
-  GeneratorDispatchReference/PriceSignal, OFF → tiny −0.1·kW/nphases
-  resistive load; mode-dispatch shape mults; Yeq/Yeq95/Yeq105; model-3 var
-  clamp; model-7 PhaseCurrentLimit); `RecalcElementData`; `CalcYPrim`/
-  `CalcYPrimMatrix` (negate Yeq for generation, model-3 only 1% in Yprim,
-  wye/delta); **all six power-flow models** `DoConstantPQGen`/`DoConstantZGen`/
-  `DoPVTypeGen`/`DoFixedQGen`/`DoFixedQZGen`/`DoCurrentLimitedPQ` (model 7,
-  incl. ForceBalanced pos-seq via `SymComp`); `StickCurrInTerminalArray`
-  (signs **reversed** from Load — generator injects); `InjCurrents`/
-  `GetTerminalCurrents`; the kW/PF/kvar/kVA/MVA web (`SyncUpPowerQuantities`/
-  `SetkWkvar`/`side_effect_kvar`, `kVANotSet`); 6 energy registers +
-  `TakeSample`/`Integrate`/`SetDragHandRegister`/`CheckOnFuel`; the model-3
-  DQDV trio (`InitDQDVCalc`/`CalcDQDV`/`ResetStartPoint`). UserModel/UserData/
-  ShaftModel/ShaftData/DynamicEq/DynOut are `NOT_PORTED` (no DLLs / dynamics →
-  Phase 7) — stored + dumped, setting them is a hard parse error. Model 6
-  (user DLL) records error 567 at solve.
-- `obj/dss_enum.rs`: `gen_disp_mode`/`gen_status`/`gen_model` enums.
-- `circuit/circuit.rs`: `ElemKind::Generator` (joins PC list +
-  `generators` list), `generator_dispatch_reference` field.
-- `elements/traits.rs` `SysCtx`: `gen_multiplier`/`generator_dispatch_reference`/
-  `price_signal`; `ElemStore::obj_mut`. `elements/ckt.rs`:
-  `signal_reset_solution_initialized` (model-3 edit → `SolutionInitialized:=
-  FALSE`, propagated in `exec::edit_active`).
-- `solution/solution.rs`: `SetGeneratorDispRef` (per-mode dispatch ref, run at
-  `solve_snap` head) + `SetGeneratordQdV` (model-3 DQDV from the system-Y
-  diagonal via new `Solution::system_matrix_element`, then a re-init zero-load
-  snapshot), wired into `DoPFLOWsolution` where the Phase-3 stub had been.
-- Registered in `exec::Dss::new`. Tests: 7 inline (`set_nominal_generation`
-  scalars, kW/PF/kVA web, OFF state, delta nconds, fixed status, TakeSample)
-  + 2 exec integration (`generator_model1_pq_snapshot`,
-  `generator_model3_pv_snapshot` — the latter exercises the DQDV path),
-  numbers transcribed from the oracle. `gen_props.py`: 8 Generator scenarios
-  (default, kW/PF, kW/kvar delta, model-3 PV, kVA, fuel, status/dispatch,
-  makelike) → `props.json` regenerated; `props_roundtrip` green. dss-core lib
-  tests 219 → 228.
-
-  Class-level `SampleAll`/`ResetRegistersAll` sweeps + the solution-loop
-  sample call sites are deferred to WP6.5 (they belong with the EnergyMeter
-  hook wiring); `TakeSample` itself is ported and unit-tested now.
-
-**WP6.3 — MeterElement base + Monitor — ✅ done, gate-green.** Files:
-- `elements/meter/meter_element.rs` (new): `MeterElementData` (Pascal
-  `TMeterElement`, embeds `CktElementData`): `metered_element: Option<ElemRef>`
-  + `metered_terminal`/`metered_element_changed` + a `MeteredSnapshot`
-  (full_name/kind/nphases/nconds/nterms/yorder/buses + num_windings/num_steps/
-  num_variables — captured at `element=` resolution like the WP4.7 control
-  `RefSnapshot`, since `RecalcElementData` runs at `EndEdit` after the foreign
-  view is gone) + the sensor-allocation arrays and
-  `AllocateSensorArrays`/`CalcAllocationFactors` (ported, `#[allow(dead_code)]`
-  until Sensor in WP6.7).
-- `elements/meter/monitor.rs` (new): `TMonitorObj` port. Props 1–7 (`element`
-  any-class `object_ref_any`, `terminal`, `mode`, `action`, `residual`,
-  `VIPolar`, `PPolar`) + CktElement tail (`basefreq`/`enabled`/Like = 10);
-  `RecalcElementData` (mode→class validation 663/664/2016001/2016002, terminal
-  check 665, adopt metered nphases/nconds, `SetBus(1,…)`); `ClearMonitorStream`
-  (the **exact** per-mode header strings + `RecordSize`, incl. all the
-  ±16 sequence / ±32 magnitude / ±64 pos-seq / residual / VIpolar/Ppolar
-  combos — probed against the oracle); `TakeSample` (modes **0,1,2,5,6,9,11**
-  faithfully, the symmetrical-component + power + polar conversions, residual,
-  the magnitude/posseq write paths) into a growing in-memory **`Vec<f32>`**
-  (`AddDblToBuffer` f32 narrowing; one buffer holds all samples — we never
-  spill to disk, so `Save`/`MonitorStream` flush is folded in). `CalcYPrim` is
-  empty and `GetCurrents` returns zeros (a monitor never stamps Y). Modes 3
-  (PCElement state vars — dynamics surface), 4 (flicker/Pstcalc), 7 (Storage),
-  8/10 (transformer winding currents/voltages) and 12 (LL) build their header
-  but **defer the sample body** (no gate exercises them; Phase 6+/7) — noted in
-  the module header. File `Save`/`TranslateToCSV` is Phase 8.
-- **Shared engine:** `obj/dss_enum.rs` `monitor_action` enum (Clear/Save/
-  TakeSample/Process/Reset → 0/1/2/3/0); `capacitor.rs` `states()` accessor
-  (mode-6 read). `circuit.rs`: `ElemKind::Meter` (device list + new `monitors`
-  list, **not** PD/PC, no Yprim — like controls). `exec/mod.rs`: Monitor
-  registered **after** Generator (Pascal DSSClassDefs.pas:288); the `Sample`
-  command (`DoSampleCmd` → `MonitorClass.SampleAll`) and a minimal `Reset`
-  command (`reset_all_monitors`); a public `Dss::monitor_view(name)` →
-  `MonitorView` (header/sample_count/dbl_hour/channels) mirroring dss-python
-  `Monitors.Header`/`SampleCount`/`Channel(i)`/`dblHour`.
-- **Solution wiring:** `solution/monitors.rs` (new) — `sample_all_monitors`
-  (Pascal `SampleAll` mode≠5 / `SampleAllMode5` mode=5; pair_mut the monitor +
-  its metered element, the WP5.7 disjoint-borrow pattern) + `reset_all_monitors`.
-  The Phase-5 no-op hook stubs got real bodies: `sample_all_monitors_and_meters`
-  → monitor `SampleAll` (EnergyMeter `SampleAll` still WP6.5);
-  `end_of_time_step_cleanup` → `SampleAllMode5` (`SolutionAlgs.pas` l.96).
-- **Oracle facts (probed, then pinned):** snapshot `Solve` does **not** sample
-  monitors — sampling happens in the time-series loop (or the `Sample`
-  command + a buffer flush); a daily `number=1 stepsize=1h` solve samples at
-  hour 1 where the flat default shape gives mult=1, so the sample equals the
-  snapshot solution. Mode-5 channels 11/12 (`SolveSnap_uSecs`/`TimeStep_uSecs`)
-  are wall-clock timings → the port records 0 and the tests skip them.
-- Tests: 4 exec integration (`monitor_mode0_mode1_daily` — V/I + powers
-  channels transcribed from the oracle; `monitor_mode5_solution_vars` — the 10
-  deterministic solution vars; `monitor_header_modifiers` — 7 modifier-combo
-  headers; `monitor_mode2_tap_and_class_check` — transformer tap + the 663
-  class-mismatch error). `gen_props.py`: 5 Monitor scenarios (default, mode-1
-  residual+ppolar, mag+seq VIpolar-off, transformer-tap, makelike) →
-  `props.json` regenerated (pure insertions); `props_roundtrip` green. dss-core
-  lib tests 228 → 232.
-
-**WP6.4 — EnergyMeter object + zone build — ✅ done, gate-green.** Files:
-- `elements/meter/energymeter.rs` (new): `TEnergyMeterObj` port. Props 1–24 +
-  the CktElement tail (`basefreq`/`enabled`/Like = 27): `element`
-  (`object_ref_any`), `terminal`, `action`, `option`/`ZoneList` (the new
-  `string_list` prop type), `kVANormal`/`kVAEmerg`, `PeakCurrent`
-  (`double_v_array` over `SensorCurrent`, length = nphases), `Mask`
-  (`double_f_array` over the 67 registers), the 7 loss-report booleans,
-  `Int_Rate`/`Int_Duration`, and the 5 read-only reliability doubles. Ctor
-  seeds the fixed register names + `SensorCurrent := 400 A`, `ResetRegisters`
-  (drag-hand maxima = −1e50). `RecalcElementData` (PD-element validation 525,
-  terminal check 524, `SetBus(1,…)` + adopt nphases/nconds on element change),
-  `MakeLike`, `AssignVoltBaseRegisterNames` (`%.3g kV …` via `util::fmt_g`).
-  `CalcYPrim` empty, `GetCurrents` zeros. The register **accumulation**
-  (`TakeSample`, WP6.5) and reliability indices (WP6.6) are deferred; the
-  register/derivative/totals-mask arrays + drag-hand reset are in place.
-- `solution/meters.rs` (new): the zone builder as free functions over the
-  registry (the WP5.7 dispatcher pattern — the meter's `BranchList`/
-  `SequenceList`/`LoadList`/`ZonePCE`/`VBaseList` are built in **locals** while
-  the *other* elements' flags/refs and the buses' `DistFromMeter` are mutated
-  through the store, then installed into the meter). `do_reset_meter_zones`
-  (Circuit.pas `DoResetMeterZones`, gated on `meter_zones_computed`/
-  `zones_locked`) → `reset_meter_zones_all` (clear Checked/IsIsolated/
-  TerminalsChecked + meter/sensor/parent refs on every element, build bus
-  adjacency, `SetHasMeterFlag`, walk meters in creation order) →
-  `make_meter_zone_lists` (verbatim main loop: `AddNewObject` shunts,
-  `AddNewChild` PD branches, `AddToVoltBaseList`, loop/parallel detection via
-  `CheckParallel`, `ZoneEndsList`, customer counting) + `TotalUpDownstream​Customers`
-  (backward sweep) + `GetPCEatZone`.
-- **Trigger wiring:** `ymatrix.rs` `build_y_matrix` calls `do_reset_meter_zones`
-  right after `reprocess_bus_defs` (Pascal `ReprocessBusDefs` tail, Circuit.pas
-  l.2246) — so zones rebuild on every Y-build that reprocessed the buses (with
-  `zones_locked = false`).
-- **Shared engine:** new `PropType::StringList` + `PropDef::string_list`
-  (Pascal `InterpretTStringListArray` parse / `StringListToString` render
-  `[a, b, c]`) + `DssObject::{get,set}_string_list`; the `DoubleFArray` parse
-  now returns the **parsed count** via `parse_as_vector` (Pascal `ParseAsVector`
-  → `prevInt`), which the `Mask` side effect needs to default the unspecified
-  slots to 1.0. `obj/dss_enum.rs` `energy_meter_action` enum (Allocate/Clear/
-  Reduce/Save/TakeSample/ZoneDump → 0..5). `circuit.rs`: `ElemKind::EnergyMeter`
-  + new `energy_meters` list (device list, no Yprim, not PD/PC). `meter_element.rs`
-  `AllocateSensorArrays` fixed to **preserve** `SensorCurrent`/`SensorVoltage`
-  across resizes (Pascal `ReAllocMem`; the ctor's 400 A survives the recalc).
-  `exec/mod.rs`: EnergyMeter registered after Monitor; public
-  `Dss::meter_zone(name)` → `MeterZoneView` (`AllBranchesInZone`/`AllEndElements`/
-  `ZonePCE`/`RegisterNames`) mirroring dss-python `Meters.*`.
-- **Oracle facts (probed, then pinned):** `Meters.AllBranchesInZone` =
-  `SequenceList` = the BranchList `GoForward` (LIFO-over-children) order;
-  `AllEndElements` = the `ZoneEndsList` order; `ZonePCE` = the shunt objects in
-  branch order. A sub-meter mid-feeder **stops** the parent meter's zone (the
-  metered element gets `HasEnergyMeter`, excluded from the PD search). The
-  StringList dump is `[E, R, C]`-style; `Mask` defaults trailing slots to 1.0.
-- Tests: 3 exec integration (`energymeter_zone_radial` — branches/ends/PCE +
-  `TotalUpDownstreamCustomers` totals; `energymeter_submeter_boundary` — the
-  sub-meter zone split; `energymeter_requires_pd_element` — the 525 error).
-  `gen_props.py`: 3 EnergyMeter scenarios (default, option/mask/zonelist/
-  peakcurrent edited, makelike) → `props.json` regenerated (pure insertions);
-  `props_roundtrip` green. dss-core lib tests 232 → 235.
-
-**WP6.4 hardening (audit-driven) — ✅ done, gate-green.** Closed the gaps an
-audit flagged against the Pascal spec:
-- **Manual `ZoneList` zone build implemented** (Pascal l.1987 else-branch): new
-  `ElemStore::find_ckt_element` (Pascal `SetElementActive`) resolves the listed
-  full names; each branch terminal consumes the next valid PD entry via the
-  monotonic `zone_list_counter`. NOTE: the oracle (dss_capi 0.14.5) **access-
-  violates** on a manual zone, so there is no golden — the port produces a
-  deterministic, memory-safe zone instead (`energymeter_manual_zonelist` locks
-  it and guards against silent-no-op regression).
-- **PC-type filter** (`is_zone_pce`) added to the zone walk — the
-  `PCElementType ∈ {LOAD,GEN,PVSYSTEM,STORAGE,CAP,REACTOR}` allow-list Pascal
-  gates `AddNewObject` on (the adjacency list may hold any PC element).
-- **`EndEdit` recalc now gated on `needs_recalc`** (Pascal `Flg.NeedsRecalc`,
-  set only by `element`/`terminal`): editing an unrelated property — or creating
-  a bare meter with no element — no longer raises a spurious "Circuit Element
-  not set" (oracle: a bare meter is created cleanly).
-- **`set_voltage_bases` voltage-base timing fix** (Pascal `SetVoltageBases`
-  l.1083): suppress the meter-zone auto-build during the zero-load snapshot
-  (force both gate flags TRUE), assign `kVBase`, then call `DoResetMeterZones`
-  explicitly — so `AddToVoltBaseList` sees valid bases. Previously the zone was
-  built during `CalcVoltageBases` with `kVBase = 0`, leaving every per-base loss
-  register named `Aux<n>`.
-- Disabled / no-element meters now install a non-nil empty `BranchList`
-  (Pascal `TCktTree.Create` then `Exit`).
-- +7 exec tests (parallel lines, meshed/loop zone, multi-voltage-base register
-  names, manual zonelist, bad terminal 524, disabled empty zone, no-element/
-  unrelated-edit no-revalidation) — all transcribed from the oracle where it
-  doesn't crash. dss-core lib tests 235 → 242.
+**Phase-7 carry-forward (cross-cutting, beyond WP7.2):**
+- **Dirty-edge discipline (all four controls + the `Open`/`Close` verbs).** Every
+  trip/close/reset/Open forces conductors via `Closed[]` →
+  `TDSSCktElement.Set_ConductorClosed` (`CktElement.pas:287`) sets `YPrimInvalid :=
+  TRUE` → `SystemYChanged := TRUE` (`:240`) **unconditionally**, no
+  change-comparison. So each raises `system_y_changed` **unconditionally** (or via
+  an exact per-conductor check), **never** gated on a
+  `terminal_all_phases_closed`/`is_closed` aggregate (a partial-open terminal
+  otherwise slips a real change past the rebuild → stale Y); each control ships a
+  partial-open fail-on-regression test (`d0addb4`/`d1f48231`), and the `Open` verb
+  carries the Line/transformer round-trip guards.
+- **Reliability (step 3).** OCP flags + `GetOCPDeviceType` + the live `RelCalc`
+  SAIFI/SAIDI are in. The single-int `ocp_device_type` + single-flag model is exact
+  for the realistic one-OCP-per-element case; the move/re-enable reassignment edge
+  (a control redefined onto a different element, leaving the old element's flag
+  stale) is **not** un-set — consistent with the existing controlled-element force
+  model (the `SetSwitchClosed`/`SetConductorsClosed`/`Open` forces likewise never
+  un-force a previous target). Not exercised by any gate.
+- **Generic/TD21 Relay Sample logic deferred to WP7.7** (dynamics): the relay
+  parses + dumps `Type=Generic`/`TD21` but the live sensing records a `NOT_PORTED`
+  error. The corpus Distance/TD21 relay demos also need the dynamics solve mode.
 
 ---
 
-**WP6.5 — EnergyMeter registers + TakeSample + hook wiring — ✅ done, gate-green.**
-Files: `elements/ckt.rs`, `elements/traits.rs`, `elements/pd/{line,transformer,
-reactor,capacitor}.rs`, `elements/pc/load.rs`, `elements/meter/energymeter.rs`,
-`solution/meters.rs`, `solution/solution.rs`, `exec/mod.rs`.
-- **CktElement numeric surface** (`traits.rs`): `norm_amps`/`emerg_amps`
-  accessors (default 0; PD elements override), `max_terminal_one_imag`
-  (CktElement.pas l.552), `excess_kva_norm`/`excess_kva_emerg` (PDElement.pas
-  l.230/257 — side-effect-set the new `overload_een`/`overload_ue` on
-  `CktElementData`), `get_losses_split` (default `(total,total,0)`),
-  `get_seq_losses` (default 0).
-- **PD overrides:** `Line.get_seq_losses` (3-phase `Phase2SymComp`, Line.pas
-  l.1495), `Transformer.get_losses_split` (no-load = power into `Yprim_Shunt`,
-  Transformer.pas l.1635), `Reactor.get_losses_split` (`V²/Rp` shunt branch,
-  Reactor.pas l.1017).
-- **Load EEN/UE** (`load.rs`): `een_factor`/`ue_factor` fields +
-  `exceeds_normal`/`unserved` (Load.pas l.2057/2004 — lowest-phase-Vpu vs
-  the circuit `normal_min_volts`/`emerg_min_volts` criteria).
-- **`TakeSample`** ported verbatim as a free function in `solution/meters.rs`
-  (EnergyMeter.pas l.1289): metered-terminal power, the radial/meshed overload
-  EEN/UE pass (sets PD `Overload_*` + load factors), the zone losses sweep
-  (line/transformer split, seq + 3-/1-phase modes, voltage-base buckets),
-  `Accumulate_Load`/`Accumulate_Gen`, drag-hand maxima, and the
-  `MaxZonekVA`/excess overload-energy registers. `Integrate` honours the
-  circuit trapezoidal flag (skipping the first sample after reset);
-  `SetDragHandRegister` keeps running maxima. The meter's branch tree and
-  register arrays are moved out for the walk (the store keeps the meter
-  borrowed) and written back via `begin/end_take_sample`.
-- **Hook wiring:** `sample_all_monitors_and_meters` now runs
-  `take_sample_all` when the mode requests meter sampling; `DoSampleCmd`
-  (`Sample`) and `DoResetCmd` (`Reset`/`Reset Meters`) wired; new
-  `Set Trapezoidal=` option (ordinal 41); `Dss::meter_registers` test API.
-- **`take_sample_all`/`reset_all_meters`** added; `SystemMeter` core and the
-  Generator/Storage/PVSystem `ResetRegistersAll`/`SampleAll` call sites stay
-  deferred (WP6.8 / later), as does the phase-voltage-report demand-interval
-  path (Phase 8).
+## 2. What Phase 3 built (file-by-file map) — archived
 
-**WP6.5 audit follow-up — ✅ fixed, gate-green.**
-- **`Reset` (no-arg) now resets controls + clears the event/error log**
-  (`do_reset_cmd`), matching Pascal `DoResetCmd` (ExecHelper.pas l.1537):
-  the no-arg path was previously only resetting monitors + meters, silently
-  skipping `DoResetControls` even though Phase-5 controls exist. Re-uses the
-  already-tested `reset_all_controls`; the `C`/`E` selectors and the
-  unknown-argument error are now wired (`F`/`K` accepted as no-ops — no Fault /
-  KeepList class yet).
-- **Register-coverage tests** added against the oracle to exercise the
-  TakeSample paths the original WP6.5 tests left unvalidated: generator
-  registers (`Accumulate_Gen` sign), sequence-mode loss split, transformer
-  load/no-load split + a 2nd voltage-base bucket, line-overload + radial
-  EEN/UE, voltage-criterion EEN/UE, and the `Reset` controls path
-  (`capacitor_closed` test API). dss-core lib tests 242 → **251**
-  (3 WP6.5 daily-ramp tests + 6 follow-up).
-
----
-
-**WP6.6 — Reliability: fault-rate sweep + `RelCalc` — ✅ done, gate-green.**
-Files: `solution/meters.rs` (`calc_all_reliability_indices` /
-`calc_reliability_indices`), `elements/traits.rs` (`ReliabilityData` +
-`CktElement::reliability_data`), `elements/pd/{line,transformer,capacitor,
-reactor}.rs` (`CalcFltRate` overrides), `elements/ckt.rs` (PD reliability
-accumulators), `circuit/bus.rs` (`bus_int_duration` — the one missing
-`TDSSBus` field), `elements/meter/energymeter.rs` (source getters +
-`set_reliability_results`), `exec/mod.rs` (`RelCalc` cmd ord. 100 →
-`do_relcalc_cmd`).
-- Ports `TPDElement.CalcFltRate`/`AccumFltRate`/`CalcNum_Int`/
-  `CalcCustInterrupts`/`ZeroReliabilityAccums`, `TLineObj.CalcFltRate`
-  (× `Len`), and `TEnergyMeterObj.CalcReliabilityIndices` (EnergyMeter.pas
-  l.2411) 1:1, plus `DoLambdaCalcs` (the per-circuit driver: zero all buses,
-  loop meters; `AssumeRestoration` is the single positional yes/no param).
-- **Decision (user-confirmed): "faithful port, dormant math".** OCP devices
-  (Relay/Recloser/Fuse) are Phase 7, so `Flg.HasOCPDevice` is never set →
-  `SectionCount` stays 0 → `RelCalc` aborts with **error 52902 exactly like
-  the oracle** (dss-python raises `DSSException (#52902)` on the same feeder).
-  The section-array / SAIFI / SAIDI / CAIDI math below the abort is ported
-  verbatim but is unreachable until Phase 7 (`GetOCPDeviceType` inlined to 0
-  for now). The backward fault-rate sweep + customer rollup *do* run before
-  the abort, so the bus/branch accumulators are populated and testable.
-- Oracle pin: probed `relcalc` on a 2-section radial feeder → `#52902` (no
-  per-branch reliability getters exist in the COM API, so the dormant indices
-  can't be golden-pinned until OCP devices land). 6 tests: the 52902 abort +
-  hand-computed backward-sweep accumulators (`BranchFltRate =
-  FaultRate·pctperm·0.01·Len`; `AccumulatedBrFltRate`/miles roll-up;
-  `BusTotalNumCustomers`), a junction-rollup branching feeder, the no-section
-  invariant, and `AssumeRestoration` parse. dss-core lib 251 → **257**.
-- Audit hardening: `TotalUpDownstreamCustomers` now applies the full Pascal
-  `HasOCPDevice ∧ AssumeRestoration ∧ HasAutoOCPDevice` roll-up guard (via a
-  new meter `AssumeRestoration` field set by `DoLambdaCalcs`) instead of an
-  unconditional roll-up — correct-by-vacuity in Phase 6, future-proof for
-  Phase 7. `GetOCPDeviceType`'s inlined `0` is now marked `TODO(WP7)`.
-- Oracle-pinned after all: although per-*branch* getters are absent, the
-  per-*bus* reliability quantities the sweep fills before the abort **are**
-  exposed (`Bus.Lambda`/`N_Customers`/`TotalMiles`/`SectionID`). New
-  `tools/golden/gen_reliability.py` → `tests/golden/reliability.json` →
-  `tests/golden_reliability.rs` pins both feeders (radial + branching) to the
-  oracle; the branch accumulators follow from the bus↔branch identity (no OCP →
-  branch value = FROM-bus value).
-
----
-
-**WP6.7 — Sensor + load allocation — ✅ done, gate-green.** Files:
-`elements/meter/sensor.rs` (new), `elements/meter/{mod,meter_element}.rs`,
-`elements/pc/load.rs`, `solution/meters.rs`, `circuit/circuit.rs`, `exec/mod.rs`.
-- `elements/meter/sensor.rs` (new): `TSensorObj` port. Props 1–12 + the
-  CktElement tail (`element` `object_ref_any`, `terminal`, `kVBase`, `clear`
-  boolean-action, `kVs`/`currents`/`kWs`/`kvars` `double_v_array` over Fnphases,
-  `conn` mapped enum, `DeltaDirection`, `%Error`, `Weight`); ctor defaults
-  (3-phase, kVBase 12.47, weight/%error 1, dir +1, wye); `RecalcElementData`
-  (terminal check 665 / no-element 666, adopt nphases/nconds + bus, then
-  `AllocateSensorObjArrays`+`ZeroSensorArrays`+`RecalcVbase`), `RecalcVbase`
-  (wye L-N ÷√3 / delta L-L), `RotatePhases`, `UpdateCurrentVector` (P/Q →
-  per-phase current on Vbase), `TakeSample` (V/I capture; no gate yet), the WLS
-  current/voltage error getters, `MakeLike`. `CalcYPrim` empty, `GetCurrents`
-  zeros. Registered in `exec` after EnergyMeter (Pascal DSSClassDefs.pas:294);
-  new `ElemKind::Sensor` + `Circuit::sensors` list.
-- **Zone wiring:** `solution/meters.rs` `set_has_sensor_flag` (Pascal
-  `TSensor.SetHasSensorFlag`, called from `ResetMeterZonesAll` after
-  `SetHasMeterFlag`): clears `HasSensorObj` on all PD/PC, then marks each
-  sensor's metered element (`HAS_SENSOR_OBJ` + `sensor_obj` back-pointer) so the
-  existing zone walk passes the sensor down its zone (the WP6.4 propagation is
-  gated on `!HAS_SENSOR_OBJ`, so a directly-sensored branch keeps its own).
-- **Load allocation:** `load.rs` `set_allocation_factor` (Pascal
-  `Set_AllocationFactor`, used by `AllocateLoad`) + `set_kva_allocation_factor`
-  (Pascal `Set_kVAAllocationFactor`, the `Set AllocationFactors=` path — forces
-  ConnectedkVA spec + re-tracks the dump order). `solution/meters.rs`
-  `allocate_loads` (the `DoAllocateLoadsCmd` loop: guess solve, then
-  `MaxAllocationIterations` passes of `CalcAllocationFactors` on every
-  meter+sensor → `AllocateLoad` over each meter's zone → re-solve);
-  `allocate_load_for_meter` scales each zone load by its upstream
-  Sensor-or-EnergyMeter factor (single-phase = connected-phase factor,
-  poly-phase = AvgAllocFactor). `exec`: the `allocateloads` command (ord. 45),
-  `Set AllocationFactors=` (opt 48, error 271 on ≤0) and `Set NumAllocIterations=`
-  (opt 72; `Dss.max_allocation_iterations` default 2).
-- **Oracle facts (probed, then pinned):** `element=`/`conn=`/`deltadirection=`
-  set `NeedsRecalc`, so a single `New Sensor … currents=…` **zeros** the measured
-  arrays at `EndEdit` (`ZeroSensorArrays`); values survive only when set in a
-  later `edit`. `MakeLike` copies *only* the shape/metered fields — kVBase /
-  conn / %Error / Weight / DeltaDirection stay at the new object's ctor defaults
-  and the arrays stay NIL (dump `''`, so the `double_v_array` getter returns
-  `None` for an empty array). `Set AllocationFactors=0.8` → `kWbase =
-  xfkVA·0.8·|pf|`; `allocateloads` drives the metered current toward the meter's
-  default 400 A `SensorCurrent`.
-- Tests: 5 exec integration (`allocateloads_meter_drives_zone`,
-  `allocateloads_honors_numallociterations`, `set_allocation_factors_scales_all_loads`,
-  `allocateloads_with_sensor`, `sensor_requires_element`) with kW/factor values
-  transcribed from the oracle (`Loads.kW`/`AllocationFactor`); `Dss::load_alloc`
-  test API. `gen_props.py`: 6 Sensor scenarios (default, single-command zeroing,
-  two-step survival, P/Q→current, kVs+delta, makelike) → `props.json` regenerated
-  (pure insertions); `props_roundtrip` green. dss-core lib 257 → **262**.
-- **WP6.7 audit follow-up (gate-green):** closed coverage/faithfulness gaps the
-  self-audit found. `do_allocate_loads_cmd` now forces `Mode := SNAPSHOT` before
-  the guess solve (Pascal ExecHelper.pas l.2617; guarded `if Mode <> SNAPSHOT`,
-  via `set_mode`) — previously omitted, latent once non-snapshot modes run.
-  Comments added in `allocate_load_for_meter` documenting the `load_list`-vs-
-  `BranchList` equivalence and the two intentional defensive guards (nil
-  `SensorObj` / connected-phase past the sensor's phase count, where Pascal would
-  deref-nil / read OOB).
-- **New `allocation` golden gate** (`tools/golden/gen_allocation.py` →
-  `tests/golden/allocation.json` → `tests/golden_allocation.rs`, the
-  `gen_reliability.py` pattern): 6 scenarios replayed and matched per load on the
-  oracle `Loads.kW`/`AllocationFactor` after `allocateloads` — 3-phase
-  ConnectedkVA, `NumAllocIterations=4`, kWh/Cfactor spec (the `KwhPf`→`c_factor`
-  branch), unbalanced single-phase (distinct `PhsAllocationFactor[ConnectedPhase]`,
-  pinning the connected-phase index), a current-spec Sensor and a P/Q Sensor.
-- **New `exec` unit tests** (kept alongside the golden for clearer per-case
-  failure messages; the `TakeSample`/WLS ones have no COM getter and so can only
-  live here — same split as reliability's per-branch accumulators):
-  `allocateloads_kwh_spec_loads`, `allocateloads_single_phase_per_phase_factor`,
-  `allocateloads_pq_sensor`, `sensor_take_sample_{wye,delta}` (via new
-  `Dss::sensor_sample` API — the only gate exercising `TakeSample`'s
-  offset/`RotatePhases` math, oracle-cross-checked against the metered element's
-  currents + node voltages), and 3 `sensor.rs` unit tests (`rotate_phases_wraps`,
-  `wls_voltage_error_matches_formula`, `wls_current_error_from_pq`). Net dss-core
-  lib 262 → **270**; new `golden_allocation` integration target (1 test).
-
-**WP6.8 (part 1/4) — GenDispatcher — ✅ done, gate-green.** Files:
-- `elements/control/gen_dispatcher.rs` (new, `TGenDispatcherObj`): props 1–7 +
-  the `TCktElementClass` tail (`Element` any-class ObjectRef, `Terminal`,
-  `kWLimit`/`kWBand`/`kvarLimit`, `GenList` string-list, `Weights` IndirectCount
-  double array sized by the GenList), ctor defaults (kWLimit 8000, kWBand 100,
-  halfband 50, kvarLimit = kWLimit/2 = 4000), `PropertySideEffects` (kWBand →
-  halfband; GenList → levelize: clear pointer list, FListSize = name count,
-  realloc weights to 1.0), `RecalcElementData` (372 if no monitored element /
-  371 on bad terminal / SetBus(1, monitored bus)), `MakeGenList` (named list →
-  resolve each enabled generator keeping its weight; empty list → scan all
-  enabled gens with uniform weights; sum TotalWeight), `Sample` (PDiff/QDiff vs
-  band → weighted redispatch of each gen's `kWBase`/`kvarBase`, floored at
-  1.0/0.0), and `MakeLike` — **ported verbatim incl. the Pascal quirk that it
-  copies only nphases/nconds/monitored-element/terminal, so a `like=` dispatcher
-  reverts the dispatch settings to ctor defaults** (oracle-confirmed). 10 inline
-  tests (mock env). `DoPendingAction`/`Reset` are Pascal no-ops.
-- **Control-loop wiring** (`solution/controls.rs`): a GenDispatcher reaches a
-  *dynamic* generator set (not a fixed pair/triple), so it can't use
-  `pair_mut`/`triple_mut`. New `GenDispatchEnv` trait abstracts the executive
-  surface `Sample` needs (monitored terminal power + per-generator
-  `kWBase`/`kvarBase` by ref); `dispatch_control` handles `GenDispatch` *before*
-  building the shared `CtrlCtx` (it uses none of the event/Y context), cloning
-  the dispatcher out so the env can hold the whole store, then copying the cached
-  gen list back and — when any base changed — setting `LoadsNeedUpdating` and
-  pushing a present-time control action (Pascal `ControlQueue.Push(0,0,0,Self)`).
-- **Registration:** new class right after Generator (Pascal DSSClassDefs.pas:231),
-  `ElemKind::Control` (joins `ckt.controls`, no Yprim, zero currents).
-- **Tests:** 5 oracle-pinned `exec` integration tests (`gendispatcher_*`): equal
-  weights → both gens 1511.569498763734 kW; weights [3,1] → 1767.354.../1255.784...;
-  no GenList → dispatch all gens (same as equal); **kvar redispatch** (pf=0.95
-  gens, kvarlimit binds → 1509.812.../591.260...); **monitored terminal=2**
-  honored (gens floor at 1.0, distinct from terminal 1). 3 `props.json` scenarios
-  (default, full, makelike-quirk; pure insertions, `props_roundtrip` green).
-- **Audit follow-up (this commit):** closed the kvar-path coverage hole flagged by
-  the WP6.8 audit — the previous unit/integration tests all suppressed the QDiff
-  branch. Added 4 unit tests (kvar redispatch / kvar weights / `Max(0.0,…)` floor /
-  unresolved-genlist subset) + the 2 integration tests above, and documented the
-  deliberate deferrals (`MakePosSequence` unported = upstream NIL-deref crash;
-  `Element` Required flag inert) and the one Pascal divergence (resolved-subset
-  iteration vs Pascal's NIL-deref on a partially-resolved list). Net dss-core lib
-  270 → **289**.
-- **New golden gate `golden_gendispatcher`** (`tests/golden/gendispatcher.json`
-  from `tools/golden/gen_gendispatcher.py`): 5 oracle-pinned scenarios replaying
-  the full redispatch feedback loop and matching every generator's converged
-  `kWBase`/`kvarBase` (equal weights, weighted [3,1], no-genlist, kvar redispatch,
-  monitored terminal=2) at 1e-6 — pins the end-to-end path the inline `exec` tests
-  spot-check.
-
-**WP6.8 (part 2/4) — StorageController skeleton — ✅ done, gate-green.** Files:
-- `elements/control/storage_controller.rs` (new, `TStorageControllerObj`): the
-  **full** 37-prop table + the `TCktElementClass` tail, ctor defaults,
-  `PropertySideEffects` (kW/%-band/kWBand sync incl. the upstream
-  `FpctkWBand`-typo `TODO(compat)` at l.544, MODEFOLLOW→noon trigger, Seasons
-  array resize, DispFactor clamp, InhibitTime floor), and the value-copying
-  `MakeLike`. `RecalcElementData` ports the 371/372 monitored-element checks +
-  `MakeFleetList`, which — with **no Storage class (Phase 7)** — always yields an
-  empty fleet → error **37201** (or 14403 for a named-but-missing element),
-  reproducing the oracle on a Storage-less circuit exactly.
-- Two new enums in `obj/dss_enum.rs` (`storage_ctrl_discharge_mode` /
-  `storage_ctrl_charge_mode`, non-sequential ordinals).
-- **NOT_PORTED → Phase 7** (need the Storage element's live state): `Sample` +
-  all `Do*Mode` dispatch, `SetFleet*`, `GetControlPower`, the kWh/kW fleet
-  aggregates, `MakePosSequence`. Because the fleet is always empty here,
-  `Sample`/`DoPendingAction`/`Reset` are inert no-ops — also the observable
-  behavior. Wired into the control sweep (`solution/controls.rs`) as
-  `ControlKind::StorageSkeleton` (returns `Ok` for every op).
-- The 4 fleet-aggregate readbacks (`kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`)
-  are `SilentReadOnly + ReadByFunction` doubles whose `?` getter renders `''`
-  regardless of fleet (verified vs the oracle **with and without** Storage);
-  modeled as read-only strings → `''`.
-- **Tests:** 13 inline unit tests (defaults, prop-table shape, each side-effect,
-  recalc 372, MakeFleetList 37201/14403, MakeLike copy) + 1 `exec` integration
-  test (`storagecontroller_skeleton_solves_as_noop`: a circuit with a
-  StorageController solves, only the parse-time 37201 is logged) + **4 new
-  `props.json` scenarios** (default, full, elementlist+weights, makelike). The
-  props harness gained a per-scenario `allow_errors` flag (gen_props.py +
-  `props_roundtrip.rs`) so the faithful 37201/14403 don't trip the "no engine
-  errors" assertion. Net dss-core lib 289 → **303**.
-
-**WP6.8 (part 2/4) audit follow-up — ✅ done, gate-green.** Three Pascal-fidelity
-fixes from an audit against `StorageController.pas`:
-- **`MakeFleetList` flag clear (l.1927):** the default branch (and a
-  fully-resolved named branch) now clears `FleetListChanged`, while the
-  missing-name path still `Exit`s with it set (l.1889). Without this a second
-  `Edit` re-ran the fleet build and re-emitted 37201; now it doesn't.
-- **`RecalcElementData` phase sync (l.803-804):** the control now adopts the
-  monitored element's `Nphases`/`NConds` on a valid recalc, so a later `MonPhase`
-  edit validates against the right phase count (was always vs the default 3).
-- **`Sample` named-missing divergence documented:** for a specified-but-missing
-  `ElementList`, Pascal `Sample` re-runs `MakeFleetList` and emits 14403 *per
-  sample step*; the skeleton's blanket no-op defers that with the rest of
-  `Sample` (Phase 7) — now spelled out in the module doc + `controls.rs`.
-- Plus metadata-only `DynamicDefault`/`Units_hour` PropFlags added and applied
-  (kWThreshold/kWBand/kWBandLow, Tup/TFlat/Tdn/InhibitTime) for table fidelity.
-- **+4 unit tests** (default-recalc clears flag / no repeat 37201; named-missing
-  keeps flag pending; MonPhase>nphases errors+resets; recalc syncs nphases).
-  No golden regeneration needed (none of the fixes change a `?` dump). Net
-  dss-core lib 303 → **307**.
-
-**WP6.8 (part 3/4) — AutoAdd skeleton — ✅ done, gate-green.** Per PHASE6_PLAN
-§2.6 only the option-bearing object is ported; the capacity-search `Solve` is
-`NOT_PORTED`. Files:
-- `circuit/auto_add.rs` (new, `TAutoAdd`): the public option struct
-  (`gen_kw`/`gen_pf`/`gen_kvar`/`cap_kvar`/`add_type`/`mode_changed`) with
-  `Init` defaults (GenkW=1000, GenPF=1, Capkvar=600, AddType=GENADD,
-  ModeChanged=true) + `GENADD`/`CAPADD` consts. The private `Solve`-only state
-  (`BusIdxList`, `LastAdded*`, loss/EEN accumulators) is intentionally omitted.
-- `circuit/circuit.rs`: `auto_add_obj` + the auto-add circuit fields
-  `ue_weight`/`loss_weight` (1.0), `ue_regs` (`[10]`), `loss_regs` (`[13]`),
-  `auto_add_bus_list` (a `Vec<String>` stand-in for the Pascal
-  `TBusHashListType` — enough for the `Get` echo; the hash dedup/`Find` is only
-  needed by the unported `MakeBusList`).
-- `obj/dss_enum.rs`: `AddTypeEnum` (`Generator`/`Capacitor` → GENADD/CAPADD,
-  default CAPADD).
-- `exec/mod.rs`: wired `Set`/`Get` for GenkW(29), GenPF(30), Capkvar(31),
-  AddType(32), UEweight(35), Lossweight(36), UEregs(37), LossRegs(38),
-  AutoBusList(42). New free helpers `parse_int_array` (Pascal `parseIntArray`),
-  `do_auto_add_bus_list` (inline list **and** `File=` form, Pascal
-  `DoAutoAddBusList`), and `int_array_to_string` (Pascal `IntArrayToString` →
-  `[NULL]`/`[a, b]`). AddType `Get` echoes the lowercase device word
-  (`generator`/`capacitor`), not the enum name.
-- **Decision (per §2.6):** the AutoAdd *solve mode* stays its Phase-3 "Unknown
-  solution mode" error — the search loop needs aux-current injection
-  (`UseAuxCurrents`) + meter register sampling that land in a later phase. Not
-  cheap, so deferred and documented here.
-- **+4 unit tests** (defaults via `Get`; `Set`→state+`Get` round-trip incl.
-  int-arrays + AddType word; inline AutoBusList round-trip; AutoAdd solve mode
-  still deferred). No golden regeneration (the wired options were previously the
-  "not ported yet" error; no existing golden exercised them). Net dss-core lib
-  307 → **311**.
-
-**WP6.8 (part 4/4) — ReduceAlgs basic — ✅ done, gate-green.** Per PHASE6_PLAN
-§3 step 5 the WP is scoped to the option/command **surface**; the zone
-reduction is `NOT_PORTED` because every strategy (`DoReduceDefault` &
-siblings in `ReduceAlgs.pas`) hinges on the unported 210-line
-`TLineObj.MergeWith` series/parallel line merge. Files:
-- `circuit/circuit.rs`: `ReductionStrategy` enum (`Default`/`ShortLines`/
-  `MergeParallel`/`BreakLoop`/`Dangling`/`Switches`/`Laterals`; Pascal
-  `TReductionStrategy`, `rsTapEnds` removed upstream) + circuit fields
-  `reduction_strategy`/`reduction_strategy_string` (""), `reduction_zmag`
-  (0.02), `reduce_laterals_keep_load` (true).
-- `exec/mod.rs`: wired `Set`/`Get` for ReduceOption(59), KeepLoad(112),
-  Zmag(113). `set_reduce_strategy` ports `DoSetReduceStrategy` (first-char
-  dispatch; `S` → Switch via `CompareTextShortest(S,'SWITCH')`, else
-  ShortLines; unknown → error "Unknown Reduction Strategy" + falls back to
-  rsDefault). `do_reduce_cmd` ports the `Reduce` command's energy-meter
-  precondition (error 1890, exact message) and then logs a NOT_PORTED
-  deferral for the reduction itself (no silent no-op). `ReduceZone` /
-  `Interpolate` (l.2298) deferred with the merge.
-- **+4 unit tests** (option defaults+round-trip incl. the empty-ReduceOption
-  `Get` elision; first-char strategy dispatch incl. the `S` ambiguity + unknown
-  fallback; Reduce no-meter 1890; Reduce-with-meter deferral). No golden
-  regeneration (the wired options/command were previously the "not ported"
-  error; no existing golden exercised them). Net dss-core lib 311 → **315**.
-
-**WP6.8 (parts 3/4 + 4/4) — audit follow-up — ✅ done, gate-green.** Fixed
-fidelity gaps found auditing the AutoAdd/ReduceAlgs surface against Pascal:
-- `parse_int_array` (`parseIntArray`) no longer swallows the parser exception.
-  It now does the Pascal two-pass (count → `SetLength` zero-fill → fill),
-  **records** the `MakeInteger` conversion error, and stops at the bad token —
-  so `Set UEregs=(10 abc 13)` → `[10,0,0]` + logged error (was silently
-  `[10,0,13]`). The roundable-decimal path (`13.7 → 14`) is unchanged.
-- `do_reduce_cmd` now ports `MarkCapandReactorBuses` (marks enabled shunt
-  cap/reactor buses `Keep`, *before* the meter check, exactly as Pascal) and
-  the named-meter path: a missing meter is error 262 `EnergyMeter "X" not
-  found.` (uppercased name) instead of the generic deferral; `'A'`/all-meters
-  and a resolved meter still log the NOT_PORTED deferral.
-- `do_auto_add_bus_list` File= read error now matches Pascal code 268
-  (`Error trying to read bus list file: %s`).
-- **+4 tests** (non-numeric reg token logs error + truncates; unknown
-  `addtype` → CAPADD default, no error; Reduce named-meter 262; Reduce marks
-  cap/reactor buses) and the 1890 test tightened to pin the full URL. Net
-  dss-core lib 315 → **319**.
-- **New golden gate** `golden_autoadd_reduce` (10 oracle-pinned scenarios) vs
-  `tests/golden/autoadd_reduce.json` from `tools/golden/gen_autoadd_reduce.py`:
-  replays the AutoAdd/Reduce option surface and matches every `Get` echo
-  byte-for-byte, plus `addtype=foo`→`capacitor` (no error), `ueregs=(10 abc 13)`
-  → `[10, 0, 0]` + conversion error (oracle #303), `13.7`→`14`, Reduce #1890 /
-  #262. `Bus.Keep` and the reduction itself aren't exposed by the COM API, so
-  they remain pinned by the unit tests. (Generated with the pinned oracle —
-  python 3.12.4 / dss-python 0.15.7 / backend 0.14.5.)
-
-WP6.8 complete (4/4). Next: WP6.9 (goldens + 8500-node gate). Note for WP6.9:
-the `Interpolate` command (Run_8500Node calls it after solve) is unported, so
-drop it from any 8500 replay or port it then.
-
----
-
-**WP6.9 — Goldens + the 8500-node gate — ✅ done, gate-green.** Two new
-oracle-pinned golden gates (no new lib tests — all golden-harness driven), both
-generated with the pinned oracle (python 3.12.4 / dss-python 0.15.7 / backend
-0.14.5):
-
-- **`golden_ieee8500.rs` vs `tests/golden/ieee8500.json`** (the headline
-  Phase-6 gate; `tools/golden/gen_ieee8500.py`). Compiles the **unmodified**
-  `8500-Node/Master.dss`, then per `Run_8500Node.dss`: `New Energymeter.m1
-  Line.ln5815900-1 1`, `Set Maxiterations=20`, `Solve` (snap), then a 24-step
-  daily segment for register integration. The Rust engine matches:
-  converged + total iterations **exactly (67)**; `YNodeOrder` exactly (**8531
-  nodes**); node voltages + total power + losses at 1e-6 rel; the **12
-  RegControl tap numbers** (4 banks) + **10 capacitor states** exactly + the 12
-  regulated transformer taps (1e-12 rel) — the controls-at-scale regression;
-  all **67 EnergyMeter registers at 1e-4 rel** (names exact) after the daily
-  integration (zone kWh, line/xfmr loss split, seq + voltage-base buckets,
-  EEN/UE). The golden stores only the 12 *moved* transformer taps; the gate
-  **also asserts every other transformer reads 1.0** (the ~1178 fixed load xfmrs
-  + substation), so a spurious tap on an *uncontrolled* transformer is caught,
-  not just the regulated set. `Interpolate` + all Show/Export/Plot dropped
-  (file/UI, Phase 8). **Solve time: 0.19 s release** (full compile + snap +
-  24-step daily + assertions; oracle daily-solve ≈ 0.12 s) — well within the 5×
-  budget; 4.1 s debug, so kept un-`#[ignore]`d.
-- **`golden_phase6.rs` vs `tests/golden/phase6/*.json`** (one file per scenario;
-  `tools/golden/gen_phase6.py`,
-  command-replay like phase5; reuses the inline IEEE13 from `gen_phase5`). Four
-  scenarios:
-  - `monitor_daily_ieee13`: IEEE13 (controls active) + daily shape + monitors on
-    `line.650632` (modes 0/1/5) and `transformer.reg1` (mode 2); 24 daily steps.
-    Per-monitor header (data channels, vs our full-Pascal `header[2..]`) +
-    `SampleCount` exact; channel sample arrays elementwise at **1e-6 rel / 1e-4
-    abs** (PHASE6_PLAN §1.2 — the daily fixed-point path tracks the oracle to
-    ~1e-9 since the `build_y_matrix` load-Yeq restamp, commit `a6903f1`). Only the
-    **mode-5 wall-clock channels 10/11** (`SolveSnap_uSecs`/`TimeStep_uSecs`) are
-    skipped; the iteration-count channels 0/1 now match exactly. **Plan deviation
-    (empirical):** the plan named `line.671680`, but bus 680 is a dead-end stub
-    (charging current only → noise-dominated angle); switched to the feeder head
-    `line.650632`.
-  - `meter_daily_ieee13`: IEEE13 + daily shape + `energymeter.m1` on
-    `line.650632`; 24 steps. Registers **1e-4 rel** (PORTING_PLAN §4 energy
-    policy); the overload/EEN/UE threshold-crossing energies are **nonzero and
-    pinned** (Overload kWh Normal ≈12642, Load EEN ≈18207, Load UE ≈936) — they
-    match at 1e-4 since the Yeq restamp; names exact; zone branch/end/PCE counts
-    exact (13/6/17).
-  - `generator_snap`: IEEE13 + two generators (model 1 PQ wye @675 + model 3 PV
-    delta @634); snapshot. Iterations exact (**15**), node order exact, voltages
-    1e-6 rel, each generator's terminal powers 1e-6 rel (via `snapshot_elements`).
-  - `meter_zone_micro`: a hand-built radial with a branch + mid-feeder sub-meter
-    — `AllBranchesInZone`/`AllEndElements`/`ZonePCE` exact for both meters (the
-    parent zone stops at the sub-meter: m1 = [l1,l4]/[l4]/[ld4], m2 =
-    [l2,l3]/[l3]/[ld3]).
-
-**WP6.10 — phase exit — ✅ this update, gate-green.** `TODO(compat)` /
-`NOT_PORTED` marker sweep clean: every site points at its phase. One stale
-marker fixed — `solution/meters.rs` `is_zone_pce`'s `TODO(WP6.8)` ("add
-PVSystem/Storage to the zone allow-list when those PC classes land") was
-repointed to **`TODO(WP7)`**: PVSystem/Storage are Phase 7 (DER sub-block), not
-WP6.8 (the old §7 note that scheduled them for WP6.8 was a misattribution — they
-have no objects until Phase 7, so the allow-list is correct-by-vacuity now). The
-only other forward markers are the dormant reliability `GetOCPDeviceType`
-(`TODO(WP7)` — OCP devices are Phase 7) and the AutoAdd/ReduceAlgs `NOT_PORTED`
-skeletons (each documents its blocking dependency — aux-current injection /
-`TLineObj.MergeWith`). Full gate re-run green from a clean tree:
-`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings`
-(0 warnings); `cargo test --workspace` — every target passes (dss-core lib 319;
-the golden gates incl. `golden_ieee8500` 4.3 s debug / 0.19 s release;
-`corpus_manifest` 1; `corpus_live` 2 auto-skipped; dss-parser 62+1; dss-sparse
-5). **Phase 6 is complete; next is Phase 7** — write `PHASE7_PLAN.md` first
-(DER, protection, line constants, harmonics, dynamics; PORTING_PLAN.md
-§Phase 7).
-
-**WP6 testing audit follow-up — ✅ done, gate-green.** A self-audit of the WP6
-testing changes (the per-file golden split + the live corpus gate) found real
-holes; all fixed and verified:
-- **Silent-pass holes closed.** The per-file split (`fcda714`) made the
-  directory-reading gates pass vacuously on an empty dir. `golden_phase5.rs` now
-  pins the scenario count (`assert_eq! == 4`) — previously *no* count/non-empty
-  guard, so an emptied `tests/golden/phase5/` would have passed with zero
-  assertions; `golden_checkpoints.rs` now pins `== 3` (was only non-empty).
-  `golden_phase6.rs` already pinned `== 4`.
-- **8500 fixed-tap coverage.** `golden_ieee8500.rs` now asserts every transformer
-  *not* in the golden's moved set reads 1.0 (the ~1178 fixed load xfmrs +
-  substation), catching a spurious tap on an *uncontrolled* transformer — the
-  moved-only golden previously checked only the 12 regulated ones.
-- **Live gate now exercises meters/monitors/multi-step/YPrim.** Previously every
-  `solvable_now` case was a 1-step snapshot with no `selected_elements` and no
-  meter/monitor, so `corpus_live.rs` never ran the multi-step, YPrim,
-  `compare_monitor`/`compare_meter` paths. The `IEEE13Nodeckt.dss` case is now a
-  24-step daily run with `energymeter.m1` + 3 deterministic-mode monitors +
-  `selected_elements`; new `harness::{compare_monitor,compare_meter}` (reusing
-  `Dss::monitor_view`/`meter_registers`/`meter_zone`) are gated per case by a new
-  `check_meters_monitors` manifest flag. Verified live: **16/16 solvable cases
-  match the oracle** (`DSS_LIVE_ORACLE=1`).
-- **Live gate is no longer CI-decorative.** Added the **`live-oracle`** GitHub
-  Actions job (`.github/workflows/ci.yml`) that installs the pinned oracle and
-  runs `DSS_LIVE_ORACLE=1 corpus_live` — the plan's "dedicated pinned-oracle CI
-  job", previously unimplemented (the live gate ran in *no* automated gate).
-- **Classify panic-hook hazard removed.** `corpus_live_classify` no longer
-  overrides the global panic hook (which would swallow a sibling test's panic
-  message); it relies on the `catch_unwind` payload it already captures.
-- **Oracle quirk documented (not hidden).** The new comparator surfaced that the
-  pinned dss-python returns a phantom `Monitors.Channel(i)` element for an
-  *unsampled* monitor (`SampleCount==0`, `len(Channel)==1`; EPRI J1 `subVI`);
-  Rust is self-consistent. Hence the opt-in scoping above + a `TOLERANCE_NOTES.md`
-  entry. (STATUS §1d tolerances re-synced: the monitor channels are **1e-6/1e-4**
-  and registers **1e-4** — the earlier "2e-4 / 1e-3" text predated the `a6903f1`
-  Yeq restamp and was stale.)
-
----
-
-## 2. What Phase 3 built (file-by-file map — still the architectural reference)
-
-### Circuit model (`src/circuit/`)
-- `bus.rs` — slim `Bus` (`TDSSBus`): `nodes`/`ref_no` allocation lists,
-  `kv_base`, coords, `allocate_bus_state`.
-- `circuit.rs` — `Circuit` (`TDSSCircuit` subset): `add_ckt_element` (device
-  list + per-kind `Vec<ElemRef>` lists + 1-based handle), `add_bus`
-  (find-or-create + the "Caution: Magic" node_buffer→global-ref rewrite),
-  `process_bus_defs`, `reprocess_bus_defs`, `set_bus_name_redefined`,
-  `node_name(i)` (= oracle `YNodeOrder` format), `losses` (now skips shunt).
-- `terminal.rs` — `Terminal` (`TPowerTerminal`).
-
-### Element base (`src/elements/`)
-- `ckt.rs` — `CktElementData` (`TDSSCktElement` fields + realloc semantics,
-  `set_bus`/`get_bus`, `compute_vterminal`, `do_yprim_calcs` open-conductor
-  Kron, signal flags `signal_bus_name_redefined`/`yprim_invalid`).
-- `traits.rs` — `CktElement` trait (+ `is_shunt` since Phase 4), `ElemRef`,
-  `ElemStore`, `SysCtx`, `InjCtx`.
-- `pc/vsource.rs`, `pc/load.rs` — full Phase 3 ports (all 8 load models,
-  compensation currents).
-- `pd/line.rs` — sym + matrix paths + LineCode fetch (Phase 4).
-- `pd/{transformer,capacitor,reactor,winding}.rs`,
-  `general/{line_code,xfmr_code,growth_shape}.rs`,
-  `control/{control_elem,reg_control,cap_control}.rs` — Phase 4 (§1b).
-
-### Solution (`src/solution/`)
-- `solution.rs` — `solve` → `solve_snap` (control loop; `controlmode=off` ⇒
-  `control_actions_done` immediately) → `solve_circuit` → `do_pflow_solution`
-  → `do_normal_solution`; `converged`, `solve_system`, `set_voltage_bases`.
-- `ymatrix.rs` — `build_y_matrix`: reprocess buses when redefined → recalc
-  invalid Yprims → stamp enabled elements (skips `yprim: None`, i.e. control
-  elements) → `allocate_vi` → `initialize_node_vbase`.
-
-### Executive (`src/exec/mod.rs`)
-- Full Pascal command/option name lists; `command()` = `ProcessCommand` (incl.
-  error-301 circuit gate and the property-reference fallback);
-  `New circuit.x` → default Vsource; `AddObject`; `Set`/`Get`; `Solve`;
-  `Redirect`/`Compile` (block-comment semantics, dir following);
-  `edit_active` (split-borrow `ForeignClasses` view, deferred-error drain,
-  signal-flag propagation, **deferred `RefAction` application** since Phase 4);
-  `snapshot_elements`/`total_power`/`losses` public gate API (Phase 4).
-
-### Property engine (`src/obj/`)
-- `props.rs` — `PropType` (Double/Integer/Boolean/String/MakeLike/arrays/
-  matrices/Bus/Complex/Enabled/ObjectRef/struct-array family), `PropFlags`
-  (incl. `NOT_PORTED`, `CONDITIONAL_VALUE`, `SCALED_BY_FUNCTION`), parse/dump
-  paths, `ForeignClassesView` (+ `find_full`), **`define_properties!`**.
-- `base.rs` — `DssObjData` (PrpSequence, deferred errors), `DssObject` trait
-  (typed accessors, `set_object_ref`, struct-array hooks, `side_effects`,
-  `end_edit`, `make_like`, **`take_ref_actions`/`apply_ref_action`**).
-- `dss_enum.rs` — `TDSSEnum` + registry (17 enums).
+The Phase-3 vertical-slice **file-by-file architectural map** moved to
+[`docs/phase-records/phase-3.md`](docs/phase-records/phase-3.md) (2026-06-21) to
+keep this handoff lean. It is still the architectural reference §3/§4/§5 below
+build on — only its location changed.
 
 ---
 
@@ -1561,15 +836,17 @@ lists; `yprim` stays `None` and the Y build skips them.
 
 ## 5. `TODO(compat)` / deferrals
 
-Grep `rg "TODO\(compat\)"` for the full marker list (26 sites). Notable:
+Grep `rg "TODO\(compat\)"` for the full marker list (39 sites). Notable:
 truncated `CALPHA`/`pi`/`0.001732`/`57.29577951` constants, FPC banker's
 `Round` shims, LineCode `Repair`=0 default, the `DoubleSymMatrix` zero-matrix
 getter.
 
 `NOT_PORTED` (hard parse error; every site points at its phase):
-- Line `geometry`/`spacing`/`wires`/`cncables`/`tscables` — Phase 7
-  (line constants: LineGeometry/WireData/LineSpacing/CN/TS, PORTING_PLAN §Phase 7
-  sub-block 1). Not in Phase 6 scope.
+- Line `geometry` — **ported (WP7.1 step 3a)**: resolves a `LineGeometry`, runs
+  `FetchGeometryCode` + `FMakeZFromGeometry` (the Carson `Zmatrix`/`YCmatrix`).
+  Line `spacing`/`wires`/`cncables`/`tscables` stay `NOT_PORTED` until step 3b
+  (the `FetchLineSpacing`/`SetWires`/`FMakeZFromSpacing` path, PORTING_PLAN
+  §Phase 7 sub-block 1).
 - Reactor `RCurve`/`LCurve` — Phase 5 (XYcurve) — XYcurve is now ported; the
   fetch is still `NOT_PORTED` (only the harmonic `CalcYPrim` consumes it, Phase 7).
 - CapControl `ControlSignal` — Phase 5 (LoadShape); still `NOT_PORTED` (the
@@ -1587,14 +864,18 @@ getter.
   gate needs it.
 
 Other deferrals: Transformer GIC path (<0.51 Hz) + harmonics interplay
-(Phase 7); RegControl/CapControl `Sample`/`DoPendingAction` **wired into the
+(the frequency-scaled Y + the <0.51 Hz branch are **exercised by WP7.6
+harmonics**; the GIC *elements* stay Phase 9); RegControl/CapControl
+`Sample`/`DoPendingAction` **wired into the
 control loop (WP5.7)**; RegControl/ControlQueue debug-trace files (flag
 stored, no file — port with Monitors, Phase 6+); `MakePosSequence` everywhere
 (Phase 6+); `BusCoords` **ported (WP5.8)**; Monitors/EnergyMeters
 `sample_all`/`EndOfTimeStepCleanup` are no-op hook stubs at the SolveDaily/
-Yearly/Duty call sites (Phase 6); Newton algorithm, harmonics/dynamics/
-faultstudy/Monte-Carlo/load-duration/`SolveGeneralTime` solve modes (Phase 7);
-`Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported".
+Yearly/Duty call sites (Phase 6); the **dynamics** (WP7.7), **harmonics/harmonicT**
+(WP7.6) and **faultstudy** (WP7.9) solve modes are **ported**; the Newton algorithm
+and the Monte-Carlo/load-duration/AutoAdd/`SolveGeneralTime` solve modes keep the
+"Unknown solution mode" error (no corpus case — WP7.9 empirical decision);
+`Show`/`Export`/`Dump`/`Select`/... executive verbs record "not ported" (Phase 8).
 
 ---
 
@@ -1623,34 +904,36 @@ this environment; the `py` launcher is broken — use `python` directly.
 
 ---
 
-## 7. Current frontier — Phase 6 complete & merged, Phase 7 next
+## 7. Phase 7 — inherited deferrals & architecture in place
 
-Phase 6 (`PHASE6_PLAN.md`, WP6.1–WP6.10) is **complete, gate-green, and MERGED
-to `main`** (`--no-ff` merge `b98223a`, gate green at merge; `main` not pushed to
-origin). The work landed on branch `phase-6-meters-topology` (WP6.10 phase-exit
-`207b9cb`, the post-exit live-gate deepening + audit hardening through `cc6d2e2`;
-everything earlier through `d1cc68c` + the corpus infra `19a5493`/`593420f`).
-**Next: Phase 7** — write `PHASE7_PLAN.md` first, then execute it
-(PORTING_PLAN.md §Phase 7, the largest phase ~18%, six independently-gated
-sub-blocks: line constants, DER, protection, harmonics, dynamics,
-faultstudy/AutoAdd-modes/`Feeder`).
+> **The current frontier** (active step, branch, what's next, commit state) lives
+> in the header up top and in **§1e** — not restated here, to avoid the two drifting
+> apart. This section is the stable Phase-7 reference: what the phase inherits and
+> what is already wired for it. Execute per `PHASE7_PLAN.md §0` (six
+> independently-gated sub-blocks, risk-ascending: line constants → protection →
+> DER → harmonics → dynamics → faultstudy/AutoAdd-modes/`Feeder`).
 
 **What Phase 7 inherits / must finish (deferrals Phase 6 left explicit):**
 - **DER classes** `Storage`/`PVSystem` (+ `InvControl`/`ExpControl`) and the real
-  `StorageController` behavior — the WP6.8 StorageController is a parse-only
-  skeleton (empty fleet → 37201); `solution/meters.rs::is_zone_pce` carries a
-  `TODO(WP7)` to add PVSystem/Storage to the zone allow-list once they exist.
-- **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — until one sets
-  `Flg.HasOCPDevice`, `RelCalc` aborts with #52902 (oracle-faithful) and the
-  ported SAIFI/SAIDI/section math below the abort stays dormant
-  (`GetOCPDeviceType` inlined to 0, `TODO(WP7)`).
+  `StorageController` behavior — ✅ **all done**: `PVSystem` (WP7.3), `Storage` +
+  `StorageController` (WP7.4), and `InvControl` + `ExpControl` (WP7.5) (the WP6.8
+  StorageController parse-only skeleton is replaced by the real fleet dispatch;
+  `is_zone_pce` now admits Storage/PVSystem).
+- **Protection** `Relay`/`Recloser`/`Fuse`/`SwtControl`/`Fault` — ✅ **done
+  (WP7.2)**: all five classes ported on the control sweep, the `Open`/`Close` exec
+  verbs landed, and an enabled Relay/Recloser/Fuse sets `Flg.HasOCPDevice` so
+  `RelCalc` no longer aborts (#52902) and `GetOCPDeviceType` is live — the
+  SAIFI/SAIDI/section math runs on a protected zone.
 - **Line constants** `WireData/CNData/TSData/CableData/LineSpacing/LineGeometry`
-  + Carson — Line's `geometry`/`spacing`/`wires`/`cncables`/`tscables` are
-  `NOT_PORTED` (round-trip empty only).
-- **Dynamics & harmonics** (Generator/Storage `DoDynamicMode`/`DoHarmonicMode`,
-  state vars beyond names/count) + `MakePosSequence` everywhere; Monitor modes
-  3/4/7/8/10/12 build their header but defer the sample body; Transformer GIC
-  (<0.51 Hz).
+  + Carson — ✅ **done (WP7.1)**: Line's
+  `geometry`/`spacing`/`wires`/`cncables`/`tscables` resolve and drive the Carson
+  Z/Yc (one plural-cable reset + the `DG_Prot_Fdr` ~3e-5 line-Y precision case
+  tracked-open, §1e).
+- **Harmonics** (`DoHarmonicMode` for VSource/Load + Generator/PVSystem/Storage,
+  the frequency sweep + the harmonic monitor header) — ✅ **done (WP7.6)**.
+- **Dynamics** (Generator/Storage `DoDynamicMode`, state vars beyond names/count)
+  + `MakePosSequence` everywhere; Monitor modes 3/4/7/8/10/12 build their header
+  but defer the sample body; Transformer GIC (<0.51 Hz) elements — WP7.7+ / Phase 9.
 - **AutoAdd solve mode** (`circuit/auto_add.rs` skeleton) — needs aux-current
   injection (`UseAuxCurrents`) + meter-register sampling in the solve loop; the
   options round-trip but the mode keeps its "Unknown solution mode" error.
@@ -1659,7 +942,7 @@ faultstudy/AutoAdd-modes/`Feeder`).
 **Architecture already in place for Phase 7:** the control loop dispatches
 through `ElemStore::{obj,pair_mut,triple_mut}` + `DssObject::as_any_mut`; the
 meter/monitor `sample_all_monitors_and_meters`/`end_of_time_step_cleanup` hooks
-have real bodies; the zone-build dispatcher (`solution/meters.rs`) fires from
+have real bodies; the zone-build dispatcher (`solution/meters/mod.rs`) fires from
 `build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
 reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
 register core and all demand-interval/phase-voltage/`Show`/`Export` files.
