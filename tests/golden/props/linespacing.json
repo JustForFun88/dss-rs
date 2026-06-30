@@ -1,0 +1,222 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "linespacing",
+ "scenarios": [
+  {
+   "name": "linespacing_default",
+   "commands": [
+    "New LineSpacing.ls1"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 0 0 0]",
+    "H": "[ 0 0 0]",
+    "Units": "ft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_full",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 nphases=3 x=(-1.2909 0 1.2909) h=(28.6 28.6 28.6) units=ft"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ -1.2909 0 1.2909]",
+    "H": "[ 28.6 28.6 28.6]",
+    "Units": "ft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_m",
+   "commands": [
+    "New LineSpacing.ls1 nconds=2 nphases=1 x=(0 0.5) h=(10 10) units=m"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "2",
+    "NPhases": "1",
+    "X": "[ 0 0.5]",
+    "H": "[ 10 10]",
+    "Units": "m",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_array_clamp",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 nphases=3 x=(-1.2 0 1.2 9.9) h=(28)"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ -1.2 0 1.2]",
+    "H": "[ 28 0 0]",
+    "Units": "ft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_shrink_nconds",
+   "commands": [
+    "New LineSpacing.ls1 nconds=4 nphases=3 x=(-1.2 0 1.2 0) h=(28 28 28 24) units=m",
+    "Edit LineSpacing.ls1 nconds=2"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "2",
+    "NPhases": "3",
+    "X": "[ -1.2 0]",
+    "H": "[ 28 28]",
+    "Units": "ft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_makelike",
+   "commands": [
+    "New LineSpacing.base nconds=4 nphases=3 x=(-1.2 0 1.2 0) h=(28 28 28 24) units=m",
+    "New LineSpacing.ls1 like=base"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "4",
+    "NPhases": "3",
+    "X": "[ -1.2 0 1.2 0]",
+    "H": "[ 28 28 28 24]",
+    "Units": "m",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_zero_nconds",
+   "commands": [
+    "New LineSpacing.ls1 nconds=0"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "0",
+    "NPhases": "3",
+    "X": "",
+    "H": "",
+    "Units": "ft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_mi",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mi"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "mi",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_kft",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=kft"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "kft",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_km",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=km"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "km",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_none",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=none"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "none",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_in",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=in"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "in",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_cm",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=cm"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "cm",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_units_mm",
+   "commands": [
+    "New LineSpacing.ls1 nconds=3 x=(1 2 3) h=(4 5 6) units=mm"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "3",
+    "NPhases": "3",
+    "X": "[ 1 2 3]",
+    "H": "[ 4 5 6]",
+    "Units": "mm",
+    "Like": ""
+   }
+  }
+ ]
+}

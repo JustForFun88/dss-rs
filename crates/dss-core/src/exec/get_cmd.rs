@@ -1,0 +1,229 @@
+//! The `Get` option command (`DoGetCmd` and its no-circuit variant). Split out
+//! of `exec/set_get.rs`.
+
+use super::*;
+
+impl Dss {
+    /// Pascal `DoGetCmd`: append the requested option values to
+    /// `GlobalResult`, comma-separated.
+    pub(super) fn do_get_cmd(&mut self) {
+        let Dss {
+            circuit,
+            option_list,
+            parser,
+            vars,
+            enums,
+            errors,
+            default_base_freq,
+            last_result,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut result = String::new();
+
+        loop {
+            let param_name = parser.next_param(vars);
+            let param = parser.make_string(vars);
+            if param.is_empty() {
+                break;
+            }
+            // Params are themselves the option names to return.
+            let pointer = option_list.get_command(&param).map(|i| i + 1).unwrap_or(0);
+            match pointer {
+                0 => errors.push(format!(
+                    "Unknown parameter \"{param_name}\" for Get Command"
+                )),
+                opt::HOUR => append_result(&mut result, &ckt.solution.int_hour.to_string()),
+                opt::SEC => append_result(&mut result, &float_to_str(ckt.solution.t)),
+                opt::STEPSIZE | opt::H => append_result(&mut result, &float_to_str(ckt.solution.h)),
+                opt::TIME => append_result(
+                    &mut result,
+                    &format!(
+                        "[ {}, {} ] !... {} (hours)",
+                        ckt.solution.int_hour,
+                        float_to_str(ckt.solution.t),
+                        float_to_str(ckt.solution.dbl_hour)
+                    ),
+                ),
+                opt::YEAR => append_result(&mut result, &ckt.solution.year.to_string()),
+                opt::FREQUENCY => append_result(&mut result, &float_to_str(ckt.solution.frequency)),
+                opt::MODE => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.solve_mode)
+                        .ordinal_to_string(ckt.solution.mode.ordinal()),
+                ),
+                opt::RANDOM => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.random_mode)
+                        .ordinal_to_string(ckt.solution.random_type),
+                ),
+                opt::NUMBER => {
+                    append_result(&mut result, &ckt.solution.number_of_times.to_string())
+                }
+                opt::TOLERANCE => append_result(
+                    &mut result,
+                    &float_to_str(ckt.solution.convergence_tolerance),
+                ),
+                opt::MAXITERATIONS => {
+                    append_result(&mut result, &ckt.solution.max_iterations.to_string())
+                }
+                opt::LOADMODEL => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.default_load_model)
+                        .ordinal_to_string(ckt.solution.load_model),
+                ),
+                opt::LOADMULT => append_result(&mut result, &float_to_str(ckt.load_multiplier)),
+                opt::NORMVMINPU => append_result(&mut result, &float_to_str(ckt.normal_min_volts)),
+                opt::NORMVMAXPU => append_result(&mut result, &float_to_str(ckt.normal_max_volts)),
+                opt::EMERGVMINPU => append_result(&mut result, &float_to_str(ckt.emerg_min_volts)),
+                opt::EMERGVMAXPU => append_result(&mut result, &float_to_str(ckt.emerg_max_volts)),
+                opt::PCT_GROWTH => append_result(
+                    &mut result,
+                    &float_to_str((ckt.default_growth_rate - 1.0) * 100.0),
+                ),
+                opt::GEN_KW => append_result(&mut result, &float_to_str(ckt.auto_add_obj.gen_kw)),
+                opt::GEN_PF => append_result(&mut result, &float_to_str(ckt.auto_add_obj.gen_pf)),
+                opt::CAP_KVAR => {
+                    append_result(&mut result, &float_to_str(ckt.auto_add_obj.cap_kvar))
+                }
+                opt::ADD_TYPE => append_result(
+                    &mut result,
+                    // Pascal echoes the lowercase device word, not the enum name.
+                    match ckt.auto_add_obj.add_type {
+                        crate::circuit::CAPADD => "capacitor",
+                        _ => "generator",
+                    },
+                ),
+                opt::ALLOW_DUPLICATES => append_result(&mut result, yes_no(ckt.duplicates_allowed)),
+                opt::ZONE_LOCK => append_result(&mut result, yes_no(ckt.zones_locked)),
+                opt::UE_WEIGHT => append_result(&mut result, &float_to_str(ckt.ue_weight)),
+                opt::LOSS_WEIGHT => append_result(&mut result, &float_to_str(ckt.loss_weight)),
+                opt::UE_REGS => append_result(&mut result, &int_array_to_string(&ckt.ue_regs)),
+                opt::LOSS_REGS => append_result(&mut result, &int_array_to_string(&ckt.loss_regs)),
+                opt::VOLTAGE_BASES => {
+                    // Pascal builds `(b1, b2, ... , )` replacing GlobalResult.
+                    result = "(".to_string();
+                    for v in &ckt.legal_voltage_bases {
+                        result.push_str(&format!("{}, ", float_to_str(*v)));
+                    }
+                    result.push(')');
+                }
+                opt::ALGORITHM => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.solve_alg)
+                        .ordinal_to_string(ckt.solution.algorithm),
+                ),
+                opt::AUTO_BUS_LIST => {
+                    for name in &ckt.auto_add_bus_list {
+                        append_result(&mut result, name);
+                    }
+                }
+                opt::REDUCE_OPTION => append_result(&mut result, &ckt.reduction_strategy_string),
+                opt::KEEP_LOAD => append_result(&mut result, yes_no(ckt.reduce_laterals_keep_load)),
+                opt::ZMAG => append_result(&mut result, &float_to_str(ckt.reduction_zmag)),
+                opt::CONTROL_MODE => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.control_mode)
+                        .ordinal_to_string(ckt.solution.control_mode),
+                ),
+                opt::DEFAULT_DAILY => append_result(
+                    &mut result,
+                    &ckt.default_daily_shape_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
+                ),
+                opt::DEFAULT_YEARLY => append_result(
+                    &mut result,
+                    &ckt.default_yearly_shape_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
+                ),
+                opt::CKT_MODEL => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.ckt_model)
+                        .ordinal_to_string(ckt.positive_sequence as i32),
+                ),
+                opt::PRICE_SIGNAL => append_result(&mut result, &float_to_str(ckt.price_signal)),
+                opt::PRICE_CURVE => append_result(
+                    &mut result,
+                    &ckt.price_curve_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
+                ),
+                opt::BASE_FREQUENCY => append_result(&mut result, &float_to_str(ckt.fundamental)),
+                // Pascal `ExecOptions.pas:930`: `ALL`, else each harmonic appended.
+                opt::HARMONICS => {
+                    if ckt.solution.do_all_harmonics {
+                        append_result(&mut result, "ALL");
+                    } else {
+                        for h in &ckt.solution.harmonic_list {
+                            append_result(&mut result, &float_to_str(*h));
+                        }
+                    }
+                }
+                opt::MAX_CONTROL_ITER => append_result(
+                    &mut result,
+                    &ckt.solution.max_control_iterations.to_string(),
+                ),
+                opt::CASE_NAME => append_result(&mut result, &ckt.case_name),
+                opt::LOG => append_result(&mut result, yes_no(ckt.log_events)),
+                opt::DEFAULT_BASE_FREQUENCY => {
+                    append_result(&mut result, &(default_base_freq.round() as i64).to_string())
+                }
+                opt::NEGLECT_LOAD_Y => append_result(&mut result, yes_no(ckt.neglect_load_y)),
+                opt::MIN_ITERATIONS => {
+                    append_result(&mut result, &ckt.solution.min_iterations.to_string())
+                }
+                _ => {
+                    let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
+                    errors.push(format!("Get option \"{name}\" is not ported yet."));
+                }
+            }
+        }
+        *last_result = result;
+    }
+
+    /// Pascal `DoGetCmd_NoCircuit`.
+    pub(super) fn do_get_cmd_no_circuit(&mut self) {
+        let Dss {
+            option_list,
+            parser,
+            vars,
+            errors,
+            default_base_freq,
+            last_result,
+            ..
+        } = self;
+        let mut result = String::new();
+        loop {
+            parser.next_param(vars);
+            let param = parser.make_string(vars);
+            if param.is_empty() {
+                break;
+            }
+            let pointer = option_list.get_command(&param).map(|i| i + 1).unwrap_or(0);
+            match pointer {
+                opt::DEFAULT_BASE_FREQUENCY => {
+                    append_result(&mut result, &(default_base_freq.round() as i64).to_string())
+                }
+                _ => {
+                    errors.push(
+                        "You must create a new circuit object first: \"new circuit.mycktname\" to execute this Get command."
+                            .to_string(),
+                    );
+                    return;
+                }
+            }
+        }
+        *last_result = result;
+    }
+}

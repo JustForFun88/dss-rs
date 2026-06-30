@@ -36,18 +36,25 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Those three commands are the **mandatory, oracle-free** gate. There is also an
-**opt-in** live oracle-comparison gate (`crates/dss-core/tests/corpus_live.rs`,
-enabled with `DSS_LIVE_ORACLE=1`; auto-skips otherwise) that compiles + solves
-the vendored corpus `tests/corpus/electricdss-tst` on both the Rust engine and
-the pinned oracle and compares the full model live — run it manually with the
-pinned oracle; it is **not** part of the mandatory gate above. New tests read
-feeders from that vendored corpus, never from `.inputs/` at runtime.
+Those three commands are the mandatory gate. The live oracle-comparison gate
+(`crates/dss-core/tests/corpus_live.rs`) is now part of `cargo test` and runs
+**unconditionally** (no `DSS_LIVE_ORACLE` env gate): it compiles + solves the
+vendored corpus `tests/corpus/electricdss-tst` on both the Rust engine and the
+pinned oracle and compares the full model live. The pinned dss-python oracle
+(`tools/golden/PIN.txt`) must therefore be installed to run `cargo test` — without
+it `corpus_live_solvable_cases_match_oracle` fails rather than skipping. New tests
+read feeders from that vendored corpus, never from `.inputs/` at runtime.
 
 ## Conventions
 
-- Unit tests inline as `#[cfg(test)]` modules; integration tests are thin drivers
-  over the golden harness (`crates/dss-core/tests/harness/`).
+- **Module layout:** keep files focused; when a module grows large or mixes
+  concerns, split it into a directory module (`foo/mod.rs` + concern submodules
+  like `accessors`/`edit`/`solve`/`compute`) via `SPLITTING_RULES.md`'s byte-faithful
+  protocol (no behavior change; the test suite is the contract). Unit tests stay
+  inline as `#[cfg(test)]` modules, extracted to a sibling `tests.rs` only when the
+  file is large; the `#[cfg(test)] mod tests;` declaration goes right after the
+  module doc. Integration tests are thin drivers over the golden harness
+  (`crates/dss-core/tests/harness/`).
 - Pascal is the spec: port algorithms loop-for-loop where numerics matter, and cite
   the Pascal unit/identifier in the doc comment (`Pascal \`TcMatrix.Invert\``).
 - 0-based indexing everywhere except the ground-node convention (`NodeRef == 0` =
@@ -55,3 +62,38 @@ feeders from that vendored corpus, never from `.inputs/` at runtime.
 - Case-insensitive identifiers via lowercase-normalized keys (THashList semantics).
 - New behavior questions are settled empirically against the oracle (see
   `tools/golden/probe_val.py` for the pattern), not by guessing FPC semantics.
+- **Never wave off a Rust↔oracle divergence as "conditioning / not a bug" without
+  empirical proof.** That label has hidden real port bugs (e.g. a missing per-step
+  state reset in `InvControl.update_inv_control` that latched `FFlagVWOperates`
+  across time steps — see STATUS §WP7.5). A contractive iteration cannot amplify
+  ~1e-8 rounding into a kW-scale gap, so such a gap is a bug until proven otherwise.
+  Prove cause before concluding: (1) tighten the loop tolerance — if the gap
+  collapses, the engines share the fixpoint; (2) run a controlled experiment that
+  isolates the suspect (e.g. fixed vs adaptive factor); (3) dump the per-iteration
+  trajectory + iteration count on both engines and find the first divergence. A gap
+  that vanishes under tighter tolerance but leaves *different iteration counts* is a
+  cross-step state-leak bug, not conditioning.
+- **The converse needs the same rigor: when a gap genuinely IS a cancellation
+  floor, prove it by decomposition, never by a tolerance sweep.** A residual that is
+  the near-cancellation of two large summands (e.g. generator dynamics `dSpeed =
+  (Pshaft + TracePower.re)/Mmass`, two ≈±2e9 W terms whose ≈31 W difference is
+  1.5e-8 rel) has an *inherent* Rust↔oracle floor of ~1 f32-ulp (~9e-8) / ~6e-8 in
+  f64 — faer-vs-KLU last-ulp rounding amplified by the cancellation. Prove it's the
+  floor and not a bug by reading the **live f64** state (dss-python
+  `ActiveCktElement.AllVariableValues` vs Rust element fields / `get_all_variables`
+  — the f32 monitor channel hides it) and checking each summand matches the oracle
+  to f64-ulp (Pshaft 1 ulp, TracePower 7 ulp) while only their difference is loose.
+  Such a floor is NOT a `TODO(compat)` and must not be "fixed" — forcing the
+  residual to 0 *diverges* from the oracle = a real port bug. (Documented at the
+  `dSpeed` pins in `exec/tests/dynamics.rs`.)
+- **Never loosen a test tolerance to make a failing oracle comparison pass — no
+  fudging.** The tier floors in `tests/harness` (`Tolerances`/`tol_for`, see
+  `tests/TOLERANCE_NOTES.md`) are calibrated to *proven* f64/f32/faer-vs-KLU
+  reality. A Rust↔oracle gap above its floor is a porting **bug**: find and fix the
+  root cause (per the two rules above), never widen the band to hide it. Tolerances
+  change only with empirical proof of the floor — they tighten far more often than
+  they loosen, and are *never* relaxed to mask a divergence.
+- **Commit messages: keep them short.** A concise subject line plus, only if
+  needed, 1–3 short bullets — not half a page. State *what changed and why* in a
+  sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
+  the commit body. Don't restate the diff.

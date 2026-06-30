@@ -1,0 +1,158 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "swtcontrol",
+ "scenarios": [
+  {
+   "name": "swtcontrol_default",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "close",
+    "Lock": "No",
+    "Delay": "120",
+    "Normal": "closed",
+    "State": "closed",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_action_open",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 action=open"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "open",
+    "Lock": "No",
+    "Delay": "120",
+    "Normal": "open",
+    "State": "open",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_normal_open",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 normal=open"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "open",
+    "Lock": "No",
+    "Delay": "120",
+    "Normal": "open",
+    "State": "open",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_state_open",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 state=open"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "open",
+    "Lock": "No",
+    "Delay": "120",
+    "Normal": "open",
+    "State": "open",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_lock_delay",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 lock=yes delay=30"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "close",
+    "Lock": "Yes",
+    "Delay": "30",
+    "Normal": "closed",
+    "State": "closed",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_locked_then_action",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 lock=yes action=open"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "close",
+    "Lock": "Yes",
+    "Delay": "120",
+    "Normal": "closed",
+    "State": "closed",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_makelike",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.base switchedobj=line.l1 switchedterm=1 action=open normal=open delay=45 lock=yes",
+    "New SwtControl.sw1 like=base"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "open",
+    "Lock": "Yes",
+    "Delay": "45",
+    "Normal": "open",
+    "State": "open",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

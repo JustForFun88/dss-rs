@@ -1,0 +1,108 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "espvlcontrol",
+ "scenarios": [
+  {
+   "name": "espvlcontrol_default",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New ESPVLControl.e1 element=Line.l1"
+   ],
+   "target": "ESPVLControl.e1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Type": "",
+    "kWBand": "100",
+    "kvarLimit": "4000",
+    "LocalControlList": "",
+    "LocalControlWeights": "",
+    "PVSystemList": "",
+    "PVSystemWeights": "",
+    "StorageList": "",
+    "StorageWeights": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "espvlcontrol_full",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New ESPVLControl.e1 element=Line.l1 terminal=1 type=LocalController kWBand=250 kvarlimit=1500 PVSystemList=[pv1, pv2] PVSystemWeights=[2, 3] StorageList=[st1] StorageWeights=[5] LocalControlList=[lc1, lc2] LocalControlWeights=[1.5, 2.5]"
+   ],
+   "target": "ESPVLControl.e1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Type": "LocalController",
+    "kWBand": "250",
+    "kvarLimit": "1500",
+    "LocalControlList": "[lc1, lc2]",
+    "LocalControlWeights": "[ 1.5 2.5]",
+    "PVSystemList": "[pv1, pv2]",
+    "PVSystemWeights": "[ 2 3]",
+    "StorageList": "[st1]",
+    "StorageWeights": "[ 5]",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "espvlcontrol_system",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New ESPVLControl.e1 element=Line.l1 terminal=1 type=SystemController LocalControlList=[lc1, lc2, lc3]"
+   ],
+   "target": "ESPVLControl.e1",
+   "properties": {
+    "Element": "Line.l1",
+    "Terminal": "1",
+    "Type": "SystemController",
+    "kWBand": "100",
+    "kvarLimit": "4000",
+    "LocalControlList": "[lc1, lc2, lc3]",
+    "LocalControlWeights": "[ 1 1 1]",
+    "PVSystemList": "",
+    "PVSystemWeights": "",
+    "StorageList": "",
+    "StorageWeights": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "espvlcontrol_makelike",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.2 length=1",
+    "New Line.l2 bus1=b2 bus2=b3 phases=3 r1=0.1 x1=0.2 length=1",
+    "New ESPVLControl.base element=Line.l1 terminal=1 type=LocalController kWBand=300 kvarlimit=2000 PVSystemList=[pv1] PVSystemWeights=[7]",
+    "New ESPVLControl.e1 like=base element=Line.l2"
+   ],
+   "target": "ESPVLControl.e1",
+   "properties": {
+    "Element": "Line.l2",
+    "Terminal": "1",
+    "Type": "",
+    "kWBand": "100",
+    "kvarLimit": "4000",
+    "LocalControlList": "",
+    "LocalControlWeights": "",
+    "PVSystemList": "",
+    "PVSystemWeights": "",
+    "StorageList": "",
+    "StorageWeights": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

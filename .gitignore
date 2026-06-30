@@ -1,4 +1,7 @@
 /target
 .inputs
+/investigations
 __pycache__/
 /tmp
+.claude
+*SavedVoltages.dbl

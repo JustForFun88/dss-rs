@@ -7,9 +7,9 @@ temporary `.inputs/electricdss-tst`. See `CORPUS_TEST_PLAN.md`.
 **Do not edit these files by hand.** Re-vendor with `python tools/corpus/vendor.py
 --force` and review the `SHA256SUMS` diff.
 
-**Note:** running the live gate (`DSS_LIVE_ORACLE=1`) or the classifier
+**Note:** running the live gate (now part of `cargo test`) or the classifier
 (`DSS_LIVE_CLASSIFY=1`) executes cases *in place*, so OpenDSS writes outputs
-(EnergyMeter `DI_*.csv`, exports, `LineConstantsCode.dss`, …) into this tree.
+(EnergyMeter `DI_*.csv`, exports, `LineConstantsCode.dss`, ï¿½) into this tree.
 Re-run `python tools/corpus/vendor.py --force` (it copies the source and prunes
 any extra files) to restore the pristine mirror before committing or before
 running the always-on `corpus_manifest` gate.
@@ -30,4 +30,4 @@ every copied file (paths relative to `tests/corpus/`); verify with
 `sha256sum -c SHA256SUMS` from this directory.
 
 Every `.dss` file here is accounted for in exactly one manifest under
-`tests/corpus/manifests/` — enforced by `corpus_manifest.rs`.
+`tests/corpus/manifests/` ï¿½ enforced by `corpus_manifest.rs`.

@@ -6,7 +6,9 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::spectrum::SpectrumObj;
 use crate::solution::SolveMode;
+use crate::support::dynamics::IterationFlag;
 
 /// Reference to a circuit element inside the executive's class registry:
 /// `(class index, object index)`. The Pascal pointer lists (`CktElements`,
@@ -98,6 +100,18 @@ pub struct SysCtx {
     pub neglect_load_y: bool,
     pub long_line_correction: bool,
     pub positive_sequence: bool,
+    /// `Solution.TimeOfDay()` (no epsilon) — wrapped hour-of-day (Storage
+    /// `CheckStateTriggerLevel` charge-time trigger).
+    pub time_of_day: f64,
+    /// `Solution.DynaVars.h` — the dynamics step size in seconds (Storage
+    /// charge-time tolerance window).
+    pub dyna_h: f64,
+    /// `Solution.DynaVars.t` — seconds from the top of the hour (the dynamics
+    /// clock the VCCS waveform integrator samples `w·t` against).
+    pub dyna_t: f64,
+    /// `Solution.DynaVars.IterationFlag` — the predictor (`NewTimeStep`) /
+    /// corrector (`SameTimeStep`) selector consumed by `IntegrateStates`.
+    pub iteration_flag: IterationFlag,
 }
 
 /// Mutable solve-state view for current injection: the node voltage vector
@@ -106,6 +120,13 @@ pub struct SysCtx {
 pub struct InjCtx<'a> {
     pub node_v: &'a [Complex64],
     pub currents: &'a mut [Complex64],
+    /// `Solution.SystemYChanged`. A PC element that re-derives its nominal here
+    /// (Storage/PVSystem when `LoadsNeedUpdating`) can invalidate its own YPrim;
+    /// Pascal's `CktElement.set_YprimInvalid` raises `SystemYChanged` as a side
+    /// effect (CktElement.pas l.245), so the snapshot loop rebuilds Y right after
+    /// `GetPCInjCurr` (Solution.pas l.895). Reproduce that side effect by letting
+    /// the element raise this flag.
+    pub system_y_changed: &'a mut bool,
 }
 
 /// Per-element reliability inputs returned by [`CktElement::reliability_data`]
@@ -140,6 +161,95 @@ pub trait CktElement {
             "Improper call to InjCurrents for Element: \"{}\"",
             self.cd().obj.name()
         );
+    }
+
+    /// Pascal `TPCElement.InitHarmonics`: capture the per-element harmonic base
+    /// values (the fundamental-frequency reference magnitude/angle the spectrum
+    /// is applied to) from the present fundamental solution. Run once over every
+    /// enabled PC element when entering harmonics mode (`InitializeForHarmonics`).
+    /// Default no-op — most elements (and the sources, whose harmonic injection
+    /// is recomputed each step) carry no harmonic state.
+    fn init_harmonics(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let _ = (sys, node_v);
+    }
+
+    /// Pascal `TPCElement.InitStateVars` (`PCElement.pas` l.174): seed this
+    /// machine's dynamic state variables from the present (power-flow) operating
+    /// point. Run once over every enabled PC element when entering dynamics mode
+    /// (`calcInitialMachineStates`, the `OK_for_Dynamics` success path). Default
+    /// no-op — the base `TPCElement` and the elements without dynamic state
+    /// (loads, sources) carry nothing to initialise.
+    fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let _ = (sys, node_v);
+    }
+
+    /// Pascal `TPCElement.IntegrateStates` (`PCElement.pas` l.179): advance this
+    /// machine's dynamic states by one predictor or corrector half-step (the
+    /// `Solution.iteration_flag` predictor/corrector selector is surfaced to
+    /// `SysCtx` once a machine consumes it, WP7.7 step 2). Run over every PC
+    /// element twice per dynamics time step (`IntegratePCStates`). Default no-op
+    /// — only machines with dynamic state respond.
+    fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let _ = (sys, node_v);
+    }
+
+    /// Pascal `TPCElement.NumVariables` (`PCElement.pas`): the number of dynamic
+    /// state variables this element exposes (Monitor mode 3 reads them). Default
+    /// 0 — non-machine elements carry no state variables.
+    fn num_variables(&self) -> usize {
+        0
+    }
+
+    /// Pascal `TPCElement.VariableName(i)` (`PCElement.pas`): the name of state
+    /// variable `i` (1-based). Default empty — only machines name their states.
+    fn variable_name(&self, i: usize) -> String {
+        let _ = i;
+        String::new()
+    }
+
+    /// Pascal `TPCElement.GetAllVariables(States)` (`PCElement.pas`): fill `states`
+    /// (length ≥ [`Self::num_variables`]) with the present value of every dynamic
+    /// state variable. Default no-op — non-machine elements write nothing. Run by
+    /// Monitor mode 3 each dynamics sample.
+    fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        let _ = (sys, node_v, states);
+    }
+
+    /// Pascal `TPCElement.Set_Variable(i, value)` (`PCElement.pas`): write dynamic
+    /// state variable `i` (1-based). The write side of the variable interface
+    /// (`num_variables`/`variable_name`/`get_all_variables`), mirroring the
+    /// `TPCElement` virtual. Default no-op — only machines with settable state
+    /// respond. (No external caller yet — the Rust-native variable-set API that
+    /// replaces the C-API `DSSElement_Set_*` is a later phase.)
+    fn set_variable(&mut self, i: usize, value: f64) {
+        let _ = (i, value);
+    }
+
+    /// Pascal `SpectrumObj`: the harmonic spectrum this element injects from, if
+    /// one is resolved. Read by the harmonic frequency sweep
+    /// (`CollectAllFrequencies`). Default None.
+    fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
+        None
+    }
+
+    /// The `spectrum=` name this element resolves its harmonic spectrum from
+    /// (default or explicit), or None if it has no spectrum. The executive
+    /// resolves it at edit-completion (Pascal `Set_Spectrum` / the constructor
+    /// default) and hands the clone back through [`Self::set_harmonic_spectrum`].
+    fn harmonic_spectrum_name(&self) -> Option<&str> {
+        None
+    }
+
+    /// Store the resolved harmonic spectrum snapshot (Pascal `SpectrumObj`).
+    fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
+        let _ = spectrum;
+    }
+
+    /// Pascal `GetSourceFrequency` (Vsource/Isource): the source's own base
+    /// frequency, used by `CollectAllFrequencies` for the source pass. Non-source
+    /// elements return None (the sweep uses the system fundamental for them).
+    fn source_frequency(&self) -> Option<f64> {
+        None
     }
 
     /// `GetCurrents`: total currents into the element terminals. The default

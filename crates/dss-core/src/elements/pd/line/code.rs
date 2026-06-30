@@ -1,0 +1,324 @@
+//! The impedance-source selection: adopting a `LineCode` or a `LineGeometry`
+//! catalog object onto the line, and the `Kill*Specified`/`ResetLengthUnits`
+//! helpers the property side effects use to switch back to the sym model.
+
+use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, WireDataObj};
+use crate::elements::general::line_code::LineCodeObj;
+use crate::elements::general::line_geometry::LineGeometryObj;
+use crate::elements::traits::ElemRef;
+use crate::obj::base::DssObject;
+use crate::support::line_units::{LineUnits, convert_line_units};
+
+use super::{ConductorChoice, Line, prop};
+
+impl Line {
+    /// Pascal `TLineObj.KillLineCodeSpecified`: drop the LineCode reference and
+    /// clear its set-order mark, so a later sym/matrix override stops the dump
+    /// from reporting the (now superseded) code.
+    pub(super) fn kill_line_code_specified(&mut self) {
+        self.line_code_ref = None;
+        self.line_code_name = String::new();
+        self.cd.obj.clear_seq(prop::LINECODE);
+    }
+
+    /// Pascal `ResetLengthUnits`.
+    pub(super) fn reset_length_units(&mut self) {
+        self.units_convert = 1.0;
+        self.length_units = LineUnits::None;
+        self.user_length_units = LineUnits::None;
+    }
+
+    /// Pascal `TLineObj.FetchLineCode`: copy the resolved LineCode's impedance
+    /// data onto this line. Called from the `linecode=` property side effect
+    /// (here, directly when the reference resolves). Faithful to the
+    /// non-`DSS_EXTENSIONS_COMPAT` path: the copied properties' set-order marks
+    /// are cleared so dumps reflect the code, not the line.
+    pub(super) fn fetch_line_code(&mut self, code: &LineCodeObj) {
+        use prop::*;
+
+        // Frequency compensation takes place in CalcYPrim.
+        self.cd.base_frequency = code.base_frequency();
+
+        // Copy impedances, but do not recalc here for the matrix model: the
+        // symmetrical-component z's may not match what is in the matrix.
+        if code.sym_components_model() {
+            self.r1 = code.r1();
+            self.x1 = code.x1();
+            self.r0 = code.r0();
+            self.x0 = code.x0();
+            self.c1 = code.c1();
+            self.c0 = code.c0();
+            self.sym_components_model = true;
+        } else {
+            self.sym_components_model = false;
+        }
+
+        // Earth-return impedances used to compensate for frequency.
+        self.rg = code.rg();
+        self.xg = code.xg();
+        self.rho = code.rho();
+        self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
+
+        self.line_code_units = LineUnits::from_code(code.units());
+        self.units_convert = convert_line_units(self.line_code_units, self.length_units);
+
+        self.norm_amps = code.norm_amps();
+        self.emerg_amps = code.emerg_amps();
+        self.num_amp_ratings = code.num_amp_ratings();
+        self.amp_ratings = code.amp_ratings().to_vec();
+
+        // FaultRate/PctPerm/HrsToRepair deliberately NOT copied (Pascal
+        // commented out 2014 — they vary section to section).
+
+        // Zero the set-order marks of everything the code now supplies, so
+        // `Save`/`?` reflect the linecode (non-NoPropertyTracking branch).
+        for p in [
+            GEOMETRY, SPACING, R1, X1, R0, X0, C1, C0, B1, B0, SEASONS, RATINGS, NORMAMPS,
+            EMERGAMPS,
+        ] {
+            self.cd.obj.clear_seq(p);
+        }
+
+        if self.cd.nphases as i32 != code.nphases() {
+            self.cd.nphases = code.nphases().max(0) as usize;
+        }
+
+        if !self.sym_components_model {
+            // Copy matrices (Z, Yc) verbatim.
+            self.z = code.z().cloned();
+            self.yc = code.yc().cloned();
+        } else {
+            // Compute matrices from the copied sym components. Pascal reads
+            // ActiveCircuit.PositiveSequence; at parse time we use the
+            // multiphase default, exactly as the `phases=` side effect does.
+            self.recalc(false);
+        }
+
+        // NConds := Fnphases; forces reallocation of terminal info + Yorder.
+        let n = self.cd.nphases;
+        self.cd.set_nconds(n);
+
+        self.line_type = code.fline_type();
+
+        // Pascal `FetchLineCode` tail (Line.pas:590-591): a `linecode=` supersedes
+        // any spacing/geometry source.
+        self.kill_spacing_specified();
+        self.kill_geometry_specified();
+    }
+
+    /// Pascal `TLineObj.KillGeometrySpecified`: drop the geometry reference and
+    /// clear its set-order mark; reset `FZFrequency` so a later geometry/spacing
+    /// rebuild is forced. A no-op when no geometry is attached.
+    pub(super) fn kill_geometry_specified(&mut self) {
+        if self.geometry_obj.is_none() {
+            return;
+        }
+        self.geometry_obj = None;
+        self.geometry_name = String::new();
+        self.cd.obj.clear_seq(prop::GEOMETRY);
+        self.fz_frequency = -1.0;
+    }
+
+    /// Pascal `TLineObj.FetchGeometryCode`: adopt a resolved `LineGeometry` as
+    /// the impedance source. Snapshot-clones it (the WP4.2 `FetchLineCode`
+    /// pattern), copies the ratings/line-type, sizes the Line to the geometry's
+    /// effective conductor count, and switches off the sym-component model.
+    pub(super) fn fetch_geometry_code(&mut self, geom: &LineGeometryObj) {
+        use prop::*;
+
+        self.kill_line_code_specified();
+        self.kill_spacing_specified();
+
+        self.fz_frequency = -1.0; // Init to signify not computed
+
+        // Own a private copy so the per-Line `rho`/cached matrices don't mutate
+        // the shared catalog object (Pascal mutates the shared object — the
+        // upstream "weird" TODO at Line.pas:776; cloning is the faithful Rust
+        // equivalent under the snapshot-clone borrow model).
+        let mut geom = geom.clone();
+
+        // If `rho=` was set on this Line *before* `geometry=`, push it into the
+        // geometry now (the symmetric after-case is handled in `side_effects`).
+        if self.cd.obj.prp_specified(RHO) {
+            geom.set_rho_earth(self.rho);
+        }
+
+        self.norm_amps = geom.norm_amps();
+        self.emerg_amps = geom.emerg_amps();
+
+        // Zero the set-order marks of everything the geometry now supplies, so
+        // `Save`/`?` reflect the geometry (non-NoPropertyTracking branch).
+        for p in [
+            LINECODE, R1, X1, R0, X0, C1, C0, B1, B0, SEASONS, RATINGS, NORMAMPS, EMERGAMPS,
+        ] {
+            self.cd.obj.clear_seq(p);
+        }
+
+        // FNPhases := geometry.Nconds (reduce-aware); NConds := FNPhases forces
+        // reallocation of terminal info + Yorder.
+        self.cd.nphases = geom.nconds().max(0) as usize;
+        let n = self.cd.nphases;
+        self.cd.set_nconds(n);
+
+        self.num_amp_ratings = geom.num_amp_ratings();
+        self.amp_ratings = geom.amp_ratings().to_vec();
+        self.line_type = geom.line_type();
+
+        self.sym_components_model = false;
+        self.sym_components_changed = false;
+
+        self.geometry_obj = Some(geom);
+        self.cd.yprim_invalid = true;
+    }
+
+    /// Pascal `TLineObj.SpacingSpecified` (Line.pas:2141): a spacing source is in
+    /// force once both the spacing object and the (allocated) wire array exist.
+    pub(super) fn spacing_specified(&self) -> bool {
+        self.line_spacing_obj.is_some() && !self.line_wire_data.is_empty()
+    }
+
+    /// Pascal `TLineObj.KillSpacingSpecified` (Line.pas:2042): drop the spacing
+    /// reference, free the wire array, reset `FPhaseChoice`/`FZFrequency`, and
+    /// clear the spacing/wires/cncables/tscables set-order marks. No-op when no
+    /// spacing is attached.
+    pub(super) fn kill_spacing_specified(&mut self) {
+        if !self.spacing_specified() {
+            return;
+        }
+        self.line_spacing_obj = None;
+        self.line_wire_data = Vec::new();
+        self.fphase_choice = ConductorChoice::Unknown;
+        self.fz_frequency = -1.0;
+        for p in [prop::SPACING, prop::WIRES, prop::CNCABLES, prop::TSCABLES] {
+            self.cd.obj.clear_seq(p);
+        }
+    }
+
+    /// Pascal `TLineObj.FetchLineSpacing` (Line.pas:1853): adopt the (already
+    /// stored) `LineSpacing` — drop LineCode/geometry, size the Line to the
+    /// spacing's phase count, and allocate the empty `LineWireData` array of
+    /// `NWires` slots that a following `wires=`/`cncables=`/`tscables=` fills.
+    pub(super) fn fetch_line_spacing(&mut self) {
+        let Some(spc) = self.line_spacing_obj.as_ref() else {
+            return;
+        };
+        let nphases = spc.nphases();
+        let nwires = spc.nwires().max(0) as usize;
+
+        self.kill_line_code_specified();
+        self.kill_geometry_specified();
+
+        // need to establish Yorder before FMakeZFromSpacing
+        self.cd.nphases = nphases.max(0) as usize;
+        let n = self.cd.nphases;
+        self.cd.set_nconds(n); // force reallocation of terminal info
+        self.cd.yprim_invalid = true; // force rebuild of Y matrix
+
+        self.line_wire_data = (0..nwires).map(|_| None).collect();
+    }
+
+    /// Pascal `TLineObj.SetWires` (Line.pas:803), the text path (`AllowAllConductors`
+    /// is JSON-only, skipped — the `LineGeometry.set_wires` precedent). The `wires=`
+    /// form: overhead conductors when `FPhaseChoice = Unknown`, else bare neutrals
+    /// appended after the cable phases (`istart = NPhases + 1`). Validates the count
+    /// against the open conductor span and seeds the Line's ratings from the wires.
+    pub(super) fn set_wires(&mut self, refs: &[(String, ElemRef, &dyn DssObject)]) {
+        let Some(spc) = self.line_spacing_obj.as_ref() else {
+            self.cd.obj.push_error(format!(
+                "You must assign the LineSpacing before the Wires Property (\"Line.{}\").",
+                self.cd.obj.name()
+            ));
+            return;
+        };
+        let nwires = spc.nwires().max(0) as usize;
+        let nphases = spc.nphases().max(0) as usize;
+
+        let istart = if self.fphase_choice == ConductorChoice::Unknown {
+            // it's an overhead line
+            self.kill_line_code_specified();
+            self.kill_geometry_specified();
+            1
+        } else {
+            // adding bare neutrals to an underground line
+            nphases + 1
+        };
+
+        // Validate number of elements: (NWires - istart + 1).
+        let expected = nwires.saturating_sub(istart) + 1;
+        if expected != refs.len() {
+            self.cd.obj.push_error(format!(
+                "Line.{}: Unexpected number ({}) of wires; expected {expected} objects.",
+                self.cd.obj.name(),
+                refs.len()
+            ));
+            return;
+        }
+
+        let mut new_num_rat = 1i32;
+        let mut new_ratings: Vec<f64> = Vec::new();
+        let mut ratings_inc = false;
+        for (k, i) in (istart..=nwires).enumerate() {
+            let (cnorm, cemerg, cnum, crat) = conductor_amps(refs[k].2);
+            self.line_wire_data[i - 1] = Some(refs[k].2.clone_box());
+            if cnum > new_num_rat {
+                new_num_rat = cnum;
+                new_ratings = crat.into_iter().take(new_num_rat.max(0) as usize).collect();
+                ratings_inc = true;
+            }
+            self.norm_amps = cnorm;
+            self.emerg_amps = cemerg;
+        }
+        if ratings_inc {
+            self.num_amp_ratings = new_num_rat;
+            self.amp_ratings = new_ratings;
+        }
+        self.cd.obj.set_as_next_seq(prop::RATINGS);
+        self.cd.obj.set_as_next_seq(prop::NORMAMPS);
+        self.cd.obj.set_as_next_seq(prop::EMERGAMPS);
+    }
+
+    /// Pascal's generic `DSSObjectReferenceArrayProperty` fill for the
+    /// `cncables=`/`tscables=` forms (no `WriteByFunction`, unlike `wires=`): write
+    /// the resolved cables straight into `LineWireData` from conductor 1, with no
+    /// `istart` gymnastics. `FPhaseChoice` is set by the side effect, so a following
+    /// `wires=` appends bare neutrals after the cable phases. `prop` is the display
+    /// name for the no-spacing error (`CNCables`/`TSCables`).
+    ///
+    /// A missing/too-short wire array is left partly NIL — the solve-time
+    /// `LoadSpacingAndWires` reports the "not correctly initialized" abort exactly
+    /// as upstream (probe-confirmed); but with *no* spacing at all (`FWireDataSize <
+    /// 1`) the generic fill raises Pascal error 402 up front, so reproduce that.
+    pub(super) fn set_cables(&mut self, prop: &str, refs: &[(String, ElemRef, &dyn DssObject)]) {
+        if self.line_wire_data.is_empty() {
+            self.cd.obj.push_error(format!(
+                "Line.{}.{prop}: No objects are expected! \
+                 Check if the order of property assignments is correct.",
+                self.cd.obj.name()
+            ));
+            return;
+        }
+        for (k, r) in refs.iter().enumerate() {
+            if k < self.line_wire_data.len() {
+                self.line_wire_data[k] = Some(r.2.clone_box());
+            }
+        }
+    }
+}
+
+/// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` of a resolved conductor,
+/// whichever concrete catalog type it is (Pascal reads `TConductorDataObj` fields).
+fn conductor_amps(o: &dyn DssObject) -> (f64, f64, i32, Vec<f64>) {
+    let any = o.as_any();
+    if let Some(w) = any.downcast_ref::<WireDataObj>() {
+        let (n, e, c, r) = w.amps();
+        (n, e, c, r.to_vec())
+    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
+        let (n, e, k, r) = c.amps();
+        (n, e, k, r.to_vec())
+    } else if let Some(t) = any.downcast_ref::<TsDataObj>() {
+        let (n, e, k, r) = t.amps();
+        (n, e, k, r.to_vec())
+    } else {
+        (0.0, 0.0, 1, Vec::new())
+    }
+}

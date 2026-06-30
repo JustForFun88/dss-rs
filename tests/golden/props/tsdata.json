@@ -1,0 +1,132 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "tsdata",
+ "scenarios": [
+  {
+   "name": "tsdata_default",
+   "commands": [
+    "New TSData.ts0"
+   ],
+   "target": "TSData.ts0",
+   "properties": {
+    "DiaShield": "-1",
+    "TapeLayer": "-1",
+    "TapeLap": "20",
+    "EpsR": "2.3",
+    "InsLayer": "-1",
+    "DiaIns": "-1",
+    "DiaCable": "-1",
+    "RDC": "-1",
+    "RAC": "-1",
+    "RUnits": "none",
+    "GMRAC": "-1",
+    "GMRUnits": "none",
+    "Radius": "-1",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "-2",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "-1",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tsdata_full",
+   "commands": [
+    "New TSData.ts1 DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 GMRac=0.0375 radius=0.0511 normamps=300"
+   ],
+   "target": "TSData.ts1",
+   "properties": {
+    "DiaShield": "0.88",
+    "TapeLayer": "0.005",
+    "TapeLap": "20",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "0.82",
+    "DiaCable": "0.88",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "none",
+    "GMRAC": "0.0375",
+    "GMRUnits": "none",
+    "Radius": "0.0511",
+    "RadUnits": "none",
+    "NormAmps": "300",
+    "EmergAmps": "450",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tsdata_makelike",
+   "commands": [
+    "New TSData.tsa DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 GMRac=0.0375 radius=0.0511",
+    "New TSData.tsb like=tsa"
+   ],
+   "target": "TSData.tsb",
+   "properties": {
+    "DiaShield": "0.88",
+    "TapeLayer": "0.005",
+    "TapeLap": "20",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "0.82",
+    "DiaCable": "0.88",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "none",
+    "GMRAC": "0.0375",
+    "GMRUnits": "none",
+    "Radius": "0.0511",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   }
+  },
+  {
+   "name": "tsdata_tapelap_range",
+   "commands": [
+    "New TSData.tsr DiaShield=0.88 TapeLayer=0.005 TapeLap=150 EpsR=2.3 InsLayer=0.22 DiaIns=0.82 DiaCable=0.88 Rdc=0.0997 radius=0.0511"
+   ],
+   "target": "TSData.tsr",
+   "properties": {
+    "DiaShield": "0.88",
+    "TapeLayer": "0.005",
+    "TapeLap": "150",
+    "EpsR": "2.3",
+    "InsLayer": "0.22",
+    "DiaIns": "0.82",
+    "DiaCable": "0.88",
+    "RDC": "0.0997",
+    "RAC": "0.101694",
+    "RUnits": "none",
+    "GMRAC": "0.03979668",
+    "GMRUnits": "none",
+    "Radius": "0.0511",
+    "RadUnits": "none",
+    "NormAmps": "-1",
+    "EmergAmps": "-1",
+    "Diam": "0.1022",
+    "Seasons": "1",
+    "Ratings": "[ -1]",
+    "CapRadius": "0.0511",
+    "Like": ""
+   },
+   "allow_errors": true
+  }
+ ]
+}

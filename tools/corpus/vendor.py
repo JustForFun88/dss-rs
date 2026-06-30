@@ -145,7 +145,7 @@ temporary `.inputs/electricdss-tst`. See `CORPUS_TEST_PLAN.md`.
 **Do not edit these files by hand.** Re-vendor with `python tools/corpus/vendor.py
 --force` and review the `SHA256SUMS` diff.
 
-**Note:** running the live gate (`DSS_LIVE_ORACLE=1`) or the classifier
+**Note:** running the live gate (now part of `cargo test`) or the classifier
 (`DSS_LIVE_CLASSIFY=1`) executes cases *in place*, so OpenDSS writes outputs
 (EnergyMeter `DI_*.csv`, exports, `LineConstantsCode.dss`, …) into this tree.
 Re-run `python tools/corpus/vendor.py --force` (it copies the source and prunes
