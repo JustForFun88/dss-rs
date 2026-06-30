@@ -96,6 +96,11 @@ FEEDER_REPORTS = [
     # twin's file (read immediately, so no clash).
     ("powers mva", "EXP_POWERS.csv", "export_powers_mva"),
     ("p_byphase mva", "EXP_P_BYPHASE.csv", "export_p_byphase_mva"),
+    # WP8.2 sub-step 2b — the symmetrical-component family (V1/V2/V0, I1/I2/I0,
+    # seq powers) + %NEMA + PD ratings. All magnitude/ratio columns, no angles.
+    ("seqvoltages", "EXP_SEQVOLTAGES.csv", "export_seqvoltages"),
+    ("seqcurrents", "EXP_SEQCURRENTS.csv", "export_seqcurrents"),
+    ("seqpowers", "EXP_SEQPOWERS.csv", "export_seqpowers"),
 ]
 
 

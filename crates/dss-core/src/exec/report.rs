@@ -79,8 +79,21 @@ impl Dss {
         use crate::report::export;
         match ptr {
             1 => self.export_with(&explicit, "EXP_VOLTAGES.csv", export::export_voltages),
+            2 => self.export_with(
+                &explicit,
+                "EXP_SEQVOLTAGES.csv",
+                export::export_seq_voltages,
+            ),
+            4 => self.export_with_mut(&explicit, "EXP_SEQCURRENTS.csv", |c, ckt, sys, nv| {
+                export::export_seq_currents(c, ckt, sys, nv)
+            }),
             9 => self.export_with_mut(&explicit, "EXP_POWERS.csv", |c, ckt, sys, nv| {
                 export::export_powers(c, ckt, sys, nv, mva_opt)
+            }),
+            // ptr 10 (`SeqPowers`) never pre-parses the MVA flag (`ExportOptions.pas:191`
+            // traps only 9/19), so `opt` is always 0 here.
+            10 => self.export_with_mut(&explicit, "EXP_SEQPOWERS.csv", |c, ckt, sys, nv| {
+                export::export_seq_powers(c, ckt, sys, nv, 0)
             }),
             19 => self.export_with_mut(&explicit, "EXP_P_BYPHASE.csv", |c, ckt, sys, nv| {
                 export::export_p_by_phase(c, ckt, sys, nv, mva_opt)

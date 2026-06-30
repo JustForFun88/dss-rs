@@ -18,6 +18,9 @@ mod losses;
 mod node_names;
 mod p_by_phase;
 mod powers;
+mod seq_currents;
+mod seq_powers;
+mod seq_voltages;
 mod voltages;
 mod ynode_list;
 
@@ -27,6 +30,9 @@ pub(crate) use losses::export_losses;
 pub use node_names::export_node_names;
 pub(crate) use p_by_phase::export_p_by_phase;
 pub(crate) use powers::export_powers;
+pub(crate) use seq_currents::export_seq_currents;
+pub(crate) use seq_powers::export_seq_powers;
+pub use seq_voltages::export_seq_voltages;
 pub use voltages::export_voltages;
 pub use ynode_list::export_ynode_list;
 

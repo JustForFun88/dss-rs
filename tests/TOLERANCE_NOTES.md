@@ -144,6 +144,42 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     later show one, it must be **proven by decomposition** (CLAUDE.md), not by widening
     `rel`.
 
+- **WP8.2 sub-step 2b — the symmetrical-component exports** (`SeqVoltages`/
+  `SeqCurrents`/`SeqPowers` on solved IEEE13). Again a *report-layout* gate; the
+  underlying V/I are pinned to 1e-8 by `corpus_live`. Column structure: the
+  magnitude columns (`V1`/`V2`/`V0`/`Vresidual`, `I1`/`I2`/`I0`/`Iresidual`) are
+  `%10.6g` (6 sig); the ratio/unbalance columns (`%V2/V1`, `%V0/V1`, `%NEMA`,
+  `%Normal`, `%Emergency`, `%I2/I1`, `%I0/I1`) are `%8.4g` (4 sig).
+  - **Magnitudes** keep the 6-sig `EXPORT_REL = 1e-4` with `abs = 1e-3`. The `abs`
+    floor absorbs the **cancellation residual** of the sequence quantities on a
+    balanced feeder: `V0`/`V2` (and `I0`/`I2`) are a near-zero difference of three
+    balanced phasors, each pinned to 1e-8 rel by `corpus_live`, so the residual's
+    *absolute* error is ~phase_scale·1e-8 (≈7e-4 V at the 66 kV source bus) while
+    its relative error is large. `abs = 1e-3` clears that with margin and cannot
+    mask a layout bug (a mis-scaled/mis-placed column lands orders of magnitude off).
+  - **Ratio columns** use a `ColTol` prefix `%` with `rel = 1e-3` — the exact 4-sig
+    `%8.4g` printing floor (one ulp in the 4th significant digit) — and a
+    **denominator gate** (`ColTol::gate`). `SeqCurrents` gates on `I1` (col 2,
+    threshold `1e-6 A`): at an open/unloaded terminal `I1`/`I2`/`I0` are ~1e-12
+    cancellation noise (pinned to 0 by the magnitudes' `abs`), so `%I2/I1` etc. are
+    a faer-vs-KLU **noise/noise** form — e.g. `Line.671680.2` (the open 680 end)
+    prints `%I2/I1 = 147.7` (oracle) vs `61.8` (Rust), uncheckable. The gate skips
+    the *ratio* cell only there; on IEEE13 that is **1 genuine-noise row** plus 32
+    rows where `I1` is *exactly* 0 (single-phase elements, non-positive-sequence →
+    ratio trivially `0 = 0`, would pass anyway), against **22** meaningful rows whose
+    ratios stay checked at `rel = 1e-3` (min meaningful `I1 = 5.8e-4 A`, 581× above
+    the gate). The magnitude columns are checked on **every** row — only the derived
+    ratio is gated, only where its denominator is below the physical scale. A proven
+    cancellation floor (CLAUDE.md), **not** a relaxation. `SeqVoltages` needs no gate
+    (V1 is always kV-scale) and `SeqPowers` is all `…:1` fixed-decimal, so its policy
+    is the `Powers` additive floor (`rel = 0, abs = 0.11`); its PD rows carry the
+    extra 4 excess-kVA columns on terminal 1 (12 fields) vs 8 for PC/term-2 rows, and
+    the comparator pins each row's field count.
+  - **`TODO(compat)` in `SeqCurrents`** (`seq_currents.rs`): `Iresidual` sums the
+    *terminal-1* conductors for **every** terminal row (Pascal indexes `cBuffer^[i]`,
+    not `cBuffer^[(j-1)*Ncond+i]`) — an upstream quirk reproduced verbatim so the
+    golden's `Iresidual` column matches; the clean fix is the per-terminal slice.
+
 ## Live corpus gate (`corpus_live.rs`)
 
 Reuses the same comparators and classes verbatim. Differences from the checkpoint

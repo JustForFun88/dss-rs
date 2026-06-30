@@ -910,6 +910,16 @@ pub struct ColTol {
     pub prefix: String,
     pub rel: f64,
     pub abs: f64,
+    /// Optional **denominator gate** `(col, threshold)`: skip this cell entirely
+    /// when `|oracle[col]| < threshold`. For symmetrical-component ratio columns
+    /// (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator (`I1`) is a near-zero
+    /// *cancellation residual* at an open/unloaded terminal — there `I1`/`I2`/`I0`
+    /// are ~1e-12 noise (pinned to 0 by the magnitude columns' `abs`), so their
+    /// ratio is a faer-vs-KLU noise/noise form that carries no information. The
+    /// magnitude columns stay tightly checked; only the *ratio* is skipped, and
+    /// only where its denominator is below the meaningful physical scale. A proven
+    /// cancellation floor, NOT a relaxation (tests/TOLERANCE_NOTES.md).
+    pub gate: Option<(usize, f64)>,
 }
 
 /// Policy for [`compare_export`].
@@ -943,6 +953,29 @@ impl ExportPolicy {
             }
         }
         (self.rel, self.abs)
+    }
+
+    /// Whether column `j`'s cell should be skipped for this row because its
+    /// [`ColTol::gate`] denominator (the oracle's `fields[col]`) is below the
+    /// gate threshold — a ratio of near-zero cancellation residuals (see
+    /// [`ColTol::gate`]). Only the *matching* `ColTol`'s gate applies.
+    fn skip_col(&self, j: usize, colnames: &[String], oracle_fields: &[String]) -> bool {
+        let Some(name) = colnames.get(j) else {
+            return false;
+        };
+        let name = name.trim().to_lowercase();
+        for ct in &self.col_tol {
+            if name.starts_with(&ct.prefix.to_lowercase()) {
+                return match ct.gate {
+                    Some((col, thresh)) => oracle_fields
+                        .get(col)
+                        .and_then(|f| f.trim().parse::<f64>().ok())
+                        .is_some_and(|v| v.abs() < thresh),
+                    None => false,
+                };
+            }
+        }
+        false
     }
 }
 
@@ -1009,6 +1042,9 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                 let (rf, of) = (split(r), split(o));
                 assert_eq!(rf.len(), of.len(), "{ctx}: row {i} field count differs");
                 for (j, (a, e)) in rf.iter().zip(&of).enumerate() {
+                    if policy.skip_col(j, &colnames, &of) {
+                        continue;
+                    }
                     let (rel, abs) = policy.tol_for_col(j, &colnames);
                     field_eq(a, e, rel, abs, &format!("{ctx}: row {i} field {j}"));
                 }
@@ -1039,6 +1075,9 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                     "{ctx}: row key {k:?} field count differs"
                 );
                 for (j, (a, e)) in rf.iter().zip(of).enumerate() {
+                    if policy.skip_col(j, &colnames, of) {
+                        continue;
+                    }
                     let (rel, abs) = policy.tol_for_col(j, &colnames);
                     field_eq(a, e, rel, abs, &format!("{ctx}: row {k:?} field {j}"));
                 }
