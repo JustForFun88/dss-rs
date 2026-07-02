@@ -235,6 +235,7 @@ impl Dss {
         let circuit_name_ = format!("{case}_");
         let path = crate::report::output::export_path(
             &self.output_directory,
+            &self.current_dir,
             &circuit_name_,
             explicit,
             default_name,

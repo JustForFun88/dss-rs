@@ -401,10 +401,12 @@ fn export_p_byphase_mva_matches_oracle() {
 /// a meaningful-magnitude threshold) skips a ratio cell where its denominator is a
 /// nonzero near-zero cancellation residual (an open/unloaded terminal); `None`
 /// when the denominator is never near-zero (`SeqVoltages`' V1 is always kV-scale),
-/// `Some((I1_col, …))` for `SeqCurrents`.
-fn pct_ratio_tol(abs: f64, gate: Option<GateSpec>) -> ColTol {
+/// `Some((I1_col, …))` for `SeqCurrents`. `prefix` scopes the override — a gate
+/// must cover only the columns whose denominator it actually tests (`%I…`/`%NEMA`
+/// divide by I1; `%Normal`/`%Emergency` divide by NormAmps and stay ungated).
+fn pct_ratio_tol(prefix: &str, abs: f64, gate: Option<GateSpec>) -> ColTol {
     ColTol {
-        sel: ColSel::Prefix("%".to_string()),
+        sel: ColSel::Prefix(prefix.to_string()),
         rel: 1e-3,
         abs,
         gate,
@@ -426,7 +428,7 @@ fn export_seqvoltages_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: EXPORT_REL,
         abs: 1e-9,
-        col_tol: vec![pct_ratio_tol(1e-9, None)],
+        col_tol: vec![pct_ratio_tol("%", 1e-9, None)],
     };
     run_feeder_export("export_seqvoltages", &policy);
 }
@@ -453,7 +455,16 @@ fn export_seqcurrents_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: EXPORT_REL,
         abs: 1e-8,
-        col_tol: vec![pct_ratio_tol(1e-8, Some(GateSpec::Col(2, 1e-6)))],
+        // The I1 gate covers only the columns that actually divide by I1
+        // (`%I2/I1`, `%I0/I1`) or are a same-noise form of the phase currents
+        // (`%NEMA`); `%Normal`/`%Emergency` divide by NormAmps (never near-zero)
+        // and fall through to the ungated `%` catch-all, so a regression there
+        // stays checked even on the one gated noise row (audit follow-up).
+        col_tol: vec![
+            pct_ratio_tol("%i", 1e-8, Some(GateSpec::Col(2, 1e-6))),
+            pct_ratio_tol("%nema", 1e-8, Some(GateSpec::Col(2, 1e-6))),
+            pct_ratio_tol("%", 1e-8, None),
+        ],
     };
     run_feeder_export("export_seqcurrents", &policy);
 }
