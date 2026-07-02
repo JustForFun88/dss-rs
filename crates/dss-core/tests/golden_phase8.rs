@@ -22,7 +22,7 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::{ColTol, ExportPolicy, RowPolicy, compare_export};
+use harness::{ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy, compare_export};
 use serde::Deserialize;
 
 fn phase8_dir() -> PathBuf {
@@ -223,7 +223,7 @@ fn export_voltages_matches_oracle() {
         // in `corpus_live`; here it is only a printing-floor layout check.
         // (tests/TOLERANCE_NOTES.md)
         col_tol: vec![ColTol {
-            prefix: "angle".to_string(),
+            sel: ColSel::Prefix("angle".to_string()),
             rel: 0.0,
             abs: 0.11,
             gate: None,
@@ -402,9 +402,9 @@ fn export_p_byphase_mva_matches_oracle() {
 /// nonzero near-zero cancellation residual (an open/unloaded terminal); `None`
 /// when the denominator is never near-zero (`SeqVoltages`' V1 is always kV-scale),
 /// `Some((I1_col, …))` for `SeqCurrents`.
-fn pct_ratio_tol(abs: f64, gate: Option<(usize, f64)>) -> ColTol {
+fn pct_ratio_tol(abs: f64, gate: Option<GateSpec>) -> ColTol {
     ColTol {
-        prefix: "%".to_string(),
+        sel: ColSel::Prefix("%".to_string()),
         rel: 1e-3,
         abs,
         gate,
@@ -453,7 +453,7 @@ fn export_seqcurrents_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: EXPORT_REL,
         abs: 1e-8,
-        col_tol: vec![pct_ratio_tol(1e-8, Some((2, 1e-6)))],
+        col_tol: vec![pct_ratio_tol(1e-8, Some(GateSpec::Col(2, 1e-6)))],
     };
     run_feeder_export("export_seqcurrents", &policy);
 }
@@ -474,4 +474,147 @@ fn export_seqpowers_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_export("export_seqpowers", &policy);
+}
+
+// --- WP8.2 sub-step 2c: the per-terminal/per-conductor element exports -------
+// `Currents`/`ElemCurrents`/`ElemVoltages` are magnitude (`%10.6g`, 6 sig) +
+// angle (`%8.2f`, 2 decimals) reports over Sources→PD→Faults→PC; `ElemPowers`
+// prints per-conductor kW/kvar (`%10.6g`); `NodeOrder` is integer node numbers;
+// `Taps` is the RegControl tap table. As with 2a/2b the engine physics (node V /
+// Iterminal) is pinned to 1e-8 by `corpus_live`; these goldens pin report layout.
+//
+// The **angle** of a near-zero magnitude (a per-terminal residual, or an
+// open-terminal / grounded-neutral conductor) is faer-vs-KLU noise carrying no
+// information, so the `ang`-prefixed columns are gated on their **paired
+// magnitude** (the immediately-preceding column, `GateSpec::PrevCol`): skipped
+// only where that magnitude is a nonzero sub-threshold residual, keeping every
+// exactly-zero row's `0.00 == 0.00` check and every real-magnitude row's angle.
+// A proven cancellation floor, not a relaxation. (tests/TOLERANCE_NOTES.md)
+
+/// The `%8.2f` (2-decimal) additive printing floor for the angle columns of a
+/// paired magnitude/angle report: two independent solves round the last 0.01
+/// digit apart, so `rel = 0`, `abs = 0.011` (the exact ±0.01 last-digit
+/// boundary). Selected by index parity (`start`, then every other column is an
+/// angle) because these reports have **truncated headers** (`…, I_1, Ang_1,
+/// ...`) that name only the first pair. Gated on the paired magnitude (the
+/// immediately-preceding column) so the angle of a near-zero residual /
+/// open-terminal / grounded-neutral conductor (which is faer-vs-KLU noise) is
+/// skipped; `thresh` (1e-6) sits far above that noise (≤ ~5e-9) and below the
+/// smallest real printed magnitude, so only genuine-noise angles are skipped.
+fn ang_tol(start: usize) -> ColTol {
+    ColTol {
+        sel: ColSel::Parity { start, parity: 1 },
+        rel: 0.0,
+        abs: 0.011,
+        gate: Some(GateSpec::PrevCol(1e-6)),
+    }
+}
+
+/// `Export Currents` (Pascal `ExportCurrents` + `CalcAndWriteCurrents`):
+/// per-terminal, per-conductor `|I|`/angle over the widest element, plus a
+/// per-terminal residual. Magnitudes keep the 6-sig `EXPORT_REL`; `abs = 1e-6`
+/// absorbs the near-zero `Iresid` cancellation residual (measured ≤ 1e-8 A) and
+/// the exactly-zero conductor-width fill (`0 == 0`). Angle columns use the
+/// `%8.2f` floor gated on their paired magnitude (the residual/fill angles are
+/// noise).
+#[test]
+fn export_currents_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 1e-6,
+        col_tol: vec![ang_tol(1)],
+    };
+    run_feeder_export("export_currents", &policy);
+}
+
+/// `Export NodeOrder` (Pascal `ExportNodeOrder` + `WriteNodeList`): `"Element",
+/// Nterms, Nconds, Node-1, …` — all integers (node numbers, 0 = ground), exact.
+#[test]
+fn export_nodeorder_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_nodeorder", &policy);
+}
+
+/// `Export ElemCurrents` (Pascal `WriteElemCurrents`): per-conductor `|I|`/angle
+/// over `NConds·Nterms`. Same floor structure as `Currents` (magnitudes 6-sig +
+/// `abs = 1e-6` for the near-zero open-terminal conductors; angles gated on their
+/// paired magnitude).
+#[test]
+fn export_elemcurrents_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 1e-6,
+        col_tol: vec![ang_tol(3)],
+    };
+    run_feeder_export("export_elemcurrents", &policy);
+}
+
+/// `Export ElemVoltages` (Pascal `WriteElemVoltages`): per-conductor `|V|`/angle.
+/// Magnitudes 6-sig; `abs = 1e-6` V absorbs the exactly-zero grounded-neutral
+/// conductor; angles gated on their paired magnitude.
+#[test]
+fn export_elemvoltages_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 1e-6,
+        col_tol: vec![ang_tol(3)],
+    };
+    run_feeder_export("export_elemvoltages", &policy);
+}
+
+/// `Export ElemPowers` (Pascal `WriteElemPowers`): per-conductor `S =
+/// Vterminal·conj(Iterminal)`, printed kW/kvar (`%10.6g`, 6 sig). Formed straight
+/// from `ComputeVterminal`/`ComputeIterminal` (like `P_byphase`, no `×3`); on the
+/// solved feeder equals the canonical terminal power (the `Vsource` row matches
+/// `CktElement.Powers`, oracle-probed — the isolated-source 2a divergence never
+/// appears here). Magnitudes 6-sig; `abs = 1e-6` kW absorbs the ~0 neutral-
+/// conductor powers.
+#[test]
+fn export_elempowers_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: 1e-6,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_elempowers", &policy);
+}
+
+/// `Export Taps` (Pascal `ExportTaps`): one row per RegControl — the controlled
+/// transformer's present/min/max tap + increment (`%8.5f`), integer tap position
+/// and winding, and the Forward/Reverse + True/False mode text. The tap value is
+/// a discrete `mid + position·increment`, so both engines land the identical
+/// value once they converge to the same integer tap position (already pinned by
+/// `corpus_live` and the feeder-controls gate) — `rel = 0`, `abs = 1e-4` catches
+/// any tap-position divergence loudly (one position = 0.00625 ≫ 1e-4) while
+/// clearing the `%8.5f` print floor.
+#[test]
+fn export_taps_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 1e-4,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_taps", &policy);
 }

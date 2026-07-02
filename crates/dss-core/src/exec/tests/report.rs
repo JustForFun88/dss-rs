@@ -108,17 +108,18 @@ fn export_records_scoped_not_ported() {
         dss.errors()
     );
 
-    // (2) A still-unported export records the scoped `NOT_PORTED`, and the
-    //     abbreviation resolves earliest-wins like the oracle's `ExportCommands`
-    //     (`elem` → ElemCurrents(42), not ElemVoltages(43)/ElemPowers(44)).
-    //     ElemCurrents is not solution-guarded, so no solve is needed.
+    // (2) A still-unported export records the scoped `NOT_PORTED`. `Summary`(27)
+    //     is not solution-guarded (27 ∉ the #24712 ptr set), so no solve is
+    //     needed; it lands in WP8.2 step 3. (WP8.2 step 2c ported the paired
+    //     element exports, so `elem` → ElemCurrents is now a real report, gated
+    //     by `golden_phase8.rs`, not this NOT_PORTED test.)
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
     dss.command(&set_dp);
-    dss.command("export elem");
+    dss.command("export summary");
     assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(
-        dss.errors()[0].contains("\"ElemCurrents\"") && dss.errors()[0].contains("not ported"),
+        dss.errors()[0].contains("\"Summary\"") && dss.errors()[0].contains("not ported"),
         "{:?}",
         dss.errors()
     );

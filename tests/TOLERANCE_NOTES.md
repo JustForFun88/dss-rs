@@ -108,8 +108,9 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     is a formatting artifact, not a divergence — hence `rel = 0` (no multiplicative
     `%f` component) and `abs = 0.11` is the exact proven printing floor. This is
     the **only** loosened column and it is named explicitly via
-    `ExportPolicy::col_tol` (a header-name-prefix match, applying to `Angle1/2/3`
-    only) — **not** a blanket relaxation: every magnitude/pu/coordinate column
+    `ExportPolicy::col_tol` (a `ColSel::Prefix("angle")` header-name match,
+    applying to `Angle1/2/3` only) — **not** a blanket relaxation: every
+    magnitude/pu/coordinate column
     keeps the tight default. The angle is `arg(V)`, independent of `|V|`/pu; its
     engine correctness is gated by the `corpus_live` voltage compare (a gross
     rad↔deg / sign-flip bug is far above 0.1 and caught either way). `BusCoords`
@@ -193,6 +194,57 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     *terminal-1* conductors for **every** terminal row (Pascal indexes `cBuffer^[i]`,
     not `cBuffer^[(j-1)*Ncond+i]`) — an upstream quirk reproduced verbatim so the
     golden's `Iresidual` column matches; the clean fix is the per-terminal slice.
+
+- **WP8.2 sub-step 2c — the per-terminal/per-conductor element exports**
+  (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` on
+  solved IEEE13). Report-layout gate again; the engine V/I are pinned to 1e-8 by
+  `corpus_live`. These are magnitude (`%10.6g`, 6 sig) + angle (`%8.2f`, 2 dec)
+  reports; `ElemPowers` is kW/kvar (`%10.6g`), `NodeOrder`/`Taps` are exact.
+  - **Magnitudes** keep the 6-sig `EXPORT_REL = 1e-4`; the default `abs = 1e-6`
+    absorbs the per-terminal `Iresid` cancellation residual (measured ≤ 1e-8 A on
+    IEEE13), the conductor-width zero-fill (`Currents`, exact `0`), the near-zero
+    open-terminal conductor currents (`Line.671680`, ~2.5e-12 A), the grounded-
+    neutral conductor voltages (exactly `0`), and the ~0 neutral-conductor powers.
+    A gross scale/column error on a real magnitude still fails massively.
+  - **Angle columns** use `rel = 0, abs = 0.011` — the `%8.2f` *additive* printing
+    floor (two independent solves round the last 0.01 digit apart). Selected by
+    **`ColSel::Parity`** (index parity), **not** name-prefix, because these reports
+    have **truncated headers** (`…, I_1, Ang_1, ...`) that name only the first
+    pair: `Parity { start, parity: 1 }` picks every angle column, `start = 1` for
+    `Currents` (all columns are pairs), `start = 3` for `ElemCurrents`/
+    `ElemVoltages` (after `Element, Nterms, Nconds`). The angle of a **near-zero**
+    magnitude (a residual / open-terminal / grounded-neutral conductor) is a
+    faer-vs-KLU noise value carrying no information, so it is **gated on its paired
+    magnitude** (`GateSpec::PrevCol`, the immediately-preceding column): skipped
+    only where `0 < |mag| < 1e-6` — the band-limit keeps every exactly-zero row's
+    `0.00 == 0.00` check and every real-magnitude row's angle (e.g. `Currents`
+    `AngResid` on a real neutral-return residual stays checked). A proven
+    cancellation floor (CLAUDE.md), **not** a relaxation.
+  - **`ElemPowers` Vsource / order note** (`elem.rs`): the per-conductor power is
+    `Vterminal·conj(Iterminal)`, and `compute_iterminal` is called **before**
+    `compute_vterminal` (the reverse of Pascal's textual order). Pascal's
+    `ComputeIterminal` is a post-solve no-op (`ITerminalUpdated = TRUE`), so
+    `Vterminal` stays `NodeV`; our `compute_iterminal` re-runs `GetCurrents`, and
+    `TVsourceObj.GetCurrents` overwrites `Vterminal` with the source EMF
+    `[Vsource; 0]` (≈ but ≠ `NodeV`), which would print the isolated-source
+    `-612.936` 2a surfaced. Computing `iterminal` first, then `vterminal`, restores
+    `Vterminal = NodeV`, reproducing the oracle's observable `NodeV·conj(I)`
+    (`-612.729`). Not a `TODO(compat)` — it reproduces the oracle exactly; the note
+    records *why* the order is inverted from the Pascal source text.
+  - **`Taps`** is exact (`rel = 0, abs = 1e-4`): the tap value is the discrete
+    `mid + position·increment`, so both engines print the identical value once they
+    converge to the same integer tap position (pinned by `corpus_live` + the
+    feeder-controls gate); a tap-position divergence (≥ 0.00625) fails loudly.
+  - **`NodeOrder` guard:** `WriteNodeList`/`WriteElem*` error 222001 per element on
+    an unsolved circuit and exit early (header-only file). The formatter reproduces
+    the header-only body; the router records the 222001 once (Pascal once per
+    element — the observable file + error presence match, no gate checks the count).
+    Untested (no unsolved-circuit corpus/golden deck); the solved-circuit path is
+    the gated one.
+  - **Coverage gaps (tracked):** the `Currents` filler for `Nterms < TermWidth` and
+    the near-zero-angle gate's exactly-zero branch are exercised by IEEE13; the
+    222001 unsolved path and a Fault-object walk are code-faithful but unexercised
+    (recorded in STATUS §1f).
 
 ## Live corpus gate (`corpus_live.rs`)
 

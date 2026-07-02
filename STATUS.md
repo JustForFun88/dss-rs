@@ -7,21 +7,22 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-06-30 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
+Last updated: 2026-07-02 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
 skeleton `82b50fe`, output-path machinery + `Export Counts` + the `compare_export`
 golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) landed the
 bus/node solution exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`);
-sub-step 2a (`668bd18`) landed the aggregate PD/PC **power exports**
+sub-step 2a (`668bd18`) the aggregate PD/PC **power exports**
 `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra
-(`for_each_enabled_elem` + `export_with_mut`, the `snapshot_elements` disjoint
-borrow) + the `Powers`/`P_byphase` MVA/kVA `Parm2` pre-parse; **sub-step 2b landed,
-gate-green** — the **symmetrical-component family** `SeqVoltages`/`SeqCurrents`/`SeqPowers`
-(`Phase2SymComp` + `PctNemaUnbalance` + PD `%Normal`/`%Emergency` ratings + the new
-`ColTol::gate` denominator-gate harness machinery for noise/noise ratio cells).
-`ElemPowers` was deferred into 2c (the `WriteElem*` family) after an oracle probe
-showed its Vsource power is an intrinsic `WriteElemPowers` artifact
-(≠ `CktElement.Powers`). Detail in
+(`for_each_enabled_elem` + `export_with_mut`); **sub-step 2b** the
+**symmetrical-component family** `SeqVoltages`/`SeqCurrents`/`SeqPowers`
+(`Phase2SymComp` + `PctNemaUnbalance` + PD ratings + `ColTol::gate`); **sub-step 2c
+landed, gate-green** — the **per-terminal/per-conductor element exports**
+`Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps`
+(`CalcAndWriteCurrents`/`WriteNodeList`/`WriteElem*`/`ExportTaps`), the `ColSel`
+name-prefix|index-parity harness refactor for the truncated-header mag/angle
+reports, and the `ElemPowers` Vsource `Vterminal`-vs-EMF **order fix** (a real
+Rust↔oracle divergence caught + proven, `-612.936`→`-612.729`). Detail in
 the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
 (branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
@@ -89,16 +90,16 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery. Branch `phase-8-reporting`. **next = WP8.2 sub-step 2c** (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps`). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix. Branch `phase-8-reporting`. **next = WP8.2 sub-step 3 + completion gate** (`Y`/`Yprims`/`SeqZ`/`Summary`/`Result` + IEEE8500 goldens + `Export`-report corpus migration). Detail in §1f |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 719, golden_feeders 1,
+cargo test --workspace      # dss-core lib 722, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 13,
+                            # golden_phase7_protection 1, golden_phase8 19,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1160,9 +1161,54 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     **(3) tracked [Minor]:** the `SeqPowers` MVA path is unreachable by dispatch (no golden possible);
     the Faults walk + 2-phase nonzero-`%NEMA` path need a synthesized fixture (deferred — no corpus
     deck). golden_phase8 stays **13** (tighter floors, no new tests).
-- **next — WP8.2 sub-step 2c:** `Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/
-  `Taps` (the mag/angle column-pair comparator work + RegControl accessors + the `WriteElemPowers`
-  Vsource quirk surfaced in 2a).
+- **sub-step 2c — the per-terminal/per-conductor element exports — done, gate-green.** The six
+  remaining WP8.2 element/tap reports on solved IEEE13: `Currents` (`ExportCurrents:612` +
+  `CalcAndWriteCurrents:518` — per-terminal/-conductor `|I|`/angle over the widest element `MaxCond×
+  MaxTerm`, zero-filled, + a per-terminal `Iresid`; walk Sources→PD→Faults→PC via `GetCurrents`),
+  `NodeOrder` (`ExportNodeOrder:750` + `WriteNodeList:716` — `"Elem", Nterms, Nconds, node#…` via
+  `GetNodeNum` = `MapNodeToBus[NodeRef].NodeNum`), `ElemCurrents`/`ElemVoltages`/`ElemPowers`
+  (`WriteElem*:799/881/962` — per-conductor `|I|`/`|V|`/kW·kvar over `ComputeIterminal`/
+  `ComputeVterminal`), and `Taps` (`ExportTaps:3729` — per-RegControl controlled-transformer
+  present/min/max tap + increment + `TapPosition` + winding + reverse/cogen mode). Files
+  `report/export/{currents,node_order,elem,taps}.rs`; dispatch arms ptr 3/40/41/42/43/44. New router
+  helpers `export_elem_ordered` (the `WriteElem*` per-element `IsSolved` #222001 guard: header-only +
+  the error once when unsolved) and `export_with_classes` (read-only `(&[DssClass], &Circuit)` for
+  `Taps`, which downcasts RegControl + Transformer). New RegControl accessors `tr_winding`/
+  `in_reverse_mode`/`in_cogen_mode` (the runtime mode flags, distinct from the `cogen=` property).
+  - **The `ElemPowers` Vsource order fix (a real divergence caught, not rationalized).** Our first
+    cut reproduced Pascal's textual `ComputeVterminal; ComputeIterminal` order and the golden failed:
+    Rust `Q_1 = -612.936` vs oracle `-612.729`. Root cause proven: Pascal's post-solve
+    `ComputeIterminal` is a no-op (`ITerminalUpdated = TRUE`) so `Vterminal` stays `NodeV`, but our
+    `compute_iterminal` re-runs `GetCurrents`, and `TVsourceObj.GetCurrents` **overwrites** `Vterminal`
+    with the source EMF `[Vsource; 0]` (≈ but ≠ `NodeV` — the isolated-source `-612.936` 2a surfaced).
+    Fix: call `compute_iterminal` **before** `compute_vterminal` so `Vterminal = NodeV` at the power
+    product — reproducing the oracle's observable `NodeV·conj(I)` (`-612.729`). Inert for every other
+    element (their `GetCurrents` also sets `Vterminal = NodeV`). Not a `TODO(compat)`; documented at
+    `elem.rs` + `tests/TOLERANCE_NOTES.md`.
+  - **New harness machinery — `ColSel` (name-prefix | index-parity) for `ColTol`.** The `ElemCurrents`/
+    `ElemVoltages` headers are **truncated** (`…, I_1, Ang_1, ...`) — they name only the first mag/angle
+    pair — so the existing header-name-prefix `ColTol` can't reach the later angle columns. Refactored
+    `ColTol.prefix: String` → `sel: ColSel` (`Prefix(..)` | `Parity{start, parity}`) and `gate:
+    Option<(usize,f64)>` → `Option<GateSpec>` (`Col(col,thresh)` | `PrevCol(thresh)`). The angle columns
+    use `Parity{start, 1}` (every other column from `start`) with `rel=0`/`abs=0.011` (the `%8.2f`
+    additive floor), gated on their **paired magnitude** (`PrevCol` = the preceding column) so the angle
+    of a near-zero residual/open-terminal/grounded-neutral conductor (faer-vs-KLU noise) is skipped where
+    `0 < |mag| < 1e-6` — the band-limit keeps exactly-zero rows' `0.00==0.00` checks. `Currents` (full
+    header, all pairs) uses `Parity{1,1}`; the `SeqCurrents`/`SeqVoltages`/`Voltages` `Prefix` overrides
+    are unchanged (mechanically ported to the new enum). A proven cancellation floor, not a relaxation.
+  - **Gate:** `gen_phase8.py` captures the oracle's six reports on solved IEEE13 →
+    `export_{currents,nodeorder,elemcurrents,elemvoltages,elempowers,taps}.{txt,meta.json}`;
+    `golden_phase8.rs` replays + diffs (`ExactOrdered`). golden_phase8 **13→19**; lib **722** (formatters
+    gated end-to-end, no new inline tests — the WP8.1 `export_records_scoped_not_ported` case 2 switched
+    from the now-ported `elem` to the still-unported `summary`). `solvable_now` **88** (no migration — the
+    full WP8.2 export set + the completion gate lands next).
+  - **Tracked-untested-but-faithful:** the `WriteElem*`/`WriteNodeList` unsolved-circuit #222001 path
+    (header-only + one error; Pascal emits it once per element — the observable file + error presence
+    match, no gate checks the count) and the `Currents` Faults walk (no Fault objects in IEEE13) are
+    code-faithful but unexercised (no unsolved/Fault corpus/golden deck).
+- **next — WP8.2 sub-step 3 + completion gate:** the matrix/summary exports (`Y`/`Yprims`/`SeqZ`/
+  `Summary`/`Result`; `Counts` already done), then the WP8.2 completion gate — the IEEE8500
+  bus/summary goldens + the `Export`-tagged solution-report corpus migration + `COVERAGE.md` refresh.
 
 ---
 
