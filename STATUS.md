@@ -1206,6 +1206,24 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (header-only + one error; Pascal emits it once per element — the observable file + error presence
     match, no gate checks the count) and the `Currents` Faults walk (no Fault objects in IEEE13) are
     code-faithful but unexercised (no unsolved/Fault corpus/golden deck).
+  - **audit-code (independent agent): faithful — no findings.** Loop-for-loop reconfirmed vs Pascal:
+    all six formatters (headers, `%10.6g`/`%8.2f`/`%8.5f` formats, name casing/quoting), the `Currents`
+    `MaxCond=1`/`MaxTerm=2` width grown over *all* `ckt_elements` (verified `add_ckt_element` pushes
+    regardless of `enabled`), the `GetNodeNum` ground branch, the `winding_tap_data` destructure order +
+    `TapPosition` FPC-Round, the runtime `In{Reverse,Cogen}Mode` flags, and the ptr/filename map — all
+    correct. The `ElemPowers` order inversion verified **load-bearing** (the export hits a
+    `compute_iterminal` cache miss, so `get_currents` re-runs and clobbers `vterminal` to the EMF; the
+    trailing `compute_vterminal` restores `NodeV`). The 222001-once-vs-per-element deviation is
+    doc-acknowledged (observable file + error presence match), not a finding. Nothing to fix.
+  - **audit-tests follow-up (independent agent): genuine + strong, 1 LOW fixed.** Mutation-verified all
+    6 goldens non-vacuous — the `-612.729→-612.936` pre-fix regression fails loudly, magnitude/angle/
+    node/tap mutations each fail, and the `PrevCol` angle gate skips **only** genuine faer-vs-KLU noise
+    (a real 5.7e-4 A angle stays checked, a 6.2e-11 residual angle is skipped; `Parity` targets the
+    angle columns, never masking a magnitude — a 0.005 `ElemCurrents` magnitude drift fails). Floors
+    confirmed proven, meta single-sources the deck, goldens are genuine `check_pin` oracle captures.
+    **Fixed [LOW]:** switching the unit test's case 2 to `summary` dropped the `elem`→`ElemCurrents`
+    *earliest-wins* abbreviation coverage; **re-added** as case 4 (`export elem` on a solved circuit
+    emits `…_EXP_ElemCurrents.csv`, no error) — an assertion inside the existing test, so lib stays **722**.
 - **next — WP8.2 sub-step 3 + completion gate:** the matrix/summary exports (`Y`/`Yprims`/`SeqZ`/
   `Summary`/`Result`; `Counts` already done), then the WP8.2 completion gate — the IEEE8500
   bus/summary goldens + the `Export`-tagged solution-report corpus migration + `COVERAGE.md` refresh.

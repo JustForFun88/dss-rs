@@ -135,6 +135,29 @@ fn export_records_scoped_not_ported() {
         "{:?}",
         dss.errors()
     );
+
+    // (4) The ambiguous `elem` prefix resolves *earliest-wins* like the oracle's
+    //     `ExportCommands` — `ElemCurrents`(42), not `ElemVoltages`(43)/
+    //     `ElemPowers`(44) — and is now a **real** report (WP8.2 step 2c), not a
+    //     `NOT_PORTED` stub. On a solved circuit it emits `…_EXP_ElemCurrents.csv`
+    //     with no error (the abbreviation-disambiguation coverage the golden's
+    //     full keywords don't exercise; audit-tests WP8.2 step 2c).
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    dss.command(&set_dp);
+    dss.command("export elem");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(
+        dss.last_result_file()
+            .to_lowercase()
+            .ends_with("exp_elemcurrents.csv"),
+        "`export elem` should resolve to ElemCurrents: {:?}",
+        dss.last_result_file()
+    );
 }
 
 /// `Save`/`Dump` record a scoped `NOT_PORTED` until WP8.5 (their corpus decks
