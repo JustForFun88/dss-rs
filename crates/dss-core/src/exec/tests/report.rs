@@ -3,6 +3,8 @@
 //! `solvable_now` decks green, and the scoped `NOT_PORTED` stubs for the not-yet
 //! ported `Export`/`Save`/`Dump` verbs.
 
+use std::path::PathBuf;
+
 use crate::exec::*;
 
 /// A small solved 3-phase feeder. Returns `(name, currents)` per element so two
@@ -158,6 +160,82 @@ fn export_records_scoped_not_ported() {
         "`export elem` should resolve to ElemCurrents: {:?}",
         dss.last_result_file()
     );
+}
+
+/// `Compile` moves the report `OutputDirectory` to the deck's directory (Pascal
+/// `DoRedirect` calls `SetDataPath(DSS, CurrDir)` for Compile before *and* after
+/// processing — `ExecHelper.pas:546/651`), so a default-named export lands next
+/// to the compiled deck, an explicit *relative* filename resolves against the
+/// DSS current dir (= the deck dir), and a nested Compile cannot leave the dirs
+/// pointing at the inner deck. Plain `Redirect` moves neither. All four
+/// behaviors oracle-verified (dss-python 0.15.7 probe, WP8.2 follow-up: the
+/// original WP8.1 port kept `output_directory` pinned to the startup cwd and
+/// resolved explicit names against the process cwd — files landed in the wrong
+/// directory after any `Compile`).
+#[test]
+fn compile_moves_output_directory_redirect_does_not() {
+    let root = std::env::temp_dir().join(format!("dss_outdir_{}", std::process::id()));
+    let sub = root.join("sub");
+    std::fs::create_dir_all(&sub).unwrap_or_else(|e| panic!("mkdir {}: {e}", sub.display()));
+    let deck = "new circuit.t basekv=12.47 phases=3 bus1=src\n\
+                set voltagebases=[12.47]\n\
+                calcvoltagebases\n";
+    let master = root.join("master.dss");
+    std::fs::write(&master, deck).unwrap();
+
+    // (1) Default-named export after Compile → next to the deck.
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{}\"", master.display()));
+    dss.command("export counts");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let produced = PathBuf::from(dss.last_result_file());
+    assert_eq!(
+        produced.parent(),
+        Some(root.as_path()),
+        "default-named export must land in the deck dir"
+    );
+
+    // (2) Explicit *relative* filename → resolved against the deck dir too.
+    dss.command("export counts relcounts.csv");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        PathBuf::from(dss.last_result_file()),
+        root.join("relcounts.csv"),
+        "explicit relative export filename must resolve against the DSS dir"
+    );
+
+    // (3) A nested Compile inside the outer deck: the outer Compile's exit
+    //     re-assert (Pascal's `finally SetDataPath(CurrDir)`) wins.
+    std::fs::write(sub.join("inner.dss"), deck).unwrap();
+    std::fs::write(root.join("outer.dss"), "compile \"sub/inner.dss\"\n").unwrap();
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{}\"", root.join("outer.dss").display()));
+    dss.command("export counts");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        PathBuf::from(dss.last_result_file()).parent(),
+        Some(root.as_path()),
+        "after a nested Compile the outer deck dir must be re-asserted"
+    );
+
+    // (4) Plain Redirect does NOT move the output dir: route it somewhere known
+    //     first (`Set DataPath=`), redirect a deck from another dir, export —
+    //     the file stays in the datapath dir.
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("set datapath=\"{}\"", sub.display()));
+    dss.command(&format!("redirect \"{}\"", master.display()));
+    dss.command("export counts");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        PathBuf::from(dss.last_result_file()).parent(),
+        Some(sub.as_path()),
+        "Redirect must not move the report OutputDirectory"
+    );
+
+    std::fs::remove_dir_all(&root).ok();
 }
 
 /// `Save`/`Dump` record a scoped `NOT_PORTED` until WP8.5 (their corpus decks

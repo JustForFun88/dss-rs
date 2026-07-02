@@ -177,6 +177,10 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     mutation-confirmed an un-band-limited gate masked a planted nonzero `%NEMA`
     there). Net: **1** genuine-noise row skipped, **54** rows' ratios still checked
     (22 meaningful + 32 zero; min meaningful `I1 = 5.8e-4 A`, 581× above the gate).
+    The gate is **scoped to the columns that actually divide by `I1`** (`%I…`
+    prefixes) or are the same noise form of the phase currents (`%NEMA`);
+    `%Normal`/`%Emergency` divide by `NormAmps` (never near-zero), so they fall
+    through to an *ungated* `%` catch-all and stay checked even on the gated row.
     The magnitude columns are checked on **every** row. A proven cancellation floor
     (CLAUDE.md), **not** a relaxation. `SeqVoltages` needs no gate (V1 is always
     kV-scale) and `SeqPowers` is all `…:1` fixed-decimal, so its policy is the

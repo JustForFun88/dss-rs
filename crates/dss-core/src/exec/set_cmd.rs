@@ -12,6 +12,13 @@ use super::*;
 ///
 /// Uses single-level `create_dir` (not `create_dir_all`) to match Pascal's RTL
 /// `CreateDir`, which fails — #907, dirs unchanged — when a *parent* is missing.
+///
+/// A relative path resolves against the engine's `current_dir`: Pascal's
+/// `DirectoryExists`/`CreateDir` resolve against the *process* cwd, which
+/// tracks `CurrentDSSDir` (`SetCurrentDSSDir` really chdirs —
+/// `DSS_CAPI_ALLOW_CHANGE_DIR` defaults on), and a `Compile` moves it to the
+/// deck's directory; Rust models that cwd virtually in `current_dir`, so the
+/// join is the faithful equivalent.
 fn apply_data_path(
     param: &str,
     current_dir: &mut PathBuf,
@@ -21,7 +28,7 @@ fn apply_data_path(
     if param.is_empty() {
         return;
     }
-    let p = PathBuf::from(param);
+    let p = current_dir.join(param); // an absolute `param` wins the join verbatim
     if p.is_dir() || std::fs::create_dir(&p).is_ok() {
         *current_dir = p.clone();
         *output_directory = p;

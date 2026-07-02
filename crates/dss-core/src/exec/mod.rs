@@ -99,9 +99,12 @@ pub struct Dss {
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.
     current_dir: PathBuf,
     /// `DSS.OutputDirectory`: where reports are written (Pascal
-    /// `GetOutputDirectory`). Defaults to the startup cwd; only `Set DataPath=`
-    /// changes it (Pascal `SetDataPath` — *not* `Compile`/`Redirect`, which move
-    /// only `current_dir`). The non-writable-dir scratch fallback is NOT_PORTED
+    /// `GetOutputDirectory`). Defaults to the startup cwd; changed by
+    /// `Set DataPath=` **and by `Compile`** (Pascal `DoRedirect` runs
+    /// `SetDataPath(DSS, CurrDir)` for Compile before and after processing the
+    /// deck — `ExecHelper.pas:546/651` — so default-named exports land next to
+    /// the compiled deck; oracle-verified). Plain `Redirect` moves only
+    /// `current_dir`. The non-writable-dir scratch fallback is NOT_PORTED
     /// (no corpus deck writes to a non-writable dir).
     output_directory: PathBuf,
     /// `DSS.LastResultFile` / `@lastfile` (Pascal `SetLastResultFile`): the path

@@ -442,8 +442,17 @@ impl Dss {
 
         // Change directory to the file's path in case it loads more files.
         let save_dir = self.current_dir.clone();
-        if let Some(parent) = path.parent() {
-            self.current_dir = parent.to_path_buf();
+        let curr_dir = path.parent().map(|p| p.to_path_buf());
+        if let Some(d) = &curr_dir {
+            self.current_dir = d.clone();
+            // Pascal `if IsCompile then SetDataPath(DSS, CurrDir)`
+            // (`ExecHelper.pas:546`): Compile also moves the report
+            // OutputDirectory to the deck's directory, so exports issued
+            // *inside* the compiled script already land next to the deck
+            // (oracle-verified). Redirect moves only the current dir.
+            if is_compile {
+                self.output_directory = d.clone();
+            }
         }
 
         self.redirect_abort = false;
@@ -482,7 +491,14 @@ impl Dss {
         let path_str = path.to_string_lossy().to_string();
         self.vars.add("@lastfile", &path_str);
         if is_compile {
-            // Compile keeps the script directory as the data path.
+            // Pascal re-runs `SetDataPath(DSS, CurrDir)` in the `finally`
+            // (`ExecHelper.pas:651`): Compile keeps the script directory as the
+            // data path *and* report OutputDirectory — re-asserted so a nested
+            // Compile inside the script cannot leave them elsewhere.
+            if let Some(d) = curr_dir {
+                self.current_dir = d.clone();
+                self.output_directory = d;
+            }
             self.vars.add("@lastcompilefile", &path_str);
         } else {
             self.current_dir = save_dir; // Redirect returns to where we were

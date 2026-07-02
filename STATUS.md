@@ -1256,6 +1256,25 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   return-a-vector pattern (solve path stores, reporting subtracts a local). UPFC's SR0/SR1
   registers advance only in `upload_currents` (UPFCControl-clocked), never on read — verified
   both engines. ISource/GIC not yet ported — port them with this pattern from the start.
+- **fix — `Compile` must move the report `OutputDirectory` (WP8.1 `929145c` porting bug).** Pascal
+  `DoRedirect` runs `SetDataPath(DSS, CurrDir)` for **Compile** both before processing the deck and
+  in the `finally` (`ExecHelper.pas:546/651`), so after any `Compile` the default-named exports land
+  **next to the compiled deck**; the WP8.1 port pinned `output_directory` to the startup cwd (the
+  field doc even asserted "not Compile/Redirect" — a mis-read of the Pascal), so every default-named
+  `Export` after a `Compile` landed in the process cwd instead. Oracle-verified both ways (dss-python
+  0.15.7 probe: default name + explicit *relative* name both resolve to the deck dir; pre-fix Rust
+  wrote both to the process cwd). Invisible to `golden_phase8` because every driver issues
+  `Set DataPath=` after compiling and reads the file back via `last_result_file`. **Fixed** in
+  `do_redirect` (entry + exit re-assert, so a nested Compile can't leave the dirs at the inner deck;
+  plain `Redirect` still moves neither), plus the two same-root relative-path holes: `Set DataPath=`
+  and the explicit `Export <x> <file>` filename now resolve against the engine's `current_dir` (the
+  virtual mirror of Pascal's chdir'd process cwd), not the OS cwd. New lib test
+  `compile_moves_output_directory_redirect_does_not` pins all four behaviors (lib **723**).
+  Two follow-ups from the same review sweep: `SeqCurrents` `%Normal`/`%Emergency` now print the raw
+  rating when it is non-positive (Pascal seeds `iNormal := NormAmps` and only overwrites when `> 0`,
+  `ExportResults.pas:409-414`; was forced to 0 — unpinnable on IEEE13, all ratings positive), and the
+  `golden_phase8` `SeqCurrents` I1-gate is scoped to `%I…`/`%NEMA` so `%Normal`/`%Emergency` (NormAmps
+  denominators) stay checked on the gated noise row (TOLERANCE_NOTES updated).
 - **next — WP8.2 sub-step 3 + completion gate:** the matrix/summary exports (`Y`/`Yprims`/`SeqZ`/
   `Summary`/`Result`; `Counts` already done), then the WP8.2 completion gate — the IEEE8500
   bus/summary goldens + the `Export`-tagged solution-report corpus migration + `COVERAGE.md` refresh.

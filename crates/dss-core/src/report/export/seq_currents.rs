@@ -68,16 +68,23 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
+            // TODO(compat): a non-positive rating is printed **raw** in the
+            // `%Normal`/`%Emergency` columns — Pascal seeds `iNormal := NormAmps`
+            // and only *overwrites* it with the percentage when the rating is
+            // `> 0` (`ExportResults.pas:409-414`), so e.g. `normamps=-1` prints
+            // `-1` as a "percent". Reproduced verbatim (unpinnable on IEEE13 —
+            // all ratings positive); the clean fix is printing 0 for an
+            // undefined rating.
             let (i_normal, i_emerg) = if do_ratings && j == 1 {
                 let n = if norm_amps > 0.0 {
                     i1 / norm_amps * 100.0
                 } else {
-                    0.0
+                    norm_amps
                 };
                 let e = if emerg_amps > 0.0 {
                     i1 / emerg_amps * 100.0
                 } else {
-                    0.0
+                    emerg_amps
                 };
                 (n, e)
             } else {
@@ -89,6 +96,9 @@ pub(crate) fn export_seq_currents(
             // `CalcAndWriteSeqCurrents` indexes `cBuffer^[i]`, not
             // `cBuffer^[(j-1)*Ncond+i]`. Reproduced verbatim (goldens pin it); the
             // clean fix is the per-terminal slice `cd.iterminal[(j-1)*ncond..]`.
+            // Oracle-proven (API vs export, IEEE13 Line.671680: true t2 residual
+            // 9.8e-12 A, printed 2.83e-5 = t1's); upstream bug report:
+            // `tmp/seqcurrents_iresidual_bug_report.md` (for dss-extensions/dss_capi).
             let mut iresidual = Complex64::ZERO;
             for i in 0..ncond {
                 iresidual += cd.iterminal[i];
