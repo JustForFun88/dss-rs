@@ -69,8 +69,13 @@ impl CktElement for VsConverter {
         self.spectrum_obj = spectrum;
     }
 
-    /// Pascal `TVSConverterObj.GetCurrents`: `Yprim·V(node) − InjCurrents`, saving
-    /// the result into `LastCurrents`.
+    /// Pascal `TVSConverterObj.GetCurrents`: `Yprim·V(node)` minus a **freshly
+    /// recomputed** injection, saving the result into `LastCurrents`. The
+    /// recompute goes into a local buffer — `cd.inj_current` (the solver's lag
+    /// state) stays untouched, like Pascal's `GetInjCurrents(ComplexBuffer)`
+    /// scratch call. (Pascal's version self-aliases `MVMult` over that scratch —
+    /// the proven upstream reporting bug we deliberately do not reproduce; see
+    /// `exec/tests/vs_converter.rs`.)
     #[allow(clippy::needless_range_loop, clippy::manual_memcpy)] // loop-for-loop port
     fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let yorder = self.cd.yorder;
@@ -80,9 +85,9 @@ impl CktElement for VsConverter {
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(curr, &self.cd.vterminal);
         }
-        self.get_inj_currents(node_v); // overwrites Vterminal, like the original
+        let inj = self.compute_inj_currents(node_v); // overwrites Vterminal, like the original
         for i in 0..yorder {
-            curr[i] -= self.cd.inj_current[i];
+            curr[i] -= inj[i];
             self.last_currents[i] = curr[i];
         }
     }

@@ -74,7 +74,9 @@ impl CktElement for Upfc {
         }
     }
 
-    /// Pascal `TUPFCObj.GetCurrents`: `Iterminal = YPrim·Vterminal − InjCurrent`.
+    /// Pascal `TUPFCObj.GetCurrents`: `Iterminal = YPrim·Vterminal` minus a
+    /// freshly recomputed injection (into a local, mirroring Pascal's
+    /// `ComplexBuffer` scratch — the solver's `InjCurrent` stays untouched).
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let yorder = self.cd.yorder;
@@ -88,9 +90,9 @@ impl CktElement for Upfc {
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(curr, &self.cd.vterminal);
         }
-        self.get_inj_currents(node_v); // present value of inj currents
+        let inj = self.compute_inj_currents(node_v); // present value of inj currents
         for i in 0..yorder {
-            curr[i] -= self.cd.inj_current[i];
+            curr[i] -= inj[i];
         }
     }
 

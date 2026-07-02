@@ -93,14 +93,12 @@ impl CktElement for Vccs {
     }
 
     /// Pascal `TVCCSObj.GetCurrents`: `Curr = -InjCurrent` (since `YPrim = 0`,
-    /// `YPrim·V − InjCurrent` reduces to `−InjCurrent`).
+    /// `YPrim·V − InjCurrent` reduces to `−InjCurrent`). The recompute goes into
+    /// a local (Pascal's `ComplexBuffer` scratch) — the solver's `InjCurrent`
+    /// stays untouched.
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
-        self.get_inj_currents(sys, node_v); // present value of inj currents
-        for (c, inj) in curr
-            .iter_mut()
-            .zip(&self.cd.inj_current)
-            .take(self.cd.yorder)
-        {
+        let inj = self.compute_inj_currents(sys, node_v); // present value of inj currents
+        for (c, inj) in curr.iter_mut().zip(&inj).take(self.cd.yorder) {
             *c = -*inj;
         }
     }
