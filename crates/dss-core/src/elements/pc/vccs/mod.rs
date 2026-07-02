@@ -263,19 +263,30 @@ impl Vccs {
         }
     }
 
-    /// Pascal `TVCCSObj.GetInjCurrents` (l.441) — fill `self.cd.inj_current` with
-    /// the current-source injection. Three regimes: snapshot power flow (fixed
-    /// `BaseCurr` at the terminal-voltage angle), waveform dynamics (the filtered
-    /// RMS current `s3`), and RMS/phasor dynamics (`s4`, distributed as a balanced
-    /// positive-sequence set off `sV1`). An open terminal injects nothing.
+    /// Pascal `TVCCSObj.GetInjCurrents` (l.441) — the solve path: fill
+    /// `self.cd.inj_current` via [`Self::compute_inj_currents`].
     pub(super) fn get_inj_currents(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.cd.inj_current = self.compute_inj_currents(sys, node_v);
+    }
+
+    /// Pascal `TVCCSObj.GetInjCurrents` (l.441) — compute the current-source
+    /// injection, **returning** the vector; `self.cd.inj_current` is left
+    /// untouched so the reporting path stays side-effect-free (Pascal
+    /// `TVCCSObj.GetCurrents` writes into the scratch `ComplexBuffer`, never
+    /// `InjCurrent`). Three regimes: snapshot power flow (fixed `BaseCurr` at the
+    /// terminal-voltage angle), waveform dynamics (the filtered RMS current `s3`),
+    /// and RMS/phasor dynamics (`s4`, distributed as a balanced positive-sequence
+    /// set off `sV1`). An open terminal injects nothing.
+    pub(super) fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
+        let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         // Pascal `if not Closed[1]` (the active terminal's first conductor).
         if !self.cd.conductor_closed(1, 1) {
-            for i in 0..nphases {
-                self.cd.inj_current[i] = Complex64::ZERO;
-            }
-            return;
+            return inj;
         }
 
         self.cd.compute_vterminal(node_v);
@@ -285,15 +296,15 @@ impl Vccs {
             if self.frms_mode {
                 let i1 = pdeg_to_complex(self.s4 * self.base_curr, cdang(self.s_v1));
                 match nphases {
-                    1 => self.cd.inj_current[0] = i1,
+                    1 => inj[0] = i1,
                     3 => {
-                        self.cd.inj_current[0] = i1;
-                        self.cd.inj_current[1] = i1 * alpha2();
-                        self.cd.inj_current[2] = i1 * alpha1();
+                        inj[0] = i1;
+                        inj[1] = i1 * alpha2();
+                        inj[2] = i1 * alpha1();
                     }
                     _ => {
-                        for i in 0..nphases {
-                            self.cd.inj_current[i] = pdeg_to_complex(
+                        for (i, slot) in inj.iter_mut().enumerate().take(nphases) {
+                            *slot = pdeg_to_complex(
                                 self.s4 * self.base_curr,
                                 cdang(self.cd.vterminal[i]),
                             );
@@ -301,17 +312,16 @@ impl Vccs {
                     }
                 }
             } else {
-                for i in 0..nphases {
-                    self.cd.inj_current[i] =
-                        pdeg_to_complex(self.s3 * self.base_curr, cdang(self.cd.vterminal[i]));
+                for (i, slot) in inj.iter_mut().enumerate().take(nphases) {
+                    *slot = pdeg_to_complex(self.s3 * self.base_curr, cdang(self.cd.vterminal[i]));
                 }
             }
         } else {
-            for i in 0..nphases {
-                self.cd.inj_current[i] =
-                    pdeg_to_complex(self.base_curr, cdang(self.cd.vterminal[i]));
+            for (i, slot) in inj.iter_mut().enumerate().take(nphases) {
+                *slot = pdeg_to_complex(self.base_curr, cdang(self.cd.vterminal[i]));
             }
         }
+        inj
     }
 }
 

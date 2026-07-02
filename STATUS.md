@@ -1224,6 +1224,38 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     **Fixed [LOW]:** switching the unit test's case 2 to `summary` dropped the `elem`→`ElemCurrents`
     *earliest-wins* abbreviation coverage; **re-added** as case 4 (`export elem` on a solved circuit
     emits `…_EXP_ElemCurrents.csv`, no error) — an assertion inside the existing test, so lib stays **722**.
+- **side fix — VSConverter reporting made side-effect-free (WP7.8 follow-up).** Re-verifying the
+  WP7.8 oracle-bug claim (user request) both **confirmed it beyond doubt** and refined it: the Pascal
+  `GetCurrents` → `GetInjCurrents(ComplexBuffer)` self-aliased `MVMult` was reproduced **bit-exact**
+  (~1 ulp) by simulating the aliased row-wise product from the converged voltages; the symptom is
+  **backend-`mvmult`-size-dependent** — `Yorder=8` (default 4-phase): product returns all zeros →
+  reported AC currents = plain `Yprim·V` (the famous 1248 A vs physical 390 A) + DC falls into the
+  `Pac==0 → 1000·kW` default, reads stable-but-wrong; `Yorder=4` (the `vsc0/vsc1test` decks): reads
+  are **non-idempotent** (×|Y|² growth per read: 1.1e5→5.1e7→1.8e10 A) and one `Currents` read
+  between two solves **poisons the next solve** via the corrupted `ComplexBuffer` tail (vsc0test:
+  re-solve diverges, 8.15 kV → 950 kV). Full upstream bug report: `tmp/vsconverter_bug_report.md`
+  (for dss-extensions/dss_capi). Also re-confirmed `skipped_oracle_issue` is the right class: both
+  decks match the oracle on voltages/iterations/all other elements; only the converter's own
+  reported rows differ. **Fixed in the port:** `get_currents` had an accidental extra deviation —
+  it overwrote `cd.inj_current` (Pascal's reporting writes only the `ComplexBuffer` scratch,
+  leaving the solver's `InjCurrent` lag state intact), so a mid-run currents read would have
+  shifted the next step's `Pac` lag vs the oracle (a future cross-step state-leak, the InvControl
+  lesson). `compute_inj_currents` now **returns** the vector; the solve path stores it, the
+  reporting path subtracts a local — observation no longer perturbs solver state. Values
+  unchanged (probe-verified on both decks + gate; lib stays 722).
+  **Follow-up sweep (same class, all elements):** audited every `get_currents`/reporting path for
+  observation-perturbs-state deviations vs Pascal. Machine family (Generator/Load/PVSystem/
+  Storage/IndMach012) — **faithful, no change**: Pascal's own `GetTerminalCurrents` recomputes
+  `InjCurrent` on read behind the `IterminalSolutionCount` guard, and the port replicates guard
+  and all. UPFC `Vbin`/`Vbout` refresh + VCCS `Vterminal`/`sV1` refresh on read are Pascal's own
+  side effects — kept. PD elements/default trait impl — pure. `get_all_variables` — read-only
+  everywhere. **Fixed (latent, same shape as VSConverter): VSource, VCCS, UPFC** — their
+  `get_currents` overwrote `cd.inj_current` where Pascal writes the `ComplexBuffer` scratch; all
+  three injections are pure functions of state/voltages (no lag), so the overwrite was
+  value-identical today and only latent — normalized anyway to the `compute_inj_currents()`
+  return-a-vector pattern (solve path stores, reporting subtracts a local). UPFC's SR0/SR1
+  registers advance only in `upload_currents` (UPFCControl-clocked), never on read — verified
+  both engines. ISource/GIC not yet ported — port them with this pattern from the start.
 - **next — WP8.2 sub-step 3 + completion gate:** the matrix/summary exports (`Y`/`Yprims`/`SeqZ`/
   `Summary`/`Result`; `Counts` already done), then the WP8.2 completion gate — the IEEE8500
   bus/summary goldens + the `Export`-tagged solution-report corpus migration + `COVERAGE.md` refresh.
