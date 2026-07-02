@@ -629,3 +629,118 @@ fn export_taps_matches_oracle() {
     };
     run_feeder_export("export_taps", &policy);
 }
+
+// --- WP8.2 sub-step 3: the matrix/summary exports ----------------------------
+// `Y`/`Yprims` serialize the assembled/per-element admittance matrices (already
+// pinned entry-by-entry by the checkpoint + live full-Y gates); `SeqZ` reads the
+// per-bus short-circuit impedances; `Summary` is a one-row status line; `Result`
+// dumps the `@result` parser var. These goldens pin the report *layout*.
+
+/// `Export Result` (Pascal `ExportResult`): the `@result` parser var, one line.
+/// In the pinned PM-build oracle `@result` is always `null` (the update is
+/// compiled out), which our engine reproduces (`ParserVars::new` seeds `null`,
+/// never rewritten). Pure text, no header.
+#[test]
+fn export_result_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_result", &policy);
+}
+
+/// `Export Summary` (Pascal `ExportSummary`): one status row (solve mode, counts,
+/// iterations, pu-voltage extremes, total MW/Mvar, losses). Column 0 is the
+/// wall-clock `DateTimeToStr(Now)` — non-deterministic, **masked**
+/// (`GateSpec::Mask`). Every other column is deterministic: text fields
+/// (`CaseName`/`Status`/`Mode`/`ControlMode`) compare case-insensitively; the
+/// integer counts (NumDevices/Buses/Nodes, iteration counts) exact within `abs`;
+/// the `%g` scalars (MaxPuVoltage/TotalMW/losses) keep the 5–6-sig `EXPORT_REL`
+/// printing floor (the physics is pinned by `corpus_live`).
+#[test]
+fn export_summary_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(0), // DateTime — masked (non-deterministic clock)
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        }],
+    };
+    run_feeder_export("export_summary", &policy);
+}
+
+/// `Export SeqZ` (Pascal `ExportSeqZ`): per-bus symmetrical-component short-circuit
+/// impedances after a **FaultStudy** solve (a plain snapshot leaves `Zsc` zero).
+/// `R1/X1/R0/X0/Z1/Z0` are `%10.6g` (6 sig) — the same `Zsc1`/`Zsc0` the
+/// `fault_study.rs` gate pins to 1e-9·mag — so they keep the tight `EXPORT_REL`;
+/// the `X1/R1`/`X0/R0` ratio columns (indices 8/9) are `%8.4g` (4 sig), so
+/// `rel = 1e-3` is their printing floor. The integer NumNodes column is exact.
+#[test]
+fn export_seqz_matches_oracle() {
+    let ratio = |i: usize| ColTol {
+        sel: ColSel::Index(i),
+        rel: 1e-3,
+        abs: EXPORT_ABS,
+        gate: None,
+    };
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![ratio(8), ratio(9)],
+    };
+    run_feeder_export("export_seqz", &policy);
+}
+
+/// The assembled/primitive admittance matrices are exact deterministic stamps
+/// (no faer solve enters them), printed to 10 sig, so both engines agree to
+/// ~1e-10 rel; `1e-6` clears that printing floor plus the two independent builds
+/// with wide margin. `abs = 1e-6` absorbs any near-zero off-diagonal cell.
+const YMATRIX_REL: f64 = 1e-6;
+
+/// `Export Y triplet` (Pascal `ExportY` `TripletOpt`): the assembled system Y as
+/// `Row,Col,G,B` for the lower triangle (`row >= col`), column-major. Integer
+/// Row/Col exact; G/B (`%.10g`) at the `YMATRIX_REL` printing floor.
+#[test]
+fn export_y_triplet_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: YMATRIX_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_y_triplet", &policy);
+}
+
+/// `Export Yprims` (Pascal `ExportYprim`): every enabled PD/PC element's
+/// primitive Y, in device order — a `Class.NAME` header line then `Yorder` rows
+/// of `re, im,` pairs (`%.10g`). No fixed header (the first line is an element
+/// name), so `header_lines = 0`; the name lines are single text fields (matched
+/// case-insensitively), the matrix cells at the `YMATRIX_REL` printing floor. The
+/// element set/order is the report's contract (`ExactOrdered`).
+#[test]
+fn export_yprims_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: YMATRIX_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_yprims", &policy);
+}

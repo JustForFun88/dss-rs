@@ -906,6 +906,10 @@ pub enum ColSel {
     /// first pair, e.g. `…, I_1, Ang_1, ...`): `parity = 1` selects the (mostly
     /// unnamed) angle columns, `parity = 0` the magnitudes.
     Parity { start: usize, parity: usize },
+    /// The single column at this exact index. Used to target a specific
+    /// non-deterministic column by position (the `Summary` `DateTime` column 0,
+    /// masked via [`GateSpec::Mask`]).
+    Index(usize),
 }
 
 impl ColSel {
@@ -915,6 +919,7 @@ impl ColSel {
                 .get(j)
                 .is_some_and(|n| n.trim().to_lowercase().starts_with(&p.to_lowercase())),
             ColSel::Parity { start, parity } => j >= *start && (j - start) % 2 == *parity,
+            ColSel::Index(i) => j == *i,
         }
     }
 }
@@ -964,6 +969,12 @@ pub enum GateSpec {
     /// current/voltage (a residual or an open-terminal conductor) is faer-vs-KLU
     /// noise, gated on its own magnitude in the column just before it.
     PrevCol(f64),
+    /// **Always** skip the matched column — a non-deterministic column that
+    /// carries no comparable value (a wall-clock timestamp or an absolute path).
+    /// Not a tolerance relaxation of any *value*: the column is genuinely
+    /// unpinnable (`Summary`'s `DateTimeToStr(Now)`), documented in
+    /// `tests/TOLERANCE_NOTES.md`.
+    Mask,
 }
 
 /// Policy for [`compare_export`].
@@ -1010,6 +1021,7 @@ impl ExportPolicy {
                 let (col, thresh) = match ct.gate {
                     Some(GateSpec::Col(col, thresh)) => (col, thresh),
                     Some(GateSpec::PrevCol(thresh)) => (j.wrapping_sub(1), thresh),
+                    Some(GateSpec::Mask) => return true,
                     None => return false,
                 };
                 return oracle_fields

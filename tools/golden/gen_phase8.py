@@ -109,7 +109,24 @@ FEEDER_REPORTS = [
     ("elemvoltages", "EXP_ElemVoltages.csv", "export_elemvoltages"),
     ("elempowers", "EXP_ElemPowers.csv", "export_elempowers"),
     ("taps", "EXP_Taps.csv", "export_taps"),
+    # WP8.2 sub-step 3 — the matrix/summary exports. `y triplet` is the sparse
+    # `Row,Col,G,B` form (the dense form glues `+j` onto the imaginary tokens, so
+    # it is not plain-CSV gate-able; its values are pinned by the checkpoint/live
+    # full-Y gates). `Yprims` is the per-element primitive-Y dump. `Summary` is the
+    # one-row status line (the `DateTime` col 0 is masked). `Result` dumps the
+    # `@result` parser var (always `null` in the pinned PM-build oracle).
+    ("y triplet", "EXP_Y.csv", "export_y_triplet"),
+    ("yprims", "EXP_YPRIM.csv", "export_yprims"),
+    ("summary", "EXP_Summary.csv", "export_summary"),
+    ("result", "EXP_Result.csv", "export_result"),
 ]
+
+# SeqZ reads the per-bus short-circuit impedances (`Zsc1`/`Zsc0`), which are only
+# populated by a FaultStudy solve — a plain snapshot leaves them zero (a
+# degenerate all-zero report). So it gets its own fixture with a `faultstudy`
+# solve, generated from a fresh compile (the study mutates NodeV, so it can't
+# share the snapshot loop above).
+SEQZ_POST = ["solve mode=faultstudy"]
 
 
 def gen_feeder_reports(d) -> None:
@@ -149,6 +166,40 @@ def gen_feeder_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def gen_seqz(d) -> None:
+    """Capture the oracle's `Export SeqZ` on the FaultStudy-solved IEEE13 feeder."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in SEQZ_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "export seqz"
+        produced = Path(d.Text.Result)
+        content = produced.read_text()
+        (OUT_DIR / "export_seqz.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "seqz",
+            "master": FEEDER_MASTER,
+            "post": SEQZ_POST,
+            "fixture": case,
+            "suffix": "EXP_SEQZ.csv",
+        }
+        (OUT_DIR / "export_seqz.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote export_seqz.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -157,6 +208,7 @@ def main() -> None:
 
     gen_counts(d)
     gen_feeder_reports(d)
+    gen_seqz(d)
 
 
 if __name__ == "__main__":

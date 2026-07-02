@@ -16,14 +16,17 @@ sub-step 2a (`668bd18`) the aggregate PD/PC **power exports**
 `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra
 (`for_each_enabled_elem` + `export_with_mut`); **sub-step 2b** the
 **symmetrical-component family** `SeqVoltages`/`SeqCurrents`/`SeqPowers`
-(`Phase2SymComp` + `PctNemaUnbalance` + PD ratings + `ColTol::gate`); **sub-step 2c
-landed, gate-green** — the **per-terminal/per-conductor element exports**
+(`Phase2SymComp` + `PctNemaUnbalance` + PD ratings + `ColTol::gate`); **sub-step 2c**
+the **per-terminal/per-conductor element exports**
 `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps`
-(`CalcAndWriteCurrents`/`WriteNodeList`/`WriteElem*`/`ExportTaps`), the `ColSel`
-name-prefix|index-parity harness refactor for the truncated-header mag/angle
-reports, and the `ElemPowers` Vsource `Vterminal`-vs-EMF **order fix** (a real
-Rust↔oracle divergence caught + proven, `-612.936`→`-612.729`). Detail in
-the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
+(`CalcAndWriteCurrents`/`WriteNodeList`/`WriteElem*`/`ExportTaps`) + the `ColSel`
+harness refactor + the `ElemPowers` Vsource order fix (`-612.936`→`-612.729`);
+**sub-step 3 landed, gate-green** — the **matrix/summary exports**
+`Yprims`/`Y`/`SeqZ`/`Summary`/`Result` (`ExportYprim`/`ExportY`/`ExportSeqZ`/
+`ExportSummary`/`ExportResult`), the `Y` triplet Parm2 flag, the `Summary`
+append-if-exists + `DateTime` mask (`ColSel::Index`+`GateSpec::Mask`), the
+`SeqZ`-needs-faultstudy fixture, and the PM-build-faithful always-`null` `Result`.
+Detail in the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
 (branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
 reporting` builds on top of `phase-7-extended-elements`); its retro audit (WP7.7 step 4 → WP7.8) found no Critical/Major bug (§1e
@@ -90,16 +93,16 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix. Branch `phase-8-reporting`. **next = WP8.2 sub-step 3 + completion gate** (`Y`/`Yprims`/`SeqZ`/`Summary`/`Result` + IEEE8500 goldens + `Export`-report corpus migration). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`. Branch `phase-8-reporting`. **next = WP8.2 completion gate** (IEEE8500 `Voltages`/`Summary`/`Counts` goldens + `Export`-report corpus migration + `COVERAGE.md`). Detail in §1f |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 722, golden_feeders 1,
+cargo test --workspace      # dss-core lib 723, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 19,
+                            # golden_phase7_protection 1, golden_phase8 24,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1275,9 +1278,61 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   `ExportResults.pas:409-414`; was forced to 0 — unpinnable on IEEE13, all ratings positive), and the
   `golden_phase8` `SeqCurrents` I1-gate is scoped to `%I…`/`%NEMA` so `%Normal`/`%Emergency` (NormAmps
   denominators) stay checked on the gated noise row (TOLERANCE_NOTES updated).
-- **next — WP8.2 sub-step 3 + completion gate:** the matrix/summary exports (`Y`/`Yprims`/`SeqZ`/
-  `Summary`/`Result`; `Counts` already done), then the WP8.2 completion gate — the IEEE8500
-  bus/summary goldens + the `Export`-tagged solution-report corpus migration + `COVERAGE.md` refresh.
+- **sub-step 3 — the matrix/summary exports — done, gate-green.** The five remaining WP8.2
+  solution exports: `Yprims` (`ExportYprim:2680` — every enabled PD/PC element's primitive Y, device
+  order, `Class.NAME` header + `Yorder` rows of `%-13.10g` re/im pairs), `Y` (`ExportY:2727` — the
+  assembled system Y, sparse-triplet `Row,Col,G,B` lower-triangle when `t…`/`TripletOpt`, else the
+  dense node-by-node `+j`-cell form), `SeqZ` (`ExportSeqZ:2822` — per-bus `Zsc1`/`Zsc0` R/X/|Z| +
+  `X/R` ratios, `Get_Zsc1`/`Get_Zsc0`), `Summary` (`ExportSummary:2985` — the one-row status line;
+  **appends** if the file exists, header only on create), and `Result` (`ExportResult:3770` — dump
+  the `@result` parser var). Files `report/export/{yprims,y_matrix,seq_z,summary,result}.rs`; dispatch
+  arms ptr 16/17/18/27/45; new router helpers `export_y_to_file` (the #222 `Y Matrix not Built.`
+  guard + the `system_y_csc` COO) and `export_summary_to_file` (the append-vs-create decision + the
+  `total_power`/`losses`/pu-extreme gather). New Parm2 pre-parse for ptr 17 (the `t…` triplet flag,
+  ahead of the filename, mirroring the 9/19 MVA trap). `GetMaxPUVoltage`/`GetMinPUVoltage` ported
+  (`summary.rs`), plus a dependency-free civil-date `current_datetime_string` (Howard-Hinnant
+  `civil_from_days`) for the timestamp.
+  - **`Result` is always `null` — a pinned-oracle-faithful, not a fake.** `ExportResult` dumps the
+    `@result` parser var. The pinned oracle is a `DSS_CAPI_PM` build, so the `@result := GlobalResult`
+    update at the `ProcessCommand` tail (`ExecCommands.pas:704`) is compiled out (`{$IFNDEF
+    DSS_CAPI_PM}`); `@result` therefore stays at its `ParserDel.pas:875` init `'null'` **forever**
+    (oracle-probed: `null` after compile+solve+`?Line.phases`, even though `Text.Result` was `'3'`).
+    Our engine likewise never writes `@result` (`ParserVars::new` seeds it `"null"`), reproducing the
+    observable with zero divergence — documented at `result.rs`.
+  - **`SeqZ` gated on a FaultStudy solve.** `Zsc` is only allocated by the FaultStudy solve
+    (`Bus::zsc = None` on a snapshot → `get_zsc1`/`get_zsc0` = 0 → the degenerate all-zero/1000-ratio
+    report both engines produce). So the `SeqZ` golden uses its own fixture — a fresh compile +
+    `solve mode=faultstudy` (`meta.post`), generated separately (`gen_seqz`) since the study mutates
+    NodeV and can't share the snapshot loop — pinning the real per-bus `Zsc1`/`Zsc0` (the same values
+    `exec/tests/fault_study.rs` pins to 1e-9·mag).
+  - **`Y` dense is unpinnable-by-CSV, so the triplet form is gated.** The dense `ExportY` glues `+j`
+    onto every imaginary token (`%-13.10g, +j %-13.10g,`), so those fields don't parse as numbers —
+    the `compare_export` comparator can't diff them. The **triplet** form is clean `Row,Col,G,B` CSV,
+    so the golden pins `export y triplet` (lower triangle `r>=c`, column-major, sorted `(col,row)` to
+    match KLU `GetTripletMatrix` order). Both forms are ported faithfully; the dense values are
+    already pinned entry-by-entry by the checkpoint + live full-Y gates.
+  - **`Summary` `DateTime` masked; the append behaviour honoured.** Column 0 is `DateTimeToStr(Now)`
+    (wall-clock, non-deterministic) — masked via the new `ColSel::Index(0)` + `GateSpec::Mask` harness
+    additions (a genuine non-deterministic column, not a value relaxation; `TOLERANCE_NOTES`). Every
+    other column is deterministic (text `Status`/`Mode`/`ControlMode` case-insensitive; integer counts
+    exact; `%g` scalars at the 5–6-sig `EXPORT_REL` floor). `TotalMW/Mvar = -total_power()·0.001` (the
+    `GetTotalPowerFromSources = -Σ source.power[1]` negation), `MWLosses/Mvar = losses()·1e-6`. The
+    golden uses the shared compile+solve fixture (the two sides self-consistent).
+  - **Yprims element set = PD ∪ PC ∪ sources ∪ faults.** Pascal filters `is TPDElement or is
+    TPCElement`; in our model `TVsourceObj` is a PCElement (our `ElemKind::Source`, `sources` list) and
+    `TFaultObj` a PDElement (our `ElemKind::Fault`, `faults` list), so the walk unions those four ref
+    lists (keyed `(cls,idx)`, `ElemRef` not being `Hash`) and emits in device (`ckt_elements`) order.
+  - **Gate:** `gen_phase8.py` captures the six oracle reports (5 on solved IEEE13 + `SeqZ` on the
+    faultstudy fixture) → `export_{yprims,y_triplet,summary,result,seqz}.{txt,meta.json}`;
+    `golden_phase8.rs` replays + diffs (`ExactOrdered`; `YMATRIX_REL = 1e-6` for the 10-sig Y/Yprim
+    cells, `EXPORT_REL` for the 6-sig SeqZ magnitudes, `rel=1e-3` for the 4-sig `X/R` ratios). The
+    WP8.1 `export_records_scoped_not_ported` case 2 moved off the now-ported `summary` to the
+    still-unported `eventlog` (ptr 33, WP8.3, not solution-guarded). golden_phase8 **19→24**; lib
+    **723** (no new inline tests). `solvable_now` **88** (no migration — that lands in the completion
+    gate).
+- **next — WP8.2 completion gate:** the IEEE8500 bus/summary goldens (`Voltages`/`Summary`/`Counts`)
+  + the `Export`-tagged solution-report corpus migration (`DSS_LIVE_CLASSIFY`) + `COVERAGE.md`
+  refresh, closing WP8.2. (The 34/37/123 export-diff expansion is folded in there if it pays.)
 
 ---
 

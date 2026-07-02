@@ -250,6 +250,38 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     222001 unsolved path and a Fault-object walk are code-faithful but unexercised
     (recorded in STATUS §1f).
 
+- **WP8.2 sub-step 3 — the matrix/summary exports** (`Yprims`/`Y`/`SeqZ`/`Summary`/
+  `Result`). Report-layout gates; the underlying quantities are already pinned
+  entry-by-entry by `corpus_live` / the checkpoint gate / `fault_study.rs`.
+  - **`Y`/`Yprims` (`YMATRIX_REL = 1e-6`).** The assembled system Y and each
+    element's primitive Y are **exact deterministic stamps** — no faer solve enters
+    them — printed to 10 sig (`%.10g`), so both engines agree to ~1e-10 rel; `1e-6`
+    clears that printing floor with wide margin, `abs = 1e-6` absorbs any near-zero
+    off-diagonal cell. The `Y` golden pins the **sparse-triplet** form
+    (`export y triplet`, `Row,Col,G,B`, lower triangle `r>=c`, column-major): the
+    **dense** form glues `+j` onto every imaginary token, which does not parse as a
+    number, so `compare_export` cannot diff it — the dense *values* are instead
+    pinned by the checkpoint + live full-Y gates. Integer Row/Col exact.
+  - **`SeqZ`** (per-bus `Zsc1`/`Zsc0`, on a **FaultStudy** fixture — a snapshot
+    leaves `Zsc` unallocated → the degenerate all-zero/1000-ratio report). The
+    `R1/X1/R0/X0/Z1/Z0` magnitudes (`%10.6g`, 6 sig) keep `EXPORT_REL` (the same
+    `Zsc1`/`Zsc0` `fault_study.rs` pins to 1e-9·mag); the `X1/R1`/`X0/R0` ratio
+    columns (indices 8/9) use `rel = 1e-3` — the `%8.4g` 4-sig printing floor.
+    Integer `NumNodes` exact.
+  - **`Summary` — `DateTime` masked.** Column 0 is `DateTimeToStr(Now)`, a
+    genuinely non-deterministic wall-clock timestamp, **masked** via the new
+    `ColSel::Index(0)` + `GateSpec::Mask` (a masked non-deterministic column, **not**
+    a value relaxation — everything else is checked). The rest is deterministic:
+    text `Status`/`Mode`/`ControlMode` compare case-insensitively; the integer
+    counts (NumDevices/Buses/Nodes, iteration counts) are exact within `abs`; the
+    `%g` scalars (Max/MinPuVoltage, Total MW/Mvar, losses) keep the 5–6-sig
+    `EXPORT_REL` floor (the physics is pinned by `corpus_live`). The golden uses the
+    shared compile+solve fixture, so the two sides are self-consistent.
+  - **`Result`** is exact text (`null`). The pinned oracle is a `DSS_CAPI_PM` build
+    that never updates `@result` (`ExecCommands.pas:704` is compiled out), so it
+    stays at its `'null'` init forever; our engine never writes `@result` either, so
+    the single `null` line matches with zero divergence — not a masked/relaxed field.
+
 ## Live corpus gate (`corpus_live.rs`)
 
 Reuses the same comparators and classes verbatim. Differences from the checkpoint
