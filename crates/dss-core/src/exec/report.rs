@@ -71,6 +71,14 @@ impl Dss {
                 mva_opt = 1;
             }
         }
+        // `Y`(17) traps a leading `t…` → the sparse-triplet form (Pascal
+        // `ExportOptions.pas:217`, `TripletOpt`), again ahead of the filename.
+        let mut triplet = false;
+        if ptr == 17 {
+            self.parser.next_param(&self.vars);
+            let parm2 = self.parser.make_string(&self.vars).to_lowercase();
+            triplet = parm2.starts_with('t');
+        }
 
         // The optional trailing filename (Pascal `ExportOptions.pas:300-305`).
         self.parser.next_param(&self.vars);
@@ -101,9 +109,13 @@ impl Dss {
             19 => self.export_with_mut(&explicit, "EXP_P_BYPHASE.csv", |c, ckt, sys, nv| {
                 export::export_p_by_phase(c, ckt, sys, nv, mva_opt)
             }),
+            16 => self.export_with_classes(&explicit, "EXP_YPRIM.csv", export::export_yprims),
+            17 => self.export_y_to_file(&explicit, triplet),
+            18 => self.export_with(&explicit, "EXP_SEQZ.csv", export::export_seq_z),
             23 => self.export_with(&explicit, "EXP_BUSCOORDS.csv", export::export_bus_coords),
             24 => self.export_with_mut(&explicit, "EXP_LOSSES.csv", export::export_losses),
             26 => self.export_counts_to_file(&explicit), // Counts (WP8.1)
+            27 => self.export_summary_to_file(&explicit),
             39 => self.export_with(&explicit, "EXP_NodeNames.csv", export::export_node_names),
             40 => self.export_with_classes(&explicit, "EXP_Taps.csv", export::export_taps),
             41 => self.export_elem_ordered(&explicit, "EXP_NodeOrder.csv", |c, ckt, _sys, _nv| {
@@ -118,6 +130,13 @@ impl Dss {
             44 => self.export_elem_ordered(&explicit, "EXP_ElemPowers.csv", |c, ckt, sys, nv| {
                 export::export_elem_powers(c, ckt, sys, nv)
             }),
+            45 => {
+                // `Result`: dump the `@result` parser var (always `"null"` in
+                // the pinned PM-build oracle — see `export::export_result`).
+                let val = self.vars.get("@result").unwrap_or("null").to_string();
+                let content = export::export_result(&val);
+                self.write_export(&explicit, "EXP_Result.csv", &content);
+            }
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             _ => {
                 let name = EXPORT_OPTIONS[ptr - 1];
@@ -217,6 +236,113 @@ impl Dss {
         self.write_export(explicit, "EXP_Counts.csv", &content);
     }
 
+    /// `Export Y` (Pascal `ExportY`): the assembled system Y, sparse-triplet
+    /// (`Row,Col,G,B`) when `triplet`, else the dense node-by-node form. Reads
+    /// `system_y_csc` (the assembled, unfactored Y the checkpoint/live gates pin);
+    /// errors with Pascal's #222 `Y Matrix not Built.` when no Y has been built.
+    fn export_y_to_file(&mut self, explicit: &str, triplet: bool) {
+        let content = match self.system_y_csc() {
+            Some((n, coords)) => {
+                let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                crate::report::export::export_y(n, &coords, ckt, triplet)
+            }
+            None => {
+                self.errors.push("Y Matrix not Built.".to_string());
+                return;
+            }
+        };
+        self.write_export(explicit, "EXP_Y.csv", &content);
+    }
+
+    /// `Export Summary` (Pascal `ExportSummary`): one status/summary row. Unlike
+    /// the other exports it **appends** to an existing file (header only on
+    /// create), so repeated `Export Summary` calls log one row each. Gathers the
+    /// solution scalars + the extended-column quantities (total source power,
+    /// losses, pu-voltage extremes) then writes/appends the row.
+    fn export_summary_to_file(&mut self, explicit: &str) {
+        // Extended-column scalars first (they need the &mut element walk).
+        let (tp_re_kw, tp_im_kvar) = self.total_power(); // kW/kvar
+        let (loss_re_w, loss_im_var) = self.losses(); // W/var
+        // GetTotalPowerFromSources = -Σ source power[1] (VA); ×1e-6 → MVA.
+        // total_power() = Σ source power[1] × 0.001 (kW), so MVA = -kW × 0.001.
+        let total_mw = -tp_re_kw * 0.001;
+        let total_mvar = -tp_im_kvar * 0.001;
+        let mw_losses = loss_re_w * 1e-6;
+        let mvar_losses = loss_im_var * 1e-6;
+
+        let (fields, frequency) = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            let mode = self
+                .enums
+                .get(self.enums.solve_mode)
+                .ordinal_to_string(ckt.solution.mode.ordinal());
+            let control_mode = self
+                .enums
+                .get(self.enums.control_mode)
+                .ordinal_to_string(ckt.solution.control_mode);
+            let fields = crate::report::export::SummaryFields {
+                datetime: current_datetime_string(),
+                case_name: ckt.case_name.clone(),
+                is_solved: ckt.is_solved,
+                bus_name_redefined: ckt.bus_name_redefined,
+                mode,
+                number: ckt.solution.number_of_times,
+                load_mult: ckt.load_multiplier,
+                num_devices: ckt.num_devices as i32,
+                num_buses: ckt.buses.len() as i32,
+                num_nodes: ckt.num_nodes as i32,
+                iterations: ckt.solution.iteration,
+                control_mode,
+                control_iterations: ckt.solution.control_iteration,
+                most_iterations_done: ckt.solution.most_iterations_done,
+                year: ckt.solution.year,
+                hour: ckt.solution.int_hour,
+                max_pu_voltage: crate::report::export::max_pu_voltage(ckt),
+                min_pu_voltage: crate::report::export::min_pu_voltage(ckt, true),
+                total_mw,
+                total_mvar,
+                mw_losses,
+                mvar_losses,
+            };
+            (fields, ckt.solution.frequency)
+        };
+
+        // Resolve the path; append (row only) if it already exists, else create
+        // with the header (Pascal `ExportSummary` FileExists branch).
+        let case_ = format!("{}_", fields.case_name);
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &case_,
+            explicit,
+            "EXP_Summary.csv",
+        );
+        let include_header = !path.exists();
+        let content = crate::report::export::export_summary(&fields, frequency, include_header);
+
+        let write_res = if include_header {
+            std::fs::write(&path, content.as_bytes())
+        } else {
+            use std::io::Write;
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .and_then(|mut f| f.write_all(content.as_bytes()))
+        };
+        match write_res {
+            Ok(()) => {
+                let p = path.to_string_lossy().into_owned();
+                self.vars.add("@lastfile", &p);
+                self.vars.add("@lastexportfile", &p);
+                self.last_result_file = p;
+            }
+            Err(e) => self.errors.push(format!(
+                "Error writing report file \"{}\": {e}",
+                path.display()
+            )),
+        }
+    }
+
     /// Resolve the report path, write `content`, and record the export-specific
     /// `@lastexportfile` (Pascal `DoExportCmd`: `SetLastResultFile` +
     /// `ParserVars.Add('@lastexportfile', …)`, `ExportOptions.pas:635-636`). The
@@ -304,4 +430,31 @@ impl Dss {
         self.errors
             .push("Dump is not ported yet (Phase 8 WP8.5).".to_string());
     }
+}
+
+/// The current UTC wall-clock as `DD.MM.YYYY HH:MM:SS` — the `Export Summary`
+/// timestamp (Pascal `DateTimeToStr(Now)`). Pure integer civil-from-days
+/// conversion (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"),
+/// no external date dependency. The exact locale format is non-deterministic and
+/// masked in the golden (PHASE8_PLAN §2.3 / `tests/TOLERANCE_NOTES.md`).
+fn current_datetime_string() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
+    let days = secs.div_euclid(86400);
+    let sod = secs.rem_euclid(86400);
+    let (hh, mm, ss) = (sod / 3600, (sod % 3600) / 60, sod % 60);
+    // civil_from_days: days since 1970-01-01 → (y, m, d).
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{d:02}.{m:02}.{y:04} {hh:02}:{mm:02}:{ss:02}")
 }
