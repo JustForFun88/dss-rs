@@ -892,37 +892,78 @@ pub enum RowPolicy {
     RustSubsetByKey { key: usize, require: Vec<String> },
 }
 
-/// A per-column tolerance override for [`compare_export`], keyed by a
-/// case-insensitive **prefix** of the column's header name (from the last header
-/// line, split on the report separator). The first matching prefix wins; columns
-/// with no match use the policy's default `rel`/`abs`.
+/// How a [`ColTol`] selects the columns it applies to.
+#[derive(Clone)]
+pub enum ColSel {
+    /// Columns whose (trimmed, lowercased) header name starts with this prefix.
+    /// Used where every value column is named (the full-header reports — the
+    /// `%…` ratio columns of `SeqCurrents`/`SeqVoltages`, the `Angle%d` columns of
+    /// `Voltages`).
+    Prefix(String),
+    /// Columns at index `>= start` with `(index − start) % 2 == parity`. Used for
+    /// the **truncated-header** paired magnitude/angle reports
+    /// (`Currents`/`ElemCurrents`/`ElemVoltages`, whose header names only the
+    /// first pair, e.g. `…, I_1, Ang_1, ...`): `parity = 1` selects the (mostly
+    /// unnamed) angle columns, `parity = 0` the magnitudes.
+    Parity { start: usize, parity: usize },
+}
+
+impl ColSel {
+    fn matches(&self, j: usize, colnames: &[String]) -> bool {
+        match self {
+            ColSel::Prefix(p) => colnames
+                .get(j)
+                .is_some_and(|n| n.trim().to_lowercase().starts_with(&p.to_lowercase())),
+            ColSel::Parity { start, parity } => j >= *start && (j - start) % 2 == *parity,
+        }
+    }
+}
+
+/// A per-column tolerance override for [`compare_export`], selecting columns by
+/// [`ColSel`] (name prefix or index parity). The first matching override wins;
+/// columns with no match use the policy's default `rel`/`abs`.
 ///
 /// Used for the fixed-decimal `Angle` columns of the voltage/current reports:
-/// `%.1f` formatting plus two independent solves round the last printed 0.1
-/// digit independently, a ±0.1 *additive* floor far coarser than the `%g`
-/// magnitude/pu columns (so the override is `rel = 0`, `abs ≈ 0.11`). A
+/// `%.1f`/`%.2f` formatting plus two independent solves round the last printed
+/// digit independently, a purely *additive* floor far coarser than the `%g`
+/// magnitude/pu columns (so the override is `rel = 0`, `abs ≈ 0.11` / `0.011`). A
 /// *formatting* floor (documented in `tests/TOLERANCE_NOTES.md`), NOT a
 /// relaxation of the magnitude/pu checks — those stay tight. The angle is
-/// `arg(V)`, independent of `|V|`/pu; its engine-physics correctness is gated by
-/// the live model compare (`corpus_live.rs`, which compares the complex node
-/// voltages directly), so here it is only a report-layout / printing-floor check.
+/// `arg(V)`/`arg(I)`, independent of the magnitude; its engine-physics
+/// correctness is gated by the live model compare (`corpus_live.rs`, which
+/// compares the complex node voltages / terminal currents directly), so here it
+/// is only a report-layout / printing-floor check.
 pub struct ColTol {
-    pub prefix: String,
+    pub sel: ColSel,
     pub rel: f64,
     pub abs: f64,
-    /// Optional **denominator gate** `(col, threshold)`: skip this cell only when
-    /// the oracle's denominator is a *near-zero but nonzero* cancellation residual,
-    /// `0 < |oracle[col]| < threshold`. For symmetrical-component ratio columns
-    /// (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator (`I1`) at an open/unloaded
-    /// terminal is ~1e-12 noise (pinned to 0 by the magnitude columns' `abs`), so
-    /// their ratio is a faer-vs-KLU noise/noise form that carries no information.
-    /// The **`= 0` case is deliberately NOT gated**: there Pascal's `if I1 > 0`
-    /// guard prints the ratio as exactly `0`, which `0 == 0` checks perfectly — so
-    /// only the genuine-noise row is skipped, not the many exactly-zero-current
-    /// rows. The magnitude columns stay tightly checked on every row; only the
-    /// *ratio* is skipped, and only at a nonzero-but-sub-physical denominator. A
-    /// proven cancellation floor, NOT a relaxation (tests/TOLERANCE_NOTES.md).
-    pub gate: Option<(usize, f64)>,
+    /// Optional **denominator gate**: skip this cell only when the oracle's
+    /// denominator is a *near-zero but nonzero* cancellation residual (see
+    /// [`GateSpec`]). Used where a value is a ratio (`%I2/I1`) or the phase angle
+    /// (`AngResid`) of a near-zero quantity — a faer-vs-KLU noise form carrying no
+    /// information. The **`= 0` case is deliberately NOT gated**: an exactly-zero
+    /// denominator prints as `0` (Pascal `if I1 > 0`) / the angle of an exact zero
+    /// is `0.00`, which `0 == 0` checks perfectly — so only genuine-noise rows are
+    /// skipped, not the many exactly-zero rows. The magnitude columns stay tightly
+    /// checked on every row. A proven cancellation floor, NOT a relaxation
+    /// (tests/TOLERANCE_NOTES.md).
+    pub gate: Option<GateSpec>,
+}
+
+/// The denominator a [`ColTol::gate`] tests to decide whether to skip a cell.
+#[derive(Clone, Copy)]
+pub enum GateSpec {
+    /// Skip when the oracle's value in a **fixed** column `col` is a near-zero
+    /// residual `0 < |oracle[col]| < threshold`. For the symmetrical-component
+    /// ratio columns (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator `I1` sits in
+    /// one fixed column.
+    Col(usize, f64),
+    /// Skip when the oracle's value in the **immediately preceding** column is a
+    /// near-zero residual `0 < |oracle[j-1]| < threshold`. For the paired
+    /// magnitude/angle exports (`I, Ang, I, Ang, …`): the angle of a near-zero
+    /// current/voltage (a residual or an open-terminal conductor) is faer-vs-KLU
+    /// noise, gated on its own magnitude in the column just before it.
+    PrevCol(f64),
 }
 
 /// Policy for [`compare_export`].
@@ -938,21 +979,18 @@ pub struct ExportPolicy {
     /// overridden per column by [`ExportPolicy::col_tol`]).
     pub rel: f64,
     pub abs: f64,
-    /// Per-column tolerance overrides, matched against the column header names.
+    /// Per-column tolerance overrides, selected by [`ColSel`].
     pub col_tol: Vec<ColTol>,
 }
 
 impl ExportPolicy {
     /// The (`rel`, `abs`) tolerance for the field in column `j`: the first
-    /// [`ColTol`] whose prefix matches column `j`'s header name, else the
-    /// default. `colnames` is the last header line split on the separator.
+    /// [`ColTol`] whose [`ColSel`] matches, else the default. `colnames` is the
+    /// last header line split on the separator.
     fn tol_for_col(&self, j: usize, colnames: &[String]) -> (f64, f64) {
-        if let Some(name) = colnames.get(j) {
-            let name = name.trim().to_lowercase();
-            for ct in &self.col_tol {
-                if name.starts_with(&ct.prefix.to_lowercase()) {
-                    return (ct.rel, ct.abs);
-                }
+        for ct in &self.col_tol {
+            if ct.sel.matches(j, colnames) {
+                return (ct.rel, ct.abs);
             }
         }
         (self.rel, self.abs)
@@ -960,26 +998,24 @@ impl ExportPolicy {
 
     /// Whether column `j`'s cell should be skipped for this row because its
     /// [`ColTol::gate`] denominator (the oracle's `fields[col]`) is below the
-    /// gate threshold — a ratio of near-zero cancellation residuals (see
+    /// gate threshold — a ratio/angle of near-zero cancellation residuals (see
     /// [`ColTol::gate`]). Only the *matching* `ColTol`'s gate applies.
     fn skip_col(&self, j: usize, colnames: &[String], oracle_fields: &[String]) -> bool {
-        let Some(name) = colnames.get(j) else {
-            return false;
-        };
-        let name = name.trim().to_lowercase();
         for ct in &self.col_tol {
-            if name.starts_with(&ct.prefix.to_lowercase()) {
-                return match ct.gate {
-                    // Band-limit: skip only a *nonzero* sub-threshold denominator
-                    // (`0 < |v| < thresh`). An exactly-zero denominator prints the
-                    // ratio as `0` (Pascal `if I1 > 0`), which `0 == 0` checks — so
-                    // those rows stay verified (see [`ColTol::gate`]).
-                    Some((col, thresh)) => oracle_fields
-                        .get(col)
-                        .and_then(|f| f.trim().parse::<f64>().ok())
-                        .is_some_and(|v| v != 0.0 && v.abs() < thresh),
-                    None => false,
+            if ct.sel.matches(j, colnames) {
+                // Band-limit: skip only a *nonzero* sub-threshold denominator
+                // (`0 < |v| < thresh`). An exactly-zero denominator prints the
+                // ratio as `0` (Pascal `if I1 > 0`) / the angle of an exact zero as
+                // `0.00`, which `0 == 0` checks — so those rows stay verified.
+                let (col, thresh) = match ct.gate {
+                    Some(GateSpec::Col(col, thresh)) => (col, thresh),
+                    Some(GateSpec::PrevCol(thresh)) => (j.wrapping_sub(1), thresh),
+                    None => return false,
                 };
+                return oracle_fields
+                    .get(col)
+                    .and_then(|f| f.trim().parse::<f64>().ok())
+                    .is_some_and(|v| v != 0.0 && v.abs() < thresh);
             }
         }
         false

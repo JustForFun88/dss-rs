@@ -101,6 +101,14 @@ FEEDER_REPORTS = [
     ("seqvoltages", "EXP_SEQVOLTAGES.csv", "export_seqvoltages"),
     ("seqcurrents", "EXP_SEQCURRENTS.csv", "export_seqcurrents"),
     ("seqpowers", "EXP_SEQPOWERS.csv", "export_seqpowers"),
+    # WP8.2 sub-step 2c — the per-terminal/per-conductor element exports (mag +
+    # angle) + NodeOrder + Taps.
+    ("currents", "EXP_CURRENTS.csv", "export_currents"),
+    ("nodeorder", "EXP_NodeOrder.csv", "export_nodeorder"),
+    ("elemcurrents", "EXP_ElemCurrents.csv", "export_elemcurrents"),
+    ("elemvoltages", "EXP_ElemVoltages.csv", "export_elemvoltages"),
+    ("elempowers", "EXP_ElemPowers.csv", "export_elempowers"),
+    ("taps", "EXP_Taps.csv", "export_taps"),
 ]
 
 

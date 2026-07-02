@@ -14,25 +14,33 @@
 
 mod bus_coords;
 mod counts;
+mod currents;
+mod elem;
 mod losses;
 mod node_names;
+mod node_order;
 mod p_by_phase;
 mod powers;
 mod seq_currents;
 mod seq_powers;
 mod seq_voltages;
+mod taps;
 mod voltages;
 mod ynode_list;
 
 pub use bus_coords::export_bus_coords;
 pub use counts::export_counts;
+pub(crate) use currents::export_currents;
+pub(crate) use elem::{export_elem_currents, export_elem_powers, export_elem_voltages};
 pub(crate) use losses::export_losses;
 pub use node_names::export_node_names;
+pub(crate) use node_order::export_node_order;
 pub(crate) use p_by_phase::export_p_by_phase;
 pub(crate) use powers::export_powers;
 pub(crate) use seq_currents::export_seq_currents;
 pub(crate) use seq_powers::export_seq_powers;
 pub use seq_voltages::export_seq_voltages;
+pub(crate) use taps::export_taps;
 pub use voltages::export_voltages;
 pub use ynode_list::export_ynode_list;
 

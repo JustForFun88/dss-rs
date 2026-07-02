@@ -84,6 +84,9 @@ impl Dss {
                 "EXP_SEQVOLTAGES.csv",
                 export::export_seq_voltages,
             ),
+            3 => self.export_with_mut(&explicit, "EXP_CURRENTS.csv", |c, ckt, sys, nv| {
+                export::export_currents(c, ckt, sys, nv)
+            }),
             4 => self.export_with_mut(&explicit, "EXP_SEQCURRENTS.csv", |c, ckt, sys, nv| {
                 export::export_seq_currents(c, ckt, sys, nv)
             }),
@@ -102,6 +105,19 @@ impl Dss {
             24 => self.export_with_mut(&explicit, "EXP_LOSSES.csv", export::export_losses),
             26 => self.export_counts_to_file(&explicit), // Counts (WP8.1)
             39 => self.export_with(&explicit, "EXP_NodeNames.csv", export::export_node_names),
+            40 => self.export_with_classes(&explicit, "EXP_Taps.csv", export::export_taps),
+            41 => self.export_elem_ordered(&explicit, "EXP_NodeOrder.csv", |c, ckt, _sys, _nv| {
+                export::export_node_order(c, ckt)
+            }),
+            42 => self.export_elem_ordered(&explicit, "EXP_ElemCurrents.csv", |c, ckt, sys, nv| {
+                export::export_elem_currents(c, ckt, sys, nv)
+            }),
+            43 => self.export_elem_ordered(&explicit, "EXP_ElemVoltages.csv", |c, ckt, sys, nv| {
+                export::export_elem_voltages(c, ckt, sys, nv)
+            }),
+            44 => self.export_elem_ordered(&explicit, "EXP_ElemPowers.csv", |c, ckt, sys, nv| {
+                export::export_elem_powers(c, ckt, sys, nv)
+            }),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             _ => {
                 let name = EXPORT_OPTIONS[ptr - 1];
@@ -145,6 +161,45 @@ impl Dss {
             let sys = crate::solution::solution::sys_ctx(ckt);
             let node_v = ckt.solution.node_v.clone();
             f(classes, ckt, &sys, &node_v)
+        };
+        self.write_export(explicit, default_name, &content);
+    }
+
+    /// Like [`Dss::export_with_mut`] but for the `WriteNodeList`/`WriteElem*`
+    /// family (`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`), which
+    /// Pascal guards **per element** on `IsSolved` (error 222001) rather than via
+    /// the `DoExportCmd` dispatch #24712 solve-guard. Each writer exits early on
+    /// an unsolved circuit, so the file is header-only *and* the error is
+    /// recorded — the formatter self-guards its body (header only), and this
+    /// pushes the 222001 once (Pascal pushes it once per element; the observable
+    /// file content + error presence match, and no gate checks the count).
+    fn export_elem_ordered<F>(&mut self, explicit: &str, default_name: &str, f: F)
+    where
+        F: FnOnce(
+            &mut [crate::exec::registry::DssClass],
+            &Circuit,
+            &crate::elements::traits::SysCtx,
+            &[num_complex::Complex64],
+        ) -> String,
+    {
+        if self.circuit.as_ref().is_some_and(|c| !c.is_solved) {
+            self.errors
+                .push("Circuit must be solved for this command to execute properly.".to_string());
+        }
+        self.export_with_mut(explicit, default_name, f);
+    }
+
+    /// Like [`Dss::export_with`] but also hands the formatter the class registry
+    /// (a read-only `(&[DssClass], &Circuit)` borrow) — for reports that walk
+    /// **typed** objects rather than the generic `CktElement` surface (`Taps`
+    /// downcasts each RegControl + its controlled Transformer). No mutation.
+    fn export_with_classes<F>(&mut self, explicit: &str, default_name: &str, f: F)
+    where
+        F: FnOnce(&[crate::exec::registry::DssClass], &Circuit) -> String,
+    {
+        let content = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            f(&self.classes, ckt)
         };
         self.write_export(explicit, default_name, &content);
     }

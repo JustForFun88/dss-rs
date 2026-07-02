@@ -293,6 +293,24 @@ impl RegControl {
         self.ccd.controlled_element
     }
 
+    /// Pascal `TrWinding` (`= Get_Winding = TapWinding`): the tapped winding
+    /// index reported by `Export Taps` / `Show Taps`.
+    pub(crate) fn tr_winding(&self) -> i32 {
+        self.tap_winding
+    }
+
+    /// Pascal `InReverseMode` — the *runtime* reverse-power mode flag (set in
+    /// `Sample`, distinct from the `reversible=` property). Read by `Export Taps`.
+    pub(crate) fn in_reverse_mode(&self) -> bool {
+        self.in_reverse_mode
+    }
+
+    /// Pascal `InCogenMode` — the *runtime* cogeneration mode flag (distinct from
+    /// the `cogen=` property `cogen_enabled`). Read by `Export Taps`.
+    pub(crate) fn in_cogen_mode(&self) -> bool {
+        self.in_cogen_mode
+    }
+
     /// Pascal `Get_TapNum` evaluated against the **live** controlled transformer
     /// rather than the parse-time `tap_snap`. A direct `Transformer.X.Taps=`
     /// edit moves the transformer winding tap without going through this control,
