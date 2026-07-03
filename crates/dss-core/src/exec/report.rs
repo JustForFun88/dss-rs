@@ -144,7 +144,20 @@ impl Dss {
             10 => self.export_with_mut(&explicit, "EXP_SEQPOWERS.csv", |c, ckt, sys, nv| {
                 export::export_seq_powers(c, ckt, sys, nv, 0)
             }),
+            6 => self.export_with_mut(&explicit, "EXP_CAPACITY.csv", |c, ckt, sys, nv| {
+                export::export_capacity(c, ckt, sys, nv)
+            }),
             11 => self.export_with(&explicit, "EXP_FAULTS.csv", export::export_fault_study),
+            37 => self.export_with(
+                &explicit,
+                "EXP_BusReliability.csv",
+                export::export_bus_reliability,
+            ),
+            38 => self.export_with_classes(
+                &explicit,
+                "EXP_BranchReliability.csv",
+                export::export_branch_reliability,
+            ),
             19 => self.export_with_mut(&explicit, "EXP_P_BYPHASE.csv", |c, ckt, sys, nv| {
                 export::export_p_by_phase(c, ckt, sys, nv, mva_opt)
             }),

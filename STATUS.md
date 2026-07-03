@@ -8,7 +8,30 @@
 > frontier.
 
 Last updated: 2026-07-03 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.3 step 3b landed, gate-green** — the **`Faultstudy`
+reporting/exports/Save). **WP8.3 step 3c (part 1) landed, gate-green** — the
+**reliability + capacity exports** (ptrs 37/38/6, `ExportBusReliability`/
+`ExportBranchReliability`/`ExportCapacity`): `report/export/reliability.rs`
+(`export_bus_reliability` = read-only `fn(&Circuit)`; `export_branch_reliability` =
+`fn(&[DssClass],&Circuit)`, two PDElement passes — `MaxCustomers` then the per-branch
+Lambda/Accumulated-Lambda/customers/interrupts/miles/**Cust-Miles**/SAIFI row) +
+`report/export/capacity.rs` (`export_capacity`, the `export_with_mut` element walk —
+per-PDElement `Imax`=max phase `|Iterminal|`, `%normal`/`%emergency` vs NormAmps/
+EmergAmps, `Power[1]`·0.001 kW/kvar, branch customers, `NumPhases`, terminal-1 bus
+`kVBase`; the `SeasonalRating` branch is kept-deferred → always the element's own
+ratings). All three read the **`RelCalc`-populated** `Bus*`/`Branch*`/`Accumulated*`
+fields (no re-run; degenerate all-zero without a prior `RelCalc`, like the oracle).
+**Synthesized deck fixture** (PHASE8_PLAN §1 — no corpus deck exports these): the
+`relcalc_head_recloser_matches_oracle` two-section radial feeder (src→b1→b2, per-line
+fault data + `numcust` loads + an OCP **recloser** w/ high pickups so the snapshot
+doesn't trip → `Capacity` sees real currents + `RelCalc` completes) `solve`d+`relcalc`'d;
+a new deck-based golden runner (`run_deck_export`/`DeckMeta`, the `Counts` no-master
+pattern). golden_phase8 **38→41** (`export_{busreliability,branchreliability,capacity}`,
+matched the oracle first-run: reliability values are `%-.11g` pure `RelCalc` arithmetic
+identical on both engines → `rel=1e-8`; capacity `Imax`/kW/kvar 6-sig `EXPORT_REL`,
+`%8.2f` %-cols `abs=0.011`, `%-.3g` kVBase `rel=1e-3`); lib **729** (formatters gated
+end-to-end, no unit test). `solvable_now` **119** (no migration — the corpus
+`Export`-reliability/capacity decks migrate at the step-5 completion gate). Prior:
+**WP8.3 step 3b landed, gate-green** — the **`Faultstudy`
 export** (ptr 11, `ExportFaultStudy`, §2.1): `report/export/fault_study.rs` reads the
 **precomputed** per-bus `Ysc`/`BusCurrent` a prior `Solve mode=faultstudy` (WP7.9)
 populated and reports each bus's 3-phase (max `|BusCurrent|`), worst single-phase-to-
@@ -1783,13 +1806,42 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     added `export_faultstudy_snapshot_ysc_none_is_zeroed` (a Rust-only structural guard — a plain snapshot
     `solve` ⇒ `Ysc=None` ⇒ 1φ/L-L columns structurally `0.00`, header + 4-field rows + ≥2 buses asserted,
     no oracle needed since the zeros are the None-branch by construction). lib **728→729**.
-- **next — WP8.3 step 3c:** the remaining step-3b exports — `BusReliability`/`BranchReliability` +
-  `Capacity` (RelCalc bus/branch outputs + zone customer counts, all populated), then `Overloads`/
-  `Unserved`/`AllocationFactors` (PD-overload + load EEN/UE + allocation), then `Sections` (**needs new
-  plumbing** — the meter's `FeederSections`/`SectionCount` are computed ephemerally in
-  `calc_reliability_indices` today, not persisted on the `EnergyMeter`; port that first), then `Profile`
-  (branch-list voltage profile over `dist_from_meter`). Then step 4 (`TSystemMeter` core +
-  demand-interval/`DI_` writers, §2.6), step 5 (gate + corpus migration).
+- **WP8.3 step 3c (part 1) — `BusReliability`/`BranchReliability`/`Capacity` (ptrs 37/38/6), done,
+  gate-green.** The RelCalc bus/branch outputs + the max-current/rating capacity report.
+  `report/export/reliability.rs`: `export_bus_reliability` (dispatch 37 via `export_with`, default
+  `EXP_BusReliability.csv`) walks `ckt.buses` writing `CheckForBlanks(UPPER(name))` + `BusFltRate`/
+  `Bus_Num_Interrupt`/`BusTotalNumCustomers`/`BusCustInterrupts`/`Bus_Int_Duration`/`BusTotalMiles`
+  (`%-.11g` + `%d`); `export_branch_reliability` (dispatch 38 via `export_with_classes`, default
+  `EXP_BranchReliability.csv`) does two enabled-PDElement passes — pass 1 = `MaxCustomers` (max FROM-bus
+  `BusTotalNumCustomers`), pass 2 = the per-branch `BranchFltRate`/`AccumulatedBrFltRate`/customers/
+  `Bus_Num_Interrupt`/`BranchTotalCustomers·Bus_Num_Interrupt`/`BusCustDurations`/`AccumulatedMilesDownStream`/
+  `(MaxCustomers-BranchTotalCustomers)·Accum…`/`SAIFI` (`BusCustInterrupts/BusTotalNumCustomers` or 0). FROM
+  bus = `terminals[from_terminal-1].bus_ref`. `report/export/capacity.rs`: `export_capacity` (dispatch 6 via
+  `export_with_mut`, default `EXP_CAPACITY.csv`) walks PDElements — `compute_iterminal`, `Imax` = max
+  `|iterminal[i]|` over `0..nphases`, `%normal`/`%emergency` = `Imax/NormAmps·100` / `Imax/EmergAmps·100`
+  (0 if either rating is 0), `Power[1]·0.001` kW/kvar, `BranchNumCustomers`/`BranchTotalCustomers`/`nphases`,
+  and `kVBase` of `terminals[0].bus_ref`. The `DSS.SeasonalRating`/`SeasonSignal` branch of
+  `CalcAndWriteMaxCurrents` is **kept-deferred** (documented in the formatter) — always the element's own
+  ratings, faithful for every non-seasonal deck. **No re-run, no mutation of shared state** — all three read
+  the fields `RelCalc` (Pascal `DoLambdaCalcs`) populated. **Gate:** a synthesized deck fixture (PHASE8_PLAN
+  §1 — no corpus deck exports these keywords): the proven `relcalc_head_recloser_matches_oracle` feeder
+  (src→b1→b2, `faultrate`/`pctperm`/`repair` per line, `numcust` loads, a recloser with `phasetrip`/
+  `groundtrip=100000` so the snapshot doesn't trip → `Capacity` reads real 15.8 A / 300 kW currents while
+  `RelCalc` still completes) `solve mode=snap` then `relcalc`. A new deck-based golden runner in
+  `golden_phase8.rs` (`run_deck_export` + `DeckMeta` = report/fixture/suffix/deck, the no-master `Counts`
+  pattern) drives `export_{busreliability,branchreliability,capacity}`. Matched the oracle **first-run, no
+  fudging** — the reliability columns are `%-.11g` pure `RelCalc` arithmetic identical on both engines (the
+  reliability unit tests pin the same accumulators to ~1e-12), so `rel=1e-8`/`abs=1e-9`; capacity `Imax`/
+  kW/kvar keep the 6-sig `EXPORT_REL`, the `%8.2f` %-columns `abs=0.011`, the `%-.3g` kVBase `rel=1e-3`.
+  golden_phase8 **38→41**; lib **729** (no unit test — the formatters are gated end-to-end); `solvable_now`
+  **119** (no migration — the `Export`-reliability/capacity corpus decks migrate at the step-5 completion
+  gate with the rest of step 3c).
+- **next — WP8.3 step 3c (part 2):** `Overloads`/`Unserved`/`AllocationFactors` (PD-overload + load
+  EEN/UE + `DumpAllocationFactors`), then `Sections` (**needs new plumbing** — the meter's
+  `FeederSections`/`SectionCount` are computed ephemerally in `calc_reliability_indices` today, not
+  persisted on the `EnergyMeter`; port that first), then `Profile` (branch-list voltage profile over
+  `dist_from_meter`). Then step 4 (`TSystemMeter` core + demand-interval/`DI_` writers, §2.6), step 5
+  (gate + corpus migration).
 
 ---
 

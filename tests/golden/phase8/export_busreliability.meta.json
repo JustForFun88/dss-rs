@@ -1,0 +1,18 @@
+{
+  "report": "busreliability",
+  "fixture": "rel",
+  "suffix": "EXP_BusReliability.csv",
+  "deck": [
+    "new circuit.rel basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2 pctperm=80 repair=4",
+    "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3 pctperm=90 repair=5",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10",
+    "new load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25",
+    "new recloser.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1 phasetrip=100000 groundtrip=100000",
+    "new energymeter.m1 element=line.l1 terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap",
+    "relcalc"
+  ]
+}
