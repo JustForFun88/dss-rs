@@ -30,9 +30,10 @@ The **WP8.2 completion gate** then closed WP8.2: the IEEE8500 `Voltages`/`Summar
 goldens + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE
 **26.3%→35.5%**) + the Rust `CorpusGuard` (keeps the vendored corpus pristine under
 report-writing decks). Tracked-open (deferred): 9 decks **hang the Rust engine**
-(>40s, StorageController the prime suspect, kept in `skipped_unsupported`), and a
-**rare always-on-gate flake** under max `--workspace` concurrency (oracle writes Show
-output to the corpus; robust fix = oracle output redirection).
+(>40s, StorageController the prime suspect, kept in `skipped_unsupported`). The
+**rare live-gate flake is RESOLVED**: root cause was a per-process convergence misfire
+in the pinned engine itself (not concurrency/file races); the oracle server now
+retries in-process (§1f "Issue-2 root cause").
 Detail in the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
 (branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
@@ -1386,20 +1387,31 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (heavy 8500+PV). Whether these are legitimately-slow long solves or a **non-termination bug**
     (the StorageController set is the prime suspect — a controller that doesn't terminate is a bug)
     is **deferred to a focused follow-up**, not waved off.
-  - **Tracked-open (rare live-gate flake under max `--workspace` concurrency).** The full-workspace
-    gate failed **once in ~5 runs** with `Test/YgD-Test.dss step 0: oracle did not converge`; it
-    passes in isolation (verified 3× + the audit's 119/119 + a clean re-run). The deck converges
-    deterministically in fresh oracle subprocesses (5/5, iters 5) — **not** solve-flaky. Root: the
-    migrated Show/Export-heavy decks make the **oracle** write report files into the vendored corpus
-    (dss-python's `Show`/`Export`/`Visualize` are not no-ops; YgD-Test emits `show v ln nodes` twice
-    + `Visualize`), and under heavy concurrent load (all test binaries + 723 lib tests) a rare
-    file/timeout interaction perturbs one oracle case to `converged=false`. The `_CorpusGuard`s clean
-    the files (corpus stays pristine) but don't remove the write-race. Exact mechanism unpinned. The
-    robust fix is **oracle output redirection** (compile each case from a per-case temp copy of its
-    dir, or strip report verbs before compile) — deferred as a careful dedicated step (it changes the
-    live-gate compile path for all 119 cases + adds per-run copy cost; only **1** case has a cross-dir
-    `..` redirect, `Test/TriplexLineCodeCalc.DSS`, that a naive dir-copy would break). Until then the
-    always-on gate is green but can rarely red under extreme parallelism.
+  - **Issue-2 root cause (RESOLVED — the "rare live-gate flake" was never a concurrency race).**
+    The `Test/YgD-Test.dss step 0: oracle did not converge` flake was root-caused empirically to a
+    **per-process convergence misfire in the pinned engine itself** (dss_capi 0.14.5): on a fresh
+    process's first compile of this deck (the mid-deck open-phase rewire `Transformer.tr1.wdg=1
+    bus=HV.1.2.4` adds node `HV.4`), the post-rewire solve hits MaxIterations (`Converged=false`,
+    iters=15, a bit-identical wrong V every time) with **no DSS error raised**, in **~16% of fresh
+    processes** — measured at the same rate with 0 and 48 CPU-burner processes (load-irrelevant;
+    the "1-in-5 under `--workspace`" correlation was a sampling illusion — 3× green in isolation has
+    51% probability at this rate) and independent of `PYTHONHASHSEED`. A `clear`+recompile **in the
+    same process heals it** (bistable, uninitialized-memory-style; never persisted past the 2nd
+    recompile in 75 trials), and the healed result is the one deterministic fixpoint the Rust engine
+    matches. Every file-race hypothesis was tested and **refuted for this signature**: a lock on the
+    `Show` report file raises `#303`, a locked/missing deck raises `#243`, truncated deck reads
+    either error or converge — all surface as `ok=false` (oracle error), never `converged=false`.
+    **Fix:** `oracle_server.run_case` now retries the whole case in-process (≤3 attempts, loud
+    stderr log) when any checkpoint reports non-convergence; a legitimately non-converging case
+    still fails after 3 identical attempts, so nothing is masked. Verified: 30/30 one-shot YgD runs
+    converge (retry fired 2×, healed both). **Bonus real bug found & fixed while refuting the race
+    hypotheses:** the Python `_CorpusGuard.__enter__` wrapped its whole snapshot loop in one
+    `except OSError` — a transient lock on ONE file mid-snapshot truncated the `names` set and
+    `__exit__` then **deleted every corpus file sorting after it** (demonstrated live: killed 4
+    `Test/` decks, restored from git). It now mirrors the Rust guard: per-file `try`, plus
+    `_snapshot_ok` gating all deletion. The oracle-output-redirection idea (per-case temp-copy
+    compile) is therefore NOT needed for this issue and stays unscheduled; the #303/#243 lock
+    windows it would close have never fired in practice.
   - **Gate:** `cargo fmt`/`clippy`/`test` green; golden_phase8 **25**; lib **723**; the always-on
     `corpus_live` full-model compare green over **all 119** `solvable_now` cases (105 s; a clean
     full-workspace re-run confirmed green after the isolated flake above).

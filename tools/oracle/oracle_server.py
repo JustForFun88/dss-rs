@@ -137,28 +137,48 @@ class _CorpusGuard:
     """Restore the case's directory after a run: delete any file the run
     created, and rewrite any small pre-existing file it overwrote. Large files
     (> `_RESTORE_MAX`) are not buffered — OpenDSS only writes small text reports,
-    never the multi-MiB data files (loadshape CSVs, etc.)."""
+    never the multi-MiB data files (loadshape CSVs, etc.).
+
+    `_snapshot_ok` mirrors the Rust `CorpusGuard` (corpus_live.rs): if the
+    pre-run snapshot fails or is cut short, `__exit__` must not delete anything —
+    a truncated `names` set would classify pre-existing corpus files as
+    run-created and delete them (empirically demonstrated: a transient lock on
+    one file mid-snapshot used to abort the whole listing via the old
+    whole-loop `except OSError`, and the exit pass then deleted every corpus
+    file that sorted after it, `YgD-Test.dss` included). Per-file failures now
+    only skip that file's overwrite-restore buffer."""
 
     def __init__(self, case_path: str):
         self.dir = os.path.dirname(os.path.abspath(case_path))
         self.names: set[str] = set()
         self.buf: dict[str, bytes] = {}
+        self._snapshot_ok = False
 
     def __enter__(self) -> "_CorpusGuard":
         try:
-            for name in os.listdir(self.dir):
-                p = os.path.join(self.dir, name)
+            listing = os.listdir(self.dir)
+        except OSError:
+            return self  # snapshot failed -> deletion stays disabled
+        for name in listing:
+            p = os.path.join(self.dir, name)
+            try:
                 if not os.path.isfile(p):
                     continue
                 self.names.add(name)
                 if os.path.getsize(p) <= _RESTORE_MAX:
                     with open(p, "rb") as fh:
                         self.buf[name] = fh.read()
-        except OSError:
-            pass
+            except OSError:
+                # Unreadable (e.g. transiently locked): it is still a
+                # pre-existing file — keep it in `names` so it is never
+                # deleted; only its overwrite-restore is unavailable.
+                self.names.add(name)
+        self._snapshot_ok = True
         return self
 
     def __exit__(self, *exc) -> bool:
+        if not self._snapshot_ok:
+            return False
         try:
             current = set(os.listdir(self.dir))
         except OSError:
@@ -181,6 +201,23 @@ class _CorpusGuard:
         return False
 
 
+# The pinned engine (dss_capi 0.14.5) has a per-process nondeterminism: on a
+# fresh process's FIRST compile of a deck that rewires a transformer winding to
+# a new node mid-deck (`Test/YgD-Test.dss`, `Transformer.tr1.wdg=1
+# bus=HV.1.2.4`), the post-rewire solve sometimes (~16% of processes,
+# empirically; load-independent, PYTHONHASHSEED-independent) hits MaxIterations
+# and reports `Converged=false` with NO DSS error raised — an
+# uninitialized-memory-style bistability: both outcomes are bit-deterministic,
+# and a `clear` + recompile IN THE SAME PROCESS heals it (never observed to
+# persist past the 2nd recompile in 75 trials). The healed result is the one
+# deterministic fixpoint the Rust engine matches. So: when any checkpoint
+# reports non-convergence, retry the whole case in-process (loudly) before
+# returning. A case that legitimately fails to converge still fails after
+# `_RUN_ATTEMPTS` identical attempts — nothing is masked, only the engine's
+# fresh-process misfire is absorbed. (WP8.2 Issue-2 root cause; STATUS.md §1f.)
+_RUN_ATTEMPTS = 3
+
+
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
     per-step model (the shape `harness::*` / corpus_live.rs deserialize)."""
@@ -195,40 +232,50 @@ def run_case(d, req: dict) -> dict:
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
 
-    node_order = None
-    checkpoints = []
     with _CorpusGuard(case_path):
-        d.Text.Command = "clear"
-        d.Text.Command = f'Compile "{case_path}"'
-        for c in post:
-            d.Text.Command = c
+        for attempt in range(1, _RUN_ATTEMPTS + 1):
+            node_order = None
+            checkpoints = []
+            d.Text.Command = "clear"
+            d.Text.Command = f'Compile "{case_path}"'
+            for c in post:
+                d.Text.Command = c
 
-        ckt = d.ActiveCircuit
-        for _ in range(n_steps):
-            d.Text.Command = "solve"
-            sol = ckt.Solution
-            if node_order is None:
-                node_order = list(ckt.YNodeOrder)
-            varray = list(ckt.YNodeVarray)
-            disc = gc.capture_discrete(ckt)
-            checkpoints.append(
-                {
-                    "dbl_hour": float(sol.dblHour),
-                    "iterations": int(sol.Iterations),
-                    "converged": bool(sol.Converged),
-                    "v_re": varray[0::2],
-                    "v_im": varray[1::2],
-                    "y": gc.capture_system_y(d) if full_csc else None,
-                    "y_fingerprint": gc.capture_fingerprint(d),
-                    "yprims": [gc.capture_yprim(ckt, nm) for nm in selected],
-                    "elements": capture_all_elements(ckt),
-                    "injection": gc.capture_injection(d),
-                    "transformers": disc["transformers"],
-                    "regcontrols": disc["regcontrols"],
-                    "capacitors": disc["capacitors"],
-                    "monitors": capture_all_monitors(ckt) if check_mm else [],
-                    "meters": capture_all_meters(ckt) if check_mm else [],
-                }
+            ckt = d.ActiveCircuit
+            for _ in range(n_steps):
+                d.Text.Command = "solve"
+                sol = ckt.Solution
+                if node_order is None:
+                    node_order = list(ckt.YNodeOrder)
+                varray = list(ckt.YNodeVarray)
+                disc = gc.capture_discrete(ckt)
+                checkpoints.append(
+                    {
+                        "dbl_hour": float(sol.dblHour),
+                        "iterations": int(sol.Iterations),
+                        "converged": bool(sol.Converged),
+                        "v_re": varray[0::2],
+                        "v_im": varray[1::2],
+                        "y": gc.capture_system_y(d) if full_csc else None,
+                        "y_fingerprint": gc.capture_fingerprint(d),
+                        "yprims": [gc.capture_yprim(ckt, nm) for nm in selected],
+                        "elements": capture_all_elements(ckt),
+                        "injection": gc.capture_injection(d),
+                        "transformers": disc["transformers"],
+                        "regcontrols": disc["regcontrols"],
+                        "capacitors": disc["capacitors"],
+                        "monitors": capture_all_monitors(ckt) if check_mm else [],
+                        "meters": capture_all_meters(ckt) if check_mm else [],
+                    }
+                )
+            bad = [i for i, cp in enumerate(checkpoints) if not cp["converged"]]
+            if not bad:
+                break
+            log(
+                f"oracle retry: {case_path} attempt {attempt}/{_RUN_ATTEMPTS} "
+                f"non-converged step(s) {bad} (pinned-engine fresh-process "
+                f"misfire, see run_case doc / STATUS.md §1f); "
+                + ("recompiling in-process" if attempt < _RUN_ATTEMPTS else "returning as-is")
             )
     return {"node_order": node_order, "n_steps": n_steps, "checkpoints": checkpoints}
 
