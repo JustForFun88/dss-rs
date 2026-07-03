@@ -22,8 +22,9 @@ Rust solve loop, so the DER energy registers stayed **zero** — the export surf
 after the meter sweep (unconditional, matching Pascal — no meter needed). Two synthesized
 goldens (no corpus deck uses these keywords): plain-IEEE13+meter daily (Meters+Loads,
 meter registers 1e-8-matched) and IEEE13+DER daily (the DER register dumps) + the `/m`
-self-consistency test. golden_phase8 **29→32**, lib **726** (net; DER wiring adds no unit
-test). **WP8.3 step 1 landed, gate-green** — `Export Monitors`
+self-consistency test. golden_phase8 **29→34** (incl. the audit-tests follow-up's append +
+Storage-`/m` tests), lib **726** (net; DER wiring adds no unit test). **WP8.3 step 1 landed,
+gate-green** — `Export Monitors`
 (`Monitor.TranslateToCSV` over the Phase-6 in-memory f32 stream): the `util::comma_text`
 (`TStringList.CommaText`) header formatter + `Monitor::to_csv` + the ptr-15 dispatch
 (`export_monitors`, monitor-name pre-parse, per-monitor `<case>_Mon_<name>_1.csv`) +
@@ -134,7 +135,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 726, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 32,
+                            # golden_phase7_protection 1, golden_phase8 34,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1630,6 +1631,22 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     models the last-written path via `last_result_file`, not Pascal's `GlobalResult`/`AppendGlobalResult`
     — so the `/m` tail reproduces `@lastexportfile="/m"` but not the comma-joined `GlobalResult` file
     list; out of scope for this step (not introduced here), tracked for the WP8.x `GlobalResult` pass.
+  - **audit-tests follow-up (independent agent): sound + non-vacuous (mutation-verified); 1 Major + 3
+    Minor strengthened.** The auditor confirmed the goldens are genuine oracle captures (not
+    self-comparison), the `rel=0`/`abs=0.5` register floor is tight (a +1 mutation fails loudly), the
+    header-verbatim pin covers the register-name set/quoting, and the two-fixture split removes a
+    printing-boundary flake rather than masking a divergence. **Strengthened:** (1) **Major** — the
+    single-file **append** path had zero coverage (every golden used a fresh dir → only the create
+    branch ran); added `export_meters_append_accumulates` (two exports → one header + two rows). (2)
+    element **ordering** + the **enabled-filter** were vacuous on the single-element DER dumps; fixture
+    B now has two enabled generators (g1→g2 pins creation order) + a disabled g3 (must not appear). (3)
+    the Storage `/m` `EXP_PV_` copy-paste-bug prefix is now pinned by `export_storage_multifile_uses_pv_prefix`
+    (asserts `EXP_PV_ST1.csv` exists, `EXP_STORAGE_ST1.csv` does not). (4) the Loads `%5.3f`
+    AllocFactor/PF columns get a tight per-column `abs=5e-4` instead of the coarse `0.05` default.
+    **Recorded (no fix, inherent):** the DER *own* registers are pinned nowhere finer than the `%10.0f`
+    `abs=0.5` report resolution (no corpus deck uses these keywords) — a sub-0.5-unit DER-integration
+    error would be invisible; the wiring fix itself is well-guarded (0→~300, dramatic). golden_phase8
+    **32→34**.
 - **next — WP8.3 step 3:** `EventLog`/`ErrorLog` (the Phase-5 event-log format), `Faultstudy` (read-only
   over the WP7.9-precomputed bus `Zsc`/`Ysc`/`BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`,
   `BusReliability`/`BranchReliability`/`Sections` (the WP7.2 `RelCalc` outputs), `AllocationFactors`,
