@@ -14,10 +14,12 @@ use crate::report::format;
 
 /// Build the `Export Capacity` body (Pascal `ExportCapacity`). Walks the
 /// PDElements calling the mutating `GetCurrents`/`Power` getters (PHASE8_PLAN
-/// §2.1). The seasonal-rating branch (`DSS.SeasonalRating`) is not modeled — that
-/// `Set SeasonSignal=`/`SeasonalRating` path is kept deferred, so the ratings are
-/// always the element's own `NormAmps`/`EmergAmps` (faithful for every non-
-/// seasonal deck).
+/// §2.1). NOT_PORTED (seasonal-rating): the `DSS.SeasonalRating` /
+/// `Set SeasonSignal=` branch of `CalcAndWriteMaxCurrents` (:567) is not modeled —
+/// the season-signal XYCurve infrastructure is absent engine-wide (same deferral as
+/// `StorageController`'s seasonal target). `SeasonalRating` is false-by-default, and
+/// when false Pascal takes the element's own `NormAmps`/`EmergAmps` — exactly what
+/// this always does — so every non-seasonal deck matches the oracle bit-for-bit.
 pub(crate) fn export_capacity(
     classes: &mut [DssClass],
     ckt: &Circuit,
