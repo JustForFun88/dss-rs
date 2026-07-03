@@ -542,6 +542,24 @@ DECK_GROUPS = [
         [("overloads", "EXP_OVERLOADS.csv", "export_overloads")],
     ),
     (
+        # Overloads, unbalanced: a single-phase load on a 3-phase line drives
+        # nonzero I2/I0 (pins the `phase_to_sym` decomposition, not just the
+        # balanced all-zero columns) + a `normamps=0` second line that forces the
+        # degenerate `NormAmps<=0` column-shift row (an empty AmpsOver field).
+        "ovl2",
+        [
+            "new circuit.ovl2 basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 normamps=5 emergamps=8",
+            "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 normamps=0 emergamps=6",
+            "new load.ld1 bus1=b1.1 phases=1 kv=7.2 kw=200",
+            "new load.ld2 bus1=b2.1 phases=1 kv=7.2 kw=150",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("overloads", "EXP_OVERLOADS.csv", "export_overloads_unbal")],
+    ),
+    (
         "uns",
         [
             "new circuit.uns basekv=12.47 bus1=src phases=3",
@@ -554,12 +572,35 @@ DECK_GROUPS = [
         [("unserved", "EXP_UNSERVED.csv", "export_unserved")],
     ),
     (
+        # Unserved, UE (emergency) criterion: a deep-sag load below `EmergMinVolts`
+        # (nonzero UE_Factor via the `Unserved` path) + a healthy load that must be
+        # excluded (pins both the `ue_only` branch and the criterion filter).
+        "uns2",
+        [
+            "new circuit.uns2 basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=12 units=mi r1=0.4 x1=0.8",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=4000 pf=0.9",
+            "new line.l2 bus1=src bus2=b2 length=0.1 units=mi r1=0.05 x1=0.05",
+            "new load.ld2 bus1=b2 phases=3 kv=12.47 kw=50",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("unserved ue", "EXP_UNSERVED.csv", "export_unserved_ue")],
+    ),
+    (
+        # AllocationFactors: a connected-kVA-spec load (`la`), a kWh-spec load
+        # (`lb`), a plain-kW load (`lc`, must emit NO line — the no-emit branch),
+        # and a **disabled** connected-kVA-spec load (`ld`, must STILL emit — Pascal
+        # `DumpAllocationFactors` has no `Enabled` filter).
         "alloc",
         [
             "new circuit.alloc basekv=12.47 bus1=src phases=3",
             "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
             "new load.la bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.75",
             "new load.lb bus1=b1 phases=3 kv=12.47 kwh=1000 cfactor=0.9",
+            "new load.lc bus1=b1 phases=3 kv=12.47 kw=500",
+            "new load.ld bus1=b1 phases=3 kv=12.47 xfkva=300 allocationfactor=0.6 enabled=no",
             "set voltagebases=[12.47]",
             "calcvoltagebases",
             "solve mode=snap",

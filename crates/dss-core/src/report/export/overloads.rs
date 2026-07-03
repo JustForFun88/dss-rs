@@ -82,20 +82,27 @@ pub(crate) fn export_overloads(
         // `Spower := Cabs(PDElem.Power[1]) * 0.001` (kVA).
         let spower = elem.terminal_power(sys, node_v, 1).norm() * 0.001;
 
-        // Build the row piecewise to mirror Pascal's `FSWrite` branches exactly —
-        // including the degenerate `NormAmps <= 0` / `EmergAmps <= 0` paths, which
-        // emit a **single** literal `0.0` field (a column shift), not the three
-        // amps/kVA/percent columns. `"Class.NAME"` (quoted, name uppercased;
-        // Pascal pads to 22 — trailing whitespace the comparator trims).
+        // Build the row char-for-char as Pascal's `FSWrite` sequence, so the
+        // degenerate `NormAmps <= 0` / `EmergAmps <= 0` column shift is byte-exact.
+        // The subtlety: Pascal writes I1 as `Format('%8.2f, ', [I1])` — WITH a
+        // trailing `, ` — then the `NormAmps > 0` branch emits AmpsOver directly
+        // (`Format('%8.2f, %10.2f')`, no leading separator) so I1's trailing comma
+        // becomes AmpsOver's separator; but the `NormAmps <= 0` branch emits
+        // `Separator + '0.0'`, which DOUBLES with I1's trailing comma to produce an
+        // **empty field** before the `0.0` (the observable upstream column shift).
+        // `"Class.NAME"` (quoted, name uppercased; Pascal pads to 22 — trailing
+        // whitespace the comparator trims).
         let mut row = format!(
-            "\"{}\", 1, {}",
+            "\"{}\", 1, {}, ",
             format::upper_elem_name(name),
             format::fixed(i1, 2),
         );
-        // `iNormal` branch: AmpsOver / kVAOver / %Normal, or the literal `0.0`.
+        // `iNormal` branch: AmpsOver / kVAOver / %Normal (no leading separator —
+        // it rides I1's trailing comma), or a `Separator + '0.0'` that leaves the
+        // empty AmpsOver field behind it.
         if norm_amps > 0.0 {
             row.push_str(&format!(
-                ", {}, {}, {}",
+                "{}, {}, {}",
                 format::fixed(cmax - norm_amps, 2),
                 format::fixed(spower * (cmax - norm_amps) / norm_amps, 2),
                 format::fixed(cmax / norm_amps * 100.0, 1),
@@ -103,7 +110,7 @@ pub(crate) fn export_overloads(
         } else {
             row.push_str(", 0.0");
         }
-        // `iEmerg` branch: %Emergency, or the literal `0.0`.
+        // `iEmerg` branch: %Emergency, or the literal `0.0` (both `Separator + …`).
         if emerg_amps > 0.0 {
             row.push_str(&format!(
                 ", {}",

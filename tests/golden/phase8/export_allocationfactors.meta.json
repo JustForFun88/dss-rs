@@ -7,6 +7,8 @@
     "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
     "new load.la bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.75",
     "new load.lb bus1=b1 phases=3 kv=12.47 kwh=1000 cfactor=0.9",
+    "new load.lc bus1=b1 phases=3 kv=12.47 kw=500",
+    "new load.ld bus1=b1 phases=3 kv=12.47 xfkva=300 allocationfactor=0.6 enabled=no",
     "set voltagebases=[12.47]",
     "calcvoltagebases",
     "solve mode=snap"

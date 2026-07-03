@@ -25,7 +25,23 @@ only, native-case name, no `Enabled` filter matching Pascal `for pLoad in Loads`
 Three **synthesized deck fixtures** (PHASE8_PLAN §1 — no corpus deck exports these):
 an under-rated overloaded line (`ovl`), a voltage-sagged feeder (`uns`), two
 allocation-spec loads (`alloc`); each captured by `gen_phase8.py` + replayed by the
-deck golden runner. golden_phase8 **43→46** (all three matched the oracle first-run:
+deck golden runner. **Audit follow-up (audit-code + audit-tests):** both audits
+found **no bug** in the primary port (audit-code: "faithful field-by-field, no
+regression"; audit-tests: "solid, no masking") — the only findings were coverage
+gaps. Adding the requested coverage **revealed a real degenerate-path defect**: the
+`NormAmps<=0` column-shift row in `overloads.rs` was NOT byte-faithful — Pascal's
+`Format('%8.2f, ', [I1])` trailing `, ` doubles with the branch's `Separator+'0.0'`
+to leave an **empty AmpsOver field** (`… 7.91, ,      0.0`), which the piecewise
+builder collapsed to a single `0.0`. Fixed to mirror Pascal's separator placement
+char-for-char (I1 written WITH the trailing `, `; the `NormAmps>0` branch rides it,
+the `<=0` branch doubles it). Two new goldens pin it against the oracle:
+`export_overloads_unbal` (a 1φ load on a 3φ line → **nonzero I2/I0**, pinning
+`phase_to_sym` beyond the balanced all-zero deck; + a `normamps=0` line → the
+column-shift row) and `export_unserved_ue` (`Export Unserved u…` → the emergency
+`Unserved` criterion + a healthy load excluded); the `alloc` fixture gained a
+plain-`kw` load (the no-emit branch) and a **disabled** ConnectedkVA load (still
+emits — pins the no-`Enabled`-filter walk). golden_phase8 **46→48**. Base:
+**43→46** (all three matched the oracle first-run:
 Overloads fixed-decimal `rel=0`/`abs=0.011` (2-dec)+`0.11` (1-dec); Unserved
 `EEN/UE` `%9.3f` `abs=0.0011`, kW `%8.0f` `abs=0.5`; AllocationFactors deck-constant
 `%-.5g` `rel=abs=1e-9`, `=`-separated no-header). lib **729** (unchanged —
