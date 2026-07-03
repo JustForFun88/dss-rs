@@ -486,6 +486,96 @@ RELIABILITY_REPORTS = [
 ]
 
 
+# The Sections fixture (PHASE8_PLAN §WP8.3 step 3c part 3). No corpus deck exports
+# it, so it is synthesized (PHASE8_PLAN §1): a two-feeder circuit with TWO meters —
+# m1's zone has two recloser-headed sections (src→b1→b2), m2's zone one
+# fuse-headed section (src→c1, pinning the FUSE branch of getOCPDeviceTypeString) —
+# solved + `relcalc`'d so `SectionCount`/`FeederSections` persist on each meter.
+# Two reports: `sections` (all meters) and `sections meter=m2` (the named-meter
+# pre-parse — its rows must be m2's only).
+SECTIONS_DECK = [
+    "new circuit.sect basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2 pctperm=80 repair=4",
+    "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3 pctperm=90 repair=5",
+    "new line.l3 bus1=src bus2=c1 length=2 units=mi r1=0.2 x1=0.2 faultrate=0.4 pctperm=70 repair=6",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10",
+    "new load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25",
+    "new load.ld3 bus1=c1 phases=3 kv=12.47 kw=150 numcust=8",
+    "new recloser.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1 "
+    "phasetrip=100000 groundtrip=100000",
+    "new recloser.r2 monitoredobj=line.l2 monitoredterm=1 switchedobj=line.l2 switchedterm=1 "
+    "phasetrip=100000 groundtrip=100000",
+    "new fuse.f1 monitoredobj=line.l3 monitoredterm=1 switchedobj=line.l3 switchedterm=1 "
+    "ratedcurrent=100000",
+    "new energymeter.m1 element=line.l1 terminal=1",
+    "new energymeter.m2 element=line.l3 terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap",
+    "relcalc",
+]
+SECTIONS_REPORTS = [
+    ("sections", "EXP_SECTIONS.csv", "export_sections"),
+    ("sections meter=m2", "EXP_SECTIONS.csv", "export_sections_meter"),
+]
+
+
+def gen_sections(d) -> None:
+    """Capture the oracle's `Export Sections` reports (all meters + named meter)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in SECTIONS_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in SECTIONS_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "fixture": case,
+                "suffix": suffix,
+                "deck": SECTIONS_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# The Profile fixture (PHASE8_PLAN §WP8.3 step 3c part 3): IEEE13 + an EnergyMeter
+# (Profile walks each meter's branch list with the zone-build `DistFromMeter`),
+# solved snapshot. Seven variants pin every `PhasesToPlot` selector branch: the
+# default (3-phase primary), `all`/`primary` (per-present-phase L-N, incl. the
+# < 1 kV Linetype=2 rows), the three L-L forms, and an explicit single phase
+# (`2` — the single-character `Parser.IntValue` re-read).
+PROFILE_POST = [
+    "new energymeter.em1 element=Line.650632 terminal=1",
+    "solve",
+]
+PROFILE_REPORTS = [
+    ("profile", "EXP_Profile.csv", "export_profile"),
+    ("profile all", "EXP_Profile.csv", "export_profile_all"),
+    ("profile primary", "EXP_Profile.csv", "export_profile_primary"),
+    ("profile ll3ph", "EXP_Profile.csv", "export_profile_ll3ph"),
+    ("profile llall", "EXP_Profile.csv", "export_profile_llall"),
+    ("profile llprimary", "EXP_Profile.csv", "export_profile_llprimary"),
+    ("profile 2", "EXP_Profile.csv", "export_profile_ph2"),
+]
+
+
+def gen_profile(d) -> None:
+    """Capture the oracle's `Export Profile` variants on the metered IEEE13 feeder."""
+    _gen_register_group(d, PROFILE_POST, PROFILE_REPORTS)
+
+
 def gen_reliability(d) -> None:
     """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -657,6 +747,8 @@ def main() -> None:
     gen_faultstudy(d)
     gen_reliability(d)
     gen_deck_groups(d)
+    gen_sections(d)
+    gen_profile(d)
 
 
 if __name__ == "__main__":

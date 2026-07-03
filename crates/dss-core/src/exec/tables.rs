@@ -357,6 +357,8 @@ pub(crate) mod opt {
     pub const MAX_CONTROL_ITER: usize = 55;
     pub const ALLOCATION_FACTORS: usize = 48;
     pub const CASE_NAME: usize = 63;
+    pub const MARKER_CODE: usize = 64;
+    pub const NODE_WIDTH: usize = 65;
     pub const LOG: usize = 66;
     pub const EARTH_MODEL: usize = 81;
     pub const NUM_ALLOC_ITERATIONS: usize = 72;

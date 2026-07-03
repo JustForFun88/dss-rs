@@ -86,12 +86,10 @@ impl Dss {
         }
 
         // Per-report pre-parse of an option flag BEFORE the trailing filename
-        // (Pascal `ExportOptions.pas:190-298`). In this WP only `Powers`(9) /
-        // `P_byphase`(19) consume one — the MVA/kVA flag (`m…` → MVA, else kVA).
-        // The other Parm2-consuming reports (8 UE-only / 15 monitor name / 17
-        // triplet flag / 20-21 CIM / 32 profile phases / 51 meter) land in later
-        // WPs; each must likewise pre-parse here, ahead of the filename read, so
-        // its `Parm2` is not mis-consumed as the filename.
+        // (Pascal `ExportOptions.pas:190-298`), so its `Parm2` is not
+        // mis-consumed as the filename. Ported: 8 UE-only, 9/19 MVA, 15 monitor
+        // name, 17 triplet, 32 profile phases, 51 sections meter; the CIM pair
+        // (20-21) stays with its Phase-9 exporter.
         let mut mva_opt = 0;
         if matches!(ptr, 9 | 19) {
             self.parser.next_param(&self.vars);
@@ -124,6 +122,61 @@ impl Dss {
         if ptr == 15 {
             self.parser.next_param(&self.vars);
             monitor_name = self.parser.make_string(&self.vars);
+        }
+        // `Profile`(32) pre-parses the phases-to-plot selector (Pascal
+        // `ExportOptions.pas:261-287`): the named selectors match by
+        // `CompareTextShortest` (an empty `Parm2` matches `default` via the
+        // empty-string quirk — the faithful default), a single-character token
+        // re-reads as `Parser.IntValue` (an explicit phase number).
+        let mut phases_to_plot = crate::report::export::plot_phases::THREE_PHASE;
+        if ptr == 32 {
+            use crate::report::export::plot_phases as pp;
+            use crate::util::compare_text_shortest_eq as short;
+            self.parser.next_param(&self.vars);
+            let parm2 = self.parser.make_string(&self.vars);
+            phases_to_plot = if short(&parm2, "default") {
+                pp::THREE_PHASE
+            } else if short(&parm2, "all") {
+                pp::ALL
+            } else if short(&parm2, "primary") {
+                pp::PRIMARY
+            } else if short(&parm2, "ll3ph") {
+                pp::LL_3PH
+            } else if short(&parm2, "llall") {
+                pp::LL_ALL
+            } else if short(&parm2, "llprimary") {
+                pp::LL_PRIMARY
+            } else if parm2.len() == 1 {
+                get_int(&mut self.parser, &self.vars, &mut self.errors).unwrap_or(pp::THREE_PHASE)
+            } else {
+                pp::THREE_PHASE
+            };
+        }
+        // `Sections`(51) pre-parses an optional `meter=<name>` (Pascal
+        // `ExportOptions.pas:289-296`): the *parameter name* shortest-matches
+        // `meter` (a positional value's empty name also matches — the same
+        // empty-string quirk), the value resolves via `EnergyMeterClass.Find`
+        // (case-insensitive; an unknown name silently leaves `pMeter = NIL` →
+        // all meters).
+        let mut section_meter: Option<crate::elements::traits::ElemRef> = None;
+        if ptr == 51 {
+            let param_name = self.parser.next_param(&self.vars);
+            let parm2 = self.parser.make_string(&self.vars);
+            if crate::util::compare_text_shortest_eq(&param_name, "meter") {
+                section_meter = self
+                    .circuit
+                    .as_ref()
+                    .expect("post-circuit dispatch")
+                    .energy_meters
+                    .iter()
+                    .copied()
+                    .find(|&r| {
+                        self.classes[r.cls].objects[r.idx]
+                            .data()
+                            .name()
+                            .eq_ignore_ascii_case(&parm2)
+                    });
+            }
         }
 
         // The optional trailing filename (Pascal `ExportOptions.pas:300-305`).
@@ -217,6 +270,12 @@ impl Dss {
             14 => self.export_registers(&explicit, RegKind::Meters),
             49 => self.export_registers(&explicit, RegKind::PvSystem),
             50 => self.export_registers(&explicit, RegKind::Storage),
+            32 => self.export_with_classes(&explicit, "EXP_Profile.csv", |c, ckt| {
+                export::export_profile(c, ckt, phases_to_plot)
+            }),
+            51 => self.export_with_classes(&explicit, "EXP_SECTIONS.csv", |c, ckt| {
+                export::export_sections(c, ckt, section_meter)
+            }),
             33 => self.export_event_log_to_file(&explicit),
             52 => self.export_error_log_to_file(&explicit),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),

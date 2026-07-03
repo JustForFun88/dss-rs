@@ -143,6 +143,13 @@ pub struct Circuit {
     pub log_events: bool,
     /// `TrapezoidalIntegration` (meter integration rule; reset by `Set mode=`).
     pub trapezoidal_integration: bool,
+    /// `NodeMarkerCode` (Circuit.pas:499; `Set Markercode=`): a GUI plot-marker
+    /// style code — headless-inert except that `Export Profile` echoes it into
+    /// every row's `NodeCode` column.
+    pub node_marker_code: i32,
+    /// `NodeMarkerWidth` (Circuit.pas:500; `Set Nodewidth=`): the `NodeWidth`
+    /// column of `Export Profile`.
+    pub node_marker_width: i32,
 
     /// `DefaultHourMult`: the circuit-wide multiplier SolveDaily/Yearly derive
     /// from the default shape each step (consumed by generator dispatch, which
@@ -250,6 +257,8 @@ impl Circuit {
             meter_zones_computed: false,
             log_events: false,
             trapezoidal_integration: false,
+            node_marker_code: 16, // Circuit.pas:499
+            node_marker_width: 1, // Circuit.pas:500
             // FPC zero-initializes the field; the first time-series step
             // overwrites it from the default shape.
             default_hour_mult: Complex64::ZERO,

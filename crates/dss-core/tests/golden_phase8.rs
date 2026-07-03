@@ -1807,3 +1807,138 @@ fn export_allocationfactors_matches_oracle() {
     };
     run_deck_export("export_allocationfactors", &policy);
 }
+
+// --- WP8.3 step 3c part 3: Sections / Profile --------------------------------
+// `Export Sections` (Pascal `ExportSections`) dumps the per-feeder-section
+// reliability data a prior `RelCalc` persisted on each meter (`SectionCount` +
+// `FeederSections` — the persistence this step added); `Export Profile` (Pascal
+// `ExportProfile` + `WriteNewLine`) is the per-meter branch-list voltage
+// profile over the zone-build `DistFromMeter`. No corpus deck exports either,
+// so both fixtures are synthesized (PHASE8_PLAN §1).
+
+/// The `Export Sections` tolerance policy: the aggregate columns
+/// (AvgRepairHrs/SectFaultRate/Sum*) are `%-.6g` over `RelCalc` arithmetic that
+/// is identical on both engines (the reliability unit tests pin the same
+/// accumulators to ~1e-12), so the floor is the 6-sig printing resolution —
+/// `rel = 1e-5` (one ulp in the 6th significant digit at leading-digit 1), far
+/// below any real aggregation/mapping regression. The integer id/count columns
+/// and the Meter/DeviceType/HeadBranch text are exact.
+fn sections_policy() -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-5,
+        abs: 1e-9,
+        col_tol: vec![],
+    }
+}
+
+/// `Export Sections` (all meters): m1's two recloser-headed sections + m2's
+/// fuse-headed section (the FUSE arm of `getOCPDeviceTypeString`), each row's
+/// SeqIndex/customer/branch counts + fault-rate/repair aggregates + the quoted
+/// head-branch FullName pinned against the oracle.
+#[test]
+fn export_sections_matches_oracle() {
+    run_deck_export("export_sections", &sections_policy());
+}
+
+/// `Export Sections meter=m2` (the named-meter pre-parse, Pascal
+/// `CompareTextShortest(ParamName, 'meter')` + `EnergyMeterClass.Find`): only
+/// m2's section may appear — the all-meters golden alone can't catch a dropped
+/// meter filter.
+#[test]
+fn export_sections_meter_matches_oracle() {
+    run_deck_export("export_sections_meter", &sections_policy());
+}
+
+/// `Export Sections` structural edge paths (no oracle capture needed — both are
+/// row-set–structural, and the row *values* are already oracle-pinned by the
+/// goldens above): (1) **without a prior `RelCalc`** the report is header-only
+/// (every meter's `SectionCount` is its zero default — Pascal `FeederSections =
+/// NIL`); (2) an **unknown `meter=` name** silently falls back to all meters
+/// (Pascal `Find` returns NIL → the all-meters branch, no error).
+#[test]
+fn export_sections_edge_paths() {
+    let dir = phase8_dir();
+    let meta: DeckMeta = {
+        let p = dir.join("export_sections.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+
+    // (1) The same deck WITHOUT the trailing `relcalc` → header-only.
+    let scratch = scratch_dir("sections_norelcalc");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in meta
+        .deck
+        .iter()
+        .filter(|c| !c.eq_ignore_ascii_case("relcalc"))
+    {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("export sections");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let content = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    assert_eq!(
+        content.lines().filter(|l| !l.trim().is_empty()).count(),
+        1,
+        "no RelCalc → header-only Sections report; got:\n{content}"
+    );
+
+    // (2) Full deck, unknown meter name → the all-meters row set (3 sections).
+    dss.command("relcalc");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("export sections meter=nosuchmeter");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let content = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    let rows = csv_rows(&content);
+    assert_eq!(
+        rows.len(),
+        3,
+        "unknown meter= must fall back to all meters, got {rows:?}"
+    );
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The shared `Export Profile` tolerance policy: the `puV` columns are `%.6g`
+/// pu voltages from two independent solves → the corpus-wide `EXPORT_REL`
+/// 6-sig floor; the `Distance` columns are zone-build constants (identical
+/// line-length arithmetic) within the same floor; the Color/Thickness/Linetype/
+/// marker columns are integers, exact within `abs`. The header line (incl. the
+/// appended `Title=…` tail) is compared verbatim.
+fn profile_policy() -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    }
+}
+
+/// `Export Profile` (Pascal `ExportProfile` + `WriteNewLine`) on the metered,
+/// solved IEEE13 feeder — all seven `PhasesToPlot` selector variants from one
+/// compile: the default (3-phase primary, the unguarded per-phase write), `all`
+/// and `primary` (per-present-phase L-N — the single-phase 684652/684611
+/// branches pin the phase-presence filter), the three L-L forms (`ll3ph`/
+/// `llall`/`llprimary` — the `|V1−V2|/kV/1732` pairs + their guards + the
+/// `Title=L-L …` header tail), and an explicit phase `2` (the single-character
+/// `Parser.IntValue` re-read; only phase-2-carrying branches may appear).
+#[test]
+fn export_profile_variants_match_oracle() {
+    run_shared_exports(&[
+        ("export_profile", profile_policy()),
+        ("export_profile_all", profile_policy()),
+        ("export_profile_primary", profile_policy()),
+        ("export_profile_ll3ph", profile_policy()),
+        ("export_profile_llall", profile_policy()),
+        ("export_profile_llprimary", profile_policy()),
+        ("export_profile_ph2", profile_policy()),
+    ]);
+}

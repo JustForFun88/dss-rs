@@ -175,6 +175,9 @@ impl Dss {
                     &ckt.solution.max_control_iterations.to_string(),
                 ),
                 opt::CASE_NAME => append_result(&mut result, &ckt.case_name),
+                // Pascal `ExecOptions.pas:959/961` (the plot-marker echoes).
+                opt::MARKER_CODE => append_result(&mut result, &ckt.node_marker_code.to_string()),
+                opt::NODE_WIDTH => append_result(&mut result, &ckt.node_marker_width.to_string()),
                 opt::LOG => append_result(&mut result, yes_no(ckt.log_events)),
                 opt::DEFAULT_BASE_FREQUENCY => {
                     append_result(&mut result, &(default_base_freq.round() as i64).to_string())

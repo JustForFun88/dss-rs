@@ -155,6 +155,27 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("EnergyMeter", defs, true)
 }
 
+/// Pascal `TFeederSection` record (EnergyMeter.pas l.162): one entry per feeder
+/// section (the span between two over-current-protection devices). All-zero on
+/// allocation (`ReallocMem` + the explicit init loop). Computed by
+/// `CalcReliabilityIndices` (the `RelCalc` sweep) and **persisted on the meter**
+/// (Pascal `FeederSections: pFeederSections`), read back by `Export Sections`.
+#[derive(Debug, Clone, Default)]
+pub struct FeederSection {
+    /// 1=Fuse; 2=Recloser; 3=Relay.
+    pub ocp_device_type: i32,
+    pub n_customers: i32,
+    pub n_branches: i32,
+    pub total_customers: i32,
+    /// 1-based `SequenceList` index of the PD element with the OCP device at
+    /// the section head.
+    pub seq_index: usize,
+    pub average_repair_time: f64,
+    pub sect_fault_rate: f64,
+    pub sum_flt_rates_x_repair_hrs: f64,
+    pub sum_branch_flt_rates: f64,
+}
+
 /// Parse-time snapshot of the metered element (the WP4.7 `RefSnapshot`
 /// pattern): `RecalcElementData` runs at `EndEdit` after the foreign-class view
 /// is gone, so the parse-relevant shape is captured when `element=` resolves.
@@ -214,6 +235,18 @@ pub struct EnergyMeter {
     saidi: f64,
     caidi: f64,
     cust_interrupts: f64,
+
+    /// Pascal `SectionCount` (EnergyMeter.pas l.420): the number of feeder
+    /// sections the last `CalcReliabilityIndices` forward sweep counted. FPC
+    /// zero-inits it; the sweep re-assigns it each `RelCalc` run — including
+    /// the no-OCP abort, which leaves it 0 (so a subsequent `Export Sections`
+    /// writes no rows) while `FeederSections` keeps the stale prior array,
+    /// exactly like Pascal.
+    section_count: i32,
+    /// Pascal `FeederSections` (EnergyMeter.pas l.422): the per-section data,
+    /// indices `0..=section_count` (slot 0 = the span before the first OCP
+    /// device, never reported). Empty until a `RelCalc` completes.
+    feeder_sections: Vec<FeederSection>,
 
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
@@ -287,6 +320,8 @@ impl EnergyMeter {
             saidi: 0.0,
             caidi: 0.0,
             cust_interrupts: 0.0,
+            section_count: 0,
+            feeder_sections: Vec::new(),
             element_full_name: String::new(),
             metered_snap: None,
             register_names: default_register_names(),
@@ -346,6 +381,26 @@ impl EnergyMeter {
     /// Pascal `pMeter.AssumeRestoration := AssumeRestoration` in `DoLambdaCalcs`.
     pub(crate) fn set_assume_restoration(&mut self, value: bool) {
         self.assume_restoration = value;
+    }
+    /// Pascal `SectionCount`: sections counted by the last `RelCalc` sweep.
+    pub fn section_count(&self) -> i32 {
+        self.section_count
+    }
+    /// Pascal `FeederSections` (indices `0..=section_count`; empty until a
+    /// `RelCalc` completes).
+    pub fn feeder_sections(&self) -> &[FeederSection] {
+        &self.feeder_sections
+    }
+    /// The forward interruption sweep's `SectionCount` write-back — assigned
+    /// even on the no-OCP abort (Pascal mutates the field during the sweep,
+    /// leaving 0 there), while `FeederSections` is only reallocated on success.
+    pub(crate) fn set_section_count(&mut self, count: i32) {
+        self.section_count = count;
+    }
+    /// Pascal `ReallocMem(FeederSections, …)` + the fill loops: replace the
+    /// persisted per-section array (successful `CalcReliabilityIndices` only).
+    pub(crate) fn set_feeder_sections(&mut self, sections: Vec<FeederSection>) {
+        self.feeder_sections = sections;
     }
     /// Write back the reliability indices computed by `CalcReliabilityIndices`.
     pub(crate) fn set_reliability_results(
