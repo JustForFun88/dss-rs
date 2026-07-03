@@ -319,13 +319,18 @@ def gen_register_reports(d) -> None:
 # The event/error-log dumps (PHASE8_PLAN §WP8.3 step 3). No corpus deck exports
 # these, so they are synthesized (PHASE8_PLAN §1), both on the IEEE13 feeder:
 #   EventLog: a daily-3 solve with `Set Log=yes` (ckt.LogEvents) + per-RegControl
-#     event logging → the **full** LogThisEvent solve-marker stream (bus-def
-#     reprocess, meter-zone reset, Yprim recalc, Y build, per-iteration + control
-#     markers, Solution Done) plus every regulator tap change. Our engine wires
-#     all these LogThisEvent call sites (the Circuit-build ones landed in WP8.3
-#     step 3), so the log matches the oracle line-for-line; this golden pins the
-#     **export** (SaveToFile → `EXP_EventLog.csv` naming + the `%g` render into
-#     the file) on top of the marker stream.
+#     event logging, driving a **swinging load** (a 1200 kW load on the regulated
+#     bus 675 with a 1×/2×/0.5× day shape) so the regulators actually **move
+#     taps** each step. The log is then the **full** LogThisEvent solve-marker
+#     stream (bus-def reprocess, meter-zone reset, Yprim recalc, Y build,
+#     per-iteration + control markers, Solution Done) **plus** every regulator
+#     `AppendToEventLog` tap-change line (`CHANGED n TAPS TO <pu>` — non-integer
+#     tap values, so the numeric-tolerance compare path is genuinely exercised).
+#     Our engine wires all these LogThisEvent call sites (the Circuit-build ones
+#     landed in WP8.3 step 3a) and matches the oracle's tap decisions line-for-line
+#     (the phase5 `daily_ieee13` gate pins the same tap logic). This golden pins
+#     the **export** (SaveToFile → `EXP_EventLog.csv` naming + the `%g` render
+#     into the file) on top of the marker + tap-change stream.
 #   ErrorLog: a clean solve → an empty `ErrorStrings` dump — pins the plumbing +
 #     the `EXP_ErrorLog.txt` naming (a clean IEEE13 run logs no DoSimpleMsg). The
 #     non-empty content path is gated Rust-side (`golden_phase8.rs`), since
@@ -334,6 +339,8 @@ EVENTLOG_POST = [
     "RegControl.reg1.eventlog=yes",
     "RegControl.reg2.eventlog=yes",
     "RegControl.reg3.eventlog=yes",
+    "new loadshape.es npts=3 interval=1 mult=(1 2 0.5)",
+    "new load.swing bus1=675 phases=3 kv=4.16 kw=1200 daily=es",
     "set log=yes",
     "set mode=daily number=3 stepsize=1h",
     "solve",

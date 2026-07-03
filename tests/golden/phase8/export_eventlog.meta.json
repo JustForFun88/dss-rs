@@ -5,6 +5,8 @@
     "RegControl.reg1.eventlog=yes",
     "RegControl.reg2.eventlog=yes",
     "RegControl.reg3.eventlog=yes",
+    "new loadshape.es npts=3 interval=1 mult=(1 2 0.5)",
+    "new load.swing bus1=675 phases=3 kv=4.16 kw=1200 daily=es",
     "set log=yes",
     "set mode=daily number=3 stepsize=1h",
     "solve"
