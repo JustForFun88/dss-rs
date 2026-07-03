@@ -110,7 +110,26 @@ impl Dss {
                     }
                     opt::YEAR => {
                         if let Some(v) = get_int(parser, vars, errors) {
+                            // Pascal `TSolutionObj.Set_Year` (Solution.pas:2266):
+                            // close any open demand-interval files, restart the
+                            // clock, then `EnergyMeterClass.ResetAll` (which
+                            // rebuilds the DI_yr_<year> directory).
+                            let mut store = ClassStore { classes };
+                            if ckt.em_di.di_files_are_open {
+                                crate::solution::meters::close_all_di_files(
+                                    ckt, &mut store, errors,
+                                );
+                            }
                             ckt.solution.year = v;
+                            ckt.solution.int_hour = 0;
+                            ckt.solution.t = 0.0;
+                            ckt.solution.update_dbl_hour();
+                            crate::solution::meters::reset_all_meters(
+                                ckt,
+                                &mut store,
+                                output_directory,
+                                errors,
+                            );
                             ckt.default_growth_factor =
                                 ckt.default_growth_rate.powi(ckt.solution.year - 1);
                         }
@@ -185,7 +204,12 @@ impl Dss {
                                 // columns `Freq`/`Harmonic`; it also clears any
                                 // samples accumulated under the previous mode.
                                 crate::solution::monitors::reset_all_monitors(ckt, &mut env);
-                                crate::solution::meters::reset_all_meters(ckt, env.store);
+                                crate::solution::meters::reset_all_meters(
+                                    ckt,
+                                    env.store,
+                                    output_directory,
+                                    env.errors,
+                                );
                                 crate::solution::faults::reset_faults(ckt, &mut env);
                                 if let Err(e) =
                                     crate::solution::controls::reset_all_controls(ckt, &mut env)
@@ -421,6 +445,34 @@ impl Dss {
                         if let Some(v) = get_int(parser, vars, errors) {
                             *max_allocation_iterations = v;
                         }
+                    }
+                    // Pascal `Set DemandInterval=` / `DIVerbose=`
+                    // (`ExecOptions.pas:581/588`): both property setters run
+                    // `EnergyMeterClass.ResetAll` (closing + re-creating the DI
+                    // machinery under the new switch).
+                    opt::DEMAND_INTERVAL | opt::DI_VERBOSE => {
+                        let value = interpret_yes_no(&param);
+                        if pointer == opt::DEMAND_INTERVAL {
+                            ckt.em_di.save_demand_interval = value;
+                        } else {
+                            ckt.em_di.di_verbose = value;
+                        }
+                        let mut store = ClassStore { classes };
+                        crate::solution::meters::reset_all_meters(
+                            ckt,
+                            &mut store,
+                            output_directory,
+                            errors,
+                        );
+                    }
+                    opt::OVERLOAD_REPORT => ckt.em_di.do_overload_report = interpret_yes_no(&param),
+                    opt::VOLT_EXCEPTION_REPORT => {
+                        ckt.em_di.do_voltage_exception_report = interpret_yes_no(&param)
+                    }
+                    // Pascal `ExecOptions.pas:686` — force/suppress the meter
+                    // sampling in the time-series solve loops.
+                    opt::SAMPLE_ENERGY_METERS => {
+                        ckt.solution.sample_the_meters = interpret_yes_no(&param)
                     }
                     opt::CASE_NAME => ckt.case_name = param.clone(),
                     // GUI plot-marker style state (Circuit.pas fields; headless-

@@ -48,10 +48,25 @@ fn sample_all_monitors_and_meters(ckt: &mut Circuit, env: &mut SolveEnv, sample_
 }
 
 /// Pascal `SolveDaily` (`SolutionAlgs.pas` l.160): step `number_of_times`
-/// times through the daily shapes. Demand-interval files are EnergyMeter
-/// machinery (Phase 6).
+/// times through the daily shapes. Opens the demand-interval files first (a
+/// no-op unless `Set DemandInterval=yes`); the `finally` closes them (writing
+/// the `DI_*` CSVs) when the mode samples the meters — even on an aborted
+/// step, exactly like the Pascal `try…finally`.
 pub(super) fn solve_daily(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0; // needed for energy meters
+    if !ckt.em_di.di_files_are_open {
+        crate::solution::meters::open_all_di_files(ckt, env.store);
+    }
+    let result = solve_daily_body(ckt, env);
+    // Pascal `finally`: `if SampleTheMeters then CloseAllDIFiles`.
+    if ckt.solution.sample_the_meters {
+        crate::solution::meters::close_all_di_files(ckt, env.store, env.errors);
+    }
+    result
+}
+
+/// The `SolveDaily` stepping loop (the Pascal `try` body).
+fn solve_daily_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             continue;
@@ -85,8 +100,15 @@ pub(super) fn solve_peak_day(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResu
 
 /// Pascal `SolveYearly` (l.112): like daily over the yearly default shape
 /// (loads additionally apply `DefaultGrowthFactor` via `SetNominalLoad`).
+/// Opens the demand-interval files but — unlike daily/duty — does **not**
+/// close them at the end (Pascal's close is commented out, "See
+/// DIFilesAreOpen Logic": yearly runs accumulate until a `Reset`/`Set year=`/
+/// `CloseDI` closes them).
 pub(super) fn solve_yearly(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
+    if !ckt.em_di.di_files_are_open {
+        crate::solution::meters::open_all_di_files(ckt, env.store);
+    }
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             continue;
@@ -109,9 +131,21 @@ pub(super) fn solve_yearly(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
 }
 
 /// Pascal `SolveDuty` (l.249): same loop as daily; the price signal is
-/// assumed constant for duty-cycle calcs.
+/// assumed constant for duty-cycle calcs. Note duty does **not** open the
+/// demand-interval files (no `OpenAllDIFiles` in its body — unlike daily/
+/// yearly/peak-day); the `finally` still closes any already-open set when the
+/// mode samples the meters.
 pub(super) fn solve_duty(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
+    let result = solve_duty_body(ckt, env);
+    if ckt.solution.sample_the_meters {
+        crate::solution::meters::close_all_di_files(ckt, env.store, env.errors);
+    }
+    result
+}
+
+/// The `SolveDuty` stepping loop (the Pascal `try` body).
+fn solve_duty_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             continue;

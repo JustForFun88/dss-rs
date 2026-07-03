@@ -30,6 +30,7 @@ use crate::elements::meter::meter_element::MeterElementData;
 use crate::elements::traits::ElemRef;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::solution::meters::demand_interval::MeterStream;
 
 mod accessors;
 mod sample;
@@ -267,6 +268,25 @@ pub struct EnergyMeter {
     vbase_list: Vec<f64>,
     vbase_count: usize,
 
+    // --- Demand-interval machinery (WP8.3 step 4) --------------------------
+    /// Pascal `This_Meter_DIFileIsOpen`.
+    di_file_is_open: bool,
+    /// Pascal `VPhaseReportFileIsOpen`.
+    v_phase_report_file_is_open: bool,
+    /// `DI_MHandle` — the per-meter demand-interval stream (DI-verbose mode).
+    di_stream: Option<MeterStream>,
+    /// `PHV_MHandle` — the phase-voltage report stream.
+    phv_stream: Option<MeterStream>,
+    /// `VphaseMax`/`VphaseMin`/`VphaseAccum`/`VphaseAccumCount`
+    /// (EnergyMeter.pas l.349-352): per-(vbase, phase) pu-voltage extremes for
+    /// the phase-voltage report, `jiIndex(j, i) = (i-1)*3 + j` → 0-based
+    /// `(vbase_slot)*3 + phase-1`. Re-zeroed each `TakeSample` (per vbase in
+    /// use); written by `WriteDemandIntervalData`.
+    vphase_max: Vec<f64>,
+    vphase_min: Vec<f64>,
+    vphase_accum: Vec<f64>,
+    vphase_accum_count: Vec<i32>,
+
     // Zone topology (built by `MakeMeterZoneLists`). `None` until the zone is
     // built (Pascal `BranchList = NIL`).
     branch_list: Option<CktTree>,
@@ -322,6 +342,14 @@ impl EnergyMeter {
             cust_interrupts: 0.0,
             section_count: 0,
             feeder_sections: Vec::new(),
+            di_file_is_open: false,
+            v_phase_report_file_is_open: false,
+            di_stream: None,
+            phv_stream: None,
+            vphase_max: vec![0.0; 3 * MAX_VBASE_COUNT],
+            vphase_min: vec![0.0; 3 * MAX_VBASE_COUNT],
+            vphase_accum: vec![0.0; 3 * MAX_VBASE_COUNT],
+            vphase_accum_count: vec![0; 3 * MAX_VBASE_COUNT],
             element_full_name: String::new(),
             metered_snap: None,
             register_names: default_register_names(),
@@ -428,6 +456,66 @@ impl EnergyMeter {
     /// Register values (1-based ordinals → 0-based slots). For the test API.
     pub fn registers(&self) -> &[f64] {
         &self.registers
+    }
+
+    /// The per-register derivatives (last integrated values) — the demand-
+    /// interval row payload.
+    pub(crate) fn derivatives(&self) -> &[f64] {
+        &self.derivatives
+    }
+    /// `TotalsMask` — weights for the class `DI_RegisterTotals`/`Totals` sums.
+    pub(crate) fn totals_mask(&self) -> &[f64] {
+        &self.totals_mask
+    }
+    /// `FPhaseVoltageReport` (`PhaseVoltageReport=yes`).
+    pub(crate) fn phase_voltage_report(&self) -> bool {
+        self.f_phase_voltage_report
+    }
+    /// The voltage-base list + its in-use count (for the PHV header/rows).
+    pub(crate) fn vbase_view(&self) -> (Vec<f64>, usize) {
+        (self.vbase_list.clone(), self.vbase_count)
+    }
+    /// The phase-voltage accumulators (max, min, accum, count) in `jiIndex`
+    /// layout.
+    pub(crate) fn v_phase_view(&self) -> (&[f64], &[f64], &[f64], &[i32]) {
+        (
+            &self.vphase_max,
+            &self.vphase_min,
+            &self.vphase_accum,
+            &self.vphase_accum_count,
+        )
+    }
+    // --- Demand-interval stream plumbing (Pascal `DI_MHandle`/`PHV_MHandle` +
+    // --- the open flags), driven by `solution::meters::demand_interval`.
+    pub(crate) fn di_file_is_open(&self) -> bool {
+        self.di_file_is_open
+    }
+    pub(crate) fn di_file_open(&mut self, open: bool) {
+        self.di_file_is_open = open;
+    }
+    pub(crate) fn v_phase_report_open(&self) -> bool {
+        self.v_phase_report_file_is_open
+    }
+    pub(crate) fn set_v_phase_report_open(&mut self, open: bool) {
+        self.v_phase_report_file_is_open = open;
+    }
+    pub(crate) fn set_di_stream(&mut self, s: Option<MeterStream>) {
+        self.di_stream = s;
+    }
+    pub(crate) fn take_di_stream(&mut self) -> Option<MeterStream> {
+        self.di_stream.take()
+    }
+    pub(crate) fn di_stream_mut(&mut self) -> Option<&mut MeterStream> {
+        self.di_stream.as_mut()
+    }
+    pub(crate) fn set_phv_stream(&mut self, s: Option<MeterStream>) {
+        self.phv_stream = s;
+    }
+    pub(crate) fn take_phv_stream(&mut self) -> Option<MeterStream> {
+        self.phv_stream.take()
+    }
+    pub(crate) fn phv_stream_mut(&mut self) -> Option<&mut MeterStream> {
+        self.phv_stream.as_mut()
     }
 
     pub fn has_been_sampled(&self) -> bool {

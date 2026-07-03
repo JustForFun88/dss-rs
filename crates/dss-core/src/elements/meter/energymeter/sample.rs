@@ -42,12 +42,18 @@ impl EnergyMeter {
             f_seq_losses: self.f_seq_losses,
             f_3phase_losses: self.f_3phase_losses,
             f_vbase_losses: self.f_vbase_losses,
+            f_phase_voltage_report: self.f_phase_voltage_report,
+            vbase_list: self.vbase_list.clone(),
             max_zone_kva_norm: self.max_zone_kva_norm,
             max_zone_kva_emerg: self.max_zone_kva_emerg,
             metered_element: self.med.metered_element,
             metered_terminal: self.med.metered_terminal.max(0) as usize,
             registers: std::mem::take(&mut self.registers),
             derivatives: std::mem::take(&mut self.derivatives),
+            vphase_max: std::mem::take(&mut self.vphase_max),
+            vphase_min: std::mem::take(&mut self.vphase_min),
+            vphase_accum: std::mem::take(&mut self.vphase_accum),
+            vphase_accum_count: std::mem::take(&mut self.vphase_accum_count),
             first_sample_after_reset: self.first_sample_after_reset,
             trapezoidal,
         };
@@ -59,6 +65,10 @@ impl EnergyMeter {
         self.branch_list = Some(tree);
         self.registers = state.registers;
         self.derivatives = state.derivatives;
+        self.vphase_max = state.vphase_max;
+        self.vphase_min = state.vphase_min;
+        self.vphase_accum = state.vphase_accum;
+        self.vphase_accum_count = state.vphase_accum_count;
         self.first_sample_after_reset = state.first_sample_after_reset;
     }
 }
@@ -77,12 +87,21 @@ pub(crate) struct SampleState {
     pub f_seq_losses: bool,
     pub f_3phase_losses: bool,
     pub f_vbase_losses: bool,
+    pub f_phase_voltage_report: bool,
+    /// The meter's voltage-base list (selects which `jiIndex` slots are live).
+    pub vbase_list: Vec<f64>,
     pub max_zone_kva_norm: f64,
     pub max_zone_kva_emerg: f64,
     pub metered_element: Option<ElemRef>,
     pub metered_terminal: usize,
     pub registers: Vec<f64>,
     pub derivatives: Vec<f64>,
+    /// Phase-voltage report accumulators (`jiIndex` layout), moved out with
+    /// the registers for the walk.
+    pub vphase_max: Vec<f64>,
+    pub vphase_min: Vec<f64>,
+    pub vphase_accum: Vec<f64>,
+    pub vphase_accum_count: Vec<i32>,
     pub first_sample_after_reset: bool,
     pub trapezoidal: bool,
 }

@@ -176,6 +176,7 @@ pub(crate) mod cmd {
     pub const YEARLY_CURVES: usize = 71;
     pub const CD: usize = 72;
     pub const VISUALIZE: usize = 73;
+    pub const CLOSE_DI: usize = 74;
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
     pub const REDUCE: usize = 61;
@@ -356,10 +357,15 @@ pub(crate) mod opt {
     pub const HARMONICS: usize = 54;
     pub const MAX_CONTROL_ITER: usize = 55;
     pub const ALLOCATION_FACTORS: usize = 48;
+    pub const DEMAND_INTERVAL: usize = 60;
+    pub const DI_VERBOSE: usize = 62;
     pub const CASE_NAME: usize = 63;
     pub const MARKER_CODE: usize = 64;
     pub const NODE_WIDTH: usize = 65;
     pub const LOG: usize = 66;
+    pub const OVERLOAD_REPORT: usize = 68;
+    pub const VOLT_EXCEPTION_REPORT: usize = 69;
+    pub const SAMPLE_ENERGY_METERS: usize = 109;
     pub const EARTH_MODEL: usize = 81;
     pub const NUM_ALLOC_ITERATIONS: usize = 72;
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
