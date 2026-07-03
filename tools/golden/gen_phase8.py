@@ -178,6 +178,65 @@ def gen_ieee8500_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# The monitor-export fixture (PHASE8_PLAN §WP8.3 step 1): the IEEE13 feeder with
+# three monitors covering the distinct CSV shapes — mode 0 (general V/I: paired
+# magnitude/angle, unquoted header), mode 1 (power: `S (kVA)`/`Ang` header, whose
+# spaces force `CommaText` quoting), and mode 2 (transformer tap: the single
+# quoted `Tap (pu)` channel). A short 3-step daily solve gives a multi-row buffer
+# (exercising the record stride). `Export Monitors <name>` writes each monitor's
+# own `<case>_Mon_<name>_1.csv` (the `_1` is the PM-build primary-context
+# `DSS._Name`); the returned `GlobalResult` gives the exact suffix, recorded into
+# the meta so the Rust filename (`export.rs`) is pinned against the oracle's.
+MONITOR_POST = [
+    "new monitor.m_vi element=Line.650632 terminal=1 mode=0",
+    "new monitor.m_pow element=Line.650632 terminal=1 mode=1",
+    "new monitor.m_tap element=Transformer.Reg1 terminal=2 mode=2",
+    "set mode=daily number=3 stepsize=1h",
+    "solve",
+]
+MONITOR_REPORTS = [
+    ("monitors m_vi", "export_mon_vi"),
+    ("monitors m_pow", "export_mon_pow"),
+    ("monitors m_tap", "export_mon_tap"),
+]
+
+
+def gen_monitor_reports(d) -> None:
+    """Capture the oracle's `Export Monitors` CSVs on the daily-solved IEEE13 feeder."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in MONITOR_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, stem in MONITOR_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = the monitor's CSV path
+            suffix = produced.name[len(case) + 1 :]  # strip the `<case>_` prefix
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "master": FEEDER_MASTER,
+                "post": MONITOR_POST,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # SeqZ reads the per-bus short-circuit impedances (`Zsc1`/`Zsc0`), which are only
 # populated by a FaultStudy solve — a plain snapshot leaves them zero (a
 # degenerate all-zero report). So it gets its own fixture with a `faultstudy`
@@ -265,6 +324,7 @@ def main() -> None:
 
     gen_counts(d)
     gen_feeder_reports(d)
+    gen_monitor_reports(d)
     gen_ieee8500_reports(d)
     gen_seqz(d)
 

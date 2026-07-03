@@ -8,7 +8,13 @@
 > frontier.
 
 Last updated: 2026-07-03 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
+reporting/exports/Save). **WP8.3 step 1 landed, gate-green** — `Export Monitors`
+(`Monitor.TranslateToCSV` over the Phase-6 in-memory f32 stream): the `util::comma_text`
+(`TStringList.CommaText`) header formatter + `Monitor::to_csv` + the ptr-15 dispatch
+(`export_monitors`, monitor-name pre-parse, per-monitor `<case>_Mon_<name>_1.csv`) +
+the `export_mon_{vi,pow,tap}` goldens (IEEE13 daily, modes 0/1/2 — the header line
+verbatim-pinned, the CommaText quoting + the hour/sec time cols the live gate skips).
+golden_phase8 **28→29**, lib **725→726** (`comma_text` unit test). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
 skeleton `82b50fe`, output-path machinery + `Export Counts` + the `compare_export`
 golden harness `929145c`). **WP8.2 COMPLETE, gate-green.** sub-step 1 (`71067f7`) landed the
 bus/node solution exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`);
@@ -66,7 +72,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 725**, **`solvable_now` 119** (the live corpus gate;
+Current scores: dss-core **lib 726**, **`solvable_now` 119** (the live corpus gate;
 WP8.2 completion gate migrated +31 `Export`-unblocked decks); oracle pinned to
 dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
@@ -104,16 +110,16 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **next = WP8.3** (Export: monitors/meters/DER/reliability/faultstudy + demand-interval files + `TSystemMeter` core). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors` via `Monitor.TranslateToCSV` + `util::comma_text` + the `export_mon_{vi,pow,tap}` goldens) landed gate-green; **next = WP8.3 step 2** (`Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register dumps). Detail in §1f |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 725, golden_feeders 1,
+cargo test --workspace      # dss-core lib 726, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 28,
+                            # golden_phase7_protection 1, golden_phase8 29,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1496,12 +1502,39 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   ported; the remaining unported keywords are WP8.3 (device/meter) + Phase 9 (CIM/GIC/A-Diakoptics)
   + the faithfully-errored CDPSM set. (No corpus re-migration run here — a future `DSS_LIVE_CLASSIFY`
   pass can pick up any deck these three unblock.)
-- **next — WP8.3 (Export: monitors, meters, DER, reliability, fault study, demand-interval
-  files):** the device/meter exports (`Monitors`/`Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
-  `Storage_Meters`/`EventLog`/`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/
-  `AllocationFactors`) + the `TSystemMeter` register core + the demand-interval/`DI_` file writers
-  (PHASE8_PLAN §WP8.3 / §2.6). Migrating those unblocks the `Export Monitors` decks and the 6
-  hung StorageController decks' report layer (once the hang is resolved).
+- **WP8.3 step 1 — `Export Monitors` (`Monitor.TranslateToCSV`), done, gate-green.** The
+  device-export sub-block opens with the monitor CSV writer (ptr 15, `ExportOptions.pas:471`
+  → `TMonitorObj.TranslateToCSV`, `Meters/Monitor.pas:1690`). Pieces:
+  - **`util::comma_text`** — FPC `TStringList.CommaText` (`GetDelimitedText`, non-strict): join
+    with `,`, quoting (and doubling embedded quotes on) any item that is empty or holds a char
+    `<= ' '` / the delimiter / the quote char. This is the monitor **header line**, which the
+    golden compares **verbatim** — so the quoting must be byte-exact (`"S1 (kVA)"`, `"Tap (pu)"`).
+  - **`Monitor::to_csv`** — serializes the in-memory f32 buffer: header (`comma_text`), then per
+    sample `hr:0:0, s:0:5` + `, %-.6g` per channel (`RecordSize` values). Pascal's `Save` /
+    `CloseMonitorStream` are no-ops (every sample is already in `mon_buffer`, no pending-buffer /
+    disk spill); `FireOffEditor` is the GUI no-op; `GlobalResult` is set by the caller.
+  - **dispatch (`exec/report.rs`)** — `export_monitors`: the monitor-name **pre-parse** (case-
+    preserved `Parm2`, ahead of the ignored trailing filename); `name=='all'` (case-sensitive,
+    Pascal) walks `ckt.monitors` in creation order, else a case-insensitive name lookup; empty →
+    #251, unknown → #250. Each monitor writes its fixed `Get_FileName`
+    `<OutputDir><CircuitName_>Mon_<Name>_1.csv` (the `_1` = PM-build primary-context `DSS._Name`,
+    oracle-confirmed via `GlobalResult` at gen time — the same PM build the always-`null` `Result`
+    keys on); `@lastexportfile`/`@lastfile` end on the last file.
+  - **gate** — `export_mon_{vi,pow,tap}` on a daily-solved (`number=3`) IEEE13: mode 0 (general
+    V/I, unquoted paired mag/angle header), mode 1 (power `S (kVA)`/`Ang` — the quoted-header
+    path), mode 2 (the single quoted `Tap (pu)` channel). Shared one compile via
+    `run_shared_exports`. The header line is verbatim-pinned; the data rows parse numbers out
+    (incl. the `hour`/`t(sec)` time cols the live gate's channel compare skips) at `rel=1e-4`/
+    `abs=1e-3` (the f32-stream + `%-.6g` print floor is ~1e-6 rel; the monitor *values* stay
+    pinned to f32-of-1e-8 by the always-on `corpus_live` daily monitor compare). Matched the oracle
+    **first-run**, no fudging. golden_phase8 **28→29**; lib **725→726** (`comma_text` unit test).
+    No corpus migration here — the `Export Monitors`-blocked decks migrate at the WP8.3 completion
+    gate (step 5), the WP8.2 batching pattern.
+- **next — WP8.3 step 2 (register dumps):** `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
+  `Storage_Meters` (`ExportMeters`/`ExportGenMeters`/`ExportLoads`/`Export{PVSystem,Storage}Meters`)
+  over the Phase-6/7 EnergyMeter/DER register arrays + names; then step 3 (EventLog/Faultstudy/
+  Capacity/Overloads/Unserved/reliability/Profile/AllocationFactors), step 4 (`TSystemMeter` core +
+  demand-interval/`DI_` writers, §2.6), step 5 (gate + corpus migration).
 
 ---
 

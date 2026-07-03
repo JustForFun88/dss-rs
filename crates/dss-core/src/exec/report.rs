@@ -79,6 +79,15 @@ impl Dss {
             let parm2 = self.parser.make_string(&self.vars).to_lowercase();
             triplet = parm2.starts_with('t');
         }
+        // `Monitors`(15) consumes the required monitor name (Pascal
+        // `ExportOptions.pas:211-215` — `Parm2 := StrValue`, case-preserved), also
+        // ahead of the trailing filename read (which the monitor export ignores —
+        // each monitor writes its own fixed `Get_FileName`).
+        let mut monitor_name = String::new();
+        if ptr == 15 {
+            self.parser.next_param(&self.vars);
+            monitor_name = self.parser.make_string(&self.vars);
+        }
 
         // The optional trailing filename (Pascal `ExportOptions.pas:300-305`).
         self.parser.next_param(&self.vars);
@@ -140,6 +149,7 @@ impl Dss {
             35 => self.export_with_mut(&explicit, "EXP_VOLTAGES_ELEM.csv", |c, ckt, _sys, _nv| {
                 export::export_voltages_elements(c, ckt)
             }),
+            15 => self.export_monitors(&monitor_name),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             47 => self.export_with(&explicit, "EXP_YVoltages.csv", export::export_y_voltages),
             48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
@@ -239,6 +249,74 @@ impl Dss {
             .collect();
         let content = crate::report::export::export_counts(&class_counts);
         self.write_export(explicit, "EXP_Counts.csv", &content);
+    }
+
+    /// `Export Monitors <name|all>` (Pascal `ExportOptions.pas` case 15): write
+    /// each selected monitor's in-memory sample buffer to its own CSV via
+    /// `TMonitorObj.TranslateToCSV`. Unlike the other exports this **ignores** the
+    /// trailing filename — every monitor's path is its fixed `Get_FileName`,
+    /// `<OutputDir><CircuitName_>Mon_<Name><_Name>.csv` (the `_1` suffix is the
+    /// PM-build primary-context `DSS._Name`, matching the pinned oracle — the same
+    /// PM build the always-`null` `Result` export keys on). An empty name raises
+    /// Pascal's #251; an unknown named monitor raises #250. `Monitors` are walked
+    /// in creation order (`ckt.monitors`); `GlobalResult`/`@lastexportfile` end on
+    /// the last file written (Pascal reassigns `FileName := DSS.GlobalResult`).
+    fn export_monitors(&mut self, name: &str) {
+        if name.is_empty() {
+            // Pascal #251 `'Monitor name not specified. %s'`.
+            self.errors.push("Monitor name not specified.".to_string());
+            return;
+        }
+        let monitors = self
+            .circuit
+            .as_ref()
+            .expect("post-circuit dispatch")
+            .monitors
+            .clone();
+        let case = self.circuit.as_ref().unwrap().case_name.clone();
+        // Pascal `if Parm2 = 'all'` is case-sensitive; the named lookup
+        // (`MonitorClass.Find`) is case-insensitive (THashList semantics).
+        let targets: Vec<crate::elements::traits::ElemRef> = if name == "all" {
+            monitors
+        } else {
+            match monitors.iter().find(|&&r| {
+                self.classes[r.cls].objects[r.idx]
+                    .data()
+                    .name()
+                    .eq_ignore_ascii_case(name)
+            }) {
+                Some(&r) => vec![r],
+                None => {
+                    // Pascal #250 `'Monitor "%s" not found. %s'`.
+                    self.errors.push(format!("Monitor \"{name}\" not found."));
+                    return;
+                }
+            }
+        };
+
+        let circuit_name_ = format!("{case}_");
+        for r in targets {
+            let (mon_name, content) = {
+                let obj = &self.classes[r.cls].objects[r.idx];
+                let mon = obj
+                    .as_any()
+                    .downcast_ref::<crate::elements::meter::monitor::Monitor>()
+                    .expect("ckt.monitors holds Monitor objects");
+                (obj.data().name().to_string(), mon.to_csv())
+            };
+            let default_name = format!("Mon_{mon_name}_1.csv");
+            let path = crate::report::output::export_path(
+                &self.output_directory,
+                &self.current_dir,
+                &circuit_name_,
+                "",
+                &default_name,
+            );
+            if self.write_report(&path, &content) {
+                let p = self.last_result_file.clone();
+                self.vars.add("@lastexportfile", &p);
+            }
+        }
     }
 
     /// `Export Y` (Pascal `ExportY`): the assembled system Y, sparse-triplet

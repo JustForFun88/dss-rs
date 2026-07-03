@@ -177,4 +177,34 @@ impl Monitor {
             .map(|s| self.mon_buffer[s * stride] as f64)
             .collect()
     }
+
+    /// Pascal `TMonitorObj.TranslateToCSV` (`Meters/Monitor.pas:1690`): serialize
+    /// the in-memory sample buffer to the monitor CSV text. Line 1 is the header
+    /// (`Header.CommaText`); each subsequent line is `hr:0:0, s:0:5` followed by
+    /// `, %-.6g` per recorded channel (`RecordSize` values). The Pascal `Save`
+    /// (flush the pending buffer) + `CloseMonitorStream` are no-ops here: every
+    /// sample is appended straight into `mon_buffer` (no separate pending buffer /
+    /// disk spill), so the buffer is already complete. The `Show`/`FireOffEditor`
+    /// leg is the GUI no-op; `GlobalResult` is set by the caller (`export.rs`).
+    pub fn to_csv(&self) -> String {
+        let mut out = String::new();
+        out.push_str(&crate::util::comma_text(&self.header));
+        out.push('\n');
+        let stride = self.record_size + 2;
+        for s in 0..self.sample_count as usize {
+            let base = s * stride;
+            // Pascal `WriteStr(sout, hr: 0: 0, ', ', s: 0: 5)` — the two leading
+            // time columns (or Freq/Harmonic in harmonics mode) as fixed-point.
+            let hr = self.mon_buffer[base] as f64;
+            let sec = self.mon_buffer[base + 1] as f64;
+            out.push_str(&format!("{hr:.0}, {sec:.5}"));
+            for i in 0..self.record_size {
+                // Pascal `Format(', %-.6g', [sngBuffer[i]])`.
+                out.push_str(", ");
+                out.push_str(&crate::util::fmt_g(self.mon_buffer[base + 2 + i] as f64, 6));
+            }
+            out.push('\n');
+        }
+        out
+    }
 }
