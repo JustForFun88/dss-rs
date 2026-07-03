@@ -121,16 +121,22 @@ pub fn float_to_str_ex(v: f64) -> String {
 
 /// FPC `TStrings.CommaText` (`GetDelimitedText` with the default `Delimiter=','`
 /// / `QuoteChar='"'`, non-strict): join the items with commas, wrapping in
-/// double-quotes — and doubling any embedded quote — every item that is empty or
-/// contains any char `<= ' '` (space/control), the delimiter, or the quote char.
-/// Used for the `Export Monitors` header row (`Monitor.pas` `TranslateToCSV` →
+/// double-quotes — and doubling any embedded quote — every item that contains any
+/// char `<= ' '` (space/control), the delimiter, or the quote char. Used for the
+/// `Export Monitors` header row (`Monitor.pas` `TranslateToCSV` →
 /// `Header.CommaText`), where labels like `Tap (pu)` / `S1 (kVA)` / `%kW Stored`
 /// carry spaces and are quoted so the header line matches the oracle verbatim.
+///
+/// The **empty-item** case is out of contract and deliberately not modeled: no
+/// monitor header label is ever empty (every branch of `ClearMonitorStream` emits
+/// a non-empty name), and FPC's empty-item handling is a quirky accumulator path
+/// (`if Result='' then …`, which can even drop the delimiter) that no oracle probe
+/// pins here — reproducing it would be a guess, not a verified behavior.
 pub fn comma_text(items: &[String]) -> String {
     items
         .iter()
         .map(|s| {
-            let needs_quote = s.is_empty() || s.chars().any(|c| c <= ' ' || c == '"' || c == ',');
+            let needs_quote = s.chars().any(|c| c <= ' ' || c == '"' || c == ',');
             if needs_quote {
                 format!("\"{}\"", s.replace('"', "\"\""))
             } else {
@@ -324,10 +330,10 @@ mod tests {
             "\"S1 (kVA)\",Ang1"
         );
         // An embedded comma forces quoting; an embedded quote is doubled inside
-        // the wrapping quotes; an empty item is quoted as `""`.
+        // the wrapping quotes. (The empty-item case is out of contract — no
+        // monitor header label is ever empty — so it is not asserted here.)
         assert_eq!(comma_text(&["a,b".into()]), "\"a,b\"");
         assert_eq!(comma_text(&["say \"hi\"".into()]), "\"say \"\"hi\"\"\"");
-        assert_eq!(comma_text(&["".into(), "x".into()]), "\"\",x");
     }
 
     #[test]
