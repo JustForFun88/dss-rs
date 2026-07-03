@@ -8,7 +8,30 @@
 > frontier.
 
 Last updated: 2026-07-03 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.3 step 3c (part 1) landed, gate-green** — the
+reporting/exports/Save). **WP8.3 step 3c (part 2) landed, gate-green** — the
+**Overloads / Unserved / AllocationFactors exports** (ptrs 7/8/34,
+`ExportOverloads`/`ExportUnserved`/`DumpAllocationFactors`): `report/export/
+overloads.rs` (the `export_with_mut` PDElement walk — per-branch terminal-1
+`Cmax`=max phase `|Iterminal|`, symmetrical-component I0/I1/I2 via `SymComp`,
+rows only when a positive rating is exceeded; capacitors skipped like Pascal's
+`CAP_ELEMENT` guard; the row is built **piecewise** to reproduce the degenerate
+`NormAmps<=0`/`EmergAmps<=0` single-`0.0`-field column shift exactly),
+`report/export/unserved.rs` (a **mutable** Load walk — downcast `&mut Load`,
+call `Unserved`/`ExceedsNormal` which recompute vmin-pu from the present solution
+and latch `EEN_Factor`/`UE_Factor`; the `Export Unserved u…` pre-parse selects the
+UE/emergency criterion), and `report/export/alloc_factors.rs` (an immutable Load
+walk — `Load.<name>.AllocationFactor=`/`.CFactor=` for ConnectedkVA/kWh spec loads
+only, native-case name, no `Enabled` filter matching Pascal `for pLoad in Loads`).
+Three **synthesized deck fixtures** (PHASE8_PLAN §1 — no corpus deck exports these):
+an under-rated overloaded line (`ovl`), a voltage-sagged feeder (`uns`), two
+allocation-spec loads (`alloc`); each captured by `gen_phase8.py` + replayed by the
+deck golden runner. golden_phase8 **43→46** (all three matched the oracle first-run:
+Overloads fixed-decimal `rel=0`/`abs=0.011` (2-dec)+`0.11` (1-dec); Unserved
+`EEN/UE` `%9.3f` `abs=0.0011`, kW `%8.0f` `abs=0.5`; AllocationFactors deck-constant
+`%-.5g` `rel=abs=1e-9`, `=`-separated no-header). lib **729** (unchanged —
+formatters gated end-to-end). `solvable_now` **119** (no migration — the
+`Export`-overloads/unserved decks migrate at the step-5 completion gate). Prior:
+**WP8.3 step 3c (part 1) landed, gate-green** — the
 **reliability + capacity exports** (ptrs 37/38/6, `ExportBusReliability`/
 `ExportBranchReliability`/`ExportCapacity`): `report/export/reliability.rs`
 (`export_bus_reliability` = read-only `fn(&Circuit)`; `export_branch_reliability` =

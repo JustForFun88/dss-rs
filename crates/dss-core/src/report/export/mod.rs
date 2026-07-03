@@ -12,6 +12,7 @@
 //!   so they take the disjoint `(&mut [DssClass], &Circuit, &SysCtx, &[node_v])`
 //!   borrow (the `Dss::snapshot_elements` pattern) via [`for_each_enabled_elem`].
 
+mod alloc_factors;
 mod bus_coords;
 mod capacity;
 mod counts;
@@ -23,6 +24,7 @@ mod logs;
 mod losses;
 mod node_names;
 mod node_order;
+mod overloads;
 mod p_by_phase;
 mod powers;
 mod registers;
@@ -34,6 +36,7 @@ mod seq_voltages;
 mod seq_z;
 mod summary;
 mod taps;
+mod unserved;
 mod voltages;
 mod voltages_elements;
 mod y_currents;
@@ -42,6 +45,7 @@ mod y_voltages;
 mod ynode_list;
 mod yprims;
 
+pub(crate) use alloc_factors::export_alloc_factors;
 pub use bus_coords::export_bus_coords;
 pub(crate) use capacity::export_capacity;
 pub use counts::export_counts;
@@ -53,6 +57,7 @@ pub(crate) use logs::{export_error_log, export_event_log};
 pub(crate) use losses::export_losses;
 pub use node_names::export_node_names;
 pub(crate) use node_order::export_node_order;
+pub(crate) use overloads::export_overloads;
 pub(crate) use p_by_phase::export_p_by_phase;
 pub(crate) use powers::export_powers;
 pub(crate) use registers::{
@@ -67,6 +72,7 @@ pub use seq_voltages::export_seq_voltages;
 pub use seq_z::export_seq_z;
 pub(crate) use summary::{SummaryFields, export_summary, max_pu_voltage, min_pu_voltage};
 pub(crate) use taps::export_taps;
+pub(crate) use unserved::export_unserved;
 pub use voltages::export_voltages;
 pub(crate) use voltages_elements::export_voltages_elements;
 pub use y_currents::export_y_currents;
