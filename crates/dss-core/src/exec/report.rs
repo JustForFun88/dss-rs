@@ -377,8 +377,11 @@ impl Dss {
     }
 
     /// `Export ErrorLog` (Pascal `ExportErrorLog`, `ExportResults.pas:3303`): dump
-    /// `DSS.ErrorStrings` to `EXP_ErrorLog.txt`. Rust's `Dss::errors` is that same
-    /// `DoSimpleMsg` record-and-continue log. No solve/circuit dependency.
+    /// `DSS.ErrorStrings` to `EXP_ErrorLog.txt`. Rust's `Dss::errors` accumulates
+    /// the same `DoSimpleMsg` messages (same lifecycle), but without Pascal's
+    /// `(errnum)` line prefix / oracle-exact wording — so a non-empty dump is not
+    /// oracle-faithful (see [`crate::report::export::export_error_log`]; tracked in
+    /// STATUS §WP8.3 step 3a). No solve/circuit dependency.
     fn export_error_log_to_file(&mut self, explicit: &str) {
         let content = crate::report::export::export_error_log(&self.errors);
         self.write_export(explicit, "EXP_ErrorLog.txt", &content);

@@ -1676,23 +1676,54 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     Added `Circuit::log_this_event` (the gated `if LogEvents then LogThisEvent`, stamping the solution's
     clock/iteration) + wired the 3 sites (`circuit.rs` `reprocess_bus_defs`, `zones/mod.rs`
     `do_reset_meter_zones`, the two bracketing `ResetMeterZonesAll` even with no meters, per Pascal). The
-    fourth Pascal marker `ReallocDeviceList` ("Reallocating Device List", `Circuit.pas:2997`) has **no Rust
-    equivalent** — our device list is an auto-growing `HashList` with no manual hash-resize step, and it
-    does not appear in the solve-time log anyway (it fires only on device additions during compile, with
-    LogEvents off) — so nothing to wire (documented here, not a `NOT_PORTED` site).
+    fourth Pascal marker `ReallocDeviceList` ("Reallocating Device List", `Circuit.pas:2072`/`:2997`) has
+    **no Rust equivalent** — our device list is an auto-growing `HashList` with no manual hash-resize step
+    (Pascal reallocs once `NumDevices > 2·InitialAllocation`, i.e. >1800 devices). It never fires during
+    *solve* (an `AddCktElement` build-time call), but it *would* appear on a >1800-device circuit **built
+    while `Set Log=yes` is already on** — a `NOT_PORTED` comment marks the drop at `add_ckt_element` (the
+    standard idiom sets `LogEvents` after the definitions; no corpus deck logs a build that large, so no
+    gate exercises it).
   - **gate** — golden_phase8 **34→37**, both synthesized (no corpus deck exports these): **(1)**
-    `export_eventlog` — IEEE13 + per-RegControl `eventlog=yes` + **`Set Log=yes`** daily-3 solve →
-    the **full** LogThisEvent marker stream (the now-complete Circuit-build markers → Yprim recalc → Y
-    build → per-iteration/control markers → tap changes → Solution Done), compared **line-for-line with
-    numbers parsed out** (the phase5 event-log policy `assert_value_matches_tol`, 1e-6 rel — the stamps +
-    tap values are numbers) — matched the oracle **first-run after the marker fix** (29 lines, incl. the
-    per-step iteration counts phase5 already pins). **(2)** `export_errorlog` — a clean IEEE13 solve logs
-    no `DoSimpleMsg` → an empty dump (pins the plumbing + `EXP_ErrorLog.txt` naming). **(3)**
-    `export_errorlog_captures_errors` — a Rust-only content gate (cross-engine error *message text* is not
-    a Phase-8 axis): a recoverable `DoSimpleMsg` (unknown property on an existing element) must reach the
-    exported file (guards the dump against silently dropping `Dss::errors`). No existing event-log gate
-    regressed (phase5/phase7_protection green — the new markers fire only under `log_events`). lib
-    **726→728** (`logs.rs` unit tests).
+    `export_eventlog` — IEEE13 + per-RegControl `eventlog=yes` + **`Set Log=yes`**, driving a **swinging
+    load** (1200 kW on regulated bus 675 with a 1×/2×/0.5× day shape) so all three regulators move taps,
+    daily-3 → the **full** LogThisEvent marker stream (the now-complete Circuit-build markers → Yprim
+    recalc → Y build → per-iteration/control markers → Solution Done) **plus** 18 regulator
+    `AppendToEventLog` tap-change lines (`CHANGED n TAPS TO <pu>` — non-integer tap values, so the
+    numeric-tolerance path is genuinely exercised), compared **line-for-line with numbers parsed out** (the
+    phase5 event-log policy `assert_value_matches_tol`, 1e-6 rel) — matched the oracle **first-run after
+    the marker fix** (133 lines; the tap decisions are the same logic the phase5 `daily_ieee13` gate pins).
+    **(2)** `export_errorlog` — a clean IEEE13 solve logs no `DoSimpleMsg` → an empty dump (pins the
+    plumbing + `EXP_ErrorLog.txt` naming). **(3)** `export_errorlog_captures_errors` — a Rust-only content
+    gate (cross-engine error *message text* is not a Phase-8 axis): a recoverable `DoSimpleMsg` (unknown
+    property on an existing element) must reach the exported file (guards the dump against silently
+    dropping `Dss::errors`). No existing event-log gate regressed (phase5/phase7_protection green — the new
+    markers fire only under `log_events`). lib **726→728** (`logs.rs` unit tests).
+  - **audit-code follow-up (independent agent): faithful — no Critical/Major; 2 Minor recorded.** The
+    auditor verified the two formatters, the ptr-33/52 dispatch + filenames + solve-guard classification,
+    and the three new `LogThisEvent` markers (ordering/guards/clock fields) all match Pascal, the last
+    line-for-line vs the oracle golden. **Recorded (surfaced-not-fixed, both tracked-open, out of Phase-8
+    scope):** (1) **`Export ErrorLog` content is not oracle-faithful** — Pascal builds each `ErrorStrings`
+    entry as `Format('(%d) %s', [ErrorNumber, S])` (`DSSGlobals.pas:275`), a `(errnum)` prefix + exact
+    wording our port has no `ErrorNumber` concept to reproduce; the empty dump (the common case) is exact,
+    but a non-empty one diverges — a cross-cutting **error-subsystem-fidelity** item, honestly gated
+    Rust-side only (never against the oracle); the `logs.rs`/`report.rs` comments were softened to say so.
+    (2) **`Reallocating Device List` marker** — my "never appears" claim was overstated: it *can* fire on a
+    >1800-device circuit built under `Set Log=yes`; softened the wording + added a `NOT_PORTED` comment at
+    `add_ckt_element`. Pre-existing (out of this commit): the incremental-Y "Building Whole Y Matrix --
+    using incremental method" variant (`Ymatrix.pas:369`) is not ported — inert on ordinary decks (the
+    golden shows the non-incremental line).
+  - **audit-tests follow-up (independent agent): sound — goldens are genuine oracle captures, not
+    self-comparison; 1 Minor + 1 Nit fixed.** The auditor confirmed the line-count-then-per-line compare
+    catches a missing/extra marker and the 3 new Circuit-build markers are genuinely gated (golden lines
+    1-3). **Fixed:** (1) **Minor** — the EventLog fixture moved **no** taps (bare IEEE13 daily-3), so the
+    per-RegControl `eventlog=yes` produced **zero** tap-change lines and every golden number was an integer
+    (the numeric-tolerance path was never exercised) — the docstring's tap-change claim was aspirational.
+    Added the swinging load so all three regulators tap (18 `CHANGED … TO <pu>` float lines); the golden is
+    now genuinely non-vacuous (33→133 lines) and our engine matches it first-run. (2) **Nit** — tightened
+    `export_errorlog_captures_errors` to assert the exact `bogusproperty` token (dropped a dead
+    `|| contains("bogus")` disjunct). **Recorded (no fix):** the explicit-filename `Export eventlog <path>`
+    arg + `@lastexportfile` bookkeeping is covered generically by the shared `write_export` path (other
+    phase8 export tests), not re-asserted here.
 - **next — WP8.3 step 3b:** `Faultstudy` (read-only over the WP7.9-precomputed bus `Zsc`/`Ysc`/
   `BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`, `BusReliability`/`BranchReliability`/`Sections`
   (the WP7.2 `RelCalc` outputs), `AllocationFactors`, `Profile`; then step 4 (`TSystemMeter` core +

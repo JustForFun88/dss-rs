@@ -1337,10 +1337,14 @@ fn run_log_export(stem: &str) {
 
 /// `Export EventLog` (Pascal `ExportEventLog`): the full `Set Log=yes`
 /// LogThisEvent marker stream (bus-def reprocess → meter-zone reset → Yprim
-/// recalc → Y build → per-iteration/control markers → Solution Done) over a
-/// daily-3 IEEE13 solve. Pins the export **and** that our engine emits every
-/// LogThisEvent call site line-for-line (the Circuit-build markers landed in
-/// WP8.3 step 3).
+/// recalc → Y build → per-iteration/control markers → Solution Done) **plus**
+/// the regulators' `AppendToEventLog` tap-change lines, over a daily-3 IEEE13
+/// solve driven by a swinging load so all three regulators actually move taps
+/// (18 `CHANGED n TAPS TO <pu>` lines — the non-integer tap values exercise the
+/// numeric-tolerance compare, not just the integer stamps). Pins the export
+/// **and** that our engine emits every LogThisEvent call site + every tap-change
+/// action line-for-line vs the oracle (the Circuit-build markers landed in WP8.3
+/// step 3a; the tap logic is the same the phase5 `daily_ieee13` gate pins).
 #[test]
 fn export_eventlog_matches_oracle() {
     run_log_export("export_eventlog");
@@ -1383,9 +1387,10 @@ fn export_errorlog_captures_errors() {
     );
     let content = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    // The recorded `DoSimpleMsg` names the offending property — assert that exact
+    // token reaches the file (a dropped/empty dump would fail this).
     assert!(
-        content.to_lowercase().contains("bogusproperty")
-            || content.to_lowercase().contains("bogus"),
+        content.to_lowercase().contains("bogusproperty"),
         "the exported ErrorLog must contain the recorded error; got:\n{content}"
     );
     std::fs::remove_dir_all(&scratch).ok();

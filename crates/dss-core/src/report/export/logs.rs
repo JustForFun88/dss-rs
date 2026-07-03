@@ -27,7 +27,16 @@ pub(crate) fn export_event_log(entries: &[String]) -> String {
 }
 
 /// `ExportErrorLog` — dump `DSS.ErrorStrings`: the `DoSimpleMsg` record-and-
-/// continue messages. Rust's `Dss::errors` is that same accumulating log.
+/// continue messages. Rust's `Dss::errors` accumulates the same messages with the
+/// same run lifecycle (grown by `DoSimpleMsg`, cleared only by `Clear`). The
+/// **content** is not byte-faithful, though: Pascal builds each `ErrorStrings`
+/// entry as `Format('(%d) %s', [ErrorNumber, S])` (`DSSGlobals.pas:275`) — a
+/// leading `(errnum)` our port has no `ErrorNumber` concept to reproduce, and the
+/// message text itself is hand-ported. So the empty dump (the common case) is
+/// exact, but a non-empty `Export ErrorLog` diverges from the oracle in numbering
+/// and wording — a cross-cutting error-subsystem-fidelity item outside Phase 8
+/// (tracked in STATUS §WP8.3 step 3a), which is why its content is gated Rust-side
+/// only, never against the oracle.
 pub(crate) fn export_error_log(entries: &[String]) -> String {
     save_string_list(entries)
 }

@@ -281,6 +281,15 @@ impl Circuit {
     /// and the kind lists, and hand it its 1-based handle.
     pub fn add_ckt_element(&mut self, r: ElemRef, kind: ElemKind, elem: &mut dyn CktElement) {
         self.num_devices += 1;
+        // NOT_PORTED: Pascal `AddCktElement` calls `ReAllocDeviceList` once
+        // `NumDevices > 2 * DeviceList.InitialAllocation` (900 → >1800 devices),
+        // which — under `LogEvents` — emits a `Reallocating Device List`
+        // `LogThisEvent` marker (`Circuit.pas:2072`/`:2997`). Our `HashList` grows
+        // in place, so there is no realloc step and no marker. Inert for the event
+        // log except on a >1800-device circuit *built while `Set Log=yes` is
+        // already on* (the standard idiom sets `LogEvents` after the element
+        // definitions; no corpus deck logs a build that large). Clean fix if ever
+        // needed: emit the marker from here on the same size threshold.
         self.device_list.add(elem.cd().obj.name());
         self.ckt_elements.push(r);
 
