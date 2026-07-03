@@ -1,0 +1,14 @@
+{
+  "report": "eventlog",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "RegControl.reg1.eventlog=yes",
+    "RegControl.reg2.eventlog=yes",
+    "RegControl.reg3.eventlog=yes",
+    "set log=yes",
+    "set mode=daily number=3 stepsize=1h",
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "EXP_EventLog.csv"
+}

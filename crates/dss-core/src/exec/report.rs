@@ -184,6 +184,8 @@ impl Dss {
             14 => self.export_registers(&explicit, RegKind::Meters),
             49 => self.export_registers(&explicit, RegKind::PvSystem),
             50 => self.export_registers(&explicit, RegKind::Storage),
+            33 => self.export_event_log_to_file(&explicit),
+            52 => self.export_error_log_to_file(&explicit),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             47 => self.export_with(&explicit, "EXP_YVoltages.csv", export::export_y_voltages),
             48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
@@ -360,6 +362,26 @@ impl Dss {
         self.last_result_file = last_path.clone();
         self.vars.add("@lastfile", &last_path);
         self.vars.add("@lastexportfile", &last_path);
+    }
+
+    /// `Export EventLog` (Pascal `ExportEventLog`, `ExportResults.pas:3296`):
+    /// dump `DSS.EventStrings` — the accumulated `Hour=…, Sec=…, …` control /
+    /// tap-change log — to `EXP_EventLog.csv`. No solve dependency (ptr 33 is not
+    /// in the `DoExportCmd` solve-guard set); the log accumulates across the run.
+    fn export_event_log_to_file(&mut self, explicit: &str) {
+        let content = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            crate::report::export::export_event_log(ckt.solution.event_log.entries())
+        };
+        self.write_export(explicit, "EXP_EventLog.csv", &content);
+    }
+
+    /// `Export ErrorLog` (Pascal `ExportErrorLog`, `ExportResults.pas:3303`): dump
+    /// `DSS.ErrorStrings` to `EXP_ErrorLog.txt`. Rust's `Dss::errors` is that same
+    /// `DoSimpleMsg` record-and-continue log. No solve/circuit dependency.
+    fn export_error_log_to_file(&mut self, explicit: &str) {
+        let content = crate::report::export::export_error_log(&self.errors);
+        self.write_export(explicit, "EXP_ErrorLog.txt", &content);
     }
 
     /// `Export Loads` (Pascal `ExportLoads`): the present load-allocation view,

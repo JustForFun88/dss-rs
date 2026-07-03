@@ -22,7 +22,9 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::{ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy, compare_export};
+use harness::{
+    ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy, assert_value_matches_tol, compare_export,
+};
 use serde::Deserialize;
 
 fn phase8_dir() -> PathBuf {
@@ -1252,4 +1254,139 @@ fn export_storage_multifile_uses_pv_prefix() {
             );
         },
     );
+}
+
+// --- WP8.3 step 3a: the event/error-log dumps ------------------------------
+// `Export EventLog` / `Export ErrorLog` (Pascal `ExportEventLog`/`ExportErrorLog`)
+// are `TStringList.SaveToFile` dumps of `DSS.EventStrings` / `DSS.ErrorStrings`.
+// The event-log lines are `Hour=…, Sec=…, Iteration=…, …` records: the stamps and
+// the in-action tap values are *numbers*, so — like the phase5 event-log gate —
+// they are compared line-for-line with numbers parsed out (`numeric_skeleton`),
+// never as raw float-strings.
+
+/// Compile the fixture, replay its post commands, export the log report into a
+/// scratch dir, and compare the produced file to the oracle's line-for-line with
+/// numbers parsed out at 1e-6 rel (the phase5 event-log policy). A count mismatch
+/// (a missing/extra LogThisEvent marker) fails loudly before the per-line compare.
+fn run_log_export(stem: &str) {
+    let dir = phase8_dir();
+    let meta: FeederMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("export {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let want = format!("{}_{}", meta.fixture, meta.suffix).to_lowercase();
+    assert!(
+        produced.to_lowercase().ends_with(&want),
+        "{stem}: unexpected produced path {produced:?} (want …{want})"
+    );
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+
+    let ol: Vec<&str> = oracle.lines().filter(|l| !l.trim().is_empty()).collect();
+    let rl: Vec<&str> = rust.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(
+        rl.len(),
+        ol.len(),
+        "{stem}: log line count differs (rust {} vs oracle {})\n  rust:\n    {}\n  oracle:\n    {}",
+        rl.len(),
+        ol.len(),
+        rl.join("\n    "),
+        ol.join("\n    ")
+    );
+    for (i, (a, e)) in rl.iter().zip(&ol).enumerate() {
+        assert_value_matches_tol(a, e, 1e-6, 1e-9, &format!("{stem} line {i}"));
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `Export EventLog` (Pascal `ExportEventLog`): the full `Set Log=yes`
+/// LogThisEvent marker stream (bus-def reprocess → meter-zone reset → Yprim
+/// recalc → Y build → per-iteration/control markers → Solution Done) over a
+/// daily-3 IEEE13 solve. Pins the export **and** that our engine emits every
+/// LogThisEvent call site line-for-line (the Circuit-build markers landed in
+/// WP8.3 step 3).
+#[test]
+fn export_eventlog_matches_oracle() {
+    run_log_export("export_eventlog");
+}
+
+/// `Export ErrorLog` (Pascal `ExportErrorLog`): a clean IEEE13 solve logs no
+/// `DoSimpleMsg`, so the dump is empty — pins the plumbing + `EXP_ErrorLog.txt`
+/// naming. The non-empty content path is gated by `export_errorlog_captures_errors`.
+#[test]
+fn export_errorlog_matches_oracle() {
+    run_log_export("export_errorlog");
+}
+
+/// The `Export ErrorLog` **content** path (no oracle golden — cross-engine error
+/// *message text* is not a Phase-8 axis): trigger a recoverable `DoSimpleMsg`
+/// (an unknown property on an existing element), export the log, and assert the
+/// message reaches the file. Guards against the dump silently dropping the
+/// accumulated `Dss::errors` (the empty-golden alone can't catch that).
+#[test]
+fn export_errorlog_captures_errors() {
+    let scratch = scratch_dir("errorlog_content");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.elog basekv=12.47 bus1=src");
+    dss.command("new line.l1 bus1=src bus2=b");
+    // A recoverable error: an unknown property on an existing element
+    // (`DoSimpleMsg` records + continues, growing `ErrorStrings`).
+    dss.command("edit line.l1 bogusproperty=42");
+    assert!(
+        !dss.errors().is_empty(),
+        "the bogus edit should have logged an error"
+    );
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("export errorlog");
+
+    let produced = dss.last_result_file();
+    assert!(
+        produced.to_lowercase().ends_with("elog_exp_errorlog.txt"),
+        "unexpected produced path: {produced:?}"
+    );
+    let content = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    assert!(
+        content.to_lowercase().contains("bogusproperty")
+            || content.to_lowercase().contains("bogus"),
+        "the exported ErrorLog must contain the recorded error; got:\n{content}"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
 }

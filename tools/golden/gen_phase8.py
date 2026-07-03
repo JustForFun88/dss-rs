@@ -316,6 +316,41 @@ def gen_register_reports(d) -> None:
     _gen_register_group(d, REGISTER_B_POST, REGISTER_B_REPORTS)
 
 
+# The event/error-log dumps (PHASE8_PLAN §WP8.3 step 3). No corpus deck exports
+# these, so they are synthesized (PHASE8_PLAN §1), both on the IEEE13 feeder:
+#   EventLog: a daily-3 solve with `Set Log=yes` (ckt.LogEvents) + per-RegControl
+#     event logging → the **full** LogThisEvent solve-marker stream (bus-def
+#     reprocess, meter-zone reset, Yprim recalc, Y build, per-iteration + control
+#     markers, Solution Done) plus every regulator tap change. Our engine wires
+#     all these LogThisEvent call sites (the Circuit-build ones landed in WP8.3
+#     step 3), so the log matches the oracle line-for-line; this golden pins the
+#     **export** (SaveToFile → `EXP_EventLog.csv` naming + the `%g` render into
+#     the file) on top of the marker stream.
+#   ErrorLog: a clean solve → an empty `ErrorStrings` dump — pins the plumbing +
+#     the `EXP_ErrorLog.txt` naming (a clean IEEE13 run logs no DoSimpleMsg). The
+#     non-empty content path is gated Rust-side (`golden_phase8.rs`), since
+#     cross-engine error *message text* is not a Phase-8 correctness axis.
+EVENTLOG_POST = [
+    "RegControl.reg1.eventlog=yes",
+    "RegControl.reg2.eventlog=yes",
+    "RegControl.reg3.eventlog=yes",
+    "set log=yes",
+    "set mode=daily number=3 stepsize=1h",
+    "solve",
+]
+ERRORLOG_POST = ["solve"]
+
+
+def gen_log_reports(d) -> None:
+    """Capture the oracle's EventLog/ErrorLog dumps on the IEEE13 feeder."""
+    _gen_register_group(
+        d, EVENTLOG_POST, [("eventlog", "EXP_EventLog.csv", "export_eventlog")]
+    )
+    _gen_register_group(
+        d, ERRORLOG_POST, [("errorlog", "EXP_ErrorLog.txt", "export_errorlog")]
+    )
+
+
 # SeqZ reads the per-bus short-circuit impedances (`Zsc1`/`Zsc0`), which are only
 # populated by a FaultStudy solve — a plain snapshot leaves them zero (a
 # degenerate all-zero report). So it gets its own fixture with a `faultstudy`
@@ -405,6 +440,7 @@ def main() -> None:
     gen_feeder_reports(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
+    gen_log_reports(d)
     gen_ieee8500_reports(d)
     gen_seqz(d)
 
