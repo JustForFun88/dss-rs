@@ -27,9 +27,11 @@ mod node_order;
 mod overloads;
 mod p_by_phase;
 mod powers;
+mod profile;
 mod registers;
 mod reliability;
 mod result;
+mod sections;
 mod seq_currents;
 mod seq_powers;
 mod seq_voltages;
@@ -60,12 +62,14 @@ pub(crate) use node_order::export_node_order;
 pub(crate) use overloads::export_overloads;
 pub(crate) use p_by_phase::export_p_by_phase;
 pub(crate) use powers::export_powers;
+pub(crate) use profile::{export_profile, plot_phases};
 pub(crate) use registers::{
     GEN_REGISTER_NAMES, PVSYSTEM_REGISTER_NAMES, RegRow, STORAGE_REGISTER_NAMES, register_header,
     register_row,
 };
 pub(crate) use reliability::{export_branch_reliability, export_bus_reliability};
 pub(crate) use result::export_result;
+pub(crate) use sections::export_sections;
 pub(crate) use seq_currents::export_seq_currents;
 pub(crate) use seq_powers::export_seq_powers;
 pub use seq_voltages::export_seq_voltages;

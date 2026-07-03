@@ -423,6 +423,18 @@ impl Dss {
                         }
                     }
                     opt::CASE_NAME => ckt.case_name = param.clone(),
+                    // GUI plot-marker style state (Circuit.pas fields; headless-
+                    // inert except the `Export Profile` NodeCode/NodeWidth echo).
+                    opt::MARKER_CODE => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            ckt.node_marker_code = v;
+                        }
+                    }
+                    opt::NODE_WIDTH => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            ckt.node_marker_width = v;
+                        }
+                    }
                     opt::DATA_PATH => {
                         apply_data_path(&param, current_dir, output_directory, errors)
                     }
