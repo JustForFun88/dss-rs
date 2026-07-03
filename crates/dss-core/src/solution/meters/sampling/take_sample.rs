@@ -18,15 +18,24 @@ use crate::elements::traits::{CktElement, ElemRef, ElemStore, SysCtx};
 
 use super::super::downcast_meter;
 
-/// Pascal `TEnergyMeter.ResetAll` (l.851): reset every meter's registers, plus
-/// the Generator/Storage/PVSystem `ResetRegistersAll` tail (l.895-897) — those
-/// DER registers accumulate in `SampleAll`'s tail below, so they reset here too.
-/// (Demand-interval files + the `SystemMeter` core are WP8.3 step 4.)
-pub(crate) fn reset_all_meters(ckt: &mut Circuit, store: &mut dyn ElemStore) {
+/// Pascal `TEnergyMeter.ResetAll` (l.851): close/recreate the demand-interval
+/// machinery (the `DI_yr_<year>` directory + `DI_Totals` stream, when `Set
+/// DemandInterval=yes`), reset every meter's registers and the `SystemMeter`,
+/// plus the Generator/Storage/PVSystem `ResetRegistersAll` tail (l.895-897) —
+/// those DER registers accumulate in `SampleAll`'s tail below, so they reset
+/// here too.
+pub(crate) fn reset_all_meters(
+    ckt: &mut Circuit,
+    store: &mut dyn ElemStore,
+    output_directory: &std::path::Path,
+    errors: &mut Vec<String>,
+) {
+    super::super::demand_interval::reset_all_di(ckt, store, output_directory, errors);
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         downcast_meter(store, meter_ref).reset_registers();
     }
+    ckt.em_di.system_meter.reset();
     // Pascal `TEnergyMeter.ResetAll` l.895-897 (the reset is not gated on any
     // meter existing).
     for r in ckt.generators.clone() {
@@ -55,13 +64,16 @@ pub(crate) fn reset_all_meters(ckt: &mut Circuit, store: &mut dyn ElemStore) {
     }
 }
 
-/// Pascal `TEnergyMeter.SampleAll` (l.900): sample every enabled meter, then the
-/// Generator/Storage/PVSystem `SampleAll` tail (l.928-931) — the DER energy
-/// registers are accumulated **here**, unconditionally (not gated on a meter
-/// existing), which is why `Export Generators`/`Storage_Meters`/`PVSystem_Meters`
-/// see nonzero registers even with no `EnergyMeter` defined. (The `SystemMeter`
-/// sample + the demand-interval writers are WP8.3 step 4.)
+/// Pascal `TEnergyMeter.SampleAll` (l.900): sample every enabled meter (each
+/// followed by its `WriteDemandIntervalData` tail under `SaveDemandInterval`),
+/// then the `SystemMeter` sample + the demand-interval totals/report rows
+/// (l.911-925), then the Generator/Storage/PVSystem `SampleAll` tail
+/// (l.928-931) — the DER energy registers are accumulated **here**,
+/// unconditionally (not gated on a meter existing), which is why `Export
+/// Generators`/`Storage_Meters`/`PVSystem_Meters` see nonzero registers even
+/// with no `EnergyMeter` defined.
 pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
+    let save_di = ckt.em_di.save_demand_interval;
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         let enabled = store
@@ -72,8 +84,16 @@ pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys:
             .enabled();
         if enabled {
             take_sample_one(meter_ref, ckt, store, sys);
+            // The `TEnergyMeterObj.TakeSample` tail (l.1689): the per-meter DI
+            // row + the class `DI_RegisterTotals` accumulation.
+            if save_di {
+                super::super::demand_interval::write_meter_demand_interval_data(
+                    meter_ref, ckt, store,
+                );
+            }
         }
     }
+    super::super::demand_interval::sample_all_di_tail(ckt, store, sys);
     sample_all_der(ckt, store, sys);
 }
 
@@ -169,6 +189,20 @@ fn take_sample_one(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore,
     let mut vbase_no_load_losses = [0.0; NUM_EM_VBASE];
     let mut vbase_load = [0.0; NUM_EM_VBASE];
 
+    // Phase Voltage arrays (Pascal l.1379-1391): reset the live vbase slots.
+    if st.f_phase_voltage_report {
+        for i in 0..NUM_EM_VBASE {
+            if st.vbase_list.get(i).copied().unwrap_or(0.0) > 0.0 {
+                for j in 0..3 {
+                    st.vphase_max[i * 3 + j] = 0.0;
+                    st.vphase_min[i * 3 + j] = 9999.0;
+                    st.vphase_accum[i * 3 + j] = 0.0;
+                    st.vphase_accum_count[i * 3 + j] = 0;
+                }
+            }
+        }
+    }
+
     let mut max_excess_kw_norm = 0.0_f64;
     let mut max_excess_kw_emerg = 0.0_f64;
 
@@ -255,9 +289,9 @@ fn take_sample_one(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore,
 
     let mut cur = tree.first();
     while let Some(branch) = cur {
-        let (volt_base_index, shunts) = {
+        let (volt_base_index, from_bus, shunts) = {
             let n = tree.present_node();
-            (n.volt_base_index, n.shunts.clone())
+            (n.volt_base_index, n.from_bus, n.shunts.clone())
         };
         let vbi = volt_base_index; // 1-based; 0 = none
 
@@ -348,8 +382,35 @@ fn take_sample_one(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore,
                     vbase_no_load_losses[k] += s_no_load.re;
                 }
             }
-            // FPhaseVoltageReport is off by default and only feeds the demand-
-            // interval phase-voltage files (Phase 8); not accumulated here.
+
+            // Min/max/average pu voltage of phases 1..3 at the FROM bus
+            // (Pascal l.1566-1593; inside the `if FLosses` block, like the
+            // vbase losses). Note the Pascal quirk: `Cabs(V)/kVBase` with no
+            // `0.001`, so the accumulators carry 1000·pu — the report writer
+            // multiplies by 0.001.
+            if st.f_phase_voltage_report
+                && vbi > 0
+                && from_bus != crate::circuit::ckt_tree::NO_BUS
+                && ckt.buses[from_bus].kv_base > 0.0
+            {
+                let bus = &ckt.buses[from_bus];
+                for i in 0..bus.num_nodes_this_bus() {
+                    let j = bus.get_num(i);
+                    if !(1..=3).contains(&j) {
+                        continue;
+                    }
+                    let pu_v = node_v[bus.get_ref(i)].norm() / bus.kv_base;
+                    let idx = (vbi as usize - 1) * 3 + (j as usize - 1);
+                    if pu_v > st.vphase_max[idx] {
+                        st.vphase_max[idx] = pu_v;
+                    }
+                    if pu_v < st.vphase_min[idx] {
+                        st.vphase_min[idx] = pu_v;
+                    }
+                    st.vphase_accum[idx] += pu_v;
+                    st.vphase_accum_count[idx] += 1;
+                }
+            }
         }
 
         cur = tree.go_forward();
@@ -464,7 +525,9 @@ fn take_sample_one(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore,
     }
 
     st.first_sample_after_reset = false;
-    // SaveDemandInterval (WriteDemandIntervalData) is Phase 8.
+    // The `SaveDemandInterval → WriteDemandIntervalData` tail runs in
+    // `take_sample_all` (it needs the class DI state on the circuit, disjoint
+    // from the meter borrow here).
 
     downcast_meter(store, meter_ref).end_take_sample(tree, st);
 }

@@ -576,6 +576,81 @@ def gen_profile(d) -> None:
     _gen_register_group(d, PROFILE_POST, PROFILE_REPORTS)
 
 
+# The demand-interval fixture (PHASE8_PLAN §WP8.3 step 4 / §2.6). The DI files are
+# written DURING the time-series solve (opened by SolveDaily, one row per SampleAll,
+# closed by its finally), not by an Export command — so this generator sets the
+# datapath BEFORE the post commands and collects the produced files from
+# `<datapath>/<case>/DI_yr_0/` afterwards. The fixture: IEEE13 + an EnergyMeter with
+# PhaseVoltageReport=yes, all four DI switches on, daily-3. The IEEE13 trunk lines
+# carry ≈490 A against the 400 A default NormAmps, so DI_Overloads has real rows;
+# the 0.48 kV bus 634 gives the voltage report a live LV section and the PHV file a
+# second voltage base.
+# The leading snapshot `solve` builds the meter zone (VBaseList + the vbase
+# register names) BEFORE the DI files open: without it the oracle's per-meter DI
+# header carries the ctor-default empty register names and the PHV header renders
+# *uninitialized heap garbage* as vbase labels (`1.72E-311kV_Phs_1_Max` — Pascal
+# reads the never-initialized VBaseList at open time; unpinnable, like the
+# FeederSections OOB read). With the zone pre-built both engines' headers are
+# deterministic and identical. Note the zone's voltage-base list collects each
+# branch's FROM bus only, so IEEE13 has a single 4.16 kV base (bus 634's 0.48 kV
+# is nobody's from-bus) — one PHV group.
+DI_POST = [
+    "new energymeter.em1 element=Line.650632 terminal=1 phasevoltagereport=yes",
+    "solve",
+    "set demandinterval=yes",
+    "set diverbose=yes",
+    "set overloadreport=yes",
+    "set voltexceptionreport=yes",
+    "set mode=daily number=3 stepsize=1h",
+    "solve",
+]
+DI_FILES = [
+    ("em1_1.csv", "di_em1"),
+    ("em1_PhaseVoltageReport_1.csv", "di_em1_phv"),
+    ("DI_SystemMeter_1.csv", "di_systemmeter"),
+    ("DI_Totals_1.csv", "di_totals"),
+    ("DI_Overloads_1.csv", "di_overloads"),
+    ("DI_VoltExceptions_1.csv", "di_voltexceptions"),
+    ("EnergyMeterTotals_1.csv", "di_energymetertotals"),
+    ("Totals_1.csv", "di_grand_totals"),
+    ("SystemMeter_1.csv", "di_systemmeter_registers"),
+]
+
+
+def gen_demand_interval(d) -> None:
+    """Capture the oracle's demand-interval (DI_) files from a daily IEEE13 run."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for c in DI_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        di_dir = Path(tmp) / case / "DI_yr_0"
+        for fname, stem in DI_FILES:
+            produced = di_dir / fname
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "master": FEEDER_MASTER,
+                "post": DI_POST,
+                "fixture": case,
+                "relpath": f"{case}/DI_yr_0/{fname}",
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_reliability(d) -> None:
     """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -749,6 +824,7 @@ def main() -> None:
     gen_deck_groups(d)
     gen_sections(d)
     gen_profile(d)
+    gen_demand_interval(d)
 
 
 if __name__ == "__main__":

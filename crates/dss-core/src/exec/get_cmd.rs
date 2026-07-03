@@ -174,6 +174,21 @@ impl Dss {
                     &mut result,
                     &ckt.solution.max_control_iterations.to_string(),
                 ),
+                // Pascal `ExecOptions.pas:950-968` — the demand-interval /
+                // report-switch echoes.
+                opt::DEMAND_INTERVAL => {
+                    append_result(&mut result, yes_no(ckt.em_di.save_demand_interval))
+                }
+                opt::DI_VERBOSE => append_result(&mut result, yes_no(ckt.em_di.di_verbose)),
+                opt::OVERLOAD_REPORT => {
+                    append_result(&mut result, yes_no(ckt.em_di.do_overload_report))
+                }
+                opt::VOLT_EXCEPTION_REPORT => {
+                    append_result(&mut result, yes_no(ckt.em_di.do_voltage_exception_report))
+                }
+                opt::SAMPLE_ENERGY_METERS => {
+                    append_result(&mut result, yes_no(ckt.solution.sample_the_meters))
+                }
                 opt::CASE_NAME => append_result(&mut result, &ckt.case_name),
                 // Pascal `ExecOptions.pas:959/961` (the plot-marker echoes).
                 opt::MARKER_CODE => append_result(&mut result, &ckt.node_marker_code.to_string()),

@@ -143,6 +143,12 @@ pub struct Circuit {
     pub log_events: bool,
     /// `TrapezoidalIntegration` (meter integration rule; reset by `Set mode=`).
     pub trapezoidal_integration: bool,
+    /// The `TEnergyMeter` class-level demand-interval state + the
+    /// [`crate::solution::meters::demand_interval::SystemMeter`] (WP8.3 step
+    /// 4). On the circuit so the executive (`Set` handlers / `Reset` /
+    /// `CloseDI`) and the solve loop share it (Pascal keeps it on the DSS
+    /// context / meter class).
+    pub em_di: crate::solution::meters::EmDiState,
     /// `NodeMarkerCode` (Circuit.pas:499; `Set Markercode=`): a GUI plot-marker
     /// style code — headless-inert except that `Export Profile` echoes it into
     /// every row's `NodeCode` column.
@@ -257,6 +263,7 @@ impl Circuit {
             meter_zones_computed: false,
             log_events: false,
             trapezoidal_integration: false,
+            em_di: Default::default(),
             node_marker_code: 16, // Circuit.pas:499
             node_marker_width: 1, // Circuit.pas:500
             // FPC zero-initializes the field; the first time-series step

@@ -52,6 +52,21 @@ impl Dss {
         crate::solution::meters::take_sample_all(ckt, env.store, &sys);
     }
 
+    /// Pascal `TExecHelper.DoCloseDICmd` (`ExecHelper.pas:4199`):
+    /// `EnergyMeterClass.CloseAllDIFiles` — flush + close every open
+    /// demand-interval file.
+    pub(super) fn do_close_di_cmd(&mut self) {
+        let Dss {
+            classes,
+            circuit,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+        crate::solution::meters::close_all_di_files(ckt, &mut store, errors);
+    }
+
     /// Pascal `TExecHelper.DoAllocateLoadsCmd` (`ExecHelper.pas` l.2605): adjust
     /// loads defined by connected kVA or kWh billing to match the EnergyMeter /
     /// Sensor measured peaks. Solves a snapshot guess, then iterates
@@ -126,6 +141,7 @@ impl Dss {
             aux_parser,
             vars,
             errors,
+            output_directory,
             ..
         } = self;
         let ckt = circuit.as_mut().expect("gated in command()");
@@ -140,7 +156,7 @@ impl Dss {
             crate::solution::monitors::reset_all_monitors(ckt, &mut env);
         }
         if do_meters {
-            crate::solution::meters::reset_all_meters(ckt, env.store);
+            crate::solution::meters::reset_all_meters(ckt, env.store, output_directory, env.errors);
         }
         if do_faults {
             // Pascal `DoResetFaults`: `Reset()` on every Fault.

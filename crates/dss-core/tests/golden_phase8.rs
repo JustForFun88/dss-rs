@@ -1942,3 +1942,182 @@ fn export_profile_variants_match_oracle() {
         ("export_profile_ph2", profile_policy()),
     ]);
 }
+
+// --- WP8.3 step 4: TSystemMeter + the demand-interval (DI_) files ------------
+// The DI files are written DURING the time-series solve (opened by SolveDaily,
+// one row per SampleAll, closed by its finally) — not by an Export command — so
+// the runner sets the datapath BEFORE replaying the post commands and reads the
+// produced files from `<datapath>/<case>/DI_yr_0/`. One daily-3 IEEE13 run with
+// a PhaseVoltageReport meter and all four DI switches produces all nine files:
+// the per-meter DI + phase-voltage report, the system-meter DI + cumulative
+// registers, the DI/grand totals, the meter-totals dump, and the overload /
+// voltage-exception reports. The fixture pre-solves a snapshot so the meter
+// zone (VBaseList + vbase register names) exists when the files open — without
+// it the oracle renders *uninitialized heap garbage* as PHV vbase labels
+// (unpinnable; see gen_phase8.py).
+
+/// Meta for a demand-interval golden: the produced file's path relative to the
+/// datapath (`<case>/DI_yr_0/<file>`) instead of an export suffix.
+#[derive(Debug, Deserialize)]
+struct DiMeta {
+    master: String,
+    post: Vec<String>,
+    fixture: String,
+    relpath: String,
+}
+
+/// All DI values are `%-g` (15 sig) doubles computed by the same meter/solve
+/// arithmetic `corpus_live.rs` pins to ~1e-8 on this exact IEEE13 daily path,
+/// so `rel = 1e-6` gives ~100× margin over the two-independent-solves floor
+/// with no printing floor above it; `abs = 1e-8` covers the exact-zero cells
+/// (idle registers). Headers (incl. the `4.16kV_Phs_…` PHV labels and the
+/// register-name columns) compare verbatim; bus names case-insensitively.
+fn di_policy() -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-6,
+        abs: 1e-8,
+        col_tol: vec![],
+    }
+}
+
+/// The nine demand-interval files from one daily IEEE13 run, each diffed
+/// against the oracle's capture.
+#[test]
+fn demand_interval_files_match_oracle() {
+    let stems = [
+        "di_em1",
+        "di_em1_phv",
+        "di_systemmeter",
+        "di_totals",
+        "di_overloads",
+        "di_voltexceptions",
+        "di_energymetertotals",
+        "di_grand_totals",
+        "di_systemmeter_registers",
+    ];
+    let dir = phase8_dir();
+    let metas: Vec<DiMeta> = stems
+        .iter()
+        .map(|stem| {
+            let p = dir.join(format!("{stem}.meta.json"));
+            let text =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+        })
+        .collect();
+    let m0 = &metas[0];
+    for m in &metas[1..] {
+        assert_eq!(m.master, m0.master, "DI goldens disagree on master");
+        assert_eq!(m.post, m0.post, "DI goldens disagree on post");
+        assert_eq!(m.fixture, m0.fixture, "DI goldens disagree on fixture");
+    }
+
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&m0.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir("demand_interval");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    for c in &m0.post {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    for (stem, m) in stems.iter().zip(&metas) {
+        let produced = scratch.join(&m.relpath);
+        let rust = std::fs::read_to_string(&produced)
+            .unwrap_or_else(|e| panic!("{stem}: read produced {}: {e}", produced.display()));
+        let oracle = {
+            let p = dir.join(format!("{stem}.txt"));
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+        };
+        compare_export(&oracle, &rust, &di_policy(), stem);
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The yearly-mode DI lifecycle (Pascal `SolveYearly` has **no**
+/// `CloseAllDIFiles` in its finally — the files stay open, accumulating across
+/// runs, until a `CloseDI`/`Reset`/`Set year=` closes them). Rust-only
+/// structural gate: after a yearly solve the per-meter DI file must NOT exist
+/// yet (its stream is still in memory) and `DIFilesAreOpen` holds; `closedi`
+/// then writes it with one row per solved step.
+#[test]
+fn demand_interval_yearly_stays_open_until_closedi() {
+    let dir = phase8_dir();
+    let meta: DiMeta = {
+        let p = dir.join("di_em1.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+
+    let scratch = scratch_dir("di_yearly");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("new energymeter.em1 element=Line.650632 terminal=1");
+    dss.command("solve");
+    dss.command("set demandinterval=yes");
+    dss.command("set diverbose=yes");
+    dss.command("set mode=yearly number=3 stepsize=1h");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let di_file = scratch
+        .join(&meta.fixture)
+        .join("DI_yr_0")
+        .join("em1_1.csv");
+    assert!(
+        !di_file.exists(),
+        "yearly must leave the DI files open (in memory), not written"
+    );
+
+    dss.command("closedi");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let content = std::fs::read_to_string(&di_file)
+        .unwrap_or_else(|e| panic!("closedi must write {}: {e}", di_file.display()));
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(
+        lines.len(),
+        4,
+        "expected header + 3 yearly rows, got:\n{content}"
+    );
+    assert!(lines[0].starts_with("\"Hour\""), "header: {:?}", lines[0]);
+
+    std::fs::remove_dir_all(&scratch).ok();
+}

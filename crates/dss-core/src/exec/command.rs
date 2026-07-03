@@ -122,6 +122,9 @@ impl Dss {
             cmd::BUILD_Y => self.do_build_y(),
             cmd::GET => self.do_get_cmd(),
             cmd::SAMPLE => self.do_sample_cmd(),
+            // Pascal `DoCloseDICmd` (`ExecHelper.pas:4199`): flush + close any
+            // open demand-interval files.
+            cmd::CLOSE_DI => self.do_close_di_cmd(),
             cmd::RESET => self.do_reset_cmd(),
             cmd::ALLOCATE_LOADS => self.do_allocate_loads_cmd(),
             cmd::RELCALC => self.do_relcalc_cmd(),
@@ -435,8 +438,18 @@ impl Dss {
         self.edit_active();
     }
 
-    /// Pascal `DoClearCmd`: drop the circuit and every object.
+    /// Pascal `DoClearCmd`: drop the circuit and every object. The executive
+    /// first flushes any open demand-interval files (`Executive.pas:283`
+    /// `Clear` → `if DIFilesAreOpen then CloseAllDIFiles`) so a yearly run's
+    /// pending `DI_*` data is written, not lost with the circuit.
     fn do_clear_cmd(&mut self) {
+        if self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.em_di.di_files_are_open)
+        {
+            self.do_close_di_cmd();
+        }
         for cls in &mut self.classes {
             cls.objects.clear();
             cls.name_to_idx.clear();
