@@ -11,6 +11,30 @@
 use super::*;
 use crate::report::EXPORT_OPTIONS;
 
+/// Which register-dump export is running (Pascal `ExportMeters`/`ExportGenMeters`/
+/// `ExportPVSystemMeters`/`ExportStorageMeters`); selects the element list,
+/// register-name set, header label, and file-name spellings.
+enum RegKind {
+    Meters,
+    Generators,
+    PvSystem,
+    Storage,
+}
+
+/// Pascal `WriteSingle*MeterFile`'s rewrite test: (re)create the file unless it
+/// already exists **and** its first line begins with `Year` (case-insensitive,
+/// the header sentinel) — a missing, unreadable, or non-`Year` file is rewritten.
+fn register_need_rewrite(path: &Path) -> bool {
+    match std::fs::read_to_string(path) {
+        Ok(s) => !s
+            .lines()
+            .next()
+            .and_then(|l| l.get(..4))
+            .is_some_and(|p| p.eq_ignore_ascii_case("Year")),
+        Err(_) => true,
+    }
+}
+
 impl Dss {
     /// Pascal `DoExportCmd` (`ExportOptions.pas:127`): read the report keyword,
     /// resolve it against `ExportCommands`, dispatch to the matching exporter.
@@ -150,6 +174,11 @@ impl Dss {
                 export::export_voltages_elements(c, ckt)
             }),
             15 => self.export_monitors(&monitor_name),
+            12 => self.export_registers(&explicit, RegKind::Generators),
+            13 => self.export_loads_to_file(&explicit),
+            14 => self.export_registers(&explicit, RegKind::Meters),
+            49 => self.export_registers(&explicit, RegKind::PvSystem),
+            50 => self.export_registers(&explicit, RegKind::Storage),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             47 => self.export_with(&explicit, "EXP_YVoltages.csv", export::export_y_voltages),
             48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
@@ -326,6 +355,307 @@ impl Dss {
         self.last_result_file = last_path.clone();
         self.vars.add("@lastfile", &last_path);
         self.vars.add("@lastexportfile", &last_path);
+    }
+
+    /// `Export Loads` (Pascal `ExportLoads`): the present load-allocation view,
+    /// one row per enabled load. A fresh file (no append), pure Load-field reads.
+    fn export_loads_to_file(&mut self, explicit: &str) {
+        let content = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            crate::report::export::export_loads(&self.classes, &ckt.loads)
+        };
+        self.write_export(explicit, "EXP_LOADS.csv", &content);
+    }
+
+    /// `Export Meters`/`Generators`/`PVSystem_Meters`/`Storage_Meters` (Pascal
+    /// `ExportMeters`/`ExportGenMeters`/`ExportPVSystemMeters`/
+    /// `ExportStorageMeters`): dump each enabled element's registers. Two paths:
+    /// a leading `/m` filename switch writes one file per element
+    /// (`WriteMultiple*MeterFiles`); otherwise a single **append** file
+    /// (`WriteSingle*MeterFile`) — like `Export Summary`, so a running log
+    /// accumulates across runs.
+    fn export_registers(&mut self, explicit: &str, kind: RegKind) {
+        let (label, default_name, multi_prefix, header_names, rows) =
+            self.gather_register_rows(kind);
+        let (year, hour, case) = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            (
+                ckt.solution.year,
+                ckt.solution.int_hour,
+                ckt.case_name.clone(),
+            )
+        };
+        // `NameIfNotNil(LoadDurCurveObj)`: the LoadDuration solve mode /
+        // `Set LoadDurCurve=` is not modeled (kept deferred), so the curve is
+        // always nil here and the column is empty — faithful for every non-LD deck.
+        let ldcurve = "";
+
+        // Pascal `AnsiLowerCase(Copy(FileNm, 1, 2)) = '/m'` (the multi-file switch).
+        if explicit.to_lowercase().starts_with("/m") {
+            self.write_register_multi(multi_prefix, label, year, ldcurve, hour, &rows);
+        } else {
+            self.write_register_single(
+                explicit,
+                default_name,
+                label,
+                &header_names,
+                &case,
+                year,
+                ldcurve,
+                hour,
+                &rows,
+            );
+        }
+    }
+
+    /// Gather the enabled elements' register rows + the single-file header names
+    /// for `kind`, downcasting each `ElemRef` to its concrete type. Returns
+    /// `(label, default_name, multi_prefix, header_names, rows)`.
+    fn gather_register_rows(
+        &self,
+        kind: RegKind,
+    ) -> (
+        &'static str,
+        &'static str,
+        &'static str,
+        Vec<String>,
+        Vec<crate::report::export::RegRow>,
+    ) {
+        use crate::elements::meter::EnergyMeter;
+        use crate::elements::pc::{Generator, PVSystem, Storage};
+        use crate::report::export::{
+            GEN_REGISTER_NAMES, PVSYSTEM_REGISTER_NAMES, RegRow, STORAGE_REGISTER_NAMES,
+        };
+        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+        // Class-fixed register names → owned `Vec<String>` (Gen/PV/Storage).
+        let fixed = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        match kind {
+            RegKind::Meters => {
+                let refs = &ckt.energy_meters;
+                // Pascal's header uses `energyMeters.First.RegisterNames` (the
+                // first meter's names, even if disabled).
+                let header_names = refs
+                    .first()
+                    .map(|&r| {
+                        self.classes[r.cls].objects[r.idx]
+                            .as_any()
+                            .downcast_ref::<EnergyMeter>()
+                            .expect("energy_meters holds EnergyMeter")
+                            .register_names()
+                            .to_vec()
+                    })
+                    .unwrap_or_default();
+                let rows = refs
+                    .iter()
+                    .filter_map(|&r| {
+                        let obj = &self.classes[r.cls].objects[r.idx];
+                        let m = obj
+                            .as_any()
+                            .downcast_ref::<EnergyMeter>()
+                            .expect("energy_meters holds EnergyMeter");
+                        m.enabled().then(|| RegRow {
+                            name: obj.data().name().to_string(),
+                            register_names: m.register_names().to_vec(),
+                            registers: m.registers().to_vec(),
+                        })
+                    })
+                    .collect();
+                ("Meter", "EXP_METERS.csv", "EXP_MTR_", header_names, rows)
+            }
+            RegKind::Generators => {
+                let names = fixed(&GEN_REGISTER_NAMES);
+                let rows = ckt
+                    .generators
+                    .iter()
+                    .filter_map(|&r| {
+                        let obj = &self.classes[r.cls].objects[r.idx];
+                        let g = obj
+                            .as_any()
+                            .downcast_ref::<Generator>()
+                            .expect("generators holds Generator");
+                        g.cd.enabled.then(|| RegRow {
+                            name: obj.data().name().to_string(),
+                            register_names: names.clone(),
+                            registers: g.registers.to_vec(),
+                        })
+                    })
+                    .collect();
+                ("Generator", "EXP_GENMETERS.csv", "EXP_GEN_", names, rows)
+            }
+            RegKind::PvSystem => {
+                let names = fixed(&PVSYSTEM_REGISTER_NAMES);
+                let rows = ckt
+                    .pv_systems
+                    .iter()
+                    .filter_map(|&r| {
+                        let obj = &self.classes[r.cls].objects[r.idx];
+                        let p = obj
+                            .as_any()
+                            .downcast_ref::<PVSystem>()
+                            .expect("pv_systems holds PVSystem");
+                        p.cd.enabled.then(|| RegRow {
+                            name: obj.data().name().to_string(),
+                            register_names: names.clone(),
+                            registers: p.registers.to_vec(),
+                        })
+                    })
+                    .collect();
+                ("PVSystem", "EXP_PVMeters.csv", "EXP_PV_", names, rows)
+            }
+            RegKind::Storage => {
+                let names = fixed(&STORAGE_REGISTER_NAMES);
+                let rows = ckt
+                    .storages
+                    .iter()
+                    .filter_map(|&r| {
+                        let obj = &self.classes[r.cls].objects[r.idx];
+                        let s = obj
+                            .as_any()
+                            .downcast_ref::<Storage>()
+                            .expect("storages holds Storage");
+                        s.cd.enabled.then(|| RegRow {
+                            name: obj.data().name().to_string(),
+                            register_names: names.clone(),
+                            registers: s.registers.to_vec(),
+                        })
+                    })
+                    .collect();
+                // TODO(compat): the Storage multi-file prefix is `EXP_PV_`, not
+                // `EXP_STORAGE_` — an upstream copy-paste bug in
+                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`,
+                // cloned from the PVSystem writer). Reproduced for the `/m` path;
+                // clean fix = `EXP_STORAGE_` in the post-1:1 pass.
+                ("Storage", "EXP_STORAGEMeters.csv", "EXP_PV_", names, rows)
+            }
+        }
+    }
+
+    /// The single-file register writer (Pascal `WriteSingle*MeterFile`): append to
+    /// an existing `Year`-headed file, else (re)create with the header. Sets
+    /// `GlobalResult`/`@lastexportfile`/`@lastfile` to the produced path.
+    #[allow(clippy::too_many_arguments)]
+    fn write_register_single(
+        &mut self,
+        explicit: &str,
+        default_name: &str,
+        label: &str,
+        header_names: &[String],
+        case: &str,
+        year: i32,
+        ldcurve: &str,
+        hour: i32,
+        rows: &[crate::report::export::RegRow],
+    ) {
+        use crate::report::export::{register_header, register_row};
+        let case_ = format!("{case}_");
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &case_,
+            explicit,
+            default_name,
+        );
+        // Pascal: rewrite unless the file exists AND its first line begins `Year`
+        // (`CompareText(Copy(TestStr,1,4),'Year')=0`); a missing/empty file rewrites.
+        let rewrite = register_need_rewrite(&path);
+        let mut content = String::new();
+        if rewrite {
+            content.push_str(&register_header(label, header_names));
+            content.push('\n');
+        }
+        for row in rows {
+            content.push_str(&register_row(
+                year,
+                ldcurve,
+                hour,
+                &row.name,
+                &row.registers,
+            ));
+            content.push('\n');
+        }
+        let write_res = if rewrite {
+            std::fs::write(&path, content.as_bytes())
+        } else {
+            use std::io::Write;
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .and_then(|mut f| f.write_all(content.as_bytes()))
+        };
+        match write_res {
+            Ok(()) => {
+                let p = path.to_string_lossy().into_owned();
+                self.vars.add("@lastfile", &p);
+                self.vars.add("@lastexportfile", &p);
+                self.last_result_file = p;
+            }
+            Err(e) => self.errors.push(format!(
+                "Error writing report file \"{}\": {e}",
+                path.display()
+            )),
+        }
+    }
+
+    /// The `/m` multi-file register writer (Pascal `WriteMultiple*MeterFiles`): one
+    /// `<OutputDir><prefix><UPPER name>.csv` per enabled element (no `CaseName_`
+    /// prefix), header written only when the file does not yet exist. Pascal's
+    /// `DoExportCmd` tail then sets `@lastexportfile`/`@lastfile` to the literal
+    /// `/m` switch string (the local `FileName` was never rewritten), which we
+    /// reproduce.
+    fn write_register_multi(
+        &mut self,
+        prefix: &str,
+        label: &str,
+        year: i32,
+        ldcurve: &str,
+        hour: i32,
+        rows: &[crate::report::export::RegRow],
+    ) {
+        use crate::report::export::{register_header, register_row};
+        for row in rows {
+            let default_name = format!("{prefix}{}.csv", row.name.to_uppercase());
+            let path = crate::report::output::export_path(
+                &self.output_directory,
+                &self.current_dir,
+                "",
+                "",
+                &default_name,
+            );
+            // Multi-file uses the plain existence test (no `Year`-line check).
+            let create = !path.exists();
+            let mut content = String::new();
+            if create {
+                content.push_str(&register_header(label, &row.register_names));
+                content.push('\n');
+            }
+            content.push_str(&register_row(
+                year,
+                ldcurve,
+                hour,
+                &row.name,
+                &row.registers,
+            ));
+            content.push('\n');
+            let write_res = if create {
+                std::fs::write(&path, content.as_bytes())
+            } else {
+                use std::io::Write;
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .and_then(|mut f| f.write_all(content.as_bytes()))
+            };
+            if let Err(e) = write_res {
+                self.errors.push(format!(
+                    "Error writing report file \"{}\": {e}",
+                    path.display()
+                ));
+            }
+        }
+        // Pascal `SetLastResultFile(DSS, '/m')` + `@lastexportfile := '/m'`.
+        self.vars.add("@lastfile", "/m");
+        self.vars.add("@lastexportfile", "/m");
+        self.last_result_file = "/m".to_string();
     }
 
     /// `Export Y` (Pascal `ExportY`): the assembled system Y, sparse-triplet

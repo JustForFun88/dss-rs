@@ -997,3 +997,137 @@ fn export_monitors_match_oracle() {
         ("export_mon_tap", mon()),
     ]);
 }
+
+// --- WP8.3 step 2: the register/load dumps -----------------------------------
+// `Export Meters`/`Generators`/`PVSystem_Meters`/`Storage_Meters` dump each enabled
+// element's registers (`Year, LDCurve, Hour, <Name>` + `%10.0f` per register) under
+// a `"quoted"` register-name header; `Export Loads` dumps the present allocation
+// view. No corpus deck uses these keywords, so the fixtures are synthesized
+// (PHASE8_PLAN §1). The header line is compared **verbatim** (the register-name
+// set/quoting is the report's contract); the register values are `%10.0f` integers,
+// so `rel = 0` / `abs = 0.5` pins each register's scale (one kWh unit ≫ 0.5) while
+// clearing the last-integer rounding boundary. Two fixtures keep every value
+// tightly oracle-pinned (no masking):
+//   A) plain IEEE13 + an EnergyMeter, daily → Meters + Loads. The meter registers
+//      match to ~1e-8 (the same daily meter path `corpus_live.rs` pins), so `%10.0f`
+//      is identical.
+//   B) IEEE13 + Generator + PVSystem + Storage (off the metered zone), daily → the
+//      DER register dumps. Their own round kWh/kW registers match cleanly; keeping
+//      the DER out of the metered, regulated zone avoids the ~3e-5 metered-element
+//      coupling that would straddle the meter's Max kW rounding boundary.
+
+/// Register rows: `%10.0f` integers — exact but for the last-digit rounding
+/// boundary; `abs = 0.5` clears it, `rel = 0` keeps every register scale-pinned.
+fn register_policy() -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.5,
+        col_tol: vec![],
+    }
+}
+
+/// `Export Meters` (Pascal `ExportMeters`/`WriteSingleMeterFile`) + `Export Loads`
+/// (Pascal `ExportLoads`) on the daily-solved plain IEEE13 + EnergyMeter fixture.
+#[test]
+fn export_meters_loads_match_oracle() {
+    // Loads: `%8.1f`/`%5.3f` fixed-decimal fields — additive last-digit floors
+    // (kW/kvar/ConnectedkVA at ±0.05, PF/AllocFactor at ±0.0005). `abs = 0.05`
+    // covers the coarsest; the integer Phases/Model columns are exact within it.
+    let loads = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.05,
+        col_tol: vec![],
+    };
+    run_shared_exports(&[
+        ("export_meters", register_policy()),
+        ("export_loads", loads),
+    ]);
+}
+
+/// `Export Generators`/`PVSystem_Meters`/`Storage_Meters` (Pascal `ExportGenMeters`/
+/// `ExportPVSystemMeters`/`ExportStorageMeters`) on the daily-solved IEEE13 + DER
+/// fixture — each DER's kWh/kvarh/Max kW/Max kVA/Hours/Price registers.
+#[test]
+fn export_der_registers_match_oracle() {
+    run_shared_exports(&[
+        ("export_generators", register_policy()),
+        ("export_pvsystem_meters", register_policy()),
+        ("export_storage_meters", register_policy()),
+    ]);
+}
+
+/// The `/m` multi-file switch (Pascal `WriteMultipleMeterFiles`): `Export Meters
+/// /m` writes one `EXP_MTR_<NAME>.csv` per enabled meter (no `CaseName_` prefix)
+/// and leaves `@lastexportfile` = the literal `/m` (Pascal's `DoExportCmd` tail
+/// quirk). Self-consistency gate (no separate oracle capture): the per-meter file's
+/// data row must carry the **same** register values as the single-file
+/// `export_meters` golden already pins against the oracle — so a `/m` path bug
+/// (wrong file name, dropped header, wrong element) fails loudly, while the values
+/// stay oracle-anchored transitively.
+#[test]
+fn export_meters_multifile_switch() {
+    let dir = phase8_dir();
+    let meta: FeederMeta = {
+        let p = dir.join("export_meters.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let single = {
+        let p = dir.join("export_meters.txt");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir("meters_multifile");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("export meters /m");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // The `/m` tail sets @lastexportfile / GlobalResult to the literal switch.
+    assert_eq!(dss.last_result_file(), "/m");
+
+    // The one enabled meter (EM1) got its own file, header + data row, values
+    // identical to the single-file golden's EM1 row (transitively oracle-pinned).
+    let em1 = scratch.join("EXP_MTR_EM1.csv");
+    let multi =
+        std::fs::read_to_string(&em1).unwrap_or_else(|e| panic!("read {}: {e}", em1.display()));
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.5,
+        col_tol: vec![],
+    };
+    compare_export(&single, &multi, &policy, "export_meters_multifile");
+
+    std::fs::remove_dir_all(&scratch).ok();
+}

@@ -16,11 +16,13 @@ mod bus_coords;
 mod counts;
 mod currents;
 mod elem;
+mod loads;
 mod losses;
 mod node_names;
 mod node_order;
 mod p_by_phase;
 mod powers;
+mod registers;
 mod result;
 mod seq_currents;
 mod seq_powers;
@@ -40,11 +42,16 @@ pub use bus_coords::export_bus_coords;
 pub use counts::export_counts;
 pub(crate) use currents::export_currents;
 pub(crate) use elem::{export_elem_currents, export_elem_powers, export_elem_voltages};
+pub(crate) use loads::export_loads;
 pub(crate) use losses::export_losses;
 pub use node_names::export_node_names;
 pub(crate) use node_order::export_node_order;
 pub(crate) use p_by_phase::export_p_by_phase;
 pub(crate) use powers::export_powers;
+pub(crate) use registers::{
+    GEN_REGISTER_NAMES, PVSYSTEM_REGISTER_NAMES, RegRow, STORAGE_REGISTER_NAMES, register_header,
+    register_row,
+};
 pub(crate) use result::export_result;
 pub(crate) use seq_currents::export_seq_currents;
 pub(crate) use seq_powers::export_seq_powers;

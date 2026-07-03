@@ -11,23 +11,56 @@ use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE, reg};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
+use crate::elements::pc::{PVSystem, Storage};
 use crate::elements::pd::line::Line;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore, SysCtx};
 
 use super::super::downcast_meter;
 
-/// Pascal `TEnergyMeter.ResetAll` (l.851): reset every meter's registers.
-/// (Demand-interval files are Phase 8; the `SystemMeter` core and the
-/// Generator/Storage/PVSystem `ResetRegistersAll` calls are WP6.8 / later.)
+/// Pascal `TEnergyMeter.ResetAll` (l.851): reset every meter's registers, plus
+/// the Generator/Storage/PVSystem `ResetRegistersAll` tail (l.895-897) — those
+/// DER registers accumulate in `SampleAll`'s tail below, so they reset here too.
+/// (Demand-interval files + the `SystemMeter` core are WP8.3 step 4.)
 pub(crate) fn reset_all_meters(ckt: &mut Circuit, store: &mut dyn ElemStore) {
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         downcast_meter(store, meter_ref).reset_registers();
     }
+    // Pascal `TEnergyMeter.ResetAll` l.895-897 (the reset is not gated on any
+    // meter existing).
+    for r in ckt.generators.clone() {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<Generator>()
+            .expect("generators holds Generator")
+            .reset_registers();
+    }
+    for r in ckt.storages.clone() {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<Storage>()
+            .expect("storages holds Storage")
+            .reset_registers();
+    }
+    for r in ckt.pv_systems.clone() {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<PVSystem>()
+            .expect("pv_systems holds PVSystem")
+            .reset_registers();
+    }
 }
 
-/// Pascal `TEnergyMeter.SampleAll` (l.900): sample every enabled meter.
+/// Pascal `TEnergyMeter.SampleAll` (l.900): sample every enabled meter, then the
+/// Generator/Storage/PVSystem `SampleAll` tail (l.928-931) — the DER energy
+/// registers are accumulated **here**, unconditionally (not gated on a meter
+/// existing), which is why `Export Generators`/`Storage_Meters`/`PVSystem_Meters`
+/// see nonzero registers even with no `EnergyMeter` defined. (The `SystemMeter`
+/// sample + the demand-interval writers are WP8.3 step 4.)
 pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
@@ -40,6 +73,42 @@ pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys:
         if enabled {
             take_sample_one(meter_ref, ckt, store, sys);
         }
+    }
+    sample_all_der(ckt, store, sys);
+}
+
+/// The DER `SampleAll` tail of `TEnergyMeter.SampleAll` (Generator/Storage/
+/// PVSystem, l.928-931). Each class walks its enabled elements accumulating the
+/// energy registers `Export Generators`/`Storage_Meters`/`PVSystem_Meters` dump.
+fn sample_all_der(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
+    let interval_hrs = ckt.solution.interval_hrs;
+    let trapezoidal = ckt.trapezoidal_integration;
+    let positive_sequence = ckt.positive_sequence;
+    let price_signal = ckt.price_signal;
+    for r in ckt.generators.clone() {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<Generator>()
+            .expect("generators holds Generator")
+            .take_sample(interval_hrs, trapezoidal, positive_sequence, price_signal);
+    }
+    // Pascal comment: "samples energymeter part of storage elements (not update)".
+    for r in ckt.storages.clone() {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<Storage>()
+            .expect("storages holds Storage")
+            .take_sample(sys, &ckt.solution.node_v, interval_hrs, trapezoidal);
+    }
+    for r in ckt.pv_systems.clone() {
+        store
+            .obj_mut(r)
+            .as_any_mut()
+            .downcast_mut::<PVSystem>()
+            .expect("pv_systems holds PVSystem")
+            .take_sample(interval_hrs, trapezoidal, positive_sequence, price_signal);
     }
 }
 
