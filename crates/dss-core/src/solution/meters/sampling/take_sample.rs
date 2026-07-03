@@ -78,8 +78,11 @@ pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys:
 }
 
 /// The DER `SampleAll` tail of `TEnergyMeter.SampleAll` (Generator/Storage/
-/// PVSystem, l.928-931). Each class walks its enabled elements accumulating the
-/// energy registers `Export Generators`/`Storage_Meters`/`PVSystem_Meters` dump.
+/// PVSystem, l.928-931). Each class walks its elements accumulating the energy
+/// registers `Export Generators`/`Storage_Meters`/`PVSystem_Meters` dump. Pascal's
+/// `<Class>.SampleAll` guards `if enabled then TakeSample`; here the `!enabled`
+/// early-return lives **inside** each `take_sample`, so the guard is honored
+/// without an outer filter (a disabled element is a cheap no-op).
 fn sample_all_der(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let interval_hrs = ckt.solution.interval_hrs;
     let trapezoidal = ckt.trapezoidal_integration;
