@@ -208,8 +208,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
-   "tag": "unsupported_feature=file-backed-arrays",
-   "note": "Version8/Distrib/Examples/ExpControl/Master.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"LoadShape.cloud: LoadShape has no data to be normalized. Check for previous errors. (61 [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_feature=file-backed-arrays; unsupported_command=Export",
+   "note": "Version8/Distrib/Examples/ExpControl/Master.dss: Runs to completion on the Rust engine (5 circuits x 86400-step 1s daily; hour=24, converged; 27.2s debug / 2.3s release). Blocked by file-backed LoadShape arrays (Cloud/Clear shapes stay empty) and Export monitors. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
@@ -524,7 +524,7 @@
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
    "tag": "unsupported_option=TotalTime; unsupported_feature=file-backed-arrays",
-   "note": "file-backed numeric arrays (\"sngfile=\") are not supported yet [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Runs to completion on the Rust engine (yearly, 100 steps; hour=100, converged; 6.3s debug / 1.1s release). Blocked by memory-mapped/file-backed LoadShapes and Set/Get TotalTime. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -663,43 +663,43 @@
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (8.7s debug / 0.5s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"U [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (14.5s debug / 0.9s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not fou"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (6.1s debug, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"U [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (7.7s debug / 0.5s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: O [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (10.8s debug / 0.5s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unk [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (21.7s debug / 0.8s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unkno [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (27.9s debug / 1.8s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
-   "tag": "unsupported_class=Storage; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"Storage\\\" not found.\", \"Unknown par"
+   "tag": "unsupported_command=BatchEdit,Export",
+   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (11.6s debug, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
@@ -738,8 +738,8 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
-   "tag": "unsupported_command=Plot",
-   "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\"] [Rust-engine hang >40s on compile+run \u2014 WP8.2 tracked-open, see STATUS \u00a71f]"
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS: Runs to completion on the Rust engine (2900-step 1s duty on IEEE8500; converged; 127.9s debug / 3.4s release \u2014 genuinely slow in debug but finite). Sole blocker: file-backed LoadShape array (Plot/Visualize are silent no-ops, so the old unsupported_command=Plot tag was stale). WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss",

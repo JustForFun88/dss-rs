@@ -29,8 +29,11 @@ append-if-exists + `DateTime` mask (`ColSel::Index`+`GateSpec::Mask`), the
 The **WP8.2 completion gate** then closed WP8.2: the IEEE8500 `Voltages`/`Summary`/`Counts`
 goldens + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE
 **26.3%→35.5%**) + the Rust `CorpusGuard` (keeps the vendored corpus pristine under
-report-writing decks). Tracked-open (deferred): 9 decks **hang the Rust engine**
-(>40s, StorageController the prime suspect, kept in `skipped_unsupported`). The
+report-writing decks). The "9 decks hang the Rust engine" tracked-open is **RESOLVED —
+no hang exists**: all 9 complete and converge (≤28s debug, ≤3.4s release; the >40s
+watchdog hits were debug-build wall-clock + the probe's own CPU contention); they stay
+in `skipped_unsupported` on their real blockers, stale tags refreshed (§1f "Issue-1
+resolution"). The
 **rare live-gate flake is RESOLVED**: root cause was a per-process convergence misfire
 in the pinned engine itself (not concurrency/file races); the oracle server now
 retries in-process (§1f "Issue-2 root cause").
@@ -101,7 +104,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). Tracked-open (deferred): 9 decks **hang the Rust engine** (>40s; StorageController prime suspect), kept in `skipped_unsupported`. Branch `phase-8-reporting`. **next = WP8.3** (Export: monitors/meters/DER/reliability/faultstudy + demand-interval files + `TSystemMeter` core). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **next = WP8.3** (Export: monitors/meters/DER/reliability/faultstudy + demand-interval files + `TSystemMeter` core). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -1378,15 +1381,29 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     Rust port doesn't port `debugtrace` file output) and can't self-delete (dss-python holds the
     handle open) is caught by this outer guard. Git-verified: the corpus stays pristine after the
     full gate.
-  - **Tracked-open (deferred per user request) — 9 decks hang the Rust engine (>40s on
-    compile+run)**, so they were **excluded from migration** and kept in `skipped_unsupported`
-    (each annotated in its manifest `note`): `ExpControl/Master` (file-backed arrays),
-    `MemoryMappingLoadShapes/ckt24/master_ckt24` (memory-mapped loadshapes), the 6
-    `StorageControllerTechNote/*Run` (StorageController dispatch — also BatchEdit-blocked; their
-    `unsupported_class=Storage` tag is stale, Storage is ported), and `8500-Node/P174_Run_360kW_PV`
-    (heavy 8500+PV). Whether these are legitimately-slow long solves or a **non-termination bug**
-    (the StorageController set is the prime suspect — a controller that doesn't terminate is a bug)
-    is **deferred to a focused follow-up**, not waved off.
+  - **Issue-1 resolution (RESOLVED 2026-07-03 — "9 decks hang the Rust engine >40s" was a
+    watchdog artifact, no hang exists).** Re-probed all 9 (plus the 2 sibling
+    `StorageControllerTechNote` decks) sequentially on an idle machine with a 900s watchdog +
+    post-run state inspection (`get hour`, `converged_flag`, `solution_count`): **every deck
+    completes and converges**, with only the expected `not ported` errors. Release build:
+    0.5–3.4s each. Debug build: the 8 `StorageControllerTechNote/*Run` finish in 6–28s (all
+    `hour=24`, 39–115 total solves — the control loop terminates normally; no StorageController
+    bug), `ExpControl/Master` 27s (5 circuits × 86400-step 1s daily, `hour=24`), `master_ckt24`
+    6s (yearly ×100), and `8500-Node/P174_Run_360kW_PV` **128s** (2900-step 1s duty on IEEE8500 —
+    genuinely slow in debug, finite). The engine is byte-identical to the one the original probe
+    ran (`git diff b862bee..HEAD -- crates/` touches only test files), so the ">40s" hits were
+    the original probe's methodology: debug-build wall-clock plus CPU contention from its own
+    detached timed-out threads (a 40s watchdog leaves the thread running and crunching through
+    the rest of the 192-deck sweep; P174 alone exceeds 40s in debug even when idle). All 9 stay
+    in `skipped_unsupported` on their **real** blockers, with manifest tags/notes refreshed
+    (11 entries): the 8 TechNote decks → `unsupported_command=BatchEdit,Export` (the stale
+    `unsupported_class=Storage` dropped — Storage/StorageController are ported, WP7.4),
+    `P174_Run_360kW_PV` → `unsupported_feature=file-backed-arrays` (its old
+    `unsupported_command=Plot` tag was stale too — Plot/Visualize are silent no-ops; the sole
+    remaining error is the file-backed `PVCurve` LoadShape), `ExpControl/Master` gains
+    `unsupported_command=Export`. Corpus-hygiene note for a future pass: ~19 more
+    `skipped_unsupported` entries still carry an `unsupported_class=Storage/storage` tag from
+    the pre-WP7.4 era (GFM/IBRDynamics/StoCtrl_* families) — not re-probed here.
   - **Issue-2 root cause (RESOLVED — the "rare live-gate flake" was never a concurrency race).**
     The `Test/YgD-Test.dss step 0: oracle did not converge` flake was root-caused empirically to a
     **per-process convergence misfire in the pinned engine itself** (dss_capi 0.14.5): on a fresh
