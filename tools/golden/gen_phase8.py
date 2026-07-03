@@ -259,7 +259,11 @@ REGISTER_A_REPORTS = [
     ("loads", "EXP_LOADS.csv", "export_loads"),
 ]
 REGISTER_B_POST = [
+    # Two enabled generators (creation order g1→g2 pins the register-dump row
+    # order) + a disabled g3 (pins the enabled-filter: it must NOT appear).
     "new generator.g1 bus1=675 phases=3 kv=4.16 kw=100 pf=0.9 model=1",
+    "new generator.g2 bus1=675 phases=3 kv=4.16 kw=100 pf=0.9 model=1",
+    "new generator.g3 bus1=675 phases=3 kv=4.16 kw=100 pf=0.9 model=1 enabled=no",
     "new pvsystem.pv1 bus1=675 phases=3 kv=4.16 kva=120 pmpp=100 irradiance=1",
     "new storage.st1 bus1=675 phases=3 kv=4.16 kwrated=50 kwhrated=100 %stored=50 state=discharging",
     "set mode=daily number=3 stepsize=1h",

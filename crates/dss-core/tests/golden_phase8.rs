@@ -1033,16 +1033,25 @@ fn register_policy() -> ExportPolicy {
 /// (Pascal `ExportLoads`) on the daily-solved plain IEEE13 + EnergyMeter fixture.
 #[test]
 fn export_meters_loads_match_oracle() {
-    // Loads: `%8.1f`/`%5.3f` fixed-decimal fields — additive last-digit floors
-    // (kW/kvar/ConnectedkVA at ±0.05, PF/AllocFactor at ±0.0005). `abs = 0.05`
-    // covers the coarsest; the integer Phases/Model columns are exact within it.
+    // Loads columns: Load(0), ConnectedKVA(1,`%8.1f`), AllocFactor(2,`%5.3f`),
+    // Phases(3), kW(4,`%8.1f`), kvar(5,`%8.1f`), PF(6,`%5.3f`), Model(7). Default
+    // `abs = 0.05` = the `%8.1f` additive last-digit floor; the two `%5.3f`
+    // columns (AllocFactor, PF) get the tighter `abs = 5e-4` (they are static
+    // input echoes, so they should match exactly — this keeps them pinned rather
+    // than letting the coarse default mask a 0.05 field-mapping slip).
+    let three_dec = |i: usize| ColTol {
+        sel: ColSel::Index(i),
+        rel: 0.0,
+        abs: 5e-4,
+        gate: None,
+    };
     let loads = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.05,
-        col_tol: vec![],
+        col_tol: vec![three_dec(2), three_dec(6)],
     };
     run_shared_exports(&[
         ("export_meters", register_policy()),
@@ -1130,4 +1139,117 @@ fn export_meters_multifile_switch() {
     compare_export(&single, &multi, &policy, "export_meters_multifile");
 
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Compile the master + replay the post commands from `<stem>.meta.json`, route
+/// reports into a fresh scratch dir, and hand the driven `Dss` + scratch path to
+/// `body`. Shared by the append / Storage-`/m` self-consistency tests below.
+fn with_register_fixture(stem: &str, tag: &str, body: impl FnOnce(&mut Dss, &std::path::Path)) {
+    let dir = phase8_dir();
+    let meta: FeederMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir(tag);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    body(&mut dss, &scratch);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The single-file **append** path (Pascal `WriteSingleMeterFile`: append to a
+/// file whose first line begins `Year`, no re-emitted header). Two `Export
+/// Meters` into the same datapath must leave one header + two data rows — pinning
+/// `register_need_rewrite`'s "append, don't rewrite" branch (the fresh-dir goldens
+/// only ever exercise the create branch).
+#[test]
+fn export_meters_append_accumulates() {
+    with_register_fixture("export_meters", "meters_append", |dss, _scratch| {
+        dss.command("export meters");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let path = dss.last_result_file().to_string();
+        dss.command("export meters"); // second export → append, not rewrite
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert_eq!(
+            dss.last_result_file(),
+            path.as_str(),
+            "append reused the same file"
+        );
+
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(
+            lines.len(),
+            3,
+            "append: expected 1 header + 2 rows, got {lines:?}"
+        );
+        assert!(lines[0].starts_with("Year"), "header line: {:?}", lines[0]);
+        // Both rows are the same EM1 sample (a re-emitted header on append, or a
+        // truncation, would break this).
+        assert!(lines[1].contains("\"EM1\""), "row 1: {:?}", lines[1]);
+        assert_eq!(lines[1], lines[2], "the two appended rows differ");
+    });
+}
+
+/// The Storage `/m` path reproduces an **upstream copy-paste bug** — its per-file
+/// prefix is `EXP_PV_`, not `EXP_STORAGE_` (`ExportResults.pas:2240`,
+/// `TODO(compat)`). Pin that exact filename (and the transitively-oracle-anchored
+/// row) so the deliberately-faithful quirk cannot silently drift to `EXP_STORAGE_`.
+#[test]
+fn export_storage_multifile_uses_pv_prefix() {
+    let single = {
+        let p = phase8_dir().join("export_storage_meters.txt");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+    with_register_fixture(
+        "export_storage_meters",
+        "storage_multifile",
+        |dss, scratch| {
+            dss.command("export storage_meters /m");
+            assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+            assert_eq!(dss.last_result_file(), "/m");
+
+            // The copy-paste-bug prefix: EXP_PV_<NAME>.csv, NOT EXP_STORAGE_.
+            let pv = scratch.join("EXP_PV_ST1.csv");
+            assert!(
+                pv.is_file(),
+                "storage /m must write EXP_PV_ST1.csv (the EXP_PV_ prefix bug)"
+            );
+            assert!(
+                !scratch.join("EXP_STORAGE_ST1.csv").exists(),
+                "storage /m must NOT use an EXP_STORAGE_ prefix"
+            );
+            let multi = std::fs::read_to_string(&pv)
+                .unwrap_or_else(|e| panic!("read {}: {e}", pv.display()));
+            compare_export(
+                &single,
+                &multi,
+                &register_policy(),
+                "export_storage_multifile",
+            );
+        },
+    );
 }
