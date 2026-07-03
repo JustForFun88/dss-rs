@@ -29,7 +29,10 @@ mod seq_z;
 mod summary;
 mod taps;
 mod voltages;
+mod voltages_elements;
+mod y_currents;
 mod y_matrix;
+mod y_voltages;
 mod ynode_list;
 mod yprims;
 
@@ -50,7 +53,10 @@ pub use seq_z::export_seq_z;
 pub(crate) use summary::{SummaryFields, export_summary, max_pu_voltage, min_pu_voltage};
 pub(crate) use taps::export_taps;
 pub use voltages::export_voltages;
+pub(crate) use voltages_elements::export_voltages_elements;
+pub use y_currents::export_y_currents;
 pub use y_matrix::export_y;
+pub use y_voltages::export_y_voltages;
 pub use ynode_list::export_ynode_list;
 pub(crate) use yprims::export_yprims;
 

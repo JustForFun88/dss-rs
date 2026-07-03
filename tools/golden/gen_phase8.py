@@ -119,6 +119,12 @@ FEEDER_REPORTS = [
     ("yprims", "EXP_YPRIM.csv", "export_yprims"),
     ("summary", "EXP_Summary.csv", "export_summary"),
     ("result", "EXP_Result.csv", "export_result"),
+    # WP8.2 follow-up — the remaining solution-family exports: VoltagesElements
+    # (per-element terminal voltages, the by-element companion to Voltages) and the
+    # raw Y-ordered node vectors YVoltages (NodeV) / YCurrents (Solution.Currents).
+    ("voltageselements", "EXP_VOLTAGES_ELEM.csv", "export_voltageselements"),
+    ("yvoltages", "EXP_YVoltages.csv", "export_yvoltages"),
+    ("ycurrents", "EXP_YCurrents.csv", "export_ycurrents"),
 ]
 
 # The IEEE 8500-Node bus/summary exports (PHASE8_PLAN §WP8.2 step 4): pin the

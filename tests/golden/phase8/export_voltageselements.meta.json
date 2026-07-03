@@ -1,0 +1,9 @@
+{
+  "report": "voltageselements",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "EXP_VOLTAGES_ELEM.csv"
+}

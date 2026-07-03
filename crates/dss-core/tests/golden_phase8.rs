@@ -814,6 +814,73 @@ fn export_yprims_matches_oracle() {
     run_feeder_export("export_yprims", &policy);
 }
 
+// --- WP8.2 follow-up: the remaining solution-family exports ------------------
+// `VoltagesElements` (per-element terminal voltages — the by-element companion to
+// `Voltages`) and the raw Y-ordered node vectors `YVoltages` (NodeV) / `YCurrents`
+// (Solution.Currents). Read-only; the engine physics (node V / node currents) is
+// pinned to 1e-8 by `corpus_live`, so these pin report layout.
+
+/// `Export VoltagesElements` (Pascal `ExportVoltagesElements`): per-element,
+/// per-terminal, per-conductor `Node`(index)/`Magnitude`(kV,`%10.6g`)/`Angle`
+/// (`%6.3f`)/`pu`(`%9.5g`) + the per-terminal `Bus`/`BasekV`(`%6.3f`). Magnitude/
+/// pu/BasekV keep the 6-sig `EXPORT_REL`; the `Angle*` columns take the `%6.3f`
+/// additive printing floor (`rel = 0`, `abs = 0.0011`) — no gate needed (every
+/// conductor is either energized or exactly-ground `0`, no cancellation residual).
+/// Rows are ragged (an element writes only its own `NTerms` terminal blocks, not
+/// padded to `MaxNumTerminals`); `ExactOrdered` pins each row's fields.
+#[test]
+fn export_voltageselements_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![ColTol {
+            sel: ColSel::Prefix("angle".to_string()),
+            rel: 0.0,
+            abs: 0.0011, // %6.3f additive last-digit floor (3 decimals)
+            gate: None,
+        }],
+    };
+    run_feeder_export("export_voltageselements", &policy);
+}
+
+/// `Export YVoltages` (Pascal `ExportYVoltages`): the node voltage vector `NodeV`
+/// for nodes `1..NumNodes`, one `re, im` pair per line, no header. `%10.6g` (6
+/// sig) → `EXPORT_REL`; node voltages are kV-scale so `EXPORT_ABS` only backs the
+/// occasional near-zero component.
+#[test]
+fn export_yvoltages_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_yvoltages", &policy);
+}
+
+/// `Export YCurrents` (Pascal `ExportYCurrents`): the node injection-current
+/// vector `Solution.Currents` for nodes `1..NumNodes`, one `re, im` pair per line,
+/// no header. Passive nodes carry an **exact** `0` injection (both engines); the
+/// source/load nodes carry a large (~1e4 A) current pinned at `EXPORT_REL`, so
+/// there is no near-zero cancellation floor (unlike `Iresidual`).
+#[test]
+fn export_ycurrents_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_ycurrents", &policy);
+}
+
 // --- WP8.2 completion gate: the bus/summary exports at scale (IEEE 8500) ------
 // PHASE8_PLAN §WP8.2 step 4: `Voltages`/`Summary`/`Counts` on the solved IEEE
 // 8500-Node feeder (8531 nodes, 6103 devices), completing the export-diff over

@@ -66,7 +66,7 @@ archives under `docs/phase-records/`:
 [`phase-7-wp5.md`](docs/phase-records/phase-7-wp5.md),
 [`phase-7-wp6.md`](docs/phase-records/phase-7-wp6.md),
 [`phase-7-wp7.md`](docs/phase-records/phase-7-wp7.md) (the completed WP7.7 steps).
-Current scores: dss-core **lib 723**, **`solvable_now` 119** (the live corpus gate;
+Current scores: dss-core **lib 725**, **`solvable_now` 119** (the live corpus gate;
 WP8.2 completion gate migrated +31 `Export`-unblocked decks); oracle pinned to
 dss-python 0.15.7 (backend = dss_capi 0.14.5, `tools/golden/PIN.txt`).
 
@@ -110,10 +110,10 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 723, golden_feeders 1,
+cargo test --workspace      # dss-core lib 725, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 25,
+                            # golden_phase7_protection 1, golden_phase8 28,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1479,6 +1479,23 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     impossible because `apply_classify`'s `note[:300]` cap truncates the trailing `allowed
     1.42e-4` mid-token; the comparator itself is correct (`{:e}`), the cases are pre-existing
     tracked-opens kept out of the gate, a tooling nit outside WP8.2 scope.
+- **WP8.2 follow-up — the remaining solution-family exports (`VoltagesElements`/`YVoltages`/
+  `YCurrents`), done, gate-green.** These three read-only solution exports were listed in
+  PHASE8_PLAN WP8.2 step 1 but skipped in the sub-steps (an in-family gap, not a phase deferral).
+  `VoltagesElements` (ptr 35, `ExportVoltagesElements`/`WriteElementVoltagesExportFile`) — the
+  by-element companion to `Voltages`: per-element/terminal/conductor `Node`/`Magnitude`(kV)/
+  `Angle`/`pu` + per-terminal `Bus`/`BasekV`, ragged rows (only each element's `NTerms` blocks),
+  the conductor-1-only BasekV (with the Pascal grounded-first-conductor omission quirk reproduced),
+  walked Sources→PD→Faults→PC. `YVoltages` (47) / `YCurrents` (48, `ExportY{Voltages,Currents}`) —
+  the raw Y-ordered node vectors (`NodeV` / `Solution.Currents`), one `re, im` per node, no header.
+  Files `report/export/{voltages_elements,y_voltages,y_currents}.rs`; dispatch arms 35/47/48
+  (35 via `export_with_mut` for the element walk, 47/48 pure `fn(&Circuit)`). Gate: goldens
+  `export_{voltageselements,yvoltages,ycurrents}` on solved IEEE13 (`VoltagesElements` angles at the
+  `%6.3f` additive floor, magnitudes/vectors at `EXPORT_REL`) — matched the oracle first-run.
+  golden_phase8 **25→28**; lib **725**. Now every ptr in the `EXPORT_OPTIONS` solution family is
+  ported; the remaining unported keywords are WP8.3 (device/meter) + Phase 9 (CIM/GIC/A-Diakoptics)
+  + the faithfully-errored CDPSM set. (No corpus re-migration run here — a future `DSS_LIVE_CLASSIFY`
+  pass can pick up any deck these three unblock.)
 - **next — WP8.3 (Export: monitors, meters, DER, reliability, fault study, demand-interval
   files):** the device/meter exports (`Monitors`/`Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
   `Storage_Meters`/`EventLog`/`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/
