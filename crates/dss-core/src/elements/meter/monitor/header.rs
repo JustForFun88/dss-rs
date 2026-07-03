@@ -31,10 +31,14 @@ impl Monitor {
             2 | 8 | 10 if snap.kind != MeteredKind::Transformer => {
                 Some(format!("{} is not a transformer!", snap.full_name))
             }
-            3 if snap.kind != MeteredKind::PcElement => Some(format!(
-                "{} must be a power conversion element (Load or Generator)!",
-                snap.full_name
-            )),
+            // Pascal mode 3 checks BASECLASSMASK = PC_ELEMENT, so Storage (a PC
+            // element carrying its own `MeteredKind` for the mode-7 check) passes.
+            3 if !matches!(snap.kind, MeteredKind::PcElement | MeteredKind::Storage) => {
+                Some(format!(
+                    "{} must be a power conversion element (Load or Generator)!",
+                    snap.full_name
+                ))
+            }
             6 if snap.kind != MeteredKind::Capacitor => {
                 Some(format!("{} is not a capacitor!", snap.full_name))
             }

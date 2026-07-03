@@ -85,8 +85,9 @@ fn storage_gfm_mode_errors_not_silent() {
 }
 
 /// A mode-3 (state-variable) monitor on a Storage must attach and solve cleanly:
-/// Storage is a `TPCElement`, so the monitor's metered-kind check classifies it
-/// as `PcElement` (regression guard for the metered-kind branch).
+/// Pascal mode 3 validates `BASECLASSMASK = PC_ELEMENT` and Storage is a
+/// `TPCElement`, so the mode-3 check accepts `MeteredKind::Storage` alongside
+/// `PcElement` (regression guard for the metered-kind branch).
 #[test]
 fn storage_accepts_mode3_monitor() {
     let mut dss = Dss::new();
@@ -104,4 +105,49 @@ fn storage_accepts_mode3_monitor() {
         dss.errors()
     );
     assert!(dss.circuit().expect("circuit").is_solved);
+}
+
+/// A mode-7 (Storage-state) monitor must accept a Storage element: Pascal
+/// validates `CLASSMASK = STORAGE_ELEMENT` (Monitor.pas `RecalcElementData`
+/// case 7). The port misclassified Storage as plain `PcElement`, so every
+/// valid `mode=7 element=Storage.*` monitor errored "is not a storage
+/// device!" (found re-probing the StoCtrl_* corpus decks; mode-7 *sampling*
+/// stays deferred, this pins only the Pascal-faithful validation).
+#[test]
+fn storage_accepts_mode7_monitor() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("New circuit.t basekv=12.47 phases=3 bus1=src basefreq=60");
+    dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
+    dss.command("New Storage.s1 bus1=b phases=3 kV=12.47 kWrated=500 kWhrated=1000");
+    dss.command("New Monitor.msto element=Storage.s1 terminal=1 mode=7");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "unexpected errors: {:?}",
+        dss.errors()
+    );
+    assert!(dss.circuit().expect("circuit").is_solved);
+}
+
+/// The converse of [`storage_accepts_mode7_monitor`]: a mode-7 monitor on a
+/// non-Storage PC element must still raise Pascal's "is not a storage
+/// device!" (`CLASSMASK` check, msg 2016002).
+#[test]
+fn mode7_monitor_rejects_non_storage() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("New circuit.t basekv=12.47 phases=3 bus1=src basefreq=60");
+    dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
+    dss.command("New Load.l1 bus1=b phases=3 kV=12.47 kW=100 pf=0.95");
+    dss.command("New Monitor.msto element=Load.l1 terminal=1 mode=7");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("is not a storage device!")),
+        "expected the mode-7 class error, got: {:?}",
+        dss.errors()
+    );
 }
