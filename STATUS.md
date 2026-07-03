@@ -8,7 +8,18 @@
 > frontier.
 
 Last updated: 2026-07-03 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.3 step 3a landed, gate-green** — the **EventLog/ErrorLog
+reporting/exports/Save). **WP8.3 step 3b landed, gate-green** — the **`Faultstudy`
+export** (ptr 11, `ExportFaultStudy`, §2.1): `report/export/fault_study.rs` reads the
+**precomputed** per-bus `Ysc`/`BusCurrent` a prior `Solve mode=faultstudy` (WP7.9)
+populated and reports each bus's 3-phase (max `|BusCurrent|`), worst single-phase-to-
+ground, and worst node-to-node fault current — the 1φ/L-L columns are **local** per-bus
+`YFault` scratch inversions (copy `Ysc`, stamp `GFault=10000`, `CMatrix::invert`, read
+`VFault·GFault`), **no global re-solve, no hidden mutation** (a read-only `fn(&Circuit)`).
+Golden `export_faultstudy` (faultstudy-solved IEEE13, 17 buses) matched the oracle
+**first-run**; a rel-sweep proved the currents match ≤1e-8 rel, so the floor is purely
+the `%.2f` printing floor (`rel=0`/`abs=0.011`, the `Powers`/`P_byphase` discipline — no
+masking). golden_phase8 **37→38**; lib **728** (formatter gated end-to-end). Prior:
+**WP8.3 step 3a landed, gate-green** — the **EventLog/ErrorLog
 dumps** (ptrs 33/52, `ExportEventLog`/`ExportErrorLog`): the `report/export/logs.rs`
 `TStringList.SaveToFile` formatters (`DSS.EventStrings`/`DSS.ErrorStrings`, one entry
 per line) + the `exec/report.rs` dispatch (`EXP_EventLog.csv`/`EXP_ErrorLog.txt`). **Real
@@ -137,7 +148,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors`) + **step 2** (the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the export surfaced as a gap) + **step 3a** (`EventLog`/`ErrorLog` dumps + the missing Circuit-build `LogThisEvent` markers the `Set Log=yes` EventLog golden surfaced) landed gate-green; **next = WP8.3 step 3b** (`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/`AllocationFactors`). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors`) + **step 2** (the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the export surfaced as a gap) + **step 3a** (`EventLog`/`ErrorLog` dumps + the missing Circuit-build `LogThisEvent` markers the `Set Log=yes` EventLog golden surfaced) + **step 3b** (`Faultstudy` — read-only per-bus 3φ/1φ/L-L fault currents over the WP7.9-precomputed `Ysc`/`BusCurrent` via local `CMatrix` `YFault` scratch inversions) landed gate-green; **next = WP8.3 step 3c** (`BusReliability`/`BranchReliability`/`Capacity`, then `Overloads`/`Unserved`/`AllocationFactors`, then `Sections` (needs `FeederSections` persistence), then `Profile`). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -146,7 +157,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 728, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 37,
+                            # golden_phase7_protection 1, golden_phase8 38,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1724,9 +1735,37 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     `|| contains("bogus")` disjunct). **Recorded (no fix):** the explicit-filename `Export eventlog <path>`
     arg + `@lastexportfile` bookkeeping is covered generically by the shared `write_export` path (other
     phase8 export tests), not re-asserted here.
-- **next — WP8.3 step 3b:** `Faultstudy` (read-only over the WP7.9-precomputed bus `Zsc`/`Ysc`/
-  `BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`, `BusReliability`/`BranchReliability`/`Sections`
-  (the WP7.2 `RelCalc` outputs), `AllocationFactors`, `Profile`; then step 4 (`TSystemMeter` core +
+- **WP8.3 step 3b — `Faultstudy` (ptr 11, `ExportFaultStudy`), done, gate-green.** The first of the
+  step-3b device/reliability exports: a read-only formatter over the **WP7.9-precomputed** per-bus
+  short-circuit state (§2.1). `report/export/fault_study.rs` (`fn(&Circuit) -> String`, dispatch arm 11
+  via `export_with`, default `EXP_FAULTS.csv`): header `Bus,  3-Phase,  1-Phase,  L-L`, one row per bus:
+  - **3-phase** = `max |BusCurrent[i]|` over the bus nodes (the Norton current `Solve mode=faultstudy`
+    computed via `Ysc·VBus`, `compute_isc`);
+  - **1-phase** = the worst single-phase-to-ground fault: for each node, `YFault = Ysc` (copy) + `GFault`
+    (`10000+j0`) at `(iphs,iphs)`, `CMatrix::invert`, `VFault = YFault⁻¹·BusCurrent`, current =
+    `|VFault[iphs]·GFault|`;
+  - **L-L** = the worst node-node fault: `+GFault` at `(iphs,iphs)`/`(iphs2,iphs2)` and `-GFault` on the
+    symmetric off-diagonal (`iphs2` wraps last→first), same invert/mvmult; on a single-node bus
+    `iphs==iphs2` ⇒ `VFault[iphs]-VFault[iphs2]=0` ⇒ 0.00 (matches oracle 611/652).
+  All `%10f` (FPC `%f` = 2 decimals; `Pad(UPPER(name),12)`). **No global re-solve, no hidden mutation** —
+  the `CMatrix` (`support/cmatrix`, `new`/`copy_from`/`add`/`add_sym`/`invert`/`mv_mult`) scratch is
+  entirely local per bus. On a snapshot (no faultstudy) `Ysc=None`/`BusCurrent=0` ⇒ all-`0.00` rows, the
+  same degenerate output the oracle produces (faithful, not a fake). **Gate:** golden `export_faultstudy`
+  on the faultstudy-solved IEEE13 (its own fixture — `FAULTSTUDY_POST=["solve mode=faultstudy"]`, like
+  `SeqZ`; the study mutates NodeV so it can't share the snapshot loop) matched the oracle **first-run, no
+  fudging**. A rel-tolerance sweep proved the currents match **≤1e-8 rel** (green unchanged at `rel=1e-8`),
+  so the honest floor is the `%.2f` **printing floor** (`rel=0`/`abs=0.011` — the `Powers`/`P_byphase`
+  discipline; the faultstudy `Zsc`/`Ysc` are pinned to 1e-9·mag by `exec/tests/fault_study.rs`, and the
+  `YFault` inversions run the same bit-faithful `CMatrix::invert` on both engines). golden_phase8
+  **37→38**; lib **728** (formatter gated end-to-end, no new inline test); `solvable_now` **119** (no
+  migration — the `Export Faultstudy`/`Capacity` corpus decks need the full step-3b set + are otherwise
+  blocked; migration at the step-5 completion gate).
+- **next — WP8.3 step 3c:** the remaining step-3b exports — `BusReliability`/`BranchReliability` +
+  `Capacity` (RelCalc bus/branch outputs + zone customer counts, all populated), then `Overloads`/
+  `Unserved`/`AllocationFactors` (PD-overload + load EEN/UE + allocation), then `Sections` (**needs new
+  plumbing** — the meter's `FeederSections`/`SectionCount` are computed ephemerally in
+  `calc_reliability_indices` today, not persisted on the `EnergyMeter`; port that first), then `Profile`
+  (branch-list voltage profile over `dist_from_meter`). Then step 4 (`TSystemMeter` core +
   demand-interval/`DI_` writers, §2.6), step 5 (gate + corpus migration).
 
 ---

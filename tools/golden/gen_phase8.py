@@ -437,6 +437,20 @@ def gen_seqz(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# FaultStudy reads the same per-bus short-circuit state (`Ysc`/`BusCurrent`) a
+# FaultStudy solve populates, so it shares SeqZ's fixture shape (a `solve
+# mode=faultstudy` on IEEE13). `run_feeder_export` replays `meta.post`, so the
+# Rust side runs the identical faultstudy solve before exporting.
+FAULTSTUDY_POST = ["solve mode=faultstudy"]
+
+
+def gen_faultstudy(d) -> None:
+    """Capture the oracle's `Export Faultstudy` on the FaultStudy-solved IEEE13 feeder."""
+    _gen_register_group(
+        d, FAULTSTUDY_POST, [("faultstudy", "EXP_FAULTS.csv", "export_faultstudy")]
+    )
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -450,6 +464,7 @@ def main() -> None:
     gen_log_reports(d)
     gen_ieee8500_reports(d)
     gen_seqz(d)
+    gen_faultstudy(d)
 
 
 if __name__ == "__main__":

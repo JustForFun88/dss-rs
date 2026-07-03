@@ -144,6 +144,7 @@ impl Dss {
             10 => self.export_with_mut(&explicit, "EXP_SEQPOWERS.csv", |c, ckt, sys, nv| {
                 export::export_seq_powers(c, ckt, sys, nv, 0)
             }),
+            11 => self.export_with(&explicit, "EXP_FAULTS.csv", export::export_fault_study),
             19 => self.export_with_mut(&explicit, "EXP_P_BYPHASE.csv", |c, ckt, sys, nv| {
                 export::export_p_by_phase(c, ckt, sys, nv, mva_opt)
             }),

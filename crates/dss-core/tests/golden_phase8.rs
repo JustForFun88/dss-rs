@@ -775,6 +775,35 @@ fn export_seqz_matches_oracle() {
     run_feeder_export("export_seqz", &policy);
 }
 
+/// `Export Faultstudy` (Pascal `ExportFaultStudy`) on the FaultStudy-solved
+/// IEEE13 feeder: per-bus 3-phase / 1-phase / L-L prospective fault currents.
+/// The 3-phase column reads the precomputed `BusCurrent`; the 1-phase/L-L columns
+/// are local per-bus `YFault` scratch inversions over the same precomputed `Ysc`
+/// (PHASE8_PLAN §2.1). All three are `%10f` (2 decimals). The floor is the
+/// standard 6-sig report floor (`EXPORT_REL`) — the faultstudy `Zsc`/`Ysc` are
+/// pinned to 1e-9·mag by `exec/tests/fault_study.rs`, and the `YFault` inversions
+/// run the same bit-faithful `CMatrix::invert` on both engines; `abs = 0.011`
+/// absorbs the `%.2f` additive rounding on the exactly-`0.00` L-L rows of the
+/// single-node buses (611/652). Not a physics relaxation.
+///
+/// The floor is purely the **`%.2f` additive printing floor** (`rel = 0` /
+/// `abs = 0.011`): a rel-tolerance sweep confirmed the currents match to ≤1e-8 rel
+/// (the golden passes unchanged at `rel = 1e-8`), so both engines compute the same
+/// f64 and the only observable difference is a 0.005-boundary rounding split
+/// (≤0.01), exactly as `Powers`/`P_byphase` are pinned. Measured, not guessed.
+#[test]
+fn export_faultstudy_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.011,
+        col_tol: vec![],
+    };
+    run_feeder_export("export_faultstudy", &policy);
+}
+
 /// The assembled/primitive admittance matrices are exact deterministic stamps
 /// (no faer solve enters them), printed to 10 sig, so both engines agree to
 /// ~1e-10 rel; `1e-6` clears that printing floor plus the two independent builds
