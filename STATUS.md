@@ -29,8 +29,10 @@ append-if-exists + `DateTime` mask (`ColSel::Index`+`GateSpec::Mask`), the
 The **WP8.2 completion gate** then closed WP8.2: the IEEE8500 `Voltages`/`Summary`/`Counts`
 goldens + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE
 **26.3%→35.5%**) + the Rust `CorpusGuard` (keeps the vendored corpus pristine under
-report-writing decks). Tracked-open (deferred per user): 9 decks **hang the Rust engine**
-(>40s, StorageController the prime suspect) — kept in `skipped_unsupported`.
+report-writing decks). Tracked-open (deferred): 9 decks **hang the Rust engine**
+(>40s, StorageController the prime suspect, kept in `skipped_unsupported`), and a
+**rare always-on-gate flake** under max `--workspace` concurrency (oracle writes Show
+output to the corpus; robust fix = oracle output redirection).
 Detail in the §1f Phase 8 record. Phase 8 lives on its own branch **`phase-8-reporting`**
 (branched from the gate-green Phase-7 tip). **Phase 7 is COMPLETE but NOT merged to
 `main`** (the per-phase merge is the explicit-request-only HARD STOP — `phase-8-
@@ -1384,8 +1386,23 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (heavy 8500+PV). Whether these are legitimately-slow long solves or a **non-termination bug**
     (the StorageController set is the prime suspect — a controller that doesn't terminate is a bug)
     is **deferred to a focused follow-up**, not waved off.
+  - **Tracked-open (rare live-gate flake under max `--workspace` concurrency).** The full-workspace
+    gate failed **once in ~5 runs** with `Test/YgD-Test.dss step 0: oracle did not converge`; it
+    passes in isolation (verified 3× + the audit's 119/119 + a clean re-run). The deck converges
+    deterministically in fresh oracle subprocesses (5/5, iters 5) — **not** solve-flaky. Root: the
+    migrated Show/Export-heavy decks make the **oracle** write report files into the vendored corpus
+    (dss-python's `Show`/`Export`/`Visualize` are not no-ops; YgD-Test emits `show v ln nodes` twice
+    + `Visualize`), and under heavy concurrent load (all test binaries + 723 lib tests) a rare
+    file/timeout interaction perturbs one oracle case to `converged=false`. The `_CorpusGuard`s clean
+    the files (corpus stays pristine) but don't remove the write-race. Exact mechanism unpinned. The
+    robust fix is **oracle output redirection** (compile each case from a per-case temp copy of its
+    dir, or strip report verbs before compile) — deferred as a careful dedicated step (it changes the
+    live-gate compile path for all 119 cases + adds per-run copy cost; only **1** case has a cross-dir
+    `..` redirect, `Test/TriplexLineCodeCalc.DSS`, that a naive dir-copy would break). Until then the
+    always-on gate is green but can rarely red under extreme parallelism.
   - **Gate:** `cargo fmt`/`clippy`/`test` green; golden_phase8 **25**; lib **723**; the always-on
-    `corpus_live` full-model compare green over **all 119** `solvable_now` cases (105 s).
+    `corpus_live` full-model compare green over **all 119** `solvable_now` cases (105 s; a clean
+    full-workspace re-run confirmed green after the isolated flake above).
     **WP8.2 COMPLETE.**
   - **audit-code follow-up (independent agent): faithful — no Critical/Major; 1 defensive fix.**
     Verified `CorpusGuard` is a semantically-exact mirror of the oracle's `_CorpusGuard`
