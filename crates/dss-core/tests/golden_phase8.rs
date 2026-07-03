@@ -195,6 +195,75 @@ fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Compile a **heavy** master once and diff several reports against the oracle,
+/// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
+/// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the
+/// master/post/fixture (asserted — they are the same solved circuit), single-
+/// sourced exactly like `run_feeder_export`.
+fn run_shared_exports(reports: &[(&str, ExportPolicy)]) {
+    let dir = phase8_dir();
+    let metas: Vec<FeederMeta> = reports
+        .iter()
+        .map(|(stem, _)| {
+            let p = dir.join(format!("{stem}.meta.json"));
+            let text =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+        })
+        .collect();
+    let m0 = &metas[0];
+    for m in &metas[1..] {
+        assert_eq!(m.master, m0.master, "shared exports disagree on master");
+        assert_eq!(m.post, m0.post, "shared exports disagree on post");
+        assert_eq!(m.fixture, m0.fixture, "shared exports disagree on fixture");
+    }
+
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&m0.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir(reports[0].0);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &m0.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+
+    for ((stem, policy), m) in reports.iter().zip(&metas) {
+        dss.command(&format!("export {}", m.report));
+        assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+        let produced = dss.last_result_file();
+        let want = format!("{}_{}", m.fixture, m.suffix).to_lowercase();
+        assert!(
+            produced.to_lowercase().ends_with(&want),
+            "{stem}: unexpected produced path {produced:?} (want …{want})"
+        );
+        let rust = std::fs::read_to_string(produced)
+            .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+        let oracle = {
+            let p = dir.join(format!("{stem}.txt"));
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+        };
+        compare_export(&oracle, &rust, policy, stem);
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Default per-number tolerance for the `%g`-formatted value columns of the
 /// solution exports: the oracle writes 5–6 significant digits, so the report is
 /// known only to ~1e-5 rel; `1e-4` clears that formatting floor plus the two
@@ -743,4 +812,82 @@ fn export_yprims_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_export("export_yprims", &policy);
+}
+
+// --- WP8.2 completion gate: the bus/summary exports at scale (IEEE 8500) ------
+// PHASE8_PLAN §WP8.2 step 4: `Voltages`/`Summary`/`Counts` on the solved IEEE
+// 8500-Node feeder (8531 nodes, 6103 devices), completing the export-diff over
+// 13/34/37/123/8500. The per-element/matrix dumps are omitted as enormous (the
+// established 8500-golden discipline — `golden_ieee8500.rs`). All three share the
+// one heavy compile+solve via `run_shared_exports`. The reports pin layout at
+// scale (header/column set/order/scaling + the full 4876-bus row set); the engine
+// physics is pinned by the always-on `corpus_live.rs` 8500 model compare.
+
+/// `Voltages`/`Summary`/`Counts` on the solved IEEE 8500-Node feeder, from a
+/// single compile. Voltages: the 6-sig `%g` magnitude/pu floor + the `%6.1f`
+/// additive angle floor (identical to the IEEE13 voltages policy). Summary: the
+/// masked non-deterministic `DateTime` column + the deterministic status row.
+/// Counts: the `RustSubsetByKey` subset compare (`=`-separated), pinning every
+/// ported class's instance count at scale (Line=3703/Transformer=1190/etc).
+#[test]
+fn export8500_reports_match_oracle() {
+    let voltages = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![ColTol {
+            sel: ColSel::Prefix("angle".to_string()),
+            rel: 0.0,
+            abs: 0.11,
+            gate: None,
+        }],
+    };
+    let summary = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(0), // DateTime — masked (non-deterministic clock)
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        }],
+    };
+    let counts = ExportPolicy {
+        sep: '=',
+        header_lines: 1, // "Format: DSS Class Name = Instance Count"
+        rows: RowPolicy::RustSubsetByKey {
+            key: 0,
+            // The core Phase 4-6 classes the 8500 feeder instantiates in bulk —
+            // guards against a registry-walk regression dropping a class or
+            // emptying the body (the subset compare alone can't see a missing row).
+            require: [
+                "line",
+                "load",
+                "transformer",
+                "capacitor",
+                "regcontrol",
+                "capcontrol",
+                "vsource",
+                "reactor",
+                "linecode",
+                "xfmrcode",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        },
+        rel: 0.0,
+        abs: 0.0, // integer counts — exact
+        col_tol: vec![],
+    };
+    run_shared_exports(&[
+        ("export8500_voltages", voltages),
+        ("export8500_summary", summary),
+        ("export8500_counts", counts),
+    ]);
 }

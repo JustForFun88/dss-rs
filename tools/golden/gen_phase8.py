@@ -121,6 +121,57 @@ FEEDER_REPORTS = [
     ("result", "EXP_Result.csv", "export_result"),
 ]
 
+# The IEEE 8500-Node bus/summary exports (PHASE8_PLAN §WP8.2 step 4): pin the
+# same `Voltages`/`Summary`/`Counts` reports at scale (8531 nodes, 6103 devices).
+# The 8500 master needs `Set Maxiterations=20` to converge (exactly as the
+# `golden_ieee8500.rs` snapshot gate does). The per-element/matrix dumps are
+# omitted as enormous (the established 8500-golden discipline). `Counts` sets no
+# `GlobalResult` in the oracle, so its path is built from the CaseName + suffix.
+IEEE8500_MASTER = "Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
+IEEE8500_POST = ["Set Maxiterations=20", "solve"]
+IEEE8500_REPORTS = [
+    ("voltages", "EXP_VOLTAGES.csv", "export8500_voltages"),
+    ("summary", "EXP_Summary.csv", "export8500_summary"),
+    ("counts", "EXP_Counts.csv", "export8500_counts"),
+]
+
+
+def gen_ieee8500_reports(d) -> None:
+    """Capture the oracle's Voltages/Summary/Counts on the solved IEEE 8500 feeder."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / IEEE8500_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in IEEE8500_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in IEEE8500_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            result = d.Text.Result  # GlobalResult; empty for `Counts`
+            produced = Path(result) if result else Path(tmp) / f"{case}_{suffix}"
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "master": IEEE8500_MASTER,
+                "post": IEEE8500_POST,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # SeqZ reads the per-bus short-circuit impedances (`Zsc1`/`Zsc0`), which are only
 # populated by a FaultStudy solve — a plain snapshot leaves them zero (a
 # degenerate all-zero report). So it gets its own fixture with a `faultstudy`
@@ -208,6 +259,7 @@ def main() -> None:
 
     gen_counts(d)
     gen_feeder_reports(d)
+    gen_ieee8500_reports(d)
     gen_seqz(d)
 
 

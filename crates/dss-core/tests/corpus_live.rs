@@ -270,6 +270,82 @@ fn corpus_file(rel: &str) -> String {
     p.to_string_lossy().replace('\\', "/")
 }
 
+/// Buffer small files up to this size for overwrite-restore; larger files are
+/// only name-tracked (OpenDSS writes small text reports, never the multi-MiB
+/// input data files). Mirrors the oracle server's `_RESTORE_MAX`.
+const RESTORE_MAX: u64 = 2 * 1024 * 1024;
+
+/// Restore a case's directory after a **Rust** run: delete any file the run
+/// created and rewrite any small pre-existing file it overwrote. Pascal's
+/// `Compile` sets `OutputDirectory := <case dir>` (`DSSGlobals.SetDataPath`), so
+/// a migrated deck's `Export voltages` / `Show` / `Save` writes report files next
+/// to the deck — pure pollution of the vendored corpus fixture, which the live
+/// gate never reads (it compares the in-memory model). Mirrors the oracle
+/// server's `_CorpusGuard` (`tools/oracle/oracle_server.py`), which does the same
+/// on the oracle side. RAII: created before the Rust compile, restores on drop.
+struct CorpusGuard {
+    dir: PathBuf,
+    names: BTreeSet<String>,
+    buf: BTreeMap<String, Vec<u8>>,
+}
+
+impl CorpusGuard {
+    fn new(case_path: &str) -> Self {
+        let dir = std::path::Path::new(case_path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        let mut names = BTreeSet::new();
+        let mut buf = BTreeMap::new();
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if !p.is_file() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let small = entry
+                    .metadata()
+                    .map(|m| m.len() <= RESTORE_MAX)
+                    .unwrap_or(false);
+                if small && let Ok(data) = std::fs::read(&p) {
+                    buf.insert(name.clone(), data);
+                }
+                names.insert(name);
+            }
+        }
+        Self { dir, names, buf }
+    }
+}
+
+impl Drop for CorpusGuard {
+    fn drop(&mut self) {
+        let Ok(rd) = std::fs::read_dir(&self.dir) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !self.names.contains(&name) {
+                let _ = std::fs::remove_file(&p); // created by the run
+            }
+        }
+        for (name, data) in &self.buf {
+            // rewrite only if the run actually changed it
+            let p = self.dir.join(name);
+            match std::fs::read(&p) {
+                Ok(cur) if cur == *data => {}
+                _ => {
+                    let _ = std::fs::write(&p, data);
+                }
+            }
+        }
+    }
+}
+
 /// Compile + solve one case on both engines and compare every captured field at
 /// every step. `selected` is the YPrim focus set; element currents/powers are
 /// compared for *all* elements.
@@ -285,6 +361,16 @@ fn run_and_compare(
     check_mm: bool,
 ) {
     let tol = tol_for(kind);
+
+    // Keep the vendored corpus pristine: a migrated deck's `Export`/`Show`/`Save`
+    // (Pascal `Compile` → `OutputDirectory := <case dir>`) or a `debugtrace=yes`
+    // element writes report/trace files next to the deck. Snapshot the case dir
+    // *before both engines run* and restore it on drop, so this outer guard also
+    // sweeps up anything the oracle's own `_CorpusGuard` couldn't remove (e.g. a
+    // `STOR_<name>.csv` trace file dss-python keeps open during the run — the Rust
+    // port doesn't write it, so only the oracle creates it).
+    let _guard = CorpusGuard::new(case_path);
+
     let oc = oracle.run_case(case_path, post, n_steps, selected, check_mm);
     assert_eq!(oc.n_steps, n_steps, "{label}: oracle step count");
     assert_eq!(

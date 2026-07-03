@@ -4,7 +4,22 @@
   {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
    "tag": "entry_point",
-   "note": "live probe: Test/AutoTrans/Auto1bus-step1.dss step 0: entry 11 differs: actual (-46476.71038156053, -80496.6327343493) vs expected (-46476.61034443656, -80496.69252079383); |diff| = 1.1654117350544871e-1 > allowed 9.295148582926187e-2"
+   "note": "live probe: Test/AutoTrans/Auto1bus-step1.dss step 0: entry 0 differs: actual (199185.8310688565, -0.0026516858644518295) vs expected (199185.83007916168, -0.006262229866034236); |diff| = 3.7437312696727435e-3 > allowed 1.992858300791618e-3"
+  },
+  {
+   "path": "Test/AutoTrans/AutoHLT.dss",
+   "tag": "live_mismatch",
+   "note": "live probe: Test/AutoTrans/AutoHLT.dss step 0: entry 1 differs: actual (-99599.87041628451, -172459.95764263443) vs expected (-99599.87219946634, -172459.9558794299); |diff| = 2.5077136207866174e-3 > allowed 1.9925464072947166e-3"
+  },
+  {
+   "path": "Test/IEEE13_CDPSM.dss",
+   "tag": "live_mismatch",
+   "note": "live probe: Test/IEEE13_CDPSM.dss step 0: entry 6 differs: actual (25.33693882144466, -54.23093850536439) vs expected (25.336934606975863, -54.230936661744735); |diff| = 4.600073988079624e-6 > allowed 1.5985778768454727e-6"
+  },
+  {
+   "path": "Test/TestDDRegulator.dss",
+   "tag": "live_mismatch",
+   "note": "live probe: Test/TestDDRegulator.dss step 0: entry 7 differs: actual (6234.358238554014, -3601.3806209240656) vs expected (6234.357890616303, -3601.3754134028977); |diff| = 5.219131859314523e-3 > allowed 7.299800217822203e-5"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
@@ -15,6 +30,11 @@
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS",
    "tag": "wrapper",
    "note": "live probe: oracle case D:/Rust/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 120s\")"
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
+   "tag": "live_mismatch",
+   "note": "live probe: Version8/Distrib/Examples/AutoTrans/AutoHLT.dss step 0: entry 1 differs: actual (-99599.87041628451, -172459.95764263443) vs expected (-99599.87219946634, -172459.9558794299); |diff| = 2.5077136207866174e-3 > allowed 1.9925464072947166e-3"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
@@ -40,6 +60,11 @@
    "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge"
   },
   {
+   "path": "Version8/Distrib/Examples/VSConverter/vsctest.dss",
+   "tag": "oracle_nonconvergence",
+   "note": "live probe: Version8/Distrib/Examples/VSConverter/vsctest.dss step 0: oracle did not converge"
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
    "tag": "entry_point",
    "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge"
@@ -47,12 +72,22 @@
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
    "tag": "entry_point",
-   "note": "live probe: Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss step 0: entry 23 differs: actual (173.21075636255753, -299.9982769891132) vs expected (173.20299697837544, -299.9962461716041); |diff| = 8.020739532020808e-3 > allowed 3.474058687137746e-4"
+   "note": "live probe: Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss step 0: entry 23 differs: actual (173.1924557181546, -299.99692313160205) vs expected (173.20299697837544, -299.9962461716041); |diff| = 1.056297504882513e-2 > allowed 4.464058687137746e-6"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
    "tag": "entry_point",
    "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
+   "tag": "live_mismatch",
+   "note": "live probe: Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss step 0: entry 12 differs: actual (8174.966722131275, -229.19102012400572) vs expected (8174.964777269752, -229.19087142935336); |diff| = 1.9505374755312288e-3 > allowed 8.278176909626475e-5"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
+   "tag": "live_mismatch",
+   "note": "live probe: Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss step 0: entry 12 differs: actual (8174.966853972126, -229.18711549616273) vs expected (8174.966050254275, -229.18761948096025); |diff| = 9.486638291265044e-4 > allowed 8.278178090976824e-5"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
