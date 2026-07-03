@@ -465,6 +465,26 @@ impl Circuit {
         // The per-element call leaves BusNameRedefined handling to the caller.
     }
 
+    /// `DSS.LogThisEvent(name)` gated on `LogEvents` (Pascal's `if LogEvents then
+    /// DSS.LogThisEvent(...)` guard), stamping the solution's current
+    /// clock/iteration fields — the circuit-build call sites `ReprocessBusDefs` /
+    /// `DoResetMeterZones` (`Circuit.pas` l.2169/2152/2156). The `Ymatrix`/
+    /// `Solution` call sites gate at the call site with their own free helpers;
+    /// this method exists for the `Circuit`-method sites.
+    pub(crate) fn log_this_event(&mut self, name: &str) {
+        if !self.log_events {
+            return;
+        }
+        let sol = &mut self.solution;
+        sol.event_log.log_this_event(
+            name,
+            sol.int_hour,
+            sol.t,
+            sol.iteration,
+            sol.control_iteration,
+        );
+    }
+
     /// Pascal `ReprocessBusDefs`: rebuild the bus list and all node
     /// references from scratch, then restore saved per-bus info (kV bases,
     /// coordinates, prior voltages).
@@ -475,6 +495,8 @@ impl Circuit {
         vars: &ParserVars,
         errors: &mut Vec<String>,
     ) {
+        // Pascal `ReprocessBusDefs` (Circuit.pas l.2168): log under LogEvents.
+        self.log_this_event("Reprocessing Bus Definitions");
         // > SaveBusInfo
         let saved_buses = std::mem::take(&mut self.buses);
         // < (names live inside the saved buses)

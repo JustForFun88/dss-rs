@@ -8,7 +8,18 @@
 > frontier.
 
 Last updated: 2026-07-03 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.3 step 2 landed, gate-green** — the **register/load
+reporting/exports/Save). **WP8.3 step 3a landed, gate-green** — the **EventLog/ErrorLog
+dumps** (ptrs 33/52, `ExportEventLog`/`ExportErrorLog`): the `report/export/logs.rs`
+`TStringList.SaveToFile` formatters (`DSS.EventStrings`/`DSS.ErrorStrings`, one entry
+per line) + the `exec/report.rs` dispatch (`EXP_EventLog.csv`/`EXP_ErrorLog.txt`). **Real
+gap found + fixed:** the three **circuit-build** `LogThisEvent` markers (`ReprocessBusDefs`
+"Reprocessing Bus Definitions" + `DoResetMeterZones` "Resetting/Done Resetting Meter Zones")
+were never wired — those methods were ported in Phase 2/3 before the `EventLog` type existed,
+and only the `Solution.pas`/`Ymatrix.pas` sites were retrofitted; added `Circuit::log_this_event`
++ the 3 sites, so the `Set Log=yes` marker stream is now complete (`ReallocDeviceList` has no
+Rust equivalent — auto-growing `HashList`, never in the solve-time log). golden_phase8 **34→37**
+(the full `Set Log=yes` daily-3 EventLog stream line-for-line vs the oracle + the empty ErrorLog
+dump + the Rust-only ErrorLog content gate); lib **726→728**. **WP8.3 step 2 landed, gate-green** — the **register/load
 dumps** `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` (ptrs
 12/13/14/49/50 → `ExportMeters`/`ExportGenMeters`/`ExportLoads`/`Export{PVSystem,Storage}Meters`):
 the `report/export/registers.rs` header/row formatters (`Year, LDCurve, Hour, <Name>`
@@ -126,16 +137,16 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors`) + **step 2** (the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the export surfaced as a gap) landed gate-green; **next = WP8.3 step 3** (`EventLog`/`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/`AllocationFactors`). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors`) + **step 2** (the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the export surfaced as a gap) + **step 3a** (`EventLog`/`ErrorLog` dumps + the missing Circuit-build `LogThisEvent` markers the `Set Log=yes` EventLog golden surfaced) landed gate-green; **next = WP8.3 step 3b** (`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/`AllocationFactors`). Detail in §1f |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 726, golden_feeders 1,
+cargo test --workspace      # dss-core lib 728, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 34,
+                            # golden_phase7_protection 1, golden_phase8 37,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1647,11 +1658,45 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     `abs=0.5` report resolution (no corpus deck uses these keywords) — a sub-0.5-unit DER-integration
     error would be invisible; the wiring fix itself is well-guarded (0→~300, dramatic). golden_phase8
     **32→34**.
-- **next — WP8.3 step 3:** `EventLog`/`ErrorLog` (the Phase-5 event-log format), `Faultstudy` (read-only
-  over the WP7.9-precomputed bus `Zsc`/`Ysc`/`BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`,
-  `BusReliability`/`BranchReliability`/`Sections` (the WP7.2 `RelCalc` outputs), `AllocationFactors`,
-  `Profile`; then step 4 (`TSystemMeter` core + demand-interval/`DI_` writers, §2.6), step 5 (gate +
-  corpus migration).
+- **WP8.3 step 3a — `EventLog`/`ErrorLog` dumps + the missing Circuit-build event markers, done,
+  gate-green.** ptrs 33/52 (`ExportEventLog`/`ExportErrorLog`, `ExportResults.pas:3296`/`:3303`), each a
+  `TStringList.SaveToFile` of `DSS.EventStrings`/`DSS.ErrorStrings` — no header, one entry per line.
+  Pieces:
+  - **`report/export/logs.rs`** — `export_event_log`/`export_error_log` (the shared `save_string_list`:
+    each entry on its own terminated line, empty file when the list is empty). **dispatch (`exec/report.rs`)**
+    — `export_event_log_to_file` (reads `ckt.solution.event_log`) / `export_error_log_to_file` (reads
+    `Dss::errors`, the analog of `ErrorStrings` — the `DoSimpleMsg` record-and-continue log); defaults
+    `EXP_EventLog.csv` / `EXP_ErrorLog.txt`. Neither is solution-guarded (33/52 ∉ the #24712 ptr set).
+  - **REAL GAP found + fixed (the export surfaced it):** the three `LogThisEvent` markers in the
+    **circuit-build** methods — `ReprocessBusDefs` (`Circuit.pas:2169` "Reprocessing Bus Definitions")
+    and `DoResetMeterZones` (`:2152`/`:2156` "Resetting Meter Zones"/"Done Resetting Meter Zones") — were
+    **never wired**: those methods were ported in Phase 2/3 *before* the `EventLog` type existed (Phase 5),
+    and when the event log landed only the *solution-layer* call sites (`Solution.pas`/`Ymatrix.pas`) were
+    retrofitted. Under `Set Log=yes` our engine therefore emitted a marker stream missing those 3 lines.
+    Added `Circuit::log_this_event` (the gated `if LogEvents then LogThisEvent`, stamping the solution's
+    clock/iteration) + wired the 3 sites (`circuit.rs` `reprocess_bus_defs`, `zones/mod.rs`
+    `do_reset_meter_zones`, the two bracketing `ResetMeterZonesAll` even with no meters, per Pascal). The
+    fourth Pascal marker `ReallocDeviceList` ("Reallocating Device List", `Circuit.pas:2997`) has **no Rust
+    equivalent** — our device list is an auto-growing `HashList` with no manual hash-resize step, and it
+    does not appear in the solve-time log anyway (it fires only on device additions during compile, with
+    LogEvents off) — so nothing to wire (documented here, not a `NOT_PORTED` site).
+  - **gate** — golden_phase8 **34→37**, both synthesized (no corpus deck exports these): **(1)**
+    `export_eventlog` — IEEE13 + per-RegControl `eventlog=yes` + **`Set Log=yes`** daily-3 solve →
+    the **full** LogThisEvent marker stream (the now-complete Circuit-build markers → Yprim recalc → Y
+    build → per-iteration/control markers → tap changes → Solution Done), compared **line-for-line with
+    numbers parsed out** (the phase5 event-log policy `assert_value_matches_tol`, 1e-6 rel — the stamps +
+    tap values are numbers) — matched the oracle **first-run after the marker fix** (29 lines, incl. the
+    per-step iteration counts phase5 already pins). **(2)** `export_errorlog` — a clean IEEE13 solve logs
+    no `DoSimpleMsg` → an empty dump (pins the plumbing + `EXP_ErrorLog.txt` naming). **(3)**
+    `export_errorlog_captures_errors` — a Rust-only content gate (cross-engine error *message text* is not
+    a Phase-8 axis): a recoverable `DoSimpleMsg` (unknown property on an existing element) must reach the
+    exported file (guards the dump against silently dropping `Dss::errors`). No existing event-log gate
+    regressed (phase5/phase7_protection green — the new markers fire only under `log_events`). lib
+    **726→728** (`logs.rs` unit tests).
+- **next — WP8.3 step 3b:** `Faultstudy` (read-only over the WP7.9-precomputed bus `Zsc`/`Ysc`/
+  `BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`, `BusReliability`/`BranchReliability`/`Sections`
+  (the WP7.2 `RelCalc` outputs), `AllocationFactors`, `Profile`; then step 4 (`TSystemMeter` core +
+  demand-interval/`DI_` writers, §2.6), step 5 (gate + corpus migration).
 
 ---
 
