@@ -237,6 +237,81 @@ def gen_monitor_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# The register-dump fixtures (PHASE8_PLAN §WP8.3 step 2). No corpus deck uses these
+# keywords, so they are synthesized (PHASE8_PLAN §1). Two fixtures, both daily-solved
+# 3 steps so every register accumulates:
+#   A) plain IEEE13 + an EnergyMeter (on Line.650632) → `Meters` + `Loads`. The meter
+#      registers match the oracle to ~1e-8 (the same daily meter path `corpus_live.rs`
+#      pins), so `%10.0f` is identical; `Loads` is a static field dump.
+#   B) IEEE13 + a Generator + a PVSystem + a Storage on bus 675 → the DER register
+#      dumps. Kept **off** the metered element: adding DER inside the metered,
+#      regulated zone shifts the metered-element local power ~3e-5 rel (a real small
+#      solve interaction, above the `3358.5` rounding boundary of the meter's Max kW),
+#      which would straddle `%10.0f`. The DER's *own* registers (round kWh/kW) stay
+#      clean, so B pins them without that meter coupling.
+REGISTER_A_POST = [
+    "new energymeter.em1 element=Line.650632 terminal=1",
+    "set mode=daily number=3 stepsize=1h",
+    "solve",
+]
+REGISTER_A_REPORTS = [
+    ("meters", "EXP_METERS.csv", "export_meters"),
+    ("loads", "EXP_LOADS.csv", "export_loads"),
+]
+REGISTER_B_POST = [
+    "new generator.g1 bus1=675 phases=3 kv=4.16 kw=100 pf=0.9 model=1",
+    "new pvsystem.pv1 bus1=675 phases=3 kv=4.16 kva=120 pmpp=100 irradiance=1",
+    "new storage.st1 bus1=675 phases=3 kv=4.16 kwrated=50 kwhrated=100 %stored=50 state=discharging",
+    "set mode=daily number=3 stepsize=1h",
+    "solve",
+]
+REGISTER_B_REPORTS = [
+    ("generators", "EXP_GENMETERS.csv", "export_generators"),
+    ("pvsystem_meters", "EXP_PVMeters.csv", "export_pvsystem_meters"),
+    ("storage_meters", "EXP_STORAGEMeters.csv", "export_storage_meters"),
+]
+
+
+def _gen_register_group(d, post, reports) -> None:
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in post:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in reports:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "master": FEEDER_MASTER,
+                "post": post,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def gen_register_reports(d) -> None:
+    """Capture the oracle's register/load exports on the daily-solved IEEE13 feeder."""
+    _gen_register_group(d, REGISTER_A_POST, REGISTER_A_REPORTS)
+    _gen_register_group(d, REGISTER_B_POST, REGISTER_B_REPORTS)
+
+
 # SeqZ reads the per-bus short-circuit impedances (`Zsc1`/`Zsc0`), which are only
 # populated by a FaultStudy solve — a plain snapshot leaves them zero (a
 # degenerate all-zero report). So it gets its own fixture with a `faultstudy`
@@ -325,6 +400,7 @@ def main() -> None:
     gen_counts(d)
     gen_feeder_reports(d)
     gen_monitor_reports(d)
+    gen_register_reports(d)
     gen_ieee8500_reports(d)
     gen_seqz(d)
 

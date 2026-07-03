@@ -8,13 +8,28 @@
 > frontier.
 
 Last updated: 2026-07-03 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
-reporting/exports/Save). **WP8.3 step 1 landed, gate-green** — `Export Monitors`
+reporting/exports/Save). **WP8.3 step 2 landed, gate-green** — the **register/load
+dumps** `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` (ptrs
+12/13/14/49/50 → `ExportMeters`/`ExportGenMeters`/`ExportLoads`/`Export{PVSystem,Storage}Meters`):
+the `report/export/registers.rs` header/row formatters (`Year, LDCurve, Hour, <Name>`
++ `"quoted"` register names + `%10.0f` values) + `loads.rs` (the allocation view) +
+the append-vs-create single-file writer + the `/m` multi-file switch (Storage's
+`EXP_PV_` prefix is an upstream copy-paste bug — `TODO(compat)`). **Real gap found +
+fixed:** the Generator/PVSystem/Storage `SampleAll`/`ResetAll` tail of
+`TEnergyMeter.SampleAll` (l.928-931) / `ResetAll` (l.895-897) was never wired into the
+Rust solve loop, so the DER energy registers stayed **zero** — the export surfaced it;
+`solution/meters/sampling/take_sample.rs` now samples/resets Generator+Storage+PVSystem
+after the meter sweep (unconditional, matching Pascal — no meter needed). Two synthesized
+goldens (no corpus deck uses these keywords): plain-IEEE13+meter daily (Meters+Loads,
+meter registers 1e-8-matched) and IEEE13+DER daily (the DER register dumps) + the `/m`
+self-consistency test. golden_phase8 **29→32**, lib **726** (net; DER wiring adds no unit
+test). **WP8.3 step 1 landed, gate-green** — `Export Monitors`
 (`Monitor.TranslateToCSV` over the Phase-6 in-memory f32 stream): the `util::comma_text`
 (`TStringList.CommaText`) header formatter + `Monitor::to_csv` + the ptr-15 dispatch
 (`export_monitors`, monitor-name pre-parse, per-monitor `<case>_Mon_<name>_1.csv`) +
 the `export_mon_{vi,pow,tap}` goldens (IEEE13 daily, modes 0/1/2 — the header line
 verbatim-pinned, the CommaText quoting + the hour/sec time cols the live gate skips).
-golden_phase8 **28→29**, lib **725→726** (`comma_text` unit test). **WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
+**WP8.1 COMPLETE, gate-green** (sub-steps 1+2: dispatch
 skeleton `82b50fe`, output-path machinery + `Export Counts` + the `compare_export`
 golden harness `929145c`). **WP8.2 COMPLETE, gate-green.** sub-step 1 (`71067f7`) landed the
 bus/node solution exports (`Voltages`/`BusCoords`/`NodeNames`/`YNodeList`);
@@ -110,7 +125,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors` via `Monitor.TranslateToCSV` + `util::comma_text` + the `export_mon_{vi,pow,tap}` goldens) landed gate-green; **next = WP8.3 step 2** (`Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register dumps). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors`) + **step 2** (the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the export surfaced as a gap) landed gate-green; **next = WP8.3 step 3** (`EventLog`/`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/`AllocationFactors`). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -119,7 +134,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 726, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 29,
+                            # golden_phase7_protection 1, golden_phase8 32,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -1558,11 +1573,53 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     on equivalent monitors; this golden cross-checks these exact values at the print floor." Counts
     unchanged (lib **726**, golden_phase8 **29**) — the empty-item change dropped one assertion, not
     a test.
-- **next — WP8.3 step 2 (register dumps):** `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
-  `Storage_Meters` (`ExportMeters`/`ExportGenMeters`/`ExportLoads`/`Export{PVSystem,Storage}Meters`)
-  over the Phase-6/7 EnergyMeter/DER register arrays + names; then step 3 (EventLog/Faultstudy/
-  Capacity/Overloads/Unserved/reliability/Profile/AllocationFactors), step 4 (`TSystemMeter` core +
-  demand-interval/`DI_` writers, §2.6), step 5 (gate + corpus migration).
+- **WP8.3 step 2 — the register/load dumps (`Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
+  `Storage_Meters`), done, gate-green.** ptrs 12/13/14/49/50 (`ExportOptions.pas` case
+  dispatch → `ExportMeters`/`ExportGenMeters`/`ExportLoads`/`Export{PVSystem,Storage}Meters`,
+  `ExportResults.pas:1909…2446`). Pieces:
+  - **`report/export/registers.rs`** — the register-dump line formatters: `register_header`
+    (`Year, LDCurve, Hour, <label>` + `, "<regName>"` per register — compared **verbatim**, so the
+    `, ` separators + quoting are byte-exact) + `register_row` (`Year`/`LDCurve`/`Hour`/
+    `Pad('"'+UPPER(name)+'"',14)` + `%10.0f` per register) + the Gen/PV/Storage class register-name
+    constants (`Generator.pas:462`/`PVsystem.pas:392`/`Storage.pas:492`; the EnergyMeter names come
+    from the per-object `register_names()` — they encode the zone voltage bases).
+  - **`report/export/loads.rs`** — `ExportLoads`: the present allocation view (`Load, Connected KVA,
+    Allocation Factor, Phases, kW, kvar, PF, Model`), a static Load-field read (no solve state).
+  - **dispatch (`exec/report.rs`)** — `export_registers(kind)` gathers each enabled element's rows
+    (downcasting `EnergyMeter`/`Generator`/`PVSystem`/`Storage`) + the single-file **append-vs-create**
+    writer (`register_need_rewrite`: rewrite unless the file exists AND starts `Year`, mirroring
+    `WriteSingle*MeterFile`) + the **`/m` multi-file switch** (`WriteMultiple*MeterFiles`: one
+    `<OutputDir><prefix><UPPER name>.csv` per element, `@lastexportfile` = the literal `/m` Pascal
+    quirk). One `TODO(compat)`: the Storage `/m` prefix is `EXP_PV_` (an upstream copy-paste bug at
+    `ExportResults.pas:2240`). `LoadDurCurveObj` is unmodeled (LoadDuration mode deferred) → the
+    `LDCurve` column is always empty (`NameIfNotNil(nil)=''`, faithful for every non-LD deck).
+  - **REAL GAP found + fixed (the export surfaced it):** the DER register-sampling tail of
+    `TEnergyMeter.SampleAll` (`GeneratorClass`/`StorageClass`/`PVSystemClass.SampleAll`, EnergyMeter.pas
+    l.928-931) + the `ResetAll` tail (`ResetRegistersAll`, l.895-897) was **never wired** into the Rust
+    solve loop — the Generator/PVSystem/Storage `take_sample`/`reset_registers` methods existed (Phase 7)
+    but nothing called them, so the DER energy registers stayed **0**. Without the fix `Export
+    Generators/PVSystem_Meters/Storage_Meters` would emit all-zero rows = silently-faked output
+    (PHASE8_PLAN §1 forbids). `solution/meters/sampling/take_sample.rs` now samples + resets
+    Generator+Storage+PVSystem after the meter sweep — **unconditional** (Pascal doesn't gate it on a
+    meter existing), which is why the DER registers accumulate even with no `EnergyMeter` defined. The
+    change touches only the register arrays (read-only w.r.t. the solve), so no existing golden /
+    corpus_live case moved (full gate re-run green).
+  - **gate** — two synthesized goldens (no corpus deck uses these keywords → PHASE8_PLAN §1 synthesize):
+    **(A)** plain-IEEE13 + an EnergyMeter, daily 3 → `Meters` + `Loads` (the meter registers match the
+    oracle to ~1e-8 — the same daily meter path `corpus_live` pins — so `%10.0f` is identical); **(B)**
+    IEEE13 + a Generator + a PVSystem + a Storage on bus 675 (off the metered zone), daily 3 → the DER
+    register dumps. The DER is kept **out of the metered, regulated zone**: adding it inside shifts the
+    metered-element local power ~3e-5 rel (a real small solve interaction) that straddles the meter's
+    `3358.5` Max kW rounding boundary — the split keeps every value tightly oracle-pinned with **no
+    tolerance masking** (register rows `rel=0`/`abs=0.5`; Loads `abs=0.05`). Plus a `/m`
+    self-consistency test (the per-meter `EXP_MTR_EM1.csv` carries the same values as the single-file
+    golden). Header lines verbatim-pinned; values parse out. Matched the oracle **first-run** (after the
+    DER-sampling fix), no fudging. golden_phase8 **29→32**; lib **726** (net).
+- **next — WP8.3 step 3:** `EventLog`/`ErrorLog` (the Phase-5 event-log format), `Faultstudy` (read-only
+  over the WP7.9-precomputed bus `Zsc`/`Ysc`/`BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`,
+  `BusReliability`/`BranchReliability`/`Sections` (the WP7.2 `RelCalc` outputs), `AllocationFactors`,
+  `Profile`; then step 4 (`TSystemMeter` core + demand-interval/`DI_` writers, §2.6), step 5 (gate +
+  corpus migration).
 
 ---
 
