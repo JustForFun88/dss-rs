@@ -47,6 +47,57 @@ struct ReportMeta {
     deck: Vec<String>,
 }
 
+/// Meta for a **deck-based** export golden (a self-contained `New`-circuit deck
+/// with no master, like `ReportMeta` but carrying the oracle default-filename
+/// suffix so the produced path is pinned — the reliability/capacity fixtures).
+#[derive(Debug, Deserialize)]
+struct DeckMeta {
+    report: String,
+    fixture: String,
+    suffix: String,
+    deck: Vec<String>,
+}
+
+/// Drive one deck-based export: replay the deck (no compile), route the report
+/// into a scratch dir, export, and diff the produced file against the captured
+/// oracle file via `compare_export`. The deck-fixture twin of `run_feeder_export`.
+fn run_deck_export(stem: &str, policy: &ExportPolicy) {
+    let dir = phase8_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("export {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let want = format!("{}_{}", meta.fixture, meta.suffix).to_lowercase();
+    assert!(
+        produced.to_lowercase().ends_with(&want),
+        "{stem}: unexpected produced path {produced:?} (want …{want})"
+    );
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+
+    compare_export(&oracle, &rust, policy, stem);
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// A unique scratch dir for this test process (no `tempfile` dep; cleaned up at
 /// the end). `Set DataPath=` points the engine's report output here.
 fn scratch_dir(tag: &str) -> PathBuf {
@@ -1423,4 +1474,94 @@ fn export_errorlog_captures_errors() {
         "the exported ErrorLog must contain the recorded error; got:\n{content}"
     );
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+// --- WP8.3 step 3c: the reliability + capacity exports -----------------------
+// `Export BusReliability`/`BranchReliability` (Pascal `ExportBusReliability`/
+// `ExportBranchReliability`) dump the per-bus / per-branch reliability indices a
+// prior `RelCalc` populated; `Export Capacity` (`ExportCapacity` +
+// `CalcAndWriteMaxCurrents`) dumps each PDElement's max phase current vs its
+// rating + branch customer counts. No corpus deck exports these, so the fixture is
+// synthesized (PHASE8_PLAN §1) as a self-contained deck: a two-section radial
+// feeder + per-line fault data + a recloser (the OCP device `RelCalc` needs) +
+// loads with `numcust` + an EnergyMeter, `solve`d then `relcalc`'d. High recloser
+// pickups keep the snapshot from tripping so `Capacity` sees real currents. This
+// is the `relcalc_head_recloser_matches_oracle` feeder — the reliability unit test
+// proves both engines' `RelCalc` arithmetic agrees.
+
+/// `Export BusReliability` (Pascal `ExportBusReliability`): per-bus Lambda/
+/// Num-Interruptions/Num-Customers/Cust-Interruptions/Duration/Total-Miles. All
+/// value columns are `%-.11g` (11 sig) computed by the `RelCalc` sweep — pure
+/// arithmetic from identical line fault-data on both engines (the reliability unit
+/// tests pin the same accumulators to ~1e-12), so `rel = 1e-8` is ~1e4× over the
+/// 11-sig print floor; the integer Num-Customers column is exact within `abs`.
+#[test]
+fn export_busreliability_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-8,
+        abs: 1e-9,
+        col_tol: vec![],
+    };
+    run_deck_export("export_busreliability", &policy);
+}
+
+/// `Export BranchReliability` (Pascal `ExportBranchReliability`): per-branch
+/// Lambda/Accumulated-Lambda/customers/interrupts/durations/miles/Cust-Miles/SAIFI
+/// (`%-.11g` + integer customer counts). Same arithmetic-identity floor as
+/// BusReliability (`rel = 1e-8`, `abs = 1e-9`).
+#[test]
+fn export_branchreliability_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-8,
+        abs: 1e-9,
+        col_tol: vec![],
+    };
+    run_deck_export("export_branchreliability", &policy);
+}
+
+/// `Export Capacity` (Pascal `ExportCapacity` + `CalcAndWriteMaxCurrents`):
+/// per-PDElement `Imax`/`%normal`/`%emergency`/`kW`/`kvar`/customers/`NumPhases`/
+/// `kVBase`. `Imax`/`kW`/`kvar` are `%10.6g` (6 sig) — the currents/powers of the
+/// same small solve on both engines, so they keep the 6-sig `EXPORT_REL` printing
+/// floor (`abs = 1e-6`). The `%normal`/`%emergency` columns are `%8.2f` (2 dec →
+/// additive `abs = 0.011`); `kVBase` is `%-.3g` (3 sig → `rel = 1e-3`). The
+/// integer customer/phase columns are exact within `abs`.
+#[test]
+fn export_capacity_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: EXPORT_REL,
+        abs: EXPORT_ABS,
+        col_tol: vec![
+            // %normal (2), %emergency (3): %8.2f additive last-digit floor.
+            ColTol {
+                sel: ColSel::Index(2),
+                rel: 0.0,
+                abs: 0.011,
+                gate: None,
+            },
+            ColTol {
+                sel: ColSel::Index(3),
+                rel: 0.0,
+                abs: 0.011,
+                gate: None,
+            },
+            // kVBase (9): %-.3g 3-sig printing floor.
+            ColTol {
+                sel: ColSel::Index(9),
+                rel: 1e-3,
+                abs: EXPORT_ABS,
+                gate: None,
+            },
+        ],
+    };
+    run_deck_export("export_capacity", &policy);
 }

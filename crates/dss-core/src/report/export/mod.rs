@@ -13,6 +13,7 @@
 //!   borrow (the `Dss::snapshot_elements` pattern) via [`for_each_enabled_elem`].
 
 mod bus_coords;
+mod capacity;
 mod counts;
 mod currents;
 mod elem;
@@ -25,6 +26,7 @@ mod node_order;
 mod p_by_phase;
 mod powers;
 mod registers;
+mod reliability;
 mod result;
 mod seq_currents;
 mod seq_powers;
@@ -41,6 +43,7 @@ mod ynode_list;
 mod yprims;
 
 pub use bus_coords::export_bus_coords;
+pub(crate) use capacity::export_capacity;
 pub use counts::export_counts;
 pub(crate) use currents::export_currents;
 pub(crate) use elem::{export_elem_currents, export_elem_powers, export_elem_voltages};
@@ -56,6 +59,7 @@ pub(crate) use registers::{
     GEN_REGISTER_NAMES, PVSYSTEM_REGISTER_NAMES, RegRow, STORAGE_REGISTER_NAMES, register_header,
     register_row,
 };
+pub(crate) use reliability::{export_branch_reliability, export_bus_reliability};
 pub(crate) use result::export_result;
 pub(crate) use seq_currents::export_seq_currents;
 pub(crate) use seq_powers::export_seq_powers;

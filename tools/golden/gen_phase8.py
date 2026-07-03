@@ -451,6 +451,71 @@ def gen_faultstudy(d) -> None:
     )
 
 
+# The reliability/capacity fixture (PHASE8_PLAN §WP8.3 step 3c). No corpus deck
+# exports these, so it is synthesized (PHASE8_PLAN §1) as a self-contained deck (no
+# master, like the Counts fixture): a two-section radial feeder (src→b1→b2) with
+# per-line fault data, a load with `numcust` on each section, a **recloser** (the OCP
+# device `RelCalc` needs so the forward interruption sweep completes) and an
+# EnergyMeter on the head line. After `solve` + `relcalc` all the reliability
+# accumulators (`Bus*`/`Branch*`/`Accumulated*`) are populated, so:
+#   * `BusReliability`   — per-bus Lambda/Num-Interruptions/Num-Customers/…
+#   * `BranchReliability`— per-branch Lambda/Accumulated-Lambda/customers/SAIFI/…
+#   * `Capacity`         — per-PDElement Imax/%normal/%emergency/kW/kvar/customers/kVBase
+# This is exactly the `relcalc_head_recloser_matches_oracle` feeder (the reliability
+# unit test proves both engines' `RelCalc` arithmetic agrees), so the report values
+# match tightly. The Rust golden (`golden_phase8.rs`) replays the same deck.
+RELIABILITY_FIXTURE = "rel"
+RELIABILITY_DECK = [
+    f"new circuit.{RELIABILITY_FIXTURE} basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2 pctperm=80 repair=4",
+    "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3 pctperm=90 repair=5",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10",
+    "new load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25",
+    "new recloser.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1 "
+    "phasetrip=100000 groundtrip=100000",
+    "new energymeter.m1 element=line.l1 terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap",
+    "relcalc",
+]
+RELIABILITY_REPORTS = [
+    ("busreliability", "EXP_BusReliability.csv", "export_busreliability"),
+    ("branchreliability", "EXP_BranchReliability.csv", "export_branchreliability"),
+    ("capacity", "EXP_CAPACITY.csv", "export_capacity"),
+]
+
+
+def gen_reliability(d) -> None:
+    """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in RELIABILITY_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in RELIABILITY_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "fixture": case,
+                "suffix": suffix,
+                "deck": RELIABILITY_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -465,6 +530,7 @@ def main() -> None:
     gen_ieee8500_reports(d)
     gen_seqz(d)
     gen_faultstudy(d)
+    gen_reliability(d)
 
 
 if __name__ == "__main__":
