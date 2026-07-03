@@ -119,6 +119,28 @@ pub fn float_to_str_ex(v: f64) -> String {
     }
 }
 
+/// FPC `TStrings.CommaText` (`GetDelimitedText` with the default `Delimiter=','`
+/// / `QuoteChar='"'`, non-strict): join the items with commas, wrapping in
+/// double-quotes — and doubling any embedded quote — every item that is empty or
+/// contains any char `<= ' '` (space/control), the delimiter, or the quote char.
+/// Used for the `Export Monitors` header row (`Monitor.pas` `TranslateToCSV` →
+/// `Header.CommaText`), where labels like `Tap (pu)` / `S1 (kVA)` / `%kW Stored`
+/// carry spaces and are quoted so the header line matches the oracle verbatim.
+pub fn comma_text(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|s| {
+            let needs_quote = s.is_empty() || s.chars().any(|c| c <= ' ' || c == '"' || c == ',');
+            if needs_quote {
+                format!("\"{}\"", s.replace('"', "\"\""))
+            } else {
+                s.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// C `printf` `%.*g` (FPC `Format('%-.Ng', …)`): `sig` significant digits,
 /// scientific notation when the decimal exponent is `< -4` or `>= sig`, with
 /// trailing zeros (and a dangling decimal point) stripped. Used by the event
@@ -284,6 +306,28 @@ mod tests {
         assert!(compare_text_shortest_eq("objectxxx", "object")); // min-length compare
         assert!(!compare_text_shortest_eq("axe", "object"));
         assert!(compare_text_shortest_eq("", "anything")); // Pascal quirk
+    }
+
+    #[test]
+    fn comma_text_quotes_like_fpc() {
+        // Bare tokens (no space/comma/quote) stay unquoted; the delimiter is a
+        // plain comma with no separating space.
+        assert_eq!(
+            comma_text(&["hour".into(), "t(sec)".into(), "V1".into()]),
+            "hour,t(sec),V1"
+        );
+        // A space (any char <= ' ') forces quoting — the monitor `Tap (pu)` /
+        // `S1 (kVA)` headers.
+        assert_eq!(comma_text(&["Tap (pu)".into()]), "\"Tap (pu)\"");
+        assert_eq!(
+            comma_text(&["S1 (kVA)".into(), "Ang1".into()]),
+            "\"S1 (kVA)\",Ang1"
+        );
+        // An embedded comma forces quoting; an embedded quote is doubled inside
+        // the wrapping quotes; an empty item is quoted as `""`.
+        assert_eq!(comma_text(&["a,b".into()]), "\"a,b\"");
+        assert_eq!(comma_text(&["say \"hi\"".into()]), "\"say \"\"hi\"\"\"");
+        assert_eq!(comma_text(&["".into(), "x".into()]), "\"\",x");
     }
 
     #[test]

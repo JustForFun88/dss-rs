@@ -1,0 +1,13 @@
+{
+  "report": "monitors m_tap",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "new monitor.m_vi element=Line.650632 terminal=1 mode=0",
+    "new monitor.m_pow element=Line.650632 terminal=1 mode=1",
+    "new monitor.m_tap element=Transformer.Reg1 terminal=2 mode=2",
+    "set mode=daily number=3 stepsize=1h",
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "Mon_m_tap_1.csv"
+}

@@ -958,3 +958,37 @@ fn export8500_reports_match_oracle() {
         ("export8500_counts", counts),
     ]);
 }
+
+// --- WP8.3 step 1: Export Monitors (Monitor.TranslateToCSV) -------------------
+// `Export Monitors <name>` writes each monitor's in-memory f32 sample buffer to
+// its own CSV (`<case>_Mon_<name>_1.csv`; the `_1` is the PM-build primary-context
+// `DSS._Name`). Three monitors cover the distinct CSV shapes on one daily-solved
+// IEEE13 compile: mode 0 (general V/I — paired magnitude/angle, unquoted header),
+// mode 1 (power — the `S (kVA)`/`Ang` header whose spaces force `CommaText`
+// quoting), and mode 2 (the single quoted `Tap (pu)` channel). The header line is
+// compared **verbatim** (the `Header.CommaText` contract — quoting included); the
+// data rows (incl. the `hour`/`t(sec)` time columns the live gate's channel
+// compare skips) parse numbers out. Values are f32 (the monitor stream is
+// single-precision on both engines), printed `%-.6g` (6 sig), so the floor is the
+// f32+print resolution (~1e-6 rel); `rel = 1e-4` / `abs = 1e-3` clears it with
+// margin — a real channel/stride/ordering bug is degrees-/amps-scale and fails
+// loudly. The monitor *values* are pinned to f32-of-1e-8 by the always-on
+// `corpus_live.rs` daily monitor compare; this golden pins the CSV **layout**
+// (header CommaText, column order, row stride, the `_1` filename). All three share
+// the one compile+daily-solve via `run_shared_exports`.
+#[test]
+fn export_monitors_match_oracle() {
+    let mon = || ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-3,
+        col_tol: vec![],
+    };
+    run_shared_exports(&[
+        ("export_mon_vi", mon()),
+        ("export_mon_pow", mon()),
+        ("export_mon_tap", mon()),
+    ]);
+}
