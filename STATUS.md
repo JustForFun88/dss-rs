@@ -18,7 +18,8 @@ ground, and worst node-to-node fault current — the 1φ/L-L columns are **local
 Golden `export_faultstudy` (faultstudy-solved IEEE13, 17 buses) matched the oracle
 **first-run**; a rel-sweep proved the currents match ≤1e-8 rel, so the floor is purely
 the `%.2f` printing floor (`rel=0`/`abs=0.011`, the `Powers`/`P_byphase` discipline — no
-masking). golden_phase8 **37→38**; lib **728** (formatter gated end-to-end). Prior:
+masking). golden_phase8 **37→38**; lib **728→729** (formatter gated end-to-end + the audit-tests
+`Ysc=None` degenerate-path guard). Prior:
 **WP8.3 step 3a landed, gate-green** — the **EventLog/ErrorLog
 dumps** (ptrs 33/52, `ExportEventLog`/`ExportErrorLog`): the `report/export/logs.rs`
 `TStringList.SaveToFile` formatters (`DSS.EventStrings`/`DSS.ErrorStrings`, one entry
@@ -154,7 +155,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 728, golden_feeders 1,
+cargo test --workspace      # dss-core lib 729, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1, golden_phase8 38,
@@ -1757,9 +1758,31 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   so the honest floor is the `%.2f` **printing floor** (`rel=0`/`abs=0.011` — the `Powers`/`P_byphase`
   discipline; the faultstudy `Zsc`/`Ysc` are pinned to 1e-9·mag by `exec/tests/fault_study.rs`, and the
   `YFault` inversions run the same bit-faithful `CMatrix::invert` on both engines). golden_phase8
-  **37→38**; lib **728** (formatter gated end-to-end, no new inline test); `solvable_now` **119** (no
-  migration — the `Export Faultstudy`/`Capacity` corpus decks need the full step-3b set + are otherwise
-  blocked; migration at the step-5 completion gate).
+  **37→38**; lib **728→729** (the formatter is gated end-to-end; the +1 is the audit-tests degenerate-path
+  guard below); `solvable_now` **119** (no migration — the `Export Faultstudy`/`Capacity` corpus decks need
+  the full step-3b set + are otherwise blocked; migration at the step-5 completion gate).
+  - **audit-code follow-up (independent agent): FAITHFUL — no Critical/Major/Minor; 2 Nits recorded,
+    no fix.** Loop-for-loop reconfirmed vs `ExportFaultStudy` (`ExportResults.pas:1526`): header byte-exact
+    (double spaces), 3φ = `max|BusCurrent|`, the 1φ/L-L `YFault` stamp/invert/mvmult (Ysc-not-Zsc base,
+    0-based↔1-based, the `iphs2` wrap, the single-node `iphs==iphs2`⇒0), `%10f`=2dp + `Pad(UPPER,12)`, ptr
+    11 in the #24712 guard set with no Parm2 pre-parse, the read-only `fn(&Circuit)` claim, and the `CMatrix`
+    API (incl. `add_sym` adding once on the diagonal, matching Pascal `AddElemsym`'s `if i<>j` guard at
+    `Ucmatrix.pas:287`). **Nits (surfaced-not-fixed, not gate-observable):** (1) the magnitudes use
+    `Complex64::norm()` (libm `hypot`) vs FPC `Cabs` (naive `√(re²+im²)`, the `cabs_fpc` form) — a ≤1-ULP
+    (~1e-13 rel) deviation far below the `%.2f`/`abs=0.011` floor, and consistent with the whole report
+    layer's `.norm()` convention (`currents.rs` etc.) — not worth a `TODO(compat)`; (2) the `YFault`/`VFault`
+    scratch is reallocated per `iphs` iteration where Pascal allocates once and `CopyFrom`-reuses —
+    behaviorally identical (each `copy_from`/`mv_mult` fully overwrites), a minor efficiency-only difference.
+  - **audit-tests follow-up (independent agent): SOUND + non-vacuous; 1 coverage gap closed.** Confirmed the
+    golden is a genuine pinned-oracle capture (`check_pin` 0.15.7/0.14.5, single-sourced via `meta.json`, Rust
+    diffs its own produced file), the `rel=0`/`abs=0.011` floor is the honest `%.2f` printing floor (and is
+    *stricter* than the ≤1e-8-rel sweep on the high-magnitude buses — a flat 0.011 A on 650's 2.1 MA is a
+    ~5e-9 rel check, so no masking), and the `ExactOrdered`+verbatim-header gate catches a swapped 1φ/L-L
+    column / wrong `GFault` / Zsc-base / dropped row. **Closed the one gap** the auditor flagged (the
+    `Ysc==None` degenerate branch — the golden always runs a faultstudy first, so it never exercised it):
+    added `export_faultstudy_snapshot_ysc_none_is_zeroed` (a Rust-only structural guard — a plain snapshot
+    `solve` ⇒ `Ysc=None` ⇒ 1φ/L-L columns structurally `0.00`, header + 4-field rows + ≥2 buses asserted,
+    no oracle needed since the zeros are the None-branch by construction). lib **728→729**.
 - **next — WP8.3 step 3c:** the remaining step-3b exports — `BusReliability`/`BranchReliability` +
   `Capacity` (RelCalc bus/branch outputs + zone customer counts, all populated), then `Overloads`/
   `Unserved`/`AllocationFactors` (PD-overload + load EEN/UE + allocation), then `Sections` (**needs new

@@ -238,6 +238,61 @@ fn compile_moves_output_directory_redirect_does_not() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// `Export Faultstudy` on a **snapshot** circuit (a plain `solve`, no
+/// `solve mode=faultstudy`): the per-bus `Ysc` is `None`, so the 1-phase and L-L
+/// columns take the `if let Some(ysc)` *else* path and stay `0.00`, the same
+/// degenerate output the oracle produces (`ExportFaultStudy` reads precomputed
+/// state — "Isc has been previously computed" — and garbage/zeros it if none ran).
+/// This guards that `Ysc == None` branch (the `golden_phase8` fixture always runs
+/// a faultstudy first, so it never exercises it; audit-tests WP8.3 step 3b). No
+/// oracle capture needed — the zeros are structural (`max_1ph`/`max_ll` never
+/// leave their `0.0` init), so a Rust-only assertion is faithful and non-vacuous.
+#[test]
+fn export_faultstudy_snapshot_ysc_none_is_zeroed() {
+    let dir = std::env::temp_dir().join(format!("dss_fs_snap_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir {}: {e}", dir.display()));
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000");
+    dss.command(
+        "new line.l1 bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0",
+    );
+    dss.command("new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=0.95 model=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve"); // snapshot only — NOT `mode=faultstudy`
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    dss.command("export faultstudy");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    assert!(
+        produced.to_lowercase().ends_with("exp_faults.csv"),
+        "unexpected produced path: {produced:?}"
+    );
+    let content =
+        std::fs::read_to_string(produced).unwrap_or_else(|e| panic!("read {produced}: {e}"));
+
+    let mut lines = content.lines();
+    assert_eq!(lines.next(), Some("Bus,  3-Phase,  1-Phase,  L-L"));
+    let mut rows = 0;
+    for line in lines.filter(|l| !l.trim().is_empty()) {
+        rows += 1;
+        let cols: Vec<&str> = line.split(',').map(|c| c.trim()).collect();
+        assert_eq!(cols.len(), 4, "row must have 4 fields: {line:?}");
+        // The 1-phase (col 2) and L-L (col 3) columns are structurally 0.00 when
+        // no faultstudy ran (Ysc == None). The 3-phase column (col 1) reads the
+        // zeroed `bus_current` — also 0.00 on a snapshot — but the load-bearing
+        // guard is the None-branch producing exactly `0.00`, not garbage/panic.
+        assert_eq!(cols[2], "0.00", "1-phase must be 0.00 (Ysc None): {line:?}");
+        assert_eq!(cols[3], "0.00", "L-L must be 0.00 (Ysc None): {line:?}");
+    }
+    assert!(rows >= 2, "expected the src+b buses, got {rows} rows");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// `Save`/`Dump` record a scoped `NOT_PORTED` until WP8.5 (their corpus decks
 /// are all in `skipped_unsupported`).
 #[test]
