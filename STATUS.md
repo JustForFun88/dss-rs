@@ -1401,9 +1401,28 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     `P174_Run_360kW_PV` → `unsupported_feature=file-backed-arrays` (its old
     `unsupported_command=Plot` tag was stale too — Plot/Visualize are silent no-ops; the sole
     remaining error is the file-backed `PVCurve` LoadShape), `ExpControl/Master` gains
-    `unsupported_command=Export`. Corpus-hygiene note for a future pass: ~19 more
-    `skipped_unsupported` entries still carry an `unsupported_class=Storage/storage` tag from
-    the pre-WP7.4 era (GFM/IBRDynamics/StoCtrl_* families) — not re-probed here.
+    `unsupported_command=Export`. The remaining **19 stale `unsupported_class=Storage`
+    entries were then re-probed the same way** (release, 600s watchdog, state inspection) —
+    all 19 complete fast and converge; all retagged to their real blockers: the 14
+    GFL/GFM decks (IBRDynamics_Cases + Microgrid/GridFormingInverter) → BatchEdit + the
+    InvControl GFM combi mode (`mode=7 combi=0` raises the loud WP7.7 deferral and the
+    solve aborts), Paulo_Example → AddBusMarker+Export, Run_Demo1 → CloseDI+file-backed
+    arrays, SolarRamp → file-backed arrays only (its stale `unsupported_command=Plot`
+    dropped — Plot/Visualize are no-ops), and the 2 StoCtrl_* decks → DI/season Set
+    options + MakeBusList/Wait/CloseDI/BatchEdit. **That sweep also exposed and fixed a
+    real port bug:** `capture_metered` (Monitor) classified Storage as plain
+    `MeteredKind::PcElement` and *nothing* ever produced `MeteredKind::Storage`, so the
+    Pascal mode-7 class check (`CLASSMASK = STORAGE_ELEMENT`, Monitor.pas
+    `RecalcElementData` case 7) could never pass — every valid `Monitor mode=7
+    element=Storage.*` errored "is not a storage device!" (and in both StoCtrl_* decks
+    cascaded into a bogus singular-Y solve abort; post-fix both run their full yearly sim,
+    hour=8760, converged). Fix: Storage gets its own `MeteredKind::Storage` arm and the
+    mode-3 check accepts `PcElement | Storage` (Pascal mode 3 is `BASECLASSMASK =
+    PC_ELEMENT`). Oracle-verified (pinned dss-python: Storage mode=7 OK, Load mode=7 →
+    `#2016002`, Storage mode=3 OK) + 2 new unit tests in `exec/tests/storage.rs`
+    (`storage_accepts_mode7_monitor`, `mode7_monitor_rejects_non_storage`). Mode-7
+    *sampling* stays deferred (header-only, as before); no `unsupported_class=Storage`
+    tags remain in any manifest.
   - **Issue-2 root cause (RESOLVED — the "rare live-gate flake" was never a concurrency race).**
     The `Test/YgD-Test.dss step 0: oracle did not converge` flake was root-caused empirically to a
     **per-process convergence misfire in the pinned engine itself** (dss_capi 0.14.5): on a fresh
