@@ -287,6 +287,13 @@ struct CorpusGuard {
     dir: PathBuf,
     names: BTreeSet<String>,
     buf: BTreeMap<String, Vec<u8>>,
+    /// The pre-run snapshot succeeded. If the initial `read_dir` fails (transient
+    /// EMFILE / AV or indexer lock on Windows), `names` would be empty and Drop
+    /// would treat *every* file as run-created and delete the whole feeder dir.
+    /// Guard against that catastrophe: a failed snapshot disables deletion. (This
+    /// is intentionally safer than the oracle's Python mirror, which does not —
+    /// safe to diverge here since this is test infra, not a ported algorithm.)
+    snapshot_ok: bool,
 }
 
 impl CorpusGuard {
@@ -297,29 +304,43 @@ impl CorpusGuard {
             .unwrap_or_else(|| PathBuf::from("."));
         let mut names = BTreeSet::new();
         let mut buf = BTreeMap::new();
-        if let Ok(rd) = std::fs::read_dir(&dir) {
-            for entry in rd.flatten() {
-                let p = entry.path();
-                if !p.is_file() {
-                    continue;
+        let snapshot_ok = match std::fs::read_dir(&dir) {
+            Ok(rd) => {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if !p.is_file() {
+                        continue;
+                    }
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let small = entry
+                        .metadata()
+                        .map(|m| m.len() <= RESTORE_MAX)
+                        .unwrap_or(false);
+                    if small && let Ok(data) = std::fs::read(&p) {
+                        buf.insert(name.clone(), data);
+                    }
+                    names.insert(name);
                 }
-                let name = entry.file_name().to_string_lossy().into_owned();
-                let small = entry
-                    .metadata()
-                    .map(|m| m.len() <= RESTORE_MAX)
-                    .unwrap_or(false);
-                if small && let Ok(data) = std::fs::read(&p) {
-                    buf.insert(name.clone(), data);
-                }
-                names.insert(name);
+                true
             }
+            Err(_) => false,
+        };
+        Self {
+            dir,
+            names,
+            buf,
+            snapshot_ok,
         }
-        Self { dir, names, buf }
     }
 }
 
 impl Drop for CorpusGuard {
     fn drop(&mut self) {
+        // Never delete when the pre-run snapshot failed — we cannot tell created
+        // files from pre-existing ones, so deleting would nuke the vendored deck.
+        if !self.snapshot_ok {
+            return;
+        }
         let Ok(rd) = std::fs::read_dir(&self.dir) else {
             return;
         };

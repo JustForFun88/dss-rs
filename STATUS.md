@@ -98,7 +98,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 IN PROGRESS:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). Tracked-open (deferred): 9 decks **hang the Rust engine** (>40s; StorageController prime suspect), kept in `skipped_unsupported`. Branch `phase-8-reporting`. **next = WP8.3** (Export: monitors/meters/DER/reliability/faultstudy + demand-interval files + `TSystemMeter` core). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). Tracked-open (deferred): 9 decks **hang the Rust engine** (>40s; StorageController prime suspect), kept in `skipped_unsupported`. Branch `phase-8-reporting`. **next = WP8.3** (Export: monitors/meters/DER/reliability/faultstudy + demand-interval files + `TSystemMeter` core). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -1387,6 +1387,33 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   - **Gate:** `cargo fmt`/`clippy`/`test` green; golden_phase8 **25**; lib **723**; the always-on
     `corpus_live` full-model compare green over **all 119** `solvable_now` cases (105 s).
     **WP8.2 COMPLETE.**
+  - **audit-code follow-up (independent agent): faithful — no Critical/Major; 1 defensive fix.**
+    Verified `CorpusGuard` is a semantically-exact mirror of the oracle's `_CorpusGuard`
+    (RESTORE_MAX, delete-created/restore-overwritten, drop order: `dss` drops before `_guard`
+    so engine file handles close first), `run_shared_exports` genuinely single-sources + diffs
+    all three reports, and `gen_ieee8500_reports` faithfully captures the oracle. **Fixed
+    (defensive):** the empty-snapshot hazard — if `CorpusGuard::new`'s initial `read_dir` failed
+    (transient EMFILE / AV-or-indexer lock), `names` would be empty and Drop would treat every
+    file as run-created and delete the whole feeder dir; added a `snapshot_ok` flag that disables
+    deletion on a failed snapshot (safe to diverge from the Python mirror here — test infra, not
+    a ported algorithm). Surfaced-not-fixed (mirror-the-oracle limits, no gate effect): the guard
+    is non-recursive (immediate case dir only), doesn't content-restore >2 MiB overwritten files
+    or remove created subdirs, and corpus-pristineness stays best-effort (git-verified, no
+    automated gate) — all matching the oracle guard.
+  - **audit-tests follow-up (independent agent): sound + strengthening — no weakening,
+    mutation-verified.** The auditor independently ran the always-on gate (**119/119** matched
+    the oracle, 74 s) and mutation-tested the 8500 goldens: a +1% magnitude, a >0.11 angle, a
+    Transformer-count +1, and a NumNodes +1 each FAIL; the DateTime mask + a sub-0.11 angle
+    correctly PASS; the `RustSubsetByKey` require-set is non-vacuous (a dropped Line row FAILs).
+    Confirmed the goldens are genuine `check_pin` oracle captures (single-sourced via `meta.json`),
+    the 31 promotions are `kind=feeder` (tightest v-rel-1e-8 tier) probed under the exact
+    conditions the gate re-runs, none vacuous, the 19 non-matches correctly stayed out, and the
+    `CorpusGuard` cannot mask a failure (it only touches on-disk files the gate never reads).
+    **Surfaced-not-fixed (pre-existing, cosmetic):** the two `PV_currentkvarLimit_*`
+    `needs_investigation` notes read `…|diff| = 1.7e-4 > allowed 1.420` — arithmetically
+    impossible because `apply_classify`'s `note[:300]` cap truncates the trailing `allowed
+    1.42e-4` mid-token; the comparator itself is correct (`{:e}`), the cases are pre-existing
+    tracked-opens kept out of the gate, a tooling nit outside WP8.2 scope.
 - **next — WP8.3 (Export: monitors, meters, DER, reliability, fault study, demand-interval
   files):** the device/meter exports (`Monitors`/`Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
   `Storage_Meters`/`EventLog`/`Faultstudy`/`Capacity`/`Overloads`/`Unserved`/reliability/`Profile`/
