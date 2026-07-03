@@ -290,9 +290,10 @@ struct CorpusGuard {
     /// The pre-run snapshot succeeded. If the initial `read_dir` fails (transient
     /// EMFILE / AV or indexer lock on Windows), `names` would be empty and Drop
     /// would treat *every* file as run-created and delete the whole feeder dir.
-    /// Guard against that catastrophe: a failed snapshot disables deletion. (This
-    /// is intentionally safer than the oracle's Python mirror, which does not —
-    /// safe to diverge here since this is test infra, not a ported algorithm.)
+    /// Guard against that catastrophe: a failed snapshot disables deletion. (The
+    /// oracle's Python mirror `_CorpusGuard` now carries the same `_snapshot_ok`
+    /// gate — its old whole-loop `except OSError` demonstrably deleted corpus
+    /// files when one file was transiently locked mid-snapshot.)
     snapshot_ok: bool,
 }
 
@@ -424,7 +425,14 @@ fn run_and_compare(
         // Node order + voltages (immutable circuit borrow).
         {
             let ckt = dss.circuit().expect("circuit exists");
-            assert!(cp.converged, "{ctx}: oracle did not converge");
+            // The oracle server already absorbs the pinned engine's
+            // fresh-process convergence misfire by retrying in-process (see
+            // `run_case` in oracle_server.py / STATUS.md §1f); a failure here
+            // is a real, reproducible oracle non-convergence.
+            assert!(
+                cp.converged,
+                "{ctx}: oracle did not converge (persisted across the oracle's in-process retries)"
+            );
             assert!(ckt.is_solved, "{ctx}: Rust did not converge");
             assert!(
                 (ckt.solution.dbl_hour - cp.dbl_hour).abs() < 1e-9,
