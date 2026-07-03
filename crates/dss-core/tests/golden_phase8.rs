@@ -969,13 +969,18 @@ fn export8500_reports_match_oracle() {
 // compared **verbatim** (the `Header.CommaText` contract — quoting included); the
 // data rows (incl. the `hour`/`t(sec)` time columns the live gate's channel
 // compare skips) parse numbers out. Values are f32 (the monitor stream is
-// single-precision on both engines), printed `%-.6g` (6 sig), so the floor is the
-// f32+print resolution (~1e-6 rel); `rel = 1e-4` / `abs = 1e-3` clears it with
-// margin — a real channel/stride/ordering bug is degrees-/amps-scale and fails
-// loudly. The monitor *values* are pinned to f32-of-1e-8 by the always-on
-// `corpus_live.rs` daily monitor compare; this golden pins the CSV **layout**
-// (header CommaText, column order, row stride, the `_1` filename). All three share
-// the one compile+daily-solve via `run_shared_exports`.
+// single-precision on both engines), printed `%-.6g` (6 sig): the theoretical
+// floor is the f32-quantization + 6-sig-print resolution (~1e-6 rel on the kV/A
+// magnitudes; ~1e-7 abs on the one near-zero cell, `VAngle1 ≈ -0.013`) across the
+// two independent solves — in practice the printed values are byte-identical here
+// (measured max Rust↔oracle gap 0). `rel = 1e-4` / `abs = 1e-5` sit ~100× above
+// that theoretical floor, so a real channel/stride/ordering bug (degrees-/amps-
+// scale) or a rad↔deg swap fails loudly while the printing floor never flakes.
+// The monitor *sampling code path* is 1e-8-gated by the always-on `corpus_live.rs`
+// on equivalent `line.650632` daily monitors; this golden cross-checks these exact
+// monitors' values (at the print floor) and pins the CSV **layout** (header
+// CommaText, column order, row stride, the `_1` filename). All three share the one
+// compile+daily-solve via `run_shared_exports`.
 #[test]
 fn export_monitors_match_oracle() {
     let mon = || ExportPolicy {
@@ -983,7 +988,7 @@ fn export_monitors_match_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 1e-4,
-        abs: 1e-3,
+        abs: 1e-5,
         col_tol: vec![],
     };
     run_shared_exports(&[

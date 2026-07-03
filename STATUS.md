@@ -1530,6 +1530,34 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     **first-run**, no fudging. golden_phase8 **28→29**; lib **725→726** (`comma_text` unit test).
     No corpus migration here — the `Export Monitors`-blocked decks migrate at the WP8.3 completion
     gate (step 5), the WP8.2 batching pattern.
+  - **audit-code follow-up (independent agent): faithful — no Critical/Major; 2 Minor fixed.**
+    The auditor confirmed the record stride/slot layout, the `hr:0:0`/`s:0:5` + `%-.6g` formatting,
+    the harmonic-mode uniformity, the case-15 control flow (all/find/#250/#251), the `_1` filename,
+    and the solve guard all match Pascal. **Fixed:** (1) the last-file bookkeeping — Pascal sets
+    `SetLastResultFile` + `@lastexportfile` **once after** the loop (so a zero-monitor `Export
+    Monitors all` clears them to `''`), but the port set them per-iteration; now tracks the last
+    written path and applies the bookkeeping once (degenerate edge — no gate exposure, but now
+    faithful). (2) `comma_text` asserted **unverified** FPC empty-item quoting (`""`), which is dead
+    for the monitor contract (no header label is ever empty) and contradicts "empirical over guessed
+    FPC semantics" — dropped the empty-item special-case + its unit-test assertion, documenting why.
+    **Surfaced-not-fixed (Nits):** the `\n` line terminator (Pascal emits CRLF) is the project-wide
+    Phase-8 export convention, masked by the LF-normalizing golden pipeline; and the deferred sample
+    modes (4/7/8/10/12, `sample.rs`) would emit header-only CSVs — out of scope (those decks stay in
+    `skipped_unsupported` until the WP8.3 completion migration).
+  - **audit-tests follow-up (independent agent): sound + non-vacuous — mutation-verified; 1 Minor
+    tightened, 1 doc fix.** The auditor mutation-tested the golden: reversing channel order, dropping
+    the header quoting, dropping the `_1` suffix, zeroing the hour column, and a `%-.6g`→4-sig
+    precision cut each **FAIL** (a 6→5-sig cut is absorbed by design). Confirmed the goldens are
+    genuine `check_pin` oracle captures (not self-comparison), single-sourced via the meta, over the
+    real IEEE13 master, with the hour/sec time columns (skipped by the live channel compare) newly
+    pinned here. **Fixed:** (1) the `abs=1e-3` floor was ~3 orders looser than the stated ~1e-6 —
+    **measured** the actual Rust↔oracle gap (max_abs=0, max_rel=0: the f32+`%-.6g` prints are
+    byte-identical for this fixture) and tightened to `abs=1e-5` (~100× over the ~1e-7 theoretical
+    near-zero-angle floor, so it never flakes yet no longer masks). (2) the doc comment overclaimed
+    the *values* are 1e-8-gated by `corpus_live` — reworded to "the sampling *code path* is 1e-8-gated
+    on equivalent monitors; this golden cross-checks these exact values at the print floor." Counts
+    unchanged (lib **726**, golden_phase8 **29**) — the empty-item change dropped one assertion, not
+    a test.
 - **next — WP8.3 step 2 (register dumps):** `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
   `Storage_Meters` (`ExportMeters`/`ExportGenMeters`/`ExportLoads`/`Export{PVSystem,Storage}Meters`)
   over the Phase-6/7 EnergyMeter/DER register arrays + names; then step 3 (EventLog/Faultstudy/

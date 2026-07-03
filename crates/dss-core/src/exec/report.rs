@@ -295,6 +295,13 @@ impl Dss {
         };
 
         let circuit_name_ = format!("{case}_");
+        // Pascal sets `SetLastResultFile` + `@lastexportfile := FileName` ONCE
+        // after the loop (`ExportOptions.pas` case 15 + the `DoExportCmd` tail),
+        // where `FileName` ends on the last monitor's `GlobalResult` — or stays
+        // `''` when the fleet is empty (`Export Monitors all` with no monitors
+        // defined), clearing the bookkeeping. Track the last successfully-written
+        // path (empty if none) and apply the bookkeeping once at the end.
+        let mut last_path = String::new();
         for r in targets {
             let (mon_name, content) = {
                 let obj = &self.classes[r.cls].objects[r.idx];
@@ -313,10 +320,12 @@ impl Dss {
                 &default_name,
             );
             if self.write_report(&path, &content) {
-                let p = self.last_result_file.clone();
-                self.vars.add("@lastexportfile", &p);
+                last_path = self.last_result_file.clone();
             }
         }
+        self.last_result_file = last_path.clone();
+        self.vars.add("@lastfile", &last_path);
+        self.vars.add("@lastexportfile", &last_path);
     }
 
     /// `Export Y` (Pascal `ExportY`): the assembled system Y, sparse-triplet
