@@ -25,12 +25,17 @@ enum RegKind {
 /// already exists **and** its first line begins with `Year` (case-insensitive,
 /// the header sentinel) — a missing, unreadable, or non-`Year` file is rewritten.
 fn register_need_rewrite(path: &Path) -> bool {
-    match std::fs::read_to_string(path) {
-        Ok(s) => !s
-            .lines()
-            .next()
-            .and_then(|l| l.get(..4))
-            .is_some_and(|p| p.eq_ignore_ascii_case("Year")),
+    use std::io::BufRead;
+    // Read only the first line (Pascal `FSReadLn` reads a single line, not the
+    // whole append-log).
+    match std::fs::File::open(path) {
+        Ok(f) => {
+            let mut first = String::new();
+            let _ = std::io::BufReader::new(f).read_line(&mut first);
+            !first
+                .get(..4)
+                .is_some_and(|p| p.eq_ignore_ascii_case("Year"))
+        }
         Err(_) => true,
     }
 }

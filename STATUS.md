@@ -1602,8 +1602,10 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     (PHASE8_PLAN §1 forbids). `solution/meters/sampling/take_sample.rs` now samples + resets
     Generator+Storage+PVSystem after the meter sweep — **unconditional** (Pascal doesn't gate it on a
     meter existing), which is why the DER registers accumulate even with no `EnergyMeter` defined. The
-    change touches only the register arrays (read-only w.r.t. the solve), so no existing golden /
-    corpus_live case moved (full gate re-run green).
+    change is register-only w.r.t. the solve **except** the faithful `UseFuel` generator path
+    (`take_sample`→`check_on_fuel`→`gen_active`, which zeroes a spent generator's injection, matching
+    Pascal `TGeneratorObj.TakeSample`); `UseFuel` defaults off, so no existing golden / corpus_live case
+    moved (full gate re-run green).
   - **gate** — two synthesized goldens (no corpus deck uses these keywords → PHASE8_PLAN §1 synthesize):
     **(A)** plain-IEEE13 + an EnergyMeter, daily 3 → `Meters` + `Loads` (the meter registers match the
     oracle to ~1e-8 — the same daily meter path `corpus_live` pins — so `%10.0f` is identical); **(B)**
@@ -1615,6 +1617,19 @@ new electrical math, no new solve mode — the risk is faithful report layout an
     self-consistency test (the per-meter `EXP_MTR_EM1.csv` carries the same values as the single-file
     golden). Header lines verbatim-pinned; values parse out. Matched the oracle **first-run** (after the
     DER-sampling fix), no fudging. golden_phase8 **29→32**; lib **726** (net).
+  - **audit-code follow-up (independent agent): faithful — no Critical/Major; 2 Minor + 2 Nit
+    settled.** The auditor verified every formatter/filename/append/`/m`/`TODO(compat)` against Pascal
+    and the DER-wiring args/order against `EnergyMeter.pas:928-931`/`895-897`. **Fixed:** (1) the STATUS
+    claim that the DER wiring is "read-only w.r.t. the solve" was imprecise — the `UseFuel` generator
+    path (`take_sample`→`check_on_fuel`→`gen_active`) *does* feed the solve; reworded (`UseFuel` defaults
+    off, so the gate still confirms nothing moved). (2) `ExportLoads` now emits Pascal's **unconditional**
+    `FSWriteln` (a blank line for a disabled load) so the output is byte-faithful, not just
+    golden-equivalent. (3) `register_need_rewrite` reads only the first line (`FSReadLn`), not the whole
+    append-log. (4) a comment documents that `sample_all_der`'s enabled-guard lives inside each
+    `take_sample`. **Surfaced-not-fixed (Nit, pre-existing/systemic):** the whole Rust export family
+    models the last-written path via `last_result_file`, not Pascal's `GlobalResult`/`AppendGlobalResult`
+    — so the `/m` tail reproduces `@lastexportfile="/m"` but not the comma-joined `GlobalResult` file
+    list; out of scope for this step (not introduced here), tracked for the WP8.x `GlobalResult` pass.
 - **next — WP8.3 step 3:** `EventLog`/`ErrorLog` (the Phase-5 event-log format), `Faultstudy` (read-only
   over the WP7.9-precomputed bus `Zsc`/`Ysc`/`BusCurrent`, §2.1), `Capacity`/`Overloads`/`Unserved`,
   `BusReliability`/`BranchReliability`/`Sections` (the WP7.2 `RelCalc` outputs), `AllocationFactors`,
