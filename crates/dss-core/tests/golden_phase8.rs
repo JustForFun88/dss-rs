@@ -1527,11 +1527,14 @@ fn export_branchreliability_matches_oracle() {
 
 /// `Export Capacity` (Pascal `ExportCapacity` + `CalcAndWriteMaxCurrents`):
 /// per-PDElement `Imax`/`%normal`/`%emergency`/`kW`/`kvar`/customers/`NumPhases`/
-/// `kVBase`. `Imax`/`kW`/`kvar` are `%10.6g` (6 sig) — the currents/powers of the
-/// same small solve on both engines, so they keep the 6-sig `EXPORT_REL` printing
-/// floor (`abs = 1e-6`). The `%normal`/`%emergency` columns are `%8.2f` (2 dec →
-/// additive `abs = 0.011`); `kVBase` is `%-.3g` (3 sig → `rel = 1e-3`). The
-/// integer customer/phase columns are exact within `abs`.
+/// `kVBase`. `Imax`/`kW`/`kvar` are solve-derived (`%10.6g`), so they take the
+/// corpus-wide `EXPORT_REL` **two-independent-solves** (faer-vs-KLU) floor — well
+/// above the ~1e-8 agreement on this tiny circuit, so a real scale/mapping
+/// regression (wrong ×0.001, a dropped phase in the `Imax` max, a swapped kW/kvar)
+/// fails loudly while the two solves never flake (`abs = 1e-6`). The `%normal`/
+/// `%emergency` columns are `%8.2f` (2 dec → additive `abs = 0.011`); `kVBase` is
+/// `%-.3g` (3 sig → `rel = 1e-3`). The integer customer/phase columns are exact
+/// within `abs`.
 #[test]
 fn export_capacity_matches_oracle() {
     let policy = ExportPolicy {
@@ -1564,4 +1567,129 @@ fn export_capacity_matches_oracle() {
         ],
     };
     run_deck_export("export_capacity", &policy);
+}
+
+/// Split every non-empty CSV data line (after the header) into trimmed fields.
+fn csv_rows(content: &str) -> Vec<Vec<String>> {
+    content
+        .lines()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.split(',').map(|f| f.trim().to_string()).collect())
+        .collect()
+}
+
+/// The **degenerate no-`RelCalc`** path (audit-tests follow-up): `Export
+/// BusReliability`/`BranchReliability` without a prior `RelCalc` must emit the
+/// same all-zero reliability columns the oracle produces (the `Bus*`/`Branch*`
+/// fields are their zero defaults). A Rust-only structural guard (no oracle — the
+/// zeros are the default-branch by construction, like the step-3b `Ysc=None`
+/// guard): the golden always runs `relcalc` first, so it never exercises this.
+/// Guards against a regression that emitted garbage (or populated fields before
+/// `RelCalc`) on the unrun path.
+#[test]
+fn export_reliability_without_relcalc_is_zeroed() {
+    let scratch = scratch_dir("rel_norelcalc");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command("new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2");
+    dss.command("new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3");
+    dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+    dss.command("new energymeter.m1 element=line.l1 terminal=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve mode=snap"); // NB: no `relcalc`
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+
+    // BusReliability: every value column (Lambda, Num-Interruptions,
+    // Cust-Interruptions, Duration, Total-Miles — cols 1,2,4,5,6) is 0; the
+    // integer Num-Customers (col 3) is also 0 without RelCalc's customer roll-up.
+    dss.command("export busreliability");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let bus = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    let bus_rows = csv_rows(&bus);
+    assert!(
+        bus_rows.len() >= 3,
+        "expected >=3 bus rows, got {bus_rows:?}"
+    );
+    for row in &bus_rows {
+        for (c, field) in row.iter().enumerate().skip(1) {
+            assert_eq!(
+                field.parse::<f64>().unwrap_or(f64::NAN),
+                0.0,
+                "BusReliability col {c} must be 0 without RelCalc, row {row:?}"
+            );
+        }
+    }
+
+    // BranchReliability: the RelCalc-computed columns — Lambda(1),
+    // Accumulated-Lambda(2), Num-Interrupts(5), Cust-Interruptions(6),
+    // Cust-Durations(7), Total-Miles(8), Cust-Miles(9), SAIFI(10) — are all 0
+    // without RelCalc. The Num-/Total-Customers columns (3,4) are *not* checked:
+    // the branch customer counts are populated by the meter-zone build at solve
+    // time (existing Phase-6 behavior, pinned by the with-RelCalc golden), not by
+    // RelCalc — so a nonzero count there is faithful, not garbage.
+    dss.command("export branchreliability");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let br = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    let br_rows = csv_rows(&br);
+    assert_eq!(br_rows.len(), 2, "expected 2 branch rows, got {br_rows:?}");
+    for row in &br_rows {
+        for (c, field) in row.iter().enumerate().skip(1) {
+            if c == 3 || c == 4 {
+                continue; // zone-build customer counts, not RelCalc-populated
+            }
+            assert_eq!(
+                field.parse::<f64>().unwrap_or(f64::NAN),
+                0.0,
+                "BranchReliability col {c} must be 0 without RelCalc, row {row:?}"
+            );
+        }
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The **enabled-only** PDElement filter (audit-tests follow-up): a disabled PD
+/// element must not appear in `Export Capacity` / `BranchReliability` (Pascal's
+/// `if pElem.Enabled` guard — `for_each_enabled_elem` for Capacity, the explicit
+/// `cd.enabled` skip in `export_branch_reliability`). The shared oracle fixture
+/// has no disabled element, so a regression dropping the filter would produce no
+/// diff there; this Rust-only structural test pins it (no oracle needed — the
+/// element's presence/absence is structural).
+#[test]
+fn export_capacity_reliability_skip_disabled_pd() {
+    let scratch = scratch_dir("rel_disabled");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command("new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1");
+    // l2 disabled; b2 carries no load, so the solve stays well-posed.
+    dss.command("new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 enabled=no");
+    dss.command("new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve mode=snap");
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+
+    for keyword in ["capacity", "branchreliability"] {
+        dss.command(&format!("export {keyword}"));
+        assert!(dss.errors().is_empty(), "{keyword}: {:?}", dss.errors());
+        let content = std::fs::read_to_string(dss.last_result_file()).unwrap();
+        let names: Vec<String> = csv_rows(&content)
+            .iter()
+            .map(|r| r[0].to_lowercase())
+            .collect();
+        assert!(
+            names.iter().any(|n| n.contains("l1")),
+            "{keyword}: enabled Line.l1 must appear, got {names:?}"
+        );
+        assert!(
+            names.iter().all(|n| !n.contains("l2")),
+            "{keyword}: disabled Line.l2 must be filtered out, got {names:?}"
+        );
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
 }

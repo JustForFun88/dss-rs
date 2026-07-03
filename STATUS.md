@@ -25,7 +25,8 @@ fields (no re-run; degenerate all-zero without a prior `RelCalc`, like the oracl
 fault data + `numcust` loads + an OCP **recloser** w/ high pickups so the snapshot
 doesn't trip → `Capacity` sees real currents + `RelCalc` completes) `solve`d+`relcalc`'d;
 a new deck-based golden runner (`run_deck_export`/`DeckMeta`, the `Counts` no-master
-pattern). golden_phase8 **38→41** (`export_{busreliability,branchreliability,capacity}`,
+pattern). golden_phase8 **38→43** (the 3 oracle goldens `export_{busreliability,
+branchreliability,capacity}` + the 2 audit-tests structural guards,
 matched the oracle first-run: reliability values are `%-.11g` pure `RelCalc` arithmetic
 identical on both engines → `rel=1e-8`; capacity `Imax`/kW/kvar 6-sig `EXPORT_REL`,
 `%8.2f` %-cols `abs=0.011`, `%-.3g` kVBase `rel=1e-3`); lib **729** (formatters gated
@@ -1836,6 +1837,35 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   golden_phase8 **38→41**; lib **729** (no unit test — the formatters are gated end-to-end); `solvable_now`
   **119** (no migration — the `Export`-reliability/capacity corpus decks migrate at the step-5 completion
   gate with the rest of step 3c).
+  - **audit-code follow-up (independent agent): FAITHFUL — no Critical/Major/Minor behavioral defect; 1
+    traceability nit fixed.** Loop-for-loop reconfirmed vs `ExportBusReliability`/`ExportBranchReliability`/
+    `ExportCapacity` + `CalcAndWriteMaxCurrents`: headers byte-exact, every column→field mapping + `%d`-vs-
+    `%-.11g`/`%10.6g`/`%8.2f`/`%-.3g` typing correct, both BranchReliability compound terms (`BranchTotalCustomers·
+    Bus_Num_Interrupt`; `(MaxCustomers−BranchTotalCustomers)·Accum…` with the subtraction as `i32−i32` before the
+    `f64` cast) verified numerically (l2 = 25·0.43 = 10.75; (35−25)·1 = 10), the SAIFI / zero-rating divide guards
+    exact, FROM-bus/`nphases`/`terminals[0]` indexing correct, the two-pass `MaxCustomers`, the read-only claim, and
+    the degenerate no-`RelCalc` all-zero path all faithful; oracle provenance confirmed (the goldens carry FPC width/
+    trailing-space artifacts Rust doesn't emit). **Nit (fixed):** the kept-deferred `SeasonalRating` branch was
+    documented in prose but lacked the greppable `NOT_PORTED` tag — added `NOT_PORTED (seasonal-rating)` to
+    `capacity.rs` (same deferral as `StorageController`'s seasonal target; false-by-default → the non-seasonal
+    `NormAmps`/`EmergAmps` path matches the oracle bit-for-bit). Comment-only, gate re-run green.
+  - **audit-tests follow-up (independent agent): SOUND + non-vacuous; 1 wording nit + 2 coverage gaps closed.**
+    Confirmed the three goldens are genuine pinned-oracle captures single-sourced with the Rust deck via
+    `meta.json` (Rust replays `deck`, diffs its own file), that the reports carry **discriminating non-zero**
+    values (capacity `Imax` 15.78/10.52, kW 300/200; bus B1 Lambda 0.27; branch l2 SAIFI 0.43 / Cust-Miles 10),
+    that `RelCalc` is genuinely exercised (a dropped population would zero the `rel=1e-8` columns and fail), and
+    that every tolerance is an honest floor (reliability = pure fault-data arithmetic; capacity `%8.2f`→`abs=0.011`,
+    `%-.3g`→`rel=1e-3`). **Nit (fixed):** the capacity docstring mislabeled the `EXPORT_REL=1e-4` two-solves floor
+    as a "6-sig printing floor" — reworded to the corpus-wide faer-vs-KLU convention. **Gaps closed (2 Rust-only
+    structural guards, no oracle needed — the step-3b `Ysc=None` precedent):** (1) `export_reliability_without_
+    relcalc_is_zeroed` — no prior `RelCalc` ⇒ the RelCalc-computed bus/branch columns are all `0` (the branch
+    Num-/Total-Customers cols 3/4 are **deliberately not** asserted — they are populated by the meter-zone build at
+    solve time, existing Phase-6 behavior the with-RelCalc golden already pins, not garbage); (2) `export_capacity_
+    reliability_skip_disabled_pd` — a disabled PD line is filtered out of both `Capacity` and `BranchReliability`
+    (the shared fixture has no disabled element, so the golden couldn't see an enabled-filter regression). The two
+    residual guard-branch gaps (SAIFI zero-customers, Capacity zero-rating) stay uncovered — both are simple
+    reconfirmed-by-audit-code `else` arms with no gate-observable payoff (recorded, not silently dropped).
+    golden_phase8 **41→43**; lib **729**.
 - **next — WP8.3 step 3c (part 2):** `Overloads`/`Unserved`/`AllocationFactors` (PD-overload + load
   EEN/UE + `DumpAllocationFactors`), then `Sections` (**needs new plumbing** — the meter's
   `FeederSections`/`SectionCount` are computed ephemerally in `calc_reliability_indices` today, not
