@@ -227,6 +227,15 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
             (MeteredKind::Capacitor, 0, c.states().len())
         } else if obj
             .as_any()
+            .downcast_ref::<crate::elements::pc::storage::Storage>()
+            .is_some()
+        {
+            // Pascal validates mode 7 by CLASSMASK = STORAGE_ELEMENT and mode 3
+            // by BASECLASSMASK = PC_ELEMENT (Monitor.pas `RecalcElementData`), so
+            // Storage needs its own kind and mode 3 accepts it as a PC element.
+            (MeteredKind::Storage, 0, 0)
+        } else if obj
+            .as_any()
             .downcast_ref::<crate::elements::pc::load::Load>()
             .is_some()
             || obj
@@ -236,10 +245,6 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
             || obj
                 .as_any()
                 .downcast_ref::<crate::elements::pc::pvsystem::PVSystem>()
-                .is_some()
-            || obj
-                .as_any()
-                .downcast_ref::<crate::elements::pc::storage::Storage>()
                 .is_some()
             || obj
                 .as_any()
