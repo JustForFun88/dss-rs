@@ -100,6 +100,14 @@ impl Dss {
                 mva_opt = 1;
             }
         }
+        // `Unserved`(8) traps a leading `u…` → the UE-only (emergency-criterion)
+        // form (Pascal `ExportOptions.pas:201`), ahead of the filename.
+        let mut ue_only = false;
+        if ptr == 8 {
+            self.parser.next_param(&self.vars);
+            let parm2 = self.parser.make_string(&self.vars).to_lowercase();
+            ue_only = parm2.starts_with('u');
+        }
         // `Y`(17) traps a leading `t…` → the sparse-triplet form (Pascal
         // `ExportOptions.pas:217`, `TripletOpt`), again ahead of the filename.
         let mut triplet = false;
@@ -147,6 +155,17 @@ impl Dss {
             6 => self.export_with_mut(&explicit, "EXP_CAPACITY.csv", |c, ckt, sys, nv| {
                 export::export_capacity(c, ckt, sys, nv)
             }),
+            7 => self.export_with_mut(&explicit, "EXP_OVERLOADS.csv", |c, ckt, sys, nv| {
+                export::export_overloads(c, ckt, sys, nv)
+            }),
+            8 => self.export_with_mut(&explicit, "EXP_UNSERVED.csv", |c, ckt, sys, nv| {
+                export::export_unserved(c, ckt, sys, nv, ue_only)
+            }),
+            34 => self.export_with_classes(
+                &explicit,
+                "AllocationFactors.txt",
+                export::export_alloc_factors,
+            ),
             11 => self.export_with(&explicit, "EXP_FAULTS.csv", export::export_fault_study),
             37 => self.export_with(
                 &explicit,

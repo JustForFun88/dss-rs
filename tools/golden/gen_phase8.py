@@ -516,6 +516,90 @@ def gen_reliability(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# The overload / unserved / allocation-factor fixtures (PHASE8_PLAN §WP8.3 step 3c
+# part 2). No corpus deck exports these either, so each is synthesized as a small
+# self-contained deck (PHASE8_PLAN §1) tailored to make the report non-empty:
+#   * Overloads — a line with a deliberately small `normamps`/`emergamps` under a
+#     heavy load so its terminal-1 current exceeds both ratings (the only rows
+#     `ExportOverloads` writes).
+#   * Unserved  — a long high-impedance feeder that sags the load bus below
+#     `NormalMinVolts` (0.95 pu), so `ExceedsNormal` latches a nonzero `EEN_Factor`.
+#   * AllocationFactors — one connected-kVA-spec load (`xfkva=`) and one kWh-spec
+#     load (`kwh=`); only these two spec types emit a line.
+# Each is a deck fixture (DeckMeta with the oracle default-filename suffix), the
+# Rust golden (`golden_phase8.rs`) replays the same deck.
+DECK_GROUPS = [
+    (
+        "ovl",
+        [
+            "new circuit.ovl basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 normamps=10 emergamps=15",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=500",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("overloads", "EXP_OVERLOADS.csv", "export_overloads")],
+    ),
+    (
+        "uns",
+        [
+            "new circuit.uns basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=8 units=mi r1=0.3 x1=0.6",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=3000 pf=0.9",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("unserved", "EXP_UNSERVED.csv", "export_unserved")],
+    ),
+    (
+        "alloc",
+        [
+            "new circuit.alloc basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
+            "new load.la bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.75",
+            "new load.lb bus1=b1 phases=3 kv=12.47 kwh=1000 cfactor=0.9",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("allocationfactors", "AllocationFactors.txt", "export_allocationfactors")],
+    ),
+]
+
+
+def gen_deck_groups(d) -> None:
+    """Capture the oracle's Overloads/Unserved/AllocationFactors reports."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for _case, deck, reports in DECK_GROUPS:
+        tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+        try:
+            d.Text.Command = "clear"
+            for c in deck:
+                d.Text.Command = c
+            case = d.ActiveCircuit.Name
+            d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+            for keyword, suffix, stem in reports:
+                d.Text.Command = f"export {keyword}"
+                produced = Path(d.Text.Result)  # GlobalResult = produced path
+                content = produced.read_text()  # universal newlines -> LF
+                (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+                meta = {
+                    "report": keyword,
+                    "fixture": case,
+                    "suffix": suffix,
+                    "deck": deck,
+                }
+                (OUT_DIR / f"{stem}.meta.json").write_text(
+                    json.dumps(meta, indent=2) + "\n", newline="\n"
+                )
+                print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -531,6 +615,7 @@ def main() -> None:
     gen_seqz(d)
     gen_faultstudy(d)
     gen_reliability(d)
+    gen_deck_groups(d)
 
 
 if __name__ == "__main__":
