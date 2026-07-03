@@ -137,7 +137,12 @@ impl Dss {
                 let content = export::export_result(&val);
                 self.write_export(&explicit, "EXP_Result.csv", &content);
             }
+            35 => self.export_with_mut(&explicit, "EXP_VOLTAGES_ELEM.csv", |c, ckt, _sys, _nv| {
+                export::export_voltages_elements(c, ckt)
+            }),
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
+            47 => self.export_with(&explicit, "EXP_YVoltages.csv", export::export_y_voltages),
+            48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
             _ => {
                 let name = EXPORT_OPTIONS[ptr - 1];
                 self.errors
