@@ -1697,21 +1697,18 @@ fn export_capacity_reliability_skip_disabled_pd() {
 // --- WP8.3 step 3c part 2: Overloads / Unserved / AllocationFactors ----------
 // No corpus deck exports these, so each is a synthesized deck fixture
 // (PHASE8_PLAN §1) tailored to make the report non-empty: an under-rated
-// overloaded line (Overloads), a voltage-sagged feeder (Unserved), and two
+// overloaded line (Overloads), a voltage-sagged feeder (Unserved), and
 // allocation-spec loads (AllocationFactors). `gen_phase8.py` captures the oracle
 // output; the Rust golden replays the same deck.
 
-/// `Export Overloads` (Pascal `ExportOverloads`): per-overloaded-PDElement I1/
-/// AmpsOver/kVAOver/%Normal/%Emergency + symmetrical-component currents. Every
-/// column is fixed-point — I1/AmpsOver/kVAOver `%…2f` (additive last-digit floor
-/// `abs = 0.011`), the %-loading/sequence columns `%…1f` (`abs = 0.11`). On this
-/// one-line circuit the two solves agree to ~1e-9, so the printing floor
-/// dominates and a real regression (wrong over-amps, a dropped phase in `Cmax`,
-/// a swapped %Normal/%Emergency) fails loudly. `rel = 0` (pure printing floor,
-/// the `Powers`/`P_byphase` discipline — no masking).
-#[test]
-fn export_overloads_matches_oracle() {
-    let policy = ExportPolicy {
+/// The shared `Export Overloads` tolerance policy: every column is fixed-point —
+/// I1/AmpsOver/kVAOver `%…2f` (additive last-digit floor `abs = 0.011`), the
+/// %-loading/sequence columns (indices 5..=10) `%…1f` (`abs = 0.11`). On these
+/// tiny circuits the two solves agree to ~1e-8, so the printing floor dominates
+/// and a real regression fails loudly. `rel = 0` (pure printing floor, the
+/// `Powers`/`P_byphase` discipline — no masking).
+fn overloads_policy() -> ExportPolicy {
+    ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
@@ -1725,19 +1722,38 @@ fn export_overloads_matches_oracle() {
                 gate: None,
             })
             .collect(),
-    };
-    run_deck_export("export_overloads", &policy);
+    }
 }
 
-/// `Export Unserved` (Pascal `ExportUnserved`): per-load Bus/kW/EEN_Factor/
-/// UE_Factor for loads over the normal voltage-drop criterion. `kW` is the deck
-/// constant (`%8.0f` → `abs = 0.5`); `EEN_Factor`/`UE_Factor` are solve-derived
-/// (`%9.3f` → additive `abs = 0.0011`) — the two solves agree ~1e-8, so a real
-/// regression (wrong criterion, a missing/extra load, a swapped EEN/UE) fails
-/// loudly. `rel = 0` (printing floor).
+/// `Export Overloads` (Pascal `ExportOverloads`), balanced happy path: a single
+/// under-rated 3-phase line — I1/AmpsOver/kVAOver/%Normal/%Emergency with the
+/// symmetrical-component columns at zero (balanced). Pins the full 11-column row
+/// layout + the rating math; the nonzero-I2/I0 sym-comp path is pinned by
+/// `export_overloads_unbal_matches_oracle`.
 #[test]
-fn export_unserved_matches_oracle() {
-    let policy = ExportPolicy {
+fn export_overloads_matches_oracle() {
+    run_deck_export("export_overloads", &overloads_policy());
+}
+
+/// `Export Overloads`, unbalanced + degenerate-rating: a single-phase load on a
+/// 3-phase line drives **nonzero** I2/I0 (pins the `phase_to_sym` decomposition —
+/// a swapped I2↔I0, dropped transform, or mis-scaled `%…/I1` would slip past the
+/// all-zero balanced deck), and a second `normamps=0` line forces the degenerate
+/// `NormAmps<=0` **column-shift** row (I1's trailing separator doubles with the
+/// branch separator → an empty AmpsOver field). Pins both the sym-comp values
+/// and the byte-exact upstream column shift against the oracle.
+#[test]
+fn export_overloads_unbal_matches_oracle() {
+    run_deck_export("export_overloads_unbal", &overloads_policy());
+}
+
+/// The shared `Export Unserved` tolerance policy: `kW` is the deck constant
+/// (`%8.0f` → `abs = 0.5`); `EEN_Factor`/`UE_Factor` are solve-derived (`%9.3f` →
+/// additive `abs = 0.0011`) — the two solves agree ~1e-8, so a real regression
+/// (wrong criterion, a missing/extra load, a swapped EEN/UE) fails loudly.
+/// `rel = 0` (printing floor).
+fn unserved_policy() -> ExportPolicy {
+    ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
@@ -1750,15 +1766,35 @@ fn export_unserved_matches_oracle() {
             abs: 0.5,
             gate: None,
         }],
-    };
-    run_deck_export("export_unserved", &policy);
+    }
+}
+
+/// `Export Unserved` (Pascal `ExportUnserved`), normal criterion: one load below
+/// `NormalMinVolts` → a nonzero `EEN_Factor` via `ExceedsNormal`. Pins the normal
+/// (`ue_only = false`) path + the row layout.
+#[test]
+fn export_unserved_matches_oracle() {
+    run_deck_export("export_unserved", &unserved_policy());
+}
+
+/// `Export Unserved u…` (Pascal `ExportUnserved` with `UE_Only`), emergency
+/// criterion: a deep-sag load below `EmergMinVolts` → a nonzero `UE_Factor` via
+/// the `Unserved` path, plus a healthy load that must be **excluded**. Pins the
+/// `ue_only = true` branch (the `u` pre-parse) and the criterion filter — the
+/// normal-criterion golden alone can't catch a broken UE criterion.
+#[test]
+fn export_unserved_ue_matches_oracle() {
+    run_deck_export("export_unserved_ue", &unserved_policy());
 }
 
 /// `Export AllocationFactors` (Pascal `DumpAllocationFactors`): one
 /// `Load.<name>.AllocationFactor=<f>` / `.CFactor=<f>` line per allocation-spec
-/// load — no header, `=`-separated. The factors are deck constants (`%-.5g`,
-/// no solve dependency), so they match exactly (`rel = abs = 1e-9`). Guards the
-/// spec-type dispatch (only ConnectedkVA/kWh loads emit) + the native-case name.
+/// load — no header, `=`-separated. The factors are deck constants (`%-.5g`, no
+/// solve dependency), so they match exactly (`rel = abs = 1e-9`). The fixture
+/// covers the spec-type dispatch (a ConnectedkVA `la` + a kWh `lb` emit; a plain
+/// `kw=` load `lc` emits **nothing** — the `ExactOrdered` row count guards the
+/// no-emit branch) **and** the no-`Enabled`-filter walk (a *disabled*
+/// ConnectedkVA load `ld` still emits, matching Pascal `for pLoad in Loads`).
 #[test]
 fn export_allocationfactors_matches_oracle() {
     let policy = ExportPolicy {
