@@ -373,8 +373,19 @@ write-ups) is **archived** at
   width-aware `%W.Df`/`%Wd`/`%W.Pg` formatters, the `@lastshowfile`/`last_show_file`
   bookkeeping, and a new **whitespace+comma tokenizer** in `harness::compare_export`
   (`sep: ' '`, `header_lines: 0`) that diffs the fixed-width tables token-for-token.
-  golden_phase8 **59→62** (`gen_show_reports` + `show_{buses,losses,taps}`). **next:
-  WP8.4 step 2** (Voltages/Currents/Powers sequence + element/node forms, Elements).
+  golden_phase8 **59→62** (`gen_show_reports` + `show_{buses,losses,taps}`). The two
+  independent audits found **no correctness bug** (the three formatters reproduce
+  `ShowBuses`/`ShowLosses`/`ShowRegulatorTaps` field-for-field; the goldens are
+  genuine pinned-oracle bytes). Three follow-ups fixed: (audit-tests) the
+  `show_losses` policy split into per-column floors — the coarse `%8.2f` `% of Power`
+  floor (`abs=0.011`) isolated to token index 2 via `col_tol`, kW/kvar held to the
+  tight default (so a small-cell formatting regression fails); (audit-code) the
+  deferred `Show` keywords + the deferred unknown→#24700 now carry a greppable
+  `TODO(WP8)` tag (the WP8.8 exit sweep) instead of prose-only — the deferral stays a
+  *silent* no-op by design (erroring would regress the live `Show Power`/`Voltage`
+  decks); and the `Pad`/`max_*_name_length` width helpers switched to byte length
+  (`str::len`) for byte-1:1 with Pascal `Length(AnsiString)`. **next: WP8.4 step 2**
+  (Voltages/Currents/Powers sequence + element/node forms, Elements).
 
 ---
 

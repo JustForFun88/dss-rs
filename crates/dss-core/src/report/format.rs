@@ -54,12 +54,13 @@ pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
 }
 
 /// Pascal `Pad(S, Width)` (`Common/Utilities.pas`): `S` right-padded with **spaces**
-/// to `Width` chars; a string already `>= Width` is returned unchanged.
+/// to `Width` chars; a string already `>= Width` is returned unchanged. Uses byte
+/// length (`str::len`), matching Pascal's `Length(S)` (byte-1:1).
 pub fn pad(s: &str, width: usize) -> String {
-    if s.chars().count() >= width {
+    if s.len() >= width {
         s.to_string()
     } else {
-        format!("{s}{}", " ".repeat(width - s.chars().count()))
+        format!("{s}{}", " ".repeat(width - s.len()))
     }
 }
 
@@ -70,7 +71,7 @@ pub fn pad_dots(s: &str, width: usize) -> String {
     // Pascal `paddotsString = ' .................................................'`
     // (a leading space then 49 dots); `Copy(paddotsString, 1, Width-Len(S))`.
     const PAD_DOTS: &str = " .................................................";
-    let len = s.chars().count();
+    let len = s.len(); // byte length, Pascal `Length(S)`
     if len >= width {
         s.to_string()
     } else {
