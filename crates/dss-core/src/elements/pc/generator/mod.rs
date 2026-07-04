@@ -330,6 +330,12 @@ impl Generator {
         cd.nconds = 4; // defaults to wye
         cd.set_nterms(1);
 
+        // Pascal `TGeneratorObj.Create` sets `GenVars.w0 := TwoPi·Basefrequency`
+        // (Generator.pas:986) at construction, so the classic `Frequency` state
+        // variable reads the base frequency even in a snapshot solve (before any
+        // dynamics `InitStateVars`). `base_frequency` defaults to 60 here.
+        let base_frequency = cd.base_frequency;
+
         let kw_base = 1000.0;
         let kvar_base = 60.0;
         let kv_generator_base = 12.47;
@@ -407,7 +413,7 @@ impl Generator {
             dtheta: 0.0,
             speed: 0.0,
             dspeed: 0.0,
-            w0: 0.0,
+            w0: 2.0 * std::f64::consts::PI * base_frequency,
             m_mass: 0.0,
             d_damping: 0.0,
             p_shaft: 0.0,

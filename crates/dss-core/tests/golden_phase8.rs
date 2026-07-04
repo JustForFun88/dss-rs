@@ -849,9 +849,11 @@ fn show_voltages_ll_node_matches_oracle() {
 /// power flow `BUS node kW +j kvar kVA PF`, with the `... TERMINAL TOTAL` per
 /// terminal (incl. the 1-phase/2-terminal PD floating special case). The kW/kvar/kVA
 /// are `%8.1f` (additive ±0.05 floor → `abs = 0.11`); the `PF` (`%8.4f`, token idx 6)
-/// is a ratio of the pinned powers, held to a tight `abs = 1e-3` but gated on the
-/// `kVA` (idx 5) near-zero — a grounded/floating conductor with `S ≈ 0` has an
-/// arbitrary power factor. Power physics is pinned to 1e-8 by `corpus_live.rs`.
+/// is a ratio of the pinned powers, held to `abs = 2e-4` (2× the `%8.4f` printing
+/// floor) but gated on `min(|kW|, |kvar|)` (cols 2, 4) near-zero — a purely-reactive
+/// / purely-real / `S ≈ 0` conductor has a degenerate power factor (the oracle's
+/// exact-zero part → PF 1.0 vs a Rust cancellation residual). Power physics is
+/// pinned to 1e-8 by `corpus_live.rs`.
 #[test]
 fn show_powers_elem_matches_oracle() {
     let policy = ExportPolicy {
@@ -863,7 +865,7 @@ fn show_powers_elem_matches_oracle() {
         col_tol: vec![ColTol {
             sel: ColSel::Index(6),
             rel: 0.0,
-            abs: 1e-3,
+            abs: 2e-4,
             // Skip PF where the power is near-purely-reactive/real (min(|kW|,|kvar|)
             // ≈ 0): the oracle's exact-zero part gives PF=1.0, a Rust cancellation
             // residual gives near-zero/sign-flipped (e.g. the pure-reactive caps).
@@ -930,63 +932,71 @@ fn show_monitor_matches_oracle() {
     run_feeder_show("show_monitor", &policy);
 }
 
-/// `Show Mismatch` (Pascal `ShowNodeCurrentSum`) — a **structural** check, not a
-/// value golden: the `Current Sum`/`%error` columns are the per-node KCL *residual*
-/// (Σ of the terminal currents ≈ 0), a faer-vs-KLU cancellation floor that differs
-/// between the two engines by construction, so it is not cross-engine-pinnable. The
-/// underlying currents *are* pinned to 1e-8 by `corpus_live.rs`; here we assert the
-/// report is produced with the right shape — the `Node Current Mismatch Report`
-/// header, one row for `System Ground` + one per node (`num_nodes + 1` data rows),
-/// and every `Max Current` positive — so a dispatch/format regression fails.
+/// `Show Mismatch` (Pascal `ShowNodeCurrentSum`): the per-node KCL current-sum
+/// mismatch. A **value** golden that pins the substantive column — `Max Current`
+/// (the largest single terminal current at each node, a 1e-8-pinned magnitude,
+/// [`ColSel::FromEnd`]`(0)`) — plus the node number and bus name / row order
+/// (`ExactOrdered` also pins the exact `num_nodes + 1` data-row count). The two
+/// residual columns are **gated out** ([`GateSpec::Mask`]): `Current Sum`
+/// (`FromEnd(2)`) and `%error` (`FromEnd(1)`) are the per-node KCL residual
+/// (Σ terminal currents ≈ 0), an inherent faer-vs-KLU cancellation floor that
+/// differs between the two engines by construction and is not cross-engine
+/// comparable. The `FromEnd` selectors are robust to `"System Ground"` splitting
+/// into two tokens (which shifts the leading columns by one vs a bus-name row).
 #[test]
-fn show_mismatch_structural() {
-    let master: PathBuf = [
-        env!("CARGO_MANIFEST_DIR"),
-        "..",
-        "..",
-        "tests",
-        "corpus",
-        "electricdss-tst",
-        "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
-    ]
-    .iter()
-    .collect();
-    assert!(master.is_file(), "master missing: {}", master.display());
-    let scratch = scratch_dir("show_mismatch");
-    let mut dss = Dss::new();
-    dss.command("clear");
-    dss.command(&format!(
-        "compile \"{}\"",
-        master.to_string_lossy().replace('\\', "/")
-    ));
-    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
-    dss.command("show mismatch");
-    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-    let produced = dss.last_show_file();
-    let text = std::fs::read_to_string(produced).expect("read mismatch file");
-    let rows: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-    assert!(
-        rows.iter()
-            .any(|l| l.contains("Node Current Mismatch Report")),
-        "missing report header"
-    );
-    // Data rows: 1 (System Ground) + 1 per node. The two banner/header lines are
-    // the non-data non-blank lines above the table.
-    let data_rows = rows.iter().filter(|l| l.contains(", ")).count();
-    // IEEE13 has 41 nodes → 42 data rows (ground + nodes).
-    assert!(data_rows >= 40, "too few mismatch data rows: {data_rows}");
-    // Every `Max Current` (last comma field) parses as a non-negative number.
-    for l in rows
-        .iter()
-        .filter(|l| l.contains("System Ground") || l.starts_with('"'))
-    {
-        if let Some(last) = l.rsplit(',').next()
-            && let Ok(v) = last.trim().parse::<f64>()
-        {
-            assert!(v >= 0.0, "negative max current in {l:?}");
-        }
-    }
-    std::fs::remove_dir_all(&scratch).ok();
+fn show_mismatch_matches_oracle() {
+    let residual = |n: usize| ColTol {
+        sel: ColSel::FromEnd(n),
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::Mask),
+    };
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-5,
+        col_tol: vec![residual(2), residual(1)],
+    };
+    run_feeder_show("show_mismatch", &policy);
+}
+
+/// `Show Variables` (Pascal `ShowVariables`): every PC element's present dynamic
+/// state variables. Exercised on IEEE13 + a Generator (6 variables:
+/// `Frequency`/`Theta`/`Vd`/`PShaft`/`dSpeed`/`dTheta`) so the `ELEMENT:` /
+/// `No. of variables:` header and the per-variable `  name = %-.6g` value path all
+/// run (plain IEEE13 has no PC element with variables). The variable **names** are
+/// text (pinned exactly — a rename regression fails); the values (`Frequency = 60`,
+/// the rest 0 in a snapshot) parse numeric at the tight default.
+#[test]
+fn show_variables_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-4,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_variables", &policy);
+}
+
+/// `Show Result` (Pascal `ShowResult`): the `@result` parser var (always `null` in
+/// the pinned PM-build oracle). Pins the produced-file **name** (`<case>_Result.csv`,
+/// not `.txt` — a filename regression the `run_feeder_show` `ends_with` check catches)
+/// and the one-line content via the `Show` dispatch.
+#[test]
+fn show_result_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_result", &policy);
 }
 
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects

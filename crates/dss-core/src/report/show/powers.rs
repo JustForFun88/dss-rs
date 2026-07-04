@@ -223,6 +223,15 @@ pub(crate) fn show_powers_elements(
 
 /// One element's power-flow block for `show_powers_elements` (Pascal `ShowPowers`
 /// case 1 inner body). `is_pd` enables the 1-phase/2-terminal floating special case.
+///
+/// TODO(WP8): this emits the **PD** row/total/header variant for Sources and PC
+/// too, whereas Pascal uses three slightly different whitespace layouts — Sources
+/// rows are `%s %4d` (1 space), PC per-conductor powers are `:6:1` (width 6, vs
+/// PD's width-8 `%8.1f`), the PC column header reads `kW   +j  kvar`, and the PC
+/// terminal label is `'  TERMINAL TOTAL '` (vs PD's `'   TERMINAL TOTAL'`). Every
+/// difference is leading/trailing whitespace, so the digits are identical and the
+/// whitespace-collapsing + dot-run-dropping golden comparator masks it; the exact
+/// per-family widths are a WP8.8 byte-faithfulness concern.
 #[allow(clippy::too_many_arguments)]
 fn write_powers_element(
     s: &mut String,

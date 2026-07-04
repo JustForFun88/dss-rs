@@ -1161,13 +1161,14 @@ impl Dss {
                 self.write_show("Losses.txt", &content);
             }
             // 18 `eventlog` (`ShowEventLog` = `EventStrings.SaveToFile`). No solve
-            // guard — the log accumulates across the run.
+            // guard — the log accumulates across the run. Like `ShowResult`, it also
+            // sets `GlobalResult` (`ShowResults.pas:3967`).
             18 => {
                 let content = {
                     let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
                     show::show_event_log(ckt.solution.event_log.entries())
                 };
-                self.write_show("EventLog.txt", &content);
+                self.write_show_global("EventLog.txt", &content);
             }
             // 19 `variables` (`ShowVariables`): every PC element's dynamic-state
             // variable values.
@@ -1191,11 +1192,13 @@ impl Dss {
                 };
                 self.write_show("RatingsOut.txt", &content);
             }
-            // 34 `Result` (`ShowResult`): the `@result` parser var value.
+            // 34 `Result` (`ShowResult`): the `@result` parser var value. The file is
+            // `<Case_>Result.csv` (Pascal `ShowOptions.pas:432`), and `ShowResult`
+            // also sets `GlobalResult` (`ShowResults.pas:3950`).
             34 => {
                 let val = self.vars.get("@result").unwrap_or("null").to_string();
                 let content = show::show_result(&val);
-                self.write_show("Result.txt", &content);
+                self.write_show_global("Result.csv", &content);
             }
             // 29 `mismatch` (`ShowNodeCurrentSum`): per-node KCL current sum.
             29 => {
@@ -1301,6 +1304,25 @@ impl Dss {
     /// `@lastfile` / `GlobalResult` (`Show` never calls `SetLastResultFile`).
     fn write_show(&mut self, default_name: &str, content: &str) {
         self.write_show_named(default_name, content, true);
+    }
+
+    /// Like [`Dss::write_show`] but also sets `GlobalResult` (the port's
+    /// `last_result_file`): Pascal `ShowResult`/`ShowEventLog` uniquely do
+    /// `DSS.GlobalResult := FileNm` on top of `@lastshowfile`
+    /// (`ShowResults.pas:3950`/`:3967`) — the other `Show` reports set only
+    /// `@lastshowfile`.
+    fn write_show_global(&mut self, default_name: &str, content: &str) {
+        self.write_show(default_name, content);
+        // `write_show` set `@lastshowfile` to the produced path; mirror it to
+        // `GlobalResult`.
+        let p = self
+            .vars
+            .get("@lastshowfile")
+            .unwrap_or_default()
+            .to_string();
+        if !p.is_empty() {
+            self.last_result_file = p;
+        }
     }
 
     /// Like [`Dss::write_show`] but `set_last` gates the `@lastshowfile` update.

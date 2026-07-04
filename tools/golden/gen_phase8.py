@@ -443,6 +443,14 @@ SHOW_REPORTS = [
     ("ratings", "RatingsOut.txt", "show_ratings"),
     # (`Show EventLog` is generated separately — see `gen_show_eventlog` — under the
     # event-logging daily fixture so it has real content, not an empty snapshot log.)
+    # `Show Mismatch` (`ShowNodeCurrentSum`): per-node KCL current-sum mismatch. The
+    # test pins the `Max Current` column (a 1e-8-pinned terminal current) + node/name
+    # and gates the `Current Sum`/`%error` residual columns (faer-vs-KLU cancellation).
+    ("mismatch", "NodeMismatch.txt", "show_mismatch"),
+    # `Show Result` (`ShowResult`): the `@result` parser var (always `null` in the
+    # pinned PM-build oracle). Pins the `<case>_Result.csv` filename (NOT `.txt`) +
+    # the `GlobalResult` side-effect via the `Show` dispatch.
+    ("result", "Result.csv", "show_result"),
 ]
 
 
@@ -520,6 +528,47 @@ def gen_show_eventlog(d) -> None:
             json.dumps(meta, indent=2) + "\n", newline="\n"
         )
         print(f"wrote show_eventlog.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def gen_show_variables(d) -> None:
+    """Capture the oracle's `Show Variables` on IEEE13 + a Generator — a PC element
+    with dynamic state variables (6: Frequency/Theta/Vd/PShaft/dSpeed/dTheta), so the
+    per-variable `%-.6g` value-formatting path is exercised (plain IEEE13 has no PC
+    element with variables). `Show` sets no GlobalResult; find the file by suffix."""
+    d.AllowEditor = False
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    post = ["new generator.g1 bus1=675 phases=3 kv=4.16 kw=100 model=1", "solve"]
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in post:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show variables"
+        matches = list(Path(tmp).glob("*_Variables.txt"))
+        if len(matches) != 1:
+            sys.exit(f"show variables: expected 1 *_Variables.txt, found {matches}")
+        content = matches[0].read_text()
+        (OUT_DIR / "show_variables.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "variables",
+            "master": FEEDER_MASTER,
+            "post": post,
+            "fixture": case,
+            "suffix": "Variables.txt",
+        }
+        (OUT_DIR / "show_variables.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote show_variables.txt ({len(content)} bytes), {content.count(chr(10))} lines")
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1106,6 +1155,7 @@ def main() -> None:
     gen_feeder_reports(d)
     gen_show_reports(d)
     gen_show_eventlog(d)
+    gen_show_variables(d)
     gen_show_monitor(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
