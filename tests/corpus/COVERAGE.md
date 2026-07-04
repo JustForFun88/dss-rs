@@ -1,6 +1,6 @@
 # Corpus coverage
 
-_Generated 2026-07-03 05:22:11 UTC by
+_Generated 2026-07-04 00:01:02 UTC by
 `tools/corpus/coverage_report.py`. Do not edit by hand._
 
 Live oracle-comparison coverage of the vendored `electricdss-tst` corpus
@@ -13,12 +13,12 @@ one manifest (enforced by `corpus_manifest.rs`).
 | `not_an_entry_point` | 580 |
 | `skipped_needs_investigation` | 19 |
 | `skipped_oracle_issue` | 33 |
-| `skipped_unsupported` | 154 |
-| `solvable_now` | 119 |
+| `skipped_unsupported` | 105 |
+| `solvable_now` | 168 |
 | **total** | **915** |
 
 - **Runnable entry points:** 335 (everything except `not_an_entry_point`).
-- **Live-compared now (`solvable_now`):** 119 — **35.5%** of entry points.
+- **Live-compared now (`solvable_now`):** 168 — **50.1%** of entry points.
 - **Remaining queue:** `skipped_needs_investigation` drains as the port grows;
   `skipped_unsupported` drains as classes/commands/modes land;
   `skipped_oracle_issue` is the documented oracle residue.

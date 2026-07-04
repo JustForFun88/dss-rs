@@ -24,12 +24,12 @@
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
    "tag": "entry_point",
-   "note": "live probe: oracle case D:/Rust/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 120s\")"
+   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 120s\")"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS",
    "tag": "wrapper",
-   "note": "live probe: oracle case D:/Rust/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 120s\")"
+   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 120s\")"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
@@ -49,25 +49,25 @@
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
    "tag": "entry_point",
-   "note": "live probe: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss step 0: oracle did not converge"
+   "note": "live probe: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
-   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss step 0: oracle did not converge"
+   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
-   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge"
+   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsctest.dss",
    "tag": "oracle_nonconvergence",
-   "note": "live probe: Version8/Distrib/Examples/VSConverter/vsctest.dss step 0: oracle did not converge"
+   "note": "live probe: Version8/Distrib/Examples/VSConverter/vsctest.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
    "tag": "entry_point",
-   "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge"
+   "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
@@ -77,7 +77,7 @@
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
    "tag": "entry_point",
-   "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge"
+   "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
