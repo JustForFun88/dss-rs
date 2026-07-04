@@ -395,9 +395,14 @@ write-ups) is **archived** at
   `report/show/voltages.rs` reuses the `SymComp`/`bus.find` helpers; note Show's
   `<3`-node V1 = `|V|` of the first node **unconditionally** (Pascal
   `WriteSeqVoltages`, unlike `ExportSeqVoltages`' `PositiveSequence` gate). golden
-  `show_voltages` (golden_phase8 **62→63**), rel=1e-4/abs=1e-5 (4-sig `%9.4g` floor;
-  near-zero balanced-bus V0/%V0V1 absorbed). **next: WP8.4 step 3** (Currents/Powers
-  seq + Elements).
+  `show_voltages` (golden_phase8 **62→63**). Both independent audits found **no
+  correctness bug** (the `<3`-node unconditional-first-node V1 trap is handled
+  right, and the ptr-13 LL/N/E parse + code-1/2 silent no-op match `ShowOptions.pas`
+  exactly). One audit-tests LOW fixed: the `show_voltages` golden abs tightened
+  **1e-5 → 1e-8** (the proven faer-vs-KLU floor is 1e-12 — one `sourcebus` V0 cell;
+  every significant cell is bit-identical), so a real small-cell error can no longer
+  hide under the old blanket 1e-5. **next: WP8.4 step 3** (Currents/Powers seq +
+  Elements).
 
 ---
 
