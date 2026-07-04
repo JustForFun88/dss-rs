@@ -635,6 +635,67 @@ fn show_voltages_matches_oracle() {
     run_feeder_show("show_voltages", &policy);
 }
 
+/// `Show Currents` (Pascal `ShowCurrents` case 0 + `WriteSeqCurrents`/`GetI0I1I2`):
+/// per-element sequence currents — `I1`/`I2`/`I0` (`%10.5g`, 5 sig) + `%I2/I1`/
+/// `%I0/I1`/`%Normal`/`%Emergency` (`%8.2f`, columns 4/6/7/8). The `%8.2f` columns
+/// carry the coarse additive ±0.01 floor (isolated via `col_tol`, `abs = 0.011`).
+/// The two **ratio** columns additionally take a denominator gate: skip the cell
+/// only when the `I1` magnitude (column 2) is a near-zero `< 1e-6 A` cancellation
+/// residual — then `%I2/I1` = `100·I2/I1` is faer-vs-KLU noise (empirically the one
+/// such row on IEEE13 is a switch's floating terminal, `I1 ≈ 1.8e-12 A`, where the
+/// two engines print `53.55` vs `147.66`). The `1e-6 A` threshold is **provably**
+/// between that noise floor and the smallest *real* current in the report
+/// (`Line.671680`, `I1 = 5.8e-4 A`, whose `%I2/I1 = 1.76` IS checked): an 8-order
+/// gap with nothing in between, so `1e-6` sits ~580× below the smallest real value
+/// and 6 orders above the noise — it can never gate a physical current (a coarser
+/// `1e-3` would wrongly skip the real `5.8e-4` row). The magnitude columns keep the
+/// tight default (`rel = 1e-4` / `abs = 1e-5`, the latter absorbing near-zero `I0`
+/// residuals like `2e-11 A`). Current physics is pinned to 1e-8 by `corpus_live.rs`.
+/// (tests/TOLERANCE_NOTES.md)
+#[test]
+fn show_currents_matches_oracle() {
+    let pctcol = |i: usize, gate: Option<GateSpec>| ColTol {
+        sel: ColSel::Index(i),
+        rel: 0.0,
+        abs: 0.011,
+        gate,
+    };
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-5,
+        col_tol: vec![
+            pctcol(4, Some(GateSpec::Col(2, 1e-6))), // %I2/I1, gated on near-zero I1
+            pctcol(6, Some(GateSpec::Col(2, 1e-6))), // %I0/I1, gated on near-zero I1
+            pctcol(7, None),                         // %Normal
+            pctcol(8, None),                         // %Emergency
+        ],
+    };
+    run_feeder_show("show_currents", &policy);
+}
+
+/// `Show Powers` (Pascal `ShowPowers` case 0): per-element sequence powers —
+/// `P1`/`Q1`/`P2`/`Q2` (`%11.1f`) + `P0`/`Q0` (`%8.1f`) + the PD terminal-1 excess
+/// power, plus the `Total Circuit Losses` footer. Every value is fixed 1-decimal,
+/// a purely **additive** ±0.1 last-digit boundary between two independent solves
+/// (the engines agree to ~1e-7 rel, far tighter), so `rel = 0` / `abs = 0.11` is
+/// the exact printing floor — the same as `Export Powers`. A missing `×0.003`
+/// scale or `×3` positive-seq factor would shift values ≫ 0.11 and fail loudly.
+#[test]
+fn show_powers_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.11,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_powers", &policy);
+}
+
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
 /// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
 /// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`

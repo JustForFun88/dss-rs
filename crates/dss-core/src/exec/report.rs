@@ -985,6 +985,75 @@ impl Dss {
                     show::show_buses(self.circuit.as_ref().expect("post-circuit dispatch"));
                 self.write_show("Buses.txt", &content);
             }
+            // 3 `currents` (`ShowCurrents`) — `ShowOptions.pas:153-184`: 1st param
+            // `Y`/`T`→residual, `E`→element form; 2nd param `E`→element form;
+            // filename `Curr_Seq` (code 0) / `Curr_Elem` (code 1). Step 3 ports
+            // **code 0** (the sequence form, bare `Show Currents`); the element
+            // form (code 1, per-terminal angle currents) stays deferred.
+            3 => {
+                self.parser.next_param(&self.vars);
+                let p1 = self.parser.make_string(&self.vars).to_uppercase();
+                let mut code = 0;
+                if p1.starts_with('E') {
+                    code = 1;
+                }
+                self.parser.next_param(&self.vars);
+                let p2 = self.parser.make_string(&self.vars).to_uppercase();
+                if p2.starts_with('E') {
+                    code = 1;
+                }
+                if code == 0 {
+                    let content = {
+                        let Dss {
+                            classes, circuit, ..
+                        } = self;
+                        let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                        let sys = crate::solution::solution::sys_ctx(ckt);
+                        let node_v = ckt.solution.node_v.clone();
+                        show::show_currents(classes, ckt, &sys, &node_v)
+                    };
+                    self.write_show("Curr_Seq.txt", &content);
+                }
+                // TODO(WP8): step 3+ — code 1 (Curr_Elem, angle currents) no-op.
+            }
+            // 12 `powers` (`ShowPowers`) — `ShowOptions.pas:249-277`: 1st param
+            // `m`→MVA, `e`→element form; 2nd param `e`→element form; filename
+            // `Power_{seq|elem}_{kVA|MVA}`. Step 3 ports **code 0** (the sequence
+            // form); the element form (code 1) stays deferred.
+            12 => {
+                self.parser.next_param(&self.vars);
+                let p1 = self.parser.make_string(&self.vars).to_lowercase();
+                let (mut mva, mut code) = (0, 0);
+                match p1.chars().next() {
+                    Some('m') => mva = 1,
+                    Some('e') => code = 1,
+                    _ => {}
+                }
+                self.parser.next_param(&self.vars);
+                let p2 = self.parser.make_string(&self.vars).to_lowercase();
+                if p2.starts_with('e') {
+                    code = 1;
+                }
+                if code == 0 {
+                    let opt = mva;
+                    let content = {
+                        let Dss {
+                            classes, circuit, ..
+                        } = self;
+                        let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                        let sys = crate::solution::solution::sys_ctx(ckt);
+                        let node_v = ckt.solution.node_v.clone();
+                        show::show_powers(classes, ckt, &sys, &node_v, opt)
+                    };
+                    let fname = if mva == 1 {
+                        "Power_seq_MVA.txt"
+                    } else {
+                        "Power_seq_kVA.txt"
+                    };
+                    self.write_show(fname, &content);
+                }
+                // TODO(WP8): step 3+ — code 1 (Power_elem, per-terminal powers) no-op.
+            }
             // 15 `taps` (`ShowRegulatorTaps`).
             15 => {
                 let content = {
