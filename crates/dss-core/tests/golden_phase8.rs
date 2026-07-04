@@ -295,14 +295,32 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
     dss.command(&format!("show {}", meta.report));
     assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
 
-    let produced = dss.last_show_file();
-    let want = format!("{}_{}", meta.fixture, meta.suffix).to_lowercase();
-    assert!(
-        produced.to_lowercase().ends_with(&want),
-        "{stem}: unexpected produced path {produced:?} (want …{want})"
+    // Locate the produced report by its fixed `<CaseName_><suffix>` name in the
+    // datapath — the same suffix glob the oracle generator uses. Robust to whether
+    // the report sets `@lastshowfile` (arms 4/27 — Convergence/ControlQueue — do
+    // not, matching Pascal's inline `FireOffEditor`-only dispatch), and still pins
+    // the filename: a wrong name (the `Result.txt`→`.csv` class of bug) leaves the
+    // glob empty and fails here.
+    let want = format!("_{}", meta.suffix).to_lowercase();
+    let mut matches: Vec<PathBuf> = std::fs::read_dir(&scratch)
+        .unwrap_or_else(|e| panic!("{stem}: read_dir {}: {e}", scratch.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().to_lowercase().ends_with(&want))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        matches.len(),
+        1,
+        "{stem}: expected exactly one *_{} in {}, found {matches:?}",
+        meta.suffix,
+        scratch.display()
     );
-    let rust = std::fs::read_to_string(produced)
-        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    let produced = matches.pop().unwrap();
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()));
 
     compare_export(&oracle, &rust, policy, stem);
 
@@ -1132,6 +1150,73 @@ fn show_kvbasemismatch_vals_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_show("show_kvbasemismatch_vals", &policy);
+}
+
+/// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
+/// end in `ParserVars.Add('@lastshowfile', …)`, but the reports dispatched inline
+/// with only a `FireOffEditor` — `Show Convergence` (arm 4) and `Show controlqueue`
+/// (arm 27) — do **not** touch it. Pins that faithful asymmetry: after a
+/// Convergence/ControlQueue the last-show-file must be unchanged, while `Show Y`
+/// and `Show kvbasemismatch` update it.
+#[test]
+fn show_lastshowfile_semantics() {
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+        "Version8",
+        "Distrib",
+        "IEEETestCases",
+        "13Bus",
+        "IEEE13Nodeckt.dss",
+    ]
+    .iter()
+    .collect();
+    assert!(master.is_file(), "master missing: {}", master.display());
+    let scratch = scratch_dir("lastshowfile");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command("solve");
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+
+    dss.command("show y");
+    assert!(
+        dss.last_show_file().to_lowercase().ends_with("systemy.txt"),
+        "Show Y must set @lastshowfile (got {:?})",
+        dss.last_show_file()
+    );
+    // Convergence must NOT change @lastshowfile (still the Y file).
+    dss.command("show convergence");
+    assert!(
+        dss.last_show_file().to_lowercase().ends_with("systemy.txt"),
+        "Show Convergence must not set @lastshowfile (got {:?})",
+        dss.last_show_file()
+    );
+    // ControlQueue must NOT change it either.
+    dss.command("show controlqueue");
+    assert!(
+        dss.last_show_file().to_lowercase().ends_with("systemy.txt"),
+        "Show controlqueue must not set @lastshowfile (got {:?})",
+        dss.last_show_file()
+    );
+    // kvbasemismatch DOES set it.
+    dss.command("show kvbasemismatch");
+    assert!(
+        dss.last_show_file()
+            .to_lowercase()
+            .ends_with("kvbasemismatch.txt"),
+        "Show kvbasemismatch must set @lastshowfile (got {:?})",
+        dss.last_show_file()
+    );
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+    std::fs::remove_dir_all(&scratch).ok();
 }
 
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
