@@ -15,8 +15,10 @@ mod elements;
 mod losses;
 mod matrix;
 mod meters;
+mod overloads;
 mod powers;
 mod taps;
+mod unserved;
 mod voltages;
 
 pub(crate) use buses::show_buses;
@@ -29,8 +31,10 @@ pub(crate) use elements::show_elements;
 pub(crate) use losses::show_losses;
 pub(crate) use matrix::show_y;
 pub(crate) use meters::{show_gen_meters, show_meters};
+pub(crate) use overloads::show_overloads;
 pub(crate) use powers::{show_powers, show_powers_elements};
 pub(crate) use taps::show_taps;
+pub(crate) use unserved::show_unserved;
 pub(crate) use voltages::{show_voltages, show_voltages_elements, show_voltages_nodes};
 
 use crate::circuit::Circuit;

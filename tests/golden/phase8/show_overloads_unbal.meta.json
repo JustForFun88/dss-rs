@@ -1,0 +1,15 @@
+{
+  "report": "overloads",
+  "fixture": "ovl2",
+  "suffix": "Overload.txt",
+  "deck": [
+    "new circuit.ovl2 basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 normamps=5 emergamps=8",
+    "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 normamps=0 emergamps=6",
+    "new load.ld1 bus1=b1.1 phases=1 kv=7.2 kw=200",
+    "new load.ld2 bus1=b2.1 phases=1 kv=7.2 kw=150",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap"
+  ]
+}

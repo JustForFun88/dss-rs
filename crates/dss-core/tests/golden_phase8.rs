@@ -327,6 +327,59 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Drive one **deck-based** `Show` report (PHASE8_PLAN §WP8.4): the deck twin of
+/// [`run_feeder_show`] (a self-contained `New`-circuit deck, no master compile) —
+/// analogous to [`run_deck_export`], but reading the produced file by its fixed
+/// `<CaseName_><suffix>` name in the datapath (`Show` sets no `GlobalResult`).
+fn run_deck_show(stem: &str, policy: &ExportPolicy) {
+    let dir = phase8_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("show {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let want = format!("_{}", meta.suffix).to_lowercase();
+    let mut matches: Vec<PathBuf> = std::fs::read_dir(&scratch)
+        .unwrap_or_else(|e| panic!("{stem}: read_dir {}: {e}", scratch.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().to_lowercase().ends_with(&want))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        matches.len(),
+        1,
+        "{stem}: expected exactly one *_{} in {}, found {matches:?}",
+        meta.suffix,
+        scratch.display()
+    );
+    let produced = matches.pop().unwrap();
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()));
+
+    compare_export(&oracle, &rust, policy, stem);
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Compile a **heavy** master once and diff several reports against the oracle,
 /// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
 /// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the
@@ -1161,6 +1214,78 @@ fn show_generators_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_show("show_generators", &policy);
+}
+
+/// `Show Overloads` (Pascal `ShowOverloads`): the PD-element symmetrical-component
+/// overload report on the synthesized `ovl` deck (a small-`normamps` line under a
+/// heavy load). Columns are `Element Term I1 IOver %Normal %Emerg I2 %I2/I1 I0
+/// %I0/I1` (`%3d`/`%8.1f`/`%8.2f`); the seq currents are pinned to 1e-8 by
+/// `corpus_live.rs`, and on this clean deck every printed cell is byte-identical
+/// Rust↔oracle → **exact equality** (`rel = 0`, `abs = 0`). Layout differs from
+/// `Export Overloads` (no `kVAOver` column).
+#[test]
+fn show_overloads_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_overloads", &policy);
+}
+
+/// `Show Overloads`, unbalanced (`ovl2` deck): single-phase loads on 3-phase lines
+/// drive nonzero I2/I0 (pins the `phase_to_sym` decomposition, not just the balanced
+/// all-zero columns), and a `normamps=0` line forces the degenerate branch (IOver /
+/// %Normal print the literal `0.0` while %Emerg is computed). Exact equality.
+#[test]
+fn show_overloads_unbal_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_overloads_unbal", &policy);
+}
+
+/// `Show Unserved` (Pascal `ShowUnserved`, normal criterion): the `uns` deck sags a
+/// load below `NormalMinVolts`, latching a nonzero `EEN_Factor`. Columns are `name
+/// bus kW EEN UE` (`%8.0f`/`%9.3f`); the `ExceedsNormal` factors are the same path
+/// `export_unserved` pins → **exact equality** (`rel = 0`, `abs = 0`).
+#[test]
+fn show_unserved_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_unserved", &policy);
+}
+
+/// `Show Unserved ue` (emergency criterion): the `uns2` deck deep-sags a load below
+/// `EmergMinVolts` (a nonzero `UE_Factor` via the `Unserved` path) while a healthy
+/// load is **excluded** — pinning both the `ue_only` branch (a nonempty trailing
+/// param → `UE_Only = TRUE`, `ShowOptions.pas:322`) and the criterion filter. Exact
+/// equality.
+#[test]
+fn show_unserved_ue_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_unserved_ue", &policy);
 }
 
 /// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder

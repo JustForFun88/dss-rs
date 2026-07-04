@@ -1341,6 +1341,38 @@ impl Dss {
                 };
                 self.write_show("kVBaseMismatch.txt", &content);
             }
+            // 16 `overloads` (`ShowOverloads`): the PD-element symmetrical-component
+            // overload report — one row per enabled PDElement (non-capacitor) whose
+            // terminal-1 max phase current exceeds its normal or emergency rating.
+            16 => {
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    show::show_overloads(classes, ckt, &sys, &node_v)
+                };
+                self.write_show("Overload.txt", &content);
+            }
+            // 17 `unserved` (`ShowUnserved`): the Loads over their voltage-drop
+            // criterion. A nonempty trailing param (`ShowOptions.pas:322-327`) selects
+            // the emergency (`UE_Only`) criterion over the normal one.
+            17 => {
+                self.parser.next_param(&self.vars);
+                let ue_only = !self.parser.make_string(&self.vars).is_empty();
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    show::show_unserved(classes, ckt, &sys, &node_v, ue_only)
+                };
+                self.write_show("Unserved.txt", &content);
+            }
             // 11 `panel` — the oracle faithfully errors it (`ShowOptions.pas:248`).
             11 => {
                 self.errors
@@ -1348,7 +1380,7 @@ impl Dss {
             }
             // TODO(WP8): later steps — the remaining `Show` keywords (faults,
             // zone, isolated, loops, lineconstants, topology, yprim, busflow,
-            // overloads, unserved, controlled, autoadded, querylog, deltaV) and
+            // controlled, autoadded, querylog, deltaV) and
             // the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
