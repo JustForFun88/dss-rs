@@ -25,6 +25,7 @@ mod pvsystem;
 mod reduce;
 mod reliability;
 mod report;
+mod select;
 mod solve;
 mod storage;
 mod time_series;

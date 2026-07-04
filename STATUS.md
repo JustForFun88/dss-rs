@@ -276,9 +276,26 @@ the current frontier:
   primitive Y is bit-exact Rust↔oracle, so every `G`/`jB` cell is byte-identical;
   the `*_Yprim.txt` glob also pins the no-`CircuitName_` filename. `Select` is now a
   real command (was a `not_ported` stub); may unblock corpus decks
-  (`Run_NEV.dss` used `Select`/`show yprim`) at the next classify pass. **next =
-  continue WP8.4** (the CktTree families: Zone/Isolated/Loops/Topology/busflow;
-  LineConstants; Controlled).
+  (`Run_NEV.dss` used `Select`/`show yprim`) at the next classify pass.
+  **Both audits ran (`c66d0c0`). audit-code found ONE real Major bug + two Minor
+  error-fidelity gaps, all fixed:** (Major) `active_ckt_element` was **not reset in
+  `do_clear_cmd`**, so `select X → clear → new circuit → show yprim` indexed the
+  emptied class objects → an **OOB panic** (confirmed by the auditor's probe) — fixed
+  by resetting it alongside `active_class`; (Minor) an unknown non-empty class emitted
+  #246 instead of Pascal's **#903** ("Object Class … not found") and dropped the
+  **fallback to the previously-referenced class** — `do_select_cmd` restructured to
+  match `SetObjectClass` (log #903, keep `active_class`, fall through), oracle-probed
+  (`select badclass.l2` after a Line select → #903 + selects `l2`); (Minor) the
+  active-terminal parse used a value-based `>0` instead of Pascal's `Length(Param)>0`
+  (a present out-of-range terminal must leave the active terminal **unchanged**, not
+  reset to 1) — fixed. **audit-tests** flagged the `Select` command's error/edge
+  branches as uncovered (Major) + the no-`CircuitName_` convention + the Yprim
+  no-op/Nil arms (Minor) — closed with the new **`exec/tests/select.rs` (9 tests,
+  lib 733→742)**: the Clear-reset regression (the Major bug's guard), the #903+fallback,
+  the terminal parse incl. the OOR-unchanged case, #245, the DSS_OBJECT/`circuit.<name>`
+  no-ops, the Yprim no-op-without-Select, and the `Line_l1_Yprim.txt` filename (no
+  `CircuitName_`). **next = continue WP8.4** (the CktTree families:
+  Zone/Isolated/Loops/Topology/busflow; LineConstants; Controlled).
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -311,7 +328,7 @@ HARD STOP; `phase-8-reporting` builds on top of it). Roll-up + archives in **§1
 ([`docs/phase-records/phase-7.md`](docs/phase-records/phase-7.md) +
 `phase-7-wp{1..7}.md`). Tracked-open Phase-7 deferrals (both Plot-blocked, zero
 corpus payoff): the **GFM grid-forming inverter mode** and the **Generic/TD21
-relay `Sample`**. Current scores: dss-core **lib 733**, **`solvable_now` 168**;
+relay `Sample`**. Current scores: dss-core **lib 742**, **`solvable_now` 168**;
 oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
 
@@ -355,7 +372,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 733, golden_feeders 1,
+cargo test --workspace      # dss-core lib 742, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1, golden_phase8 98,
