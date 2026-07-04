@@ -421,8 +421,15 @@ write-ups) is **archived** at
   `5.8e-4 A`, whose ratio IS checked); an 8-order gap, so `1e-6` never gates a physical
   current (a coarser `1e-3` would wrongly skip the real row). Also fixed a
   **usability bug**: `gen_phase8.py` now sets `DSS.AllowEditor = False` so
-  regenerating the `Show` goldens no longer spawns a Notepad per report. **next:
-  WP8.4 step 4** (Elements + the angle-bearing element/node forms of
+  regenerating the `Show` goldens no longer spawns a Notepad per report. Both
+  independent audits ran: **no correctness bug** (the seq math, `Cmax` ratings, CAP
+  exclusion, unconditional `<3`-phase I1, `×0.003` power scaling, the footer-loss
+  walk, and the `mdnl=0` `TODO(compat)` are all faithful; the `1e-6 A` gate proven
+  to skip only the one `1.8e-12 A` noise cell). Two Minor **byte-faithfulness** code
+  findings fixed (the numeric comparator masked both): the currents `%s %3d` literal
+  space between name and terminal, and the powers footer `%6.1f` field width (was
+  widthless); plus the continuation-label width switched to the un-uppercased byte
+  length. **next: WP8.4 step 4** (Elements + the angle-bearing element/node forms of
   Voltages/Currents).
 
 ---

@@ -50,9 +50,12 @@ pub(crate) fn show_currents(
             .next()
             .is_some_and(|c| c.eq_ignore_ascii_case("capacitor"));
         // The padded, quoted, UPPERCASED full name (`WriteSeqCurrents` writes
-        // `AnsiUpperCase(Name)`); a `-` continuation for terminals > 1.
-        let padded = format::pad_dots(&format::enclose_quotes(name), mdnl + 2).to_uppercase();
-        let cont = format::pad("   -", padded.chars().count());
+        // `AnsiUpperCase(Name)`); a `-` continuation for terminals > 1. The
+        // continuation width is Pascal `Pad('   -', Length(PaddedBrName))` — the
+        // **byte** length of the *un-uppercased* padded name (`str::len`).
+        let padded_raw = format::pad_dots(&format::enclose_quotes(name), mdnl + 2);
+        let padded = padded_raw.to_uppercase();
+        let cont = format::pad("   -", padded_raw.len());
         let cd = elem.cd();
 
         for j in 1..=nterm {
@@ -99,9 +102,11 @@ pub(crate) fn show_currents(
                 (0.0, 0.0)
             };
 
-            // `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'`.
+            // `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'` — note
+            // the literal space between the `%s` name and the `%3d` terminal.
             let label = if j == 1 { &padded } else { &cont };
             s.push_str(label);
+            s.push(' ');
             s.push_str(&format::fixed_w_int(j as i64, 3));
             s.push_str(&format!(
                 "  {}   {} {}  {} {}  {} {}\n",
