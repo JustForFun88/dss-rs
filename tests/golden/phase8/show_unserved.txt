@@ -1,0 +1,6 @@
+
+UNSERVED  LOAD  REPORT
+
+Load Element        Bus        Load kW  EEN Factor  UE Factor
+
+ld1                 b1            3000    0.891    0.000

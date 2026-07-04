@@ -1263,6 +1263,55 @@ DECK_GROUPS = [
 ]
 
 
+def _gen_show_deck_group(d, deck, reports) -> None:
+    """Like `_gen_show_group` but for a self-contained `New`-circuit deck (no master
+    compile): replay the deck, `show <keyword>`, and capture the fixed-name file the
+    report writes (found by its suffix glob — `Show` sets no `GlobalResult`)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in deck:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in reports:
+            d.Text.Command = f"show {keyword}"
+            matches = list(Path(tmp).glob(f"*_{suffix}"))
+            if len(matches) != 1:
+                sys.exit(f"show {keyword}: expected 1 *_{suffix}, found {matches}")
+            content = matches[0].read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "fixture": case,
+                "suffix": suffix,
+                "deck": deck,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def gen_show_overload_unserved(d) -> None:
+    """Capture the oracle's `Show Overloads`/`Show Unserved` (PHASE8_PLAN §WP8.4).
+    Reuses the `DECK_GROUPS` export decks (index 0=ovl, 1=ovl2, 2=uns, 3=uns2) so the
+    `Show` and `Export` forms share fixtures and can never drift: ovl/ovl2 overload a
+    small-`normamps` line (ovl2 adds the unbalanced I2/I0 + the `normamps=0`
+    degenerate-column row); uns/uns2 sag a load below the normal / emergency voltage
+    minimum (`unserved ue` selects the UE_Only criterion)."""
+    d.AllowEditor = False
+    ovl, ovl2, uns, uns2 = (DECK_GROUPS[i][1] for i in range(4))
+    _gen_show_deck_group(d, ovl, [("overloads", "Overload.txt", "show_overloads")])
+    _gen_show_deck_group(d, ovl2, [("overloads", "Overload.txt", "show_overloads_unbal")])
+    _gen_show_deck_group(d, uns, [("unserved", "Unserved.txt", "show_unserved")])
+    _gen_show_deck_group(d, uns2, [("unserved ue", "Unserved.txt", "show_unserved_ue")])
+
+
 def gen_deck_groups(d) -> None:
     """Capture the oracle's Overloads/Unserved/AllocationFactors reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1323,6 +1372,7 @@ def main() -> None:
     gen_faultstudy(d)
     gen_reliability(d)
     gen_deck_groups(d)
+    gen_show_overload_unserved(d)
     gen_sections(d)
     gen_profile(d)
     gen_demand_interval(d)
