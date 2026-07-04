@@ -20,6 +20,7 @@
 pub mod export;
 pub mod format;
 pub mod output;
+pub mod show;
 
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`
 /// `DefineOptions` → `GetEnumName`), the **non-`DSS_CAPI_ADIAKOPTICS`** build
@@ -128,11 +129,3 @@ pub(crate) const SHOW_OPTIONS: &[&str] = &[
     "Controlled",     // 33
     "Result",         // 34
 ];
-
-/// `TShowOption` ordinals the router special-cases.
-pub(crate) mod show {
-    /// `Show panel` — faithfully errored by the oracle (`ShowOptions.pas:248`,
-    /// error 999: not supported in DSS-Extensions). Wired in WP8.4.
-    #[allow(dead_code)]
-    pub const PANEL: usize = 11;
-}

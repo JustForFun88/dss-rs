@@ -1034,6 +1034,27 @@ impl ExportPolicy {
     }
 }
 
+/// Split a report line into fields for [`compare_export`].
+///
+/// * `sep == ' '` selects the **fixed-width `Show` table** mode: tokenize on any
+///   run of whitespace **or** commas, dropping empty tokens. Pascal's
+///   `ShowResults` reports are space-padded columns (`Pad`/`PadDots`) with the
+///   occasional glued trailing comma (`ExportLosses`-style `%.5f,` fields), so a
+///   single-char split cannot tokenize them — this collapses the padding and
+///   strips the comma so each numeric cell parses cleanly (PHASE8_PLAN §2.3).
+/// * any other `sep` (`','` CSV, `'='` Counts key=value) splits on exactly that
+///   char, trimming each field — the `Export`/CSV path, unchanged.
+fn split_fields(line: &str, sep: char) -> Vec<String> {
+    if sep == ' ' {
+        line.split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|f| !f.is_empty())
+            .map(|f| f.to_string())
+            .collect()
+    } else {
+        line.split(sep).map(|f| f.trim().to_string()).collect()
+    }
+}
+
 /// Split a report into non-blank, `\r`-stripped lines.
 fn report_lines(s: &str) -> Vec<String> {
     s.lines()
@@ -1069,11 +1090,7 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
     for i in 0..policy.header_lines {
         assert_eq!(rl[i], ol[i], "{ctx}: header line {i} differs");
     }
-    let split = |line: &str| -> Vec<String> {
-        line.split(policy.sep)
-            .map(|f| f.trim().to_string())
-            .collect()
-    };
+    let split = |line: &str| -> Vec<String> { split_fields(line, policy.sep) };
     // Column names = the last header line split on the separator (for the
     // per-column tolerance lookup). Empty when the report has no header block.
     let colnames: Vec<String> = if policy.header_lines >= 1 {
