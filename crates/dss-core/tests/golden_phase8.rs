@@ -609,12 +609,19 @@ fn show_losses_matches_oracle() {
 
 /// `Show Voltages` (Pascal `ShowVoltages` case 0 + `WriteSeqVoltages`): the
 /// symmetrical-component voltages by bus — `V1 (kV)` / p.u. / `V2 (kV)` / `%V2/V1`
-/// / `V0 (kV)` / `%V0/V1`, all `%9.4g` (4 sig). `rel = 1e-4` is the 4-sig printing
-/// floor (the same the `Export SeqVoltages` ratio columns hold); `abs = 1e-5`
-/// absorbs the balanced-bus near-zero `V0`/`%V0/V1` cells (a cancellation residual
-/// ~1e-9 kV whose ratio is faer-vs-KLU noise, numerator-side — a real V0 error
-/// would break the abs floor). The bus V1 physics is pinned to 1e-8 by
-/// `corpus_live.rs`. (tests/TOLERANCE_NOTES.md)
+/// / `V0 (kV)` / `%V0/V1`, all `%9.4g` (4 sig). Empirically **every significant
+/// cell is bit-identical** between the two engines (V1 is pinned to 1e-8 by
+/// `corpus_live.rs`, and `%9.4g` rounds the agreeing values identically); the
+/// **only** nonzero divergence is `sourcebus`'s `V0 (kV)` = `4.32e-9` (oracle) vs
+/// `4.319e-9` (Rust), abs `1e-12` — the faer-vs-KLU last digit of a ~2.4 kV
+/// cancellation collapsing to ~1e-9 kV, plus its ~1.5e-12 knock-on in `%V0/V1`.
+/// So `abs = 1e-8` (4 orders over that proven 1e-12 floor, for cross-platform
+/// faer margin) with a tight `rel = 1e-4`: the near-zero balanced-bus cell passes
+/// on `abs` (its own `rel` is ~2.3e-4, above the band — abs is doing exactly its
+/// documented job of absorbing numerator-side cancellation noise), while every
+/// significant small cell (e.g. bus 650 `V2 = 8.009e-5`, bit-exact) stays pinned
+/// far tighter than the old blanket `1e-5` (audit-tests WP8.4 step 2 —
+/// tests/TOLERANCE_NOTES.md).
 #[test]
 fn show_voltages_matches_oracle() {
     let policy = ExportPolicy {
@@ -622,7 +629,7 @@ fn show_voltages_matches_oracle() {
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 1e-4,
-        abs: 1e-5,
+        abs: 1e-8,
         col_tol: vec![],
     };
     run_feeder_show("show_voltages", &policy);
