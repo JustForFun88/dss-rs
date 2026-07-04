@@ -34,16 +34,25 @@ use crate::exec::registry::DssClass;
 ///
 /// TODO(compat): the floor is **12**, not the source's 4. The vendored Pascal
 /// `SetMaxBusNameLength` resets `MaxBusNameLength := 4` before the max-loop, but
-/// the pinned dss_capi 0.14.5 backend floors it at the unit-init constant
-/// `MaxBusNameLength := 12` (`ShowResults.pas:3979`) — a backend-vs-source
+/// the pinned dss_capi 0.14.5 backend floors the **data** rows at the unit-init
+/// constant `MaxBusNameLength := 12` (`ShowResults.pas:3979`) — a backend-vs-source
 /// divergence probe-proven `max(12, longest_bus_name)`: a 20-char bus name widens
 /// to 20, a 5-char one floors at 12 (not 5), and IEEE13 (longest `sourcebus` = 9)
 /// pads to 12. Reproduced 1:1 (settled empirically per CLAUDE.md — the oracle is
 /// the spec), same class as [`max_device_name_length`]'s `= 0`. Matters wherever
-/// the width feeds a **dot-padded** (`PadDots`) column — `WriteBusVoltages` splits
-/// the bus name and its dot run into two whitespace tokens, so a wrong floor drops
-/// the dots token on names ≤ 12 (the space-padded reports are token-invariant to
-/// it). Clean fix in the post-1:1 pass: floor at 4 (and regenerate goldens).
+/// the width feeds a **dot-padded** (`PadDots`) DATA column — `WriteBusVoltages`
+/// splits the bus name and its dot run into two whitespace tokens (and the dot-run
+/// length is a text token), so a wrong floor changes both the token count and the
+/// dots token; this is what the goldens pin (space-padded reports are
+/// token-invariant to it).
+///
+/// **Known residual byte divergence (deferred to WP8.8, masked by the token gate):**
+/// the oracle is internally inconsistent — it pads the *column-header* row's `Bus`
+/// to width **4** (probe-measured on every `Show` golden: `Bus  Node…`) while the
+/// *data* rows use 12. The port uses this single value (12) for header and data
+/// alike, so the header row is wider than the oracle's by whitespace only — invisible
+/// to the whitespace-collapsing comparator. Clean fix in the post-1:1 byte pass:
+/// reproduce the header=4 / data=12 split (or floor at 4 and regenerate goldens).
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     let mut m = 12;
     for i in 0..ckt.buses.len() {
