@@ -1006,6 +1006,46 @@ impl Dss {
                 };
                 self.write_show("Losses.txt", &content);
             }
+            // 13 `voltages` (`ShowVoltages`) — the option/filename parse of
+            // `ShowOptions.pas:279-312`: first param `LL` → phase-phase (else L-N);
+            // second param `N…`/`E…` selects the node/element form (`ShowOptionCode`
+            // 1/2). Step 2 ports **code 0** (the symmetrical-component form, the
+            // bare `Show Voltages` / `Show Voltage` default); the angle-bearing
+            // node/element forms are still deferred (TODO(WP8), silent no-op).
+            13 => {
+                self.parser.next_param(&self.vars);
+                let p1 = self.parser.make_string(&self.vars);
+                let (mut ll, mut filname) = (false, "VLN".to_string());
+                if p1.eq_ignore_ascii_case("LL") {
+                    ll = true;
+                    filname = "VLL".to_string();
+                }
+                self.parser.next_param(&self.vars);
+                let p2 = self.parser.make_string(&self.vars).to_uppercase();
+                let mut code = 0;
+                if let Some(c) = p2.chars().next() {
+                    match c {
+                        'N' => {
+                            code = 1;
+                            filname.push_str("_Node");
+                        }
+                        'E' => {
+                            code = 2;
+                            filname.push_str("_elem");
+                        }
+                        _ => filname.push_str("_seq"),
+                    }
+                }
+                if code == 0 {
+                    let content = {
+                        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                        show::show_voltages(ckt, ll)
+                    };
+                    self.write_show(&format!("{filname}.txt"), &content);
+                }
+                // TODO(WP8): step 2+ — codes 1/2 (Node/Element voltage forms,
+                // angle-bearing) stay a silent no-op (see the `_ =>` note below).
+            }
             // 11 `panel` — the oracle faithfully errors it (`ShowOptions.pas:248`).
             11 => {
                 self.errors
