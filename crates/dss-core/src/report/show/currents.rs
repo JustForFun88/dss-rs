@@ -1,7 +1,11 @@
-//! `Show Currents` (Pascal `ShowResults.pas` `ShowCurrents` + `WriteSeqCurrents` +
-//! `GetI0I1I2`), `ShowOptionCode = 0` — the symmetrical-component currents by
-//! circuit element (first 3 phases): per terminal `I1`, `I2`, `%I2/I1`, `I0`,
-//! `%I0/I1`, and (non-capacitor terminal 1 only) `%Normal`/`%Emergency`.
+//! `Show Currents` (Pascal `ShowResults.pas` `ShowCurrents`). Two forms:
+//! - `ShowOptionCode = 0` ([`show_currents`], `WriteSeqCurrents` + `GetI0I1I2`) —
+//!   the symmetrical-component currents by circuit element (first 3 phases): per
+//!   terminal `I1`, `I2`, `%I2/I1`, `I0`, `%I0/I1`, and (non-capacitor terminal 1
+//!   only) `%Normal`/`%Emergency`;
+//! - `ShowOptionCode = 1` ([`show_currents_elements`], `WriteTerminalCurrents`) —
+//!   the per-terminal, per-conductor branch currents (magnitude / angle / real /
+//!   imag), Sources + PD + Faults, then PC, with an optional residual row.
 
 use num_complex::Complex64;
 
@@ -10,6 +14,7 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
+use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
 /// Build the `Show Currents` (code 0) text (Pascal `ShowCurrents` case 0). Walks
@@ -126,4 +131,121 @@ pub(crate) fn show_currents(
     for_each_enabled_elem(classes, &ckt.pc_elements, |n, e| calc(n, e, false));
     for_each_enabled_elem(classes, &ckt.faults, |n, e| calc(n, e, false));
     s
+}
+
+/// Build the `Show Currents` (code 1) text (Pascal `ShowCurrents` case 1 +
+/// `WriteTerminalCurrents`): the per-terminal, per-conductor branch currents.
+/// Walks Sources → PD → Faults (the PD section), then PC. `show_residual` (PD
+/// only) appends the residual (−Σ terminal currents) row per terminal.
+pub(crate) fn show_currents_elements(
+    classes: &mut [DssClass],
+    ckt: &Circuit,
+    sys: &SysCtx,
+    node_v: &[Complex64],
+    show_residual: bool,
+) -> String {
+    let mbnl = super::max_bus_name_length(ckt);
+    let hdr = |s: &mut String| {
+        s.push_str(&format::pad("  Bus", mbnl));
+        s.push_str(" Phase    Magnitude, A     Angle      (Real)   +j  (Imag)\n");
+        s.push('\n');
+    };
+
+    let mut s = String::new();
+    s.push('\n');
+    s.push_str("CIRCUIT ELEMENT CURRENTS\n");
+    s.push('\n');
+    s.push_str("(Currents into element from indicated bus)\n");
+    s.push('\n');
+    s.push_str("Power Delivery Elements\n");
+    s.push('\n');
+    hdr(&mut s);
+
+    // PD section: Sources (no residual) → PDElements (residual per option) →
+    // Faults (no residual).
+    for_each_enabled_elem(classes, &ckt.sources, |name, elem| {
+        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, false);
+    });
+    for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
+        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, show_residual);
+    });
+    for_each_enabled_elem(classes, &ckt.faults, |name, elem| {
+        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, false);
+    });
+
+    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
+    s.push('\n');
+    s.push_str("Power Conversion Elements\n");
+    s.push('\n');
+    hdr(&mut s);
+    for_each_enabled_elem(classes, &ckt.pc_elements, |name, elem| {
+        write_terminal_currents(&mut s, ckt, name, elem, sys, node_v, mbnl, false);
+    });
+    s
+}
+
+/// One element's terminal-current block (Pascal `WriteTerminalCurrents`).
+#[allow(clippy::too_many_arguments)]
+fn write_terminal_currents(
+    s: &mut String,
+    ckt: &Circuit,
+    name: &str,
+    elem: &mut dyn CktElement,
+    sys: &SysCtx,
+    node_v: &[Complex64],
+    mbnl: usize,
+    show_residual: bool,
+) {
+    elem.compute_iterminal(sys, node_v);
+    let (ncond, nterm, nphases) = (elem.cd().nconds, elem.cd().nterms, elem.cd().nphases);
+    let cd = elem.cd();
+    // Pascal `'ELEMENT = ', EncloseQuotes(FullName)` — the full name, native case.
+    s.push_str(&format!("ELEMENT = {}\n", format::enclose_quotes(name)));
+
+    let mut k = 0usize;
+    for j in 0..nterm {
+        // From-bus per terminal (`StripExtension(FirstBus/NextBus)`, uppercased).
+        // No AutoTrans class exists in the port, so `Ntimes = NCond` always.
+        let from_bus = ckt
+            .buses
+            .get(cd.terminals[j].bus_ref)
+            .map(|b| b.name.as_str())
+            .unwrap_or("");
+        let from_bus = format::pad(from_bus, mbnl).to_uppercase();
+        let mut ctotal = Complex64::ZERO;
+        for _ in 0..ncond {
+            let ck = cd.iterminal[k];
+            if show_residual {
+                ctotal += ck;
+            }
+            // `'%s  %4d    %13.5g /_ %6.1f =  %9.5g +j %9.5g'`
+            // [UpperCase(FromBus), GetNodeNum(NodeRef[k]), Cabs, cdang, re, im].
+            s.push_str(&format!(
+                "{}  {}    {} /_ {} =  {} +j {}\n",
+                from_bus,
+                format::fixed_w_int(ckt.map_node_to_bus[cd.node_ref[k]].node_num as i64, 4),
+                format::g_w(ck.norm(), 13, 5),
+                format::fixed_w(cdang(ck), 6, 1),
+                format::g_w(ck.re, 9, 5),
+                format::g_w(ck.im, 9, 5),
+            ));
+            k += 1;
+        }
+        if show_residual && nphases > 1 {
+            // `CtoPolardeg(-Ctotal)`: mag = |Ctotal|, ang = cdang(-Ctotal).
+            let resid = -ctotal;
+            s.push_str(&format!(
+                "{} Resid    {} /_ {} =   {} +j {}\n",
+                from_bus,
+                format::g_w(resid.norm(), 13, 5),
+                format::fixed_w(cdang(resid), 6, 1),
+                format::g_w(resid.re, 9, 5),
+                format::g_w(resid.im, 9, 5),
+            ));
+        }
+        if j < nterm - 1 {
+            s.push_str("------------\n");
+        }
+    }
+    s.push('\n'); // Pascal writes a blank line after each element.
 }

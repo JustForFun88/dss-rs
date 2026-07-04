@@ -418,6 +418,16 @@ SHOW_REPORTS = [
     # `Show Currents`/`Powers` default (code 0): the per-element sequence forms.
     ("currents", "Curr_Seq.txt", "show_currents"),
     ("powers", "Power_seq_kVA.txt", "show_powers"),
+    # `Show Voltages` code 1 (node form, `WriteBusVoltages`) and code 2 (element
+    # form, `WriteElementVoltages`). First param `LN` (non-`LL` → L-N, `FilName=VLN`);
+    # second param `Node`/`Elem` selects code 1/2 (`_Node`/`_elem` suffix).
+    ("voltages LN node", "VLN_Node.txt", "show_voltages_node"),
+    ("voltages LN elem", "VLN_elem.txt", "show_voltages_elem"),
+    # `Show Currents` code 1 (element form, `WriteTerminalCurrents`) WITH residual:
+    # first param `Y` → ShowResidual=TRUE, second `Elem` → code 1 (`Curr_Elem.txt`).
+    ("currents Y elem", "Curr_Elem.txt", "show_currents_elem"),
+    # `Show Elements` (`ShowElements`, default PD/PC form): the element↔bus listing.
+    ("elements", "Elements.txt", "show_elements"),
 ]
 
 

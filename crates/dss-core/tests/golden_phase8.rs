@@ -696,6 +696,111 @@ fn show_powers_matches_oracle() {
     run_feeder_show("show_powers", &policy);
 }
 
+/// `Show Voltages LN Node` (Pascal `ShowVoltages` case 1 + `WriteBusVoltages`):
+/// line-ground **and** line-line voltages by bus & node. Per node row the tokens
+/// are `BUS Node VLN /_ Angle pu BaseKV [NodeNodeLL VLL /_ Angle pu]`, so the
+/// numeric magnitude/pu columns (`%10.5g`/`%9.5g`) hold the tight default
+/// (`rel = 1e-4`, `abs = 1e-4` for the last `%g` digit), the `%9.3f` base kV is
+/// bit-identical **input** data, and the two angle columns (`%6.1f`, token
+/// indices 4 and 10) take the additive ±0.05 `%.1f` printing floor (`abs = 0.11`,
+/// the project `%.1f` convention). The `/_` glyph and the `n-n` node pair are text
+/// tokens. Voltage physics is pinned to 1e-8 by `corpus_live.rs`.
+#[test]
+fn show_voltages_node_matches_oracle() {
+    let angcol = |i: usize| ColTol {
+        sel: ColSel::Index(i),
+        rel: 0.0,
+        abs: 0.11,
+        gate: None,
+    };
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-4,
+        col_tol: vec![angcol(4), angcol(10)],
+    };
+    run_feeder_show("show_voltages_node", &policy);
+}
+
+/// `Show Voltages LN Elem` (Pascal `ShowVoltages` case 2 + `WriteElementVoltages`):
+/// node-ground voltages by circuit element. Each conductor row is `BUS (nref)
+/// nodenum VLN (pu) /_ Angle`; the `nref` and `pu` are **parenthesised** so the
+/// tokenizer text-compares them (both are bit-pinned — `nref` is the exact node
+/// order, `pu` is 4-sig of a 1e-8-pinned voltage), while the bare `VLN` (`%13.5g`)
+/// and `Angle` (`%6.1f`, token index 6) are numeric. Default `rel = 1e-4` /
+/// `abs = 1e-4` for the magnitude last digit; the angle takes the `%.1f` floor
+/// (`abs = 0.11`).
+#[test]
+fn show_voltages_elem_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-4,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(6),
+            rel: 0.0,
+            abs: 0.11,
+            gate: None,
+        }],
+    };
+    run_feeder_show("show_voltages_elem", &policy);
+}
+
+/// `Show Currents Y Elem` (Pascal `ShowCurrents` case 1 + `WriteTerminalCurrents`,
+/// `ShowResidual = TRUE`): per-terminal, per-conductor branch currents + the PD
+/// residual row. Each row is `BUS nodenum |I| /_ Angle = Re +j Im`; numeric tokens
+/// are `|I|` (idx 2, `%13.5g`), `Angle` (idx 4, `%6.1f`), `Re`/`Im` (idx 6/8,
+/// `%9.5g`). Magnitudes and Re/Im keep the default (`rel = 1e-4`, `abs = 1e-5` — the
+/// latter absorbing near-zero conductor/residual currents down to ~1e-12 A). The
+/// **angle** takes the `%.1f` floor (`abs = 0.11`) **and** a denominator gate: skip
+/// it when `|I|` (idx 2) is a `< 1e-6 A` cancellation residual (a floating switch
+/// terminal / a balanced residual ≈ 0, where the angle is faer-vs-KLU garbage) —
+/// the same `1e-6 A` threshold proven for `show_currents`, provably between the
+/// noise floor and the smallest real current. Current physics is pinned to 1e-8 by
+/// `corpus_live.rs`.
+#[test]
+fn show_currents_elem_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-5,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(4),
+            rel: 0.0,
+            abs: 0.11,
+            gate: Some(GateSpec::Col(2, 1e-6)),
+        }],
+    };
+    run_feeder_show("show_currents_elem", &policy);
+}
+
+/// `Show Elements` (Pascal `ShowElements` + `WriteElementRecord`, default PD/PC
+/// form): the element ↔ bus-connection listing. Every column is a **name** — the
+/// quoted `"Class.Name"` and the terminal bus names — so all tokens are text
+/// (identifiers, compared case-insensitively) except numeric-looking bus names
+/// (`650`, `633`) which compare as exact integers. Pure structural / input data,
+/// identical on both engines: `rel = 0`, `abs = 0`. (`run_feeder_show` reads the
+/// main `Elements.txt`; the `_Disabled` companion — header-only here, all elements
+/// enabled — is written but not compared.)
+#[test]
+fn show_elements_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_elements", &policy);
+}
+
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
 /// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
 /// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`

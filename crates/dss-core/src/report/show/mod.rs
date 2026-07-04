@@ -10,27 +10,42 @@
 
 mod buses;
 mod currents;
+mod elements;
 mod losses;
 mod powers;
 mod taps;
 mod voltages;
 
 pub(crate) use buses::show_buses;
-pub(crate) use currents::show_currents;
+pub(crate) use currents::{show_currents, show_currents_elements};
+pub(crate) use elements::show_elements;
 pub(crate) use losses::show_losses;
 pub(crate) use powers::show_powers;
 pub(crate) use taps::show_taps;
-pub(crate) use voltages::show_voltages;
+pub(crate) use voltages::{show_voltages, show_voltages_elements, show_voltages_nodes};
 
 use crate::circuit::Circuit;
 use crate::exec::registry::DssClass;
 
-/// Pascal `SetMaxBusNameLength` (`ShowResults.pas:101`): the longest bus name,
-/// floored at 4. Walks `BusList.NameOfIndex` (the lowercased stored names).
-/// Uses **byte** length (`str::len`), matching Pascal's `Length(AnsiString)`
-/// (byte-1:1; identical to char count for the ASCII corpus names).
+/// Pascal `SetMaxBusNameLength` (`ShowResults.pas:101`): the longest bus name.
+/// Walks `BusList.NameOfIndex` (the lowercased stored names). Uses **byte**
+/// length (`str::len`), matching Pascal's `Length(AnsiString)` (byte-1:1;
+/// identical to char count for the ASCII corpus names).
+///
+/// TODO(compat): the floor is **12**, not the source's 4. The vendored Pascal
+/// `SetMaxBusNameLength` resets `MaxBusNameLength := 4` before the max-loop, but
+/// the pinned dss_capi 0.14.5 backend floors it at the unit-init constant
+/// `MaxBusNameLength := 12` (`ShowResults.pas:3979`) — a backend-vs-source
+/// divergence probe-proven `max(12, longest_bus_name)`: a 20-char bus name widens
+/// to 20, a 5-char one floors at 12 (not 5), and IEEE13 (longest `sourcebus` = 9)
+/// pads to 12. Reproduced 1:1 (settled empirically per CLAUDE.md — the oracle is
+/// the spec), same class as [`max_device_name_length`]'s `= 0`. Matters wherever
+/// the width feeds a **dot-padded** (`PadDots`) column — `WriteBusVoltages` splits
+/// the bus name and its dot run into two whitespace tokens, so a wrong floor drops
+/// the dots token on names ≤ 12 (the space-padded reports are token-invariant to
+/// it). Clean fix in the post-1:1 pass: floor at 4 (and regenerate goldens).
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
-    let mut m = 4;
+    let mut m = 12;
     for i in 0..ckt.buses.len() {
         if let Some(n) = ckt.bus_list.name(i) {
             m = m.max(n.len());
