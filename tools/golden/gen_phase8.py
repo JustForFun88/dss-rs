@@ -372,6 +372,34 @@ def gen_show_meter_reports(d) -> None:
     _gen_show_group(d, REGISTER_B_POST, SHOW_METER_REPORTS_B)
 
 
+# `Show Meters`/`Show Generators` edge branches (WP8.4 step-8 audit follow-up):
+#   MULTI: two EnergyMeters (em1 on the feeder head, em2 on a lateral) → the
+#     legend-uses-FIRST-meter path + two data rows with distinct per-zone registers
+#     (a bug printing the legend per-meter, dropping a row, or using meter[0]'s
+#     registers for both rows fails `ExactOrdered`).
+#   NONE (meters): plain solved IEEE13 has no EnergyMeter → the
+#     `No Energymeter Elements Defined.` banner branch.
+#   NONE (generators): plain solved IEEE13 has no Generator → the banner-only branch.
+SHOW_MULTI_METER_POST = [
+    "new energymeter.em1 element=Line.650632 terminal=1",
+    "new energymeter.em2 element=Line.632645 terminal=1",
+    "set mode=daily number=3 stepsize=1h",
+    "solve",
+]
+SHOW_MULTI_METER_REPORTS = [("meters", "EMout.txt", "show_meters_multi")]
+SHOW_NONE_REPORTS = [
+    ("meters", "EMout.txt", "show_meters_none"),
+    ("generators", "GenMeterOut.txt", "show_generators_none"),
+]
+
+
+def gen_show_meter_edgecases(d) -> None:
+    """Capture the oracle's `Show Meters`/`Show Generators` edge branches."""
+    d.AllowEditor = False
+    _gen_show_group(d, SHOW_MULTI_METER_POST, SHOW_MULTI_METER_REPORTS)
+    _gen_show_group(d, ["solve"], SHOW_NONE_REPORTS)
+
+
 # The event/error-log dumps (PHASE8_PLAN §WP8.3 step 3). No corpus deck exports
 # these, so they are synthesized (PHASE8_PLAN §1), both on the IEEE13 feeder:
 #   EventLog: a daily-3 solve with `Set Log=yes` (ckt.LogEvents) + per-RegControl
@@ -1288,6 +1316,7 @@ def main() -> None:
     gen_monitor_reports(d)
     gen_register_reports(d)
     gen_show_meter_reports(d)
+    gen_show_meter_edgecases(d)
     gen_log_reports(d)
     gen_ieee8500_reports(d)
     gen_seqz(d)
