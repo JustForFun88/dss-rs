@@ -163,3 +163,131 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
 
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::exec::Dss;
+
+    /// Robustness pin — **no golden** (the oracle cannot produce a reference here:
+    /// it crashes).
+    ///
+    /// The pinned oracle (`dss_capi 0.14.5`) **access-violates** (#303 "Access
+    /// violation") on `Show Faults` after a **cold** `solve mode=faultstudy` — one
+    /// with no prior converged non-dynamic solve. There the per-bus short-circuit
+    /// matrices are never allocated, and `ShowFaultStudy` still reads them
+    /// (`ZFault.CopyFrom(nil)`, `ShowResults.pas:1927`) → **UB** (empirically
+    /// reproduced against the pinned engine: the exact deck below, minus the guard
+    /// our engine has, faults the oracle process). Per CLAUDE.md an *undefined-
+    /// behavior* upstream bug is **not reproduced** — it is documented and gated
+    /// around, so there is nothing to compare against and no golden.
+    ///
+    /// The safe-Rust engine (`#![forbid(unsafe_code)]`) instead handles the same
+    /// sequence cleanly: `solve mode=faultstudy` requires a prior non-dynamic solve
+    /// (it logs a clean error and does NOT allocate the short-circuit state), and
+    /// `show_fault_study`'s `None`-`Zsc`/`Ysc` guard skips the crashing read — so the
+    /// report is well-defined (zero fault current → the section-1 `N/A` X/R branch;
+    /// the SLG / L-L sections carry only their headers) with no panic, where the
+    /// oracle corrupts memory. This pins that we have **no UB** on the oracle's
+    /// crash path.
+    ///
+    /// (The `kVBase > 0` full report is pinned exactly against the oracle by the
+    /// `show_faultstudy` golden on the FaultStudy-solved IEEE13 feeder; this test is
+    /// only the degenerate cold-solve safety net.)
+    #[test]
+    fn fault_study_cold_solve_is_safe() {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "new circuit.fscov basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100",
+            // COLD: `solve mode=faultstudy` with NO prior `solve` — the exact
+            // sequence the oracle access-violates on at `show faults`.
+            "solve mode=faultstudy",
+        ] {
+            dss.command(c);
+        }
+
+        let ckt = dss.circuit().expect("circuit built");
+        // The cold faultstudy is refused, so the per-bus short-circuit matrices are
+        // never allocated — the `None` state whose read UB-crashes the oracle.
+        assert!(
+            ckt.buses.iter().all(|b| b.zsc.is_none() && b.ysc.is_none()),
+            "cold faultstudy must leave Zsc/Ysc unallocated"
+        );
+
+        // The formatter runs to completion (a panic here would fail the test) and
+        // emits the full report — the safe-Rust behavior on the input the oracle
+        // access-violates on.
+        let report = super::show_fault_study(ckt);
+        assert!(report.contains("FAULT STUDY REPORT"));
+        assert!(report.contains("ALL-Node Fault Currents"));
+        assert!(report.contains("Adjacent Node-Node Faults"));
+        // Zero prospective fault current (no faultstudy ran) → section 1 takes the
+        // `"   N/A"` X/R branch on every node.
+        assert!(
+            report.contains("N/A"),
+            "zero fault current must take the section-1 N/A branch"
+        );
+    }
+
+    /// Branch pin — **no golden** (kept a unit test per the same step-10 decision,
+    /// though this branch *is* oracle-comparable). Sections 2 & 3 have two voltage
+    /// formats: `%10.3f` per-unit when the bus has a base kV, and `%10.1f`
+    /// "L-N Volts if no base" when `kVBase <= 0`. The `show_faultstudy` golden
+    /// (based IEEE13) only exercises the pu form, so this test drives the
+    /// **unbased** form: a circuit with a prior `solve mode=snap` (so FaultStudy
+    /// runs and populates `Zsc`/`Ysc`) but **no** `Set Voltagebases` /
+    /// `CalcVoltageBases`, leaving every `kVBase = 0`. It pins that the `kVBase <= 0`
+    /// selector fires — the fault-driven node voltages render as raw volts
+    /// (`%10.1f`, `>> 1`), never the pu `%10.3f` form — with no panic.
+    #[test]
+    fn fault_study_unbased_uses_ln_volts_branch() {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "new circuit.fscov basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100",
+            "solve mode=snap", // a prior converged solve, so FaultStudy runs
+            "solve mode=faultstudy", // populates Zsc/Ysc/VBus/BusCurrent
+                               // NO `Set Voltagebases` / `CalcVoltageBases`:
+                               // every bus keeps kVBase = 0.
+        ] {
+            dss.command(c);
+        }
+
+        let ckt = dss.circuit().expect("circuit built");
+        assert!(
+            ckt.buses.iter().all(|b| b.kv_base == 0.0),
+            "fixture must leave every bus's kVBase unset"
+        );
+        assert!(
+            ckt.buses.iter().any(|b| b.zsc.is_some() && b.ysc.is_some()),
+            "faultstudy must have populated Zsc/Ysc"
+        );
+
+        let report = super::show_fault_study(ckt);
+        // The `kVBase <= 0` branch prints voltages at `%10.1f` (one decimal), so a
+        // faulted node reads ` 0.0`, never the pu ` 0.000`. A pu (`%10.3f`) cell
+        // anywhere would mean the base-kV branch wrongly fired.
+        assert!(
+            !report.contains("0.000"),
+            "unbased buses must use the %10.1f L-N-Volts branch, not %10.3f pu"
+        );
+        // And the SLG section carries real fault-driven raw volts (>> 1 pu), i.e. a
+        // multi-hundred/thousand-volt cell — confirming the branch produced values.
+        let slg = report
+            .split("ONE-Node to ground Faults")
+            .nth(1)
+            .and_then(|s| s.split("Adjacent Node-Node Faults").next())
+            .expect("SLG section present");
+        let has_raw_volts = slg
+            .split_whitespace()
+            .any(|t| t.parse::<f64>().is_ok_and(|v| v > 100.0 && t.contains('.')));
+        assert!(
+            has_raw_volts,
+            "SLG section must carry raw L-N-Volts cells (>> 1 pu)"
+        );
+    }
+}

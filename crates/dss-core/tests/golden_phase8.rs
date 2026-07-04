@@ -1329,13 +1329,26 @@ fn show_unserved_normal_matches_oracle() {
 }
 
 /// `Show Faults` (Pascal `ShowFaultStudy`): the three-section FaultStudy report on
-/// the `solve mode=faultstudy`-solved IEEE13 feeder (the same short-circuit state
-/// `export_faultstudy`/`SeqZ` read). Section 1 (all-node bolted currents + X/R),
-/// section 2 (SLG fault current + pu node voltages), section 3 (L-L fault via a
-/// `GFault` scratch inversion). The fault currents / impedances are pinned to 1e-8
-/// by `corpus_live.rs`; on this feeder every printed cell (`%15.0f`/`%12.0f` amps,
-/// `%5.1f` X/R, `%10.3f` pu) is byte-identical Rust↔oracle → **exact equality**
-/// (`rel = 0`, `abs = 0`).
+/// the `solve mode=faultstudy`-solved IEEE13 feeder. Section 1 (all-node bolted
+/// currents + X/R), section 2 (SLG fault current + pu node voltages), section 3
+/// (L-L fault via a `GFault` scratch inversion) — **exact equality** (`rel = 0`,
+/// `abs = 0`).
+///
+/// Provenance of the numbers (audit-tests WP8.4 step 10): the *aggregate* fault
+/// currents / sequence Z are independently pinned by `export_faultstudy`
+/// (3-Phase/1-Phase/L-L per bus, `%.2f`, exact) and `export_seqz`, over this same
+/// `solve mode=faultstudy` fixture. The **per-node** amps, the `X/R` column and the
+/// full section-2/3 pu-voltage matrices are pinned by *this* golden alone, at the
+/// report's print precision (`%15.0f`/`%12.0f` amps, `%5.1f` X/R, `%10.3f` pu). The
+/// underlying short-circuit state carries the ~1e-8 faer-vs-KLU floor (`Zsc` comes
+/// from unit-injection re-solves of the factored Y — not a bit-exact assembly), so
+/// exact equality holds because on this feeder no printed cell lands within that
+/// floor of a `%.Nf` rounding boundary (a feeder property, not a guarantee); a
+/// future straddle is an investigation, never a mask (CLAUDE.md). `corpus_live.rs`
+/// does **not** cover this — it snapshot-solves and never enters faultstudy mode.
+/// The degenerate cold-solve path (unallocated `Zsc`, which access-violates the
+/// oracle) is pinned safe by the `fault_study::tests::fault_study_cold_solve_is_safe`
+/// unit test (no golden — the oracle crashes there).
 #[test]
 fn show_faultstudy_matches_oracle() {
     let policy = ExportPolicy {
