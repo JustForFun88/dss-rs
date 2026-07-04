@@ -83,67 +83,60 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   registry **and** the Rust class-registration order reconciled to the oracle's
   `DSSClassList` order (they currently differ) — or an order-independent
   exact-set-by-key variant.
-- **`Export` solution reports are a layout gate, not the physics gate**
-  (`golden_phase8.rs`, `harness::compare_export`). The targeted CSV golden pins
-  the report **structure** — header tokens verbatim, column set/order, row order
-  (Pascal bus/element iteration order), per-field numeric-vs-text classification,
-  the zero-fill, the scaling/getter wiring — against the oracle's exact file. The
-  **value** floors are deliberately the report's own *formatting* resolution, not
-  the engine floor: the oracle writes each number with `Format('%…g')` /
-  `Format('%…f')`, so the file only knows the value to its printed precision. The
-  split of duties is precise: **`corpus_live.rs` gates the engine voltage
-  physics** — it compares IEEE13's complex node voltages directly at
-  `tol_for("feeder")` (1e-8 rel) across the daily operating points, so a
-  systematic physics bug surfaces there; **the export golden alone gates the
-  snapshot report-layer transform** (`|V|`, `|V|/kVbase`, `arg(V)`, the `×√3`
-  line-to-line base, zero-fill, column order) — exact arithmetic, so a wrong
-  scale/convention is a gross error caught easily at 1e-4. Concretely
-  (`Export Voltages` on IEEE13):
-  - default value columns (`Magnitude%d` `%10.6g`, `pu%d` `%9.5g`, `BasekV`
-    `%.5g`): **1e-4 rel, 1e-6 abs** — clears the 5–6-significant-digit `%g`
-    rounding floor (~1e-5 rel) plus the two independent solves, with margin.
-  - the `Angle%d` columns (`%6.1f`, one decimal): a **per-column override** of
-    **rel 0, abs 0.11**. The `%f` floor is purely *additive* — two independent
-    solves round that last 0.1 digit independently, so a ±0.1 boundary difference
-    is a formatting artifact, not a divergence — hence `rel = 0` (no multiplicative
-    `%f` component) and `abs = 0.11` is the exact proven printing floor. This is
-    the **only** loosened column and it is named explicitly via
-    `ExportPolicy::col_tol` (a `ColSel::Prefix("angle")` header-name match,
-    applying to `Angle1/2/3` only) — **not** a blanket relaxation: every
-    magnitude/pu/coordinate column
-    keeps the tight default. The angle is `arg(V)`, independent of `|V|`/pu; its
-    engine correctness is gated by the `corpus_live` voltage compare (a gross
-    rad↔deg / sign-flip bug is far above 0.1 and caught either way). `BusCoords`
-    (`%-13.11g`, 11 sig, loaded from the same file) and the text reports
-    (`NodeNames`/`YNodeList`) need no override.
+- **`Export`/`Show` reports (WP8): exact equality is the default**
+  (`golden_phase8.rs`, `harness::compare_export`). **WP8 exactness audit
+  (2026-07-04):** every WP8 golden was re-measured cell-by-cell against its
+  oracle capture; the produced reports are parse-value-identical (byte-identical
+  modulo tokenization) on **74 of 93** compares, so those policies are pinned at
+  `rel = 0, abs = 0` — the printed value *is* the contract, and the earlier
+  "printing floor" tolerances (`EXPORT_REL = 1e-4`/`EXPORT_ABS = 1e-6`, the
+  `%.1f`/`%.2f`/`%.3f` additive floors, `YMATRIX_REL`, the register/reliability/
+  monitor floors) were **never exercised** — deleted, per the no-unproven-floors
+  rule. Two independent engines rounding the same ~1e-9-agreeing f64 through a
+  5–7-sig render almost never split a boundary; where a split or a genuine
+  residual IS observed on a golden, that specific floor is kept, measured and
+  documented below. If a new straddle ever fires (a regolden, a new fixture),
+  prove it by decomposition first (both engines' f64 bracketing the print
+  boundary), then add the narrowest floor. The split of duties is unchanged:
+  `corpus_live.rs` gates the engine physics (1e-8 rel on the live complex
+  model); the goldens gate the report-layer transform and its layout.
+  The remaining non-exact floors, all **observed** on the current goldens:
+  - `P_byphase` (kVA form): one `%10.3f` last-digit straddle (−1342.212↔.213)
+    → `abs = 0.0011` (the MVA twin renders byte-identical → exact).
+  - `Losses`: a 7-sig `%.7g` ULP straddle (65.34585↔86 W) → `rel = 1e-6`; plus
+    near-zero no-load/var noise-vs-noise cells (≤ 1.28e-8 W, 6 orders below the
+    smallest real loss) → `abs = 1e-7`.
+  - `SeqVoltages`/`SeqCurrents`: near-zero seq-residual cells (measured 1e-11 V /
+    1e-9 A) → `abs = 1e-9`/`1e-8`; the residual-numerator ratio cells
+    (`%I0/I1` ≤ 1.2e-10) → `abs = 1e-9`; the one noise/noise ratio row gated.
+  - `Currents`/`ElemCurrents`/`ElemPowers`/`YCurrents`: near-zero cancellation
+    residuals (measured 3e-9 / 6.6e-12 / 1.6e-11 / 1.4e-14) → `abs = 1e-8` /
+    `1e-10` / `1e-10` / `1e-13`; the angles of residual magnitudes gated
+    (`PrevCol`).
+  - `Show Mismatch`: a `%10.5f` straddle (473.76972↔71) → `abs = 1.1e-5`; the
+    KCL-residual columns masked.
+  - The **DI files**: the only genuine non-print floor — the per-step faer-vs-KLU
+    difference integrates over the 24 daily solves into the registers (measured
+    1.5e-8 rel) → `rel = 5e-8`.
+  - `Summary`/`8500 Summary`: the wall-clock `DateTime` column masked.
 - **WP8.2 sub-step 2a — the aggregate PD/PC power exports** (`Powers`/`Losses`/
   `P_byphase` on solved IEEE13, both kVA and MVA). All columns are real (kW/kvar/W
-  or MW/Mvar) — no angle or sequence columns — so the floors are the plain
-  fixed-decimal / `%g` *printing* floors, **not** a physics relaxation (the engine
-  V/I/P is pinned to 1e-8 by `corpus_live`; here the golden gates only the report
-  layout/scaling/element order). Each floor below is the **empirically measured**
-  max Rust↔oracle divergence with margin (audit-tests WP8.2 mutation-verified each):
-  - `Powers` — every value column is `%11.1f` (one decimal); like the `Angle%d`
-    floor this is purely *additive*, so the **whole policy** is `rel = 0, abs = 0.11`
-    — measured max divergence 0.0 (identical strings), `rel = 0` so no multiplicative
-    band masks a per-terminal error; the integer `Terminal` column is exact within
-    abs. (MVA twin: same `%11.1f` floor, now in MW.)
-  - `P_byphase` — values are `%10.3f` (three decimals); the floor is purely
-    *additive* (measured max divergence **exactly 1e-3** — one ULP, on the largest
-    −1342.212 conductor; its 7.45e-7 "rel" is just `abs/value`), so the policy is
-    `rel = 0, abs = 0.0011` — a `rel` band would be superfluous and would mask a
-    per-conductor scale drift (mutation-confirmed: 0.005% passes under `rel=1e-4` but
-    fails under `rel=0`). The integer NumTerminals/NumConductors/NumPhases columns are
-    exact within abs. (MVA twin: same `%10.3f` floor, in MW.)
-  - `Losses` — `%.7g` (7 sig), so the floor is the **7-sig printing floor**, not the
-    looser 6-sig `EXPORT_REL` of the Voltages report: measured max divergence on a
-    substantial loss is **1.53e-7 rel** (one ULP at 7 sig, REG2's 65.3 W), so
-    `rel = 1e-6` (≈6× over the floor) is the report's printing resolution. `abs = 1e-6`
-    absorbs a few near-zero no-load/var cells (cancellation noise ≤ 5.6e-9 W) with
-    ~180× margin. No genuine line-loss cancellation floor materializes on IEEE13 (the
-    line/transformer losses agree to the 7-sig printing floor); should a metered feeder
-    later show one, it must be **proven by decomposition** (CLAUDE.md), not by widening
-    `rel`.
+  or MW/Mvar); the engine V/I/P is pinned to 1e-8 by `corpus_live`.
+  - `Powers` (both forms) — every `%11.1f` value renders byte-identical → **exact**
+    (`rel = 0, abs = 0`).
+  - `P_byphase` — values are `%10.3f`; the kVA form has an **observed** one-ULP
+    last-digit straddle (measured max divergence exactly 1e-3, on the largest
+    −1342.212 conductor) → `rel = 0, abs = 0.0011` (a `rel` band would mask a
+    per-conductor scale drift — mutation-confirmed). The MVA twin renders
+    byte-identical → **exact**.
+  - `Losses` — `%.7g` (7 sig): an **observed** one-ULP straddle on a substantial
+    loss (REG2's 65.34585↔65.34586 W = 1.53e-7 rel) → `rel = 1e-6`, the 7-sig
+    render resolution. `abs = 1e-7` absorbs the near-zero no-load/var
+    noise-vs-noise cells (faer-vs-KLU cancellation residuals, observed up to
+    1.28e-8 W vs the smallest real loss 9.05e-3 W — a 6-order gap). No genuine
+    line-loss cancellation floor materializes on IEEE13; should a metered feeder
+    later show one, it must be **proven by decomposition** (CLAUDE.md), not by
+    widening `rel`.
 
 - **WP8.2 sub-step 2b — the symmetrical-component exports** (`SeqVoltages`/
   `SeqCurrents`/`SeqPowers` on solved IEEE13). Again a *report-layout* gate; the
@@ -151,21 +144,23 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   magnitude columns (`V1`/`V2`/`V0`/`Vresidual`, `I1`/`I2`/`I0`/`Iresidual`) are
   `%10.6g` (6 sig); the ratio/unbalance columns (`%V2/V1`, `%V0/V1`, `%NEMA`,
   `%Normal`, `%Emergency`, `%I2/I1`, `%I0/I1`) are `%8.4g` (4 sig).
-  - **Magnitudes** keep the 6-sig/5-sig `EXPORT_REL = 1e-4`; the `abs` floor is the
-    **empirically measured** residual, *not* a guess. `V0`/`V2` (and `I0`/`I2`) are a
-    near-zero difference of three balanced phasors; faer and KLU agree on this
-    well-conditioned solve far tighter than the crude `phase·1e-8` bound — the
-    measured max abs divergence is **1e-11 V** (`SeqVoltages` V0 at the source bus)
-    and **1e-9 A** (`SeqCurrents` Iresidual). So `SeqVoltages` uses `abs = 1e-9`
-    (100× over the floor) and `SeqCurrents` `abs = 1e-8` (10× over the floor). The
-    earlier `1e-3` was ~6 orders too loose for currents — *larger* than the smallest
-    real printed magnitude (`I1 = 5.8e-4 A`), so it left sub-mA cells unpinned; `1e-8`
-    is below every real magnitude, so they stay checked. (A column swap of large
-    values still fails massively; physics is independently pinned by `corpus_live`.)
-  - **Ratio columns** use a `ColTol` prefix `%` with `rel = 1e-3` — the exact 4-sig
-    `%8.4g` printing floor (one ulp in the 4th significant digit), `abs` matching the
-    magnitude floor — and a **band-limited denominator gate** (`ColTol::gate`).
-    `SeqCurrents` gates on `I1` (col 2): at an open/unloaded terminal `I1`/`I2`/`I0`
+  - **Magnitudes** are pinned at `rel = 0`: every real (non-residual) cell renders
+    byte-identical. The `abs` floor covers only the near-zero seq residuals and is
+    the **empirically measured** divergence, *not* a guess. `V0`/`V2` (and
+    `I0`/`I2`) are a near-zero difference of three balanced phasors; faer and KLU
+    agree on this well-conditioned solve far tighter than the crude `phase·1e-8`
+    bound — the measured max abs divergence is **1e-11 V** (`SeqVoltages` V0 at
+    the source bus, a 6th-sig render straddle 4.31950e-6↔4.31951e-6) and
+    **1e-9 A** (`SeqCurrents` Iresidual, 3.47330e-4↔3.47331e-4). So `SeqVoltages`
+    uses `abs = 1e-9` and `SeqCurrents` `abs = 1e-8` — both below the smallest
+    real printed magnitude (`I1 = 5.8e-4 A`), so real cells stay pinned exactly.
+  - **Ratio columns**: the `%I…`/`%NEMA` cells carry `abs = 1e-9` for the
+    residual-numerator/healthy-denominator form (`%I0/I1` of a residual I0 over a
+    loaded I1, observed ≤ 1.2e-10 — `rel` is meaningless there), `rel = 0` — real
+    ratios (`%I2/I1 = 1.76`, the `%Normal`/`%Emergency` loadings) render
+    byte-identical and are exact. Plus a **band-limited denominator gate**
+    (`ColTol::gate`): `SeqCurrents` gates on `I1` (col 2) — at an open/unloaded
+    terminal `I1`/`I2`/`I0`
     are ~1e-12 cancellation noise (pinned to 0 by the magnitudes' `abs`), so `%I2/I1`
     etc. are a faer-vs-KLU **noise/noise** form — e.g. `Line.671680.2` (the open 680
     end) prints `%I2/I1 = 147.7` (oracle) vs `61.8` (Rust), and the live f64 confirms
@@ -180,13 +175,13 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     The gate is **scoped to the columns that actually divide by `I1`** (`%I…`
     prefixes) or are the same noise form of the phase currents (`%NEMA`);
     `%Normal`/`%Emergency` divide by `NormAmps` (never near-zero), so they fall
-    through to an *ungated* `%` catch-all and stay checked even on the gated row.
+    through to the exact default and stay checked even on the gated row.
     The magnitude columns are checked on **every** row. A proven cancellation floor
-    (CLAUDE.md), **not** a relaxation. `SeqVoltages` needs no gate (V1 is always
-    kV-scale) and `SeqPowers` is all `…:1` fixed-decimal, so its policy is the
-    `Powers` additive floor (`rel = 0, abs = 0.11`); its PD rows carry the extra 4
-    excess-kVA columns on terminal 1 (12 fields) vs 8 for PC/term-2 rows, and the
-    comparator pins each row's field count.
+    (CLAUDE.md), **not** a relaxation. `SeqVoltages` needs no gate or ratio floor
+    (V1 is always kV-scale; its ratio cells are byte-identical) and `SeqPowers` is
+    all `…:1` fixed-decimal, byte-identical → **exact**; its PD rows carry the
+    extra 4 excess-kVA columns on terminal 1 (12 fields) vs 8 for PC/term-2 rows,
+    and the comparator pins each row's field count.
   - **Coverage gaps (tracked):** the `SeqPowers` MVA (`opt = 1`) path is ported but
     unreachable through `export seqpowers` dispatch (ptr 10 never reads the `m…`
     flag — `ExportOptions.pas:191`), so no golden can reach it; the `SeqCurrents`
@@ -204,26 +199,28 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   solved IEEE13). Report-layout gate again; the engine V/I are pinned to 1e-8 by
   `corpus_live`. These are magnitude (`%10.6g`, 6 sig) + angle (`%8.2f`, 2 dec)
   reports; `ElemPowers` is kW/kvar (`%10.6g`), `NodeOrder`/`Taps` are exact.
-  - **Magnitudes** keep the 6-sig `EXPORT_REL = 1e-4`; the default `abs = 1e-6`
-    absorbs the per-terminal `Iresid` cancellation residual (measured ≤ 1e-8 A on
-    IEEE13), the conductor-width zero-fill (`Currents`, exact `0`), the near-zero
-    open-terminal conductor currents (`Line.671680`, ~2.5e-12 A), the grounded-
-    neutral conductor voltages (exactly `0`), and the ~0 neutral-conductor powers.
-    A gross scale/column error on a real magnitude still fails massively.
-  - **Angle columns** use `rel = 0, abs = 0.011` — the `%8.2f` *additive* printing
-    floor (two independent solves round the last 0.01 digit apart). Selected by
-    **`ColSel::Parity`** (index parity), **not** name-prefix, because these reports
-    have **truncated headers** (`…, I_1, Ang_1, ...`) that name only the first
-    pair: `Parity { start, parity: 1 }` picks every angle column, `start = 1` for
-    `Currents` (all columns are pairs), `start = 3` for `ElemCurrents`/
-    `ElemVoltages` (after `Element, Nterms, Nconds`). The angle of a **near-zero**
-    magnitude (a residual / open-terminal / grounded-neutral conductor) is a
-    faer-vs-KLU noise value carrying no information, so it is **gated on its paired
-    magnitude** (`GateSpec::PrevCol`, the immediately-preceding column): skipped
-    only where `0 < |mag| < 1e-6` — the band-limit keeps every exactly-zero row's
-    `0.00 == 0.00` check and every real-magnitude row's angle (e.g. `Currents`
-    `AngResid` on a real neutral-return residual stays checked). A proven
-    cancellation floor (CLAUDE.md), **not** a relaxation.
+  - **Magnitudes** are pinned at `rel = 0` (real cells byte-identical); the `abs`
+    floor covers only the near-zero cancellation residuals, at the **measured**
+    level per report: `Currents` `abs = 1e-8` (the per-terminal `Iresid`
+    residuals, observed 8.1e-9↔5.1e-9 A and 3.6e-12 vs an exact `0`),
+    `ElemCurrents` `abs = 1e-10` (open-terminal conductors, observed diff
+    6.6e-12 A), `ElemPowers` `abs = 1e-10` (neutral-conductor powers, observed
+    1.6e-11 kW), `ElemVoltages` **exact** (`abs = 0` — the grounded-neutral
+    conductors are an exact `0` on both engines; no residual class). Each floor
+    is 4+ orders below the report's smallest real magnitude.
+  - **Angle columns** are exact (`rel = 0, abs = 0`) on every real magnitude.
+    Selected by **`ColSel::Parity`** (index parity), **not** name-prefix, because
+    these reports have **truncated headers** (`…, I_1, Ang_1, ...`) that name only
+    the first pair: `Parity { start, parity: 1 }` picks every angle column,
+    `start = 1` for `Currents` (all columns are pairs), `start = 3` for
+    `ElemCurrents` (after `Element, Nterms, Nconds`). The angle of a **near-zero**
+    magnitude (a residual / open-terminal conductor) is a faer-vs-KLU noise value
+    carrying no information (observed `-33.69` vs `56.31`°), so it is **gated on
+    its paired magnitude** (`GateSpec::PrevCol`, the immediately-preceding
+    column): skipped only where `0 < |mag| < 1e-6` — the band-limit keeps every
+    exactly-zero row's `0.00 == 0.00` check and every real-magnitude row's angle
+    (e.g. `Currents` `AngResid` on a real neutral-return residual stays checked).
+    A proven cancellation floor (CLAUDE.md), **not** a relaxation.
   - **`ElemPowers` Vsource / order note** (`elem.rs`): the per-conductor power is
     `Vterminal·conj(Iterminal)`, and `compute_iterminal` is called **before**
     `compute_vterminal` (the reverse of Pascal's textual order). Pascal's
@@ -235,7 +232,7 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     `Vterminal = NodeV`, reproducing the oracle's observable `NodeV·conj(I)`
     (`-612.729`). Not a `TODO(compat)` — it reproduces the oracle exactly; the note
     records *why* the order is inverted from the Pascal source text.
-  - **`Taps`** is exact (`rel = 0, abs = 1e-4`): the tap value is the discrete
+  - **`Taps`** is exact (`rel = 0, abs = 0`): the tap value is the discrete
     `mid + position·increment`, so both engines print the identical value once they
     converge to the same integer tap position (pinned by `corpus_live` + the
     feeder-controls gate); a tap-position divergence (≥ 0.00625) fails loudly.
@@ -253,30 +250,27 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
 - **WP8.2 sub-step 3 — the matrix/summary exports** (`Yprims`/`Y`/`SeqZ`/`Summary`/
   `Result`). Report-layout gates; the underlying quantities are already pinned
   entry-by-entry by `corpus_live` / the checkpoint gate / `fault_study.rs`.
-  - **`Y`/`Yprims` (`YMATRIX_REL = 1e-6`).** The assembled system Y and each
+  - **`Y`/`Yprims` — exact** (`rel = 0, abs = 0`). The assembled system Y and each
     element's primitive Y are **exact deterministic stamps** — no faer solve enters
-    them — printed to 10 sig (`%.10g`), so both engines agree to ~1e-10 rel; `1e-6`
-    clears that printing floor with wide margin, `abs = 1e-6` absorbs any near-zero
-    off-diagonal cell. The `Y` golden pins the **sparse-triplet** form
+    them — byte-identical at 10 sig (`%.10g`). The `Y` golden pins the
+    **sparse-triplet** form
     (`export y triplet`, `Row,Col,G,B`, lower triangle `r>=c`, column-major): the
     **dense** form glues `+j` onto every imaginary token, which does not parse as a
     number, so `compare_export` cannot diff it — the dense *values* are instead
     pinned by the checkpoint + live full-Y gates. Integer Row/Col exact.
   - **`SeqZ`** (per-bus `Zsc1`/`Zsc0`, on a **FaultStudy** fixture — a snapshot
-    leaves `Zsc` unallocated → the degenerate all-zero/1000-ratio report). The
-    `R1/X1/R0/X0/Z1/Z0` magnitudes (`%10.6g`, 6 sig) keep `EXPORT_REL` (the same
-    `Zsc1`/`Zsc0` `fault_study.rs` pins to 1e-9·mag); the `X1/R1`/`X0/R0` ratio
-    columns (indices 8/9) use `rel = 1e-3` — the `%8.4g` 4-sig printing floor.
-    Integer `NumNodes` exact.
+    leaves `Zsc` unallocated → the degenerate all-zero/1000-ratio report) —
+    **exact**: the `R1/X1/R0/X0/Z1/Z0` magnitudes, the `X1/R1`/`X0/R0` ratios and
+    the integer `NumNodes` all render byte-identical (the same `Zsc1`/`Zsc0`
+    `fault_study.rs` pins to 1e-9·mag).
   - **`Summary` — `DateTime` masked.** Column 0 is `DateTimeToStr(Now)`, a
     genuinely non-deterministic wall-clock timestamp, **masked** via the new
     `ColSel::Index(0)` + `GateSpec::Mask` (a masked non-deterministic column, **not**
-    a value relaxation — everything else is checked). The rest is deterministic:
-    text `Status`/`Mode`/`ControlMode` compare case-insensitively; the integer
-    counts (NumDevices/Buses/Nodes, iteration counts) are exact within `abs`; the
-    `%g` scalars (Max/MinPuVoltage, Total MW/Mvar, losses) keep the 5–6-sig
-    `EXPORT_REL` floor (the physics is pinned by `corpus_live`). The golden uses the
-    shared compile+solve fixture, so the two sides are self-consistent.
+    a value relaxation — everything else is checked). The rest is deterministic
+    and **exact**: text `Status`/`Mode`/`ControlMode` compare case-insensitively;
+    the integer counts and the `%g` scalars (Max/MinPuVoltage, Total MW/Mvar,
+    losses) render byte-identical. The golden uses the shared compile+solve
+    fixture, so the two sides are self-consistent.
   - **`Result`** is exact text (`null`). The pinned oracle is a `DSS_CAPI_PM` build
     that never updates `@result` (`ExecCommands.pas:704` is compiled out), so it
     stays at its `'null'` init forever; our engine never writes `@result` either, so

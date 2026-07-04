@@ -396,54 +396,44 @@ fn run_shared_exports(reports: &[(&str, ExportPolicy)]) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// Default per-number tolerance for the `%g`-formatted value columns of the
-/// solution exports: the oracle writes 5–6 significant digits, so the report is
-/// known only to ~1e-5 rel; `1e-4` clears that formatting floor plus the two
-/// independent solves with margin. The **primary** voltage-correctness gate is
-/// the live full-model compare (`corpus_live.rs`, 1e-8 rel) — this golden pins
-/// the report *layout* (header, column set/order, row order, scaling), not the
-/// physics. See `tests/TOLERANCE_NOTES.md`.
-const EXPORT_REL: f64 = 1e-4;
-const EXPORT_ABS: f64 = 1e-6;
+// Tolerance discipline (WP8 exactness audit, 2026-07-04): every golden here is
+// pinned at **exact equality** (`rel = 0`, `abs = 0`) — the produced report
+// parses value-identical to the oracle capture — unless a divergence is
+// *observed on this golden* and traced to a proven class: a last-printed-digit
+// rounding straddle (`%.Nf`/`%g` render floor), a near-zero faer-vs-KLU
+// cancellation residual (gated or under a tiny `abs`), the DI accumulation
+// floor, or a genuinely unpinnable cell (`Mask`). Preemptive "printing floor"
+// tolerances on byte-identical columns are not kept — if a straddle ever fires,
+// prove it by decomposition first (both engines' f64 bracketing the print
+// boundary), then add the floor. See `tests/TOLERANCE_NOTES.md`.
 
 /// `Export Voltages` (Pascal `ExportVoltages`) on solved IEEE13: per-bus node
-/// magnitude/angle/pu, zero-filled to the max node count.
+/// magnitude/angle/pu, zero-filled to the max node count. Byte-identical
+/// Rust↔oracle (incl. the `%6.1f` angle columns) → exact equality.
 #[test]
 fn export_voltages_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
-        // The `Angle%d` columns are `%6.1f` (one decimal). The floor is purely
-        // additive (a ±0.1 last-digit boundary between two independent solves —
-        // no multiplicative `%f` component), so `rel = 0` / `abs = 0.11` is the
-        // exact proven printing floor; the magnitude/pu columns keep the tight
-        // default. The angle is `arg(V)`, gated by the engine's voltage physics
-        // in `corpus_live`; here it is only a printing-floor layout check.
-        // (tests/TOLERANCE_NOTES.md)
-        col_tol: vec![ColTol {
-            sel: ColSel::Prefix("angle".to_string()),
-            rel: 0.0,
-            abs: 0.11,
-            gate: None,
-        }],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
     };
     run_feeder_export("export_voltages", &policy);
 }
 
 /// `Export BusCoords` (Pascal `ExportBusCoords`): X/Y of every coord-defined bus.
-/// No header row; coordinates are `%-13.11g` (11 sig) loaded from the same file,
-/// so they match tightly.
+/// No header row; coordinates are `%-13.11g` (11 sig) loaded from the same file —
+/// byte-identical, exact equality.
 #[test]
 fn export_buscoords_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_buscoords", &policy);
@@ -490,9 +480,9 @@ fn export_ynodelist_matches_oracle() {
 
 /// `Export Powers` (Pascal `ExportPowers`): per-terminal kW/kvar of every PD then
 /// PC element, plus each PD's terminal-1 normal/emergency excess kVA. Every value
-/// column is `%11.1f` (one decimal): an additive ±0.1 last-digit boundary between
-/// two independent solves, so `rel = 0` / `abs = 0.11` is the exact printing floor
-/// (the integer Terminal column is exact within it).
+/// column is `%11.1f` (one decimal); the underlying kW agree to ~1e-9 rel, far
+/// below the print step, and no 0.05-boundary straddle occurs on this golden —
+/// byte-identical, exact equality.
 #[test]
 fn export_powers_matches_oracle() {
     let policy = ExportPolicy {
@@ -500,7 +490,7 @@ fn export_powers_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.11,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_powers", &policy);
@@ -508,12 +498,14 @@ fn export_powers_matches_oracle() {
 
 /// `Export Losses` (Pascal `ExportLosses`): per-PD-element total / load / no-load
 /// losses in W and var, `%.7g` (7 sig). The proven floor is the **7-sig printing
-/// floor**: empirically the max Rust↔oracle divergence on a substantial loss is
-/// 1.53e-7 rel (one ULP at 7 sig, on REG2's 65.3 W) — so `rel = 1e-6` (≈6× over
-/// the floor) is the report's printing resolution, **not** the looser `EXPORT_REL`
-/// of the 6-sig Voltages report. `abs = 1e-6` absorbs the handful of near-zero
-/// no-load/var cells (cancellation noise ≤ 5.6e-9 W, e.g. an open-circuit shunt
-/// term) with ~180× margin. (tests/TOLERANCE_NOTES.md)
+/// floor**: an observed one-ULP straddle on REG2's 65.34585↔65.34586 W (1e-5 abs
+/// = 1.53e-7 rel; a mantissa near 1 could reach ~1.05e-6 rel) — so `rel = 1e-6`
+/// is the report's 7-sig render resolution, kept. `abs = 1e-7` absorbs the
+/// near-zero no-load/var cancellation cells, where `rel` is meaningless — pure
+/// faer-vs-KLU noise-vs-noise (observed up to `1.72e-9` vs `1.275e-8` W). The
+/// golden's noise cells top out at 1.28e-8 W while the smallest **real** loss is
+/// 9.05e-3 W — a 6-order gap, so `1e-7` (8× over the largest noise cell) can
+/// never mask a real loss. (tests/TOLERANCE_NOTES.md)
 const LOSSES_REL: f64 = 1e-6;
 #[test]
 fn export_losses_matches_oracle() {
@@ -522,7 +514,7 @@ fn export_losses_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: LOSSES_REL,
-        abs: EXPORT_ABS,
+        abs: 1e-7,
         col_tol: vec![],
     };
     run_feeder_export("export_losses", &policy);
@@ -530,12 +522,16 @@ fn export_losses_matches_oracle() {
 
 /// `Export P_byphase` (Pascal `ExportPbyphase`): per-conductor kW/kvar over the
 /// full Yorder. Values are `%10.3f` (three decimals) — a purely **additive** 1-ulp
-/// floor (empirically the max divergence is exactly 1e-3, on the largest −1342.212
-/// conductor; the corresponding 7.45e-7 rel is just `abs/value`). So like the
-/// `Powers` `%11.1f` floor the whole policy is `rel = 0` / `abs = 0.0011`: no
-/// multiplicative band (a per-conductor scale drift ≥ ~0.01% is caught, not
-/// masked — mutation-confirmed), the integer NumTerminals/NumConductors/NumPhases
-/// columns exact within abs. (tests/TOLERANCE_NOTES.md)
+/// floor with an **observed, decomposition-proven straddle** on the largest
+/// conductor (`Transformer.SUB` term-2 phase-3 kW): the live f64s are oracle
+/// `−1342.2124999155637` (8.4e-8 kW *above* the −1342.2125 rounding boundary) vs
+/// Rust `−1342.2125039696780` (4.0e-6 kW *below* it) — the engines agree to
+/// 4.05e-6 kW = 3.0e-9 rel (within the corpus_live 1e-8 power pin), but the value
+/// sits on the `%.3f` half-ulp boundary, so the render splits `−1342.212` vs
+/// `−1342.213`. So like the `Powers` `%11.1f` floor the whole policy is `rel = 0`
+/// / `abs = 0.0011`: no multiplicative band (a per-conductor scale drift ≥ ~0.01%
+/// is caught, not masked — mutation-confirmed), the integer NumTerminals/
+/// NumConductors/NumPhases columns exact within abs. (tests/TOLERANCE_NOTES.md)
 #[test]
 fn export_p_byphase_matches_oracle() {
     let policy = ExportPolicy {
@@ -580,7 +576,7 @@ fn show_buses_matches_oracle() {
 /// `Show Taps` (Pascal `ShowRegulatorTaps`): per-RegControl tap/min/max/step
 /// (`%8.5f`), integer position/winding, direction/cogen text. The tap fractions
 /// are exact discrete decisions (the phase5/checkpoint gates pin `tap_number`
-/// exactly), so they match to the last `%8.5f` digit — `rel = 0`, `abs = 1e-5`.
+/// exactly), so they match to the last `%8.5f` digit — exact equality.
 #[test]
 fn show_taps_matches_oracle() {
     let policy = ExportPolicy {
@@ -659,20 +655,16 @@ fn show_voltages_matches_oracle() {
 
 /// `Show Currents` (Pascal `ShowCurrents` case 0 + `WriteSeqCurrents`/`GetI0I1I2`):
 /// per-element sequence currents — `I1`/`I2`/`I0` (`%10.5g`, 5 sig) + `%I2/I1`/
-/// `%I0/I1`/`%Normal`/`%Emergency` (`%8.2f`, columns 4/6/7/8). The `%8.2f` columns
-/// carry the coarse additive ±0.01 floor (isolated via `col_tol`, `abs = 0.011`).
-/// The two **ratio** columns additionally take a denominator gate: skip the cell
-/// only when the `I1` magnitude (column 2) is a near-zero `< 1e-6 A` cancellation
-/// residual — then `%I2/I1` = `100·I2/I1` is faer-vs-KLU noise (empirically the one
-/// such row on IEEE13 is a switch's floating terminal, `I1 ≈ 1.8e-12 A`, where the
-/// two engines print `53.55` vs `147.66`). The `1e-6 A` threshold is **provably**
-/// between that noise floor and the smallest *real* current in the report
-/// (`Line.671680`, `I1 = 5.8e-4 A`, whose `%I2/I1 = 1.76` IS checked): an 8-order
-/// gap with nothing in between, so `1e-6` sits ~580× below the smallest real value
-/// and 6 orders above the noise — it can never gate a physical current (a coarser
-/// `1e-3` would wrongly skip the real `5.8e-4` row). The magnitude columns keep the
-/// tight default (`rel = 1e-4` / `abs = 1e-5`, the latter absorbing near-zero `I0`
-/// residuals like `2e-11 A`). Current physics is pinned to 1e-8 by `corpus_live.rs`.
+/// `%I0/I1`/`%Normal`/`%Emergency` (`%8.2f`, columns 4/6/7/8). Every ungated cell
+/// is **exact** (`rel = 0`, `abs = 0`); the only skipped cells are the near-zero
+/// cancellation residuals (self-gated magnitudes) and the ratio cells over a
+/// residual denominator: `%I2/I1` = `100·I2/I1` of a switch's floating terminal
+/// (`I1 ≈ 1.8e-12 A`) is faer-vs-KLU noise, where the two engines print `53.55`
+/// vs `147.66`. The `1e-6 A` threshold is **provably** between that noise floor
+/// and the smallest *real* current in the report (`Line.671680`, `I1 = 5.8e-4 A`,
+/// whose `%I2/I1 = 1.76` IS checked): an 8-order gap with nothing in between, so
+/// `1e-6` can never gate a physical current (a coarser `1e-3` would wrongly skip
+/// the real `5.8e-4` row). Current physics is pinned to 1e-8 by `corpus_live.rs`.
 /// (tests/TOLERANCE_NOTES.md)
 #[test]
 fn show_currents_matches_oracle() {
@@ -707,11 +699,10 @@ fn show_currents_matches_oracle() {
 
 /// `Show Powers` (Pascal `ShowPowers` case 0): per-element sequence powers —
 /// `P1`/`Q1`/`P2`/`Q2` (`%11.1f`) + `P0`/`Q0` (`%8.1f`) + the PD terminal-1 excess
-/// power, plus the `Total Circuit Losses` footer. Every value is fixed 1-decimal,
-/// a purely **additive** ±0.1 last-digit boundary between two independent solves
-/// (the engines agree to ~1e-7 rel, far tighter), so `rel = 0` / `abs = 0.11` is
-/// the exact printing floor — the same as `Export Powers`. A missing `×0.003`
-/// scale or `×3` positive-seq factor would shift values ≫ 0.11 and fail loudly.
+/// power, plus the `Total Circuit Losses` footer. Every value is fixed 1-decimal;
+/// the engines agree to ~1e-7 rel, far below the print step — byte-identical,
+/// exact equality (same as `Export Powers`). A missing `×0.003` scale or `×3`
+/// positive-seq factor would shift values far past any print step and fail loudly.
 #[test]
 fn show_powers_matches_oracle() {
     let policy = ExportPolicy {
@@ -727,14 +718,10 @@ fn show_powers_matches_oracle() {
 
 /// `Show Voltages LN Node` (Pascal `ShowVoltages` case 1 + `WriteBusVoltages`):
 /// line-ground **and** line-line voltages by bus & node. Per node row the tokens
-/// are `BUS Node VLN /_ Angle pu BaseKV [NodeNodeLL VLL /_ Angle pu]`, so the
-/// numeric magnitude/pu columns (`%10.5g`/`%9.5g`) hold the tight default
-/// (`rel = 1e-4`, `abs = 1e-4` for the last `%g` digit), the `%9.3f` base kV is
-/// bit-identical **input** data, and both `%6.1f` angle columns take the additive
-/// ±0.05 `%.1f` printing floor (`abs = 0.11`, the project `%.1f` convention). The
-/// angles are targeted by [`ColSel::AfterToken`]`("/_")` — the angle is the column
-/// right after the `/_` glyph (robust to the `PadDots` name column, whose pure
-/// dot-runs the comparator drops). Voltage physics is pinned to 1e-8 by
+/// are `BUS Node VLN /_ Angle pu BaseKV [NodeNodeLL VLL /_ Angle pu]` — every
+/// numeric column (`%10.5g`/`%9.5g` magnitudes/pu, `%9.3f` input base kV, `%6.1f`
+/// angles) is byte-identical → exact equality (the `PadDots` name column's pure
+/// dot-runs are dropped by the comparator). Voltage physics is pinned to 1e-8 by
 /// `corpus_live.rs`.
 #[test]
 fn show_voltages_node_matches_oracle() {
@@ -744,12 +731,7 @@ fn show_voltages_node_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
-        col_tol: vec![ColTol {
-            sel: ColSel::AfterToken("/_".into()),
-            rel: 0.0,
-            abs: 0.0,
-            gate: None,
-        }],
+        col_tol: vec![],
     };
     run_feeder_show("show_voltages_node", &policy);
 }
@@ -759,10 +741,8 @@ fn show_voltages_node_matches_oracle() {
 /// nodenum VLN (pu) /_ Angle`; the `nref` and `pu` are **parenthesised** (and split
 /// on the interior padding into `(` + `n)` tokens) so the tokenizer text-compares
 /// them — both are bit-pinned (`nref` is the exact node order, `pu` is 4-sig of a
-/// 1e-8-pinned voltage). The bare `VLN` (`%13.5g`) is numeric at the tight default
-/// (`rel = 1e-4` / `abs = 1e-4`); the `%6.1f` angle takes the `%.1f` floor
-/// (`abs = 0.11`), targeted by [`ColSel::AfterToken`]`("/_")` since the split
-/// parens make the angle's absolute index unstable (audit-tests WP8.4 step 4).
+/// 1e-8-pinned voltage). The bare `VLN` (`%13.5g`) and the `%6.1f` angle are
+/// byte-identical → exact equality.
 #[test]
 fn show_voltages_elem_matches_oracle() {
     let policy = ExportPolicy {
@@ -771,12 +751,7 @@ fn show_voltages_elem_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
-        col_tol: vec![ColTol {
-            sel: ColSel::AfterToken("/_".into()),
-            rel: 0.0,
-            abs: 0.0,
-            gate: None,
-        }],
+        col_tol: vec![],
     };
     run_feeder_show("show_voltages_elem", &policy);
 }
@@ -785,17 +760,15 @@ fn show_voltages_elem_matches_oracle() {
 /// `ShowResidual = TRUE`): per-terminal, per-conductor branch currents + the PD
 /// residual row. Each row is `BUS nodenum |I| /_ Angle = Re +j Im`; numeric tokens
 /// are `|I|` (idx 2, `%13.5g`), `Angle` (`%6.1f`), `Re`/`Im` (idx 6/8, `%9.5g`).
-/// Magnitudes and Re/Im keep the default (`rel = 1e-4`, `abs = 1e-5` — the latter
-/// absorbing near-zero conductor/residual currents down to ~1e-12 A). The **angle**
-/// takes the `%.1f` floor (`abs = 0.11`, targeted by [`ColSel::AfterToken`]`("/_")`)
-/// **and** a denominator gate: skip it when `|I|` (idx 2) is a `< 1e-4 A`
-/// cancellation residual. The `1e-4 A` threshold (higher than `show_currents`'
-/// `1e-6`) brackets **this** report's noise: the residual rows push the near-zero
-/// floor up to ~1.08e-5 A (the 633/634 near-balanced-transformer residuals,
-/// `|I| = 1.12e-6`/`1.08e-5 A`, whose phase is arbitrary faer-vs-KLU cancellation
-/// noise), while the smallest **real** current is `Line.671680`'s `5.72e-4 A` (whose
-/// angle IS checked) — a ~53× gap with nothing between, so `1e-4` skips only noise.
-/// Current physics is pinned to 1e-8 by `corpus_live.rs`.
+/// Every ungated cell is **exact**; only the near-zero cancellation-residual rows
+/// (`|I| < 1e-4 A`) are gated out. The `1e-4 A` threshold (higher than
+/// `show_currents`' `1e-6`) brackets **this** report's noise: the residual rows
+/// push the near-zero floor up to ~1.08e-5 A (the 633/634 near-balanced-
+/// transformer residuals, `|I| = 1.12e-6`/`1.08e-5 A`, whose phase is arbitrary
+/// faer-vs-KLU cancellation noise), while the smallest **real** current is
+/// `Line.671680`'s `5.72e-4 A` (whose angle IS checked) — a ~53× gap with nothing
+/// between, so `1e-4` skips only noise. Current physics is pinned to 1e-8 by
+/// `corpus_live.rs`.
 #[test]
 fn show_currents_elem_matches_oracle() {
     // Everything is byte-identical (exact) EXCEPT the near-zero cancellation
@@ -879,12 +852,7 @@ fn show_voltages_ll_node_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
-        col_tol: vec![ColTol {
-            sel: ColSel::AfterToken("/_".into()),
-            rel: 0.0,
-            abs: 0.0,
-            gate: None,
-        }],
+        col_tol: vec![],
     };
     run_feeder_show("show_voltages_ll_node", &policy);
 }
@@ -946,8 +914,8 @@ fn show_ratings_matches_oracle() {
 /// `export_eventlog` (a swinging load moves all three regulators). Pins that the
 /// `Show` path emits the identical log the `Export` path does — line-for-line vs the
 /// oracle, the non-integer tap values (`CHANGED n TAPS TO <pu>`) exercising the
-/// numeric-token compare. Tight (`rel = 1e-6`, `abs = 1e-9`) — the tap decisions are
-/// exact (pinned by the phase5 `daily_ieee13` gate).
+/// numeric-token compare. Exact equality — the tap decisions are exact (pinned
+/// by the phase5 `daily_ieee13` gate).
 #[test]
 fn show_eventlog_matches_oracle() {
     let policy = ExportPolicy {
@@ -966,7 +934,7 @@ fn show_eventlog_matches_oracle() {
 /// dispatcher — the same content the `Export Monitors` path produces
 /// ([`export_monitors_match_oracle`]). Pins the `Show monitor` dispatch + file
 /// naming against the oracle on the daily-solved monitor fixture (CSV, `sep=','`,
-/// header verbatim; f32 `%-.6g` values at `rel = 1e-4` / `abs = 1e-5`).
+/// header verbatim; the f32 `%-.6g` values byte-identical — exact equality).
 #[test]
 fn show_monitor_matches_oracle() {
     let policy = ExportPolicy {
@@ -1054,12 +1022,15 @@ fn show_result_matches_oracle() {
 }
 
 /// `Show Convergence` (Pascal `Solution.WriteConvergenceReport`): the per-node
-/// saved error / `|V|` / `Vbase` snapshot + the `Max Error` footer. `|V|`
-/// (`VmagSaved`, `Str(v:14)` — 7 significant figures) is the only non-exact
-/// column: at 7 sig figs the faer-vs-KLU node-voltage difference rounds the last
-/// printed digit independently, so it takes the `rel = 1e-6` 7th-sig printing
-/// floor. The saved error (`0.00000` on a converged snapshot) and `Vbase`
-/// (deterministic `kVBase·1000`) are pinned **exactly** (`rel = 0`, `abs = 0`).
+/// saved error / `|V|` / `Vbase` snapshot + the `Max Error` footer — **exact
+/// equality on every column** (`rel = 0`, `abs = 0`). `|V|` (`VmagSaved`,
+/// `Str(v:14)` — 7 significant figures) is exact too: the faer-vs-KLU node-voltage
+/// gap is orders of magnitude below the 1e-7 print-rounding step, and the produced
+/// file is byte-identical to the oracle golden. Unlike `show_mismatch`'s
+/// `Max Current` (f64 gap comparable to its render step, straddle observed), no
+/// printing floor is warranted here; if a 7th-digit straddle ever fires, prove it
+/// by decomposition (both engines' f64 `vmag_saved` bracketing the print-rounding
+/// boundary) before adding a `col_tol`.
 #[test]
 fn show_convergence_matches_oracle() {
     let policy = ExportPolicy {
@@ -1068,12 +1039,7 @@ fn show_convergence_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
-        col_tol: vec![ColTol {
-            sel: ColSel::Index(2), // |V| — the 7-sig printing floor
-            rel: 1e-6,
-            abs: 0.0,
-            gate: None,
-        }],
+        col_tol: vec![],
     };
     run_feeder_show("show_convergence", &policy);
 }
@@ -1221,9 +1187,9 @@ fn show_lastshowfile_semantics() {
 
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
 /// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
-/// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`
-/// additive floor as the kVA twin (`rel = 0`, `abs = 0.11`, now in MW): a missing
-/// `×0.001` would print kW values ~1000× larger and fail loudly.
+/// (scale + header) wired this WP, which the kVA golden can't reach. Byte-identical
+/// like the kVA twin → exact equality; a missing `×0.001` would print kW values
+/// ~1000× larger and fail loudly.
 #[test]
 fn export_powers_mva_matches_oracle() {
     let policy = ExportPolicy {
@@ -1231,15 +1197,15 @@ fn export_powers_mva_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.11,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_powers_mva", &policy);
 }
 
 /// `Export P_byphase mva` (`opt=1`): the MVA option for P_byphase — MW/Mvar header
-/// plus the single extra `×0.001`. Same `%10.3f` additive floor as the kVA twin
-/// (`rel = 0`, `abs = 0.0011`, in MW).
+/// plus the single extra `×0.001`. Unlike the kVA twin (whose `%10.3f` straddle is
+/// observed), the MW-scaled render is byte-identical → exact equality.
 #[test]
 fn export_p_byphase_mva_matches_oracle() {
     let policy = ExportPolicy {
@@ -1247,7 +1213,7 @@ fn export_p_byphase_mva_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.0011,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_p_byphase_mva", &policy);
@@ -1257,94 +1223,79 @@ fn export_p_byphase_mva_matches_oracle() {
 // `Phase2SymComp` + `PctNemaUnbalance` + PD ratings. Magnitude columns are `%g`
 // (V1/V2/V0/Vresidual, I1/I2/I0/Iresidual = 6 sig); the ratio/unbalance columns
 // (`%V2/V1`, `%V0/V1`, `%NEMA`, `%Normal`, `%Emergency`, `%I2/I1`, `%I0/I1`) are
-// `%8.4g` = 4 sig. The sequence quantities V0/V2/I0/I2 are *near-cancellation
-// residuals* of three balanced phasors: each phasor is pinned to 1e-8 rel by
-// `corpus_live`, so the residual's ABSOLUTE error is ~phase_scale·1e-8, while its
-// relative error is large — hence an `abs` floor on the magnitude columns and the
-// 4-sig printing floor (`rel = 1e-3`) on the ratio columns. The physics is gated
-// by `corpus_live` (node V / Iterminal to 1e-8); this golden pins report layout.
-// (tests/TOLERANCE_NOTES.md)
-
-/// `%g` ratio-column override: the `%8.4g` (4-sig) printing floor is `rel ≈ 1e-3`
-/// (one ulp in the 4th significant digit); `abs` absorbs the *near-zero* ratio of
-/// a small numerator over a healthy denominator (e.g. `%I0/I1` of a residual `I0`
-/// over a loaded `I1`, measured max abs 1.2e-10). `gate` (the denominator column +
-/// a meaningful-magnitude threshold) skips a ratio cell where its denominator is a
-/// nonzero near-zero cancellation residual (an open/unloaded terminal); `None`
-/// when the denominator is never near-zero (`SeqVoltages`' V1 is always kV-scale),
-/// `Some((I1_col, …))` for `SeqCurrents`. `prefix` scopes the override — a gate
-/// must cover only the columns whose denominator it actually tests (`%I…`/`%NEMA`
-/// divide by I1; `%Normal`/`%Emergency` divide by NormAmps and stay ungated).
-fn pct_ratio_tol(prefix: &str, abs: f64, gate: Option<GateSpec>) -> ColTol {
-    ColTol {
-        sel: ColSel::Prefix(prefix.to_string()),
-        rel: 1e-3,
-        abs,
-        gate,
-    }
-}
+// `%8.4g` = 4 sig. Every substantial cell is byte-identical Rust↔oracle → exact.
+// The sequence quantities V0/V2/I0/I2 of a *balanced* element are near-zero
+// cancellation residuals of three ~1e-8-pinned phasors: their absolute error is
+// ~phase_scale·1e-8 while their relative error is unbounded — hence a tiny `abs`
+// floor on the magnitude columns and a denominator gate on the ratio cells whose
+// I1 is itself residual noise. The physics is gated by `corpus_live` (node V /
+// Iterminal to 1e-8). (tests/TOLERANCE_NOTES.md)
 
 /// `Export SeqVoltages` (Pascal `ExportSeqVoltages`): per-bus V1/pu/baseKV/V2/
-/// %V2V1/V0/%V0V1/Vresidual/%NEMA. Magnitudes keep the 6-sig/5-sig `EXPORT_REL`
-/// default; `abs = 1e-9` absorbs the volt-scale cancellation residual of
-/// V0/V2/Vresidual (**measured** max abs divergence on a balanced bus is 1e-11 V at
-/// the source bus's V0, so 1e-9 is a 100× proven floor — far tighter than a guess);
-/// the `%`-prefixed ratio columns use the 4-sig `%8.4g` printing floor (no gate —
-/// every bus's V1 denominator is kV-scale).
+/// %V2V1/V0/%V0V1/Vresidual/%NEMA. Every column byte-identical except the
+/// near-zero V0/V2/Vresidual cancellation residuals of a balanced bus, where the
+/// 6-sig render straddles (**observed**: the source bus's `V0 = 4.31950e-6` vs
+/// `4.31951e-6` V, 1e-11 abs) — `abs = 1e-9` is that measured residual floor with
+/// 100× margin, still 5 orders below the smallest real seq voltage. `rel = 0`:
+/// every kV-scale magnitude and every `%8.4g` ratio cell is pinned exactly.
 #[test]
 fn export_seqvoltages_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
+        rel: 0.0,
         abs: 1e-9,
-        col_tol: vec![pct_ratio_tol("%", 1e-9, None)],
+        col_tol: vec![],
     };
     run_feeder_export("export_seqvoltages", &policy);
 }
 
 /// `Export SeqCurrents` (Pascal `ExportSeqCurrents`): per-terminal I1/%Normal/
-/// %Emergency/I2/%I2I1/I0/%I0I1/Iresidual/%NEMA over Sources→PD→PC→Faults. Same
-/// floor structure as SeqVoltages (6-sig magnitudes + 4-sig ratios); `abs = 1e-8`
-/// absorbs the amp-scale residual of I0/I2/Iresidual (**measured** max abs
-/// divergence 1e-9 A on a near-zero Iresidual, so 1e-8 is a 10× proven floor — and
-/// it is *below* the smallest real printed magnitude, `I1 = 5.8e-4 A`, so those
-/// cells stay pinned, unlike the earlier loose 1e-3). The ratio columns are
-/// **gated on I1 (col 2)**: at an open/unloaded terminal (e.g. `Line.671680.2`, the
-/// open 680 end) I1/I2/I0 are ~1e-12 cancellation noise pinned to 0 by `abs`, so
-/// `%I2/I1`/`%I0/I1`/`%NEMA` are a faer-vs-KLU noise/noise form (147.7 vs 61.8) —
-/// uncheckable, skipped where `0 < |I1| < 1e-6 A` (the band-limit keeps the 32
-/// *exactly*-zero-current rows' `0 == 0` ratio checks; only the 1 genuine-noise row
-/// is skipped). A proven cancellation floor; the magnitudes stay tight on every
-/// row. (tests/TOLERANCE_NOTES.md)
+/// %Emergency/I2/%I2I1/I0/%I0I1/Iresidual/%NEMA over Sources→PD→PC→Faults. Every
+/// substantial cell is byte-identical → `rel = 0`. `abs = 1e-8` absorbs the
+/// amp-scale I0/I2/Iresidual cancellation residuals of a balanced terminal
+/// (**observed**: a 6-sig render straddle `3.47331e-4` vs `3.47330e-4` A = 1e-9
+/// abs, and residual-vs-residual pairs like `5.7e-13` vs `2.7e-12` A) — still
+/// below the smallest real printed magnitude, `I1 = 5.8e-4 A`, so real cells stay
+/// pinned. The `%I…`/`%NEMA` ratio cells are **gated on I1 (col 2)**: at the one
+/// open-terminal row (`Line.671680.2`) I1 is ~1e-12 noise, so the ratios are a
+/// faer-vs-KLU noise/noise form (observed `53.55` vs `147.7`) — skipped where
+/// `0 < |I1| < 1e-6 A` (the band-limit keeps the 32 exactly-zero rows' `0 == 0`
+/// checks). Ungated ratio cells carry `abs = 1e-9` for the residual-numerator/
+/// healthy-denominator form (`%I0/I1` of a residual I0 over a loaded I1,
+/// **observed** `7.63e-11` vs `1.04e-10`; historically measured ≤ 1.2e-10) —
+/// far below any real printed ratio. `%Normal`/`%Emergency` divide by NormAmps
+/// (never near-zero) and stay at the default. (tests/TOLERANCE_NOTES.md)
 #[test]
 fn export_seqcurrents_matches_oracle() {
+    let i1_gated = |prefix: &str| ColTol {
+        sel: ColSel::Prefix(prefix.to_string()),
+        rel: 0.0,
+        abs: 1e-9,
+        gate: Some(GateSpec::Col(2, 1e-6)),
+    };
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
+        rel: 0.0,
         abs: 1e-8,
         // The I1 gate covers only the columns that actually divide by I1
         // (`%I2/I1`, `%I0/I1`) or are a same-noise form of the phase currents
         // (`%NEMA`); `%Normal`/`%Emergency` divide by NormAmps (never near-zero)
-        // and fall through to the ungated `%` catch-all, so a regression there
-        // stays checked even on the one gated noise row (audit follow-up).
-        col_tol: vec![
-            pct_ratio_tol("%i", 1e-8, Some(GateSpec::Col(2, 1e-6))),
-            pct_ratio_tol("%nema", 1e-8, Some(GateSpec::Col(2, 1e-6))),
-            pct_ratio_tol("%", 1e-8, None),
-        ],
+        // and fall through to the exact default, so a regression there stays
+        // checked even on the one gated noise row (audit follow-up).
+        col_tol: vec![i1_gated("%i"), i1_gated("%nema")],
     };
     run_feeder_export("export_seqcurrents", &policy);
 }
 
 /// `Export SeqPowers` (Pascal `ExportSeqPowers`): per-terminal sequence powers
 /// P1/Q1/P2/Q2/P0/Q0 (+ PD excess columns on terminal 1). All value columns are
-/// `…:1` (one decimal), so — like `Powers` — the floor is the additive ±0.1
-/// last-digit boundary: `rel = 0`, `abs = 0.11`. PD rows carry 12 fields (the
-/// excess columns), PC rows 8; the comparator pins each row's field count.
+/// `…:1` (one decimal) — byte-identical like `Powers` → exact equality. PD rows
+/// carry 12 fields (the excess columns), PC rows 8; the comparator pins each
+/// row's field count.
 #[test]
 fn export_seqpowers_matches_oracle() {
     let policy = ExportPolicy {
@@ -1352,7 +1303,7 @@ fn export_seqpowers_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.11,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_seqpowers", &policy);
@@ -1362,51 +1313,49 @@ fn export_seqpowers_matches_oracle() {
 // `Currents`/`ElemCurrents`/`ElemVoltages` are magnitude (`%10.6g`, 6 sig) +
 // angle (`%8.2f`, 2 decimals) reports over Sources→PD→Faults→PC; `ElemPowers`
 // prints per-conductor kW/kvar (`%10.6g`); `NodeOrder` is integer node numbers;
-// `Taps` is the RegControl tap table. As with 2a/2b the engine physics (node V /
-// Iterminal) is pinned to 1e-8 by `corpus_live`; these goldens pin report layout.
-//
-// The **angle** of a near-zero magnitude (a per-terminal residual, or an
-// open-terminal / grounded-neutral conductor) is faer-vs-KLU noise carrying no
-// information, so the `ang`-prefixed columns are gated on their **paired
-// magnitude** (the immediately-preceding column, `GateSpec::PrevCol`): skipped
-// only where that magnitude is a nonzero sub-threshold residual, keeping every
-// exactly-zero row's `0.00 == 0.00` check and every real-magnitude row's angle.
-// A proven cancellation floor, not a relaxation. (tests/TOLERANCE_NOTES.md)
+// `Taps` is the RegControl tap table. Every real cell is byte-identical → exact;
+// the only non-exact cells are the near-zero cancellation residuals (a
+// per-terminal residual current / an open-terminal conductor), covered by a tiny
+// measured `abs` floor, and their **angles** — pure faer-vs-KLU noise — gated on
+// the paired magnitude (`GateSpec::PrevCol`): skipped only where that magnitude
+// is a nonzero sub-threshold residual, keeping every exactly-zero row's
+// `0.00 == 0.00` check and every real-magnitude row's angle. A proven
+// cancellation floor, not a relaxation. (tests/TOLERANCE_NOTES.md)
 
-/// The `%8.2f` (2-decimal) additive printing floor for the angle columns of a
-/// paired magnitude/angle report: two independent solves round the last 0.01
-/// digit apart, so `rel = 0`, `abs = 0.011` (the exact ±0.01 last-digit
-/// boundary). Selected by index parity (`start`, then every other column is an
-/// angle) because these reports have **truncated headers** (`…, I_1, Ang_1,
-/// ...`) that name only the first pair. Gated on the paired magnitude (the
-/// immediately-preceding column) so the angle of a near-zero residual /
-/// open-terminal / grounded-neutral conductor (which is faer-vs-KLU noise) is
-/// skipped; `thresh` (1e-6) sits far above that noise (≤ ~5e-9) and below the
-/// smallest real printed magnitude, so only genuine-noise angles are skipped.
+/// The noise gate for the angle columns of a paired magnitude/angle report: the
+/// angle of a real magnitude is byte-identical (exact, `rel = abs = 0`); only
+/// the angle of a **near-zero residual** magnitude (a per-terminal residual or
+/// an open-terminal conductor — faer-vs-KLU cancellation noise, observed e.g.
+/// `-33.69` vs `56.31`°) is skipped, gated on the paired magnitude (the
+/// immediately-preceding column, `PrevCol`); `thresh` (1e-6) sits far above that
+/// noise (≤ ~1e-8) and below the smallest real printed magnitude. Selected by
+/// index parity (`start`, then every other column is an angle) because these
+/// reports have **truncated headers** (`…, I_1, Ang_1, ...`) that name only the
+/// first pair.
 fn ang_tol(start: usize) -> ColTol {
     ColTol {
         sel: ColSel::Parity { start, parity: 1 },
         rel: 0.0,
-        abs: 0.011,
+        abs: 0.0,
         gate: Some(GateSpec::PrevCol(1e-6)),
     }
 }
 
 /// `Export Currents` (Pascal `ExportCurrents` + `CalcAndWriteCurrents`):
 /// per-terminal, per-conductor `|I|`/angle over the widest element, plus a
-/// per-terminal residual. Magnitudes keep the 6-sig `EXPORT_REL`; `abs = 1e-6`
-/// absorbs the near-zero `Iresid` cancellation residual (measured ≤ 1e-8 A) and
-/// the exactly-zero conductor-width fill (`0 == 0`). Angle columns use the
-/// `%8.2f` floor gated on their paired magnitude (the residual/fill angles are
-/// noise).
+/// per-terminal residual. Every real magnitude and angle is byte-identical →
+/// `rel = 0`. `abs = 1e-8` absorbs only the near-zero `Iresid` cancellation
+/// residuals (**observed**: `8.13e-9` vs `5.09e-9` A, and `3.6e-12` vs an exact
+/// oracle `0`) — 5 orders below the smallest real current. The angle of a
+/// residual/fill magnitude is noise, gated via [`ang_tol`].
 #[test]
 fn export_currents_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: 1e-6,
+        rel: 0.0,
+        abs: 1e-8,
         col_tol: vec![ang_tol(1)],
     };
     run_feeder_export("export_currents", &policy);
@@ -1428,34 +1377,36 @@ fn export_nodeorder_matches_oracle() {
 }
 
 /// `Export ElemCurrents` (Pascal `WriteElemCurrents`): per-conductor `|I|`/angle
-/// over `NConds·Nterms`. Same floor structure as `Currents` (magnitudes 6-sig +
-/// `abs = 1e-6` for the near-zero open-terminal conductors; angles gated on their
-/// paired magnitude).
+/// over `NConds·Nterms`. Same structure as `Currents`: everything byte-identical
+/// except the ~1e-12 A open-terminal residual magnitudes (**observed** max diff
+/// 6.6e-12 A → `abs = 1e-10`, 4 orders below any real current) and their noise
+/// angles (gated).
 #[test]
 fn export_elemcurrents_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: 1e-6,
+        rel: 0.0,
+        abs: 1e-10,
         col_tol: vec![ang_tol(3)],
     };
     run_feeder_export("export_elemcurrents", &policy);
 }
 
 /// `Export ElemVoltages` (Pascal `WriteElemVoltages`): per-conductor `|V|`/angle.
-/// Magnitudes 6-sig; `abs = 1e-6` V absorbs the exactly-zero grounded-neutral
-/// conductor; angles gated on their paired magnitude.
+/// Byte-identical throughout (the grounded-neutral conductors are an exact `0` on
+/// both engines, their angles an exact `0.00` — no residual class in this report)
+/// → exact equality, no gates.
 #[test]
 fn export_elemvoltages_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: 1e-6,
-        col_tol: vec![ang_tol(3)],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
     };
     run_feeder_export("export_elemvoltages", &policy);
 }
@@ -1465,16 +1416,17 @@ fn export_elemvoltages_matches_oracle() {
 /// from `ComputeVterminal`/`ComputeIterminal` (like `P_byphase`, no `×3`); on the
 /// solved feeder equals the canonical terminal power (the `Vsource` row matches
 /// `CktElement.Powers`, oracle-probed — the isolated-source 2a divergence never
-/// appears here). Magnitudes 6-sig; `abs = 1e-6` kW absorbs the ~0 neutral-
-/// conductor powers.
+/// appears here). Byte-identical except the ~1e-11 kW neutral-conductor
+/// cancellation residuals (**observed**: `-2.2e-12` vs `-1.78e-11`, and
+/// `1.46e-14` vs an exact `0`) → `rel = 0`, `abs = 1e-10`.
 #[test]
 fn export_elempowers_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: 1e-6,
+        rel: 0.0,
+        abs: 1e-10,
         col_tol: vec![],
     };
     run_feeder_export("export_elempowers", &policy);
@@ -1485,9 +1437,7 @@ fn export_elempowers_matches_oracle() {
 /// and winding, and the Forward/Reverse + True/False mode text. The tap value is
 /// a discrete `mid + position·increment`, so both engines land the identical
 /// value once they converge to the same integer tap position (already pinned by
-/// `corpus_live` and the feeder-controls gate) — `rel = 0`, `abs = 1e-4` catches
-/// any tap-position divergence loudly (one position = 0.00625 ≫ 1e-4) while
-/// clearing the `%8.5f` print floor.
+/// `corpus_live` and the feeder-controls gate) — byte-identical, exact equality.
 #[test]
 fn export_taps_matches_oracle() {
     let policy = ExportPolicy {
@@ -1495,7 +1445,7 @@ fn export_taps_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 1e-4,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_taps", &policy);
@@ -1527,19 +1477,17 @@ fn export_result_matches_oracle() {
 /// `Export Summary` (Pascal `ExportSummary`): one status row (solve mode, counts,
 /// iterations, pu-voltage extremes, total MW/Mvar, losses). Column 0 is the
 /// wall-clock `DateTimeToStr(Now)` — non-deterministic, **masked**
-/// (`GateSpec::Mask`). Every other column is deterministic: text fields
-/// (`CaseName`/`Status`/`Mode`/`ControlMode`) compare case-insensitively; the
-/// integer counts (NumDevices/Buses/Nodes, iteration counts) exact within `abs`;
-/// the `%g` scalars (MaxPuVoltage/TotalMW/losses) keep the 5–6-sig `EXPORT_REL`
-/// printing floor (the physics is pinned by `corpus_live`).
+/// (`GateSpec::Mask`). Every other column is deterministic and byte-identical
+/// (text case-insensitively; the counts and `%g` scalars exactly) → exact
+/// equality outside the mask.
 #[test]
 fn export_summary_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![ColTol {
             sel: ColSel::Index(0), // DateTime — masked (non-deterministic clock)
             rel: 0.0,
@@ -1552,25 +1500,18 @@ fn export_summary_matches_oracle() {
 
 /// `Export SeqZ` (Pascal `ExportSeqZ`): per-bus symmetrical-component short-circuit
 /// impedances after a **FaultStudy** solve (a plain snapshot leaves `Zsc` zero).
-/// `R1/X1/R0/X0/Z1/Z0` are `%10.6g` (6 sig) — the same `Zsc1`/`Zsc0` the
-/// `fault_study.rs` gate pins to 1e-9·mag — so they keep the tight `EXPORT_REL`;
-/// the `X1/R1`/`X0/R0` ratio columns (indices 8/9) are `%8.4g` (4 sig), so
-/// `rel = 1e-3` is their printing floor. The integer NumNodes column is exact.
+/// `R1/X1/R0/X0/Z1/Z0` (`%10.6g`) and the `X1/R1`/`X0/R0` ratios (`%8.4g`) are
+/// byte-identical — the same `Zsc1`/`Zsc0` the `fault_study.rs` gate pins to
+/// 1e-9·mag — exact equality.
 #[test]
 fn export_seqz_matches_oracle() {
-    let ratio = |i: usize| ColTol {
-        sel: ColSel::Index(i),
-        rel: 1e-3,
-        abs: EXPORT_ABS,
-        gate: None,
-    };
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
-        col_tol: vec![ratio(8), ratio(9)],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
     };
     run_feeder_export("export_seqz", &policy);
 }
@@ -1579,18 +1520,11 @@ fn export_seqz_matches_oracle() {
 /// IEEE13 feeder: per-bus 3-phase / 1-phase / L-L prospective fault currents.
 /// The 3-phase column reads the precomputed `BusCurrent`; the 1-phase/L-L columns
 /// are local per-bus `YFault` scratch inversions over the same precomputed `Ysc`
-/// (PHASE8_PLAN §2.1). All three are `%10f` (2 decimals). The floor is the
-/// standard 6-sig report floor (`EXPORT_REL`) — the faultstudy `Zsc`/`Ysc` are
-/// pinned to 1e-9·mag by `exec/tests/fault_study.rs`, and the `YFault` inversions
-/// run the same bit-faithful `CMatrix::invert` on both engines; `abs = 0.011`
-/// absorbs the `%.2f` additive rounding on the exactly-`0.00` L-L rows of the
-/// single-node buses (611/652). Not a physics relaxation.
-///
-/// The floor is purely the **`%.2f` additive printing floor** (`rel = 0` /
-/// `abs = 0.011`): a rel-tolerance sweep confirmed the currents match to ≤1e-8 rel
-/// (the golden passes unchanged at `rel = 1e-8`), so both engines compute the same
-/// f64 and the only observable difference is a 0.005-boundary rounding split
-/// (≤0.01), exactly as `Powers`/`P_byphase` are pinned. Measured, not guessed.
+/// (PHASE8_PLAN §2.1). All three are `%10f` (2 decimals); the faultstudy
+/// `Zsc`/`Ysc` are pinned to 1e-9·mag by `exec/tests/fault_study.rs` and the
+/// `YFault` inversions run the same bit-faithful `CMatrix::invert` on both
+/// engines, so the rendered currents are byte-identical (no 0.005-boundary
+/// straddle on this golden) — exact equality.
 #[test]
 fn export_faultstudy_matches_oracle() {
     let policy = ExportPolicy {
@@ -1598,29 +1532,27 @@ fn export_faultstudy_matches_oracle() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.011,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_faultstudy", &policy);
 }
 
-/// The assembled/primitive admittance matrices are exact deterministic stamps
-/// (no faer solve enters them), printed to 10 sig, so both engines agree to
-/// ~1e-10 rel; `1e-6` clears that printing floor plus the two independent builds
-/// with wide margin. `abs = 1e-6` absorbs any near-zero off-diagonal cell.
-const YMATRIX_REL: f64 = 1e-6;
+// The assembled/primitive admittance matrices are exact deterministic stamps
+// (no faer solve enters them) from FPC-faithful element YPrims — byte-identical
+// at 10 sig on both engines → exact equality.
 
 /// `Export Y triplet` (Pascal `ExportY` `TripletOpt`): the assembled system Y as
 /// `Row,Col,G,B` for the lower triangle (`row >= col`), column-major. Integer
-/// Row/Col exact; G/B (`%.10g`) at the `YMATRIX_REL` printing floor.
+/// Row/Col and the `%.10g` G/B all exact.
 #[test]
 fn export_y_triplet_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: YMATRIX_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_y_triplet", &policy);
@@ -1630,16 +1562,16 @@ fn export_y_triplet_matches_oracle() {
 /// primitive Y, in device order — a `Class.NAME` header line then `Yorder` rows
 /// of `re, im,` pairs (`%.10g`). No fixed header (the first line is an element
 /// name), so `header_lines = 0`; the name lines are single text fields (matched
-/// case-insensitively), the matrix cells at the `YMATRIX_REL` printing floor. The
-/// element set/order is the report's contract (`ExactOrdered`).
+/// case-insensitively), the matrix cells exact. The element set/order is the
+/// report's contract (`ExactOrdered`).
 #[test]
 fn export_yprims_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: YMATRIX_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_yprims", &policy);
@@ -1653,42 +1585,35 @@ fn export_yprims_matches_oracle() {
 
 /// `Export VoltagesElements` (Pascal `ExportVoltagesElements`): per-element,
 /// per-terminal, per-conductor `Node`(index)/`Magnitude`(kV,`%10.6g`)/`Angle`
-/// (`%6.3f`)/`pu`(`%9.5g`) + the per-terminal `Bus`/`BasekV`(`%6.3f`). Magnitude/
-/// pu/BasekV keep the 6-sig `EXPORT_REL`; the `Angle*` columns take the `%6.3f`
-/// additive printing floor (`rel = 0`, `abs = 0.0011`) — no gate needed (every
-/// conductor is either energized or exactly-ground `0`, no cancellation residual).
-/// Rows are ragged (an element writes only its own `NTerms` terminal blocks, not
-/// padded to `MaxNumTerminals`); `ExactOrdered` pins each row's fields.
+/// (`%6.3f`)/`pu`(`%9.5g`) + the per-terminal `Bus`/`BasekV`(`%6.3f`). Every
+/// column byte-identical (every conductor is either energized or exactly-ground
+/// `0` — no cancellation residual) → exact equality. Rows are ragged (an element
+/// writes only its own `NTerms` terminal blocks, not padded to
+/// `MaxNumTerminals`); `ExactOrdered` pins each row's fields.
 #[test]
 fn export_voltageselements_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
-        col_tol: vec![ColTol {
-            sel: ColSel::Prefix("angle".to_string()),
-            rel: 0.0,
-            abs: 0.0011, // %6.3f additive last-digit floor (3 decimals)
-            gate: None,
-        }],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
     };
     run_feeder_export("export_voltageselements", &policy);
 }
 
 /// `Export YVoltages` (Pascal `ExportYVoltages`): the node voltage vector `NodeV`
 /// for nodes `1..NumNodes`, one `re, im` pair per line, no header. `%10.6g` (6
-/// sig) → `EXPORT_REL`; node voltages are kV-scale so `EXPORT_ABS` only backs the
-/// occasional near-zero component.
+/// sig), byte-identical → exact equality.
 #[test]
 fn export_yvoltages_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_export("export_yvoltages", &policy);
@@ -1696,17 +1621,18 @@ fn export_yvoltages_matches_oracle() {
 
 /// `Export YCurrents` (Pascal `ExportYCurrents`): the node injection-current
 /// vector `Solution.Currents` for nodes `1..NumNodes`, one `re, im` pair per line,
-/// no header. Passive nodes carry an **exact** `0` injection (both engines); the
-/// source/load nodes carry a large (~1e4 A) current pinned at `EXPORT_REL`, so
-/// there is no near-zero cancellation floor (unlike `Iresidual`).
+/// no header. Byte-identical except one passive-node cell where the oracle prints
+/// an exact `0` and Rust a `1.42e-14` A cancellation residual (**observed**) —
+/// `abs = 1e-13` covers that f64 KCL-residual print, 17 orders below the ~1e4 A
+/// source injections, which stay pinned exactly (`rel = 0`).
 #[test]
 fn export_ycurrents_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 1e-13,
         col_tol: vec![],
     };
     run_feeder_export("export_ycurrents", &policy);
@@ -1722,9 +1648,9 @@ fn export_ycurrents_matches_oracle() {
 // physics is pinned by the always-on `corpus_live.rs` 8500 model compare.
 
 /// `Voltages`/`Summary`/`Counts` on the solved IEEE 8500-Node feeder, from a
-/// single compile. Voltages: the 6-sig `%g` magnitude/pu floor + the `%6.1f`
-/// additive angle floor (identical to the IEEE13 voltages policy). Summary: the
-/// masked non-deterministic `DateTime` column + the deterministic status row.
+/// single compile. Voltages: byte-identical across all 8531 node rows (incl. the
+/// `%6.1f` angles) → exact equality. Summary: the masked non-deterministic
+/// `DateTime` column + the deterministic status row, exact outside the mask.
 /// Counts: the `RustSubsetByKey` subset compare (`=`-separated), pinning every
 /// ported class's instance count at scale (Line=3703/Transformer=1190/etc).
 #[test]
@@ -1733,21 +1659,16 @@ fn export8500_reports_match_oracle() {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
-        col_tol: vec![ColTol {
-            sel: ColSel::Prefix("angle".to_string()),
-            rel: 0.0,
-            abs: 0.11,
-            gate: None,
-        }],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
     };
     let summary = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![ColTol {
             sel: ColSel::Index(0), // DateTime — masked (non-deterministic clock)
             rel: 0.0,
@@ -1800,26 +1721,21 @@ fn export8500_reports_match_oracle() {
 // compared **verbatim** (the `Header.CommaText` contract — quoting included); the
 // data rows (incl. the `hour`/`t(sec)` time columns the live gate's channel
 // compare skips) parse numbers out. Values are f32 (the monitor stream is
-// single-precision on both engines), printed `%-.6g` (6 sig): the theoretical
-// floor is the f32-quantization + 6-sig-print resolution (~1e-6 rel on the kV/A
-// magnitudes; ~1e-7 abs on the one near-zero cell, `VAngle1 ≈ -0.013`) across the
-// two independent solves — in practice the printed values are byte-identical here
-// (measured max Rust↔oracle gap 0). `rel = 1e-4` / `abs = 1e-5` sit ~100× above
-// that theoretical floor, so a real channel/stride/ordering bug (degrees-/amps-
-// scale) or a rad↔deg swap fails loudly while the printing floor never flakes.
-// The monitor *sampling code path* is 1e-8-gated by the always-on `corpus_live.rs`
-// on equivalent `line.650632` daily monitors; this golden cross-checks these exact
-// monitors' values (at the print floor) and pins the CSV **layout** (header
-// CommaText, column order, row stride, the `_1` filename). All three share the one
-// compile+daily-solve via `run_shared_exports`.
+// single-precision on both engines), printed `%-.6g` (6 sig): at f32 quantization
+// the printed values are byte-identical Rust↔oracle → exact equality. The monitor
+// *sampling code path* is 1e-8-gated by the always-on `corpus_live.rs` on
+// equivalent `line.650632` daily monitors; this golden pins these exact monitors'
+// values and the CSV **layout** (header CommaText, column order, row stride, the
+// `_1` filename). All three share the one compile+daily-solve via
+// `run_shared_exports`.
 #[test]
 fn export_monitors_match_oracle() {
     let mon = || ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-5,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_shared_exports(&[
@@ -1835,10 +1751,10 @@ fn export_monitors_match_oracle() {
 // a `"quoted"` register-name header; `Export Loads` dumps the present allocation
 // view. No corpus deck uses these keywords, so the fixtures are synthesized
 // (PHASE8_PLAN §1). The header line is compared **verbatim** (the register-name
-// set/quoting is the report's contract); the register values are `%10.0f` integers,
-// so `rel = 0` / `abs = 0.5` pins each register's scale (one kWh unit ≫ 0.5) while
-// clearing the last-integer rounding boundary. Two fixtures keep every value
-// tightly oracle-pinned (no masking):
+// set/quoting is the report's contract); the register values are `%10.0f`
+// integers, byte-identical on these fixtures (no last-integer rounding straddle)
+// → exact equality. Two fixtures keep every value tightly oracle-pinned (no
+// masking):
 //   A) plain IEEE13 + an EnergyMeter, daily → Meters + Loads. The meter registers
 //      match to ~1e-8 (the same daily meter path `corpus_live.rs` pins), so `%10.0f`
 //      is identical.
@@ -1847,15 +1763,15 @@ fn export_monitors_match_oracle() {
 //      the DER out of the metered, regulated zone avoids the ~3e-5 metered-element
 //      coupling that would straddle the meter's Max kW rounding boundary.
 
-/// Register rows: `%10.0f` integers — exact but for the last-digit rounding
-/// boundary; `abs = 0.5` clears it, `rel = 0` keeps every register scale-pinned.
+/// Register rows: `%10.0f` integers, byte-identical (no last-digit rounding
+/// straddle on these fixtures) — exact equality.
 fn register_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.5,
+        abs: 0.0,
         col_tol: vec![],
     }
 }
@@ -1865,24 +1781,16 @@ fn register_policy() -> ExportPolicy {
 #[test]
 fn export_meters_loads_match_oracle() {
     // Loads columns: Load(0), ConnectedKVA(1,`%8.1f`), AllocFactor(2,`%5.3f`),
-    // Phases(3), kW(4,`%8.1f`), kvar(5,`%8.1f`), PF(6,`%5.3f`), Model(7). Default
-    // `abs = 0.05` = the `%8.1f` additive last-digit floor; the two `%5.3f`
-    // columns (AllocFactor, PF) get the tighter `abs = 5e-4` (they are static
-    // input echoes, so they should match exactly — this keeps them pinned rather
-    // than letting the coarse default mask a 0.05 field-mapping slip).
-    let three_dec = |i: usize| ColTol {
-        sel: ColSel::Index(i),
-        rel: 0.0,
-        abs: 5e-4,
-        gate: None,
-    };
+    // Phases(3), kW(4,`%8.1f`), kvar(5,`%8.1f`), PF(6,`%5.3f`), Model(7) — all
+    // byte-identical (static input echoes + 1-decimal renders of ~1e-8-agreeing
+    // solves) → exact equality.
     let loads = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.05,
-        col_tol: vec![three_dec(2), three_dec(6)],
+        abs: 0.0,
+        col_tol: vec![],
     };
     run_shared_exports(&[
         ("export_meters", register_policy()),
@@ -1964,7 +1872,7 @@ fn export_meters_multifile_switch() {
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.5,
+        abs: 0.0,
         col_tol: vec![],
     };
     compare_export(&single, &multi, &policy, "export_meters_multifile");
@@ -2241,17 +2149,16 @@ fn export_errorlog_captures_errors() {
 /// `Export BusReliability` (Pascal `ExportBusReliability`): per-bus Lambda/
 /// Num-Interruptions/Num-Customers/Cust-Interruptions/Duration/Total-Miles. All
 /// value columns are `%-.11g` (11 sig) computed by the `RelCalc` sweep — pure
-/// arithmetic from identical line fault-data on both engines (the reliability unit
-/// tests pin the same accumulators to ~1e-12), so `rel = 1e-8` is ~1e4× over the
-/// 11-sig print floor; the integer Num-Customers column is exact within `abs`.
+/// arithmetic from identical line fault-data on both engines, byte-identical →
+/// exact equality.
 #[test]
 fn export_busreliability_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-8,
-        abs: 1e-9,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_deck_export("export_busreliability", &policy);
@@ -2265,15 +2172,15 @@ fn export_busreliability_matches_oracle() {
 /// have two sections, so every cross-zone read is **in range** — a deterministic
 /// overwrite both engines agree on bus-for-bus (no out-of-bounds read; the OOB
 /// regime is proven-nondeterministic UB and deliberately not gated). Same
-/// `%-.11g` arithmetic-identity floor as the single-meter case.
+/// byte-identical arithmetic as the single-meter case — exact equality.
 #[test]
 fn export_busreliability_multimeter_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-8,
-        abs: 1e-9,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_deck_export("export_busreliability_multimeter", &policy);
@@ -2281,16 +2188,16 @@ fn export_busreliability_multimeter_matches_oracle() {
 
 /// `Export BranchReliability` (Pascal `ExportBranchReliability`): per-branch
 /// Lambda/Accumulated-Lambda/customers/interrupts/durations/miles/Cust-Miles/SAIFI
-/// (`%-.11g` + integer customer counts). Same arithmetic-identity floor as
-/// BusReliability (`rel = 1e-8`, `abs = 1e-9`).
+/// (`%-.11g` + integer customer counts). Byte-identical like BusReliability —
+/// exact equality.
 #[test]
 fn export_branchreliability_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-8,
-        abs: 1e-9,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_deck_export("export_branchreliability", &policy);
@@ -2298,44 +2205,19 @@ fn export_branchreliability_matches_oracle() {
 
 /// `Export Capacity` (Pascal `ExportCapacity` + `CalcAndWriteMaxCurrents`):
 /// per-PDElement `Imax`/`%normal`/`%emergency`/`kW`/`kvar`/customers/`NumPhases`/
-/// `kVBase`. `Imax`/`kW`/`kvar` are solve-derived (`%10.6g`), so they take the
-/// corpus-wide `EXPORT_REL` **two-independent-solves** (faer-vs-KLU) floor — well
-/// above the ~1e-8 agreement on this tiny circuit, so a real scale/mapping
-/// regression (wrong ×0.001, a dropped phase in the `Imax` max, a swapped kW/kvar)
-/// fails loudly while the two solves never flake (`abs = 1e-6`). The `%normal`/
-/// `%emergency` columns are `%8.2f` (2 dec → additive `abs = 0.011`); `kVBase` is
-/// `%-.3g` (3 sig → `rel = 1e-3`). The integer customer/phase columns are exact
-/// within `abs`.
+/// `kVBase`. Every column (`%10.6g` solve-derived, `%8.2f` percentages, `%-.3g`
+/// kVBase, integers) is byte-identical on this tiny circuit — exact equality; a
+/// real scale/mapping regression (wrong ×0.001, a dropped phase in the `Imax`
+/// max, a swapped kW/kvar) fails loudly.
 #[test]
 fn export_capacity_matches_oracle() {
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
-        col_tol: vec![
-            // %normal (2), %emergency (3): %8.2f additive last-digit floor.
-            ColTol {
-                sel: ColSel::Index(2),
-                rel: 0.0,
-                abs: 0.011,
-                gate: None,
-            },
-            ColTol {
-                sel: ColSel::Index(3),
-                rel: 0.0,
-                abs: 0.011,
-                gate: None,
-            },
-            // kVBase (9): %-.3g 3-sig printing floor.
-            ColTol {
-                sel: ColSel::Index(9),
-                rel: 1e-3,
-                abs: EXPORT_ABS,
-                gate: None,
-            },
-        ],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
     };
     run_deck_export("export_capacity", &policy);
 }
@@ -2472,27 +2354,17 @@ fn export_capacity_reliability_skip_disabled_pd() {
 // allocation-spec loads (AllocationFactors). `gen_phase8.py` captures the oracle
 // output; the Rust golden replays the same deck.
 
-/// The shared `Export Overloads` tolerance policy: every column is fixed-point —
-/// I1/AmpsOver/kVAOver `%…2f` (additive last-digit floor `abs = 0.011`), the
-/// %-loading/sequence columns (indices 5..=10) `%…1f` (`abs = 0.11`). On these
-/// tiny circuits the two solves agree to ~1e-8, so the printing floor dominates
-/// and a real regression fails loudly. `rel = 0` (pure printing floor, the
-/// `Powers`/`P_byphase` discipline — no masking).
+/// The shared `Export Overloads` tolerance policy: every fixed-point column
+/// (I1/AmpsOver/kVAOver `%…2f`, the %-loading/sequence columns `%…1f`) is
+/// byte-identical on these tiny ~1e-8-agreeing circuits — exact equality.
 fn overloads_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.011,
-        col_tol: (5..=10)
-            .map(|i| ColTol {
-                sel: ColSel::Index(i),
-                rel: 0.0,
-                abs: 0.11,
-                gate: None,
-            })
-            .collect(),
+        abs: 0.0,
+        col_tol: vec![],
     }
 }
 
@@ -2518,25 +2390,18 @@ fn export_overloads_unbal_matches_oracle() {
     run_deck_export("export_overloads_unbal", &overloads_policy());
 }
 
-/// The shared `Export Unserved` tolerance policy: `kW` is the deck constant
-/// (`%8.0f` → `abs = 0.5`); `EEN_Factor`/`UE_Factor` are solve-derived (`%9.3f` →
-/// additive `abs = 0.0011`) — the two solves agree ~1e-8, so a real regression
-/// (wrong criterion, a missing/extra load, a swapped EEN/UE) fails loudly.
-/// `rel = 0` (printing floor).
+/// The shared `Export Unserved` tolerance policy: `kW` is a deck constant
+/// (`%8.0f`) and `EEN_Factor`/`UE_Factor` are `%9.3f` renders of ~1e-8-agreeing
+/// solves — byte-identical, exact equality; a real regression (wrong criterion,
+/// a missing/extra load, a swapped EEN/UE) fails loudly.
 fn unserved_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.0011,
-        col_tol: vec![ColTol {
-            // kW: %8.0f integer-rounding floor.
-            sel: ColSel::Index(2),
-            rel: 0.0,
-            abs: 0.5,
-            gate: None,
-        }],
+        abs: 0.0,
+        col_tol: vec![],
     }
 }
 
@@ -2561,7 +2426,7 @@ fn export_unserved_ue_matches_oracle() {
 /// `Export AllocationFactors` (Pascal `DumpAllocationFactors`): one
 /// `Load.<name>.AllocationFactor=<f>` / `.CFactor=<f>` line per allocation-spec
 /// load — no header, `=`-separated. The factors are deck constants (`%-.5g`, no
-/// solve dependency), so they match exactly (`rel = abs = 1e-9`). The fixture
+/// solve dependency), byte-identical — exact equality. The fixture
 /// covers the spec-type dispatch (a ConnectedkVA `la` + a kWh `lb` emit; a plain
 /// `kw=` load `lc` emits **nothing** — the `ExactOrdered` row count guards the
 /// no-emit branch) **and** the no-`Enabled`-filter walk (a *disabled*
@@ -2572,8 +2437,8 @@ fn export_allocationfactors_matches_oracle() {
         sep: '=',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-9,
-        abs: 1e-9,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_deck_export("export_allocationfactors", &policy);
@@ -2589,18 +2454,15 @@ fn export_allocationfactors_matches_oracle() {
 
 /// The `Export Sections` tolerance policy: the aggregate columns
 /// (AvgRepairHrs/SectFaultRate/Sum*) are `%-.6g` over `RelCalc` arithmetic that
-/// is identical on both engines (the reliability unit tests pin the same
-/// accumulators to ~1e-12), so the floor is the 6-sig printing resolution —
-/// `rel = 1e-5` (one ulp in the 6th significant digit at leading-digit 1), far
-/// below any real aggregation/mapping regression. The integer id/count columns
-/// and the Meter/DeviceType/HeadBranch text are exact.
+/// is identical on both engines — byte-identical, exact equality (integer
+/// id/count columns and the Meter/DeviceType/HeadBranch text included).
 fn sections_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-5,
-        abs: 1e-9,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     }
 }
@@ -2676,19 +2538,17 @@ fn export_sections_edge_paths() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The shared `Export Profile` tolerance policy: the `puV` columns are `%.6g`
-/// pu voltages from two independent solves → the corpus-wide `EXPORT_REL`
-/// 6-sig floor; the `Distance` columns are zone-build constants (identical
-/// line-length arithmetic) within the same floor; the Color/Thickness/Linetype/
-/// marker columns are integers, exact within `abs`. The header line (incl. the
-/// appended `Title=…` tail) is compared verbatim.
+/// The shared `Export Profile` tolerance policy: the `%.6g` `puV` columns, the
+/// zone-build `Distance` constants and the integer Color/Thickness/Linetype/
+/// marker columns are all byte-identical — exact equality. The header line
+/// (incl. the appended `Title=…` tail) is compared verbatim.
 fn profile_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: EXPORT_REL,
-        abs: EXPORT_ABS,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     }
 }
@@ -2738,18 +2598,22 @@ struct DiMeta {
 }
 
 /// All DI values are `%-g` (15 sig) doubles computed by the same meter/solve
-/// arithmetic `corpus_live.rs` pins to ~1e-8 on this exact IEEE13 daily path,
-/// so `rel = 1e-6` gives ~100× margin over the two-independent-solves floor
-/// with no printing floor above it; `abs = 1e-8` covers the exact-zero cells
-/// (idle registers). Headers (incl. the `4.16kV_Phs_…` PHV labels and the
-/// register-name columns) compare verbatim; bus names case-insensitively.
+/// arithmetic `corpus_live.rs` pins to ~1e-8 on this exact IEEE13 daily path —
+/// the **only** WP8 golden family with a genuine (non-print) Rust↔oracle
+/// residual: the per-step faer-vs-KLU voltage difference integrates across the
+/// 24 daily solves into the registers (**measured** max 1.5e-8 rel, on the
+/// `di_totals` Load EEN register). `rel = 5e-8` = ~3× that measured accumulation
+/// floor (the `corpus_live` class, not a print floor). `abs = 0`: idle registers
+/// print an identical exact `0` on both engines. Headers (incl. the
+/// `4.16kV_Phs_…` PHV labels and the register-name columns) compare verbatim;
+/// bus names case-insensitively.
 fn di_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-6,
-        abs: 1e-8,
+        rel: 5e-8,
+        abs: 0.0,
         col_tol: vec![],
     }
 }

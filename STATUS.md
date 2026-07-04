@@ -99,9 +99,11 @@ the current frontier:
   **78→83**: `show_{convergence,y,controlqueue,kvbasemismatch}` on solved IEEE13 +
   the synthesized `show_kvbasemismatch_vals` (4 kV-mismatched load/gen elements
   exercising both LN/LL forms + the GENERATOR block). **All 5 are exact equality**
-  (`rel=0, abs=0`) except the convergence `|V|` column — 7-sig `Str(v:14)`, so the
-  faer-vs-KLU node-voltage diff rounds the last printed digit independently → the
-  `rel=1e-6` 7th-sig printing floor; Y's G/B are byte-identical (bit-exact assembled
+  (`rel=0, abs=0`), incl. the convergence `|V|` column: the preemptive `rel=1e-6`
+  "7th-sig printing floor" shipped with step 7 was never exercised — the produced
+  file is byte-identical to the oracle golden (faer-vs-KLU voltage gap is orders
+  below the 7-sig print step) — so it was tightened back to exact per the
+  no-unproven-floors rule; Y's G/B are byte-identical (bit-exact assembled
   Y on the LineCode-based IEEE13). **Remaining unported Show keywords** (all still
   *silent* no-ops, `TODO(WP8)` in `do_show_cmd`): `Controlled` (needs the
   `ControlElementList` accessor), `Meters`/`Generators`/`Zone`/`Overloads`/
@@ -132,6 +134,31 @@ the current frontier:
   honest today (all `0.00000`), a robustness note only. **next = continue WP8.4**
   (the meter/topology/matrix Shows — Yprim, Meters/Generators, then the CktTree
   family).
+- **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
+  `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
+  their oracle captures (a temporary harness audit mode collecting max deviations
+  instead of asserting): **74 are parse-value-identical** → pinned at exact
+  equality (`rel=0, abs=0`; the never-exercised `EXPORT_REL`/`EXPORT_ABS`/
+  `YMATRIX_REL`/`LOSSES_ABS`-class preemptive print floors deleted, incl. the
+  Voltages/8500-Voltages angle 0.11, Powers/SeqPowers 0.11, P_byphase-MVA 0.0011,
+  Taps 1e-4, monitors 1e-4/1e-5, registers 0.5, Loads 0.05, reliability 1e-8/1e-9,
+  capacity/faultstudy/SeqZ/Y/Yprims/overloads/unserved/sections/profile/
+  allocation floors, and the `show_convergence` |V| `rel=1e-6`). The **19**
+  non-exact compares all trace to three observed classes, each kept at its
+  measured floor: (1) last-digit render straddles — `P_byphase` kVA 1e-3 (kept
+  0.0011), `Losses` 7-sig 65.34585↔86 (kept `rel=1e-6`), `show_mismatch` %10.5f
+  (kept 1.1e-5); (2) near-zero cancellation residuals — `Losses` noise cells
+  ≤1.28e-8 W (`abs` 1e-6→**1e-7**), `SeqVoltages`/`SeqCurrents` residuals (abs
+  1e-9/1e-8 kept, ratio-cell abs →**1e-9**, `rel` 1e-4→**0**), `Currents`/
+  `ElemCurrents`/`ElemPowers`/`YCurrents` (`abs` 1e-6→**1e-8/1e-10/1e-10/1e-13**,
+  `rel`→0; noise-angle `PrevCol` gates kept, `ElemVoltages` gates dropped —
+  byte-exact); (3) the DI files — the only genuine non-print floor, the per-step
+  faer-vs-KLU diff integrated over 24 daily solves (measured 1.5e-8 rel):
+  `rel` 1e-6→**5e-8**, `abs` 1e-8→0. Gates kept only where observed firing on
+  noise (show_losses/voltages/currents/currents_elem/powers_elem, seqcurrents I1,
+  ang_tol PrevCol, the two Summary DateTime Masks + show_mismatch residual Masks);
+  no-op/unfired ColTols removed. `tests/TOLERANCE_NOTES.md` WP8 sections rewritten
+  to the exact-by-default regime. golden_phase8 84/84 green.
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
