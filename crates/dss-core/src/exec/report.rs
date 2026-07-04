@@ -986,35 +986,57 @@ impl Dss {
                 self.write_show("Buses.txt", &content);
             }
             // 3 `currents` (`ShowCurrents`) — `ShowOptions.pas:153-184`: 1st param
-            // `Y`/`T`→residual, `E`→element form; 2nd param `E`→element form;
-            // filename `Curr_Seq` (code 0) / `Curr_Elem` (code 1). Step 3 ports
-            // **code 0** (the sequence form, bare `Show Currents`); the element
-            // form (code 1, per-terminal angle currents) stays deferred.
+            // `Y`/`T`→residual, `N`→no residual, `E`→element form; 2nd param
+            // `E`→element form; filename `Curr_Seq` (code 0) / `Curr_Elem` (code 1).
             3 => {
                 self.parser.next_param(&self.vars);
                 let p1 = self.parser.make_string(&self.vars).to_uppercase();
-                let mut code = 0;
-                if p1.starts_with('E') {
-                    code = 1;
+                let (mut code, mut show_resid) = (0, false);
+                match p1.chars().next() {
+                    Some('Y') | Some('T') => show_resid = true,
+                    Some('N') => show_resid = false,
+                    Some('E') => code = 1,
+                    _ => {}
                 }
                 self.parser.next_param(&self.vars);
                 let p2 = self.parser.make_string(&self.vars).to_uppercase();
                 if p2.starts_with('E') {
                     code = 1;
                 }
-                if code == 0 {
-                    let content = {
-                        let Dss {
-                            classes, circuit, ..
-                        } = self;
-                        let ckt = circuit.as_ref().expect("post-circuit dispatch");
-                        let sys = crate::solution::solution::sys_ctx(ckt);
-                        let node_v = ckt.solution.node_v.clone();
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    if code == 0 {
                         show::show_currents(classes, ckt, &sys, &node_v)
-                    };
-                    self.write_show("Curr_Seq.txt", &content);
-                }
-                // TODO(WP8): step 3+ — code 1 (Curr_Elem, angle currents) no-op.
+                    } else {
+                        show::show_currents_elements(classes, ckt, &sys, &node_v, show_resid)
+                    }
+                };
+                let fname = if code == 0 {
+                    "Curr_Seq.txt"
+                } else {
+                    "Curr_Elem.txt"
+                };
+                self.write_show(fname, &content);
+            }
+            // 5 `elements` (`ShowElements`) — `ShowOptions.pas:200-204`: an optional
+            // class-name filter, then two files (`Elements.txt` +
+            // `Elements_Disabled.txt`). No solution guard (bus connections only).
+            5 => {
+                self.parser.next_param(&self.vars);
+                let param = self.parser.make_string(&self.vars).to_lowercase();
+                let (main, disabled) = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_elements(&self.classes, ckt, &param)
+                };
+                // Pascal writes the disabled companion first (no `@lastshowfile`),
+                // then the main file (which sets `@lastshowfile`).
+                self.write_show_named("Elements_Disabled.txt", &disabled, false);
+                self.write_show("Elements.txt", &main);
             }
             // 12 `powers` (`ShowPowers`) — `ShowOptions.pas:249-277`: 1st param
             // `m`→MVA, `e`→element form; 2nd param `e`→element form; filename
@@ -1077,10 +1099,10 @@ impl Dss {
             }
             // 13 `voltages` (`ShowVoltages`) — the option/filename parse of
             // `ShowOptions.pas:279-312`: first param `LL` → phase-phase (else L-N);
-            // second param `N…`/`E…` selects the node/element form (`ShowOptionCode`
-            // 1/2). Step 2 ports **code 0** (the symmetrical-component form, the
-            // bare `Show Voltages` / `Show Voltage` default); the angle-bearing
-            // node/element forms are still deferred (TODO(WP8), silent no-op).
+            // second param `N…`/`E…` selects the node (code 1) / element (code 2)
+            // form. Code 0 = the symmetrical-component form (bare `Show Voltages`);
+            // code 1 = line-ground/line-line by bus & node; code 2 = node-ground by
+            // circuit element.
             13 => {
                 self.parser.next_param(&self.vars);
                 let p1 = self.parser.make_string(&self.vars);
@@ -1105,25 +1127,36 @@ impl Dss {
                         _ => filname.push_str("_seq"),
                     }
                 }
-                if code == 0 {
-                    let content = {
-                        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
-                        show::show_voltages(ckt, ll)
-                    };
-                    self.write_show(&format!("{filname}.txt"), &content);
-                }
-                // TODO(WP8): step 2+ — codes 1/2 (Node/Element voltage forms,
-                // angle-bearing) stay a silent no-op (see the `_ =>` note below).
+                let content = match code {
+                    0 => show::show_voltages(
+                        self.circuit.as_ref().expect("post-circuit dispatch"),
+                        ll,
+                    ),
+                    1 => show::show_voltages_nodes(
+                        self.circuit.as_ref().expect("post-circuit dispatch"),
+                        ll,
+                    ),
+                    _ => {
+                        let Dss {
+                            classes, circuit, ..
+                        } = self;
+                        let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                        show::show_voltages_elements(classes, ckt, ll)
+                    }
+                };
+                self.write_show(&format!("{filname}.txt"), &content);
             }
             // 11 `panel` — the oracle faithfully errors it (`ShowOptions.pas:248`).
             11 => {
                 self.errors
                     .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
             }
-            // TODO(WP8): step 2+ — the remaining ~30 `Show` keywords (currents, powers,
-            // voltages, elements, monitor, faults, meters, zone, lineconstants,
-            // topology, …) and the unknown-keyword `#24700` error
-            // (`ShowOptions.pas:119-124`) are still deferred. Unlike the `Export`/
+            // TODO(WP8): later steps — the remaining `Show` keywords (monitor,
+            // faults, meters, zone, isolated, loops, lineconstants, topology,
+            // yprim/y, ratings, variables, controlled, convergence, …) and the
+            // `Show Powers`/`Currents`/`Voltages` element forms deferred inline
+            // above, plus the unknown-keyword `#24700` error
+            // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
             // error — a deferred `Show` MUST stay a **silent** headless no-op: the
             // `solvable_now`/`corpus_live` decks run `Show Power`/`Show Voltage`/
@@ -1142,6 +1175,13 @@ impl Dss {
     /// `@lastshowfile` (`DSS.ParserVars.Add('@lastshowfile', FileNm)`), not
     /// `@lastfile` / `GlobalResult` (`Show` never calls `SetLastResultFile`).
     fn write_show(&mut self, default_name: &str, content: &str) {
+        self.write_show_named(default_name, content, true);
+    }
+
+    /// Like [`Dss::write_show`] but `set_last` gates the `@lastshowfile` update.
+    /// The two-file `Show Elements` writes its `_Disabled` companion with
+    /// `set_last = false` (Pascal sets `@lastshowfile` once, to the main file).
+    fn write_show_named(&mut self, default_name: &str, content: &str, set_last: bool) {
         let case = self
             .circuit
             .as_ref()
@@ -1157,8 +1197,10 @@ impl Dss {
         );
         match std::fs::write(&path, content) {
             Ok(()) => {
-                let p = path.to_string_lossy().into_owned();
-                self.vars.add("@lastshowfile", &p);
+                if set_last {
+                    let p = path.to_string_lossy().into_owned();
+                    self.vars.add("@lastshowfile", &p);
+                }
             }
             Err(e) => self.errors.push(format!(
                 "Error writing report file \"{}\": {e}",
