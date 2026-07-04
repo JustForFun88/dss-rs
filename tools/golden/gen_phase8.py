@@ -1297,19 +1297,47 @@ def _gen_show_deck_group(d, deck, reports) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# `Show Overloads` niche-branch coverage (audit-tests step-9 follow-up). The
+# reused `ovl`/`ovl2` decks (3-phase lines, positive `emergamps`, no capacitors)
+# never hit three real `show_overloads` branches. This dedicated deck does: a
+# **1-phase** overloaded line (`normamps=5`, `emergamps=0`) exercises BOTH the
+# `Nphases < 3` symmetrical-component fallback (`I0=I2=0`, `I1=|I|`, `Cmax:=I1`)
+# AND the `EmergAmps <= 0` degenerate `%Emerg` literal (`     0.0`); a small
+# overloaded shunt **capacitor** (`normamps=1` under 600 kvar ≈ 27.8 A) pins the
+# capacitor-skip — it must NOT appear (`(CLASSMASK and DSSObjType) <> CAP_ELEMENT`).
+# No corpus deck exercises these, so it is synthesized (PHASE8_PLAN §1).
+SHOW_OVL_COV_DECK = [
+    "new circuit.ovlcov basekv=12.47 bus1=src phases=3",
+    "new line.lat bus1=src.1 bus2=b1.1 phases=1 length=1 units=mi r1=0.3 x1=0.3 normamps=5 emergamps=0",
+    "new load.ld1 bus1=b1.1 phases=1 kv=7.2 kw=150",
+    "new capacitor.c1 bus1=src phases=3 kvar=600 kv=12.47 normamps=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap",
+]
+
+
 def gen_show_overload_unserved(d) -> None:
     """Capture the oracle's `Show Overloads`/`Show Unserved` (PHASE8_PLAN §WP8.4).
     Reuses the `DECK_GROUPS` export decks (index 0=ovl, 1=ovl2, 2=uns, 3=uns2) so the
     `Show` and `Export` forms share fixtures and can never drift: ovl/ovl2 overload a
     small-`normamps` line (ovl2 adds the unbalanced I2/I0 + the `normamps=0`
     degenerate-column row); uns/uns2 sag a load below the normal / emergency voltage
-    minimum (`unserved ue` selects the UE_Only criterion)."""
+    minimum (`unserved ue` selects the UE_Only criterion). Two follow-up coverage
+    goldens (audit-tests step 9): `show_overloads_1ph` (the 1-phase fallback +
+    `emergamps=0` + capacitor-skip niche branches) and `show_unserved_normal` (the
+    **normal**-criterion healthy-load exclusion — `uns2`'s healthy `ld2` must be
+    dropped by `ExceedsNormal`, not just by the UE `Unserved` path)."""
     d.AllowEditor = False
     ovl, ovl2, uns, uns2 = (DECK_GROUPS[i][1] for i in range(4))
     _gen_show_deck_group(d, ovl, [("overloads", "Overload.txt", "show_overloads")])
     _gen_show_deck_group(d, ovl2, [("overloads", "Overload.txt", "show_overloads_unbal")])
     _gen_show_deck_group(d, uns, [("unserved", "Unserved.txt", "show_unserved")])
     _gen_show_deck_group(d, uns2, [("unserved ue", "Unserved.txt", "show_unserved_ue")])
+    _gen_show_deck_group(
+        d, SHOW_OVL_COV_DECK, [("overloads", "Overload.txt", "show_overloads_1ph")]
+    )
+    _gen_show_deck_group(d, uns2, [("unserved", "Unserved.txt", "show_unserved_normal")])
 
 
 def gen_deck_groups(d) -> None:

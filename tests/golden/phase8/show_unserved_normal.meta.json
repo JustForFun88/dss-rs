@@ -1,0 +1,15 @@
+{
+  "report": "unserved",
+  "fixture": "uns2",
+  "suffix": "Unserved.txt",
+  "deck": [
+    "new circuit.uns2 basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=12 units=mi r1=0.4 x1=0.8",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=4000 pf=0.9",
+    "new line.l2 bus1=src bus2=b2 length=0.1 units=mi r1=0.05 x1=0.05",
+    "new load.ld2 bus1=b2 phases=3 kv=12.47 kw=50",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap"
+  ]
+}
