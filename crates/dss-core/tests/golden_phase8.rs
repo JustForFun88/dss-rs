@@ -1118,6 +1118,42 @@ fn show_kvbasemismatch_vals_matches_oracle() {
     run_feeder_show("show_kvbasemismatch_vals", &policy);
 }
 
+/// `Show Meters` (Pascal `ShowMeters`): the EnergyMeter register table on the
+/// daily-solved metered IEEE13 (`REGISTER_A_POST` fixture — the same meter path
+/// `corpus_live.rs` + `export_meters` pin). The register legend + the `Reg i`
+/// column header are fixed text; the per-register values print `%10.0f` (integer),
+/// so — matching the oracle to ~1e-8 rel — every rounded cell is identical →
+/// **exact equality** (`rel = 0`, `abs = 0`).
+#[test]
+fn show_meters_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_meters", &policy);
+}
+
+/// `Show Generators` (Pascal `ShowGenMeters`): the Generator register table on the
+/// generator fixture (`REGISTER_B_POST` — g1/g2 enabled, g3 disabled so the
+/// enabled-filter is exercised: g3 must NOT appear). Same `%10.0f` integer
+/// registers as `export_generators` → **exact equality** (`rel = 0`, `abs = 0`).
+#[test]
+fn show_generators_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_generators", &policy);
+}
+
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
 /// end in `ParserVars.Add('@lastshowfile', …)`, but the reports dispatched inline
 /// with only a `FireOffEditor` — `Show Convergence` (arm 4) and `Show controlqueue`
