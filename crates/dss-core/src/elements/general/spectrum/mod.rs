@@ -73,6 +73,14 @@ impl SpectrumObj {
     /// `NumHarm` rows of `harmonic, %mag, angle` (AuxParser formats — comma or
     /// space separated), `%Mag` scaled to per-unit, then shrink `NumHarm` to
     /// the count actually read.
+    ///
+    /// The read loop reproduces Pascal's `while ((F.Position + 1) < F.Size) and
+    /// (i < NumHarm)` guard (Spectrum.pas:297) byte-for-byte rather than walking
+    /// `str::lines()`: `FSReadln` consumes a line + its terminator and advances
+    /// `F.Position`, and the pre-read guard requires ≥2 bytes to remain, so a
+    /// final ≤1-byte line with no trailing newline (or a trailing blank line) is
+    /// **not** read. The oracle confirms this: a file `…\n3, 50, 0\n5` reads two
+    /// rows, not three (the naive `lines()` walk read the stray `5`).
     fn read_csv_file(&mut self, content: &str) {
         let n = self.num_harm.max(0) as usize;
         let mut harm = vec![0.0; n];
@@ -83,11 +91,22 @@ impl SpectrumObj {
         parser.set_auto_increment(false);
         let vars = ParserVars::new();
 
+        let bytes = content.as_bytes();
+        let size = bytes.len();
+        let mut pos = 0usize;
         let mut i = 0usize;
-        for line in content.lines() {
-            if i >= n {
-                break;
-            }
+        while pos + 1 < size && i < n {
+            // `FSReadln`: read up to (and consume) the next LF; strip a trailing
+            // CR for CRLF files, exactly like `str::lines`.
+            let end = content[pos..].find('\n').map_or(size, |rel| pos + rel);
+            let line_end = if end > pos && bytes[end - 1] == b'\r' {
+                end - 1
+            } else {
+                end
+            };
+            let line = &content[pos..line_end];
+            pos = if end < size { end + 1 } else { end };
+
             parser.set_cmd_string(line);
             parser.next_param(&vars);
             harm[i] = parser.make_double(&vars).unwrap_or(0.0);

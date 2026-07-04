@@ -88,6 +88,10 @@ pub(crate) fn export_profile(classes: &[DssClass], ckt: &Circuit, phases_to_plot
     // L-N pu voltage of phase `ph` at `bus`: `CABS(NodeV[ref]) / kVBase / 1000`.
     let pu_ln = |bus: &Bus, ph: i32| node_v[vref(bus, ph)].norm() / bus.kv_base / 1000.0;
     // L-L pu voltage between phases `ph`/`ph2`: `CABS(V1 − V2) / kVBase / 1732`.
+    // TODO(compat): Pascal divides by the literal `1732.0` (truncated `1000·√3
+    // ≈ 1732.0508`) at ExportResults.pas:3207/3231/3256 — reproduced exactly so
+    // the L-L pu matches the oracle. Clean fix is `1000.0 * sqrt3()` after final
+    // acceptance (the same truncated-√3 site tagged at `dispatch.rs`).
     let pu_ll = |bus: &Bus, ph: i32, ph2: i32| {
         (node_v[vref(bus, ph)] - node_v[vref(bus, ph2)]).norm() / bus.kv_base / 1732.0
     };

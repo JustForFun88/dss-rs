@@ -426,10 +426,24 @@ write-ups) is **archived** at
     matched the oracle live and migrated**. `solvable_now` **119→168**,
     COVERAGE **35.5%→50.1%**; corpus stays pristine (probe outputs
     `git clean`ed; CorpusGuard confirmed 0 dirt).
-  - Scores at the frontier: golden_phase8 **54**; lib **730**; `solvable_now`
+  - **audit-code follow-up (steps 3c p3 + 4 + 5)** — two independent agents
+    (code + tests, parallel scoped briefs over `2af06b2^..HEAD`) found **no
+    correctness bug**; the port was verified loop-for-loop against the cited
+    Pascal (`ExportProfile`/`ExportSections`, the full `TSystemMeter`/DI
+    machinery, `Spectrum.ReadCSVFile`, `Set_Year`, the Solve*/DI open-close
+    wiring). Two **LOW** code findings, both settled + fixed: (1) the `Export
+    Profile` L-L divisor `1732.0` (truncated `1000·√3`) reproduced Pascal
+    faithfully but lacked the `TODO(compat)` marker the greppable-cleanup
+    convention requires (added, citing `dispatch.rs`); (2) `Spectrum.read_csv_file`
+    walked `str::lines()` instead of Pascal's byte-position `(F.Position+1) <
+    F.Size` guard — an **oracle-confirmed** divergence (probe: a file
+    `…\n3, 50, 0\n5` reads 2 rows, not 3; a trailing blank line likewise), now
+    ported byte-faithfully (+ a `read_csv_file_reproduces_pascal_eof_guard` unit
+    test, LF + CRLF, all oracle-pinned). lib **730→731**.
+  - Scores at the frontier: golden_phase8 **54**; lib **731**; `solvable_now`
     **168**.
-  - **next:** the deferred WP8.3 audits (steps 3c p3 + 4 + 5 in one pass —
-    user-authorized multi-step execution), then WP8.4 (Show reports).
+  - **next:** the deferred WP8.3 audit-tests follow-up (the coverage gaps the
+    test auditor surfaced), then WP8.4 (Show reports).
 
 ---
 
