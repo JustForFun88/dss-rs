@@ -1362,6 +1362,29 @@ fn show_faultstudy_matches_oracle() {
     run_feeder_show("show_faultstudy", &policy);
 }
 
+/// `Show Faults` on an **unbased** circuit (WP8.4 step-10 audit-tests follow-up):
+/// a deck with no `Set Voltagebases` / `CalcVoltageBases`, so every bus keeps
+/// `kVBase = 0` and sections 2 & 3 render the `%10.1f` "L-N Volts if no base"
+/// branch (raw volts) instead of the `%10.3f` per-unit form the based IEEE13 golden
+/// exercises. A prior `solve mode=snap` lets FaultStudy run (a **cold**
+/// `solve mode=faultstudy` access-violates the oracle — that degenerate path is the
+/// no-golden `fault_study::tests::fault_study_cold_solve_is_safe` unit test). The
+/// raw-volt cells (`%10.1f`, thousands of volts) and the section-1 amps/X-R are
+/// byte-identical Rust↔oracle → **exact equality** (`rel = 0`, `abs = 0`); the
+/// single-phase `B2` lateral also pins a 1-node bus row.
+#[test]
+fn show_faultstudy_unbased_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_faultstudy_unbased", &policy);
+}
+
 /// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder
 /// head + em2 on the 632-645 lateral. The zones **partition** (em1 stops at em2), so
 /// the two data rows carry distinct per-zone registers — pinning that the legend is
