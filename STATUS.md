@@ -34,18 +34,17 @@ current frontier:
   oracle-pinned coverage tests (incl. the multi-meter `Bus_Int_Duration` cross-zone
   bug — filed upstream + in-range regime gated). golden_phase8 **59**; lib **731**.
   Detail in §1f.
-- **WP8.4 (Show reports) — step 1 COMPLETE, gate-green.** The `do_show_cmd`
-  dispatcher now parses the `ShowOptions.pas` option/solve-guard and routes the
-  first ported keywords to real fixed-width text formatters: `Show Buses`
-  (`ShowBuses`), `Show Losses` (`ShowLosses`), `Show Taps` (`ShowRegulatorTaps`) —
-  plus `Show panel`→#999 (not-supported-in-DSS-Extensions). Every **not-yet-ported**
-  `Show` keyword stays a *silent* headless no-op (so the `solvable_now` decks with
-  `Show Power`/`Show Voltage`/… don't regress; the live gate asserts errors empty).
-  New `report/show/` module + the `format.rs` `Pad`/`PadDots`/`EncloseQuotes` +
-  width-aware number formatters; a new **whitespace+comma tokenizer** in
-  `harness::compare_export` (`sep: ' '`) for the fixed-width tables; `gen_phase8.py`
-  `gen_show_reports` + 3 goldens (golden_phase8 **59→62**). **next = WP8.4 step 2**
-  (the angle-bearing solution Shows Voltages/Currents/Powers + Elements).
+- **WP8.4 (Show reports) — steps 1–4 COMPLETE + audited, gate-green.** The
+  `do_show_cmd` dispatcher (`ShowOptions.pas` option/solve-guard) + the new
+  `report/show/` module of fixed-width text formatters: `Show Buses`/`Losses`/`Taps`
+  + `panel`→#999 (step 1); `Voltages` seq (step 2); `Currents`/`Powers` seq (step 3);
+  `Voltages` node/elem + `Currents` elem + `Elements` (step 4). Unported keywords
+  (Powers elem, meters/zone/topology/…) stay *silent* headless no-ops. Shared
+  machinery: `format.rs` `Pad`/`PadDots`/width formatters, the whitespace+comma
+  `compare_export` tokenizer (`sep: ' '`) + the content-relative
+  `ColSel::AfterToken`. `TODO(compat)`s: `MaxDeviceNameLength=0`, `SetMaxBusNameLength`
+  floor-12 (both probe-proven backend divergences). golden_phase8 **59→71**. **next =
+  WP8.4 step 5** (`Show Powers` code 1 element form + the diagnostic/topology Shows).
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
