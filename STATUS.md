@@ -625,8 +625,15 @@ write-ups) is **archived** at
   `show_reports_are_silent_noops` unit test ran `Show Voltage LN Nodes` (now a *real*
   report since step 4) with no datapath → wrote `t_VLN_Node.txt` into the source tree;
   set a scratch datapath + switched to still-unported keywords. golden_phase8 **69→71**.
-  **next: WP8.4 step 5** (`Show Powers` code 1 element form + the diagnostic/topology
-  Shows).
+- **WP8.4 (Show reports) — steps 5–8 + the WP8 goldens-exactness audit** continue in
+  the **header frontier** (§ top): that block carries the recent-step detail (step 5
+  `Powers` elem + `Result`/`EventLog`/`Ratings`/`Variables`/`Mismatch`/`monitor`;
+  step 6; step 7 the diagnostic/matrix cluster `Convergence`/`Y`/`controlqueue`/
+  `kvbasemismatch`; step 8 the register tables `Meters`/`Generators`; and the
+  exact-equality re-measure) until the **WP8.4-completion archive pass** folds the
+  whole Show record into [`docs/phase-records/phase-8.md`](docs/phase-records/phase-8.md),
+  the established phase-record pattern. The current active step / next is authoritative
+  in the header frontier.
 
 ---
 
