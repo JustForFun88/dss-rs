@@ -919,6 +919,13 @@ pub enum ColSel {
     /// Selecting "the column after `/_`" pins it regardless of the leading-token
     /// shift.
     AfterToken(String),
+    /// The column `n` positions from the **end** of the row (`FromEnd(0)` = the
+    /// last token). Another content-relative selector, for reports whose leading
+    /// name column varies in token count between rows — `Show Mismatch`'s
+    /// `"System Ground"` splits into two tokens while a bus name is one, shifting
+    /// every column by 1, but the value columns are stable *from the end*
+    /// (`Max Current` = last, `%error` = `FromEnd(1)`, `Current Sum` = `FromEnd(2)`).
+    FromEnd(usize),
 }
 
 impl ColSel {
@@ -932,6 +939,7 @@ impl ColSel {
             ColSel::AfterToken(glyph) => {
                 j > 0 && fields.get(j - 1).is_some_and(|f| f.trim() == glyph)
             }
+            ColSel::FromEnd(n) => !fields.is_empty() && j == fields.len().wrapping_sub(1 + n),
         }
     }
 }
