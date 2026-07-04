@@ -1141,6 +1141,15 @@ fn show_meters_matches_oracle() {
 /// generator fixture (`REGISTER_B_POST` — g1/g2 enabled, g3 disabled so the
 /// enabled-filter is exercised: g3 must NOT appear). Same `%10.0f` integer
 /// registers as `export_generators` → **exact equality** (`rel = 0`, `abs = 0`).
+///
+/// Note (WP8.4 step-8 audit F1): g1/g2's `$` register is **exactly 7.5**, sitting on
+/// the `%10.0f` rounding half-boundary → rendered `8`. This is stable, not a
+/// knife's-edge: the `$` register derives from the **stiff, clean** `kWh = 300`
+/// (a `model=1` generator holds P = 100 kW, so ∫P dt = 300 exactly, bit-identical on
+/// both engines — no faer-vs-KLU residual), and `7.5 → 8` under *both* round-half-to-
+/// even and round-half-away, so the exact compare cannot straddle. (If the Generator
+/// register core ever integrated *measured* terminal power instead, `$` could drift
+/// to `7.4999…`; that would be a real regression this pin would correctly catch.)
 #[test]
 fn show_generators_matches_oracle() {
     let policy = ExportPolicy {
@@ -1152,6 +1161,58 @@ fn show_generators_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_show("show_generators", &policy);
+}
+
+/// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder
+/// head + em2 on the 632-645 lateral. The zones **partition** (em1 stops at em2), so
+/// the two data rows carry distinct per-zone registers — pinning that the legend is
+/// emitted **once** from the FIRST meter (`meters[0]`) while each row uses its own
+/// registers. A regression that printed the legend per-meter, dropped a row, or
+/// reused `meters[0]`'s registers for both rows fails `ExactOrdered`. Integer
+/// `%10.0f` registers → **exact equality**.
+#[test]
+fn show_meters_multi_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_meters_multi", &policy);
+}
+
+/// `Show Meters` / `Show Generators` on a solved IEEE13 with **no** meters /
+/// generators (audit F2 coverage): pins the empty-list banner branches —
+/// `ShowMeters` emits the `No Energymeter Elements Defined.` line, `ShowGenMeters`
+/// emits its two-line banner only. Fixed text (no numbers), diffed exact against the
+/// oracle bytes.
+#[test]
+fn show_meters_none_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_meters_none", &policy);
+}
+
+/// Companion to [`show_meters_none_matches_oracle`]: the empty-Generators banner.
+#[test]
+fn show_generators_none_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_generators_none", &policy);
 }
 
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
