@@ -66,19 +66,28 @@ fn report_verbs_before_circuit_error_301() {
     }
 }
 
-/// The unported `Show` reports are *silent* no-ops (no recorded error) — this is
-/// what keeps the 44 `solvable_now` decks that contain `Show Power`/`Show
-/// Voltage`/`Show f` green (the live gate asserts `errors().is_empty()`).
+/// The still-unported `Show` reports are *silent* no-ops (no recorded error) —
+/// this is what keeps the `solvable_now` decks that contain `Show Power`/`Show
+/// meters`/`Show f` green (the live gate asserts `errors().is_empty()`).
+///
+/// Route the datapath to a scratch dir first: since WP8.4 several `Show` forms
+/// (Voltages/Currents/Elements) are **real reports** that write a file, so a
+/// no-datapath `Show Voltage … Nodes` here would leak into the source tree. The
+/// keywords below are the ones *still* deferred (Powers element form → code-1
+/// no-op; `meters` → the trailing `_ => {}`; `f` → an unmatched keyword), so they
+/// write nothing — but the scratch datapath keeps the test tree-safe regardless.
 #[test]
 fn show_reports_are_silent_noops() {
+    let set_dp = format!("set datapath=\"{}\"", std::env::temp_dir().display());
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
     dss.command("set voltagebases=[12.47]");
     dss.command("calcvoltagebases");
     dss.command("solve");
+    dss.command(&set_dp);
     assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
-    for c in ["Show Power kVA elements", "Show Voltage LN Nodes", "show f"] {
+    for c in ["Show Power kVA elements", "show meters", "show f"] {
         dss.command(c);
         assert!(dss.errors().is_empty(), "{c:?}: {:?}", dss.errors());
     }

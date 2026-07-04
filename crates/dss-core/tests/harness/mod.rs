@@ -910,16 +910,28 @@ pub enum ColSel {
     /// non-deterministic column by position (the `Summary` `DateTime` column 0,
     /// masked via [`GateSpec::Mask`]).
     Index(usize),
+    /// The column **immediately following** a token equal to `glyph` in the row.
+    /// A *content-relative* selector (needs the row fields, not just the header):
+    /// used for the fixed-width `Show` angle columns, which sit right after the
+    /// `/_` angle glyph but at a **row-dependent index** — the first row of each
+    /// bus carries an extra leading `..` dots token (`PadDots`) and the element
+    /// forms split the parenthesised `(pu)`/`(nref)` into two tokens, so a fixed
+    /// `Index`/`Parity` cannot target the angle across every row. Selecting "the
+    /// column after `/_`" pins it regardless of the leading-token shift.
+    AfterToken(String),
 }
 
 impl ColSel {
-    fn matches(&self, j: usize, colnames: &[String]) -> bool {
+    fn matches(&self, j: usize, colnames: &[String], fields: &[String]) -> bool {
         match self {
             ColSel::Prefix(p) => colnames
                 .get(j)
                 .is_some_and(|n| n.trim().to_lowercase().starts_with(&p.to_lowercase())),
             ColSel::Parity { start, parity } => j >= *start && (j - start) % 2 == *parity,
             ColSel::Index(i) => j == *i,
+            ColSel::AfterToken(glyph) => {
+                j > 0 && fields.get(j - 1).is_some_and(|f| f.trim() == glyph)
+            }
         }
     }
 }
@@ -998,9 +1010,9 @@ impl ExportPolicy {
     /// The (`rel`, `abs`) tolerance for the field in column `j`: the first
     /// [`ColTol`] whose [`ColSel`] matches, else the default. `colnames` is the
     /// last header line split on the separator.
-    fn tol_for_col(&self, j: usize, colnames: &[String]) -> (f64, f64) {
+    fn tol_for_col(&self, j: usize, colnames: &[String], oracle_fields: &[String]) -> (f64, f64) {
         for ct in &self.col_tol {
-            if ct.sel.matches(j, colnames) {
+            if ct.sel.matches(j, colnames, oracle_fields) {
                 return (ct.rel, ct.abs);
             }
         }
@@ -1013,7 +1025,7 @@ impl ExportPolicy {
     /// [`ColTol::gate`]). Only the *matching* `ColTol`'s gate applies.
     fn skip_col(&self, j: usize, colnames: &[String], oracle_fields: &[String]) -> bool {
         for ct in &self.col_tol {
-            if ct.sel.matches(j, colnames) {
+            if ct.sel.matches(j, colnames, oracle_fields) {
                 // Band-limit: skip only a *nonzero* sub-threshold denominator
                 // (`0 < |v| < thresh`). An exactly-zero denominator prints the
                 // ratio as `0` (Pascal `if I1 > 0`) / the angle of an exact zero as
@@ -1117,7 +1129,7 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                     if policy.skip_col(j, &colnames, &of) {
                         continue;
                     }
-                    let (rel, abs) = policy.tol_for_col(j, &colnames);
+                    let (rel, abs) = policy.tol_for_col(j, &colnames, &of);
                     field_eq(a, e, rel, abs, &format!("{ctx}: row {i} field {j}"));
                 }
             }
@@ -1150,7 +1162,7 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                     if policy.skip_col(j, &colnames, of) {
                         continue;
                     }
-                    let (rel, abs) = policy.tol_for_col(j, &colnames);
+                    let (rel, abs) = policy.tol_for_col(j, &colnames, of);
                     field_eq(a, e, rel, abs, &format!("{ctx}: row {k:?} field {j}"));
                 }
             }
