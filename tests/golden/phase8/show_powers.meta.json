@@ -1,0 +1,9 @@
+{
+  "report": "powers",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "Power_seq_kVA.txt"
+}

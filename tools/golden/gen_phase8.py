@@ -415,11 +415,15 @@ SHOW_REPORTS = [
     # `Show Voltages` default (ShowOptionCode 0): the symmetrical-component form,
     # file `<case>_VLN.txt` (L-N; bare `show voltages`, no LL/node/elem selector).
     ("voltages", "VLN.txt", "show_voltages"),
+    # `Show Currents`/`Powers` default (code 0): the per-element sequence forms.
+    ("currents", "Curr_Seq.txt", "show_currents"),
+    ("powers", "Power_seq_kVA.txt", "show_powers"),
 ]
 
 
 def gen_show_reports(d) -> None:
     """Capture the oracle's `Show` fixed-width text reports on the solved IEEE13 feeder."""
+    d.AllowEditor = False  # don't spawn a Notepad per Show report (see main())
     master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
@@ -988,6 +992,12 @@ def main() -> None:
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
     import dss  # noqa: F401
     from dss import DSS as d
+
+    # Suppress the report editor auto-open (`FireOffEditor`): the `Show` commands
+    # call it per report and would spawn a Notepad window for every golden file.
+    # Report *content* is unaffected — the file is always written; only the GUI
+    # editor launch is disabled (headless-faithful, PHASE8_PLAN §2.2).
+    d.AllowEditor = False
 
     gen_counts(d)
     gen_feeder_reports(d)

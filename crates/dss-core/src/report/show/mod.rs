@@ -9,12 +9,16 @@
 //! the field structure and the number formats are ported faithfully.
 
 mod buses;
+mod currents;
 mod losses;
+mod powers;
 mod taps;
 mod voltages;
 
 pub(crate) use buses::show_buses;
+pub(crate) use currents::show_currents;
 pub(crate) use losses::show_losses;
+pub(crate) use powers::show_powers;
 pub(crate) use taps::show_taps;
 pub(crate) use voltages::show_voltages;
 
@@ -35,16 +39,23 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     m
 }
 
-/// Pascal `SetMaxDeviceNameLength` (`ShowResults.pas:111`): the longest
-/// `len(Name) + len(ParentClass.Name) + 1` over every circuit element (the
-/// `CktElements` master list, creation order), floored at 0. **Byte** length
-/// (`str::len`), matching Pascal's `Length(AnsiString)`.
-pub(crate) fn max_device_name_length(classes: &[DssClass], ckt: &Circuit) -> usize {
-    let mut m = 0;
-    for &r in &ckt.ckt_elements {
-        let class_len = classes[r.cls].props.class_name().len();
-        let name_len = classes[r.cls].objects[r.idx].data().name().len();
-        m = m.max(name_len + class_len + 1);
-    }
-    m
+/// Pascal `SetMaxDeviceNameLength` (`ShowResults.pas:111`): nominally the longest
+/// `len(Name) + len(ParentClass.Name) + 1` over the `CktElements` master list.
+///
+/// TODO(compat): the **pinned dss_capi 0.14.5 backend** empirically returns **0**
+/// here regardless of the element names — the device-name column in every
+/// `Show Currents`/`Powers`/`Losses`/… report is left **unpadded** (the
+/// `Paddots`/`Pad(…, MaxDeviceNameLength+2)` never fires, since a 2-char width is
+/// below every `EncloseQuotes(name)`). Proven by probe: adding a 25-char-named
+/// line to a deck does not widen the column, and the per-row terminal number sits
+/// immediately after each (variable-length) name, not on a fixed column. The
+/// vendored Pascal *source* would compute e.g. 16 on IEEE13, so this is a
+/// backend-vs-source divergence reproduced 1:1 to match the oracle (settled
+/// empirically per CLAUDE.md — "the oracle is the spec"). Matters only for the
+/// dot-padded (`Paddots`) reports, where a nonzero width would split the name into
+/// two whitespace tokens; the space-padded (`Pad`) reports are token-invariant to
+/// it. Clean fix in the post-1:1 pass: compute the real max (and regenerate the
+/// goldens against a fixed upstream).
+pub(crate) fn max_device_name_length(_classes: &[DssClass], _ckt: &Circuit) -> usize {
+    0
 }
