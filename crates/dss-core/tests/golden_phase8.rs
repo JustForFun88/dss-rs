@@ -553,7 +553,7 @@ fn show_buses_matches_oracle() {
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 1e-3,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_show("show_buses", &policy);
@@ -570,38 +570,33 @@ fn show_taps_matches_oracle() {
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 1e-5,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_show("show_taps", &policy);
 }
 
 /// `Show Losses` (Pascal `ShowLosses`): per-PD kW (`%10.5f`) / `% of Power`
-/// (`%8.2f`) / kvar (`%.6g`) plus the line/transformer/total aggregates. Each
-/// column keeps its **own** print floor (audit-tests WP8.4 step 1): the data rows
-/// are `"name" kW %ofPower kvar`, so `% of Power` sits at token index 2 — the only
-/// column with the coarse `%8.2f` ±0.01 additive floor, isolated via `col_tol`
-/// (`abs = 0.011`). The default `rel = 1e-4` / `abs = 1e-5` holds the kW (`%10.5f`)
-/// and kvar (`%.6g`) columns to their own 1-ulp print floors, so a *formatting*
-/// regression on a small cell (e.g. `0.03228 → 0.042`) fails instead of hiding
-/// under a blanket `0.011`. (The loss physics is pinned to 1e-8 by
-/// `corpus_live.rs`; this is a report-layout / printing-floor check —
-/// tests/TOLERANCE_NOTES.md.) The `Index(2)` selector also touches index 2 of the
-/// prose/summary lines, but those are either text tokens (tolerance-inert, text
-/// compare) or the `%10.1f` aggregate losses that agree far tighter than 0.011.
+/// (`%8.2f`) / kvar (`%.6g`) plus the line/transformer/total aggregates. Every cell
+/// is byte-identical Rust↔oracle → **exact equality** (`rel = 0`, `abs = 0`), except
+/// the near-zero **kvar residual** (col 3) of a (near-)lossless-reactive PD element,
+/// where the loss collapses to a ~1e-14 kvar faer-vs-KLU cancellation (`-1.45519e-14`
+/// vs `-4.36557E-14`, printed at 6 sig). That cell is self-gated on `|kvar| < 1e-9`
+/// (well below any real reactive loss). The loss physics is pinned to 1e-8 by
+/// `corpus_live.rs`.
 #[test]
 fn show_losses_matches_oracle() {
     let policy = ExportPolicy {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-5,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![ColTol {
-            sel: ColSel::Index(2),
+            sel: ColSel::Index(3), // kvar
             rel: 0.0,
-            abs: 0.011,
-            gate: None,
+            abs: 0.0,
+            gate: Some(GateSpec::Col(3, 1e-9)), // skip a near-zero kvar cancellation
         }],
     };
     run_feeder_show("show_losses", &policy);
@@ -609,28 +604,37 @@ fn show_losses_matches_oracle() {
 
 /// `Show Voltages` (Pascal `ShowVoltages` case 0 + `WriteSeqVoltages`): the
 /// symmetrical-component voltages by bus — `V1 (kV)` / p.u. / `V2 (kV)` / `%V2/V1`
-/// / `V0 (kV)` / `%V0/V1`, all `%9.4g` (4 sig). Empirically **every significant
-/// cell is bit-identical** between the two engines (V1 is pinned to 1e-8 by
-/// `corpus_live.rs`, and `%9.4g` rounds the agreeing values identically); the
-/// **only** nonzero divergence is `sourcebus`'s `V0 (kV)` = `4.32e-9` (oracle) vs
-/// `4.319e-9` (Rust), abs `1e-12` — the faer-vs-KLU last digit of a ~2.4 kV
-/// cancellation collapsing to ~1e-9 kV, plus its ~1.5e-12 knock-on in `%V0/V1`.
-/// So `abs = 1e-8` (4 orders over that proven 1e-12 floor, for cross-platform
-/// faer margin) with a tight `rel = 1e-4`: the near-zero balanced-bus cell passes
-/// on `abs` (its own `rel` is ~2.3e-4, above the band — abs is doing exactly its
-/// documented job of absorbing numerator-side cancellation noise), while every
-/// significant small cell (e.g. bus 650 `V2 = 8.009e-5`, bit-exact) stays pinned
-/// far tighter than the old blanket `1e-5` (audit-tests WP8.4 step 2 —
-/// tests/TOLERANCE_NOTES.md).
+/// / `V0 (kV)` / `%V0/V1`, all `%9.4g`. Every **significant** cell is byte-identical
+/// Rust↔oracle → **exact equality** (`rel = 0`, `abs = 0`). The only exceptions are
+/// the near-zero **symmetrical-component residuals** of a balanced bus — `V2`
+/// (col 3) and `V0` (col 5), e.g. `sourcebus`'s `V0 = 4.319e-9` vs `4.32E-9` — a
+/// faer-vs-KLU last-digit cancellation of a ~2.4 kV difference collapsing to ~1e-9 kV
+/// (and its knock-on in the `%V2/V1`/`%V0/V1` ratios). Those cells are genuinely not
+/// comparable, so each is gated on **its own** near-zero magnitude (`< 1e-6 kV`,
+/// provably between the ~1e-9 residual and the smallest real seq cell, `V2 = 8e-5`
+/// on bus 650, which stays exact-pinned).
 #[test]
 fn show_voltages_matches_oracle() {
+    // Self-gate the near-zero seq residuals: V2 (col 3) / %V2V1 (col 4) on |V2|;
+    // V0 (col 5) / %V0V1 (col 6) on |V0|.
+    let near_zero = |col: usize, on: usize| ColTol {
+        sel: ColSel::Index(col),
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::Col(on, 1e-6)),
+    };
     let policy = ExportPolicy {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-8,
-        col_tol: vec![],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![
+            near_zero(3, 3),
+            near_zero(4, 3),
+            near_zero(5, 5),
+            near_zero(6, 5),
+        ],
     };
     run_feeder_show("show_voltages", &policy);
 }
@@ -657,20 +661,27 @@ fn show_currents_matches_oracle() {
     let pctcol = |i: usize, gate: Option<GateSpec>| ColTol {
         sel: ColSel::Index(i),
         rel: 0.0,
-        abs: 0.011,
+        abs: 0.0,
         gate,
     };
     let policy = ExportPolicy {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-5,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![
-            pctcol(4, Some(GateSpec::Col(2, 1e-6))), // %I2/I1, gated on near-zero I1
-            pctcol(6, Some(GateSpec::Col(2, 1e-6))), // %I0/I1, gated on near-zero I1
-            pctcol(7, None),                         // %Normal
-            pctcol(8, None),                         // %Emergency
+            // Near-zero seq-current **magnitudes** self-gated (incl. exact zero via
+            // `MinCols(c,c,…)`): a balanced element's I2/I0 collapse to a ~2e-11 A
+            // faer-vs-KLU cancellation (printed at 5 sig), and a floating switch
+            // terminal's I1 to ~1e-12 A — while the ratio columns print `0.00`
+            // (`%8.2f`) → identical. `< 1e-6 A` sits between the residuals and the
+            // smallest real seq current.
+            pctcol(2, Some(GateSpec::MinCols(2, 2, 1e-6))), // I1
+            pctcol(3, Some(GateSpec::MinCols(3, 3, 1e-6))), // I2
+            pctcol(5, Some(GateSpec::MinCols(5, 5, 1e-6))), // I0
+            pctcol(4, Some(GateSpec::Col(2, 1e-6))),        // %I2/I1, gated on near-zero I1
+            pctcol(6, Some(GateSpec::Col(2, 1e-6))),        // %I0/I1, gated on near-zero I1
         ],
     };
     run_feeder_show("show_currents", &policy);
@@ -690,7 +701,7 @@ fn show_powers_matches_oracle() {
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.11,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_show("show_powers", &policy);
@@ -713,12 +724,12 @@ fn show_voltages_node_matches_oracle() {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-4,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![ColTol {
             sel: ColSel::AfterToken("/_".into()),
             rel: 0.0,
-            abs: 0.11,
+            abs: 0.0,
             gate: None,
         }],
     };
@@ -740,12 +751,12 @@ fn show_voltages_elem_matches_oracle() {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-4,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![ColTol {
             sel: ColSel::AfterToken("/_".into()),
             rel: 0.0,
-            abs: 0.11,
+            abs: 0.0,
             gate: None,
         }],
     };
@@ -769,18 +780,33 @@ fn show_voltages_elem_matches_oracle() {
 /// Current physics is pinned to 1e-8 by `corpus_live.rs`.
 #[test]
 fn show_currents_elem_matches_oracle() {
+    // Everything is byte-identical (exact) EXCEPT the near-zero cancellation
+    // residual rows (`|I| < 1e-4 A`): the magnitude (col 2), the real/imag parts
+    // (cols 6/8) and the angle (after `/_`) all collapse to faer-vs-KLU noise there
+    // and are gated on `|I|` (col 2). `1e-4 A` brackets this report's noise floor
+    // (~1.08e-5 A) vs the smallest real current (5.72e-4 A).
+    // Gate on `|I|` (col 2) `< 1e-4` **including exact zero** (`MinCols(2,2,…)`):
+    // the oracle prints an open/grounded conductor's current as exactly `0` while
+    // Rust carries a tiny cancellation residual, so a zero-excluding gate would miss
+    // it.
+    let on_i = |sel: ColSel| ColTol {
+        sel,
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::MinCols(2, 2, 1e-4)),
+    };
     let policy = ExportPolicy {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-5,
-        col_tol: vec![ColTol {
-            sel: ColSel::AfterToken("/_".into()),
-            rel: 0.0,
-            abs: 0.11,
-            gate: Some(GateSpec::Col(2, 1e-4)),
-        }],
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![
+            on_i(ColSel::Index(2)),                // |I|
+            on_i(ColSel::Index(6)),                // Re
+            on_i(ColSel::Index(8)),                // Im
+            on_i(ColSel::AfterToken("/_".into())), // angle
+        ],
     };
     run_feeder_show("show_currents_elem", &policy);
 }
@@ -833,12 +859,12 @@ fn show_voltages_ll_node_matches_oracle() {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-4,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![ColTol {
             sel: ColSel::AfterToken("/_".into()),
             rel: 0.0,
-            abs: 0.11,
+            abs: 0.0,
             gate: None,
         }],
     };
@@ -848,16 +874,17 @@ fn show_voltages_ll_node_matches_oracle() {
 /// `Show Powers e` (Pascal `ShowPowers` case 1): per-terminal, per-conductor branch
 /// power flow `BUS node kW +j kvar kVA PF`, with the `... TERMINAL TOTAL` per
 /// terminal (incl. the 1-phase/2-terminal PD floating special case). The kW/kvar/kVA
-/// are `%8.1f` (additive ±0.05 floor → `abs = 0.11`); the `PF` (`%8.4f`, token idx 6)
-/// is a ratio of the pinned powers, held to `abs = 1.1e-4` — the same `1.1 × 10⁻ᴺ`
-/// `%.Nf`-render floor the `0.11`/`0.011` columns use (one last-digit unit of the
-/// 4-decimal render, `1e-4`, plus ~10% margin), NOT loosened above it. (Empirically
-/// the PF strings are byte-identical Rust↔oracle here — measured gap 0 at `abs=1e-9`;
-/// the `1.1e-4` guards only a cross-platform `%8.4f` rounding-boundary straddle.)
-/// The PF is gated on `min(|kW|, |kvar|)` (cols 2, 4) near-zero — a purely-reactive
-/// / purely-real / `S ≈ 0` conductor has a degenerate power factor (the oracle's
-/// exact-zero part → PF 1.0 vs a Rust cancellation residual). Power physics is
-/// pinned to 1e-8 by `corpus_live.rs`.
+/// Every column (kW/kvar/kVA `%8.1f`, PF `%8.4f`) is checked for **exact equality**
+/// (`rel = 0`, `abs = 0`): the golden is the oracle's captured bytes and the Rust
+/// engine is deterministic, so the powers — pinned to ~1e-9 Rust↔oracle, far below
+/// any print step — round to *byte-identical* strings; there is nothing to tolerate,
+/// they are equal or it is a regression (verified: the whole report passes at
+/// `abs = 0`). The **only** exception is the PF of a near-purely-reactive / -real /
+/// `S ≈ 0` conductor (`min(|kW|, |kvar|)` ≈ 0), where the powers *themselves* differ
+/// — the oracle's `S.re`/`S.im` is exactly 0 → PF 1.0, while a faer-vs-KLU
+/// cancellation residual is tiny-nonzero → near-zero/sign-flipped PF; those cells are
+/// genuinely not comparable and are gated out. Power physics is pinned to 1e-8 by
+/// `corpus_live.rs`.
 #[test]
 fn show_powers_elem_matches_oracle() {
     let policy = ExportPolicy {
@@ -865,14 +892,13 @@ fn show_powers_elem_matches_oracle() {
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
-        abs: 0.11,
+        abs: 0.0,
         col_tol: vec![ColTol {
+            // The PF column carries only the degenerate-power gate; its tolerance is
+            // the exact default.
             sel: ColSel::Index(6),
             rel: 0.0,
-            abs: 1.1e-4,
-            // Skip PF where the power is near-purely-reactive/real (min(|kW|,|kvar|)
-            // ≈ 0): the oracle's exact-zero part gives PF=1.0, a Rust cancellation
-            // residual gives near-zero/sign-flipped (e.g. the pure-reactive caps).
+            abs: 0.0,
             gate: Some(GateSpec::MinCols(2, 4, 1e-3)),
         }],
     };
@@ -910,8 +936,8 @@ fn show_eventlog_matches_oracle() {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-6,
-        abs: 1e-9,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_show("show_eventlog", &policy);
@@ -929,8 +955,8 @@ fn show_monitor_matches_oracle() {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-5,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_show("show_monitor", &policy);
@@ -947,6 +973,12 @@ fn show_monitor_matches_oracle() {
 /// differs between the two engines by construction and is not cross-engine
 /// comparable. The `FromEnd` selectors are robust to `"System Ground"` splitting
 /// into two tokens (which shifts the leading columns by one vs a bus-name row).
+/// `Max Current` is held to `abs = 1.1e-5` — not exact — because at `%10.5f` its
+/// last digit genuinely straddles a rounding boundary on this feeder (a `473.76972`
+/// vs `473.76971` cell): the current agrees Rust↔oracle to ~5e-6 (1e-8 rel of a
+/// ~473 A value), comparable to the `1e-5` render step, so the two solves round to
+/// opposite sides — the `1.1 × 10⁻⁵` `%.5f` render floor (like the `0.11`/`0.011`
+/// columns), not a slack tolerance.
 #[test]
 fn show_mismatch_matches_oracle() {
     let residual = |n: usize| ColTol {
@@ -959,8 +991,8 @@ fn show_mismatch_matches_oracle() {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-5,
+        rel: 0.0,
+        abs: 1.1e-5, // Max Current: the %10.5f render floor (straddle); ints/text exact
         col_tol: vec![residual(2), residual(1)],
     };
     run_feeder_show("show_mismatch", &policy);
@@ -979,8 +1011,8 @@ fn show_variables_matches_oracle() {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: 1e-4,
-        abs: 1e-4,
+        rel: 0.0,
+        abs: 0.0,
         col_tol: vec![],
     };
     run_feeder_show("show_variables", &policy);
