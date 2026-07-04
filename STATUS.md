@@ -28,8 +28,10 @@ WP8.4 (Show).** Full Phase-8 detail is in **§1f**; the current frontier:
   **50.1%**), incl. fixing the **silent Spectrum `CSVFile` no-op** two IEEE_519
   harmonicT decks exposed. The two independent audits found **no correctness bug**;
   two LOW code findings fixed (`Export Profile` `1732.0` `TODO(compat)` marker; the
-  `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + four
-  oracle-pinned coverage tests. golden_phase8 **58**; lib **731**. Detail in §1f.
+  `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + five
+  oracle-pinned coverage tests (incl. the multi-meter `Bus_Int_Duration` cross-zone
+  bug — filed upstream + in-range regime gated). golden_phase8 **59**; lib **731**.
+  Detail in §1f.
 - **next = WP8.4 (Show reports)** — upgrade the `Show` no-op to real text reports.
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
@@ -76,7 +78,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/`Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=` wiring (§2.6); the completion gate migrated `solvable_now` **119→168** (COVERAGE **50.1%**, incl. the silent `Spectrum.CSVFile` no-op fix). Both independent audits found **no correctness bug**; 2 LOW code findings fixed (the `Export Profile` `1732.0` `TODO(compat)` marker; the `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + 4 oracle-pinned coverage tests (golden_phase8 **58**; lib **731**). **next = WP8.4 (Show).** Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/`Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=` wiring (§2.6); the completion gate migrated `solvable_now` **119→168** (COVERAGE **50.1%**, incl. the silent `Spectrum.CSVFile` no-op fix). Both independent audits found **no correctness bug**; 2 LOW code findings fixed (the `Export Profile` `1732.0` `TODO(compat)` marker; the `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + 5 oracle-pinned coverage tests (golden_phase8 **59**; lib **731**). **next = WP8.4 (Show).** Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -85,7 +87,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 731, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 58,
+                            # golden_phase7_protection 1, golden_phase8 59,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -330,8 +332,8 @@ write-ups) is **archived** at
   `Ysc`/`BusCurrent`); `BusReliability`/`BranchReliability`/`Capacity`/`Overloads`/
   `Unserved`/`AllocationFactors`/`Sections`/`Profile` (step 3c, over the `RelCalc`
   fields — incl. the meter `SectionCount`/`FeederSections` persistence, the seven
-  `Profile` `PhasesToPlot` branches, and the documented multi-meter
-  `Bus_Int_Duration` OOB skip); the `TSystemMeter` core + the full demand-interval
+  `Profile` `PhasesToPlot` branches, and the multi-meter `Bus_Int_Duration`
+  cross-zone bug — filed + gated, see below); the `TSystemMeter` core + the full demand-interval
   (`DI_*`/phase-voltage/overload/volt-exception) writers + their `Set` handlers +
   the `Set year=` `Set_Year` side effects + the Solve*/DI open-close wiring
   (step 4, §2.6); and the completion gate (step 5) — 47 probe-clean decks migrated
@@ -340,11 +342,16 @@ write-ups) is **archived** at
   (`bacaf13` code, `8d58a8e` tests) found **no correctness bug**; two LOW code
   findings fixed (the `Export Profile` `1732.0` truncated-√3 `TODO(compat)` marker;
   the `Spectrum.read_csv_file` byte-position `(F.Position+1) < F.Size` EOF guard,
-  an oracle-confirmed divergence over `str::lines()`), and four oracle-pinned tests
+  an oracle-confirmed divergence over `str::lines()`), and five oracle-pinned tests
   closed the coverage gaps (`Set year=` lifecycle, the five `Get` DI echoes, the
-  `NPhases<3` overload I2-column mapping, the Spectrum-`FileLoad` deck round-trip).
-  Full per-step + audit detail in [`docs/phase-records/phase-8.md`](docs/phase-records/phase-8.md).
-  golden_phase8 **58**; lib **731**; `solvable_now` **168**.
+  `NPhases<3` overload I2-column mapping, the Spectrum-`FileLoad` deck round-trip,
+  and — after the user flagged the parked multi-meter `Bus_Int_Duration` note — the
+  cross-zone reliability contamination, now **empirically settled**: a new upstream
+  bug report (`investigations/reliability_bus_int_duration_oob_bug_report.md`), the
+  in-range regime gated by `export_busreliability_multimeter`, the out-of-range OOB
+  proven-nondeterministic across processes). Full per-step + audit detail in
+  [`docs/phase-records/phase-8.md`](docs/phase-records/phase-8.md).
+  golden_phase8 **59**; lib **731**; `solvable_now` **168**.
 - **next: WP8.4 (Show reports)** — upgrade the current `Show` no-op to real text
   reports (shares field logic with the WP8.2 exports).
 

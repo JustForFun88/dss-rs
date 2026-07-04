@@ -707,6 +707,73 @@ def gen_di_overloads_1ph(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# Multi-meter BusReliability fixture (audit follow-up — the multi-meter
+# `Bus_Int_Duration` cross-zone bug, see
+# `investigations/reliability_bus_int_duration_oob_bug_report.md`). Two metered
+# feeders off one source, EACH with two OCP sections, so the second meter's
+# duration loop reads the first meter's zone buses at section ids 1 and 2 — both
+# IN RANGE for its own 2-section array. That triggers the *deterministic*
+# cross-zone contamination (a bus's Bus_Int_Duration is overwritten from another
+# feeder's section) with NO out-of-bounds read, so both engines agree bus-for-bus
+# and the port's reproduction of the upstream bug is pinnable. (The OOB regime —
+# a later meter with FEWER sections — is proven-nondeterministic UB in the report
+# and is deliberately not gated.) Distinct per-line repair times make the
+# contamination observable in the Duration column.
+RELIABILITY_MULTIMETER_DECK = [
+    "new circuit.sect basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.2 pctperm=80 repair=4",
+    "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.1 x1=0.1 faultrate=0.3 pctperm=90 repair=5",
+    "new line.l3 bus1=src bus2=c1 length=2 units=mi r1=0.2 x1=0.2 faultrate=0.4 pctperm=70 repair=6",
+    "new line.l4 bus1=c1 bus2=c2 length=1 units=mi r1=0.2 x1=0.2 faultrate=0.5 pctperm=60 repair=9",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 numcust=10",
+    "new load.ld2 bus1=b2 phases=3 kv=12.47 kw=200 numcust=25",
+    "new load.ld3 bus1=c1 phases=3 kv=12.47 kw=150 numcust=8",
+    "new load.ld4 bus1=c2 phases=3 kv=12.47 kw=90 numcust=5",
+    "new recloser.r1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1 "
+    "phasetrip=1e5 groundtrip=1e5",
+    "new recloser.r2 monitoredobj=line.l2 monitoredterm=1 switchedobj=line.l2 switchedterm=1 "
+    "phasetrip=1e5 groundtrip=1e5",
+    "new recloser.r3 monitoredobj=line.l3 monitoredterm=1 switchedobj=line.l3 switchedterm=1 "
+    "phasetrip=1e5 groundtrip=1e5",
+    "new recloser.r4 monitoredobj=line.l4 monitoredterm=1 switchedobj=line.l4 switchedterm=1 "
+    "phasetrip=1e5 groundtrip=1e5",
+    "new energymeter.m1 element=line.l1 terminal=1",
+    "new energymeter.m2 element=line.l3 terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap",
+    "relcalc",
+]
+
+
+def gen_reliability_multimeter(d) -> None:
+    """Capture the oracle's multi-meter `Export BusReliability` (cross-zone contamination)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in RELIABILITY_MULTIMETER_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "export busreliability"
+        content = Path(d.Text.Result).read_text()  # universal newlines -> LF
+        (OUT_DIR / "export_busreliability_multimeter.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "busreliability",
+            "fixture": case,
+            "suffix": "EXP_BusReliability.csv",
+            "deck": RELIABILITY_MULTIMETER_DECK,
+        }
+        (OUT_DIR / "export_busreliability_multimeter.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote export_busreliability_multimeter.txt ({len(content)} bytes)")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_reliability(d) -> None:
     """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -882,6 +949,7 @@ def main() -> None:
     gen_profile(d)
     gen_demand_interval(d)
     gen_di_overloads_1ph(d)
+    gen_reliability_multimeter(d)
 
 
 if __name__ == "__main__":

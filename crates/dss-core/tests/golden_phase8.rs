@@ -1508,6 +1508,28 @@ fn export_busreliability_matches_oracle() {
     run_deck_export("export_busreliability", &policy);
 }
 
+/// `Export BusReliability` on a **two-meter** feeder — pins the port's faithful
+/// reproduction of the upstream multi-meter `Bus_Int_Duration` cross-zone
+/// contamination (the second meter's duration loop walks the first meter's zone
+/// buses and overwrites their `Duration` from *its own* `FeederSections`; see
+/// `investigations/reliability_bus_int_duration_oob_bug_report.md`). Both meters
+/// have two sections, so every cross-zone read is **in range** — a deterministic
+/// overwrite both engines agree on bus-for-bus (no out-of-bounds read; the OOB
+/// regime is proven-nondeterministic UB and deliberately not gated). Same
+/// `%-.11g` arithmetic-identity floor as the single-meter case.
+#[test]
+fn export_busreliability_multimeter_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-8,
+        abs: 1e-9,
+        col_tol: vec![],
+    };
+    run_deck_export("export_busreliability_multimeter", &policy);
+}
+
 /// `Export BranchReliability` (Pascal `ExportBranchReliability`): per-branch
 /// Lambda/Accumulated-Lambda/customers/interrupts/durations/miles/Cust-Miles/SAIFI
 /// (`%-.11g` + integer customer counts). Same arithmetic-identity floor as
