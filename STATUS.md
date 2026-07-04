@@ -108,8 +108,30 @@ the current frontier:
   `Unserved`, `FaultStudy`, `Yprim` (needs the active-element surface + its
   non-`CircuitName_` filename), `LineConstants`, `Isolated`/`Loops`/`Topology`
   (CktTree walks), `busflow` (`ShowBusPowers`), `autoadded`/`QueryLog` (headless
-  FireOffEditor no-ops), `deltaV` (deferred, above). **next = continue WP8.4** (the
-  meter/topology/matrix Shows — Yprim, Meters/Generators, then the CktTree family).
+  FireOffEditor no-ops), `deltaV` (deferred, above).
+  **Both audits ran on step 7.** **audit-code — one real Minor bug found + fixed:**
+  `Show Convergence` (arm 4) + `Show controlqueue` (arm 27) were setting
+  `@lastshowfile`, but Pascal dispatches them *inline* with only `FireOffEditor`
+  (`ShowOptions.pas:187-197`/`404-414`) and does **not** — fixed via
+  `write_show_named(…, set_last=false)`, the `write_show` doc corrected, and pinned
+  by the new `show_lastshowfile_semantics` test (Y/kvbasemismatch set it;
+  Convergence/controlqueue don't). **audit-tests — one real Major gap + closed:**
+  `show_controlqueue` only exercised the drained (empty) queue, so the new
+  `queue_rows`/row-formatting path shipped uncovered. The row body is **unreachable
+  via the executive** — a `show controlqueue` after any `solve` always sees a
+  drained queue (probe-proven, incl. the low-level `SolveNoControl`+`Sample` split),
+  so no oracle golden can reach it; covered instead by a `control_queue_row_format`
+  unit test against the Pascal `WriteQueue` format. The Sec `%-.g` precision (FPC
+  empty-precision `ffGeneral`) is unverifiable against the always-drained oracle
+  queue → documented `TODO(compat)`, 6-sig stand-in flagged for the WP8.8 byte pass.
+  Also refactored `run_feeder_show` to locate the report by its fixed
+  `<CaseName_><suffix>` name in the datapath (the oracle-generator glob) — robust to
+  the `@lastshowfile` split and still filename-pinning. Tracked-not-fixed (audit
+  notes): `show_kvbasemismatch` (plain IEEE13) is near-vacuous but backstopped by
+  `_vals`; the `show_convergence` Error column is exact-compared (`rel=0`) —
+  honest today (all `0.00000`), a robustness note only. **next = continue WP8.4**
+  (the meter/topology/matrix Shows — Yprim, Meters/Generators, then the CktTree
+  family).
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only

@@ -1275,11 +1275,14 @@ impl Dss {
                 self.write_show(&format!("{filname}.txt"), &content);
             }
             // 4 `convergence` (`Solution.WriteConvergenceReport`): the per-node saved
-            // error / |V| / Vbase snapshot + the Max Error footer.
+            // error / |V| / Vbase snapshot + the Max Error footer. Pascal's arm 4 is
+            // an inline `try/finally` that writes via `GetOutputStreamEx` + only
+            // `FireOffEditor` (`ShowOptions.pas:187-197`) — it does **not** set
+            // `@lastshowfile` (unlike `ShowY`/`ShowkVBaseMismatch`), so `set_last=false`.
             4 => {
                 let content =
                     show::show_convergence(self.circuit.as_ref().expect("post-circuit dispatch"));
-                self.write_show("Convergence.txt", &content);
+                self.write_show_named("Convergence.txt", &content, false);
             }
             // 26 `y` (`ShowY`): the assembled system Y, lower triangle by columns.
             // Reads `system_y_csc` (the assembled, unfactored Y the checkpoint/live
@@ -1301,12 +1304,15 @@ impl Dss {
             // 27 `controlqueue` (`ControlQueue.WriteQueue`): the pending
             // control-action queue (drained to a header alone after a converged
             // snapshot). File suffix `.csv` (`ShowOptions.pas:410`). No solve guard.
+            // Like arm 4 (convergence), Pascal's arm 27 is an inline `try/finally`
+            // with only `FireOffEditor` (`ShowOptions.pas:404-414`) — no
+            // `@lastshowfile`, hence `set_last=false`.
             27 => {
                 let content = {
                     let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
                     show::show_control_queue(&self.classes, ckt)
                 };
-                self.write_show("ControlQueue.csv", &content);
+                self.write_show_named("ControlQueue.csv", &content, false);
             }
             // 30 `kvbasemismatch` (`ShowkVBaseMismatch`): loads/generators whose kV
             // base is >10% off the connected bus's base.
@@ -1342,9 +1348,15 @@ impl Dss {
 
     /// Write a `Show` report to `<OutputDirectory><CircuitName_><default_name>`
     /// (Pascal `ShowResults` procedures always build a fixed filename — `Show` has
-    /// no explicit-filename argument). Unlike `Export`, `Show` sets **only**
-    /// `@lastshowfile` (`DSS.ParserVars.Add('@lastshowfile', FileNm)`), not
+    /// no explicit-filename argument). Unlike `Export`, a `Show` report sets at most
+    /// `@lastshowfile` (`DSS.ParserVars.Add('@lastshowfile', FileNm)`), never
     /// `@lastfile` / `GlobalResult` (`Show` never calls `SetLastResultFile`).
+    ///
+    /// Not every `Show` sets `@lastshowfile`, though: the reports that write via a
+    /// `ShowResults` procedure ending in `ParserVars.Add('@lastshowfile', …)` do
+    /// (most of them), but the ones dispatched *inline* in `DoShowCmd` with only a
+    /// `FireOffEditor` (`Convergence` arm 4, `ControlQueue` arm 27) do **not** — those
+    /// call [`Dss::write_show_named`] with `set_last = false`.
     fn write_show(&mut self, default_name: &str, content: &str) {
         self.write_show_named(default_name, content, true);
     }

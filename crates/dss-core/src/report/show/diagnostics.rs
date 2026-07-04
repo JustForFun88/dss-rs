@@ -330,24 +330,60 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
 
 /// `Show controlqueue` (Pascal `TControlQueue.WriteQueue`): the pending
 /// control-action queue, one CSV row per queued action. After a converged
-/// snapshot the queue is drained, so the report is the header alone — but a
-/// mid-sequence / event-driven solve leaves records, each printed as
-/// `Handle, Hour, Sec, Code, ProxyDevRef, Device`.
+/// snapshot the queue is drained (`show controlqueue` after `solve` — the only
+/// text-interface path — always yields the header alone; the row body cannot be
+/// reached via the executive, oracle-probed), so this row path is exercised only
+/// by the [`tests`] unit test, against the Pascal `WriteQueue` format.
 pub(crate) fn show_control_queue(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::from("Handle, Hour, Sec, ActionCode, ProxyDevRef, Device\n");
     for (handle, hour, sec, code, proxy, ctrl) in ckt.solution.control_queue.queue_rows() {
         let name = device_name(classes, ctrl);
-        // Pascal `Format('%d, %d, %-.g, %d, %d, %s ', …)` (a trailing space after
-        // the device name; `%-.g` = the left-justified general float for Sec).
-        s.push_str(&format!(
-            "{handle}, {hour}, {}, {code}, {proxy}, {name} \n",
-            format::g(sec, 6),
-        ));
+        s.push_str(&queue_row_line(handle, hour, sec, code, proxy, &name));
     }
     s
+}
+
+/// One `Show controlqueue` row (Pascal `Format('%d, %d, %-.g, %d, %d, %s ', …)`,
+/// `ControlQueue.pas:496`) — the trailing space after the device name is Pascal's.
+///
+/// TODO(compat): `%-.g` is FPC `ffGeneral` with an *empty* precision after the
+/// dot (`.` → precision 0); its rendered significant-digit count cannot be
+/// confirmed against the oracle because the queue is always drained before any
+/// text-interface `show controlqueue` (probe-proven). `%.6g` (6 sig) is used as a
+/// reasonable stand-in — for the whole-second / simple-fraction times a real queue
+/// carries it is indistinguishable — flagged for the WP8.8 byte-faithfulness pass.
+fn queue_row_line(handle: i32, hour: i32, sec: f64, code: i32, proxy: i32, name: &str) -> String {
+    format!(
+        "{handle}, {hour}, {}, {code}, {proxy}, {name} \n",
+        format::g(sec, 6),
+    )
 }
 
 /// The bare object name of a control element (Pascal `ControlElement.Name`).
 fn device_name(classes: &[DssClass], r: ElemRef) -> String {
     classes[r.cls].objects[r.idx].data().name().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    //! The `Show controlqueue` row-format path (`queue_row_line`) is unreachable
+    //! from the executive — a `show controlqueue` after any `solve` sees a drained
+    //! queue (oracle-probed), so no golden reaches it. Pin it here against the
+    //! Pascal `WriteQueue` format string instead.
+    use super::queue_row_line;
+
+    #[test]
+    fn control_queue_row_format() {
+        // Pascal `Format('%d, %d, %-.g, %d, %d, %s ', …)`: comma+space separated,
+        // a trailing space after the device name, `%-.g` for Sec.
+        assert_eq!(
+            queue_row_line(3, 1, 15.0, 2, 0, "capcontrol.cc1"),
+            "3, 1, 15, 2, 0, capcontrol.cc1 \n"
+        );
+        // A fractional Sec still renders through the general float.
+        assert_eq!(
+            queue_row_line(1, 0, 0.5, 1, 7, "swtcontrol.sw1"),
+            "1, 0, 0.5, 1, 7, swtcontrol.sw1 \n"
+        );
+    }
 }
