@@ -1328,6 +1328,27 @@ fn show_unserved_normal_matches_oracle() {
     run_deck_show("show_unserved_normal", &policy);
 }
 
+/// `Show Faults` (Pascal `ShowFaultStudy`): the three-section FaultStudy report on
+/// the `solve mode=faultstudy`-solved IEEE13 feeder (the same short-circuit state
+/// `export_faultstudy`/`SeqZ` read). Section 1 (all-node bolted currents + X/R),
+/// section 2 (SLG fault current + pu node voltages), section 3 (L-L fault via a
+/// `GFault` scratch inversion). The fault currents / impedances are pinned to 1e-8
+/// by `corpus_live.rs`; on this feeder every printed cell (`%15.0f`/`%12.0f` amps,
+/// `%5.1f` X/R, `%10.3f` pu) is byte-identical Rust↔oracle → **exact equality**
+/// (`rel = 0`, `abs = 0`).
+#[test]
+fn show_faultstudy_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_faultstudy", &policy);
+}
+
 /// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder
 /// head + em2 on the 632-645 lateral. The zones **partition** (em1 stops at em2), so
 /// the two data rows carry distinct per-zone registers — pinning that the legend is

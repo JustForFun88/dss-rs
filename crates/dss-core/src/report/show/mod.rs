@@ -12,6 +12,7 @@ mod buses;
 mod currents;
 mod diagnostics;
 mod elements;
+mod fault_study;
 mod losses;
 mod matrix;
 mod meters;
@@ -28,6 +29,7 @@ pub(crate) use diagnostics::{
     show_ratings, show_result, show_variables,
 };
 pub(crate) use elements::show_elements;
+pub(crate) use fault_study::show_fault_study;
 pub(crate) use losses::show_losses;
 pub(crate) use matrix::show_y;
 pub(crate) use meters::{show_gen_meters, show_meters};
