@@ -49,9 +49,23 @@ current frontier:
   floor-12 `TODO(compat)` was withdrawn; instead the comparator **drops pure dot-run
   tokens** (`PadDots` padding carries no data), making the gate immune to the quirk,
   and `max_bus_name_length` keeps the clean source value. `MaxDeviceNameLength=0`
-  `TODO(compat)` stands. golden_phase8 **59→74**. **next = WP8.4 step 6** (the
-  diagnostic/meter/matrix/topology Shows: Mismatch/Convergence/Overloads/Meters/
-  FaultStudy/Yprim/Y/LineConstants/monitor/…).
+  `TODO(compat)` stands. golden_phase8 **59→74**.
+- **WP8.4 (Show reports) — step 6 IN PROGRESS, gate-green.** `Show monitor`
+  (`TranslateToCSV`, corpus×24 — reuses the monitor CSV; golden via the daily monitor
+  fixture) + `Show Mismatch` (`ShowNodeCurrentSum`, per-node KCL residual — a
+  structural Rust-side test since the `Current Sum`/`%error` columns are inherent
+  faer-vs-KLU cancellation residuals, not cross-engine-pinnable; the underlying
+  currents are 1e-8-pinned by `corpus_live`). golden_phase8 **74→76**. **DeltaV
+  deferred** (silent no-op, `TODO(WP8)`): `WriteElementDeltaVoltages`'
+  `NodeRef[i+NCond]` cross-terminal read yields 0 rows for the delta-primary
+  `Transformer.sub` where the oracle writes 3 — the delta-winding node_ref layout
+  needs investigation (deltaV is not corpus-used). **Remaining unported Show keywords**
+  (all still *silent* no-ops, `TODO(WP8)` in `do_show_cmd`): `Convergence`,
+  `kvbasemismatch`, `Controlled` (needs the `ControlElementList` accessor), `Meters`/
+  `Generators`/`Zone`/`Overloads`/`Unserved`, `FaultStudy`, `Yprim`/`Y`,
+  `LineConstants`, `Isolated`/`Loops`/`Topology` (CktTree walks), `busflow`,
+  `autoadded`, `controlqueue`, `Ratings`/`Variables`/`Result` (ported, wired; goldens
+  deferred — Result is `null`, Variables empty on IEEE13). **next = continue step 6**.
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
@@ -106,7 +120,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 731, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 74,
+                            # golden_phase7_protection 1, golden_phase8 76,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

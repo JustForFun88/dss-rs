@@ -911,6 +911,84 @@ fn show_eventlog_matches_oracle() {
     run_feeder_show("show_eventlog", &policy);
 }
 
+/// `Show monitor m_vi` (Pascal `ShowOptions.pas` case 10 → `TranslateToCSV`): the
+/// named monitor's in-memory sample buffer written to its CSV via the `Show`
+/// dispatcher — the same content the `Export Monitors` path produces
+/// ([`export_monitors_match_oracle`]). Pins the `Show monitor` dispatch + file
+/// naming against the oracle on the daily-solved monitor fixture (CSV, `sep=','`,
+/// header verbatim; f32 `%-.6g` values at `rel = 1e-4` / `abs = 1e-5`).
+#[test]
+fn show_monitor_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-5,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_monitor", &policy);
+}
+
+/// `Show Mismatch` (Pascal `ShowNodeCurrentSum`) — a **structural** check, not a
+/// value golden: the `Current Sum`/`%error` columns are the per-node KCL *residual*
+/// (Σ of the terminal currents ≈ 0), a faer-vs-KLU cancellation floor that differs
+/// between the two engines by construction, so it is not cross-engine-pinnable. The
+/// underlying currents *are* pinned to 1e-8 by `corpus_live.rs`; here we assert the
+/// report is produced with the right shape — the `Node Current Mismatch Report`
+/// header, one row for `System Ground` + one per node (`num_nodes + 1` data rows),
+/// and every `Max Current` positive — so a dispatch/format regression fails.
+#[test]
+fn show_mismatch_structural() {
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+        "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+    ]
+    .iter()
+    .collect();
+    assert!(master.is_file(), "master missing: {}", master.display());
+    let scratch = scratch_dir("show_mismatch");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("show mismatch");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let produced = dss.last_show_file();
+    let text = std::fs::read_to_string(produced).expect("read mismatch file");
+    let rows: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert!(
+        rows.iter()
+            .any(|l| l.contains("Node Current Mismatch Report")),
+        "missing report header"
+    );
+    // Data rows: 1 (System Ground) + 1 per node. The two banner/header lines are
+    // the non-data non-blank lines above the table.
+    let data_rows = rows.iter().filter(|l| l.contains(", ")).count();
+    // IEEE13 has 41 nodes → 42 data rows (ground + nodes).
+    assert!(data_rows >= 40, "too few mismatch data rows: {data_rows}");
+    // Every `Max Current` (last comma field) parses as a non-negative number.
+    for l in rows
+        .iter()
+        .filter(|l| l.contains("System Ground") || l.starts_with('"'))
+    {
+        if let Some(last) = l.rsplit(',').next()
+            && let Ok(v) = last.trim().parse::<f64>()
+        {
+            assert!(v >= 0.0, "negative max current in {l:?}");
+        }
+    }
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
 /// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
 /// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`

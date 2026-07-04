@@ -456,6 +456,66 @@ impl Dss {
         self.vars.add("@lastexportfile", &last_path);
     }
 
+    /// `Show monitor <name>` (Pascal `ShowOptions.pas` case 10 →
+    /// `TMonitorObj.TranslateToCSV`): write the named monitor's in-memory sample
+    /// buffer to its fixed CSV (`<OutputDir><CircuitName_>Mon_<name>_1.csv`) — the
+    /// same content `Export Monitors` produces. Unlike `Export`, `Show` sets only
+    /// `@lastshowfile`. An empty name → #249; an unknown monitor → #248.
+    fn show_monitor(&mut self, name: &str) {
+        if name.is_empty() {
+            // Pascal #249 `'Monitor Name Not Specified. %s'`.
+            self.errors.push("Monitor Name Not Specified.".to_string());
+            return;
+        }
+        let (mon_name, content, case) = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            let found = ckt.monitors.iter().copied().find(|&r| {
+                self.classes[r.cls].objects[r.idx]
+                    .data()
+                    .name()
+                    .eq_ignore_ascii_case(name)
+            });
+            match found {
+                Some(r) => {
+                    let obj = &self.classes[r.cls].objects[r.idx];
+                    let mon = obj
+                        .as_any()
+                        .downcast_ref::<crate::elements::meter::monitor::Monitor>()
+                        .expect("ckt.monitors holds Monitor objects");
+                    (
+                        obj.data().name().to_string(),
+                        mon.to_csv(),
+                        ckt.case_name.clone(),
+                    )
+                }
+                None => {
+                    // Pascal #248 `'Monitor "%s" not found. %s'`.
+                    self.errors.push(format!("Monitor \"{name}\" not found."));
+                    return;
+                }
+            }
+        };
+        let circuit_name_ = format!("{case}_");
+        let default_name = format!("Mon_{mon_name}_1.csv");
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &circuit_name_,
+            "",
+            &default_name,
+        );
+        match std::fs::write(&path, content.as_bytes()) {
+            Ok(()) => {
+                let p = path.to_string_lossy().into_owned();
+                self.vars.add("@lastshowfile", &p);
+            }
+            Err(e) => self.errors.push(format!(
+                "Error writing report file \"{}\": {e}",
+                path.display()
+            )),
+        }
+    }
+
     /// `Export EventLog` (Pascal `ExportEventLog`, `ExportResults.pas:3296`):
     /// dump `DSS.EventStrings` — the accumulated `Hour=…, Sec=…, …` control /
     /// tap-change log — to `EXP_EventLog.csv`. No solve dependency (ptr 33 is not
@@ -1136,6 +1196,34 @@ impl Dss {
                 let val = self.vars.get("@result").unwrap_or("null").to_string();
                 let content = show::show_result(&val);
                 self.write_show("Result.txt", &content);
+            }
+            // 29 `mismatch` (`ShowNodeCurrentSum`): per-node KCL current sum.
+            29 => {
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    show::show_mismatch(classes, ckt, &sys, &node_v)
+                };
+                self.write_show("NodeMismatch.txt", &content);
+            }
+            // TODO(WP8): 31 `deltaV` (`ShowDeltaV`) stays a silent no-op — the
+            // `WriteElementDeltaVoltages` `NodeRef[i+NCond]` cross-terminal read
+            // yields 0 rows for a **delta-primary** transformer (`Transformer.sub`)
+            // where the oracle writes 3; the delta-winding node_ref layout needs
+            // investigation before this ships (deltaV is not used by any corpus deck).
+            // 10 `monitor <name>` (`ShowMonitor` = `Monitor.TranslateToCSV`): write
+            // the named monitor's in-memory sample buffer to its fixed CSV file
+            // (`<OutputDir><CircuitName_>Mon_<name>_1.csv`), the same content the
+            // `Export Monitors` path produces. An empty name raises Pascal's #249;
+            // an unknown named monitor raises #248.
+            10 => {
+                self.parser.next_param(&self.vars);
+                let name = self.parser.make_string(&self.vars);
+                self.show_monitor(&name);
             }
             // 13 `voltages` (`ShowVoltages`) — the option/filename parse of
             // `ShowOptions.pas:279-312`: first param `LL` → phase-phase (else L-N);
