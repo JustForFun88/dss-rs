@@ -113,6 +113,7 @@ impl Dss {
         match pointer {
             cmd::EDIT => self.do_edit_cmd(),
             cmd::MORE | cmd::M | cmd::TILDE => self.edit_active(),
+            cmd::SELECT => self.do_select_cmd(),
             cmd::OPEN => self.do_open_close_cmd(false),
             cmd::CLOSE => self.do_open_close_cmd(true),
             cmd::SOLVE => self.do_set_cmd(1), // Solve = Set + DoSolveCmd
@@ -359,6 +360,66 @@ impl Dss {
             return None;
         }
         Some(ci)
+    }
+
+    /// Pascal `TExecHelper.DoSelectCmd` (`ExecHelper.pas:670`): make a circuit
+    /// element (or the active object) active — `Select class.name [terminal]`. Sets
+    /// `ActiveCktElement` (read by `Show Yprim`) and the element's active terminal.
+    ///
+    /// A bare `Select` (no class/name) selects the already-active object (a no-op
+    /// here), and `Select circuit` switches the active circuit (single-circuit
+    /// build → no-op). Bus-context (`SetActiveBus`) is not reproduced — no ported
+    /// report consumes an active bus yet (same inert side effect skipped by
+    /// [`Dss::do_open_close_cmd`]).
+    fn do_select_cmd(&mut self) {
+        let (obj_class, obj_name) = self.get_obj_class_and_name();
+        if obj_class.is_empty() && obj_name.is_empty() {
+            return; // "select active obj if any"
+        }
+        if obj_class.eq_ignore_ascii_case("circuit") {
+            return; // SetActiveCircuit — single circuit, nothing to switch
+        }
+        // A nonempty class name sets the active class; an empty one keeps the
+        // previously-referenced class (Pascal `if Length(ObjClass)>0 then
+        // SetObjectClass`).
+        let ci = if obj_class.is_empty() {
+            self.active_class
+        } else {
+            self.class_by_name.get(&obj_class.to_lowercase()).copied()
+        };
+        let Some(ci) = ci else {
+            // Pascal `ActiveDSSClass = NIL` → #246.
+            self.errors
+                .push("Error! Active object type/class is not set.".to_string());
+            return;
+        };
+        self.active_class = Some(ci);
+        if !self.classes[ci].set_active(&obj_name) {
+            // Pascal #245.
+            self.errors
+                .push(format!("Error! Object \"{obj_name}\" not found. "));
+            return;
+        }
+        let idx = self.classes[ci]
+            .active
+            .expect("set_active set the active index");
+        // Only circuit elements become the `ActiveCktElement` (Pascal: a general
+        // `DSS_OBJECT` does nothing here).
+        if self.classes[ci].objects[idx].as_ckt_element().is_some() {
+            self.active_ckt_element = Some((ci, idx));
+            // Active terminal: `Param>0 ? IntValue : 1` (Pascal), adopted only when
+            // in `1..Nterms` (`Set_ActiveTerminal`).
+            self.parser.next_param(&self.vars);
+            let term = self.parser.make_integer(&self.vars).unwrap_or(0);
+            let t = if term > 0 { term as usize } else { 1 };
+            let cd = self.classes[ci].objects[idx]
+                .as_ckt_element_mut()
+                .expect("just checked it is a circuit element")
+                .cd_mut();
+            if t >= 1 && t <= cd.nterms {
+                cd.active_terminal = t - 1;
+            }
+        }
     }
 
     /// Pascal `AddObject`: create the object (or make the existing one
