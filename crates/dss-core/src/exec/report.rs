@@ -1274,6 +1274,49 @@ impl Dss {
                 };
                 self.write_show(&format!("{filname}.txt"), &content);
             }
+            // 4 `convergence` (`Solution.WriteConvergenceReport`): the per-node saved
+            // error / |V| / Vbase snapshot + the Max Error footer.
+            4 => {
+                let content =
+                    show::show_convergence(self.circuit.as_ref().expect("post-circuit dispatch"));
+                self.write_show("Convergence.txt", &content);
+            }
+            // 26 `y` (`ShowY`): the assembled system Y, lower triangle by columns.
+            // Reads `system_y_csc` (the assembled, unfactored Y the checkpoint/live
+            // gates pin); errors with Pascal's #222 `Y Matrix not Built.` if no Y
+            // has been built.
+            26 => {
+                let content = match self.system_y_csc() {
+                    Some((n, coords)) => {
+                        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                        show::show_y(n, &coords, ckt)
+                    }
+                    None => {
+                        self.errors.push("Y Matrix not Built.".to_string());
+                        return;
+                    }
+                };
+                self.write_show("SystemY.txt", &content);
+            }
+            // 27 `controlqueue` (`ControlQueue.WriteQueue`): the pending
+            // control-action queue (drained to a header alone after a converged
+            // snapshot). File suffix `.csv` (`ShowOptions.pas:410`). No solve guard.
+            27 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_control_queue(&self.classes, ckt)
+                };
+                self.write_show("ControlQueue.csv", &content);
+            }
+            // 30 `kvbasemismatch` (`ShowkVBaseMismatch`): loads/generators whose kV
+            // base is >10% off the connected bus's base.
+            30 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_kvbase_mismatch(&self.classes, ckt)
+                };
+                self.write_show("kVBaseMismatch.txt", &content);
+            }
             // 11 `panel` — the oracle faithfully errors it (`ShowOptions.pas:248`).
             11 => {
                 self.errors

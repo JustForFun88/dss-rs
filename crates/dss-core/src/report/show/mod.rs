@@ -13,6 +13,7 @@ mod currents;
 mod diagnostics;
 mod elements;
 mod losses;
+mod matrix;
 mod powers;
 mod taps;
 mod voltages;
@@ -20,10 +21,12 @@ mod voltages;
 pub(crate) use buses::show_buses;
 pub(crate) use currents::{show_currents, show_currents_elements};
 pub(crate) use diagnostics::{
-    show_event_log, show_mismatch, show_ratings, show_result, show_variables,
+    show_control_queue, show_convergence, show_event_log, show_kvbase_mismatch, show_mismatch,
+    show_ratings, show_result, show_variables,
 };
 pub(crate) use elements::show_elements;
 pub(crate) use losses::show_losses;
+pub(crate) use matrix::show_y;
 pub(crate) use powers::{show_powers, show_powers_elements};
 pub(crate) use taps::show_taps;
 pub(crate) use voltages::{show_voltages, show_voltages_elements, show_voltages_nodes};

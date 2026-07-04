@@ -1,0 +1,18 @@
+
+!!!  LOAD VOLTAGE BASE MISMATCHES
+
+!!!!! Voltage Base Mismatch, Load.mismll.kV=5, Bus 675 kvBase = 4.16
+!setkvbase 675 kVLL=5
+!Load.mismll.kV=4.16
+!!!!! Voltage Base Mismatch, Load.mismln.kV=0.35, Bus 634.1 LN kvBase = 0.277128
+!setkvbase 634 kVLN=0.35
+!Load.mismln.kV=0.277128
+
+!!!  GENERATOR VOLTAGE BASE MISMATCHES
+
+!!! Voltage Base Mismatch, Generator.gmismll.kV=5, Bus 675 kvBase = 4.16
+!setkvbase 675 kVLL=5
+!Generator.gmismll.kV=4.16
+!!! Voltage Base Mismatch, Generator.gmismln.kV=0.35, Bus 634.1 LN kvBase = 0.277128
+!setkvbase 634 kVLN=0.35
+!Generator.gmismln.kV=0.277128

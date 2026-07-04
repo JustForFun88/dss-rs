@@ -1035,6 +1035,105 @@ fn show_result_matches_oracle() {
     run_feeder_show("show_result", &policy);
 }
 
+/// `Show Convergence` (Pascal `Solution.WriteConvergenceReport`): the per-node
+/// saved error / `|V|` / `Vbase` snapshot + the `Max Error` footer. `|V|`
+/// (`VmagSaved`, `Str(v:14)` — 7 significant figures) is the only non-exact
+/// column: at 7 sig figs the faer-vs-KLU node-voltage difference rounds the last
+/// printed digit independently, so it takes the `rel = 1e-6` 7th-sig printing
+/// floor. The saved error (`0.00000` on a converged snapshot) and `Vbase`
+/// (deterministic `kVBase·1000`) are pinned **exactly** (`rel = 0`, `abs = 0`).
+#[test]
+fn show_convergence_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 4,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(2), // |V| — the 7-sig printing floor
+            rel: 1e-6,
+            abs: 0.0,
+            gate: None,
+        }],
+    };
+    run_feeder_show("show_convergence", &policy);
+}
+
+/// `Show Y` (Pascal `ShowY`): the assembled system Y, lower triangle by columns,
+/// `[row,col] = G + jB` (`%13.10g`). The assembled Y is stamped from the
+/// FPC-faithful element YPrims (bit-exact on the LineCode-based IEEE13, pinned
+/// entry-by-entry by the checkpoint/live gates), so at 10 sig figs G and B are
+/// byte-identical Rust↔oracle → **exact equality** (`rel = 0`, `abs = 0`). The
+/// row/col indices are the exact node order (column-major, matching KLU's
+/// `GetTripletMatrix`).
+#[test]
+fn show_y_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 2,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_y", &policy);
+}
+
+/// `Show controlqueue` (Pascal `ControlQueue.WriteQueue`): the pending
+/// control-action queue. After a converged snapshot solve the queue is drained,
+/// so the report is the header row alone — pinned exactly (a structural / dispatch
+/// + `.csv`-filename check; a mid-sequence solve would add per-action rows).
+#[test]
+fn show_controlqueue_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_controlqueue", &policy);
+}
+
+/// `Show kvbasemismatch` (Pascal `ShowkVBaseMismatch`) on plain IEEE13: every load
+/// is within 10% of its bus base, so the report is the `!!!  LOAD VOLTAGE BASE
+/// MISMATCHES` family header alone (no generators on IEEE13) — pins the
+/// header-emission logic. The value/generator branches are pinned by
+/// [`show_kvbasemismatch_vals_matches_oracle`].
+#[test]
+fn show_kvbasemismatch_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_kvbasemismatch", &policy);
+}
+
+/// `Show kvbasemismatch` on IEEE13 + four synthesized kV-base-mismatched elements
+/// (`KVBASE_POST`): exercises the mismatch-line formatting (`!!!!! Voltage Base
+/// Mismatch …` + the `!setkvbase …` / `!<elem>.kV=…` follow-ups) across both the
+/// line-line (`kVBase·√3`) and 1-phase line-neutral forms, for a load **and** a
+/// generator (the GENERATOR family header). The printed kV values (`%.6g`) are
+/// deterministic → **exact equality** (`rel = 0`, `abs = 0`).
+#[test]
+fn show_kvbasemismatch_vals_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_kvbasemismatch_vals", &policy);
+}
+
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
 /// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
 /// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`

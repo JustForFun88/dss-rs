@@ -9,14 +9,14 @@
 
 Last updated: 2026-07-04 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
-gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited; WP8.4 (Show) steps 1–6
-gate-green + audited** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem +
-Elements + Result/EventLog/Ratings/Variables/Mismatch/monitor + dispatcher; ~15
-`Show` reports ported). **~16 `Show` reports remain** (all *silent* no-ops,
-`TODO(WP8)`: Convergence/kvbasemismatch/Controlled/Meters/Generators/Zone/
-Overloads/Unserved/FaultStudy/Yprim/Y/LineConstants/Isolated/Loops/Topology/
-busflow/autoadded/controlqueue + deltaV). Full Phase-8 detail is in **§1f**; the
-current frontier:
+gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited; WP8.4 (Show) steps 1–7
+gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
+Result/EventLog/Ratings/Variables/Mismatch/monitor + **step 7: Convergence/Y/
+controlqueue/kvbasemismatch** + dispatcher; ~19 `Show` reports ported).
+**~12 `Show` reports remain** (all *silent* no-ops, `TODO(WP8)`: Controlled/Meters/
+Generators/Zone/Overloads/Unserved/FaultStudy/Yprim/LineConstants/Isolated/Loops/
+Topology/busflow/autoadded + deltaV/QueryLog). Full Phase-8 detail is in **§1f**;
+the current frontier:
 
 - **WP8.1 COMPLETE** (dispatch skeleton + output-path machinery + `Export Counts`
   + the `compare_export` golden harness).
@@ -81,13 +81,35 @@ current frontier:
   `WriteElementDeltaVoltages`' `NodeRef[i+NCond]` cross-terminal read yields 0 rows for
   the delta-primary
   `Transformer.sub` where the oracle writes 3 — the delta-winding node_ref layout
-  needs investigation (deltaV is not corpus-used). **Remaining unported Show keywords**
-  (all still *silent* no-ops, `TODO(WP8)` in `do_show_cmd`): `Convergence`,
-  `kvbasemismatch`, `Controlled` (needs the `ControlElementList` accessor), `Meters`/
-  `Generators`/`Zone`/`Overloads`/`Unserved`, `FaultStudy`, `Yprim`/`Y`,
-  `LineConstants`, `Isolated`/`Loops`/`Topology` (CktTree walks), `busflow`,
-  `autoadded`, `controlqueue`, `Ratings`/`Variables`/`Result` (ported, wired; goldens
-  deferred — Result is `null`, Variables empty on IEEE13). **next = continue step 6**.
+  needs investigation (deltaV is not corpus-used).
+- **WP8.4 (Show reports) — step 7 COMPLETE, gate-green** (the diagnostic/matrix
+  cluster): `Show Convergence` (`Solution.WriteConvergenceReport` — per-node saved
+  error/`|V|`/`Vbase` + Max Error footer, over the existing `error_saved`/
+  `vmag_saved`/`node_vbase`/`max_error` solution arrays), `Show Y` (`ShowY` — the
+  assembled system Y, lower triangle by columns, `[row,col] = G + jB` `%13.10g`,
+  reusing `system_y_csc` + the column-major-lower-triangle order that matches KLU's
+  `GetTripletMatrix`), `Show controlqueue` (`ControlQueue.WriteQueue` — the pending
+  action queue, drained to the header alone after a converged snapshot; new
+  `ControlQueue::queue_rows` accessor), and `Show kvbasemismatch`
+  (`ShowkVBaseMismatch` — loads/generators >10% off their bus base, LN/LL forms +
+  the per-family header). New `report/show/matrix.rs`; the three diagnostics in
+  `report/show/diagnostics.rs`; dispatcher arms 4/26/27/30 in `exec/report.rs`. New
+  `format::fpc_sci_w` reproduces FPC `Str(v:width)` (scientific, `width-8` frac
+  digits, ≥3-digit exponent) for the convergence `:14` columns. golden_phase8
+  **78→83**: `show_{convergence,y,controlqueue,kvbasemismatch}` on solved IEEE13 +
+  the synthesized `show_kvbasemismatch_vals` (4 kV-mismatched load/gen elements
+  exercising both LN/LL forms + the GENERATOR block). **All 5 are exact equality**
+  (`rel=0, abs=0`) except the convergence `|V|` column — 7-sig `Str(v:14)`, so the
+  faer-vs-KLU node-voltage diff rounds the last printed digit independently → the
+  `rel=1e-6` 7th-sig printing floor; Y's G/B are byte-identical (bit-exact assembled
+  Y on the LineCode-based IEEE13). **Remaining unported Show keywords** (all still
+  *silent* no-ops, `TODO(WP8)` in `do_show_cmd`): `Controlled` (needs the
+  `ControlElementList` accessor), `Meters`/`Generators`/`Zone`/`Overloads`/
+  `Unserved`, `FaultStudy`, `Yprim` (needs the active-element surface + its
+  non-`CircuitName_` filename), `LineConstants`, `Isolated`/`Loops`/`Topology`
+  (CktTree walks), `busflow` (`ShowBusPowers`), `autoadded`/`QueryLog` (headless
+  FireOffEditor no-ops), `deltaV` (deferred, above). **next = continue WP8.4** (the
+  meter/topology/matrix Shows — Yprim, Meters/Generators, then the CktTree family).
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
@@ -133,7 +155,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/`Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=` wiring (§2.6); the completion gate migrated `solvable_now` **119→168** (COVERAGE **50.1%**, incl. the silent `Spectrum.CSVFile` no-op fix). Both independent audits found **no correctness bug**; 2 LOW code findings fixed (the `Export Profile` `1732.0` `TODO(compat)` marker; the `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + 5 oracle-pinned coverage tests (golden_phase8 **59**; lib **731**). **WP8.4 (Show) step 1 COMPLETE, gate-green** — the `do_show_cmd` dispatcher + `report/show/` (`Show Buses`/`Losses`/`Taps` + `Show panel`→#999; unported keywords stay silent no-ops) + the `format.rs` `Pad`/`PadDots`/width formatters + the whitespace+comma `compare_export` tokenizer (golden_phase8 **59→62**). **WP8.4 step 2 COMPLETE, gate-green** — `Show Voltages` code 0 (`WriteSeqVoltages`, the seq V1/V2/V0 + %ratios form, the bare `Show Voltage`/`v` default) + the ptr-13 LL/node/elem option parse (codes 1/2 angle-forms deferred, `TODO(WP8)`); golden_phase8 **62→63**. **WP8.4 step 3 COMPLETE, gate-green** — `Show Currents`/`Powers` code 0 (seq forms, ptr-3/12 option parse); the empirically-zero `MaxDeviceNameLength` reproduced (`TODO(compat)`, probe-proven); the `%I2/I1` ratio gate at the proven `1e-6 A` floor; `gen_phase8.py DSS.AllowEditor=False` (no Notepad spawn); golden_phase8 **63→65**. **WP8.4 step 4 COMPLETE, gate-green** — the element/node forms `Show Voltages` code 1/2 (`WriteBusVoltages`/`WriteElementVoltages`) + `Show Currents` code 1 (`WriteTerminalCurrents`, +residual) + `Show Elements` (`ShowElements`/`WriteElementRecord`, two-file main+`_Disabled`); the `SetMaxBusNameLength` floor-12 backend divergence reproduced (`TODO(compat)`, probe-proven `max(12,longest)`); golden_phase8 **65→69**. Both audits clean (no correctness bug); follow-ups: disabled-element blank line (`WriteElementVoltages`, byte-probed), floor-12 header/data refinement, angle-floor `ColSel::AfterToken` selector, currents-elem gate `1e-6→1e-4`, +2 coverage goldens (class-filter, LL node), + a step-4 test-tree-leak fix (`show_reports_are_silent_noops` datapath); golden_phase8 **69→71**. **Steps 5–6 COMPLETE + audited** — `Powers` elem + `Result`/`EventLog`/`Ratings`/`Variables`/`Mismatch`/`monitor`; the step-4 floor-12 `TODO(compat)` **withdrawn** (`MaxBusNameLength` is an inconsistent per-report backend quirk → comparator drops pure dot-runs); harness `ColSel::AfterToken`/`FromEnd` + `GateSpec::MinCols`; **real bugs found+fixed** (`Show Result` filename `.txt→.csv`; generator `w0` snapshot-`Frequency`); golden_phase8 **71→78**. **~16 `Show` reports remain** (silent no-ops, `TODO(WP8)`). **next = continue WP8.4** (diagnostic/meter/matrix/topology Shows). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/`Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=` wiring (§2.6); the completion gate migrated `solvable_now` **119→168** (COVERAGE **50.1%**, incl. the silent `Spectrum.CSVFile` no-op fix). Both independent audits found **no correctness bug**; 2 LOW code findings fixed (the `Export Profile` `1732.0` `TODO(compat)` marker; the `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + 5 oracle-pinned coverage tests (golden_phase8 **59**; lib **731**). **WP8.4 (Show) step 1 COMPLETE, gate-green** — the `do_show_cmd` dispatcher + `report/show/` (`Show Buses`/`Losses`/`Taps` + `Show panel`→#999; unported keywords stay silent no-ops) + the `format.rs` `Pad`/`PadDots`/width formatters + the whitespace+comma `compare_export` tokenizer (golden_phase8 **59→62**). **WP8.4 step 2 COMPLETE, gate-green** — `Show Voltages` code 0 (`WriteSeqVoltages`, the seq V1/V2/V0 + %ratios form, the bare `Show Voltage`/`v` default) + the ptr-13 LL/node/elem option parse (codes 1/2 angle-forms deferred, `TODO(WP8)`); golden_phase8 **62→63**. **WP8.4 step 3 COMPLETE, gate-green** — `Show Currents`/`Powers` code 0 (seq forms, ptr-3/12 option parse); the empirically-zero `MaxDeviceNameLength` reproduced (`TODO(compat)`, probe-proven); the `%I2/I1` ratio gate at the proven `1e-6 A` floor; `gen_phase8.py DSS.AllowEditor=False` (no Notepad spawn); golden_phase8 **63→65**. **WP8.4 step 4 COMPLETE, gate-green** — the element/node forms `Show Voltages` code 1/2 (`WriteBusVoltages`/`WriteElementVoltages`) + `Show Currents` code 1 (`WriteTerminalCurrents`, +residual) + `Show Elements` (`ShowElements`/`WriteElementRecord`, two-file main+`_Disabled`); the `SetMaxBusNameLength` floor-12 backend divergence reproduced (`TODO(compat)`, probe-proven `max(12,longest)`); golden_phase8 **65→69**. Both audits clean (no correctness bug); follow-ups: disabled-element blank line (`WriteElementVoltages`, byte-probed), floor-12 header/data refinement, angle-floor `ColSel::AfterToken` selector, currents-elem gate `1e-6→1e-4`, +2 coverage goldens (class-filter, LL node), + a step-4 test-tree-leak fix (`show_reports_are_silent_noops` datapath); golden_phase8 **69→71**. **Steps 5–6 COMPLETE + audited** — `Powers` elem + `Result`/`EventLog`/`Ratings`/`Variables`/`Mismatch`/`monitor`; the step-4 floor-12 `TODO(compat)` **withdrawn** (`MaxBusNameLength` is an inconsistent per-report backend quirk → comparator drops pure dot-runs); harness `ColSel::AfterToken`/`FromEnd` + `GateSpec::MinCols`; **real bugs found+fixed** (`Show Result` filename `.txt→.csv`; generator `w0` snapshot-`Frequency`); golden_phase8 **71→78**. **Step 7 COMPLETE, gate-green** (the diagnostic/matrix cluster) — `Show Convergence`/`Y`/`controlqueue`/`kvbasemismatch` (`report/show/matrix.rs` + the three diagnostics; dispatcher arms 4/26/27/30; new `format::fpc_sci_w` FPC-`Str(v:width)`; `ControlQueue::queue_rows`); golden_phase8 **78→83** (all exact equality except the convergence `|V|` 7-sig printing floor). **~12 `Show` reports remain** (silent no-ops, `TODO(WP8)`). **next = continue WP8.4** (Yprim/meter/topology Shows). Detail in §1f |
 
 ### Gate state (all green)
 ```
@@ -142,7 +164,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 731, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 78,
+                            # golden_phase7_protection 1, golden_phase8 83,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

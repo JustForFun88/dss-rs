@@ -1,0 +1,13 @@
+{
+  "report": "kvbasemismatch",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "new load.mismll bus1=675 phases=3 conn=wye kv=5.0 kw=1 pf=1",
+    "new load.mismln bus1=634.1 phases=1 conn=wye kv=0.35 kw=1 pf=1",
+    "new generator.gmismll bus1=675 phases=3 kv=5.0 kw=1",
+    "new generator.gmismln bus1=634.1 phases=1 conn=wye kv=0.35 kw=1",
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "kVBaseMismatch.txt"
+}

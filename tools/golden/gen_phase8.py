@@ -451,6 +451,20 @@ SHOW_REPORTS = [
     # pinned PM-build oracle). Pins the `<case>_Result.csv` filename (NOT `.txt`) +
     # the `GlobalResult` side-effect via the `Show` dispatch.
     ("result", "Result.csv", "show_result"),
+    # `Show Convergence` (`Solution.WriteConvergenceReport`): per-node saved error /
+    # |V| (`Str(v:14)` scientific) / Vbase + the Max Error footer.
+    ("convergence", "Convergence.txt", "show_convergence"),
+    # `Show Y` (`ShowY`): the assembled system Y, lower triangle by columns, one
+    # `[row,col] = G + jB` line per stored entry (`%13.10g`).
+    ("y", "SystemY.txt", "show_y"),
+    # `Show controlqueue` (`ControlQueue.WriteQueue`): the pending control-action
+    # queue — drained to the header alone after a converged snapshot solve.
+    ("controlqueue", "ControlQueue.csv", "show_controlqueue"),
+    # `Show kvbasemismatch` (`ShowkVBaseMismatch`): IEEE13 has loads but no >10%
+    # mismatch, so the report is the `!!!  LOAD VOLTAGE BASE MISMATCHES` header
+    # block alone (proves the family-header logic; the value/generator branches are
+    # exercised by the synthesized `gen_show_kvbasemismatch`).
+    ("kvbasemismatch", "kVBaseMismatch.txt", "show_kvbasemismatch"),
 ]
 
 
@@ -569,6 +583,63 @@ def gen_show_variables(d) -> None:
             json.dumps(meta, indent=2) + "\n", newline="\n"
         )
         print(f"wrote show_variables.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Synthesized deck (PHASE8_PLAN §1) for `Show kvbasemismatch`'s *value* branches —
+# plain IEEE13 has no >10% kV-base mismatch, so add four small (electrically
+# negligible, kw=1) elements with deliberately-off kV bases: a 3-phase and a
+# 1-phase load, and a 3-phase and a 1-phase generator, exercising both the
+# line-line (`kVBase·√3`) and the 1-phase line-neutral comparison forms plus the
+# GENERATOR family header.
+KVBASE_POST = [
+    "new load.mismll bus1=675 phases=3 conn=wye kv=5.0 kw=1 pf=1",
+    "new load.mismln bus1=634.1 phases=1 conn=wye kv=0.35 kw=1 pf=1",
+    "new generator.gmismll bus1=675 phases=3 kv=5.0 kw=1",
+    "new generator.gmismln bus1=634.1 phases=1 conn=wye kv=0.35 kw=1",
+    "solve",
+]
+
+
+def gen_show_kvbasemismatch(d) -> None:
+    """Capture the oracle's `Show kvbasemismatch` on IEEE13 + four kV-base-mismatched
+    elements (`KVBASE_POST`), so the mismatch-line formatting + the generator block
+    are exercised. `Show` sets no GlobalResult; find the file by suffix."""
+    d.AllowEditor = False
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in KVBASE_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show kvbasemismatch"
+        matches = list(Path(tmp).glob("*_kVBaseMismatch.txt"))
+        if len(matches) != 1:
+            sys.exit(f"show kvbasemismatch: expected 1 *_kVBaseMismatch.txt, found {matches}")
+        content = matches[0].read_text()
+        (OUT_DIR / "show_kvbasemismatch_vals.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "kvbasemismatch",
+            "master": FEEDER_MASTER,
+            "post": KVBASE_POST,
+            "fixture": case,
+            "suffix": "kVBaseMismatch.txt",
+        }
+        (OUT_DIR / "show_kvbasemismatch_vals.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(
+            f"wrote show_kvbasemismatch_vals.txt ({len(content)} bytes), "
+            f"{content.count(chr(10))} lines"
+        )
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1156,6 +1227,7 @@ def main() -> None:
     gen_show_reports(d)
     gen_show_eventlog(d)
     gen_show_variables(d)
+    gen_show_kvbasemismatch(d)
     gen_show_monitor(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
