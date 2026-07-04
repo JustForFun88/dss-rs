@@ -1098,6 +1098,24 @@ impl Dss {
                 self.write_show_named("Elements_Disabled.txt", &disabled, false);
                 self.write_show("Elements.txt", &main);
             }
+            // 8 `generators` (`ShowGenMeters`): each generator's accumulated
+            // energy-meter registers, file `GenMeterOut.txt`.
+            8 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_gen_meters(&self.classes, ckt)
+                };
+                self.write_show("GenMeterOut.txt", &content);
+            }
+            // 9 `meters` (`ShowMeters`): each EnergyMeter's accumulated registers,
+            // file `EMout.txt`.
+            9 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_meters(&self.classes, ckt)
+                };
+                self.write_show("EMout.txt", &content);
+            }
             // 12 `powers` (`ShowPowers`) — `ShowOptions.pas:249-277`: 1st param
             // `m`→MVA, `e`→element form; 2nd param `e`→element form; filename
             // `Power_{seq|elem}_{kVA|MVA}`. Step 3 ports **code 0** (the sequence
@@ -1328,11 +1346,10 @@ impl Dss {
                 self.errors
                     .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
             }
-            // TODO(WP8): later steps — the remaining `Show` keywords (monitor,
-            // faults, meters, zone, isolated, loops, lineconstants, topology,
-            // yprim/y, ratings, variables, controlled, convergence, …) and the
-            // `Show Powers`/`Currents`/`Voltages` element forms deferred inline
-            // above, plus the unknown-keyword `#24700` error
+            // TODO(WP8): later steps — the remaining `Show` keywords (faults,
+            // zone, isolated, loops, lineconstants, topology, yprim, busflow,
+            // overloads, unserved, controlled, autoadded, querylog, deltaV) and
+            // the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
             // error — a deferred `Show` MUST stay a **silent** headless no-op: the

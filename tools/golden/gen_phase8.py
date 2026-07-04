@@ -316,6 +316,62 @@ def gen_register_reports(d) -> None:
     _gen_register_group(d, REGISTER_B_POST, REGISTER_B_REPORTS)
 
 
+def _gen_show_group(d, post, reports) -> None:
+    """Like `_gen_register_group` but for the fixed-width `Show` register tables:
+    `Show` writes `<OutputDir>/<CircuitName_><suffix>` and sets no `GlobalResult`,
+    so the produced file is found by its fixed suffix glob (not `Text.Result`)."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in post:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in reports:
+            d.Text.Command = f"show {keyword}"
+            matches = list(Path(tmp).glob(f"*_{suffix}"))
+            if len(matches) != 1:
+                sys.exit(f"show {keyword}: expected 1 *_{suffix}, found {matches}")
+            content = matches[0].read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "master": FEEDER_MASTER,
+                "post": post,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# The `Show` register-table fixtures (PHASE8_PLAN §WP8.4). Reuse the WP8.3 register
+# fixtures so the accumulated `%10.0f` register values are the same daily-solved
+# meter/generator paths `corpus_live.rs` + the `Export Meters`/`Export Generators`
+# goldens already pin — `Show Meters` (`EMout.txt`) on the metered IEEE13 (fixture A),
+# `Show Generators` (`GenMeterOut.txt`) on the generator fixture (B, whose disabled
+# `g3` pins the enabled-filter: it must NOT appear).
+SHOW_METER_REPORTS_A = [("meters", "EMout.txt", "show_meters")]
+SHOW_METER_REPORTS_B = [("generators", "GenMeterOut.txt", "show_generators")]
+
+
+def gen_show_meter_reports(d) -> None:
+    """Capture the oracle's `Show Meters`/`Show Generators` register tables."""
+    d.AllowEditor = False
+    _gen_show_group(d, REGISTER_A_POST, SHOW_METER_REPORTS_A)
+    _gen_show_group(d, REGISTER_B_POST, SHOW_METER_REPORTS_B)
+
+
 # The event/error-log dumps (PHASE8_PLAN §WP8.3 step 3). No corpus deck exports
 # these, so they are synthesized (PHASE8_PLAN §1), both on the IEEE13 feeder:
 #   EventLog: a daily-3 solve with `Set Log=yes` (ckt.LogEvents) + per-RegControl
@@ -1231,6 +1287,7 @@ def main() -> None:
     gen_show_monitor(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
+    gen_show_meter_reports(d)
     gen_log_reports(d)
     gen_ieee8500_reports(d)
     gen_seqz(d)
