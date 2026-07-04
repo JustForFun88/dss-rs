@@ -9,7 +9,8 @@
 
 Last updated: 2026-07-04 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
-gate-green Phase-7 tip). Full Phase-8 detail is in **§1f**; the current frontier:
+gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited, gate-green; next =
+WP8.4 (Show).** Full Phase-8 detail is in **§1f**; the current frontier:
 
 - **WP8.1 COMPLETE** (dispatch skeleton + output-path machinery + `Export Counts`
   + the `compare_export` golden harness).
@@ -19,34 +20,17 @@ gate-green Phase-7 tip). Full Phase-8 detail is in **§1f**; the current frontie
   corpus (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + landed the Rust
   `CorpusGuard`. The "9 decks hang" and "live-gate flake" tracked-opens are both
   **RESOLVED** (§1f Issue-1/Issue-2).
-- **WP8.3 COMPLETE (steps 1–5), gate-green; audits pending** — landed: `Export
-  Monitors` (step 1); the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/
-  `Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the
-  export surfaced as a gap (step 2); `EventLog`/`ErrorLog` + the missing circuit-build
-  `LogThisEvent` markers (step 3a); `Faultstudy` read-only per-bus 3φ/1φ/L-L currents
-  over the WP7.9 `Ysc`/`BusCurrent` (step 3b); `BusReliability`/`BranchReliability`/
-  `Capacity` over the `RelCalc`-populated fields + a synthesized recloser+meter deck
-  (step 3c part 1); `Overloads`/`Unserved`/`AllocationFactors` — PD-overload rows with
-  the byte-faithful `NormAmps<=0` column shift, the mutable `EEN`/`UE` Load criteria,
-  `DumpAllocationFactors` (step 3c part 2; the audit follow-up caught + fixed the
-  column-shift empty-field defect); `Sections`/`Profile` — the meter
-  `SectionCount`/`FeederSections` persistence, the `meter=`/phases pre-parses,
-  `Set/Get Markercode|Nodewidth` + `Circuit.NodeMarker*`, and the multi-meter
-  `Bus_Int_Duration` OOB guard the two-meter fixture exposed (step 3c part 3);
-  the `TSystemMeter` register core + the full demand-interval machinery — the
-  per-meter/system/totals `DI_*` writers, the phase-voltage report (+ the
-  `TakeSample` pu-voltage accumulators), the overload/voltage-exception reports,
-  the `Set DemandInterval/DIVerbose/Overloadreport/Voltexceptionreport/
-  SampleEnergyMeters=` handlers, the `Set year=` `Set_Year` side effects,
-  `CloseDI`, and the solve-loop open/close wiring (step 4); the completion gate —
-  a Rust probe over `skipped_unsupported` found 49 now-clean decks, the live
-  classify migrated **47** + (after fixing the **silent Spectrum `CSVFile`
-  no-op** the two IEEE_519 harmonicT decks exposed — a real Phase-2 leftover,
-  now ported via the `FileLoad` path) **2 more** (step 5).
-  golden_phase8 **54**; lib **730**; `solvable_now` **119→168** (COVERAGE
-  **35.5%→50.1%**).
-- **next = the deferred WP8.3 audits** (steps 3c p3 + 4 + 5 in one pass,
-  user-authorized), then WP8.4 (Show reports).
+- **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the
+  device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/
+  `Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core
+  and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=`
+  wiring (§2.6). The completion gate migrated `solvable_now` **119→168** (COVERAGE
+  **50.1%**), incl. fixing the **silent Spectrum `CSVFile` no-op** two IEEE_519
+  harmonicT decks exposed. The two independent audits found **no correctness bug**;
+  two LOW code findings fixed (`Export Profile` `1732.0` `TODO(compat)` marker; the
+  `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + four
+  oracle-pinned coverage tests. golden_phase8 **58**; lib **731**. Detail in §1f.
+- **next = WP8.4 (Show reports)** — upgrade the `Show` no-op to real text reports.
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
@@ -54,7 +38,7 @@ HARD STOP; `phase-8-reporting` builds on top of it). Roll-up + archives in **§1
 ([`docs/phase-records/phase-7.md`](docs/phase-records/phase-7.md) +
 `phase-7-wp{1..7}.md`). Tracked-open Phase-7 deferrals (both Plot-blocked, zero
 corpus payoff): the **GFM grid-forming inverter mode** and the **Generic/TD21
-relay `Sample`**. Current scores: dss-core **lib 730**, **`solvable_now` 168**;
+relay `Sample`**. Current scores: dss-core **lib 731**, **`solvable_now` 168**;
 oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
 
@@ -92,16 +76,16 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 | **5** | **LoadShape/XYcurve/controls behavior, control queue, time modes + feeder gate (controls active)** | ✅ done (merged to main, `10d3550`); `PHASE5_PLAN.md` |
 | **6** | **Meters/Monitors/topology/Generator + 8500-node gate + live corpus gate** | ✅ done (merged to main, `b98223a`); `PHASE6_PLAN.md` |
 | 7 | Extended elements: DER, protection, line constants, harmonics, dynamics | ✅ **COMPLETE** (WP7.1–WP7.10) — `PHASE7_PLAN.md`; branch `phase-7-extended-elements`, gate-green, **NOT merged to `main`** (explicit-request-only HARD STOP). WP7.1–7.6 (line constants, protection, DER, harmonics), WP7.7 (Dynamics core), WP7.8 (Converter/FACTS), WP7.9 (FaultStudy + AutoAdd/Feeder-deferred), WP7.10 (phase exit). Tracked-open deferrals: GFM grid-forming mode + Generic/TD21 relay `Sample` (both Plot-blocked, 0 corpus payoff). Per-step detail in §1e + `docs/phase-records/phase-7-wp{1..6}.md` |
-| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 IN PROGRESS** — step 1 (`Export Monitors`) + **step 2** (the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register/load dumps + the DER `SampleAll`/`ResetAll` wiring the export surfaced as a gap) + **step 3a** (`EventLog`/`ErrorLog` dumps + the missing Circuit-build `LogThisEvent` markers the `Set Log=yes` EventLog golden surfaced) + **step 3b** (`Faultstudy` — read-only per-bus 3φ/1φ/L-L fault currents over the WP7.9-precomputed `Ysc`/`BusCurrent` via local `CMatrix` `YFault` scratch inversions) + **step 3c part 1** (`BusReliability`/`BranchReliability`/`Capacity` — read-only over the `RelCalc`-populated bus/branch fields + a synthesized recloser+meter deck fixture with a new deck-based golden runner) + **step 3c part 2** (`Overloads`/`Unserved`/`AllocationFactors` — PD-overload rows with the byte-faithful `NormAmps<=0` column shift, the mutable `EEN`/`UE` Load criteria + `u…` pre-parse, `DumpAllocationFactors`; audit follow-up caught + fixed the column-shift empty-field defect) + **step 3c part 3** (`Sections`/`Profile` — the meter `SectionCount`/`FeederSections` persistence, the `meter=`/phases-to-plot pre-parses, `Set/Get Markercode|Nodewidth` + `Circuit.NodeMarker*`, the multi-meter `Bus_Int_Duration` OOB guard) + **step 4** (`TSystemMeter` core + the full demand-interval machinery: the `DI_*`/phase-voltage/overload/volt-exception writers, the DI `Set` option handlers, `Set year=` `Set_Year` side effects, `CloseDI`, solve-loop open/close wiring, §2.6) + **step 5** (completion gate: 47 probe-clean decks migrated + the silent `Spectrum.CSVFile` no-op fixed → 2 more; `solvable_now` **119→168**, COVERAGE **50.1%**) landed gate-green; **next = the deferred WP8.3 audits**, then WP8.4 (Show). Detail in §1f |
+| **8** | **Reporting: Export/Show/Save/Dump + executive tail + full ReduceAlgs** | 🚧 **IN PROGRESS** — `PHASE8_PLAN.md`. **WP8.1 COMPLETE, gate-green** (dispatch skeleton + GUI no-ops `82b50fe`; output-path machinery + `Export Counts` + the `compare_export` golden harness `929145c`). **WP8.2 COMPLETE, gate-green:** sub-step 1 (`71067f7`) = bus/node solution exports; sub-step 2a (`668bd18`) = the aggregate PD/PC power exports `Powers`/`Losses`/`P_byphase` + the mutable element-walk infra + the MVA/kVA `Parm2` pre-parse; **sub-step 2b** = the symmetrical-component family `SeqVoltages`/`SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator-gate harness machinery; **sub-step 2c** = the per-terminal/per-conductor element exports `Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the `ColSel` name-prefix\|index-parity harness refactor + the `ElemPowers` Vsource order fix; **sub-step 3** = the matrix/summary exports `Yprims`/`Y`/`SeqZ`/`Summary`/`Result` + the `Y` triplet Parm2 flag + the `Summary` append/`DateTime`-mask (`ColSel::Index`+`GateSpec::Mask`) + the `SeqZ`-faultstudy fixture + the PM-build-faithful always-`null` `Result`; **completion gate** = the IEEE8500 `Voltages`/`Summary`/`Counts` goldens (`run_shared_exports`) + the `Export`-unblocked corpus migration (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under report-writing decks). The "9 decks hang" tracked-open is **RESOLVED — no hang** (all complete + converge; watchdog artifact; stale tags refreshed, see §1f). Branch `phase-8-reporting`. **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/`Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=` wiring (§2.6); the completion gate migrated `solvable_now` **119→168** (COVERAGE **50.1%**, incl. the silent `Spectrum.CSVFile` no-op fix). Both independent audits found **no correctness bug**; 2 LOW code findings fixed (the `Export Profile` `1732.0` `TODO(compat)` marker; the `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + 4 oracle-pinned coverage tests (golden_phase8 **58**; lib **731**). **next = WP8.4 (Show).** Detail in §1f |
 
 ### Gate state (all green)
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 730, golden_feeders 1,
+cargo test --workspace      # dss-core lib 731, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 54,
+                            # golden_phase7_protection 1, golden_phase8 58,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
@@ -336,141 +320,33 @@ write-ups) is **archived** at
   ≤3.4s release), and the rare live-gate flake was a per-process convergence misfire
   *inside the pinned oracle* (now retried in-process) — neither a Rust bug.
 
-- **WP8.3 (Export: device/reliability + logs) — 🚧 IN PROGRESS**, landed gate-green
-  through **step 3c part 2**:
-  - **step 1** — `Export Monitors` (the Phase-6 f32 stream → `Monitor::to_csv` +
-    `util::comma_text`).
-  - **step 2** — the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters`
-    register/load dumps + the `/m` multi-file switch. **Real gap fixed:** the DER
-    `SampleAll`/`ResetAll` tail was never wired into the solve loop, so DER energy
-    registers stayed zero — the export surfaced it.
-  - **step 3a** — `EventLog`/`ErrorLog` dumps. **Real gap fixed:** the three
-    circuit-build `LogThisEvent` markers (`ReprocessBusDefs`/`DoResetMeterZones`)
-    were never wired (ported before the `EventLog` type existed).
-  - **step 3b** — `Faultstudy`: read-only per-bus 3φ/1φ/L-L fault currents over the
-    WP7.9-precomputed `Ysc`/`BusCurrent` via local `CMatrix` `YFault` scratch
-    inversions (no re-solve, no mutation).
-  - **step 3c part 1** — `BusReliability`/`BranchReliability`/`Capacity`, read-only
-    over the `RelCalc`-populated fields + a synthesized recloser+meter deck fixture
-    (new deck-based golden runner).
-  - **step 3c part 2** — `Overloads`/`Unserved`/`AllocationFactors`. The audit
-    follow-up **revealed + fixed** a real degenerate-path defect: the `NormAmps<=0`
-    column-shift row was not byte-faithful (Pascal's trailing-`, ` doubling → an
-    empty AmpsOver field).
-  - **step 3c part 3** — `Sections`/`Profile`. `Sections`: the meter now
-    **persists** `SectionCount` + `FeederSections` (the struct moved to
-    `energymeter/mod.rs`; `calc_reliability_indices` writes both back on success
-    and zeroes only the count on the no-OCP abort, exactly Pascal's field
-    lifecycle), read back by `export_sections` with the `meter=<name>` pre-parse
-    (`CompareTextShortest` incl. the empty-ParamName quirk; unknown name → all
-    meters). `Profile`: the branch-list voltage profile over each meter's
-    `SequenceList` + zone-build `DistFromMeter`, all seven `PhasesToPlot`
-    selector branches (default/all/primary/ll3ph/llall/llprimary/explicit-digit
-    `IntValue`) + the `WriteNewLine` layout and the header's appended `Title=…`
-    tail. **Ported-immediately gaps** (per the no-deferral rule): `Set/Get
-    Markercode|Nodewidth` handlers + `Circuit.node_marker_code/width`
-    (Circuit.pas 16/1 defaults — Profile echoes them per row). **Upstream OOB
-    found:** with ≥2 meters, Pascal's `Bus_Int_Duration` sweep
-    (EnergyMeter.pas:2521) walks *all* circuit buses and indexes
-    `FeederSections[BusSectionID]` from *another* meter's zone — in-range ids
-    are a deterministic cross-zone overwrite (reproduced); out-of-range ids are
-    an unchecked heap read (unpinnable garbage) — Rust skips that write
-    (documented at the guard; NOT a `TODO(compat)` — no defined upstream value).
-    Goldens: a synthesized two-meter recloser+fuse deck (`export_sections`,
-    `export_sections_meter`) + 7 Profile variants on metered IEEE13
-    (`run_shared_exports`) + the no-RelCalc/unknown-meter structural edges.
-  - **step 4** — the `TSystemMeter` core + the demand-interval machinery
-    (plan §2.6; new `solution/meters/demand_interval.rs`):
-    - `MeterStream` reproduces the `MemoryMap_lib` observable emission (strings
-      verbatim, doubles `", "`-separated `%-g` 15-sig); the `Append*` re-open
-      paths are **proven dead upstream** (no `AppendAllDIFiles` caller in
-      0.14.5) so files are always created fresh.
-    - `SystemMeter` (`Clear`/`Integrate`/`TakeSample`/`Reset`/`Save`) sampled in
-      `SampleAll` from `GetTotalPowerFromSources` + `Circuit.Losses`; state (+
-      the whole `EmDiState` class-level DI state) lives on `Circuit` so exec and
-      solve loop share it.
-    - Per-meter DI files + the **phase-voltage report**: the `TakeSample`
-      pu-voltage accumulators (`VphaseMax/Min/Accum/Count`, the `jiIndex`
-      layout, the `|V|/kVBase` 1000·pu quirk) landed in the zone walk;
-      `DI_Totals`/`EnergyMeterTotals`/`Totals`/`SystemMeter` writers; the
-      overload (`DI_Overloads`, incl. the <3-phase per-phase current mapping
-      via `MapNodeToBus` ≡ Pascal's FirstBus re-parse) and voltage-exception
-      (`DI_VoltExceptions`, primary + LV scans) reports.
-    - Wiring: `OpenAllDIFiles` at daily/yearly/peak-day solve head (duty opens
-      nothing, faithfully), the daily/duty `finally` close, yearly staying open
-      (pinned by a structural test), `Set DemandInterval/DIVerbose=` →
-      `ResetAll`, `Overloadreport/Voltexceptionreport/SampleEnergyMeters=`,
-      `CloseDI`, `Clear` flushing open files, and the **`Set year=`
-      `Set_Year` side effects** (DI close + clock reset + `ResetAll`) that were
-      missing from the YEAR handler — a real gap the step closed.
-    - Goldens: 9 DI files from one daily IEEE13 fixture (meter +
-      `PhaseVoltageReport` + all four switches), each diffed vs the oracle.
-      **Two upstream-garbage findings documented:** opening the DI files with
-      an unbuilt zone makes the oracle render *uninitialized heap memory* as
-      PHV vbase labels (unpinnable — the fixture pre-solves so both engines'
-      headers are deterministic; our unbuilt-zone rendering is the sane
-      zero-vbase form), and the zone vbase list collects **from-buses only**
-      (IEEE13 ⇒ a single 4.16 kV PHV group — bus 634 is nobody's from-bus).
-  - **step 5 (completion gate)** — a release `dss-cli` probe over all 154
-    `skipped_unsupported` decks found **49** that now compile+run clean (the
-    InvControl daily family + PVSystemTest + the two IEEE_519 harmonics decks +
-    RevRegTest + the InverterTechNote pair); moved to candidates and
-    live-classified: **47** matched the oracle full-model and migrated. The two
-    IEEE_519 (harmonicT) decks diverged — the Rust final NodeV was the
-    *fundamental*, the oracle's the last harmonic — root-caused to the **silent
-    `Spectrum.CSVFile` no-op** (a Phase-2 `TODO(phase2+)` that stored the
-    filename and loaded nothing, so `CollectAllFrequencies` saw only 60 Hz and
-    the harmonic sweep never ran): `TSpectrumObj.ReadCSVFile` is now ported via
-    the WP5.2b deferred-`FileLoad` path (+ a unit test pinning the parse, the
-    ×0.01 `%Mag` scale, and the `NumHarm` shrink), after which **both decks
-    matched the oracle live and migrated**. `solvable_now` **119→168**,
-    COVERAGE **35.5%→50.1%**; corpus stays pristine (probe outputs
-    `git clean`ed; CorpusGuard confirmed 0 dirt).
-  - **audit-code follow-up (steps 3c p3 + 4 + 5)** — two independent agents
-    (code + tests, parallel scoped briefs over `2af06b2^..HEAD`) found **no
-    correctness bug**; the port was verified loop-for-loop against the cited
-    Pascal (`ExportProfile`/`ExportSections`, the full `TSystemMeter`/DI
-    machinery, `Spectrum.ReadCSVFile`, `Set_Year`, the Solve*/DI open-close
-    wiring). Two **LOW** code findings, both settled + fixed: (1) the `Export
-    Profile` L-L divisor `1732.0` (truncated `1000·√3`) reproduced Pascal
-    faithfully but lacked the `TODO(compat)` marker the greppable-cleanup
-    convention requires (added, citing `dispatch.rs`); (2) `Spectrum.read_csv_file`
-    walked `str::lines()` instead of Pascal's byte-position `(F.Position+1) <
-    F.Size` guard — an **oracle-confirmed** divergence (probe: a file
-    `…\n3, 50, 0\n5` reads 2 rows, not 3; a trailing blank line likewise), now
-    ported byte-faithfully (+ a `read_csv_file_reproduces_pascal_eof_guard` unit
-    test, LF + CRLF, all oracle-pinned). lib **730→731**.
-  - **audit-tests follow-up (steps 3c p3 + 4 + 5)** — the test auditor's verdict
-    was **sound** (no weakened assertion, no silent skip, no self-comparison, no
-    toy fixture; it ran the whole gate live — `corpus_manifest` bijection, the
-    168-case live oracle compare, `golden_phase8`, provenance byte-reproduced).
-    It surfaced three **LOW** coverage gaps + the code auditor's coverage notes;
-    four **oracle-pinned** tests close them (golden_phase8 **54→58**):
-    - `set_year_closes_di_and_rolls_the_year_directory` — the `Set year=`
-      lifecycle (close DI → clock reset → `ResetAll` rebuilds `DI_yr_<n>`), the
-      twin of the `closedi` yearly test.
-    - `di_set_get_option_echoes_match_oracle` — the five `Get` report-switch
-      echoes + `Markercode`/`Nodewidth`, defaults + post-set values pinned to an
-      oracle probe (`Set SampleEnergyMeters=` handler covered).
-    - `di_overloads_single_phase_mapping_matches_oracle` — a synthesized
-      phase-2-only overloaded lateral pins `WriteOverloadReport`'s `NPhases < 3`
-      branch (current lands in the **I2** column via `MapNodeToBus.node_num`, not
-      I1 — the discriminating case the 3-phase `di_overloads` golden can't catch;
-      new `gen_di_overloads_1ph` fixture).
-    - `spectrum_csvfile_loads_through_executive` — the deferred-`FileLoad` path
-      end-to-end (`New Spectrum … CSVFile=…` → real file read → the new
-      byte-position EOF guard), oracle-pinned.
-    - **Deliberately not value-pinned (documented):** the multi-meter
-      `Bus_Int_Duration` cross-zone path — the out-of-range case is Pascal's
-      unpinnable OOB heap read (no defined upstream value; the guard skips it, and
-      the two-meter `export_sections` `RelCalc` gives the structural
-      no-panic/no-OOB coverage), so a value golden would be non-deterministic on
-      the oracle side. `SolveDuty`'s close-only DI path is symmetric to the tested
-      yearly open-then-`closedi` path.
-  - Scores at the frontier: golden_phase8 **58**; lib **731**; `solvable_now`
-    **168**.
-  - **next:** WP8.4 (Show reports) — upgrade the `Show` no-op to real text
-    reports (shares field logic with the WP8.2 exports).
+- **WP8.3 (Export: device/reliability + logs) — ✅ COMPLETE (steps 1–5 + both
+  audit follow-ups), gate-green.** The device/meter/reliability/log exports over
+  the solved circuit + the demand-interval file machinery: `Monitors` (step 1);
+  the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register
+  dumps (step 2, which surfaced + fixed the never-wired DER `SampleAll`/`ResetAll`
+  solve-loop tail); `EventLog`/`ErrorLog` (step 3a, + the missing circuit-build
+  `LogThisEvent` markers); `Faultstudy` (step 3b, read-only over the WP7.9
+  `Ysc`/`BusCurrent`); `BusReliability`/`BranchReliability`/`Capacity`/`Overloads`/
+  `Unserved`/`AllocationFactors`/`Sections`/`Profile` (step 3c, over the `RelCalc`
+  fields — incl. the meter `SectionCount`/`FeederSections` persistence, the seven
+  `Profile` `PhasesToPlot` branches, and the documented multi-meter
+  `Bus_Int_Duration` OOB skip); the `TSystemMeter` core + the full demand-interval
+  (`DI_*`/phase-voltage/overload/volt-exception) writers + their `Set` handlers +
+  the `Set year=` `Set_Year` side effects + the Solve*/DI open-close wiring
+  (step 4, §2.6); and the completion gate (step 5) — 47 probe-clean decks migrated
+  + the **silent `Spectrum.CSVFile` no-op** fixed → 2 IEEE_519 harmonicT decks
+  (`solvable_now` **119→168**, COVERAGE **50.1%**). The two independent audits
+  (`bacaf13` code, `8d58a8e` tests) found **no correctness bug**; two LOW code
+  findings fixed (the `Export Profile` `1732.0` truncated-√3 `TODO(compat)` marker;
+  the `Spectrum.read_csv_file` byte-position `(F.Position+1) < F.Size` EOF guard,
+  an oracle-confirmed divergence over `str::lines()`), and four oracle-pinned tests
+  closed the coverage gaps (`Set year=` lifecycle, the five `Get` DI echoes, the
+  `NPhases<3` overload I2-column mapping, the Spectrum-`FileLoad` deck round-trip).
+  Full per-step + audit detail in [`docs/phase-records/phase-8.md`](docs/phase-records/phase-8.md).
+  golden_phase8 **58**; lib **731**; `solvable_now` **168**.
+- **next: WP8.4 (Show reports)** — upgrade the current `Show` no-op to real text
+  reports (shares field logic with the WP8.2 exports).
 
 ---
 
