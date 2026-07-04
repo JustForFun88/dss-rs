@@ -1456,8 +1456,18 @@ impl Dss {
                 };
                 self.write_show("Loops.txt", &content);
             }
+            // 33 `controlled` (`ShowControlledElements`): each PD element carrying a
+            // control, followed by the control(s) acting on it. No solution guard
+            // (Pascal arm 33 walks the control refs only).
+            33 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_controlled(&self.classes, ckt)
+                };
+                self.write_show("ControlledElements.csv", &content);
+            }
             // TODO(WP8): later steps — the remaining `Show` keywords (isolated,
-            // lineconstants, topology, busflow, controlled, autoadded, querylog,
+            // lineconstants, topology, busflow, autoadded, querylog,
             // deltaV) and the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`

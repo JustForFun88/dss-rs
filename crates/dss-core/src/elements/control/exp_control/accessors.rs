@@ -62,6 +62,12 @@ impl CktElement for ExpControl {
         &mut self.ccd.cd
     }
 
+    /// Pascal `TControlElem.FControlledElement` - the element this control
+    /// acts on (`None` when it drives a list rather than a single element).
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
     /// Pascal `TExpControlObj.RecalcElementData` (the parse-time subset): derive
     /// `FOpenTau` and attach the control's terminal to the first DER's bus. The
     /// fleet *dispatch* build (`MakePVSystemList`) needs store access, so it is

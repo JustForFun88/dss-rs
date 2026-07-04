@@ -1558,6 +1558,18 @@ fn show_loops_multi_matches_oracle() {
     run_deck_show_exact("show_loops_multi");
 }
 
+/// `Show Controlled` (Pascal `ShowControlledElements`) on solved IEEE13: the three
+/// voltage-regulator `RegControl`s each control a `Transformer`, so the report is
+/// three `Transformer.regN, RegControl.regN ` lines — a PD element followed by the
+/// control(s) acting on it (via the derived `ckt.controls` scan). Pure text (names
+/// only, no numbers, no `MaxBusNameLength`/`PadDots` quirk) → compared **byte-exact**
+/// (indentation + trailing spaces), pinning the `, %s ` control-list format, the
+/// creation-order control listing, and the `*_ControlledElements.csv` filename.
+#[test]
+fn show_controlled_matches_oracle() {
+    run_feeder_show_exact("show_controlled");
+}
+
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
 /// end in `ParserVars.Add('@lastshowfile', …)`, but the reports dispatched inline
 /// with only a `FireOffEditor` — `Show Convergence` (arm 4) and `Show controlqueue`
