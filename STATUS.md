@@ -440,10 +440,37 @@ write-ups) is **archived** at
     `…\n3, 50, 0\n5` reads 2 rows, not 3; a trailing blank line likewise), now
     ported byte-faithfully (+ a `read_csv_file_reproduces_pascal_eof_guard` unit
     test, LF + CRLF, all oracle-pinned). lib **730→731**.
-  - Scores at the frontier: golden_phase8 **54**; lib **731**; `solvable_now`
+  - **audit-tests follow-up (steps 3c p3 + 4 + 5)** — the test auditor's verdict
+    was **sound** (no weakened assertion, no silent skip, no self-comparison, no
+    toy fixture; it ran the whole gate live — `corpus_manifest` bijection, the
+    168-case live oracle compare, `golden_phase8`, provenance byte-reproduced).
+    It surfaced three **LOW** coverage gaps + the code auditor's coverage notes;
+    four **oracle-pinned** tests close them (golden_phase8 **54→58**):
+    - `set_year_closes_di_and_rolls_the_year_directory` — the `Set year=`
+      lifecycle (close DI → clock reset → `ResetAll` rebuilds `DI_yr_<n>`), the
+      twin of the `closedi` yearly test.
+    - `di_set_get_option_echoes_match_oracle` — the five `Get` report-switch
+      echoes + `Markercode`/`Nodewidth`, defaults + post-set values pinned to an
+      oracle probe (`Set SampleEnergyMeters=` handler covered).
+    - `di_overloads_single_phase_mapping_matches_oracle` — a synthesized
+      phase-2-only overloaded lateral pins `WriteOverloadReport`'s `NPhases < 3`
+      branch (current lands in the **I2** column via `MapNodeToBus.node_num`, not
+      I1 — the discriminating case the 3-phase `di_overloads` golden can't catch;
+      new `gen_di_overloads_1ph` fixture).
+    - `spectrum_csvfile_loads_through_executive` — the deferred-`FileLoad` path
+      end-to-end (`New Spectrum … CSVFile=…` → real file read → the new
+      byte-position EOF guard), oracle-pinned.
+    - **Deliberately not value-pinned (documented):** the multi-meter
+      `Bus_Int_Duration` cross-zone path — the out-of-range case is Pascal's
+      unpinnable OOB heap read (no defined upstream value; the guard skips it, and
+      the two-meter `export_sections` `RelCalc` gives the structural
+      no-panic/no-OOB coverage), so a value golden would be non-deterministic on
+      the oracle side. `SolveDuty`'s close-only DI path is symmetric to the tested
+      yearly open-then-`closedi` path.
+  - Scores at the frontier: golden_phase8 **58**; lib **731**; `solvable_now`
     **168**.
-  - **next:** the deferred WP8.3 audit-tests follow-up (the coverage gaps the
-    test auditor surfaced), then WP8.4 (Show reports).
+  - **next:** WP8.4 (Show reports) — upgrade the `Show` no-op to real text
+    reports (shares field logic with the WP8.2 exports).
 
 ---
 
