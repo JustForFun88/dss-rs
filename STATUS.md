@@ -71,7 +71,13 @@ current frontier:
   are inherently not cross-engine-pinnable); new `show_variables`/`show_result`
   goldens; the powers PF gate doc corrected (`min(kW,kvar)`, not kVA) + tolerance
   tightened `abs 1e-3→2e-4`; a powers code-1 whitespace-variant `TODO(WP8)`
-  breadcrumb. **DeltaV deferred** (silent no-op, `TODO(WP8)`):
+  breadcrumb. **All 19 `Show` goldens converted to exact equality** (`rel=0, abs=0`):
+  against a fixed oracle-bytes golden the deterministic Rust output is byte-identical,
+  so the prior fuzzy tolerances only hid that — 14 are fully exact, the other 5 gate
+  out only the genuinely-non-comparable cells (near-zero faer-vs-KLU cancellation
+  residuals V0/V2/I0/I2/I1/`|I|`/kvar, skipped incl. exact-0 via `GateSpec::MinCols`)
+  + one real `%10.5f` rounding-boundary straddle (`mismatch` Max Current → the
+  `1.1e-5` render floor). **DeltaV deferred** (silent no-op, `TODO(WP8)`):
   `WriteElementDeltaVoltages`' `NodeRef[i+NCond]` cross-terminal read yields 0 rows for
   the delta-primary
   `Transformer.sub` where the oracle writes 3 — the delta-winding node_ref layout
