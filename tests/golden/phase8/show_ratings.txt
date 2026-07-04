@@ -1,0 +1,21 @@
+Power Delivery Elements Normal and Emergency (max) Ratings
+
+"Transformer.sub", normamps=27.61,  37.65  !Amps
+"Transformer.reg1", normamps=763.6,  1041  !Amps
+"Transformer.reg2", normamps=763.6,  1041  !Amps
+"Transformer.reg3", normamps=763.6,  1041  !Amps
+"Transformer.xfm1", normamps=76.33,  104.1  !Amps
+"Capacitor.cap1", normamps=112.4,  149.9  !Amps
+"Capacitor.cap2", normamps=56.25,  75  !Amps
+"Line.650632", normamps=400,  600  !Amps
+"Line.632670", normamps=400,  600  !Amps
+"Line.670671", normamps=400,  600  !Amps
+"Line.671680", normamps=400,  600  !Amps
+"Line.632633", normamps=400,  600  !Amps
+"Line.632645", normamps=400,  600  !Amps
+"Line.645646", normamps=400,  600  !Amps
+"Line.692675", normamps=400,  600  !Amps
+"Line.671684", normamps=400,  600  !Amps
+"Line.684611", normamps=400,  600  !Amps
+"Line.684652", normamps=400,  600  !Amps
+"Line.671692", normamps=400,  600  !Amps
