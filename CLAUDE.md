@@ -28,6 +28,32 @@ marked `TODO(compat):` with an explanation and the intended clean fix.
 - They are all wiped out in one dedicated pass after the 1:1 port reaches final
   acceptance (PORTING_PLAN.md §6), regenerating goldens deliberately.
 
+## Known upstream bugs (`investigations/`)
+
+Four proven dss_capi/OpenDSS engine bugs, each with a full report in
+`investigations/`. Check there before chasing a divergence in these areas. Rule:
+a *deterministic, defined* upstream bug is reproduced 1:1 (`TODO(compat)` +
+golden); UB or state-mutating-read bugs are NOT reproduced — document and gate
+around them.
+
+- **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
+  residual (missing `(j-1)*Ncond` offset). Reproduced (`TODO(compat)` in
+  `report/export/seq_currents.rs`).
+- **Multi-meter `Bus_Int_Duration`** — the `CalcReliabilityIndices` duration loop
+  walks ALL circuit buses, indexing foreign section ids into this meter's
+  `FeederSections`. In-range id → deterministic cross-zone overwrite, reproduced
+  (`TODO(compat)` in `solution/meters/reliability.rs`, golden
+  `export_busreliability_multimeter`); out-of-range id → OOB heap read, proven
+  nondeterministic, not reproduced (safe `.get()` skip; nothing to pin).
+- **VSConverter `GetCurrents`** — self-aliased `MVMult` over `ComplexBuffer`:
+  reported currents violate KCL and every read mutates state (can poison the next
+  solve). Not reproduced — the port computes physically-correct currents, gated
+  via oracle source currents + KCL (`exec/tests/vs_converter.rs`).
+- **Harmonics `Powers`-after-`Currents`** — stale `Iterminal` cache makes
+  Thevenin-DER (Generator/PVSystem/Storage) `Powers` order-dependent in harmonics
+  mode. Not reproduced (Rust computes single-pass); golden capture reads `Powers`
+  first (`tools/golden/gen_checkpoints.py::capture_element`).
+
 ## Gate (must be green before any commit)
 
 ```
