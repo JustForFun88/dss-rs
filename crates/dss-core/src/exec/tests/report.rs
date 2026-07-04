@@ -168,6 +168,61 @@ fn show_zone_error_paths() {
     assert!(dss.errors().is_empty(), "happy path: {:?}", dss.errors());
 }
 
+/// A **found-but-disabled** EnergyMeter has `BranchList = NIL` (no zone is built for
+/// a disabled meter): Pascal `ShowMeterZone` guards the entire body — header
+/// included — on `BranchList <> NIL` (`ShowResults.pas:2453`), so it writes an
+/// **empty** file and raises no error; `ShowLoops` skips it (`:3063`). Regression
+/// guard for the audit-code step-12 Major fix (the port previously wrote the 2-line
+/// header for this case — a silent, gate-invisible divergence, oracle-confirmed
+/// 46 bytes vs 0). Not corpus-reachable (all corpus meters are enabled), so
+/// synthesized (PHASE8_PLAN §1). Byte-checked here (a golden can't: `Show` sets no
+/// diffable content and this asserts the *absence* of any).
+#[test]
+fn show_zone_disabled_meter_is_empty() {
+    let scratch = std::env::temp_dir().join(format!("dss_zone_dis_{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.zt basekv=12.47 phases=3 bus1=src");
+    dss.command("new line.l1 bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 c1=0");
+    dss.command("new load.ld bus1=b phases=3 kv=12.47 kw=100 model=1");
+    dss.command("new energymeter.m1 element=line.l1 terminal=1");
+    dss.command("new energymeter.m2 element=line.l1 terminal=1 enabled=no");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+
+    // `show zone m2` (disabled): the meter is FOUND (no #220), but with no built
+    // zone the file is written EMPTY — no header — and no error is raised.
+    dss.command("show zone m2");
+    assert!(dss.errors().is_empty(), "show zone m2: {:?}", dss.errors());
+    let produced = PathBuf::from(dss.last_result_file());
+    assert!(
+        produced
+            .to_string_lossy()
+            .to_lowercase()
+            .ends_with("zoneout_m2.txt"),
+        "zone file: {produced:?}"
+    );
+    let bytes =
+        std::fs::read(&produced).unwrap_or_else(|e| panic!("read {}: {e}", produced.display()));
+    assert!(
+        bytes.is_empty(),
+        "disabled-meter zone file must be empty, got {} bytes: {:?}",
+        bytes.len(),
+        String::from_utf8_lossy(&bytes)
+    );
+
+    // `show loops` skips the disabled m2 (`BranchList = NIL`) — the radial m1 zone
+    // has no loops, so the report is header-only, no error, no panic.
+    dss.command("show loops");
+    assert!(dss.errors().is_empty(), "show loops: {:?}", dss.errors());
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// The export router's three non-formatting outcomes: the WP8.2 solution guard
 /// (#24712), a still-unported keyword's scoped `NOT_PORTED` (loud, not a silent
 /// fake), and an unknown keyword's Pascal 24713. The *happy* path (a real report
