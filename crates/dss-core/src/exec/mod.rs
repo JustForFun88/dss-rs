@@ -85,6 +85,11 @@ pub struct Dss {
     /// Accumulated `DoSimpleMsg` log (record-and-continue errors).
     errors: Vec<String>,
     active_class: Option<usize>,
+    /// `DSS.ActiveCircuit.ActiveCktElement` as `(class_idx, obj_idx)` — the circuit
+    /// element the `Select` command (Pascal `DoSelectCmd`) made active, read by the
+    /// active-element reports (`Show Yprim`). `None` until a `Select` of a circuit
+    /// element runs.
+    active_ckt_element: Option<(usize, usize)>,
     /// `DSS.GlobalResult`: the value returned by `?` queries and `Get`.
     last_result: String,
     /// The active circuit (`DSS.ActiveCircuit`; `MaxCircuits = 1`).

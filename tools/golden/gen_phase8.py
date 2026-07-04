@@ -631,6 +631,21 @@ def gen_show_eventlog(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def gen_show_yprim(d) -> None:
+    """Capture the oracle's `Show Yprim` (`ShowYPrim`) for an active element on the
+    solved IEEE13 feeder. `Select line.650632` makes the line the active circuit
+    element; the report writes `<ParentClass.Name>_<Name>_Yprim.txt`
+    (`Line_650632_Yprim.txt`, NO `CircuitName_` prefix), found by the `*_Yprim.txt`
+    suffix glob. The IEEE13 lines are LineCode-based, so the primitive Y is
+    bit-exact Rust↔oracle (→ exact-equality golden)."""
+    d.AllowEditor = False
+    _gen_show_group(
+        d,
+        ["solve", "select line.650632"],
+        [("yprim", "Yprim.txt", "show_yprim")],
+    )
+
+
 def gen_show_variables(d) -> None:
     """Capture the oracle's `Show Variables` on IEEE13 + a Generator — a PC element
     with dynamic state variables (6: Frequency/Theta/Vd/PShaft/dSpeed/dTheta), so the
@@ -1420,6 +1435,7 @@ def main() -> None:
     gen_feeder_reports(d)
     gen_show_reports(d)
     gen_show_eventlog(d)
+    gen_show_yprim(d)
     gen_show_variables(d)
     gen_show_kvbasemismatch(d)
     gen_show_monitor(d)

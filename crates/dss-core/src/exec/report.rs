@@ -1381,13 +1381,38 @@ impl Dss {
                 };
                 self.write_show("Unserved.txt", &content);
             }
+            // 25 `yprim` (`ShowYprim`): the **active** circuit element's primitive Y
+            // (lower-triangle G then jB). No solution guard (Pascal arm 25 is a bare
+            // `if ActiveCircuit <> NIL`). The filename is `<ParentClass.Name>_<Name>_
+            // Yprim.txt` — NO `CircuitName_` prefix (`ShowOptions.pas:395`), so it
+            // writes via `write_show_path`. With no active element (no prior `Select`)
+            // it is a no-op — Pascal would nil-deref `ActiveCktElement`, so there is
+            // no oracle-comparable output.
+            25 => {
+                let Some((ci, idx)) = self.active_ckt_element else {
+                    return;
+                };
+                let (filename, content) = {
+                    let class_name = self.classes[ci].props.class_name();
+                    let obj = &self.classes[ci].objects[idx];
+                    let name = obj.data().name();
+                    let filename = format!("{class_name}_{name}_Yprim.txt");
+                    let full_name = format!("{class_name}.{name}");
+                    let (yprim, yorder) = match obj.as_ckt_element() {
+                        Some(e) => (e.cd().yprim.as_ref(), e.cd().yorder),
+                        None => (None, 0),
+                    };
+                    (filename, show::show_yprim(&full_name, yprim, yorder))
+                };
+                self.write_show_path(&filename, &content, true);
+            }
             // 11 `panel` — the oracle faithfully errors it (`ShowOptions.pas:248`).
             11 => {
                 self.errors
                     .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
             }
             // TODO(WP8): later steps — the remaining `Show` keywords (zone,
-            // isolated, loops, lineconstants, topology, yprim, busflow,
+            // isolated, loops, lineconstants, topology, busflow,
             // controlled, autoadded, querylog, deltaV) and
             // the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
@@ -1446,13 +1471,21 @@ impl Dss {
             .as_ref()
             .map(|c| c.case_name.clone())
             .unwrap_or_default();
-        let circuit_name_ = format!("{case}_");
+        self.write_show_path(&format!("{case}_{default_name}"), content, set_last);
+    }
+
+    /// Write a `Show` report to `<OutputDirectory><filename>` — the raw path, with
+    /// **no** `<CircuitName_>` prefix (unlike [`Dss::write_show_named`]). The one
+    /// report that needs this is `Show Yprim`, whose filename is
+    /// `<ParentClass.Name>_<Name>_Yprim.txt` (`ShowOptions.pas:395`), not
+    /// `<CircuitName_>…`.
+    fn write_show_path(&mut self, filename: &str, content: &str, set_last: bool) {
         let path = crate::report::output::export_path(
             &self.output_directory,
             &self.current_dir,
-            &circuit_name_,
             "",
-            default_name,
+            "",
+            filename,
         );
         match std::fs::write(&path, content) {
             Ok(()) => {

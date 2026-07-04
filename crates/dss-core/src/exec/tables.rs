@@ -141,6 +141,7 @@ pub(crate) mod cmd {
     pub const MORE: usize = 3;
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
+    pub const SELECT: usize = 6;
     pub const SAVE: usize = 7;
     pub const SHOW: usize = 8;
     pub const SOLVE: usize = 9;

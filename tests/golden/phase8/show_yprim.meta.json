@@ -1,0 +1,10 @@
+{
+  "report": "yprim",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "solve",
+    "select line.650632"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "Yprim.txt"
+}

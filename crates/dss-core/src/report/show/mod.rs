@@ -21,6 +21,7 @@ mod powers;
 mod taps;
 mod unserved;
 mod voltages;
+mod yprim;
 
 pub(crate) use buses::show_buses;
 pub(crate) use currents::{show_currents, show_currents_elements};
@@ -38,6 +39,7 @@ pub(crate) use powers::{show_powers, show_powers_elements};
 pub(crate) use taps::show_taps;
 pub(crate) use unserved::show_unserved;
 pub(crate) use voltages::{show_voltages, show_voltages_elements, show_voltages_nodes};
+pub(crate) use yprim::show_yprim;
 
 use crate::circuit::Circuit;
 use crate::exec::registry::DssClass;

@@ -282,6 +282,7 @@ impl Dss {
             enums,
             errors: Vec::new(),
             active_class: None,
+            active_ckt_element: None,
             last_result: String::new(),
             circuit: None,
             default_base_freq: 60.0,

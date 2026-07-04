@@ -1385,6 +1385,26 @@ fn show_faultstudy_unbased_matches_oracle() {
     run_deck_show("show_faultstudy_unbased", &policy);
 }
 
+/// `Show Yprim` (Pascal `ShowYPrim`): the **active** circuit element's primitive Y
+/// (lower-triangle `G` then `jB`, `%13.10g`). `Select line.650632` makes the line
+/// active; the report writes `Line_650632_Yprim.txt` (NO `CircuitName_` prefix, so
+/// the `run_feeder_show` `*_Yprim.txt` glob also pins that filename convention). The
+/// IEEE13 lines are LineCode-based → the primitive Y is bit-exact Rust↔oracle, so
+/// every `G`/`jB` cell is byte-identical → **exact equality** (`rel = 0`, `abs = 0`).
+/// Also exercises the newly-ported `Select` command (the active-element surface).
+#[test]
+fn show_yprim_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_yprim", &policy);
+}
+
 /// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder
 /// head + em2 on the 632-645 lateral. The zones **partition** (em1 stops at em2), so
 /// the two data rows carry distinct per-zone registers — pinning that the legend is
