@@ -379,21 +379,26 @@ impl Dss {
         if obj_class.eq_ignore_ascii_case("circuit") {
             return; // SetActiveCircuit — single circuit, nothing to switch
         }
-        // A nonempty class name sets the active class; an empty one keeps the
-        // previously-referenced class (Pascal `if Length(ObjClass)>0 then
-        // SetObjectClass`).
-        let ci = if obj_class.is_empty() {
-            self.active_class
-        } else {
-            self.class_by_name.get(&obj_class.to_lowercase()).copied()
-        };
-        let Some(ci) = ci else {
-            // Pascal `ActiveDSSClass = NIL` → #246.
+        // Pascal `if Length(ObjClass)>0 then SetObjectClass(ObjClass)`: a known
+        // class becomes the active/"last-referenced" class; an UNKNOWN one logs
+        // #903 and leaves the previously-referenced class in place (the select then
+        // falls back to it) — it does NOT abort. An empty class keeps the previous
+        // class unchanged.
+        if !obj_class.is_empty() {
+            match self.class_by_name.get(&obj_class.to_lowercase()).copied() {
+                Some(ci) => self.active_class = Some(ci),
+                None => self
+                    .errors
+                    .push(format!("Error! Object Class \"{obj_class}\" not found. ")),
+            }
+        }
+        // Pascal `ActiveDSSClass := Get(LastClassReferenced)` = our `active_class`;
+        // `NIL` (no class ever referenced) → #246.
+        let Some(ci) = self.active_class else {
             self.errors
                 .push("Error! Active object type/class is not set.".to_string());
             return;
         };
-        self.active_class = Some(ci);
         if !self.classes[ci].set_active(&obj_name) {
             // Pascal #245.
             self.errors
@@ -407,17 +412,28 @@ impl Dss {
         // `DSS_OBJECT` does nothing here).
         if self.classes[ci].objects[idx].as_ckt_element().is_some() {
             self.active_ckt_element = Some((ci, idx));
-            // Active terminal: `Param>0 ? IntValue : 1` (Pascal), adopted only when
-            // in `1..Nterms` (`Set_ActiveTerminal`).
+            // Active terminal (Pascal `if Length(Param)>0 then ActiveTerminalIdx :=
+            // IntValue else 1`): an **absent** param selects terminal 1; a
+            // **present** one is adopted only when in `1..Nterms`
+            // (`Set_ActiveTerminal`), else the active terminal is left unchanged.
             self.parser.next_param(&self.vars);
-            let term = self.parser.make_integer(&self.vars).unwrap_or(0);
-            let t = if term > 0 { term as usize } else { 1 };
+            let param = self.parser.make_string(&self.vars).to_string();
+            let tval = if param.is_empty() {
+                None
+            } else {
+                Some(self.parser.make_integer(&self.vars).unwrap_or(0))
+            };
             let cd = self.classes[ci].objects[idx]
                 .as_ckt_element_mut()
                 .expect("just checked it is a circuit element")
                 .cd_mut();
-            if t >= 1 && t <= cd.nterms {
-                cd.active_terminal = t - 1;
+            match tval {
+                None if cd.nterms >= 1 => cd.active_terminal = 0,
+                None => {}
+                Some(t) if t >= 1 && (t as usize) <= cd.nterms => {
+                    cd.active_terminal = (t - 1) as usize
+                }
+                Some(_) => {}
             }
         }
     }
@@ -517,6 +533,11 @@ impl Dss {
             cls.active = None;
         }
         self.active_class = None;
+        // `ActiveCktElement` is a field of `TDSSCircuit`; `Clear` destroys and
+        // recreates the circuit, so it must reset to `None` too (else a stale
+        // `(cls, idx)` from a pre-`Clear` `Select` indexes the now-emptied class
+        // objects — an OOB panic / foreign-element read in `Show Yprim`).
+        self.active_ckt_element = None;
         self.circuit = None;
         self.errors.clear();
         // Pascal `DoClearCmd` → `ClearAll` → recreate the default items.
