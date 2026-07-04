@@ -16,7 +16,6 @@ use num_complex::Complex64;
 use crate::circuit::Circuit;
 use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
-use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
 use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
@@ -224,9 +223,8 @@ pub(crate) fn show_voltages_nodes(ckt: &Circuit, ll: bool) -> String {
 /// Build the `Show Voltages` (code 2) text (Pascal `ShowVoltages` case 2 +
 /// `WriteElementVoltages`): node-ground voltages by circuit element (Sources +
 /// PD, then PC). Read-only over `node_v` (uses each element's `NodeRef` directly,
-/// no terminal recompute). `classes` is borrowed mutably only because
-/// [`for_each_enabled_elem`] hands out `&mut dyn CktElement`.
-pub(crate) fn show_voltages_elements(classes: &mut [DssClass], ckt: &Circuit, ll: bool) -> String {
+/// no terminal recompute).
+pub(crate) fn show_voltages_elements(classes: &[DssClass], ckt: &Circuit, ll: bool) -> String {
     let mbnl = super::max_bus_name_length(ckt);
     let hdr = |s: &mut String| {
         s.push_str(&format::pad("Bus", mbnl));
@@ -243,26 +241,44 @@ pub(crate) fn show_voltages_elements(classes: &mut [DssClass], ckt: &Circuit, ll
     hdr(&mut s);
 
     // SOURCES first, then PDELEMENTS (Pascal's PD section; faults are NON_PCPD so
-    // not walked here). Pascal writes a blank line after each element.
-    for_each_enabled_elem(classes, &ckt.sources, |name, elem| {
-        write_element_voltages(&mut s, ckt, name, elem, mbnl, ll);
-        s.push('\n');
-    });
-    for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
-        write_element_voltages(&mut s, ckt, name, elem, mbnl, ll);
-        s.push('\n');
-    });
+    // not walked here).
+    walk_element_voltages(&mut s, classes, ckt, &ckt.sources, mbnl, ll);
+    walk_element_voltages(&mut s, classes, ckt, &ckt.pd_elements, mbnl, ll);
 
     s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
     s.push('\n');
     s.push_str("Power Conversion Elements\n");
     s.push('\n');
     hdr(&mut s);
-    for_each_enabled_elem(classes, &ckt.pc_elements, |name, elem| {
-        write_element_voltages(&mut s, ckt, name, elem, mbnl, ll);
-        s.push('\n');
-    });
+    walk_element_voltages(&mut s, classes, ckt, &ckt.pc_elements, mbnl, ll);
     s
+}
+
+/// Walk a circuit list, writing each **enabled** element's node-ground voltage
+/// block, then a blank line after **every** element (Pascal's `FSWriteln(F)` sits
+/// *outside* the `if pElem.Enabled` guard, so a disabled element still emits its
+/// separating blank — `ShowResults.pas:452-489`). The blank-after-every-element is
+/// invisible to the token/blank-filtering golden gate but reproduced for byte
+/// faithfulness (audit-code WP8.4 step 4).
+fn walk_element_voltages(
+    s: &mut String,
+    classes: &[DssClass],
+    ckt: &Circuit,
+    refs: &[crate::elements::traits::ElemRef],
+    mbnl: usize,
+    ll: bool,
+) {
+    for &r in refs {
+        let class_name = classes[r.cls].props.class_name();
+        let obj = &classes[r.cls].objects[r.idx];
+        if let Some(elem) = obj.as_ckt_element() {
+            if elem.cd().enabled {
+                let name = format!("{}.{}", class_name, obj.data().name());
+                write_element_voltages(s, ckt, &name, elem, mbnl, ll);
+            }
+            s.push('\n');
+        }
+    }
 }
 
 /// One element's node-ground voltage block (Pascal `WriteElementVoltages`).

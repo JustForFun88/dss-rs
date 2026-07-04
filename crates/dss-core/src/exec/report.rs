@@ -1137,11 +1137,8 @@ impl Dss {
                         ll,
                     ),
                     _ => {
-                        let Dss {
-                            classes, circuit, ..
-                        } = self;
-                        let ckt = circuit.as_ref().expect("post-circuit dispatch");
-                        show::show_voltages_elements(classes, ckt, ll)
+                        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                        show::show_voltages_elements(&self.classes, ckt, ll)
                     }
                 };
                 self.write_show(&format!("{filname}.txt"), &content);
