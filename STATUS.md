@@ -139,7 +139,7 @@ HARD STOP; `phase-8-reporting` builds on top of it). Roll-up + archives in **§1
 ([`docs/phase-records/phase-7.md`](docs/phase-records/phase-7.md) +
 `phase-7-wp{1..7}.md`). Tracked-open Phase-7 deferrals (both Plot-blocked, zero
 corpus payoff): the **GFM grid-forming inverter mode** and the **Generic/TD21
-relay `Sample`**. Current scores: dss-core **lib 731**, **`solvable_now` 168**;
+relay `Sample`**. Current scores: dss-core **lib 732**, **`solvable_now` 168**;
 oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
 
@@ -183,10 +183,10 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 731, golden_feeders 1,
+cargo test --workspace      # dss-core lib 732, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 83,
+                            # golden_phase7_protection 1, golden_phase8 84,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
