@@ -701,37 +701,40 @@ fn show_powers_matches_oracle() {
 /// are `BUS Node VLN /_ Angle pu BaseKV [NodeNodeLL VLL /_ Angle pu]`, so the
 /// numeric magnitude/pu columns (`%10.5g`/`%9.5g`) hold the tight default
 /// (`rel = 1e-4`, `abs = 1e-4` for the last `%g` digit), the `%9.3f` base kV is
-/// bit-identical **input** data, and the two angle columns (`%6.1f`, token
-/// indices 4 and 10) take the additive ±0.05 `%.1f` printing floor (`abs = 0.11`,
-/// the project `%.1f` convention). The `/_` glyph and the `n-n` node pair are text
-/// tokens. Voltage physics is pinned to 1e-8 by `corpus_live.rs`.
+/// bit-identical **input** data, and both `%6.1f` angle columns take the additive
+/// ±0.05 `%.1f` printing floor (`abs = 0.11`, the project `%.1f` convention). The
+/// angles are targeted by [`ColSel::AfterToken`]`("/_")` — the angle is the column
+/// right after the `/_` glyph — because the **first row of every bus** carries an
+/// extra leading `..` dots token (`PadDots`, the floor-12 `TODO(compat)`), shifting
+/// the angle to a row-dependent index that a fixed `Index` would miss (audit-tests
+/// WP8.4 step 4). Voltage physics is pinned to 1e-8 by `corpus_live.rs`.
 #[test]
 fn show_voltages_node_matches_oracle() {
-    let angcol = |i: usize| ColTol {
-        sel: ColSel::Index(i),
-        rel: 0.0,
-        abs: 0.11,
-        gate: None,
-    };
     let policy = ExportPolicy {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 1e-4,
         abs: 1e-4,
-        col_tol: vec![angcol(4), angcol(10)],
+        col_tol: vec![ColTol {
+            sel: ColSel::AfterToken("/_".into()),
+            rel: 0.0,
+            abs: 0.11,
+            gate: None,
+        }],
     };
     run_feeder_show("show_voltages_node", &policy);
 }
 
 /// `Show Voltages LN Elem` (Pascal `ShowVoltages` case 2 + `WriteElementVoltages`):
 /// node-ground voltages by circuit element. Each conductor row is `BUS (nref)
-/// nodenum VLN (pu) /_ Angle`; the `nref` and `pu` are **parenthesised** so the
-/// tokenizer text-compares them (both are bit-pinned — `nref` is the exact node
-/// order, `pu` is 4-sig of a 1e-8-pinned voltage), while the bare `VLN` (`%13.5g`)
-/// and `Angle` (`%6.1f`, token index 6) are numeric. Default `rel = 1e-4` /
-/// `abs = 1e-4` for the magnitude last digit; the angle takes the `%.1f` floor
-/// (`abs = 0.11`).
+/// nodenum VLN (pu) /_ Angle`; the `nref` and `pu` are **parenthesised** (and split
+/// on the interior padding into `(` + `n)` tokens) so the tokenizer text-compares
+/// them — both are bit-pinned (`nref` is the exact node order, `pu` is 4-sig of a
+/// 1e-8-pinned voltage). The bare `VLN` (`%13.5g`) is numeric at the tight default
+/// (`rel = 1e-4` / `abs = 1e-4`); the `%6.1f` angle takes the `%.1f` floor
+/// (`abs = 0.11`), targeted by [`ColSel::AfterToken`]`("/_")` since the split
+/// parens make the angle's absolute index unstable (audit-tests WP8.4 step 4).
 #[test]
 fn show_voltages_elem_matches_oracle() {
     let policy = ExportPolicy {
@@ -741,7 +744,7 @@ fn show_voltages_elem_matches_oracle() {
         rel: 1e-4,
         abs: 1e-4,
         col_tol: vec![ColTol {
-            sel: ColSel::Index(6),
+            sel: ColSel::AfterToken("/_".into()),
             rel: 0.0,
             abs: 0.11,
             gate: None,
@@ -753,15 +756,18 @@ fn show_voltages_elem_matches_oracle() {
 /// `Show Currents Y Elem` (Pascal `ShowCurrents` case 1 + `WriteTerminalCurrents`,
 /// `ShowResidual = TRUE`): per-terminal, per-conductor branch currents + the PD
 /// residual row. Each row is `BUS nodenum |I| /_ Angle = Re +j Im`; numeric tokens
-/// are `|I|` (idx 2, `%13.5g`), `Angle` (idx 4, `%6.1f`), `Re`/`Im` (idx 6/8,
-/// `%9.5g`). Magnitudes and Re/Im keep the default (`rel = 1e-4`, `abs = 1e-5` — the
-/// latter absorbing near-zero conductor/residual currents down to ~1e-12 A). The
-/// **angle** takes the `%.1f` floor (`abs = 0.11`) **and** a denominator gate: skip
-/// it when `|I|` (idx 2) is a `< 1e-6 A` cancellation residual (a floating switch
-/// terminal / a balanced residual ≈ 0, where the angle is faer-vs-KLU garbage) —
-/// the same `1e-6 A` threshold proven for `show_currents`, provably between the
-/// noise floor and the smallest real current. Current physics is pinned to 1e-8 by
-/// `corpus_live.rs`.
+/// are `|I|` (idx 2, `%13.5g`), `Angle` (`%6.1f`), `Re`/`Im` (idx 6/8, `%9.5g`).
+/// Magnitudes and Re/Im keep the default (`rel = 1e-4`, `abs = 1e-5` — the latter
+/// absorbing near-zero conductor/residual currents down to ~1e-12 A). The **angle**
+/// takes the `%.1f` floor (`abs = 0.11`, targeted by [`ColSel::AfterToken`]`("/_")`)
+/// **and** a denominator gate: skip it when `|I|` (idx 2) is a `< 1e-4 A`
+/// cancellation residual. The `1e-4 A` threshold (higher than `show_currents`'
+/// `1e-6`) brackets **this** report's noise: the residual rows push the near-zero
+/// floor up to ~1.08e-5 A (the 633/634 near-balanced-transformer residuals,
+/// `|I| = 1.12e-6`/`1.08e-5 A`, whose phase is arbitrary faer-vs-KLU cancellation
+/// noise), while the smallest **real** current is `Line.671680`'s `5.72e-4 A` (whose
+/// angle IS checked) — a ~53× gap with nothing between, so `1e-4` skips only noise.
+/// Current physics is pinned to 1e-8 by `corpus_live.rs`.
 #[test]
 fn show_currents_elem_matches_oracle() {
     let policy = ExportPolicy {
@@ -771,10 +777,10 @@ fn show_currents_elem_matches_oracle() {
         rel: 1e-4,
         abs: 1e-5,
         col_tol: vec![ColTol {
-            sel: ColSel::Index(4),
+            sel: ColSel::AfterToken("/_".into()),
             rel: 0.0,
             abs: 0.11,
-            gate: Some(GateSpec::Col(2, 1e-6)),
+            gate: Some(GateSpec::Col(2, 1e-4)),
         }],
     };
     run_feeder_show("show_currents_elem", &policy);
@@ -799,6 +805,45 @@ fn show_elements_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_show("show_elements", &policy);
+}
+
+/// `Show Elements Line` (Pascal `ShowElements` **class-filter** form): the enabled
+/// elements of class `Line`, uppercased names, one per row. Exercises the
+/// `SetObjectClass` + per-object enabled/disabled routing path (distinct from the
+/// default PD/PC form). All-name tokens, exact (`rel = 0` / `abs = 0`).
+#[test]
+fn show_elements_class_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_elements_class", &policy);
+}
+
+/// `Show Voltages LL Node` (Pascal `ShowVoltages` case 1 + `WriteBusVoltages`,
+/// `LL = TRUE`): the **line-line** node form — the `ll` branch with its distinct
+/// header and `/√3` pu scaling (and the `if kk > 0` line-line row emission). Same
+/// tolerance/selector shape as the L-N twin (`AfterToken("/_")` angle floor).
+#[test]
+fn show_voltages_ll_node_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-4,
+        col_tol: vec![ColTol {
+            sel: ColSel::AfterToken("/_".into()),
+            rel: 0.0,
+            abs: 0.11,
+            gate: None,
+        }],
+    };
+    run_feeder_show("show_voltages_ll_node", &policy);
 }
 
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects

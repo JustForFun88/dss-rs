@@ -428,6 +428,14 @@ SHOW_REPORTS = [
     ("currents Y elem", "Curr_Elem.txt", "show_currents_elem"),
     # `Show Elements` (`ShowElements`, default PD/PC form): the element↔bus listing.
     ("elements", "Elements.txt", "show_elements"),
+    # `Show Voltages LL Node` (code 1, `LL`): the **line-line** node form — different
+    # header ('LINE-LINE VOLTAGES BY BUS & NODE') + the `/√3` pu scaling. Exercises
+    # the `ll=true` WriteBusVoltages branch (file `<case>_VLL_Node.txt`).
+    ("voltages LL node", "VLL_Node.txt", "show_voltages_ll_node"),
+    # `Show Elements Line` (`ShowElements` class-filter form): the active elements of
+    # class Line, uppercased — exercises the class-filter path (`SetObjectClass` +
+    # per-object routing). Same `<case>_Elements.txt` file (written after the default).
+    ("elements line", "Elements.txt", "show_elements_class"),
 ]
 
 
