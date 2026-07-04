@@ -240,16 +240,22 @@ fn calc_reliability_indices(
     }
 
     // Bus interruption durations. Pascal walks **every circuit bus** here
-    // (EnergyMeter.pas:2521), not just this meter's zone, so with multiple
-    // meters a bus whose `BusSectionID` came from *another* meter's sweep is
-    // (a) overwritten from THIS meter's section of the same id when the id is
-    // in range — a deterministic cross-zone contamination we reproduce — or
-    // (b) read **out of bounds** (`FeederSections[BusSectionID]` past the
-    // `SectionCount + 1` allocation, no range check upstream) when it is not:
-    // undefined heap garbage that safe Rust cannot and must not reproduce. The
-    // OOB write is skipped (the bus keeps its previous duration); the garbage
-    // value is unpinnable, so no gate can observe the difference. NOT a
-    // TODO(compat) — there is no defined upstream value to pin.
+    // (EnergyMeter.pas:2521), not just this meter's zone — an upstream bug (see
+    // `investigations/reliability_bus_int_duration_oob_bug_report.md`): with
+    // multiple meters a bus whose `BusSectionID` was set by *another* meter's
+    // sweep is read against THIS meter's `FeederSections`. Two regimes:
+    //   (a) in-range id (`≤ section_count`) — a **deterministic** cross-zone
+    //       overwrite. `sections.get(..) = Some`, so we reproduce it exactly
+    //       (gated by `export_busreliability_multimeter_matches_oracle`).
+    //   (b) out-of-range id — Pascal reads `FeederSections[id]` past the
+    //       `section_count + 1` allocation: an OOB heap read, **proven
+    //       nondeterministic** (the report probes it across fresh processes —
+    //       the first slot past the array reads a stable 0 from zeroed slack,
+    //       the next slots read live garbage: 1.5e-311, 3.1e-314, 2.5e-290,
+    //       6.0e-118). Safe Rust cannot and must not reproduce it: `.get()`
+    //       returns `None`, so the bus keeps its own-zone duration. NOT a
+    //       TODO(compat) — there is no defined upstream value to pin, so no gate
+    //       can observe the difference.
     for b in ckt.buses.iter_mut() {
         if b.bus_section_id > 0
             && let Some(s) = sections.get(b.bus_section_id as usize)

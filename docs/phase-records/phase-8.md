@@ -1068,11 +1068,23 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   matches_oracle` (a synthesized phase-2-only overloaded lateral → the current lands in the **I2**
   column via `MapNodeToBus.node_num`, the discriminating case the 3-phase `di_overloads` golden can't
   catch; new `gen_di_overloads_1ph`); `spectrum_csvfile_loads_through_executive` (the deferred-`FileLoad`
-  path + the new EOF guard, end to end). **Deliberately not value-pinned (documented):** the multi-meter
-  `Bus_Int_Duration` cross-zone path (out-of-range = Pascal's unpinnable OOB heap read → structural
-  no-panic coverage via the two-meter `export_sections` `RelCalc`; a value golden would be
-  non-deterministic on the oracle side); `SolveDuty`'s close-only DI path is symmetric to the tested
+  path + the new EOF guard, end to end). `SolveDuty`'s close-only DI path is symmetric to the tested
   yearly open-then-`closedi` path.
+
+- **WP8.3 — multi-meter `Bus_Int_Duration`: upstream bug filed + in-range reproduction gated
+  (`export_busreliability_multimeter`).** The audit-tests note first parked this as "not value-pinned";
+  a follow-up investigation (prompted by the user's no-deferral rule) settled it empirically instead of
+  asserting. `CalcReliabilityIndices`'s duration loop walks **every** circuit bus (EnergyMeter.pas:2521),
+  not the meter's zone, so with ≥2 meters a bus carries a `BusSectionID` from another meter and is indexed
+  into *this* meter's `FeederSections` — a genuine upstream memory-safety bug, now written up at
+  `investigations/reliability_bus_int_duration_oob_bug_report.md`. **Two regimes, both proven by oracle
+  probe:** (a) **in-range** id = a *deterministic* cross-zone overwrite the port reproduces bus-for-bus —
+  now **gated** by `export_busreliability_multimeter_matches_oracle` (a no-OOB two-meter deck: both meters
+  2 sections, so every foreign read is in range); (b) **out-of-range** id = an OOB heap read, **proven
+  nondeterministic** (across 4 fresh processes the first slot past the array reads a stable 0 from zeroed
+  slack, later slots read live garbage — 1.5e-311 / 3.1e-314 / 2.5e-290 / 6.0e-118), so safe Rust's
+  `.get() → None` skip is correct and there is nothing to pin (not a `TODO(compat)`). `reliability.rs`'s
+  comment now cites the proof rather than an unproven "unpinnable" assertion. golden_phase8 **58→59**.
 
 **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green.** next = **WP8.4 (Show reports)** —
 upgrade the current `Show` no-op to real text reports (shares field logic with the WP8.2 exports).
