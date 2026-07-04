@@ -84,29 +84,32 @@ pub(crate) fn show_loops(classes: &[DssClass], ckt: &Circuit) -> String {
 }
 
 /// Build the `Show Zone` body for one meter (Pascal `ShowMeterZone`, the
-/// `BranchList <> NIL` arm). Walks the zone tree in `First`/`GoForward` order:
-/// each branch on its own `Level`-indented line (`Class.Name`, then any
+/// `BranchList <> NIL` arm). `param` is the **raw command argument** (native case),
+/// echoed in the header exactly as Pascal does (`ShowResults.pas:2455`), matching
+/// the raw-case filename. Walks the zone tree in `First`/`GoForward` order: each
+/// branch on its own `Level`-indented line (`Class.Name`, then any
 /// `(PARALLEL:LoopLineObj.Name)` / `(LOOP:LoopLineObj.FullName)` + Sensor note),
 /// then each shunt object attached at that branch on a `Level+1`-indented line.
 /// The header + tab indentation match the Pascal layout byte-for-byte.
-pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef) -> String {
+pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str) -> String {
     let m = as_meter(classes, meter);
-    let mtr_name = classes[meter.cls].objects[meter.idx].data().name();
+
+    // Pascal `ShowMeterZone` (`ShowResults.pas:2453`) guards the ENTIRE body —
+    // the header included — on `pMtr.BranchList <> NIL`. A found-but-unbuilt meter
+    // (Pascal installs `BranchList = NIL` for a **disabled** meter) therefore
+    // writes NOTHING: the `fmCreate` file stays empty, and no error is raised.
+    let Some(tree) = m.branch_list() else {
+        return String::new();
+    };
 
     let mut s = String::new();
     // Pascal `FSWriteln(F, 'Branches and Load in Zone for EnergyMeter ', Param)`:
-    // the trailing space is inside the literal.
+    // the trailing space is inside the literal; `Param` is the verbatim command
+    // argument (native case), not the stored (lowercased) object name.
     s.push_str(&format!(
-        "Branches and Load in Zone for EnergyMeter {mtr_name}\n"
+        "Branches and Load in Zone for EnergyMeter {param}\n"
     ));
     s.push('\n');
-
-    let Some(tree) = m.branch_list() else {
-        // Pascal writes nothing past the header when `BranchList = NIL` (the arm
-        // guards the whole body on `BranchList <> NIL`; a found-but-unbuilt meter
-        // yields no body).
-        return s;
-    };
 
     for (i, &br) in m.sequence_list().iter().enumerate() {
         let node = tree.node(m.sequence_nodes()[i]);

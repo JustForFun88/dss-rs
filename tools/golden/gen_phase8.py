@@ -1413,6 +1413,31 @@ SHOW_MESH_DECK = [
 ]
 
 
+# Two metered feeders off one source (audit-tests step-12 follow-up): zone A (m1)
+# has a loop a1-a2-a3-a1, zone B (m2) a parallel line b_la||b_lpar. So BOTH meters
+# contribute rows to `Show Loops` — exercising the multi-meter outer loop that the
+# single-meter `show_loops`/`show_loops_mesh` goldens don't (a regression that broke
+# after the first meter, duplicated the header, or mis-attributed the `(mtr)` prefix
+# would slip past them). Synthesized — no corpus deck has a looped metered zone.
+SHOW_MESH2_DECK = [
+    "new circuit.mesh2 basekv=12.47 bus1=sourcebus phases=3",
+    "new line.feeda bus1=sourcebus bus2=a1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.a_la  bus1=a1 bus2=a2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.a_lb  bus1=a2 bus2=a3 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.a_lc  bus1=a3 bus2=a1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new load.lda   bus1=a3 phases=3 kv=12.47 kw=100 pf=0.95",
+    "new energymeter.m1 element=line.feeda terminal=1",
+    "new line.feedb bus1=sourcebus bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.b_la   bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.b_lpar bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new load.ldb    bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95",
+    "new energymeter.m2 element=line.feedb terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve",
+]
+
+
 def gen_show_zone_loops(d) -> None:
     """Capture the oracle's `Show Loops`/`Show Zone` (PHASE8_PLAN §WP8.4)."""
     d.AllowEditor = False
@@ -1424,6 +1449,10 @@ def gen_show_zone_loops(d) -> None:
     _gen_show_deck_group(d, SHOW_MESH_DECK, [("loops", "Loops.txt", "show_loops_mesh")])
     _gen_show_deck_group(
         d, SHOW_MESH_DECK, [("zone m1", "ZoneOut_m1.txt", "show_zone_mesh")]
+    )
+    # Two-meter deck — the multi-meter `Show Loops` outer loop (both meters emit rows).
+    _gen_show_deck_group(
+        d, SHOW_MESH2_DECK, [("loops", "Loops.txt", "show_loops_multi")]
     )
 
 

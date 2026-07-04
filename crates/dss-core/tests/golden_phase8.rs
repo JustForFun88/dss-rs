@@ -1548,6 +1548,16 @@ fn show_zone_mesh_matches_oracle() {
     run_deck_show_exact("show_zone_mesh");
 }
 
+/// `Show Loops` on a **two-meter** deck (audit-tests step-12 follow-up): zone A (m1)
+/// loops, zone B (m2) has a parallel line, so **both** meters emit rows. Exercises the
+/// multi-meter outer `for &mr in &ckt.energy_meters` loop the single-meter goldens
+/// don't — a regression that broke after the first meter, duplicated the header, or
+/// mis-attributed the `(mtr)` prefix would fail here. Byte-exact.
+#[test]
+fn show_loops_multi_matches_oracle() {
+    run_deck_show_exact("show_loops_multi");
+}
+
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
 /// end in `ParserVars.Add('@lastshowfile', …)`, but the reports dispatched inline
 /// with only a `FireOffEditor` — `Show Convergence` (arm 4) and `Show controlqueue`

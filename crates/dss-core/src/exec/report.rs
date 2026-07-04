@@ -1436,7 +1436,7 @@ impl Dss {
                             .eq_ignore_ascii_case(&param)
                     });
                     match found {
-                        Some(r) => show::show_meter_zone(&self.classes, r),
+                        Some(r) => show::show_meter_zone(&self.classes, r, &param),
                         None => {
                             // Pascal #220 `'EnergyMeter "%s" not found.'`.
                             self.errors
