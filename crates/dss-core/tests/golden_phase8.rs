@@ -2121,3 +2121,243 @@ fn demand_interval_yearly_stays_open_until_closedi() {
 
     std::fs::remove_dir_all(&scratch).ok();
 }
+
+/// The `Set year=` demand-interval side effects (Pascal `TSolutionObj.Set_Year`,
+/// Solution.pas:2266; wired into the YEAR handler in step 4): close any open DI
+/// files, restart the clock (`intHour=0`/`t=0`), then `ResetAll` (which rebuilds
+/// the `DI_yr_<year>` directory). This is the twin of
+/// `demand_interval_yearly_stays_open_until_closedi` — it closes the open files
+/// via `set year=` instead of `closedi`. A yearly run leaves year-0's files open;
+/// `set year=1` flushes `DI_yr_0/em1_1.csv` (header + 3 rows) and rolls the clock;
+/// a fresh yearly run then writes into a new `DI_yr_1/`.
+#[test]
+fn set_year_closes_di_and_rolls_the_year_directory() {
+    let dir = phase8_dir();
+    let meta: DiMeta = {
+        let p = dir.join("di_em1.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+
+    let scratch = scratch_dir("di_set_year");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("new energymeter.em1 element=Line.650632 terminal=1");
+    dss.command("solve");
+    dss.command("set demandinterval=yes");
+    dss.command("set diverbose=yes");
+    dss.command("set mode=yearly number=3 stepsize=1h");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let di0 = scratch
+        .join(&meta.fixture)
+        .join("DI_yr_0")
+        .join("em1_1.csv");
+    assert!(
+        !di0.exists(),
+        "yearly leaves DI files open (in memory), not written"
+    );
+
+    // `set year=1` closes year-0's files (writing them) and resets the clock.
+    dss.command("set year=1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let c0 = std::fs::read_to_string(&di0)
+        .unwrap_or_else(|e| panic!("set year= must flush {}: {e}", di0.display()));
+    let n0 = c0.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(n0, 4, "year-0 DI: header + 3 rows, got:\n{c0}");
+
+    // A fresh yearly run now writes into the rebuilt DI_yr_1 directory.
+    dss.command("set mode=yearly number=2 stepsize=1h");
+    dss.command("solve");
+    dss.command("closedi");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let di1 = scratch
+        .join(&meta.fixture)
+        .join("DI_yr_1")
+        .join("em1_1.csv");
+    let c1 = std::fs::read_to_string(&di1)
+        .unwrap_or_else(|e| panic!("year-1 DI must be written to DI_yr_1: {e}"));
+    let n1 = c1.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(n1, 3, "year-1 DI: header + 2 rows, got:\n{c1}");
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The demand-interval `Set`/`Get` option plumbing (step 4): the five report
+/// switches echo their value via `Get` (Pascal `ExecOptions.pas:950-968`) and the
+/// `Markercode`/`Nodewidth` plot-marker state (Circuit.pas 16/1 defaults). The
+/// echoes are **oracle-pinned** (probe: defaults No/No/No/No/No + 16/1; after the
+/// sets Yes/Yes/Yes/Yes/No + 7/3). Covers the `Set SampleEnergyMeters=` handler
+/// and the five getters the step added.
+#[test]
+fn di_set_get_option_echoes_match_oracle() {
+    // `set demandinterval=yes` runs `ResetAll`, which creates `<case>/DI_yr_0`
+    // under the output directory — point it at scratch so nothing lands in-tree.
+    let scratch = scratch_dir("di_options");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.c");
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+
+    let get = |dss: &mut Dss, opt: &str| {
+        dss.command(&format!("get {opt}"));
+        dss.result().to_string()
+    };
+    let opts = [
+        "demandinterval",
+        "diverbose",
+        "overloadreport",
+        "voltexceptionreport",
+        "sampleenergymeters",
+    ];
+    // Defaults.
+    for o in opts {
+        assert_eq!(get(&mut dss, o), "No", "default {o}");
+    }
+    assert_eq!(get(&mut dss, "markercode"), "16");
+    assert_eq!(get(&mut dss, "nodewidth"), "1");
+
+    for c in [
+        "set demandinterval=yes",
+        "set diverbose=yes",
+        "set overloadreport=yes",
+        "set voltexceptionreport=yes",
+        "set sampleenergymeters=no",
+        "set markercode=7",
+        "set nodewidth=3",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(get(&mut dss, "demandinterval"), "Yes");
+    assert_eq!(get(&mut dss, "diverbose"), "Yes");
+    assert_eq!(get(&mut dss, "overloadreport"), "Yes");
+    assert_eq!(get(&mut dss, "voltexceptionreport"), "Yes");
+    assert_eq!(get(&mut dss, "sampleenergymeters"), "No"); // set to no
+    assert_eq!(get(&mut dss, "markercode"), "7");
+    assert_eq!(get(&mut dss, "nodewidth"), "3");
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `New Spectrum … CSVFile=…` through the executive (step 5): the deferred
+/// `FileLoad` path (`take_file_loads` → the executive reads the file →
+/// `apply_file_load` → `read_csv_file` → `end_edit`) loads the harmonics from a
+/// real on-disk file, and the byte-position EOF guard (`(F.Position+1) < F.Size`)
+/// drops a lone final ≤1-byte line. Both are oracle-confirmed (`? Spectrum.s.…`:
+/// 3 rows for the well-formed file, 2 for the stray-final-byte file).
+#[test]
+fn spectrum_csvfile_loads_through_executive() {
+    let scratch = scratch_dir("spectrum_csv");
+    let path = |name: &str| {
+        scratch
+            .join(name)
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_string()
+    };
+    std::fs::write(scratch.join("full.csv"), "1, 100, 0\n5, 20, 0\n7, 10, 0\n").unwrap();
+    std::fs::write(scratch.join("stray.csv"), "1, 100, 0\n5, 20, 0\n7").unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.c");
+    dss.command(&format!(
+        "new spectrum.s NumHarm=3 CSVFile=({})",
+        path("full.csv")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? spectrum.s.NumHarm");
+    assert_eq!(
+        dss.result(),
+        "3",
+        "3 well-formed rows load through the executive"
+    );
+    dss.command("? spectrum.s.Harmonic");
+    assert_eq!(dss.result(), "[ 1 5 7]");
+
+    dss.command(&format!(
+        "new spectrum.s2 NumHarm=3 CSVFile=({})",
+        path("stray.csv")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? spectrum.s2.NumHarm");
+    assert_eq!(
+        dss.result(),
+        "2",
+        "byte-position EOF guard drops the lone final byte"
+    );
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Meta for a **deck-based** demand-interval golden (a `New`-circuit deck + the
+/// post-datapath solve commands — like `DiMeta`, but with an inline `deck`
+/// instead of a `master` compile).
+#[derive(Debug, Deserialize)]
+struct DeckDiMeta {
+    deck: Vec<String>,
+    post: Vec<String>,
+    #[allow(dead_code)]
+    fixture: String,
+    relpath: String,
+}
+
+/// `DI_Overloads` for a synthesized single-phase (phase-2) overloaded lateral —
+/// pins `WriteOverloadReport`'s `NPhases < 3` phase-mapping branch: the lateral's
+/// terminal-1 current must land in the **I2** column (via `MapNodeToBus.node_num`,
+/// the replacement for Pascal's `FirstBus` string-parse), with I1 and I3 zero. The
+/// 3-phase `di_overloads` golden can't catch a wrong column mapping (all its rows
+/// are 3-phase); this is the discriminating case.
+#[test]
+fn di_overloads_single_phase_mapping_matches_oracle() {
+    let dir = phase8_dir();
+    let meta: DeckDiMeta = {
+        let p = dir.join("di_overloads_1ph.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join("di_overloads_1ph.txt");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir("di_overloads_1ph");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let produced = scratch.join(&meta.relpath);
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()));
+
+    compare_export(&oracle, &rust, &di_policy(), "di_overloads_1ph");
+
+    std::fs::remove_dir_all(&scratch).ok();
+}

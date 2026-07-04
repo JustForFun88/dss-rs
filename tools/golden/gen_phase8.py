@@ -651,6 +651,62 @@ def gen_demand_interval(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# Single-phase-overload fixture (WP8.3 step 4 audit-tests follow-up). The daily
+# IEEE13 DI fixture only overloads 3-phase trunk lines, so `WriteOverloadReport`'s
+# `NPhases < 3` phase-mapping branch (the per-conductor `MapNodeToBus.node_num`
+# lookup that replaces Pascal's `FirstBus` string-parse) is unexercised. This deck
+# overloads a phase-2-only lateral (`normamps=5` vs ≈32 A load current), so its
+# current must land in the I2 column — I1/I3 zero — pinning the mapping. No corpus
+# deck exercises this, so it is synthesized (PHASE8_PLAN §1).
+OV1PH_DECK = [
+    "new circuit.ov2 basekv=12.47 bus1=src phases=3",
+    "new line.main bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 c1=0",
+    "new line.lat bus1=b1.2 bus2=b2.2 phases=1 length=0.5 units=mi r1=0.3 x1=0.3 c1=0 "
+    "normamps=5 emergamps=6",
+    "new load.l1 bus1=b2.2 phases=1 kv=7.2 kw=200 model=1",
+    "new energymeter.m element=line.main terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+]
+OV1PH_POST = [
+    "solve mode=snap",
+    "set demandinterval=yes",
+    "set overloadreport=yes",
+    "set mode=daily number=1 stepsize=1h",
+    "solve",
+]
+
+
+def gen_di_overloads_1ph(d) -> None:
+    """Capture DI_Overloads for a single-phase (phase-2) overloaded lateral."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in OV1PH_DECK:
+            d.Text.Command = c
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for c in OV1PH_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        produced = Path(tmp) / case / "DI_yr_0" / "DI_Overloads_1.csv"
+        content = produced.read_text()  # universal newlines -> LF
+        (OUT_DIR / "di_overloads_1ph.txt").write_text(content, newline="\n")
+        meta = {
+            "deck": OV1PH_DECK,
+            "post": OV1PH_POST,
+            "fixture": case,
+            "relpath": f"{case}/DI_yr_0/DI_Overloads_1.csv",
+        }
+        (OUT_DIR / "di_overloads_1ph.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote di_overloads_1ph.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_reliability(d) -> None:
     """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -825,6 +881,7 @@ def main() -> None:
     gen_sections(d)
     gen_profile(d)
     gen_demand_interval(d)
+    gen_di_overloads_1ph(d)
 
 
 if __name__ == "__main__":
