@@ -577,11 +577,18 @@ fn show_taps_matches_oracle() {
 }
 
 /// `Show Losses` (Pascal `ShowLosses`): per-PD kW (`%10.5f`) / `% of Power`
-/// (`%8.2f`) / kvar (`%.6g`) plus the line/transformer/total aggregates. The
-/// coarsest column is the `%8.2f` percentage (an additive ±0.01 boundary between
-/// two independent solves), so `abs = 0.011` is the printing floor; `rel = 1e-4`
-/// still catches a scale drift on the large kW/kvar values. The element kW/kvar
-/// physics is pinned to 1e-8 by `corpus_live.rs`.
+/// (`%8.2f`) / kvar (`%.6g`) plus the line/transformer/total aggregates. Each
+/// column keeps its **own** print floor (audit-tests WP8.4 step 1): the data rows
+/// are `"name" kW %ofPower kvar`, so `% of Power` sits at token index 2 — the only
+/// column with the coarse `%8.2f` ±0.01 additive floor, isolated via `col_tol`
+/// (`abs = 0.011`). The default `rel = 1e-4` / `abs = 1e-5` holds the kW (`%10.5f`)
+/// and kvar (`%.6g`) columns to their own 1-ulp print floors, so a *formatting*
+/// regression on a small cell (e.g. `0.03228 → 0.042`) fails instead of hiding
+/// under a blanket `0.011`. (The loss physics is pinned to 1e-8 by
+/// `corpus_live.rs`; this is a report-layout / printing-floor check —
+/// tests/TOLERANCE_NOTES.md.) The `Index(2)` selector also touches index 2 of the
+/// prose/summary lines, but those are either text tokens (tolerance-inert, text
+/// compare) or the `%10.1f` aggregate losses that agree far tighter than 0.011.
 #[test]
 fn show_losses_matches_oracle() {
     let policy = ExportPolicy {
@@ -589,8 +596,13 @@ fn show_losses_matches_oracle() {
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 1e-4,
-        abs: 0.011,
-        col_tol: vec![],
+        abs: 1e-5,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(2),
+            rel: 0.0,
+            abs: 0.011,
+            gate: None,
+        }],
     };
     run_feeder_show("show_losses", &policy);
 }
