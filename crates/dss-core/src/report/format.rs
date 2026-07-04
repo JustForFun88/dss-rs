@@ -53,6 +53,29 @@ pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
     format!("{s:<width$}")
 }
 
+/// Pascal FPC `Str(v: width)` (the default real-to-string with *only* a field
+/// width): scientific notation with `width - 8` fraction digits and a signed,
+/// ≥3-digit zero-padded exponent, the whole value right-justified in `width`
+/// (a leading space carries the positive-sign slot — `6.639353E+004` →
+/// ` 6.639353E+004` at width 14). The convergence report's `|V|`/`Vbase`
+/// columns write `VmagSaved: 14` / `NodeVbase: 14` (`Solution.pas`
+/// `WriteConvergenceReport`). Probe-matched to the pinned oracle's bytes; the
+/// value comparison in the golden is by parsed value, so any last-digit rounding
+/// difference (FPC-vs-Rust `{:E}`) is absorbed by the column's printing-floor tol.
+pub fn fpc_sci_w(v: f64, width: usize) -> String {
+    let frac = width.saturating_sub(8);
+    // Rust `{:.*E}` → `6.639353E4` / `-4.2E-3`; reformat the exponent to a sign
+    // plus an at-least-3-digit zero-padded magnitude.
+    let s = format!("{v:.frac$E}");
+    let (mant, exp) = s.split_once('E').unwrap_or((s.as_str(), "0"));
+    let (esign, edig) = match exp.strip_prefix('-') {
+        Some(r) => ('-', r),
+        None => ('+', exp.trim_start_matches('+')),
+    };
+    let body = format!("{mant}E{esign}{edig:0>3}");
+    format!("{body:>width$}")
+}
+
 /// Pascal `Pad(S, Width)` (`Common/Utilities.pas`): `S` right-padded with **spaces**
 /// to `Width` chars; a string already `>= Width` is returned unchanged. Uses byte
 /// length (`str::len`), matching Pascal's `Length(S)` (byte-1:1).
