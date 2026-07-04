@@ -1341,6 +1341,14 @@ impl Dss {
                 };
                 self.write_show("kVBaseMismatch.txt", &content);
             }
+            // 6 `faults` (`ShowFaultStudy`): the three-section FaultStudy report over
+            // the precomputed bus `Zsc`/`Ysc`/`VBus`/`BusCurrent` (a prior `Solve
+            // mode=faultstudy` populated). Read-only — no re-solve.
+            6 => {
+                let content =
+                    show::show_fault_study(self.circuit.as_ref().expect("post-circuit dispatch"));
+                self.write_show("FaultStudy.txt", &content);
+            }
             // 16 `overloads` (`ShowOverloads`): the PD-element symmetrical-component
             // overload report — one row per enabled PDElement (non-capacitor) whose
             // terminal-1 max phase current exceeds its normal or emergency rating.
@@ -1378,8 +1386,8 @@ impl Dss {
                 self.errors
                     .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
             }
-            // TODO(WP8): later steps — the remaining `Show` keywords (faults,
-            // zone, isolated, loops, lineconstants, topology, yprim, busflow,
+            // TODO(WP8): later steps — the remaining `Show` keywords (zone,
+            // isolated, loops, lineconstants, topology, yprim, busflow,
             // controlled, autoadded, querylog, deltaV) and
             // the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/

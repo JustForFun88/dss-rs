@@ -816,6 +816,17 @@ def gen_faultstudy(d) -> None:
     )
 
 
+def gen_show_faultstudy(d) -> None:
+    """Capture the oracle's `Show Faults` (`ShowFaultStudy`) on the FaultStudy-solved
+    IEEE13 feeder — the same `solve mode=faultstudy` fixture shape as
+    `export_faultstudy`/`SeqZ`. `Show` sets no `GlobalResult`, so `_gen_show_group`
+    finds the produced file by its `<case>_FaultStudy.txt` suffix glob."""
+    d.AllowEditor = False
+    _gen_show_group(
+        d, FAULTSTUDY_POST, [("faults", "FaultStudy.txt", "show_faultstudy")]
+    )
+
+
 # The reliability/capacity fixture (PHASE8_PLAN §WP8.3 step 3c). No corpus deck
 # exports these, so it is synthesized (PHASE8_PLAN §1) as a self-contained deck (no
 # master, like the Counts fixture): a two-section radial feeder (src→b1→b2) with
@@ -1398,6 +1409,7 @@ def main() -> None:
     gen_ieee8500_reports(d)
     gen_seqz(d)
     gen_faultstudy(d)
+    gen_show_faultstudy(d)
     gen_reliability(d)
     gen_deck_groups(d)
     gen_show_overload_unserved(d)
