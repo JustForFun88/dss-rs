@@ -913,11 +913,11 @@ pub enum ColSel {
     /// The column **immediately following** a token equal to `glyph` in the row.
     /// A *content-relative* selector (needs the row fields, not just the header):
     /// used for the fixed-width `Show` angle columns, which sit right after the
-    /// `/_` angle glyph but at a **row-dependent index** — the first row of each
-    /// bus carries an extra leading `..` dots token (`PadDots`) and the element
-    /// forms split the parenthesised `(pu)`/`(nref)` into two tokens, so a fixed
-    /// `Index`/`Parity` cannot target the angle across every row. Selecting "the
-    /// column after `/_`" pins it regardless of the leading-token shift.
+    /// `/_` angle glyph but at a **row-dependent index** — the element voltage form
+    /// splits the parenthesised `(pu)`/`(nref)` into two tokens (`(` + `n)`) so the
+    /// angle's absolute index varies, and a fixed `Index`/`Parity` cannot target it.
+    /// Selecting "the column after `/_`" pins it regardless of the leading-token
+    /// shift.
     AfterToken(String),
 }
 
@@ -975,6 +975,15 @@ pub enum GateSpec {
     /// ratio columns (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator `I1` sits in
     /// one fixed column.
     Col(usize, f64),
+    /// Skip when `min(|oracle[a]|, |oracle[b]|) < threshold` (**including exact
+    /// zero**). For the **power factor** column, which is a defined-but-degenerate
+    /// value when the power is near-purely-reactive (`P ≈ 0`) or near-purely-real
+    /// (`Q ≈ 0`): the oracle's `S.re`/`S.im` is *exactly* 0 there → `PowerFactor`
+    /// returns unity `1.0000` (Pascal `Utilities.PowerFactor`'s `else` branch),
+    /// while a faer-vs-KLU cancellation residual makes the tiny part nonzero and
+    /// prints its own near-zero/sign-flipped PF. Gated on `min(|kW|, |kvar|)` — the
+    /// PF is only meaningful when **both** P and Q are substantial.
+    MinCols(usize, usize, f64),
     /// Skip when the oracle's value in the **immediately preceding** column is a
     /// near-zero residual `0 < |oracle[j-1]| < threshold`. For the paired
     /// magnitude/angle exports (`I, Ang, I, Ang, …`): the angle of a near-zero
@@ -1030,16 +1039,24 @@ impl ExportPolicy {
                 // (`0 < |v| < thresh`). An exactly-zero denominator prints the
                 // ratio as `0` (Pascal `if I1 > 0`) / the angle of an exact zero as
                 // `0.00`, which `0 == 0` checks — so those rows stay verified.
+                let num = |col: usize| {
+                    oracle_fields
+                        .get(col)
+                        .and_then(|f| f.trim().parse::<f64>().ok())
+                };
                 let (col, thresh) = match ct.gate {
                     Some(GateSpec::Col(col, thresh)) => (col, thresh),
                     Some(GateSpec::PrevCol(thresh)) => (j.wrapping_sub(1), thresh),
+                    Some(GateSpec::MinCols(a, b, thresh)) => {
+                        return match (num(a), num(b)) {
+                            (Some(x), Some(y)) => x.abs().min(y.abs()) < thresh,
+                            _ => false,
+                        };
+                    }
                     Some(GateSpec::Mask) => return true,
                     None => return false,
                 };
-                return oracle_fields
-                    .get(col)
-                    .and_then(|f| f.trim().parse::<f64>().ok())
-                    .is_some_and(|v| v != 0.0 && v.abs() < thresh);
+                return num(col).is_some_and(|v| v != 0.0 && v.abs() < thresh);
             }
         }
         false
@@ -1059,7 +1076,15 @@ impl ExportPolicy {
 fn split_fields(line: &str, sep: char) -> Vec<String> {
     if sep == ' ' {
         line.split(|c: char| c.is_whitespace() || c == ',')
-            .filter(|f| !f.is_empty())
+            // Drop empties **and pure dot-runs**: the `Show` reports pad name
+            // columns with `PadDots` (`SOURCEBUS ..`, `650 ........`, the powers
+            // `TERMINAL TOTAL ....`), and the pad width is `MaxBusNameLength`, a
+            // backend quirk that differs per report (ShowVoltages floors it at 12,
+            // ShowPowers at ~5 — even in isolation) and is *not* faithfully
+            // reproducible with a single value. A dot-run is pure padding
+            // punctuation carrying no data, so dropping it makes the token compare
+            // immune to the quirk (tests/TOLERANCE_NOTES.md).
+            .filter(|f| !f.is_empty() && !f.bytes().all(|b| b == b'.'))
             .map(|f| f.to_string())
             .collect()
     } else {

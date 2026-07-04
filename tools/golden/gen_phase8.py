@@ -436,6 +436,13 @@ SHOW_REPORTS = [
     # class Line, uppercased — exercises the class-filter path (`SetObjectClass` +
     # per-object routing). Same `<case>_Elements.txt` file (written after the default).
     ("elements line", "Elements.txt", "show_elements_class"),
+    # `Show Powers e` (code 1, element form, `ShowPowers` case 1): per-terminal
+    # branch power flow + per-terminal totals (incl. the 1-phase/2-terminal PD case).
+    ("powers e", "Power_elem_kVA.txt", "show_powers_elem"),
+    # `Show Ratings` (`ShowRatings`): each PD element's normal/emergency amp ratings.
+    ("ratings", "RatingsOut.txt", "show_ratings"),
+    # (`Show EventLog` is generated separately — see `gen_show_eventlog` — under the
+    # event-logging daily fixture so it has real content, not an empty snapshot log.)
 ]
 
 
@@ -474,6 +481,45 @@ def gen_show_reports(d) -> None:
                 json.dumps(meta, indent=2) + "\n", newline="\n"
             )
             print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def gen_show_eventlog(d) -> None:
+    """Capture the oracle's `Show EventLog` under the event-logging daily fixture
+    (`EVENTLOG_POST`), so it has real tap-change/marker content, not the empty
+    snapshot log. `Show` sets no GlobalResult, so the file is found by suffix."""
+    d.AllowEditor = False
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in EVENTLOG_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show eventlog"
+        matches = list(Path(tmp).glob("*_EventLog.txt"))
+        if len(matches) != 1:
+            sys.exit(f"show eventlog: expected 1 *_EventLog.txt, found {matches}")
+        content = matches[0].read_text()
+        (OUT_DIR / "show_eventlog.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "eventlog",
+            "master": FEEDER_MASTER,
+            "post": EVENTLOG_POST,
+            "fixture": case,
+            "suffix": "EventLog.txt",
+        }
+        (OUT_DIR / "show_eventlog.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote show_eventlog.txt ({len(content)} bytes), {content.count(chr(10))} lines")
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1020,6 +1066,7 @@ def main() -> None:
     gen_counts(d)
     gen_feeder_reports(d)
     gen_show_reports(d)
+    gen_show_eventlog(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
     gen_log_reports(d)

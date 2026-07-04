@@ -34,17 +34,24 @@ current frontier:
   oracle-pinned coverage tests (incl. the multi-meter `Bus_Int_Duration` cross-zone
   bug — filed upstream + in-range regime gated). golden_phase8 **59**; lib **731**.
   Detail in §1f.
-- **WP8.4 (Show reports) — steps 1–4 COMPLETE + audited, gate-green.** The
-  `do_show_cmd` dispatcher (`ShowOptions.pas` option/solve-guard) + the new
+- **WP8.4 (Show reports) — steps 1–5 COMPLETE (steps 1–4 audited), gate-green.**
+  The `do_show_cmd` dispatcher (`ShowOptions.pas` option/solve-guard) + the new
   `report/show/` module of fixed-width text formatters: `Show Buses`/`Losses`/`Taps`
   + `panel`→#999 (step 1); `Voltages` seq (step 2); `Currents`/`Powers` seq (step 3);
-  `Voltages` node/elem + `Currents` elem + `Elements` (step 4). Unported keywords
-  (Powers elem, meters/zone/topology/…) stay *silent* headless no-ops. Shared
-  machinery: `format.rs` `Pad`/`PadDots`/width formatters, the whitespace+comma
-  `compare_export` tokenizer (`sep: ' '`) + the content-relative
-  `ColSel::AfterToken`. `TODO(compat)`s: `MaxDeviceNameLength=0`, `SetMaxBusNameLength`
-  floor-12 (both probe-proven backend divergences). golden_phase8 **59→71**. **next =
-  WP8.4 step 5** (`Show Powers` code 1 element form + the diagnostic/topology Shows).
+  `Voltages` node/elem + `Currents` elem + `Elements` (step 4); **`Powers` elem +
+  `Result`/`EventLog`/`Ratings`/`Variables`** (step 5). Remaining unported keywords
+  (meters/zone/topology/lineconstants/yprim/y/faults/mismatch/…) stay *silent*
+  headless no-ops. Shared machinery: `format.rs` `Pad`/`PadDots`/width formatters, the
+  whitespace+comma `compare_export` tokenizer (`sep: ' '`) + `ColSel::AfterToken` +
+  `GateSpec::MinCols` (PF-of-degenerate-power gate). **Key finding (step 5):**
+  `MaxBusNameLength` is an **inconsistent per-report backend quirk** (`ShowVoltages`→12,
+  `ShowPowers`→~5, even in isolation) — *not* a consistent floor, so the step-4
+  floor-12 `TODO(compat)` was withdrawn; instead the comparator **drops pure dot-run
+  tokens** (`PadDots` padding carries no data), making the gate immune to the quirk,
+  and `max_bus_name_length` keeps the clean source value. `MaxDeviceNameLength=0`
+  `TODO(compat)` stands. golden_phase8 **59→74**. **next = WP8.4 step 6** (the
+  diagnostic/meter/matrix/topology Shows: Mismatch/Convergence/Overloads/Meters/
+  FaultStudy/Yprim/Y/LineConstants/monitor/…).
 
 **Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
 gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
@@ -99,7 +106,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 731, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 71,
+                            # golden_phase7_protection 1, golden_phase8 74,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

@@ -1056,25 +1056,28 @@ impl Dss {
                 if p2.starts_with('e') {
                     code = 1;
                 }
-                if code == 0 {
-                    let opt = mva;
-                    let content = {
-                        let Dss {
-                            classes, circuit, ..
-                        } = self;
-                        let ckt = circuit.as_ref().expect("post-circuit dispatch");
-                        let sys = crate::solution::solution::sys_ctx(ckt);
-                        let node_v = ckt.solution.node_v.clone();
+                let opt = mva;
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    if code == 0 {
                         show::show_powers(classes, ckt, &sys, &node_v, opt)
-                    };
-                    let fname = if mva == 1 {
-                        "Power_seq_MVA.txt"
                     } else {
-                        "Power_seq_kVA.txt"
-                    };
-                    self.write_show(fname, &content);
-                }
-                // TODO(WP8): step 3+ — code 1 (Power_elem, per-terminal powers) no-op.
+                        show::show_powers_elements(classes, ckt, &sys, &node_v, opt)
+                    }
+                };
+                // Pascal filename: `Power_{seq|elem}_{kVA|MVA}`.
+                let fname = match (code, mva) {
+                    (0, 1) => "Power_seq_MVA.txt",
+                    (0, _) => "Power_seq_kVA.txt",
+                    (_, 1) => "Power_elem_MVA.txt",
+                    (_, _) => "Power_elem_kVA.txt",
+                };
+                self.write_show(fname, &content);
             }
             // 15 `taps` (`ShowRegulatorTaps`).
             15 => {
@@ -1096,6 +1099,43 @@ impl Dss {
                     show::show_losses(classes, ckt, &sys, &node_v)
                 };
                 self.write_show("Losses.txt", &content);
+            }
+            // 18 `eventlog` (`ShowEventLog` = `EventStrings.SaveToFile`). No solve
+            // guard — the log accumulates across the run.
+            18 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_event_log(ckt.solution.event_log.entries())
+                };
+                self.write_show("EventLog.txt", &content);
+            }
+            // 19 `variables` (`ShowVariables`): every PC element's dynamic-state
+            // variable values.
+            19 => {
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    show::show_variables(classes, ckt, &sys, &node_v)
+                };
+                self.write_show("Variables.txt", &content);
+            }
+            // 20 `ratings` (`ShowRatings`): each PD element's normal/emergency amps.
+            20 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_ratings(&self.classes, ckt)
+                };
+                self.write_show("RatingsOut.txt", &content);
+            }
+            // 34 `Result` (`ShowResult`): the `@result` parser var value.
+            34 => {
+                let val = self.vars.get("@result").unwrap_or("null").to_string();
+                let content = show::show_result(&val);
+                self.write_show("Result.txt", &content);
             }
             // 13 `voltages` (`ShowVoltages`) — the option/filename parse of
             // `ShowOptions.pas:279-312`: first param `LL` → phase-phase (else L-N);

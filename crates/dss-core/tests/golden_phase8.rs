@@ -704,10 +704,9 @@ fn show_powers_matches_oracle() {
 /// bit-identical **input** data, and both `%6.1f` angle columns take the additive
 /// ±0.05 `%.1f` printing floor (`abs = 0.11`, the project `%.1f` convention). The
 /// angles are targeted by [`ColSel::AfterToken`]`("/_")` — the angle is the column
-/// right after the `/_` glyph — because the **first row of every bus** carries an
-/// extra leading `..` dots token (`PadDots`, the floor-12 `TODO(compat)`), shifting
-/// the angle to a row-dependent index that a fixed `Index` would miss (audit-tests
-/// WP8.4 step 4). Voltage physics is pinned to 1e-8 by `corpus_live.rs`.
+/// right after the `/_` glyph (robust to the `PadDots` name column, whose pure
+/// dot-runs the comparator drops). Voltage physics is pinned to 1e-8 by
+/// `corpus_live.rs`.
 #[test]
 fn show_voltages_node_matches_oracle() {
     let policy = ExportPolicy {
@@ -844,6 +843,72 @@ fn show_voltages_ll_node_matches_oracle() {
         }],
     };
     run_feeder_show("show_voltages_ll_node", &policy);
+}
+
+/// `Show Powers e` (Pascal `ShowPowers` case 1): per-terminal, per-conductor branch
+/// power flow `BUS node kW +j kvar kVA PF`, with the `... TERMINAL TOTAL` per
+/// terminal (incl. the 1-phase/2-terminal PD floating special case). The kW/kvar/kVA
+/// are `%8.1f` (additive ±0.05 floor → `abs = 0.11`); the `PF` (`%8.4f`, token idx 6)
+/// is a ratio of the pinned powers, held to a tight `abs = 1e-3` but gated on the
+/// `kVA` (idx 5) near-zero — a grounded/floating conductor with `S ≈ 0` has an
+/// arbitrary power factor. Power physics is pinned to 1e-8 by `corpus_live.rs`.
+#[test]
+fn show_powers_elem_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.11,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(6),
+            rel: 0.0,
+            abs: 1e-3,
+            // Skip PF where the power is near-purely-reactive/real (min(|kW|,|kvar|)
+            // ≈ 0): the oracle's exact-zero part gives PF=1.0, a Rust cancellation
+            // residual gives near-zero/sign-flipped (e.g. the pure-reactive caps).
+            gate: Some(GateSpec::MinCols(2, 4, 1e-3)),
+        }],
+    };
+    run_feeder_show("show_powers_elem", &policy);
+}
+
+/// `Show Ratings` (Pascal `ShowRatings`): each PD element's `"FullName",
+/// normamps=<n>,  <e>  !Amps`. The `normamps=<n>` token is text (glued to the
+/// prefix, `%-.4g`) and `<e>` is numeric — both are **input** ratings, identical on
+/// both engines, so `rel = 0` / `abs = 0` (the `%-.4g` render must match exactly).
+#[test]
+fn show_ratings_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_ratings", &policy);
+}
+
+/// `Show EventLog` (Pascal `ShowEventLog` = `EventStrings.SaveToFile`): the full
+/// `Set Log=yes` LogThisEvent marker stream + the regulators' `AppendToEventLog`
+/// tap-change lines, over the same event-logging daily-3 IEEE13 fixture as
+/// `export_eventlog` (a swinging load moves all three regulators). Pins that the
+/// `Show` path emits the identical log the `Export` path does — line-for-line vs the
+/// oracle, the non-integer tap values (`CHANGED n TAPS TO <pu>`) exercising the
+/// numeric-token compare. Tight (`rel = 1e-6`, `abs = 1e-9`) — the tap decisions are
+/// exact (pinned by the phase5 `daily_ieee13` gate).
+#[test]
+fn show_eventlog_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-6,
+        abs: 1e-9,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_eventlog", &policy);
 }
 
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects

@@ -1,8 +1,10 @@
-//! `Show Powers` (Pascal `ShowResults.pas` `ShowPowers`), `ShowOptionCode = 0` —
-//! the symmetrical-component powers by circuit element (first 3 phases): per
-//! terminal `P1`/`Q1`, `P2`/`Q2`, `P0`/`Q0` (kW/kvar, or MW/Mvar for `opt = 1`),
-//! plus the terminal-1 normal/emergency excess power of each PD element, and the
-//! total circuit losses footer.
+//! `Show Powers` (Pascal `ShowResults.pas` `ShowPowers`). Two forms:
+//! - `ShowOptionCode = 0` ([`show_powers`]) — the symmetrical-component powers by
+//!   circuit element (first 3 phases): per terminal `P1`/`Q1`, `P2`/`Q2`,
+//!   `P0`/`Q0` (kW/kvar, or MW/Mvar for `opt = 1`), plus the terminal-1 normal/
+//!   emergency excess power of each PD element, and the total-circuit-losses footer;
+//! - `ShowOptionCode = 1` ([`show_powers_elements`]) — the per-terminal, per-
+//!   conductor branch power flow (`kW +j kvar   kVA   PF`) with per-terminal totals.
 
 use num_complex::Complex64;
 
@@ -11,7 +13,7 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
-use crate::support::mathutil::SymComp;
+use crate::support::mathutil::{SymComp, power_factor};
 
 /// Build the `Show Powers` (code 0) text (Pascal `ShowPowers` case 0). Walks
 /// Sources → PDElements → PCElements calling the mutating `GetCurrents`
@@ -144,4 +146,169 @@ pub(crate) fn show_powers(
         format::fixed_w(losses.im, 6, 1)
     ));
     s
+}
+
+/// Build the `Show Powers` (code 1) text (Pascal `ShowPowers` case 1): the
+/// per-terminal, per-conductor branch power flow — `S = NodeV·conj(I)` (×3 for a
+/// positive-sequence model, ×0.001 for `opt = 1` MVA), printed `kW +j kvar   kVA
+/// PF` per conductor with a per-terminal total, then the total-circuit-losses
+/// footer. `opt` = 0 → kW/kvar, 1 → MW/Mvar.
+pub(crate) fn show_powers_elements(
+    classes: &mut [DssClass],
+    ckt: &Circuit,
+    sys: &SysCtx,
+    node_v: &[Complex64],
+    opt: i32,
+) -> String {
+    let mbnl = super::max_bus_name_length(ckt);
+    let pos_seq = sys.positive_sequence;
+    let mva = if opt == 1 { 0.001 } else { 1.0 };
+    // The `Bus Phase …` column header (kW/kvar/kVA or MW/Mvar/MVA).
+    let hdr = |s: &mut String, mw: bool| {
+        s.push_str(&format::pad("  Bus", mbnl));
+        if mw {
+            s.push_str(" Phase     MW     +j   Mvar         MVA         PF\n");
+        } else {
+            s.push_str(" Phase     kW     +j   kvar         kVA         PF\n");
+        }
+        s.push('\n');
+    };
+
+    let mut s = String::new();
+    s.push('\n');
+    s.push_str("CIRCUIT ELEMENT POWER FLOW\n");
+    s.push('\n');
+    s.push_str("(Power Flow into element from indicated Bus)\n");
+    s.push('\n');
+    s.push_str("Power Delivery Elements\n");
+    s.push('\n');
+    hdr(&mut s, opt == 1);
+
+    for_each_enabled_elem(classes, &ckt.sources, |n, e| {
+        write_powers_element(&mut s, ckt, mbnl, pos_seq, mva, n, e, false, sys, node_v)
+    });
+    for_each_enabled_elem(classes, &ckt.pd_elements, |n, e| {
+        write_powers_element(&mut s, ckt, mbnl, pos_seq, mva, n, e, true, sys, node_v)
+    });
+
+    s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
+    s.push('\n');
+    s.push_str("Power Conversion Elements\n");
+    s.push('\n');
+    hdr(&mut s, opt == 1);
+    for_each_enabled_elem(classes, &ckt.pc_elements, |n, e| {
+        write_powers_element(&mut s, ckt, mbnl, pos_seq, mva, n, e, false, sys, node_v)
+    });
+
+    // Footer: `Total Circuit Losses = re +j im` (Circuit.Losses·0.001, ·0.001 again
+    // for MVA). Note code 1's footer uses the raw `%6.1f` `WriteStr :6:1`.
+    let mut losses = Complex64::ZERO;
+    for_each_enabled_elem(classes, &ckt.pd_elements, |_n, e| {
+        if !e.is_shunt() {
+            losses += e.losses(sys, node_v);
+        }
+    });
+    losses *= 0.001;
+    if opt == 1 {
+        losses *= 0.001;
+    }
+    s.push('\n');
+    s.push_str(&format!(
+        "Total Circuit Losses = {} +j {}\n",
+        format::fixed_w(losses.re, 6, 1),
+        format::fixed_w(losses.im, 6, 1)
+    ));
+    s
+}
+
+/// One element's power-flow block for `show_powers_elements` (Pascal `ShowPowers`
+/// case 1 inner body). `is_pd` enables the 1-phase/2-terminal floating special case.
+#[allow(clippy::too_many_arguments)]
+fn write_powers_element(
+    s: &mut String,
+    ckt: &Circuit,
+    mbnl: usize,
+    pos_seq: bool,
+    mva: f64,
+    name: &str,
+    elem: &mut dyn CktElement,
+    is_pd: bool,
+    sys: &SysCtx,
+    node_v: &[Complex64],
+) {
+    // One conductor row + the per-terminal `... TERMINAL TOTAL` line.
+    let row = |s: &mut String, from_bus: &str, node_num: i32, sp: Complex64| {
+        s.push_str(&format!(
+            "{}  {}    {} +j {}   {}     {}\n",
+            from_bus,
+            format::fixed_w_int(node_num as i64, 4),
+            format::fixed_w(sp.re / 1000.0, 8, 1),
+            format::fixed_w(sp.im / 1000.0, 8, 1),
+            format::fixed_w(sp.norm() / 1000.0, 8, 1),
+            format::fixed_w(power_factor(sp), 8, 4),
+        ));
+    };
+    let total = |s: &mut String, saccum: Complex64| {
+        s.push_str(&format::pad_dots("   TERMINAL TOTAL", mbnl + 10));
+        s.push_str(&format!(
+            "{} +j {}   {}     {}\n",
+            format::fixed_w(saccum.re / 1000.0, 8, 1),
+            format::fixed_w(saccum.im / 1000.0, 8, 1),
+            format::fixed_w(saccum.norm() / 1000.0, 8, 1),
+            format::fixed_w(power_factor(saccum), 8, 4),
+        ));
+    };
+
+    elem.compute_iterminal(sys, node_v);
+    let (ncond, nterm) = (elem.cd().nconds, elem.cd().nterms);
+    let cd = elem.cd();
+    s.push_str(&format!("ELEMENT = {}\n", format::enclose_quotes(name)));
+    let bus_pad = |t: usize| {
+        let b = ckt
+            .buses
+            .get(cd.terminals[t].bus_ref)
+            .map(|x| x.name.as_str())
+            .unwrap_or("");
+        format::pad(b, mbnl).to_uppercase()
+    };
+    let power = |k: usize, volts: Complex64| -> Complex64 {
+        let mut sp = volts * cd.iterminal[k].conj();
+        if pos_seq {
+            sp *= 3.0;
+        }
+        sp * mva
+    };
+    // PD 1-phase / 2-terminal (possibly floating) special case: one row using the
+    // terminal-1 line-line voltage `NodeV[nref1] − NodeV[nref2]` (Pascal
+    // `ShowResults.pas:1195`, "Added April 6 2020").
+    if is_pd && nterm == 2 && ncond == 1 {
+        let volts = node_v[cd.node_ref[0]] - node_v[cd.node_ref[1]];
+        let sp = power(0, volts);
+        row(
+            s,
+            &bus_pad(0),
+            ckt.map_node_to_bus[cd.node_ref[0]].node_num,
+            sp,
+        );
+        total(s, sp);
+    } else {
+        let mut k = 0usize;
+        for j in 0..nterm {
+            let from_bus = bus_pad(j);
+            let mut saccum = Complex64::ZERO;
+            for _ in 0..ncond {
+                let sp = power(k, node_v[cd.node_ref[k]]);
+                saccum += sp;
+                row(
+                    s,
+                    &from_bus,
+                    ckt.map_node_to_bus[cd.node_ref[k]].node_num,
+                    sp,
+                );
+                k += 1;
+            }
+            total(s, saccum);
+        }
+    }
+    s.push('\n');
 }

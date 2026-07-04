@@ -10,6 +10,7 @@
 
 mod buses;
 mod currents;
+mod diagnostics;
 mod elements;
 mod losses;
 mod powers;
@@ -18,43 +19,33 @@ mod voltages;
 
 pub(crate) use buses::show_buses;
 pub(crate) use currents::{show_currents, show_currents_elements};
+pub(crate) use diagnostics::{show_event_log, show_ratings, show_result, show_variables};
 pub(crate) use elements::show_elements;
 pub(crate) use losses::show_losses;
-pub(crate) use powers::show_powers;
+pub(crate) use powers::{show_powers, show_powers_elements};
 pub(crate) use taps::show_taps;
 pub(crate) use voltages::{show_voltages, show_voltages_elements, show_voltages_nodes};
 
 use crate::circuit::Circuit;
 use crate::exec::registry::DssClass;
 
-/// Pascal `SetMaxBusNameLength` (`ShowResults.pas:101`): the longest bus name.
-/// Walks `BusList.NameOfIndex` (the lowercased stored names). Uses **byte**
-/// length (`str::len`), matching Pascal's `Length(AnsiString)` (byte-1:1;
+/// Pascal `SetMaxBusNameLength` (`ShowResults.pas:101`): the longest bus name,
+/// floored at 4. Walks `BusList.NameOfIndex` (the lowercased stored names). Uses
+/// **byte** length (`str::len`), matching Pascal's `Length(AnsiString)` (byte-1:1;
 /// identical to char count for the ASCII corpus names).
 ///
-/// TODO(compat): the floor is **12**, not the source's 4. The vendored Pascal
-/// `SetMaxBusNameLength` resets `MaxBusNameLength := 4` before the max-loop, but
-/// the pinned dss_capi 0.14.5 backend floors the **data** rows at the unit-init
-/// constant `MaxBusNameLength := 12` (`ShowResults.pas:3979`) — a backend-vs-source
-/// divergence probe-proven `max(12, longest_bus_name)`: a 20-char bus name widens
-/// to 20, a 5-char one floors at 12 (not 5), and IEEE13 (longest `sourcebus` = 9)
-/// pads to 12. Reproduced 1:1 (settled empirically per CLAUDE.md — the oracle is
-/// the spec), same class as [`max_device_name_length`]'s `= 0`. Matters wherever
-/// the width feeds a **dot-padded** (`PadDots`) DATA column — `WriteBusVoltages`
-/// splits the bus name and its dot run into two whitespace tokens (and the dot-run
-/// length is a text token), so a wrong floor changes both the token count and the
-/// dots token; this is what the goldens pin (space-padded reports are
-/// token-invariant to it).
-///
-/// **Known residual byte divergence (deferred to WP8.8, masked by the token gate):**
-/// the oracle is internally inconsistent — it pads the *column-header* row's `Bus`
-/// to width **4** (probe-measured on every `Show` golden: `Bus  Node…`) while the
-/// *data* rows use 12. The port uses this single value (12) for header and data
-/// alike, so the header row is wider than the oracle's by whitespace only — invisible
-/// to the whitespace-collapsing comparator. Clean fix in the post-1:1 byte pass:
-/// reproduce the header=4 / data=12 split (or floor at 4 and regenerate goldens).
+/// This is the clean source value (`max(4, longest_bus_name)`). The pinned dss_capi
+/// 0.14.5 backend's *effective* `MaxBusNameLength` is an **inconsistent per-report
+/// quirk** (probe-proven: `ShowVoltages`/`WriteBusVoltages` floors it at 12,
+/// `ShowPowers` at ~5 — even each run in isolation, so it is not the SetMax… loop
+/// producing them and not reproducible with any single value). It only ever feeds
+/// name-column *padding* — space pads (invisible to the whitespace-tokenizing
+/// golden) or `PadDots` runs (the golden's `split_fields` drops pure dot-runs, so
+/// the quirk cannot affect a token). We therefore keep the honest source value; the
+/// exact per-report byte widths are a WP8.8 byte-faithfulness concern, not gated
+/// here (same masked-cosmetic class as [`max_device_name_length`]'s `= 0`).
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
-    let mut m = 12;
+    let mut m = 4;
     for i in 0..ckt.buses.len() {
         if let Some(n) = ckt.bus_list.name(i) {
             m = m.max(n.len());
