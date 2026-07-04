@@ -160,6 +160,36 @@ fn read_csv_file_parses_and_shrinks_num_harm() {
 }
 
 #[test]
+fn read_csv_file_reproduces_pascal_eof_guard() {
+    // Pascal's `while ((F.Position + 1) < F.Size)` guard (Spectrum.pas:297)
+    // skips a final ≤1-byte line with no trailing newline, and a trailing blank
+    // line — unlike a naive `str::lines()` walk. Both cases oracle-confirmed
+    // (probe: NumHarm=2, Harmonic=[1 3] for each).
+    let mut s = build(&[("NumHarm", "3")]);
+    s.read_csv_file("1, 100, 0\n3, 50, 0\n5"); // final "5" is a lone 1-byte line
+    assert_eq!(s.num_harm, 2, "1-byte final line must be skipped");
+    assert_eq!(s.harmonics(), Some(&[1.0, 3.0][..]));
+
+    let mut s_blank = build(&[("NumHarm", "3")]);
+    s_blank.read_csv_file("1, 100, 0\n3, 50, 0\n\n"); // trailing blank line
+    assert_eq!(s_blank.num_harm, 2, "trailing blank line must be skipped");
+    assert_eq!(s_blank.harmonics(), Some(&[1.0, 3.0][..]));
+
+    // A final line ≥2 bytes with no trailing newline IS read (control).
+    let mut s_ok = build(&[("NumHarm", "3")]);
+    s_ok.read_csv_file("1, 100, 0\n3, 50, 0"); // "3, 50, 0" has ≥2 bytes
+    assert_eq!(s_ok.num_harm, 2);
+    assert_eq!(s_ok.harmonics(), Some(&[1.0, 3.0][..]));
+
+    // A CRLF file reads identically (the trailing CR is stripped, and the guard
+    // arithmetic counts both terminator bytes just as `F.Size` does).
+    let mut s_crlf = build(&[("NumHarm", "3")]);
+    s_crlf.read_csv_file("1, 100, 0\r\n3, 50, 0\r\n");
+    assert_eq!(s_crlf.num_harm, 2);
+    assert_eq!(s_crlf.harmonics(), Some(&[1.0, 3.0][..]));
+}
+
+#[test]
 fn pct_mag_scale_round_trips() {
     // %Mag stored per-unit (×0.01), displayed as percent (÷0.01).
     let dump = edit_and_dump(&[
