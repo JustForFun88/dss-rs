@@ -1456,6 +1456,18 @@ def gen_show_zone_loops(d) -> None:
     )
 
 
+def gen_show_controlled(d) -> None:
+    """Capture the oracle's `Show Controlled` (`ShowControlledElements`) on solved
+    IEEE13: the three voltage-regulator `RegControl`s each control a `Transformer`,
+    so the report lists three `Transformer.regN, RegControl.regN ` lines (PD element
+    + its control, native case, trailing space per control). Pure text (names only,
+    no numbers) → diffed **byte-exact**."""
+    d.AllowEditor = False
+    _gen_show_group(
+        d, FEEDER_POST, [("controlled", "ControlledElements.csv", "show_controlled")]
+    )
+
+
 def gen_deck_groups(d) -> None:
     """Capture the oracle's Overloads/Unserved/AllocationFactors reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1520,6 +1532,7 @@ def main() -> None:
     gen_deck_groups(d)
     gen_show_overload_unserved(d)
     gen_show_zone_loops(d)
+    gen_show_controlled(d)
     gen_sections(d)
     gen_profile(d)
     gen_demand_interval(d)

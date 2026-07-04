@@ -288,6 +288,22 @@ pub trait CktElement {
         false
     }
 
+    /// Pascal `TControlElem.FControlledElement` (via `Set_ControlledElement`):
+    /// the circuit element this control acts on, or `None` for a non-control
+    /// element (and for the fleet controls that act on a *list* of elements
+    /// rather than a single one). The reverse of Pascal's
+    /// `ControlledElement.ControlElementList` — the reports that need the
+    /// forward `PDElement → controls` mapping (`ShowControlledElements`,
+    /// `ShowTopology`) derive it by scanning `Circuit.controls` and matching this
+    /// (`Circuit.controls` is in creation order, so the derived per-element list
+    /// reproduces the Pascal `ControlElementList` insertion order, and a
+    /// reassigned control follows its *current* target — the same final state as
+    /// Pascal's remove-then-add `Set_ControlledElement`). Default `None`; every
+    /// control overrides it to return `self.ccd.controlled_element`.
+    fn controlled_element(&self) -> Option<ElemRef> {
+        None
+    }
+
     /// Per-element reliability inputs for the EnergyMeter reliability sweep
     /// (Pascal `TPDElement.CalcFltRate` + the `HrsToRepair`/`MilesThisLine`
     /// fields). `CalcFltRate` is virtual: the base `TPDElement` formula is

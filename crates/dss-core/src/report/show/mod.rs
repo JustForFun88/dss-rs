@@ -9,6 +9,7 @@
 //! the field structure and the number formats are ported faithfully.
 
 mod buses;
+mod controlled;
 mod currents;
 mod diagnostics;
 mod elements;
@@ -25,6 +26,7 @@ mod voltages;
 mod yprim;
 
 pub(crate) use buses::show_buses;
+pub(crate) use controlled::show_controlled;
 pub(crate) use currents::{show_currents, show_currents_elements};
 pub(crate) use diagnostics::{
     show_control_queue, show_convergence, show_event_log, show_kvbase_mismatch, show_mismatch,
