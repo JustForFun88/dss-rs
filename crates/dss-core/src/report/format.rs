@@ -24,6 +24,75 @@ pub fn fixed(v: f64, decimals: usize) -> String {
     format!("{v:.decimals$}")
 }
 
+/// Pascal `Format('%W.Df', [v])`: fixed-point, `decimals` fractional digits,
+/// right-justified (space-padded) in field width `width`. The `Show` reports are
+/// fixed-width tables, so — unlike the CSV exports — the width matters: it keeps a
+/// numeric field from gluing to a neighbour when a value doesn't fill it (the
+/// text/CSV comparator collapses the padding, but the separation must exist).
+pub fn fixed_w(v: f64, width: usize, decimals: usize) -> String {
+    format!("{v:>width$.decimals$}")
+}
+
+/// Pascal `Format('%Wd', [v])`: integer, right-justified (space-padded) in field
+/// width `width`.
+pub fn fixed_w_int(v: i64, width: usize) -> String {
+    format!("{v:>width$}")
+}
+
+/// Pascal `Format('%W.Pg', [v])`: `%g` with `sig` significant digits, right-
+/// justified in field width `width`.
+pub fn g_w(v: f64, width: usize, sig: usize) -> String {
+    let s = fmt_g(v, sig);
+    format!("{s:>width$}")
+}
+
+/// Pascal `Format('%-W.Pg', [v])`: `%g` with `sig` significant digits,
+/// **left**-justified in field width `width` (the `ShowBuses` coordinate columns).
+pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
+    let s = fmt_g(v, sig);
+    format!("{s:<width$}")
+}
+
+/// Pascal `Pad(S, Width)` (`Common/Utilities.pas`): `S` right-padded with **spaces**
+/// to `Width` chars; a string already `>= Width` is returned unchanged.
+pub fn pad(s: &str, width: usize) -> String {
+    if s.chars().count() >= width {
+        s.to_string()
+    } else {
+        format!("{s}{}", " ".repeat(width - s.chars().count()))
+    }
+}
+
+/// Pascal `PadDots(S, Width)` (`Common/ShowResults.pas`): `S` right-padded with
+/// **dots** to `Width` chars (the leading-dot padding string starts with a space,
+/// `' ....'`, so the first pad char is a space then dots — reproduced verbatim).
+pub fn pad_dots(s: &str, width: usize) -> String {
+    // Pascal `paddotsString = ' .................................................'`
+    // (a leading space then 49 dots); `Copy(paddotsString, 1, Width-Len(S))`.
+    const PAD_DOTS: &str = " .................................................";
+    let len = s.chars().count();
+    if len >= width {
+        s.to_string()
+    } else {
+        let n = width - len;
+        format!("{s}{}", &PAD_DOTS[..n.min(PAD_DOTS.len())])
+    }
+}
+
+/// Pascal `EncloseQuotes(s)` (`Common/Utilities.pas`): `"` + `s` + `"`.
+pub fn enclose_quotes(s: &str) -> String {
+    format!("\"{s}\"")
+}
+
+/// Pascal `StripExtension(S)` (`Common/Utilities.pas`): everything up to the first
+/// `.` (a bus name with its `.node.node…` suffix removed); no `.` → `S` unchanged.
+pub fn strip_extension(s: &str) -> String {
+    match s.find('.') {
+        Some(p) => s[..p].to_string(),
+        None => s.to_string(),
+    }
+}
+
 /// Pascal `DSSClassName + '.' + AnsiUpperCase(Name)` (`ExportResults.pas`): the
 /// element full name with **only the element-name part uppercased**, the class
 /// name left in its native case (e.g. `Transformer.SUB`, `Line.650632`). The

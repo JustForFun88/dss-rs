@@ -403,6 +403,57 @@ def gen_feeder_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# The Show-report fixture (PHASE8_PLAN §WP8.4): the same solved IEEE13 feeder, then
+# each `Show <keyword>` captured from the fixed-name file it writes. Unlike Export,
+# `Show` sets no `GlobalResult`, so the produced file is found by its fixed suffix
+# glob (`<case>_<name>.txt`, original-case circuit name). Each tuple:
+# (show keyword, oracle default-filename suffix, golden stem).
+SHOW_REPORTS = [
+    ("losses", "Losses.txt", "show_losses"),
+    ("buses", "Buses.txt", "show_buses"),
+    ("taps", "RegTaps.txt", "show_taps"),
+]
+
+
+def gen_show_reports(d) -> None:
+    """Capture the oracle's `Show` fixed-width text reports on the solved IEEE13 feeder."""
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in FEEDER_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name  # lowercased; the file prefix is original-case
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in SHOW_REPORTS:
+            d.Text.Command = f"show {keyword}"
+            # Show writes `<OutputDir>/<CircuitName_><suffix>` but sets no
+            # GlobalResult; find it by suffix (original-case prefix).
+            matches = list(Path(tmp).glob(f"*_{suffix}"))
+            if len(matches) != 1:
+                sys.exit(f"show {keyword}: expected 1 *_{suffix}, found {matches}")
+            content = matches[0].read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "master": FEEDER_MASTER,
+                "post": FEEDER_POST,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_seqz(d) -> None:
     """Capture the oracle's `Export SeqZ` on the FaultStudy-solved IEEE13 feeder."""
     master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
@@ -937,6 +988,7 @@ def main() -> None:
 
     gen_counts(d)
     gen_feeder_reports(d)
+    gen_show_reports(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
     gen_log_reports(d)

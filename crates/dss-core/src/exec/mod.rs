@@ -141,6 +141,13 @@ impl Dss {
     pub fn last_result_file(&self) -> &str {
         &self.last_result_file
     }
+
+    /// The path of the most recently written `Show` report (the `@lastshowfile`
+    /// parser var; Pascal's `ShowResults` procedures set only this, not
+    /// `GlobalResult`/`@lastfile`). Empty until the first `Show` writes a file.
+    pub fn last_show_file(&self) -> &str {
+        self.vars.get("@lastshowfile").unwrap_or("")
+    }
 }
 
 impl Default for Dss {

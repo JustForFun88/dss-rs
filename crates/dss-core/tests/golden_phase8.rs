@@ -248,6 +248,67 @@ fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Drive one `Show` report (PHASE8_PLAN §WP8.4): compile the same master the
+/// oracle used, replay the post commands, route output into a scratch dir, issue
+/// `Show <keyword>`, and diff the Rust-written fixed-width text file against the
+/// oracle's via `compare_export`. The `Show` twin of `run_feeder_export` — it
+/// reads `dss.last_show_file()` (Pascal `Show` sets `@lastshowfile`, not
+/// `GlobalResult`) and the golden policy tokenizes on whitespace+commas
+/// (`sep: ' '`) since `Show` emits space-padded tables, not CSV.
+fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
+    let dir = phase8_dir();
+    let meta: FeederMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+    assert!(master.is_file(), "master missing: {}", master.display());
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("show {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_show_file();
+    let want = format!("{}_{}", meta.fixture, meta.suffix).to_lowercase();
+    assert!(
+        produced.to_lowercase().ends_with(&want),
+        "{stem}: unexpected produced path {produced:?} (want …{want})"
+    );
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+
+    compare_export(&oracle, &rust, policy, stem);
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Compile a **heavy** master once and diff several reports against the oracle,
 /// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
 /// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the
@@ -468,6 +529,70 @@ fn export_p_byphase_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_export("export_p_byphase", &policy);
+}
+
+// --- WP8.4 Show reports -----------------------------------------------------
+// `Show` emits Pascal fixed-width text tables (space-padded columns, the odd
+// glued trailing comma), not CSV — so these policies use `sep: ' '` (the
+// harness whitespace+comma tokenizer) and `header_lines: 0`: every non-blank
+// line (prose banner, column header, and data row alike) is tokenized and
+// compared token-for-token (text case-insensitively, numbers by tolerance).
+// That pins the report **structure** (line count, per-line token count/order)
+// on top of the numeric layout. The electrical physics itself is pinned to
+// 1e-8 by `corpus_live.rs`; these are report-layout / printing-floor checks.
+// (tests/TOLERANCE_NOTES.md)
+
+/// `Show Buses` (Pascal `ShowBuses`): every bus's base kV / `(x,y)` / keep / node
+/// list. All columns are **input** data (base kV = `kVBase·√3` `%7.3f`, coords
+/// `%-13.11g`, integer node counts/numbers) — identical on both engines, so the
+/// floor is just the `%7.3f` printing resolution (`rel = 0`, `abs = 1e-3`).
+#[test]
+fn show_buses_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 1e-3,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_buses", &policy);
+}
+
+/// `Show Taps` (Pascal `ShowRegulatorTaps`): per-RegControl tap/min/max/step
+/// (`%8.5f`), integer position/winding, direction/cogen text. The tap fractions
+/// are exact discrete decisions (the phase5/checkpoint gates pin `tap_number`
+/// exactly), so they match to the last `%8.5f` digit — `rel = 0`, `abs = 1e-5`.
+#[test]
+fn show_taps_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 1e-5,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_taps", &policy);
+}
+
+/// `Show Losses` (Pascal `ShowLosses`): per-PD kW (`%10.5f`) / `% of Power`
+/// (`%8.2f`) / kvar (`%.6g`) plus the line/transformer/total aggregates. The
+/// coarsest column is the `%8.2f` percentage (an additive ±0.01 boundary between
+/// two independent solves), so `abs = 0.011` is the printing floor; `rel = 1e-4`
+/// still catches a scale drift on the large kW/kvar values. The element kW/kvar
+/// physics is pinned to 1e-8 by `corpus_live.rs`.
+#[test]
+fn show_losses_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 0.011,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_losses", &policy);
 }
 
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects

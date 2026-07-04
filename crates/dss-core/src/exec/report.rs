@@ -942,21 +942,110 @@ impl Dss {
     /// Pascal `DoShowCmd` (`ShowOptions.pas:89`): read the report keyword and
     /// dispatch to the matching `ShowResults` formatter.
     ///
-    /// WP8.1 skeleton: every `Show` report is a **faithful headless no-op** — it
-    /// writes a report file but changes **no** electrical state (PHASE8_PLAN
-    /// §2.5; the live gate compares the assembled model, not report text). WP8.4
-    /// replaces each keyword with the real formatter + a targeted text golden,
-    /// and adds the oracle's `Show panel`→999 / unknown→24700 errors. The no-op
-    /// stays *silent* (no recorded error) until then so it cannot regress the 44
-    /// `solvable_now` decks that contain `Show Power`/`Show Voltage`/`Show f`
-    /// (the live gate asserts `errors().is_empty()`).
+    /// WP8.4 (in progress): the ported keywords write their real fixed-width text
+    /// report; `Show panel` reproduces the oracle's #999 (not supported in
+    /// DSS-Extensions); every **not-yet-ported** keyword stays a *silent* headless
+    /// no-op (writes nothing, records no error) so it cannot regress the
+    /// `solvable_now` decks that contain `Show Power`/`Show Voltage`/`Show f` (the
+    /// live gate asserts `errors().is_empty()`). The remaining formatters + the
+    /// unknown→#24700 error land in the later WP8.4 steps. Reports change **no**
+    /// electrical state (PHASE8_PLAN §2.5).
     pub(crate) fn do_show_cmd(&mut self) {
         // Pascal `DSS.Parser.NextParam; Param := AnsiLowerCase(StrValue)`.
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars).to_lowercase();
-        // Resolve against ShowCommands so the dispatch table is wired and ready
-        // for WP8.4; the result is intentionally unused until the formatters land.
-        let _ptr = self.show_commands.get_command(&param);
+        let ptr = self
+            .show_commands
+            .get_command(&param)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        // Solution guard (`ShowOptions.pas:127-141`, `case ParamPointer of 4, 6,
+        // 8..10, 12, 13..17, 19..23, 29..31`): the solution-reading Shows need a
+        // solved circuit. As with `Export`, the no-circuit half (#24701) is
+        // unreachable — the generic pre-circuit #301 guard fires first — so only
+        // the "must be solved" (#24702) check remains: it fires when the circuit
+        // exists but `Solution.NodeV` is unallocated (`[ground]` only).
+        if matches!(ptr, 4 | 6 | 8..=10 | 12 | 13..=17 | 19..=23 | 29..=31)
+            && self
+                .circuit
+                .as_ref()
+                .is_some_and(|c| c.solution.node_v.len() <= 1)
+        {
+            self.errors
+                .push("The circuit must be solved before you can do this.".to_string());
+            return;
+        }
+
+        use crate::report::show;
+        match ptr {
+            // 2 `buses` (no solution guard — reads bus geometry/nodes only).
+            2 => {
+                let content =
+                    show::show_buses(self.circuit.as_ref().expect("post-circuit dispatch"));
+                self.write_show("Buses.txt", &content);
+            }
+            // 15 `taps` (`ShowRegulatorTaps`).
+            15 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_taps(&self.classes, ckt)
+                };
+                self.write_show("RegTaps.txt", &content);
+            }
+            // 22 `losses` (`ShowLosses`) — walks the mutating loss/power getters.
+            22 => {
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    show::show_losses(classes, ckt, &sys, &node_v)
+                };
+                self.write_show("Losses.txt", &content);
+            }
+            // 11 `panel` — the oracle faithfully errors it (`ShowOptions.pas:248`).
+            11 => {
+                self.errors
+                    .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
+            }
+            // Every other keyword (incl. unknown, ptr 0) is still a silent no-op
+            // (WP8.4 remaining steps land the rest + the unknown→#24700 error).
+            _ => {}
+        }
+    }
+
+    /// Write a `Show` report to `<OutputDirectory><CircuitName_><default_name>`
+    /// (Pascal `ShowResults` procedures always build a fixed filename — `Show` has
+    /// no explicit-filename argument). Unlike `Export`, `Show` sets **only**
+    /// `@lastshowfile` (`DSS.ParserVars.Add('@lastshowfile', FileNm)`), not
+    /// `@lastfile` / `GlobalResult` (`Show` never calls `SetLastResultFile`).
+    fn write_show(&mut self, default_name: &str, content: &str) {
+        let case = self
+            .circuit
+            .as_ref()
+            .map(|c| c.case_name.clone())
+            .unwrap_or_default();
+        let circuit_name_ = format!("{case}_");
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &circuit_name_,
+            "",
+            default_name,
+        );
+        match std::fs::write(&path, content) {
+            Ok(()) => {
+                let p = path.to_string_lossy().into_owned();
+                self.vars.add("@lastshowfile", &p);
+            }
+            Err(e) => self.errors.push(format!(
+                "Error writing report file \"{}\": {e}",
+                path.display()
+            )),
+        }
     }
 
     /// Pascal `DoSaveCmd` (`ExecHelper.pas`): `Save circuit` / `Save <class>` /
