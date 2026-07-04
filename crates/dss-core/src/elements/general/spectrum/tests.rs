@@ -137,6 +137,29 @@ fn get_mult_is_zero_before_end_edit() {
 }
 
 #[test]
+fn read_csv_file_parses_and_shrinks_num_harm() {
+    // Pascal `ReadCSVFile` (Spectrum.pas:278): up to NumHarm rows of
+    // `harmonic, %mag, angle` (AuxParser formats), %Mag scaled ×0.01, and
+    // NumHarm shrunk to the count actually read.
+    let mut s = build(&[("NumHarm", "4")]);
+    // Only 3 rows in the file (fewer than NumHarm=4) — mixed separators.
+    s.read_csv_file("1, 100, 30\n3 50 90\n5, 20, 0\n");
+    s.end_edit(); // builds MultArray from the loaded arrays
+    assert_eq!(s.num_harm, 3);
+    assert_eq!(s.harmonics(), Some(&[1.0, 3.0, 5.0][..]));
+    // %Mag stored per-unit; fundamental rotated to zero phase.
+    let m1 = s.get_mult(1.0);
+    let m3 = s.get_mult(3.0);
+    assert!((m1.re - 1.0).abs() < 1e-12 && m1.im.abs() < 1e-12, "{m1:?}");
+    assert!((m3.re - 0.5).abs() < 1e-12 && m3.im.abs() < 1e-12, "{m3:?}");
+    // More rows than NumHarm: only the first NumHarm are read.
+    let mut s2 = build(&[("NumHarm", "2")]);
+    s2.read_csv_file("1, 100, 0\n5, 20, 0\n7, 10, 0\n");
+    assert_eq!(s2.num_harm, 2);
+    assert_eq!(s2.harmonics(), Some(&[1.0, 5.0][..]));
+}
+
+#[test]
 fn pct_mag_scale_round_trips() {
     // %Mag stored per-unit (×0.01), displayed as percent (÷0.01).
     let dump = edit_and_dump(&[

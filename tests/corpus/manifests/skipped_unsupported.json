@@ -27,21 +27,6 @@
    "note": "Test/Dynamic_Kundur.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Unknown solution mode. (not ported in"
   },
   {
-   "path": "Test/PVSystemTest-Duty.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Test/PVSystemTest-Duty.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet."
-  },
-  {
-   "path": "Test/PVSystemTest.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Test/PVSystemTest.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", "
-  },
-  {
-   "path": "Test/PVSystemTestHarm.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Test/PVSystemTestHarm.dss: Rust engine errors after compile: [\"Unknown solution mode. (not ported in Phase 5)\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Export\\\" is not p"
-  },
-  {
    "path": "Test/REACTORTest.DSS",
    "tag": "unsupported_command=Dump,Show",
    "note": "Test/REACTORTest.DSS: Rust engine errors after compile: [\"Command \\\"Dump\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
@@ -222,16 +207,6 @@
    "note": "Version8/Distrib/Examples/GICExample/GIC_Example.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Co"
   },
   {
-   "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
-   "tag": "unsupported_command=Export; deferred=phase8-reporting",
-   "note": "Re-probed WP7.6 step 3: the full harmonicT solve now runs clean (SwtControl + Open + set mode=harmonicT all ported, WP7.2/WP7.6 steps 1-2; the deck CONVERGES). The ONLY remaining Rust-engine error is the trailing Phase-8 monitor report `export monitor MPCC` (`Command \"Export\" is not ported yet.`); the following `show monitor MPCC` is already a Phase-8 no-op stub (returns without error). Migrate to solvable_now when Phase 8 lands Export. (Was stale: unsupported_class=Swtcontrol; unsupported_command=Open \u0432\u0402\u201d both ported.)"
-  },
-  {
-   "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
-   "tag": "unsupported_command=Export; deferred=phase8-reporting",
-   "note": "Re-probed WP7.6 step 3: the full harmonicT solve (with a mid-run load edit) now runs clean (SwtControl + set mode=harmonicT ported, WP7.2/WP7.6 steps 1-2; the deck CONVERGES). The ONLY remaining Rust-engine error is the trailing Phase-8 monitor report `export monitor MPCC` (`Command \"Export\" is not ported yet.`); the following `show monitor MPCC` is already a Phase-8 no-op stub (returns without error). Migrate to solvable_now when Phase 8 lands Export. (Was stale: unsupported_class=Swtcontrol \u0432\u0402\u201d ported.)"
-  },
-  {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
    "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
    "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
@@ -265,221 +240,6 @@
    "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
    "tag": "unsupported_class=Fault,IndMach012,Relay",
    "note": "Version8/Distrib/Examples/InductionMachine/Run.dss: Rust engine errors after compile: [\"LoadShape.wind2400: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"New Command: Object Type \\\"Fault\\\" not found.\", \"New Command: Object Type \\\"IndMach012\\\" not found.\", \"New Command"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\" is "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\\""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comm"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comm"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comma"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Plot\\"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Com"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Com"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" i"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" i"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported y"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Co"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not port"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not port"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"C"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"C"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Comman"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not p"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Co"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported "
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss",
-   "tag": "unsupported_command=Export,Plot",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\""
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss",
-   "tag": "unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\"]"
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
@@ -720,11 +480,6 @@
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
    "tag": "unsupported_command=Plot",
    "note": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss",
-   "tag": "unsupported_command=Export,Plot,Show",
-   "note": "Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"Plot\\\" is not ported yet.\", \"Command \\\"Exp"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
