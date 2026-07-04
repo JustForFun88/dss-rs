@@ -234,9 +234,32 @@ the current frontier:
   first try: the fault currents/voltages derive from the bit-exact assembled Y +
   FPC-faithful matrix ops, so every `%15.0f`/`%12.0f`/`%5.1f`/`%10.3f` cell is
   byte-identical Rust↔oracle (no straddle). No corpus migration (`Run_NEV.dss`, the
-  one deck with `show faults`, stays blocked on `Select`/`show yprim`). **next =
-  continue WP8.4** (Yprim + the active-ckt-element surface, then the CktTree
-  families: Zone/Isolated/Loops/Topology/busflow).
+  one deck with `show faults`, stays blocked on `Select`/`show yprim`). **Both
+  audits ran (`535d893`): no correctness bug in the port** (audit-code verified
+  `ShowFaultStudy` field-for-field incl. `cdiv_fpc`/`get_xr`/`CMatrix::invert`
+  fidelity and confirmed the `None`-`Zsc`/`Ysc` `continue` guard correctly protects
+  against the exact **upstream UB** — Pascal `ZFault.CopyFrom(nil)` access-violates
+  on that path). Two **audit-tests** findings, both addressed: (Major D) the golden
+  doc's "pinned to 1e-8 by `corpus_live.rs`" was **false** (corpus_live snapshot-
+  solves, never enters faultstudy, never compares `Zsc`/`Ysc`/`BusCurrent`) — doc
+  rewritten to cite the real aggregate pins (`export_faultstudy` `%.2f` +
+  `export_seqz`) and state the per-node amps/X-R/pu matrices are pinned by this
+  golden alone at print precision (the fault state carries the ~1e-8 faer-vs-KLU
+  floor from the `Zsc` re-solves; exact holds only because no cell straddles a
+  `%.Nf` boundary on this feeder). (Major A) two branches were unexercised by the
+  based-IEEE13 golden — closed with **two `#[cfg(test)]` unit tests, no golden**
+  (lib 732→734): `fault_study_cold_solve_is_safe` and
+  `fault_study_unbased_uses_ln_volts_branch`. **Empirical correction (probe-proven):**
+  the oracle access-violation is on a **cold** `solve mode=faultstudy` (no prior
+  converged solve → unallocated `Zsc`), *not* the `kVBase<=0` report itself — with a
+  prior `solve mode=snap` the oracle renders the unbased L-N-Volts report fine. So
+  the cold path is the genuine UB (our engine guards it — refuses the cold
+  faultstudy, then the `None`-`Zsc` guard yields the section-1 `N/A` branch, no
+  panic; **no golden** — the oracle crashes there), while the `kVBase<=0` `%10.1f`
+  branch IS oracle-comparable (kept a unit test per the no-golden decision, could be
+  upgraded to a deck golden). **next = continue WP8.4** (Yprim + the
+  active-ckt-element surface, then the CktTree families:
+  Zone/Isolated/Loops/Topology/busflow).
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -269,7 +292,7 @@ HARD STOP; `phase-8-reporting` builds on top of it). Roll-up + archives in **§1
 ([`docs/phase-records/phase-7.md`](docs/phase-records/phase-7.md) +
 `phase-7-wp{1..7}.md`). Tracked-open Phase-7 deferrals (both Plot-blocked, zero
 corpus payoff): the **GFM grid-forming inverter mode** and the **Generic/TD21
-relay `Sample`**. Current scores: dss-core **lib 732**, **`solvable_now` 168**;
+relay `Sample`**. Current scores: dss-core **lib 734**, **`solvable_now` 168**;
 oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
 
@@ -313,7 +336,7 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 732, golden_feeders 1,
+cargo test --workspace      # dss-core lib 734, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
                             # golden_phase7_protection 1, golden_phase8 96,
