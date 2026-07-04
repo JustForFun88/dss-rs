@@ -1011,8 +1011,18 @@ impl Dss {
                 self.errors
                     .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
             }
-            // Every other keyword (incl. unknown, ptr 0) is still a silent no-op
-            // (WP8.4 remaining steps land the rest + the unknown→#24700 error).
+            // TODO(WP8): step 2+ — the remaining ~30 `Show` keywords (currents, powers,
+            // voltages, elements, monitor, faults, meters, zone, lineconstants,
+            // topology, …) and the unknown-keyword `#24700` error
+            // (`ShowOptions.pas:119-124`) are still deferred. Unlike the `Export`/
+            // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
+            // error — a deferred `Show` MUST stay a **silent** headless no-op: the
+            // `solvable_now`/`corpus_live` decks run `Show Power`/`Show Voltage`/
+            // `Show f` and the live gate asserts `errors().is_empty()`, so emitting
+            // the `#24700` (or any error) here would regress them. The later WP8.4
+            // steps land the formatters; the `#24700` lands with them (once every
+            // real keyword is ported, an unmatched keyword is genuinely unknown).
+            // Greppable via `rg "TODO\(WP8\)"` (the WP8.8 exit sweep).
             _ => {}
         }
     }
