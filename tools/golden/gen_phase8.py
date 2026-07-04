@@ -1388,6 +1388,45 @@ def gen_show_overload_unserved(d) -> None:
     _gen_show_deck_group(d, uns2, [("unserved", "Unserved.txt", "show_unserved_normal")])
 
 
+# `Show Loops` / `Show Zone` (PHASE8_PLAN §WP8.4): the two EnergyMeter zone-tree
+# reports. The radial IEEE13 (fixture `em1` on Line.650632) pins the header/empty
+# path (`show_loops`, no loops → two header lines) and the radial branch/shunt
+# tree (`show_zone`). A synthesized **meshed** deck — a 3-line loop (b1-b2-b3-b1)
+# plus a line parallel to `la` (b1-b2) inside a metered zone — exercises the
+# PARALLEL/LOOP branches of BOTH reports (`ShowLoops` one line per parallel/looped
+# branch; `ShowMeterZone` the inline `(PARALLEL:Name)`/`(LOOP:FullName)`
+# annotations). No corpus deck has a looped metered zone, so it is synthesized
+# (PHASE8_PLAN §1). Element names are lowercase — the reports emit them native
+# case (LoopLineObj / zone branch), and the port's names are lowercase-normalized.
+SHOW_MESH_DECK = [
+    "new circuit.meshtest basekv=12.47 bus1=sourcebus phases=3",
+    "new line.feed  bus1=sourcebus bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.la    bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.lb    bus1=b2 bus2=b3 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.lc    bus1=b3 bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.lpar  bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new load.ld    bus1=b3 phases=3 kv=12.47 kw=100 pf=0.95",
+    "new energymeter.m1 element=line.feed terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve",
+]
+
+
+def gen_show_zone_loops(d) -> None:
+    """Capture the oracle's `Show Loops`/`Show Zone` (PHASE8_PLAN §WP8.4)."""
+    d.AllowEditor = False
+    # Radial IEEE13 (fixture A: em1 on Line.650632) — header-only loops + the
+    # radial zone tree.
+    _gen_show_group(d, REGISTER_A_POST, [("loops", "Loops.txt", "show_loops")])
+    _gen_show_group(d, REGISTER_A_POST, [("zone em1", "ZoneOut_em1.txt", "show_zone")])
+    # Meshed synthetic deck — the PARALLEL/LOOP paths of both reports.
+    _gen_show_deck_group(d, SHOW_MESH_DECK, [("loops", "Loops.txt", "show_loops_mesh")])
+    _gen_show_deck_group(
+        d, SHOW_MESH_DECK, [("zone m1", "ZoneOut_m1.txt", "show_zone_mesh")]
+    )
+
+
 def gen_deck_groups(d) -> None:
     """Capture the oracle's Overloads/Unserved/AllocationFactors reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1451,6 +1490,7 @@ def main() -> None:
     gen_reliability(d)
     gen_deck_groups(d)
     gen_show_overload_unserved(d)
+    gen_show_zone_loops(d)
     gen_sections(d)
     gen_profile(d)
     gen_demand_interval(d)

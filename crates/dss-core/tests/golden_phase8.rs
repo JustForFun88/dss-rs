@@ -19,7 +19,7 @@
 
 mod harness;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use dss_core::exec::Dss;
 use harness::{
@@ -248,6 +248,63 @@ fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Locate the single `*_<suffix>` report a `Show` command wrote into `scratch`
+/// (the same fixed-name suffix glob the oracle generator uses) and read it back.
+/// Shared by the feeder/deck show runners; asserts exactly one match — a wrong
+/// filename (the `Result.txt`→`.csv` class of bug) leaves the glob empty and fails.
+fn locate_show_report(scratch: &Path, suffix: &str, stem: &str) -> String {
+    let want = format!("_{}", suffix).to_lowercase();
+    let mut matches: Vec<PathBuf> = std::fs::read_dir(scratch)
+        .unwrap_or_else(|e| panic!("{stem}: read_dir {}: {e}", scratch.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().to_lowercase().ends_with(&want))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        matches.len(),
+        1,
+        "{stem}: expected exactly one *_{suffix} in {}, found {matches:?}",
+        scratch.display()
+    );
+    let produced = matches.pop().unwrap();
+    std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()))
+}
+
+/// Byte-exact line comparison (no tokenization) for pure-text `Show` reports whose
+/// layout has **no** backend width quirk — the zone-tree reports (`Show Loops`/
+/// `Show Zone`) indent with deterministic `TABCHAR`s and print no numbers, so the
+/// oracle bytes are reproducible in full. Stronger than `compare_export`'s token
+/// diff: it also pins the leading indentation and trailing spaces (a formatter-side
+/// off-by-one in the tab depth, invisible to the whitespace tokenizer, fails here).
+/// Only CRLF→LF is normalized (the oracle golden is stored LF; the port writes LF).
+fn assert_show_bytes_eq(oracle: &str, rust: &str, stem: &str) {
+    let o = oracle.replace("\r\n", "\n");
+    let r = rust.replace("\r\n", "\n");
+    if o != r {
+        let ol: Vec<&str> = o.split('\n').collect();
+        let rl: Vec<&str> = r.split('\n').collect();
+        for (i, (a, b)) in ol.iter().zip(rl.iter()).enumerate() {
+            assert_eq!(
+                a,
+                b,
+                "{stem}: line {} differs\n  oracle: {a:?}\n  rust:   {b:?}",
+                i + 1
+            );
+        }
+        assert_eq!(
+            ol.len(),
+            rl.len(),
+            "{stem}: line count differs (oracle {}, rust {})",
+            ol.len(),
+            rl.len()
+        );
+    }
+}
+
 /// Drive one `Show` report (PHASE8_PLAN §WP8.4): compile the same master the
 /// oracle used, replay the post commands, route output into a scratch dir, issue
 /// `Show <keyword>`, and diff the Rust-written fixed-width text file against the
@@ -256,6 +313,15 @@ fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
 /// `GlobalResult`) and the golden policy tokenizes on whitespace+commas
 /// (`sep: ' '`) since `Show` emits space-padded tables, not CSV.
 fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
+    let (oracle, rust, scratch) = produce_feeder_show(stem);
+    compare_export(&oracle, &rust, policy, stem);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Replay a feeder-based `Show` fixture and return `(oracle golden, Rust output,
+/// scratch dir)`. Shared by [`run_feeder_show`] (token diff) and
+/// [`run_feeder_show_exact`] (byte-exact diff); the caller removes the scratch dir.
+fn produce_feeder_show(stem: &str) -> (String, String, PathBuf) {
     let dir = phase8_dir();
     let meta: FeederMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
@@ -299,31 +365,18 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
     // datapath — the same suffix glob the oracle generator uses. Robust to whether
     // the report sets `@lastshowfile` (arms 4/27 — Convergence/ControlQueue — do
     // not, matching Pascal's inline `FireOffEditor`-only dispatch), and still pins
-    // the filename: a wrong name (the `Result.txt`→`.csv` class of bug) leaves the
-    // glob empty and fails here.
-    let want = format!("_{}", meta.suffix).to_lowercase();
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(&scratch)
-        .unwrap_or_else(|e| panic!("{stem}: read_dir {}: {e}", scratch.display()))
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().to_lowercase().ends_with(&want))
-                .unwrap_or(false)
-        })
-        .collect();
-    assert_eq!(
-        matches.len(),
-        1,
-        "{stem}: expected exactly one *_{} in {}, found {matches:?}",
-        meta.suffix,
-        scratch.display()
-    );
-    let produced = matches.pop().unwrap();
-    let rust = std::fs::read_to_string(&produced)
-        .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()));
+    // the filename.
+    let rust = locate_show_report(&scratch, &meta.suffix, stem);
+    (oracle, rust, scratch)
+}
 
-    compare_export(&oracle, &rust, policy, stem);
-
+/// Byte-exact twin of [`run_feeder_show`] for the pure-text zone-tree reports
+/// (`Show Loops`/`Show Zone`): identical replay + file-locate, but asserts the
+/// produced bytes equal the oracle golden in full (indentation + trailing spaces),
+/// not just token-for-token.
+fn run_feeder_show_exact(stem: &str) {
+    let (oracle, rust, scratch) = produce_feeder_show(stem);
+    assert_show_bytes_eq(&oracle, &rust, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -332,6 +385,23 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
 /// analogous to [`run_deck_export`], but reading the produced file by its fixed
 /// `<CaseName_><suffix>` name in the datapath (`Show` sets no `GlobalResult`).
 fn run_deck_show(stem: &str, policy: &ExportPolicy) {
+    let (oracle, rust, scratch) = produce_deck_show(stem);
+    compare_export(&oracle, &rust, policy, stem);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Byte-exact twin of [`run_deck_show`] (pure-text zone-tree reports). See
+/// [`run_feeder_show_exact`].
+fn run_deck_show_exact(stem: &str) {
+    let (oracle, rust, scratch) = produce_deck_show(stem);
+    assert_show_bytes_eq(&oracle, &rust, stem);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Replay a deck-based `Show` fixture and return `(oracle golden, Rust output,
+/// scratch dir)`. Shared by [`run_deck_show`] and [`run_deck_show_exact`]; the
+/// caller removes the scratch dir.
+fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
     let dir = phase8_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
@@ -354,30 +424,8 @@ fn run_deck_show(stem: &str, policy: &ExportPolicy) {
     dss.command(&format!("show {}", meta.report));
     assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
 
-    let want = format!("_{}", meta.suffix).to_lowercase();
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(&scratch)
-        .unwrap_or_else(|e| panic!("{stem}: read_dir {}: {e}", scratch.display()))
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().to_lowercase().ends_with(&want))
-                .unwrap_or(false)
-        })
-        .collect();
-    assert_eq!(
-        matches.len(),
-        1,
-        "{stem}: expected exactly one *_{} in {}, found {matches:?}",
-        meta.suffix,
-        scratch.display()
-    );
-    let produced = matches.pop().unwrap();
-    let rust = std::fs::read_to_string(&produced)
-        .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()));
-
-    compare_export(&oracle, &rust, policy, stem);
-
-    std::fs::remove_dir_all(&scratch).ok();
+    let rust = locate_show_report(&scratch, &meta.suffix, stem);
+    (oracle, rust, scratch)
 }
 
 /// Compile a **heavy** master once and diff several reports against the oracle,
@@ -1455,6 +1503,49 @@ fn show_generators_none_matches_oracle() {
         col_tol: vec![],
     };
     run_feeder_show("show_generators_none", &policy);
+}
+
+/// `Show Loops` (Pascal `ShowLoops`) on the **radial** metered IEEE13 — no loops or
+/// parallels, so the report is the two header lines only. Pins the header text + the
+/// radial (all-`sequence_list`-branches-non-looped) no-op path. Byte-exact: this
+/// pure-text report has no `MaxBusNameLength`/`PadDots` backend quirk, so the whole
+/// file is reproducible (indentation + trailing spaces), a stronger check than the
+/// whitespace-token diff the padded Show tables must use.
+#[test]
+fn show_loops_matches_oracle() {
+    run_feeder_show_exact("show_loops");
+}
+
+/// `Show Zone <meter>` (Pascal `ShowMeterZone`) on the radial metered IEEE13 (em1 on
+/// Line.650632): the full zone as an indented branch/shunt tree — every PD branch,
+/// its shunt loads/caps/transformers, and the meter-as-`SensorObj` annotation
+/// (`(Sensor: EnergyMeter.em1)`, set by the WP6.4 zone build). A 32-line tree,
+/// compared **byte-exact**: pins the `First`/`GoForward` walk order, the shunt-object
+/// attachment per branch, the per-level `TABCHAR` indentation, and the `_<meter>.txt`
+/// filename (glob `*_ZoneOut_em1.txt`).
+#[test]
+fn show_zone_matches_oracle() {
+    run_feeder_show_exact("show_zone");
+}
+
+/// `Show Loops` on the synthesized **meshed** deck (a 3-line loop b1-b2-b3-b1 + a line
+/// parallel to `la`): exercises the PARALLEL/LOOP branches `show_loops` misses on any
+/// radial feeder — one `PARALLEL WITH`/`LOOPED TO` line per parallel/looped branch,
+/// naming the branch (`Class.UPPERCASE(Name)`) and its `LoopLineObj.FullName` partner.
+/// Both engines port the same zone-build loop/parallel detection, so the marked
+/// branches + walk order match exactly (byte-exact).
+#[test]
+fn show_loops_mesh_matches_oracle() {
+    run_deck_show_exact("show_loops_mesh");
+}
+
+/// `Show Zone` on the meshed deck: the zone tree with the inline `(PARALLEL:Name)` /
+/// `(LOOP:FullName)` branch annotations `show_zone` on a radial feeder never emits
+/// (note the Pascal inconsistency the port reproduces: PARALLEL uses the bare
+/// `LoopLineObj.Name`, LOOP the `FullName`). Byte-exact.
+#[test]
+fn show_zone_mesh_matches_oracle() {
+    run_deck_show_exact("show_zone_mesh");
 }
 
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`

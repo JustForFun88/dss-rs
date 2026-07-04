@@ -1,0 +1,8 @@
+Loops and Paralleled Lines in all EnergyMeter Zones
+
+(m1) Line.LPAR: PARALLEL WITH Line.la
+(m1) Line.LPAR: LOOPED TO     Line.la
+(m1) Line.LB: LOOPED TO     Line.lc
+(m1) Line.LC: LOOPED TO     Line.lb
+(m1) Line.LA: PARALLEL WITH Line.lpar
+(m1) Line.LA: LOOPED TO     Line.lpar

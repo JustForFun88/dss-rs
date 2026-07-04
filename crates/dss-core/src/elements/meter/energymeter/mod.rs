@@ -452,6 +452,19 @@ impl EnergyMeter {
     pub fn has_branch_list(&self) -> bool {
         self.branch_list.is_some()
     }
+    /// Pascal `BranchList` — the built zone tree (`None` == `BranchList = NIL`).
+    /// Read-only for the zone-tree reports (`Show Loops`/`Show Zone`), which walk
+    /// it via [`Self::sequence_list`] + [`Self::sequence_nodes`].
+    pub fn branch_list(&self) -> Option<&CktTree> {
+        self.branch_list.as_ref()
+    }
+    /// The [`CktTree`] node index for each [`Self::sequence_list`] entry — the
+    /// `BranchList.PresentBranch` node reached at that point in the
+    /// `First`/`GoForward` walk (used to read the branch's loop/parallel flags and
+    /// shunt-object list without re-walking the tree cursor).
+    pub fn sequence_nodes(&self) -> &[usize] {
+        &self.sequence_nodes
+    }
 
     /// Register values (1-based ordinals → 0-based slots). For the test API.
     pub fn registers(&self) -> &[f64] {

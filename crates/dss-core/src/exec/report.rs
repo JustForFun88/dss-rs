@@ -1411,10 +1411,54 @@ impl Dss {
                 self.errors
                     .push("Command \"show panel\" is not supported in DSS-Extensions.".to_string());
             }
-            // TODO(WP8): later steps — the remaining `Show` keywords (zone,
-            // isolated, loops, lineconstants, topology, busflow,
-            // controlled, autoadded, querylog, deltaV) and
-            // the unknown-keyword `#24700` error
+            // 14 `zone <metername>` (`ShowMeterZone`): the named EnergyMeter's zone
+            // as an indented branch/shunt tree. The filename is
+            // `<CircuitName_>ZoneOut_<metername>.txt` (Pascal strips `.txt` from the
+            // `ZoneOut.txt` passed in and appends `_<Param>.txt`,
+            // `ShowResults.pas:2435-2439`), and it sets `GlobalResult` (`:2443`). An
+            // empty name → Pascal #221; an unknown meter → #220. Pascal always
+            // creates the file (empty on the error paths), so the port writes it in
+            // every branch.
+            14 => {
+                self.parser.next_param(&self.vars);
+                let param = self.parser.make_string(&self.vars);
+                let fname = format!("ZoneOut_{param}.txt");
+                let content = if param.is_empty() {
+                    // Pascal #221 `'Meter Name Not Specified. %s'`.
+                    self.errors.push("Meter Name Not Specified.".to_string());
+                    String::new()
+                } else {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    let found = ckt.energy_meters.iter().copied().find(|&r| {
+                        self.classes[r.cls].objects[r.idx]
+                            .data()
+                            .name()
+                            .eq_ignore_ascii_case(&param)
+                    });
+                    match found {
+                        Some(r) => show::show_meter_zone(&self.classes, r),
+                        None => {
+                            // Pascal #220 `'EnergyMeter "%s" not found.'`.
+                            self.errors
+                                .push(format!("EnergyMeter \"{param}\" not found."));
+                            String::new()
+                        }
+                    }
+                };
+                self.write_show_global(&fname, &content);
+            }
+            // 21 `loops` (`ShowLoops`): every parallel/looped branch across all
+            // EnergyMeter zones, one line each (radial zones → header only).
+            21 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_loops(&self.classes, ckt)
+                };
+                self.write_show("Loops.txt", &content);
+            }
+            // TODO(WP8): later steps — the remaining `Show` keywords (isolated,
+            // lineconstants, topology, busflow, controlled, autoadded, querylog,
+            // deltaV) and the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
             // error — a deferred `Show` MUST stay a **silent** headless no-op: the

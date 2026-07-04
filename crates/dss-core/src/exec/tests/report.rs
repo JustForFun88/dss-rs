@@ -93,6 +93,81 @@ fn show_reports_are_silent_noops() {
     }
 }
 
+/// Build a small solved, **metered** feeder (meter `m1` on `line.l1`), datapath
+/// pointed at the temp dir — the setup for the `Show Zone`/`Show Loops`
+/// dispatcher tests. Zone lists build on the first `solve` after the meter is added.
+fn solved_metered() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.zt basekv=12.47 phases=3 bus1=src");
+    dss.command("new line.l1 bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 c1=0");
+    dss.command("new load.ld bus1=b phases=3 kv=12.47 kw=100 model=1");
+    dss.command("new energymeter.m1 element=line.l1 terminal=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    dss.command(&format!(
+        "set datapath=\"{}\"",
+        std::env::temp_dir().display()
+    ));
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    dss
+}
+
+/// `Show Zone`'s two reachable error branches (Pascal `ShowMeterZone`,
+/// `ShowResults.pas:2450`/`:2494`) — which a golden can't cover, since each pushes
+/// an error and would fail the golden's `errors().is_empty()`: an **empty** meter
+/// name → #221 `Meter Name Not Specified.`; an **unknown** meter → #220
+/// `EnergyMeter "<name>" not found.` In both, Pascal still creates the
+/// `<Case_>ZoneOut_<name>.txt` file (empty) and sets `GlobalResult`, so the port
+/// writes it too — pinned here via `last_result_file` (the filename carries the
+/// (possibly empty) meter name). The **happy** path (a valid meter → the branch
+/// tree) is the `show_zone`/`show_zone_mesh` golden.
+#[test]
+fn show_zone_error_paths() {
+    // (1) empty meter name → #221; the `…ZoneOut_.txt` file is still written.
+    let mut dss = solved_metered();
+    dss.command("show zone");
+    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
+    assert!(
+        dss.errors()[0].contains("Meter Name Not Specified"),
+        "{:?}",
+        dss.errors()
+    );
+    assert!(
+        dss.last_result_file()
+            .to_lowercase()
+            .ends_with("zoneout_.txt"),
+        "empty-name zone file: {:?}",
+        dss.last_result_file()
+    );
+
+    // (2) unknown meter → #220; the `…ZoneOut_nosuch.txt` file is still written.
+    let mut dss = solved_metered();
+    dss.command("show zone nosuch");
+    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
+    assert!(
+        dss.errors()[0].contains("EnergyMeter \"nosuch\" not found"),
+        "{:?}",
+        dss.errors()
+    );
+    assert!(
+        dss.last_result_file()
+            .to_lowercase()
+            .ends_with("zoneout_nosuch.txt"),
+        "not-found zone file: {:?}",
+        dss.last_result_file()
+    );
+
+    // (3) happy micro path: a valid meter + `Show Loops` both run clean (the
+    //     dispatcher wiring / solve-guard). `Show Loops` on this radial single-meter
+    //     circuit emits only its header, no error.
+    let mut dss = solved_metered();
+    dss.command("show zone m1");
+    dss.command("show loops");
+    assert!(dss.errors().is_empty(), "happy path: {:?}", dss.errors());
+}
+
 /// The export router's three non-formatting outcomes: the WP8.2 solution guard
 /// (#24712), a still-unported keyword's scoped `NOT_PORTED` (loud, not a silent
 /// fake), and an unknown keyword's Pascal 24713. The *happy* path (a real report
