@@ -607,6 +607,27 @@ fn show_losses_matches_oracle() {
     run_feeder_show("show_losses", &policy);
 }
 
+/// `Show Voltages` (Pascal `ShowVoltages` case 0 + `WriteSeqVoltages`): the
+/// symmetrical-component voltages by bus — `V1 (kV)` / p.u. / `V2 (kV)` / `%V2/V1`
+/// / `V0 (kV)` / `%V0/V1`, all `%9.4g` (4 sig). `rel = 1e-4` is the 4-sig printing
+/// floor (the same the `Export SeqVoltages` ratio columns hold); `abs = 1e-5`
+/// absorbs the balanced-bus near-zero `V0`/`%V0/V1` cells (a cancellation residual
+/// ~1e-9 kV whose ratio is faer-vs-KLU noise, numerator-side — a real V0 error
+/// would break the abs floor). The bus V1 physics is pinned to 1e-8 by
+/// `corpus_live.rs`. (tests/TOLERANCE_NOTES.md)
+#[test]
+fn show_voltages_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-4,
+        abs: 1e-5,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_voltages", &policy);
+}
+
 /// `Export Powers mva` (`opt=1`): the MVA option — the `m…` `Parm2` flag selects
 /// MW/Mvar headers + the extra `×0.001` scaling. Backstops the `opt=1` branch
 /// (scale + header) wired this WP, which the kVA golden can't reach. Same `%11.1f`

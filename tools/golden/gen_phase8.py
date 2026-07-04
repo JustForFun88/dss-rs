@@ -412,6 +412,9 @@ SHOW_REPORTS = [
     ("losses", "Losses.txt", "show_losses"),
     ("buses", "Buses.txt", "show_buses"),
     ("taps", "RegTaps.txt", "show_taps"),
+    # `Show Voltages` default (ShowOptionCode 0): the symmetrical-component form,
+    # file `<case>_VLN.txt` (L-N; bare `show voltages`, no LL/node/elem selector).
+    ("voltages", "VLN.txt", "show_voltages"),
 ]
 
 

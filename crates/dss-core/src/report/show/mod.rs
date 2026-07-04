@@ -11,10 +11,12 @@
 mod buses;
 mod losses;
 mod taps;
+mod voltages;
 
 pub(crate) use buses::show_buses;
 pub(crate) use losses::show_losses;
 pub(crate) use taps::show_taps;
+pub(crate) use voltages::show_voltages;
 
 use crate::circuit::Circuit;
 use crate::exec::registry::DssClass;
