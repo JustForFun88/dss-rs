@@ -5,7 +5,9 @@
 //! - `Show Ratings` ([`show_ratings`], `ShowRatings`) — each PD element's normal /
 //!   emergency amp ratings;
 //! - `Show Variables` ([`show_variables`], `ShowVariables`) — every PC element's
-//!   present dynamic-state-variable values.
+//!   present dynamic-state-variable values;
+//! - `Show Mismatch` ([`show_mismatch`], `ShowNodeCurrentSum`) — the per-node
+//!   current-sum (KCL) mismatch report.
 
 use num_complex::Complex64;
 
@@ -78,5 +80,77 @@ pub(crate) fn show_variables(
         }
         s.push('\n');
     });
+    s
+}
+
+/// `Show Mismatch` (Pascal `ShowNodeCurrentSum`): the per-node current-sum (KCL)
+/// mismatch — for every node, Σ of each connected element's terminal current, its
+/// `%error` against the largest single current at that node, and that max current.
+pub(crate) fn show_mismatch(
+    classes: &mut [DssClass],
+    ckt: &Circuit,
+    sys: &SysCtx,
+    node_v: &[Complex64],
+) -> String {
+    // Accumulate Σ current and max |current| per node (index 0 = ground).
+    let n = node_v.len();
+    let mut currents = vec![Complex64::ZERO; n];
+    let mut max_node = vec![0.0f64; n];
+    for_each_enabled_elem(classes, &ckt.ckt_elements, |_name, elem| {
+        elem.compute_iterminal(sys, node_v);
+        let cd = elem.cd();
+        for i in 0..cd.nconds * cd.nterms {
+            let nref = cd.node_ref[i];
+            let ct = cd.iterminal[i];
+            currents[nref] += ct;
+            max_node[nref] = max_node[nref].max(ct.norm());
+        }
+    });
+
+    let mbnl = super::max_bus_name_length(ckt) + 2;
+    let mut s = String::new();
+    s.push('\n');
+    s.push_str("Node Current Mismatch Report\n");
+    s.push('\n');
+    s.push('\n');
+    s.push_str(&format::pad("Bus,", mbnl));
+    s.push_str(" Node, \"Current Sum (A)\", \"%error\", \"Max Current (A)\"\n");
+
+    let row = |s: &mut String, bname: &str, node: i32, nref: usize| {
+        let dtemp = currents[nref].norm();
+        // `%error`: 0 when the node has no current or its sum equals its max
+        // (a single-branch node balances trivially), else `sum/max·100`.
+        let pcterr = if max_node[nref] == 0.0 || max_node[nref] == dtemp {
+            format::fixed_w(0.0, 10, 1)
+        } else {
+            format::fixed_w(dtemp / max_node[nref] * 100.0, 10, 6)
+        };
+        // `'%s, %2d, %10.5f,       %s, %10.5f'`.
+        s.push_str(&format!(
+            "{}, {}, {},       {}, {}\n",
+            bname,
+            format::fixed_w_int(node as i64, 2),
+            format::fixed_w(dtemp, 10, 5),
+            pcterr,
+            format::fixed_w(max_node[nref], 10, 5),
+        ));
+    };
+
+    // Ground bus (node ref 0) first.
+    row(&mut s, &format::pad("\"System Ground\"", mbnl), 0, 0);
+    for i in 0..ckt.buses.len() {
+        let bus = &ckt.buses[i];
+        for j in 0..bus.num_nodes_this_bus() {
+            let bname = if j == 0 {
+                format::pad_dots(
+                    &format::enclose_quotes(ckt.bus_list.name(i).unwrap_or("")),
+                    mbnl,
+                )
+            } else {
+                format::pad("\"   -\"", mbnl)
+            };
+            row(&mut s, &bname, bus.get_num(j), bus.get_ref(j));
+        }
+    }
     s
 }

@@ -19,7 +19,9 @@ mod voltages;
 
 pub(crate) use buses::show_buses;
 pub(crate) use currents::{show_currents, show_currents_elements};
-pub(crate) use diagnostics::{show_event_log, show_ratings, show_result, show_variables};
+pub(crate) use diagnostics::{
+    show_event_log, show_mismatch, show_ratings, show_result, show_variables,
+};
 pub(crate) use elements::show_elements;
 pub(crate) use losses::show_losses;
 pub(crate) use powers::{show_powers, show_powers_elements};

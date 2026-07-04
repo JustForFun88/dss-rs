@@ -525,6 +525,45 @@ def gen_show_eventlog(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def gen_show_monitor(d) -> None:
+    """Capture the oracle's `Show monitor m_vi` (`TranslateToCSV`) under the monitor
+    daily fixture — the same CSV the `Export Monitors` path produces, driven via the
+    `Show` dispatcher. `Show` sets no GlobalResult; find the file by suffix."""
+    d.AllowEditor = False
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    if not master_abs.is_file():
+        sys.exit(f"master not found: {master_abs}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in MONITOR_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show monitor m_vi"
+        matches = list(Path(tmp).glob("*_Mon_m_vi_1.csv"))
+        if len(matches) != 1:
+            sys.exit(f"show monitor: expected 1 *_Mon_m_vi_1.csv, found {matches}")
+        content = matches[0].read_text()
+        (OUT_DIR / "show_monitor.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "monitor m_vi",
+            "master": FEEDER_MASTER,
+            "post": MONITOR_POST,
+            "fixture": case,
+            "suffix": "Mon_m_vi_1.csv",
+        }
+        (OUT_DIR / "show_monitor.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote show_monitor.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_seqz(d) -> None:
     """Capture the oracle's `Export SeqZ` on the FaultStudy-solved IEEE13 feeder."""
     master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
@@ -1067,6 +1106,7 @@ def main() -> None:
     gen_feeder_reports(d)
     gen_show_reports(d)
     gen_show_eventlog(d)
+    gen_show_monitor(d)
     gen_monitor_reports(d)
     gen_register_reports(d)
     gen_log_reports(d)
