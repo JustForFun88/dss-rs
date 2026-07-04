@@ -244,9 +244,12 @@ fn calc_reliability_indices(
     // `investigations/reliability_bus_int_duration_oob_bug_report.md`): with
     // multiple meters a bus whose `BusSectionID` was set by *another* meter's
     // sweep is read against THIS meter's `FeederSections`. Two regimes:
-    //   (a) in-range id (`≤ section_count`) — a **deterministic** cross-zone
-    //       overwrite. `sections.get(..) = Some`, so we reproduce it exactly
-    //       (gated by `export_busreliability_multimeter_matches_oracle`).
+    //   (a) TODO(compat): in-range id (`≤ section_count`) — a **deterministic**
+    //       cross-zone overwrite. `sections.get(..) = Some`, so we reproduce it
+    //       exactly (gated by `export_busreliability_multimeter_matches_oracle`).
+    //       Clean fix: walk only this meter's zone buses (or reset
+    //       `bus_section_id` per meter) and regenerate the multimeter golden
+    //       deliberately.
     //   (b) out-of-range id — Pascal reads `FeederSections[id]` past the
     //       `section_count + 1` allocation: an OOB heap read, **proven
     //       nondeterministic** (the report probes it across fresh processes —
