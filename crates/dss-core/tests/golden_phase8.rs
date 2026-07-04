@@ -1288,6 +1288,46 @@ fn show_unserved_ue_matches_oracle() {
     run_deck_show("show_unserved_ue", &policy);
 }
 
+/// `Show Overloads` niche-branch coverage (audit-tests step-9 follow-up): a
+/// dedicated deck with a **1-phase** overloaded line (`normamps=5`, `emergamps=0`)
+/// and a small overloaded shunt **capacitor**. Exercises the three `show_overloads`
+/// branches `ovl`/`ovl2` miss: the `Nphases < 3` symmetrical-component fallback
+/// (`I0 = I2 = 0`, the 1-phase line's `%I2/I1`/`%I0/I1` print `0.0`), the
+/// `EmergAmps <= 0` degenerate `%Emerg` literal (`     0.0`), and the capacitor-skip
+/// (`c1` carries ≈27.8 A > its `normamps=1` yet must NOT appear — `(CLASSMASK and
+/// DSSObjType) <> CAP_ELEMENT`). Exact equality (`rel = 0`, `abs = 0`).
+#[test]
+fn show_overloads_1ph_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_overloads_1ph", &policy);
+}
+
+/// `Show Unserved` **normal** criterion, exclusion coverage (audit-tests step-9
+/// follow-up): run on the `uns2` deck — the deep-sag `ld1` is over its normal
+/// criterion (`ExceedsNormal`, a nonzero `EEN_Factor`) while the healthy `ld2` is
+/// **excluded**. `show_unserved` (deck `uns`) has a single load, so only the UE path
+/// pinned an exclusion; this pins the **normal** path's exclusion (a distinct
+/// `exceeds_normal` filter from the UE `unserved`). Exact equality.
+#[test]
+fn show_unserved_normal_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_show("show_unserved_normal", &policy);
+}
+
 /// `Show Meters` with **two** EnergyMeters (audit F2 coverage): em1 on the feeder
 /// head + em2 on the 632-645 lateral. The zones **partition** (em1 stops at em2), so
 /// the two data rows carry distinct per-zone registers — pinning that the legend is

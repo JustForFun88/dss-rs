@@ -1,0 +1,8 @@
+
+Power Delivery Element Overload Report
+
+SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT 
+
+Element                             Term    I1    IOver %Normal  %Emerg     I2    %I2/I1    I0    %I0/I1
+
+"Line.lat"  1    23.7   18.70   474.0     0.0     0.0     0.0     0.0     0.0
