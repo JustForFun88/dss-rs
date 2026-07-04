@@ -849,8 +849,12 @@ fn show_voltages_ll_node_matches_oracle() {
 /// power flow `BUS node kW +j kvar kVA PF`, with the `... TERMINAL TOTAL` per
 /// terminal (incl. the 1-phase/2-terminal PD floating special case). The kW/kvar/kVA
 /// are `%8.1f` (additive ±0.05 floor → `abs = 0.11`); the `PF` (`%8.4f`, token idx 6)
-/// is a ratio of the pinned powers, held to `abs = 2e-4` (2× the `%8.4f` printing
-/// floor) but gated on `min(|kW|, |kvar|)` (cols 2, 4) near-zero — a purely-reactive
+/// is a ratio of the pinned powers, held to `abs = 1.1e-4` — the same `1.1 × 10⁻ᴺ`
+/// `%.Nf`-render floor the `0.11`/`0.011` columns use (one last-digit unit of the
+/// 4-decimal render, `1e-4`, plus ~10% margin), NOT loosened above it. (Empirically
+/// the PF strings are byte-identical Rust↔oracle here — measured gap 0 at `abs=1e-9`;
+/// the `1.1e-4` guards only a cross-platform `%8.4f` rounding-boundary straddle.)
+/// The PF is gated on `min(|kW|, |kvar|)` (cols 2, 4) near-zero — a purely-reactive
 /// / purely-real / `S ≈ 0` conductor has a degenerate power factor (the oracle's
 /// exact-zero part → PF 1.0 vs a Rust cancellation residual). Power physics is
 /// pinned to 1e-8 by `corpus_live.rs`.
@@ -865,7 +869,7 @@ fn show_powers_elem_matches_oracle() {
         col_tol: vec![ColTol {
             sel: ColSel::Index(6),
             rel: 0.0,
-            abs: 2e-4,
+            abs: 1.1e-4,
             // Skip PF where the power is near-purely-reactive/real (min(|kW|,|kvar|)
             // ≈ 0): the oracle's exact-zero part gives PF=1.0, a Rust cancellation
             // residual gives near-zero/sign-flipped (e.g. the pure-reactive caps).
