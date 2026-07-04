@@ -118,6 +118,12 @@ impl TreeNode {
     pub fn parent(&self) -> Option<usize> {
         self.parent
     }
+
+    /// Pascal `TCktTreeNode.LexicalLevel` (== `BranchList.Level` when this node is
+    /// the present branch). Root = 0.
+    pub fn level(&self) -> i32 {
+        self.lexical_level
+    }
 }
 
 /// Pascal `TZoneEndsList`: the feeder end points — `(tree node index,
