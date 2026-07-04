@@ -816,14 +816,36 @@ def gen_faultstudy(d) -> None:
     )
 
 
+# FaultStudy on an UNBASED circuit (WP8.4 step-10 audit-tests follow-up): no
+# `Set Voltagebases` / `CalcVoltageBases`, so every bus keeps `kVBase = 0` and
+# sections 2 & 3 render the `%10.1f` "L-N Volts if no base" branch instead of the
+# `%10.3f` per-unit form (the based IEEE13 golden only exercises pu). A prior
+# `solve mode=snap` is required so FaultStudy runs and allocates `Zsc`/`Ysc` — a
+# **cold** `solve mode=faultstudy` (no prior solve) access-violates the oracle
+# (unallocated `Zsc`), which the port guards instead (see `fault_study::tests`).
+SHOW_FS_UNBASED_DECK = [
+    "new circuit.fscov basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
+    "new line.lat bus1=b1.1 bus2=b2.1 phases=1 length=1 units=mi r1=0.3 x1=0.3",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100",
+    "new load.ld2 bus1=b2.1 phases=1 kv=7.2 kw=50",
+    "solve mode=snap",
+    "solve mode=faultstudy",
+]
+
+
 def gen_show_faultstudy(d) -> None:
-    """Capture the oracle's `Show Faults` (`ShowFaultStudy`) on the FaultStudy-solved
-    IEEE13 feeder — the same `solve mode=faultstudy` fixture shape as
-    `export_faultstudy`/`SeqZ`. `Show` sets no `GlobalResult`, so `_gen_show_group`
-    finds the produced file by its `<case>_FaultStudy.txt` suffix glob."""
+    """Capture the oracle's `Show Faults` (`ShowFaultStudy`): the FaultStudy-solved
+    IEEE13 feeder (`solve mode=faultstudy`, the `export_faultstudy`/`SeqZ` fixture
+    shape, all buses based → the pu form) plus an **unbased** deck (`kVBase = 0` →
+    the `%10.1f` L-N-Volts branch). `Show` sets no `GlobalResult`, so both are found
+    by the `<case>_FaultStudy.txt` suffix glob."""
     d.AllowEditor = False
     _gen_show_group(
         d, FAULTSTUDY_POST, [("faults", "FaultStudy.txt", "show_faultstudy")]
+    )
+    _gen_show_deck_group(
+        d, SHOW_FS_UNBASED_DECK, [("faults", "FaultStudy.txt", "show_faultstudy_unbased")]
     )
 
 

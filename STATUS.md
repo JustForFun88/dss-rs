@@ -247,17 +247,18 @@ the current frontier:
   golden alone at print precision (the fault state carries the ~1e-8 faer-vs-KLU
   floor from the `Zsc` re-solves; exact holds only because no cell straddles a
   `%.Nf` boundary on this feeder). (Major A) two branches were unexercised by the
-  based-IEEE13 golden — closed with **two `#[cfg(test)]` unit tests, no golden**
-  (lib 732→734): `fault_study_cold_solve_is_safe` and
-  `fault_study_unbased_uses_ln_volts_branch`. **Empirical correction (probe-proven):**
-  the oracle access-violation is on a **cold** `solve mode=faultstudy` (no prior
-  converged solve → unallocated `Zsc`), *not* the `kVBase<=0` report itself — with a
-  prior `solve mode=snap` the oracle renders the unbased L-N-Volts report fine. So
-  the cold path is the genuine UB (our engine guards it — refuses the cold
-  faultstudy, then the `None`-`Zsc` guard yields the section-1 `N/A` branch, no
-  panic; **no golden** — the oracle crashes there), while the `kVBase<=0` `%10.1f`
-  branch IS oracle-comparable (kept a unit test per the no-golden decision, could be
-  upgraded to a deck golden). **next = continue WP8.4** (Yprim + the
+  based-IEEE13 golden. **Empirical correction (probe-proven):** the oracle
+  access-violation is on a **cold** `solve mode=faultstudy` (no prior converged
+  solve → unallocated `Zsc`), *not* the `kVBase<=0` report itself — with a prior
+  `solve mode=snap` the oracle renders the unbased L-N-Volts report fine. So the two
+  branches split by reachability: (1) the cold path is genuine UB — our engine
+  guards it (refuses the cold faultstudy, then the `None`-`Zsc` guard yields the
+  section-1 `N/A` branch, no panic), pinned by the **`fault_study_cold_solve_is_safe`
+  unit test** (no golden — the oracle crashes there); (2) the `kVBase<=0` `%10.1f`
+  L-N-Volts branch IS oracle-comparable → pinned by the **`show_faultstudy_unbased`
+  golden** (an unbased deck via `run_deck_show`, exact equality, also pinning a
+  1-node lateral bus). golden_phase8 **96→97**; lib 732→733. **next = continue
+  WP8.4** (Yprim + the
   active-ckt-element surface, then the CktTree families:
   Zone/Isolated/Loops/Topology/busflow).
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
@@ -292,7 +293,7 @@ HARD STOP; `phase-8-reporting` builds on top of it). Roll-up + archives in **§1
 ([`docs/phase-records/phase-7.md`](docs/phase-records/phase-7.md) +
 `phase-7-wp{1..7}.md`). Tracked-open Phase-7 deferrals (both Plot-blocked, zero
 corpus payoff): the **GFM grid-forming inverter mode** and the **Generic/TD21
-relay `Sample`**. Current scores: dss-core **lib 734**, **`solvable_now` 168**;
+relay `Sample`**. Current scores: dss-core **lib 733**, **`solvable_now` 168**;
 oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
 `tools/golden/PIN.txt`).
 
@@ -336,10 +337,10 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 734, golden_feeders 1,
+cargo test --workspace      # dss-core lib 733, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 96,
+                            # golden_phase7_protection 1, golden_phase8 97,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

@@ -1,0 +1,14 @@
+{
+  "report": "faults",
+  "fixture": "fscov",
+  "suffix": "FaultStudy.txt",
+  "deck": [
+    "new circuit.fscov basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1",
+    "new line.lat bus1=b1.1 bus2=b2.1 phases=1 length=1 units=mi r1=0.3 x1=0.3",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100",
+    "new load.ld2 bus1=b2.1 phases=1 kv=7.2 kw=50",
+    "solve mode=snap",
+    "solve mode=faultstudy"
+  ]
+}
