@@ -993,8 +993,86 @@ new electrical math, no new solve mode — the risk is faithful report layout an
   ConnectedkVA load (still emits — pins the no-`Enabled`-filter walk). golden_phase8 **43→48**; lib **729**
   (formatters gated end-to-end); `solvable_now` **119** (unchanged — the Export-overloads/unserved corpus
   decks migrate at the step-5 completion gate).
-- **next — WP8.3 step 3c (part 3):** `Sections` (**needs new plumbing** — the meter's
-  `FeederSections`/`SectionCount` are computed ephemerally in `calc_reliability_indices` today, not
-  persisted on the `EnergyMeter`; port that first), then `Profile` (branch-list voltage profile over
-  `dist_from_meter`). Then step 4 (`TSystemMeter` core + demand-interval/`DI_` writers, §2.6), step 5
-  (gate + corpus migration).
+- **WP8.3 step 3c (part 3) — `Sections`/`Profile` (ptrs 51/32), done, gate-green.** `Sections`: the
+  meter now **persists** `SectionCount` + `FeederSections` (the `FeederSection` struct moved to
+  `energymeter/mod.rs`; `calc_reliability_indices` writes both back on success and zeroes only the
+  count on the no-OCP abort, exactly Pascal's field lifecycle), read back by `export_sections` with the
+  `meter=<name>` pre-parse (`CompareTextShortest` incl. the empty-ParamName quirk; unknown name → all
+  meters). `Profile`: the branch-list voltage profile over each meter's `SequenceList` + zone-build
+  `DistFromMeter`, all seven `PhasesToPlot` selector branches (default/all/primary/ll3ph/llall/
+  llprimary/explicit-digit `IntValue`) + the `WriteNewLine` layout and the header's appended `Title=…`
+  tail. **Ported-immediately gaps** (no-deferral rule): `Set/Get Markercode|Nodewidth` handlers +
+  `Circuit.node_marker_code/width` (Circuit.pas 16/1 defaults — Profile echoes them per row).
+  **Upstream OOB found:** with ≥2 meters, Pascal's `Bus_Int_Duration` sweep (EnergyMeter.pas:2521)
+  walks *all* circuit buses and indexes `FeederSections[BusSectionID]` from *another* meter's zone —
+  in-range ids are a deterministic cross-zone overwrite (reproduced); out-of-range ids are an unchecked
+  heap read (unpinnable garbage) — Rust skips that write (documented at the guard; NOT a `TODO(compat)`
+  — no defined upstream value). Goldens: a synthesized two-meter recloser+fuse deck (`export_sections`,
+  `export_sections_meter`) + 7 Profile variants on metered IEEE13 (`run_shared_exports`) + the
+  no-RelCalc/unknown-meter structural edges.
+
+- **WP8.3 step 4 — `TSystemMeter` core + the demand-interval (`DI_`) machinery (§2.6), done, gate-green.**
+  New `solution/meters/demand_interval.rs`. `MeterStream` reproduces the `MemoryMap_lib` observable
+  emission (strings verbatim, doubles `", "`-separated `%-g` 15-sig); the `Append*` re-open paths are
+  **proven dead upstream** (no `AppendAllDIFiles` caller in 0.14.5) so files are always created fresh.
+  `SystemMeter` (`Clear`/`Integrate`/`TakeSample`/`Reset`/`Save`) sampled in `SampleAll` from
+  `GetTotalPowerFromSources` + `Circuit.Losses`; state (+ the whole `EmDiState` class-level DI state)
+  lives on `Circuit` so exec and the solve loop share it. Per-meter DI files + the **phase-voltage
+  report**: the `TakeSample` pu-voltage accumulators (`VphaseMax/Min/Accum/Count`, the `jiIndex`
+  layout, the `|V|/kVBase` 1000·pu quirk) in the zone walk; `DI_Totals`/`EnergyMeterTotals`/`Totals`/
+  `SystemMeter` writers; the overload (`DI_Overloads`, incl. the <3-phase per-phase current mapping via
+  `MapNodeToBus` ≡ Pascal's FirstBus re-parse) and voltage-exception (`DI_VoltExceptions`, primary + LV
+  scans) reports. Wiring: `OpenAllDIFiles` at daily/yearly/peak-day solve head (duty opens nothing,
+  faithfully), the daily/duty `finally` close, yearly staying open (pinned by a structural test), `Set
+  DemandInterval/DIVerbose=` → `ResetAll`, `Overloadreport/Voltexceptionreport/SampleEnergyMeters=`,
+  `CloseDI`, `Clear` flushing open files, and the **`Set year=` `Set_Year` side effects** (DI close +
+  clock reset + `ResetAll`) that were missing from the YEAR handler — a real gap the step closed.
+  Goldens: 9 DI files from one daily IEEE13 fixture (meter + `PhaseVoltageReport` + all four switches),
+  each diffed vs the oracle. **Two upstream-garbage findings documented:** opening the DI files with an
+  unbuilt zone makes the oracle render *uninitialized heap memory* as PHV vbase labels (unpinnable —
+  the fixture pre-solves so both engines' headers are deterministic; our unbuilt-zone rendering is the
+  sane zero-vbase form), and the zone vbase list collects **from-buses only** (IEEE13 ⇒ a single
+  4.16 kV PHV group — bus 634 is nobody's from-bus).
+
+- **WP8.3 step 5 — completion gate, done, gate-green.** A release `dss-cli` probe over all 154
+  `skipped_unsupported` decks found **49** now compile+run clean (the InvControl daily family +
+  PVSystemTest + the two IEEE_519 harmonics decks + RevRegTest + the InverterTechNote pair); moved to
+  candidates and live-classified: **47** matched the oracle full-model and migrated. The two IEEE_519
+  (harmonicT) decks diverged — the Rust final NodeV was the *fundamental*, the oracle's the last
+  harmonic — root-caused to the **silent `Spectrum.CSVFile` no-op** (a Phase-2 `TODO(phase2+)` that
+  stored the filename and loaded nothing, so `CollectAllFrequencies` saw only 60 Hz and the harmonic
+  sweep never ran): `TSpectrumObj.ReadCSVFile` ported via the WP5.2b deferred-`FileLoad` path (+ a unit
+  test), after which **both decks matched the oracle live and migrated**. `solvable_now` **119→168**,
+  COVERAGE **35.5%→50.1%**; corpus stays pristine (probe outputs `git clean`ed; CorpusGuard 0 dirt).
+
+- **WP8.3 steps 3c p3 + 4 + 5 — audit-code follow-up (two independent agents, code + tests, parallel
+  scoped briefs over `2af06b2^..HEAD`): no correctness bug.** The port was verified loop-for-loop vs
+  the cited Pascal (`ExportProfile`/`ExportSections`, the full `TSystemMeter`/DI machinery,
+  `Spectrum.ReadCSVFile`, `Set_Year`, the Solve*/DI open-close wiring). Two **LOW** code findings, both
+  settled + fixed (`bacaf13`): (1) the `Export Profile` L-L divisor `1732.0` (truncated `1000·√3`)
+  reproduced Pascal faithfully but lacked the `TODO(compat)` marker the greppable-cleanup convention
+  requires (added, citing `dispatch.rs`); (2) `Spectrum.read_csv_file` walked `str::lines()` instead of
+  Pascal's byte-position `(F.Position+1) < F.Size` guard (Spectrum.pas:297) — an **oracle-confirmed**
+  divergence (probe: a file `…\n3, 50, 0\n5` reads 2 rows, not 3; a trailing blank line likewise), now
+  ported byte-faithfully (+ `read_csv_file_reproduces_pascal_eof_guard`, LF + CRLF, oracle-pinned).
+  lib **730→731**.
+
+- **WP8.3 steps 3c p3 + 4 + 5 — audit-tests follow-up (`8d58a8e`): sound, no weakening.** The auditor
+  ran the whole gate live (the `corpus_manifest` bijection, the 168-case live oracle compare,
+  `golden_phase8`, provenance byte-reproduced) — no weakened assertion, no silent skip, no
+  self-comparison, no toy fixture. Three **LOW** coverage gaps + the code auditor's coverage notes,
+  closed by four **oracle-pinned** tests (golden_phase8 **54→58**):
+  `set_year_closes_di_and_rolls_the_year_directory` (the `Set year=` DI lifecycle, the twin of the
+  `closedi` yearly test); `di_set_get_option_echoes_match_oracle` (the five `Get` report-switch echoes
+  + `Markercode`/`Nodewidth`, defaults + post-set values probed); `di_overloads_single_phase_mapping_
+  matches_oracle` (a synthesized phase-2-only overloaded lateral → the current lands in the **I2**
+  column via `MapNodeToBus.node_num`, the discriminating case the 3-phase `di_overloads` golden can't
+  catch; new `gen_di_overloads_1ph`); `spectrum_csvfile_loads_through_executive` (the deferred-`FileLoad`
+  path + the new EOF guard, end to end). **Deliberately not value-pinned (documented):** the multi-meter
+  `Bus_Int_Duration` cross-zone path (out-of-range = Pascal's unpinnable OOB heap read → structural
+  no-panic coverage via the two-meter `export_sections` `RelCalc`; a value golden would be
+  non-deterministic on the oracle side); `SolveDuty`'s close-only DI path is symmetric to the tested
+  yearly open-then-`closedi` path.
+
+**WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green.** next = **WP8.4 (Show reports)** —
+upgrade the current `Show` no-op to real text reports (shares field logic with the WP8.2 exports).
