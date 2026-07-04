@@ -136,10 +136,12 @@ pub(crate) fn show_powers(
         losses *= 0.001;
     }
     s.push('\n');
+    // Pascal `WriteStr(sout, 'Total Circuit Losses = ', S.re:6:1, ' +j ', S.im:6:1)`
+    // — the `:6:1` field width (right-justified, 1 decimal).
     s.push_str(&format!(
         "Total Circuit Losses = {} +j {}\n",
-        format::fixed(losses.re, 1),
-        format::fixed(losses.im, 1)
+        format::fixed_w(losses.re, 6, 1),
+        format::fixed_w(losses.im, 6, 1)
     ));
     s
 }
