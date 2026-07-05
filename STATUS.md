@@ -10,11 +10,26 @@
 Last updated: 2026-07-05 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
 gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)
-IN PROGRESS — Dump step 1 COMPLETE + audited, gate-green** (single-object
+IN PROGRESS — Dump steps 1–2 COMPLETE, gate-green** (single-object
 `Dump <class>.[name|*] [debug]`: the `report/save/dump.rs` generic base — the
-3-kind `TDSSObject`/`TDSSCktElement`/`TPCElement` chain — + the **Reactor** override
-+ `#903`/`#256` errors; the 13 other overrides + bare-`dump`/`solution`/aux forms
-are TODO(WP8) steps 2–3). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+3-kind `TDSSObject`/`TDSSCktElement`/`TPCElement` chain — + `#903`/`#256` errors).
+**Dump step 2 (2026-07-05):** the **per-winding / matrix `DumpProperties`
+overrides** — Transformer (+ the `debug` `ZB`/`Y_OneVolt`/`Y_Terminal`/`TermRef`
+complex lower-triangle block), Line, LineCode, LineGeometry, XfmrCode (each a
+co-located `dump_body`; dispatch made `&mut` so the LineGeometry override can walk
+`ActiveCond` per conductor, Pascal `LineGeometry.pas:669`). **Three real
+byte-fidelity fixes landed:** (1) `fmt_g`'s low scientific threshold was C's
+`exp < -4`, but FPC `%g` keeps fixed for one more decade — `exp < -5`
+(precision-independent; empirically oracle-verified over prec 8/15,
+`TODO(compat)` at `util::fmt_g`); (2) `TTransfObj.WdgCurrents` rendered lowercase
+`e` (was `fmt_g`) — FPC `%g` is uppercase `E`, routed through `report::format::g`;
+(3) the dump now refreshes each ckt element's `Vterminal` from the solved
+`node_v` (Pascal `ComputeVTerminal`) so `WdgCurrents` reads the live solution, not
+a stale/zero buffer. Property display-case corrected for Line/Transformer/
+LineGeometry tails (LineCode/XfmrCode already correct; matching stays
+case-insensitive). golden_phase8 **125→138** (13 new dump goldens, all byte-exact);
+the 8 bare-`dump`/`solution`/aux + the 8 remaining overrides (Capacitor/Fault/
+VSource/UPFC/RegControl/Monitor/EnergyMeter/Spectrum) are TODO(WP8) step 3. **Two byte-fidelity gaps + TWO real bugs found + fixed:**
 property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
 Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
 `FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by
@@ -46,8 +61,9 @@ reassessed), **16 oracle-validated decks** landed as the third live-gate family
 `tests/corpus/gaps/` (manifest, every case `pending: true`; two-process
 determinism + feature-sensitivity proven on the pinned oracle), WPG.1–14
 packaged; executes after/alongside the remaining Phase-8 WPs (§1f).
-**next = Dump step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode
-per-winding/matrix overrides).
+**next = Dump step 3** (bare `dump`/`dump debug` whole-circuit +
+`dump solution` + the `commands`/`buslist`/`devicelist`/`alloc` aux files, and
+the 8 remaining leaf overrides).
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/

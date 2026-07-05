@@ -30,6 +30,7 @@
 mod tests;
 
 mod accessors;
+mod dump;
 mod edit;
 mod matrix;
 
@@ -46,23 +47,23 @@ const LINETYPE_OH: i32 = 1;
 
 define_properties! {
     class "LineGeometry", abbrev true, enums enums;
-    1  NCONDS    => PropDef::integer("nconds")
+    1  NCONDS    => PropDef::integer("NConds")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
-    2  NPHASES   => PropDef::integer("nphases").flags(PropFlags::NON_NEGATIVE);
-    3  COND      => PropDef::integer("cond");
-    4  WIRE      => PropDef::object_ref_class("WireData", "wire");
-    5  X         => PropDef::double("x");
-    6  H         => PropDef::double("h");
-    7  UNITS     => PropDef::mapped_string_enum("units", enums.units);
-    8  NORMAMPS  => PropDef::double("normamps");
-    9  EMERGAMPS => PropDef::double("emergamps");
+    2  NPHASES   => PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE);
+    3  COND      => PropDef::integer("Cond");
+    4  WIRE      => PropDef::object_ref_class("WireData", "Wire");
+    5  X         => PropDef::double("X");
+    6  H         => PropDef::double("H");
+    7  UNITS     => PropDef::mapped_string_enum("Units", enums.units);
+    8  NORMAMPS  => PropDef::double("NormAmps");
+    9  EMERGAMPS => PropDef::double("EmergAmps");
     10 REDUCE    => PropDef::boolean("Reduce");
-    11 SPACING   => PropDef::object_ref_class("LineSpacing", "spacing");
-    12 WIRES     => PropDef::object_ref_array("WireData", "wires");
-    13 CNCABLE   => PropDef::object_ref_class("CNData", "cncable");
-    14 TSCABLE   => PropDef::object_ref_class("TSData", "tscable");
-    15 CNCABLES  => PropDef::object_ref_array("CNData", "cncables");
-    16 TSCABLES  => PropDef::object_ref_array("TSData", "tscables");
+    11 SPACING   => PropDef::object_ref_class("LineSpacing", "Spacing");
+    12 WIRES     => PropDef::object_ref_array("WireData", "Wires");
+    13 CNCABLE   => PropDef::object_ref_class("CNData", "CNCable");
+    14 TSCABLE   => PropDef::object_ref_class("TSData", "TSCable");
+    15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables");
+    16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables");
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);

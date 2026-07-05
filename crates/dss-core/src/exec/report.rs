@@ -1834,6 +1834,19 @@ impl Dss {
             .as_ref()
             .is_some_and(|c| c.pc_elements.contains(&r));
 
+        // The solved node voltages (if a circuit is present).
+        let node_v: Option<Vec<num_complex::Complex64>> =
+            self.circuit.as_ref().map(|c| c.solution.node_v.clone());
+
+        // Refresh `Vterminal` from the solution so result getters that read it
+        // live (Pascal `ComputeVTerminal`, e.g. the Transformer `WdgCurrents`
+        // property) see the current solve, not a stale/zero buffer.
+        if let Some(nv) = node_v.as_ref()
+            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
+        {
+            elem.cd_mut().compute_vterminal(nv);
+        }
+
         // PC `! VARIABLES` values (empty unless Complete + PC).
         let variables: Vec<(String, f64)> = if complete && is_pc {
             let Dss {
@@ -1841,12 +1854,12 @@ impl Dss {
             } = self;
             let ckt = circuit.as_ref().expect("post-circuit dispatch");
             let sys = crate::solution::solution::sys_ctx(ckt);
-            let node_v = ckt.solution.node_v.clone();
+            let nv = node_v.as_ref().expect("circuit present for PC element");
             if let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut() {
                 let nvar = elem.num_variables();
                 let names: Vec<String> = (1..=nvar).map(|i| elem.variable_name(i)).collect();
                 let mut states = vec![0.0f64; nvar];
-                elem.get_all_variables(&sys, &node_v, &mut states);
+                elem.get_all_variables(&sys, nv, &mut states);
                 names.into_iter().zip(states).collect()
             } else {
                 Vec::new()
@@ -1855,15 +1868,20 @@ impl Dss {
             Vec::new()
         };
 
+        // Split-borrow: the `LineGeometry` override needs `&mut` on the object
+        // (it walks conductors via `ActiveCond`), while `cx` reads `.props`
+        // (disjoint field) + the shared `.enums`.
+        let Dss { classes, enums, .. } = self;
+        let cls = &mut classes[ci];
         let cx = crate::report::save::dump::DumpCtx {
-            cls: &self.classes[ci].props,
-            enums: &self.enums,
+            cls: &cls.props,
+            enums,
             variables: &variables,
         };
         crate::report::save::dump::dump_object(
             content,
             &cx,
-            self.classes[ci].objects[oi].as_ref(),
+            cls.objects[oi].as_mut(),
             complete,
             is_pc,
         );

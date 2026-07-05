@@ -157,11 +157,17 @@ pub fn comma_text(items: &[String]) -> String {
         .join(",")
 }
 
-/// C `printf` `%.*g` (FPC `Format('%-.Ng', …)`): `sig` significant digits,
-/// scientific notation when the decimal exponent is `< -4` or `>= sig`, with
-/// trailing zeros (and a dangling decimal point) stripped. Used by the event
-/// log; the gate parses these numbers out, so this only needs to be faithful,
-/// not bit-exact to FPC's formatter.
+/// FPC `Format('%-.Ng', …)`: `sig` significant digits, scientific notation when
+/// the decimal exponent is `< -5` or `>= sig`, with trailing zeros (and a
+/// dangling decimal point) stripped.
+///
+/// TODO(compat): the low scientific threshold is `< -5`, **not** C `printf`'s
+/// `< -4` — FPC's `FloatToStrF(ffGeneral)` keeps fixed notation for one more
+/// decade at the small end (empirically `1.234e-5` → `0.00001234`, `1.234e-6` →
+/// `1.234E-6`, precision-independent; the high `>= sig` end matches C). Verified
+/// against the pinned oracle over precisions 8 and 15 (the transformer
+/// `WdgCurrents` `%.7g` / `Dump`-matrix `%g` byte-exact goldens surfaced it). The
+/// exponent itself renders minimal-digit (`E-6`, not C's `E-06`), matching FPC.
 pub fn fmt_g(v: f64, sig: usize) -> String {
     if v == 0.0 {
         return "0".to_string();
@@ -171,7 +177,7 @@ pub fn fmt_g(v: f64, sig: usize) -> String {
     }
     let sig = sig.max(1);
     let exp = v.abs().log10().floor() as i32;
-    if exp < -4 || exp >= sig as i32 {
+    if exp < -5 || exp >= sig as i32 {
         // Scientific: `sig - 1` digits after the mantissa point.
         let raw = format!("{:.*e}", sig - 1, v);
         // Rust renders the exponent as `e5`/`e-4`; C uses `e+05`. The gate

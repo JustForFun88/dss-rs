@@ -31,6 +31,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
 
 mod accessors;
+mod dump;
 mod windings;
 mod yterminal;
 
@@ -157,14 +158,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("Ratings", SEASONS),
         // TPDClass tail:
-        PropDef::double("normamps").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("emergamps").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Transformer", defs, true)
