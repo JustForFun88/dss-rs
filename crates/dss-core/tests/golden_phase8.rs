@@ -1570,6 +1570,22 @@ fn show_controlled_matches_oracle() {
     run_feeder_show_exact("show_controlled");
 }
 
+/// `Show Controlled` **multi-control** coverage (audit follow-up, step 13): a
+/// synthesized deck where `Line.l1` carries a Recloser **then** a Relay, `Line.l2`
+/// two SwtControls, `Line.l3` a Fuse, and `Capacitor.cap1` a CapControl. Pins the
+/// repeated-control `, %s , %s ` loop AND its creation-order ordering (`ckt.controls`
+/// order) — which the single-control-per-PD feeder golden never exercises — plus all
+/// FIVE PD-targeting `controlled_element()` overrides the feeder golden misses
+/// (`swt_control`/`recloser`/`relay`/`fuse`/`cap_control`; only `reg_control` is hit
+/// there). The **fuse** line is the audit-code Major regression guard: Fuse was the
+/// one `TControlElem` subclass whose override was initially omitted (it lives under
+/// `elements/pd/fuse/`, not `elements/control/`), so a fuse-switched line silently
+/// vanished from the report. Byte-exact.
+#[test]
+fn show_controlled_multi_matches_oracle() {
+    run_deck_show_exact("show_controlled_multi");
+}
+
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
 /// end in `ParserVars.Add('@lastshowfile', …)`, but the reports dispatched inline
 /// with only a `FireOffEditor` — `Show Convergence` (arm 4) and `Show controlqueue`

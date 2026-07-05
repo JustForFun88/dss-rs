@@ -1456,15 +1456,57 @@ def gen_show_zone_loops(d) -> None:
     )
 
 
+# `Show Controlled` multi-control coverage (audit follow-up, step 13). The feeder
+# golden (`show_controlled`) only exercises one control per PD element
+# (RegControl→Transformer) and only the `RegControl` `controlled_element()`
+# override. This synthesized deck (PHASE8_PLAN §1) pins: (a) the multiple-controls
+# `, %s , %s ` loop + its creation-order ordering — Line.l1 carries a Recloser then
+# a Relay, Line.l2 two SwtControls; (b) all FIVE PD-targeting overrides —
+# `swt_control`/`recloser`/`relay`/`fuse` (→Line) and `cap_control` (→Capacitor).
+# The `fuse` case is the audit-code Major regression guard (Fuse was the one
+# `TControlElem` subclass missing its override, so a fuse-switched line silently
+# vanished). The fuse sits on its own healthy lateral (l3) so it stays quiescent
+# (a fuse on the recloser/relay line churns → #485). No solve is required by
+# `Show Controlled` (arm 33 is not solve-guarded), but a clean snap solve keeps the
+# deck realistic.
+SHOW_CTRL_DECK = [
+    "clear",
+    "new circuit.ctrldemo basekv=12.47 bus1=sourcebus phases=3",
+    "new line.l1 bus1=sourcebus bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 normamps=400 emergamps=600",
+    "new line.l2 bus1=b1 bus2=b2 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 switch=y",
+    "new line.l3 bus1=b2 bus2=b3 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 normamps=200",
+    "new capacitor.cap1 bus1=b2 phases=3 kvar=600 kv=12.47",
+    "new load.ld1 bus1=b2 phases=3 kv=12.47 kw=500",
+    "new load.ld3 bus1=b3 phases=3 kv=12.47 kw=100",
+    "new recloser.rec1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1",
+    "new relay.rel1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1 type=current",
+    "new swtcontrol.sw1 switchedobj=line.l2 switchedterm=1 action=close",
+    "new swtcontrol.sw2 switchedobj=line.l2 switchedterm=1 action=close normal=closed",
+    "new capcontrol.cc1 element=line.l2 terminal=1 capacitor=cap1 type=current ONsetting=10 OFFsetting=5",
+    "new fuse.fu1 monitoredobj=line.l3 monitoredterm=1 switchedobj=line.l3 switchedterm=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve",
+]
+
+
 def gen_show_controlled(d) -> None:
-    """Capture the oracle's `Show Controlled` (`ShowControlledElements`) on solved
-    IEEE13: the three voltage-regulator `RegControl`s each control a `Transformer`,
-    so the report lists three `Transformer.regN, RegControl.regN ` lines (PD element
-    + its control, native case, trailing space per control). Pure text (names only,
-    no numbers) → diffed **byte-exact**."""
+    """Capture the oracle's `Show Controlled` (`ShowControlledElements`). Two goldens:
+    the feeder case (`show_controlled`) — solved IEEE13's three voltage-regulator
+    `RegControl`s each control a `Transformer`, so the report lists three
+    `Transformer.regN, RegControl.regN ` lines (single control per PD, `RegControl`
+    override) — and the synthesized multi-control deck (`show_controlled_multi`,
+    audit-tests follow-up) pinning the repeated-control loop + ordering and the
+    `swt_control`/`recloser`/`relay`/`cap_control` overrides. Pure text (names only,
+    no numbers, trailing space per control) → diffed **byte-exact**."""
     d.AllowEditor = False
     _gen_show_group(
         d, FEEDER_POST, [("controlled", "ControlledElements.csv", "show_controlled")]
+    )
+    _gen_show_deck_group(
+        d,
+        SHOW_CTRL_DECK,
+        [("controlled", "ControlledElements.csv", "show_controlled_multi")],
     )
 
 
