@@ -80,6 +80,12 @@
    "selected_elements": ["Vsource.source", "Line.la", "Transformer.tdy", "Reactor.rz", "Capacitor.cd", "Fault.fa", "Generator.g1", "PVSystem.pv1", "Storage.s1"]
   },
   {
+   "path": "midi_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": ["*"]
+  },
+  {
    "path": "combo_mesh_asym.dss",
    "kind": "micro",
    "n_steps": 1,

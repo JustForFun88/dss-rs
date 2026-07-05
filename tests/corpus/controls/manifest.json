@@ -98,6 +98,42 @@
    "compare_eventlog": true
   },
   {
+   "path": "midi_controls.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "RegControl.ltc", "props": ["tapnum"]},
+    {"element": "RegControl.rga", "props": ["tapnum"]},
+    {"element": "RegControl.rgb", "props": ["tapnum"]},
+    {"element": "RegControl.rgc", "props": ["tapnum"]},
+    {"element": "CapControl.ccv", "props": ["type", "onsetting", "offsetting"]},
+    {"element": "CapControl.cck", "props": ["type", "onsetting", "offsetting"]},
+    {"element": "Capacitor.cmat", "props": ["states"]},
+    {"element": "Capacitor.cdel", "props": ["states"]},
+    {"element": "Storage.st1", "props": ["state", "kw", "kwhstored"]},
+    {"element": "Sensor.sn", "props": ["element", "terminal", "kvbase", "conn", "currents"]}
+   ],
+   "compare_variables": ["PVSystem.pv3", "PVSystem.pv1", "Storage.st1"],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_protection.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Recloser.r", "props": ["state", "normal", "shots", "numfast"]},
+    {"element": "Fuse.fz", "props": ["state", "normal", "ratedcurrent"]},
+    {"element": "Relay.backup", "props": ["state", "normal", "delay"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
    "path": "combo_protection.dss",
    "kind": "micro",
    "n_steps": 20,

@@ -758,6 +758,7 @@ const ASYMMETRIC_REQUIRED: &[&str] = &[
     "upfc_asym.dss",
     "combo_chain_asym.dss",
     "combo_mesh_asym.dss",
+    "midi_asym.dss",
 ];
 
 /// Oracle-free structural guard: the asymmetric deck directory and its manifest
@@ -884,6 +885,8 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "combo_protection.dss",
     "combo_voltvar_asym.dss",
     "combo_metering.dss",
+    "midi_controls.dss",
+    "midi_protection.dss",
 ];
 
 /// Oracle-free structural guard: deck dir ↔ manifest bijection, the required

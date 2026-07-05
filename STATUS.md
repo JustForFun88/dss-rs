@@ -614,6 +614,31 @@ frontier:
   Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **next = Dump
   step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
   port map below (still current for the remaining steps):
+- **Midi network gate (2026-07-05, gate-green): the IEEE123-class synthetic
+  network** (`tools/decks/gen_midi_decks.py`, deterministic generator; decks
+  committed) — the asymmetric configs + control/protection density at the
+  MINIMAL scale that reproduces large-network failure modes (~94 nodes,
+  14-segment backbone, loop + parallel segment, 3 voltage levels, mixed
+  3/2/1-phase laterals, many controls per control round):
+  `asymmetric/midi_asym.dss` (micro tolerance holds at 94 nodes),
+  `controls/midi_controls.dss` (cascaded LTC + 3×1φ reg bank + 2 kvar
+  CapControls + InvControl over 2 PVs + StorageController, daily 24 h),
+  `controls/midi_protection.dss` (relay→recloser→fuse fuse-save race at the
+  deep-lateral end). **THIRD real port bug caught** (midi_controls hour 2,
+  +2 iterations, systematic under perturbation — not a knife edge): when a
+  StorageController flips the fleet state and an InvControl refreshes the same
+  Storage in ONE control round, `InvDispEnv::der_set_nominal` consumed
+  `StateChanged` → `yprim_invalid` but dropped Pascal `Set_YprimInvalid`'s
+  `SystemYChanged` side effect (CktElement.pas:245) — the oracle rebuilds Y in
+  `CheckControls` (Solution.pas:1155) within the round (proven by `Set log=yes`
+  control-marker diff: oracle "Building Whole Y Matrix" at ControlIter=1, port
+  at ControlIter=2), the port ran the next round on the stale-state YPrim.
+  Fixed in `dispatch.rs` (env gained `system_y_changed`). Same bug class as
+  the step-2 `update_all_storage` find — the bare-field-write-vs-Pascal-setter
+  family; unreachable from micro decks (needs two control classes touching one
+  Storage in the same round). Deck-authoring lessons recorded in the plan doc:
+  kvar-CapControl deadband must exceed its own bank size (hunts otherwise);
+  voltage-mode CapControl under regulators never toggles.
 - **Controls live gate (2026-07-05, `CONTROL_COVERAGE_PLAN.md`, ALL 5 steps
   COMPLETE — 22 decks, gate-green).** Steps 3–5 on top of the below: **protection**
   (recloser temp/perm reclose+lockout, relay 51, relays 46/47 on parallel
