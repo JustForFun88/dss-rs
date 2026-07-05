@@ -98,6 +98,46 @@
    "compare_eventlog": true
   },
   {
+   "path": "combo_protection.dss",
+   "kind": "micro",
+   "n_steps": 20,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Recloser.r", "props": ["state", "normal"]},
+    {"element": "Fuse.fz", "props": ["state", "normal"]},
+    {"element": "Relay.backup", "props": ["state", "normal"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "combo_voltvar_asym.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "RegControl.rg", "props": ["tapnum"]},
+    {"element": "CapControl.cc", "props": ["type", "onsetting", "offsetting"]},
+    {"element": "Capacitor.cb", "props": ["states"]}
+   ],
+   "compare_variables": ["PVSystem.pv"],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "combo_metering.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "RegControl.rg", "props": ["tapnum"]},
+    {"element": "Sensor.sn", "props": ["element", "terminal", "kvbase", "conn", "currents"]}
+   ],
+   "compare_eventlog": true
+  },
+  {
    "path": "energymeter_sym.dss",
    "kind": "micro",
    "n_steps": 24,

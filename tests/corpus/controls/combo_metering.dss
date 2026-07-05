@@ -1,0 +1,36 @@
+// Combination: METERING over control activity — an EnergyMeter zone spanning
+// a regulated transformer (RegControl taps move through the day), with
+// monitors in modes 0 (V/I), 1 (powers), and 2 (tap) and a wye sensor, over
+// per-phase-unequal daily loads. Registers/zone, all monitor channels, tap
+// discrete state, sensor mapping probes, and the tap-change event log are all
+// compared per step.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.metcombo basekv=115 pu=1.03 phases=3 bus1=src mvasc3=15000 mvasc1=12000
+
+new transformer.tr phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
+new regcontrol.rg transformer=tr winding=2 vreg=122 band=1.5 ptratio=60
+~ eventlog=yes
+
+new line.feed bus1=mv bus2=b r1=0.3 x1=0.7 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+
+new loadshape.day npts=24 interval=1
+~ mult=(0.35 0.38 0.42 0.48 0.58 0.70 0.85 0.98 1.08 1.15 1.20 1.18 1.10 1.00 0.90 0.80 0.72 0.78 0.92 1.06 1.12 0.90 0.60 0.40)
+
+new load.la bus1=b.1 phases=1 conn=wye model=1 kv=7.2 kw=2400 pf=0.9 daily=day
+new load.lb bus1=b.2 phases=1 conn=wye model=1 kv=7.2 kw=900 pf=0.95 daily=day
+new load.lc bus1=b.3 phases=1 conn=wye model=1 kv=7.2 kw=3000 pf=0.87 daily=day
+
+new energymeter.em element=transformer.tr terminal=1
+new monitor.m0 element=line.feed terminal=1 mode=0
+new monitor.m1 element=line.feed terminal=1 mode=1
+new monitor.m2 element=transformer.tr terminal=2 mode=2
+
+new sensor.sn element=line.feed terminal=1 kvbase=7.2 conn=wye
+~ currents=[340 130 430]
+
+set voltagebases=[115 12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1

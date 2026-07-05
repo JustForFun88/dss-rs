@@ -881,6 +881,9 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "energymeter_asym.dss",
     "monitor_modes.dss",
     "sensor_map.dss",
+    "combo_protection.dss",
+    "combo_voltvar_asym.dss",
+    "combo_metering.dss",
 ];
 
 /// Oracle-free structural guard: deck dir ↔ manifest bijection, the required

@@ -842,7 +842,8 @@
     "transformer.reg1a",
     "line.l115"
    ],
-   "check_meters_monitors": true
+   "check_meters_monitors": true,
+   "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss",
@@ -895,7 +896,8 @@
     "line.650632",
     "transformer.reg1"
    ],
-   "check_meters_monitors": true
+   "check_meters_monitors": true,
+   "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
@@ -943,7 +945,8 @@
     "transformer.reg1a",
     "line.l35"
    ],
-   "check_meters_monitors": true
+   "check_meters_monitors": true,
+   "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
