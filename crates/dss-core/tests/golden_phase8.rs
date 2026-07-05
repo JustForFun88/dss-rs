@@ -3870,3 +3870,65 @@ fn dump_reactor_disabled_matches_oracle() {
 fn dump_loadshape_matches_oracle() {
     run_deck_dump_exact("dump_loadshape");
 }
+
+// --- WP8.5 step 2: per-winding / matrix DumpProperties overrides ---
+
+/// `Dump transformer.t1 debug` (2-winding) — the `TTransfObj.DumpProperties`
+/// per-winding block + `XHL…X23`/`Xscmatrix`/thermal scalars + the generic tail,
+/// then the Complete `ZB`/`ZB (inverted)`/`Y_OneVolt`/`Y_Terminal`/`TermRef`
+/// dumps (the last exercises the `%g` scientific / `%.4f` complex forms).
+#[test]
+fn dump_transformer_matches_oracle() {
+    run_deck_dump_exact("dump_transformer");
+}
+
+/// `Dump transformer.t3 debug` (3-winding) — the `Xsc` off-diagonal, `X13`/`X23`,
+/// and the order-2 `ZB` / order-3 `Y_OneVolt` / order-6 `Y_Terminal` matrices.
+#[test]
+fn dump_transformer3_matches_oracle() {
+    run_deck_dump_exact("dump_transformer3");
+}
+
+/// `Dump line.l1` — the `TLineObj.DumpProperties` sym-components path: the
+/// `%-.7g` sequence params + the `RMatrix`/`XMatrix`/`CMatrix` folded out of
+/// `Z`/`Yc`.
+#[test]
+fn dump_line_sym_matches_oracle() {
+    run_deck_dump_exact("dump_line_sym");
+}
+
+/// `Dump line.l2` — a LineCode-driven line: the matrix model, so the sequence
+/// params render the literal `----` and the matrices come from the code.
+#[test]
+fn dump_line_lc_matches_oracle() {
+    run_deck_dump_exact("dump_line_lc");
+}
+
+/// `Dump linecode.lc1` — `TLineCodeObj.DumpProperties` sym model (`%.5f`
+/// scalars + the `%.8f` matrices derived from R1/X1/R0/X0/C1/C0).
+#[test]
+fn dump_linecode_sym_matches_oracle() {
+    run_deck_dump_exact("dump_linecode_sym");
+}
+
+/// `Dump linecode.lc2` — the matrix-model LineCode (`RMatrix`/`XMatrix`/`CMatrix`
+/// dumped `%.8f`).
+#[test]
+fn dump_linecode_matrix_matches_oracle() {
+    run_deck_dump_exact("dump_linecode_matrix");
+}
+
+/// `Dump linegeometry.geo1` — `TLineGeometryObj.DumpProperties`: the `! WARNING`
+/// banner + the per-conductor `Cond`/`Wire`/`X`/`H`/`Units` block (the
+/// `ActiveCond` walk).
+#[test]
+fn dump_linegeometry_matches_oracle() {
+    run_deck_dump_exact("dump_linegeometry");
+}
+
+/// `Dump xfmrcode.xc1` — `TXfmrCodeObj.DumpProperties`: the transformer
+/// per-winding block without buses / Complete matrix block.
+#[test]
+fn dump_xfmrcode_matches_oracle() {
+    run_deck_dump_exact("dump_xfmrcode");
+}

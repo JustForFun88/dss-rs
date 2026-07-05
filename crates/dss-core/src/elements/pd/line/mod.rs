@@ -44,6 +44,7 @@ pub enum ConductorChoice {
 
 mod accessors;
 mod code;
+mod dump;
 mod solve;
 
 /// 1-based property ordinals (Pascal `TLineProp` + class tails).
@@ -94,51 +95,51 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
-        PropDef::bus("bus1", 1),
-        PropDef::bus("bus2", 2),
+        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus2", 2),
         PropDef::object_ref_class("LineCode", "LineCode"),
-        PropDef::double("length"),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Length"),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         // The sym-component scalars are shown only while the sym model is
         // active (`PropertyOffset3 = @SymComponentsModel`, ConditionalValue).
-        PropDef::double("r1").flags(
+        PropDef::double("R1").flags(
             PropFlags::SCALED_BY_FUNCTION
                 | PropFlags::CONDITIONAL_VALUE
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
-        PropDef::double("x1").flags(
+        PropDef::double("X1").flags(
             PropFlags::SCALED_BY_FUNCTION
                 | PropFlags::CONDITIONAL_VALUE
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
-        PropDef::double("r0").flags(
+        PropDef::double("R0").flags(
             PropFlags::SCALED_BY_FUNCTION
                 | PropFlags::CONDITIONAL_VALUE
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
-        PropDef::double("x0").flags(
+        PropDef::double("X0").flags(
             PropFlags::SCALED_BY_FUNCTION
                 | PropFlags::CONDITIONAL_VALUE
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
         PropDef::double("C1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
         PropDef::double("C0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::sym_matrix_real("rmatrix", PHASES)
+        PropDef::sym_matrix_real("RMatrix", PHASES)
             .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::sym_matrix_imag("xmatrix", PHASES)
+        PropDef::sym_matrix_imag("XMatrix", PHASES)
             .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::sym_matrix_imag("cmatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
+        PropDef::sym_matrix_imag("CMatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
         PropDef::boolean("Switch"),
         PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("rho"),
-        PropDef::object_ref_class("LineGeometry", "geometry"),
-        PropDef::mapped_string_enum("units", enums.units),
-        PropDef::object_ref_class("LineSpacing", "spacing"),
-        PropDef::object_ref_array("WireData", "wires"),
+        PropDef::object_ref_class("LineGeometry", "Geometry"),
+        PropDef::mapped_string_enum("Units", enums.units),
+        PropDef::object_ref_class("LineSpacing", "Spacing"),
+        PropDef::object_ref_array("WireData", "Wires"),
         PropDef::mapped_string_enum("EarthModel", enums.earth_model),
-        PropDef::object_ref_array("CNData", "cncables"),
-        PropDef::object_ref_array("TSData", "tscables"),
+        PropDef::object_ref_array("CNData", "CNCables"),
+        PropDef::object_ref_array("TSData", "TSCables"),
         PropDef::double("B1").flags(
             PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
         ),
@@ -149,14 +150,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("Ratings", SEASONS),
         PropDef::mapped_string_enum("LineType", enums.line_type),
         // TPDClass tail:
-        PropDef::double("normamps"),
-        PropDef::double("emergamps"),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Line", defs, true)

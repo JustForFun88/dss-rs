@@ -20,6 +20,7 @@ mod tests;
 
 mod accessors;
 mod compute;
+mod dump;
 
 use crate::obj::base::DssObjData;
 use crate::obj::dss_enum::EnumRegistry;

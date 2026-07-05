@@ -4,9 +4,10 @@
 //! `PCElements/PCElement.pas` `TPCElement.DumpProperties`, plus the 14 element/
 //! object leaf overrides (Solution dumped separately, WP8.5 step 3).
 //!
-//! WP8.5 **step 1** ports the generic base + the **Reactor** override (the
-//! `Dump reactor.* debug` corpus deck); the remaining 13 overrides are TODO(WP8)
-//! in [`overrides`] (until each lands, its class dumps via the generic base).
+//! WP8.5 **step 1** ported the generic base + the **Reactor** override; **step 2**
+//! adds Transformer/Line/LineCode/LineGeometry/XfmrCode. The 8 remaining overrides
+//! are TODO(WP8) in [`overrides`] (until each lands, its class dumps via the
+//! generic base).
 //!
 //! Pascal models this as a 4-level virtual method (`TDSSObject` →
 //! `TDSSCktElement` → `TPCElement` → leaf). Rust has no inheritance, so we
@@ -54,13 +55,31 @@ pub(crate) fn header(out: &mut String, full_name: &str) {
 /// NumProperties` (Pascal `TDSSObject.DumpProperties` Leaf branch, and every
 /// override that dumps the full property set verbatim).
 pub(crate) fn generic_props(out: &mut String, cx: &DumpCtx, obj: &dyn DssObject) {
-    for i in 1..=cx.cls.num_properties() {
-        out.push_str("~ ");
-        out.push_str(cx.cls.property_name(i));
-        out.push('=');
-        out.push_str(&cx.cls.get_value(obj, i, cx.enums));
-        out.push('\n');
+    generic_props_from(out, cx, obj, 1);
+}
+
+/// The `~ <PropertyName>=<GetPropertyValue(i)>` loop for `i := start to
+/// NumProperties`. The per-class overrides that hand-write the head of the
+/// property list (Transformer/XfmrCode) dump their tail through this.
+pub(crate) fn generic_props_from(
+    out: &mut String,
+    cx: &DumpCtx,
+    obj: &dyn DssObject,
+    start: usize,
+) {
+    for i in start..=cx.cls.num_properties() {
+        prop_line(out, cx, obj, i);
     }
+}
+
+/// One `~ <PropertyName[i]>=<GetPropertyValue(i)>` line (Pascal
+/// `'~ ' + ParentClass.PropertyName[i] + '=' + PropertyValue[i]`).
+pub(crate) fn prop_line(out: &mut String, cx: &DumpCtx, obj: &dyn DssObject, i: usize) {
+    out.push_str("~ ");
+    out.push_str(cx.cls.property_name(i));
+    out.push('=');
+    out.push_str(&cx.cls.get_value(obj, i, cx.enums));
+    out.push('\n');
 }
 
 /// Pascal `TDSSCktElement.DumpProperties`: `! ENABLED` / `! DISABLED`.
@@ -224,17 +243,22 @@ pub(crate) fn dump_generic(
 /// Dump one object (Pascal top-level `obj.DumpProperties(F, Complete, TRUE)`):
 /// the class's leaf override if it has a Pascal one, else the generic base.
 /// `is_pc` selects the PCElement ordering for the generic path.
+///
+/// Takes `&mut dyn DssObject` because one override — `TLineGeometryObj` — walks
+/// its conductors by mutating `ActiveCond` (Pascal `ActiveCond := j;
+/// GetPropertyValue(3..7)`, `LineGeometry.pas:669`); the other overrides and the
+/// generic base read through a shared `&*obj` reborrow.
 pub(crate) fn dump_object(
     out: &mut String,
     cx: &DumpCtx,
-    obj: &dyn DssObject,
+    obj: &mut dyn DssObject,
     complete: bool,
     is_pc: bool,
 ) {
     if overrides::dump_override(out, cx, obj, complete) {
         return;
     }
-    dump_generic(out, cx, obj, complete, is_pc);
+    dump_generic(out, cx, &*obj, complete, is_pc);
 }
 
 /// The full-name (`Class.Name`) an override writes in its `New "…"` header.

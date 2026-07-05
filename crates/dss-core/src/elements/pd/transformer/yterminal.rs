@@ -373,10 +373,12 @@ impl Transformer {
                 } else {
                     c.arg().to_degrees()
                 };
-                // Pascal: Format('%.7g, (%.5g), ', [Cabs, Cdang]).
-                out.push_str(&crate::util::fmt_g(mag, 7));
+                // Pascal: Format('%.7g, (%.5g), ', [Cabs, Cdang]) — FPC `%g`
+                // renders the exponent uppercase (`E-12`), so route through
+                // `report::format::g` (not the lowercase-`e` `fmt_g`).
+                out.push_str(&crate::report::format::g(mag, 7));
                 out.push_str(", (");
-                out.push_str(&crate::util::fmt_g(ang, 5));
+                out.push_str(&crate::report::format::g(ang, 5));
                 out.push_str("), ");
                 k += 1; // skip the other end of the winding
             }

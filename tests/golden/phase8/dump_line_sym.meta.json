@@ -1,0 +1,12 @@
+{
+  "report": "line.l1",
+  "fixture": "dumplsym",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumplsym basekv=12.47 bus1=src",
+    "new line.l1 bus1=src bus2=b2 phases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=3.4 c0=1.6 length=2 units=km",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve"
+  ]
+}

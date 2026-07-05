@@ -1880,6 +1880,90 @@ DUMP_LS_DECK = [
     "new loadshape.ls1 npts=3 interval=1 mult=(1 2 3)",
 ]
 
+# --- WP8.5 step 2: per-winding / matrix DumpProperties overrides ---
+# Transformer (`TTransfObj.DumpProperties`): the per-winding block + `XHL…X23` +
+# `Xscmatrix` + thermal/loss scalars, and — with `debug` — the `ZB`/`Y_OneVolt`/
+# `Y_Terminal`/`TermRef` complex lower-triangle dumps. A 2-winding and a
+# 3-winding (the latter exercises the `Xsc` off-diagonal + the order-2 `ZB`).
+DUMP_XF2_DECK = [
+    "new circuit.dumpxf2 basekv=115 bus1=src",
+    "new transformer.t1 phases=3 windings=2 xhl=6 buses=[src mid] "
+    "conns=[delta wye] kvs=[115 4.16] kvas=[5000 5000] %loadloss=1",
+    # A balanced load so the winding currents are physical (not near-zero
+    # no-load noise, which is faer-vs-KLU-unreproducible at 1e-12).
+    "new load.ld1 bus1=mid kv=4.16 kw=2000 pf=0.9 conn=wye",
+    "set voltagebases=[115 4.16]",
+    "calcv",
+    "solve",
+]
+DUMP_XF3_DECK = [
+    "new circuit.dumpxf3 basekv=115 bus1=src",
+    "new transformer.t3 phases=3 windings=3 xhl=6 xht=12 xlt=8 "
+    "buses=[src mid low] conns=[delta wye wye] kvs=[115 12.47 4.16] "
+    "kvas=[5000 3000 2000]",
+    "new load.ld2 bus1=mid kv=12.47 kw=1500 pf=0.9 conn=wye",
+    "new load.ld3 bus1=low kv=4.16 kw=1000 pf=0.95 conn=wye",
+    "set voltagebases=[115 12.47 4.16]",
+    "calcv",
+    "solve",
+]
+
+# Line (`TLineObj.DumpProperties`): a sym-components line (the `%-.7g` R1/X1/R0/X0/
+# C1/C0 + the `RMatrix`/`XMatrix`/`CMatrix` folded out of `Z`/`Yc`), and a
+# LineCode-driven line (the matrix model → the `----` sequence-parameter path).
+DUMP_LINE_SYM_DECK = [
+    "new circuit.dumplsym basekv=12.47 bus1=src",
+    "new line.l1 bus1=src bus2=b2 phases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 "
+    "c1=3.4 c0=1.6 length=2 units=km",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve",
+]
+DUMP_LINE_LC_DECK = [
+    "new circuit.dumpllc basekv=12.47 bus1=src",
+    "new linecode.lcm nphases=3 rmatrix=(0.1 | 0.03 0.1 | 0.03 0.03 0.1) "
+    "xmatrix=(0.2 | 0.05 0.2 | 0.05 0.05 0.2) "
+    "cmatrix=(3 | -1 3 | -1 -1 3) units=km",
+    "new line.l2 bus1=src bus2=b2 linecode=lcm length=1.5 units=km",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve",
+]
+
+# LineCode (`TLineCodeObj.DumpProperties`): sym + matrix models (a plain
+# `TDSSObject`, no solve needed).
+DUMP_LC_SYM_DECK = [
+    "new circuit.dumplcs basekv=12.47 bus1=src",
+    "new linecode.lc1 nphases=3 r1=0.058 x1=0.1206 r0=0.1784 x0=0.4047 "
+    "c1=3.4 c0=1.6 units=kft",
+]
+DUMP_LC_MAT_DECK = [
+    "new circuit.dumplcm basekv=12.47 bus1=src",
+    "new linecode.lc2 nphases=3 rmatrix=(0.1 | 0.03 0.1 | 0.03 0.03 0.1) "
+    "xmatrix=(0.2 | 0.05 0.2 | 0.05 0.05 0.2) "
+    "cmatrix=(3 | -1 3 | -1 -1 3) units=km",
+]
+
+# LineGeometry (`TLineGeometryObj.DumpProperties`): the `! WARNING` banner + the
+# per-conductor `Cond`/`Wire`/`X`/`H`/`Units` block (the `ActiveCond` walk).
+DUMP_GEO_DECK = [
+    "new circuit.dumpgeo basekv=12.47 bus1=src",
+    "new wiredata.w1 diam=0.5 gmrac=0.2 rac=0.1 runits=mi radunits=in "
+    "gmrunits=ft normamps=600",
+    "new linegeometry.geo1 nconds=3 nphases=3 reduce=no",
+    "~ cond=1 wire=w1 x=-4 h=28 units=ft",
+    "~ cond=2 wire=w1 x=-1.5 h=28.5 units=ft",
+    "~ cond=3 wire=w1 x=3 h=28 units=ft",
+]
+
+# XfmrCode (`TXfmrCodeObj.DumpProperties`): the transformer per-winding block
+# without buses / Complete matrix block.
+DUMP_XC_DECK = [
+    "new circuit.dumpxc basekv=115 bus1=src",
+    "new xfmrcode.xc1 phases=3 windings=2 xhl=6 conns=[delta wye] "
+    "kvs=[115 4.16] kvas=[5000 5000]",
+]
+
 # (stem, deck, report). Each captures `<case>_PropertyDump.txt` (Dump sets
 # GlobalResult), read back by the Rust golden via `dss.last_result_file()`.
 DUMP_DECKS = [
@@ -1888,6 +1972,14 @@ DUMP_DECKS = [
     ("dump_reactor_symcomp", DUMP_SC_DECK, "reactor.rk debug"),
     ("dump_reactor_disabled", DUMP_DIS_DECK, "reactor.* debug"),
     ("dump_loadshape", DUMP_LS_DECK, "loadshape.ls1"),
+    ("dump_transformer", DUMP_XF2_DECK, "transformer.t1 debug"),
+    ("dump_transformer3", DUMP_XF3_DECK, "transformer.t3 debug"),
+    ("dump_line_sym", DUMP_LINE_SYM_DECK, "line.l1"),
+    ("dump_line_lc", DUMP_LINE_LC_DECK, "line.l2"),
+    ("dump_linecode_sym", DUMP_LC_SYM_DECK, "linecode.lc1"),
+    ("dump_linecode_matrix", DUMP_LC_MAT_DECK, "linecode.lc2"),
+    ("dump_linegeometry", DUMP_GEO_DECK, "linegeometry.geo1"),
+    ("dump_xfmrcode", DUMP_XC_DECK, "xfmrcode.xc1"),
 ]
 
 
