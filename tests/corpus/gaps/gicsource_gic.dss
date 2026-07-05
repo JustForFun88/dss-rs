@@ -1,0 +1,23 @@
+! GAPS deck: GICsource — the induced-voltage injector spliced into a NAMED Line
+! (Pascal GICsource.pas: the element's name must equal an existing Line's name;
+! RecalcElementData inserts a GIC_<name> bus and rewrites the Line's Bus2 —
+! a cross-class edit-time mutation the port must replicate). One Volts-specified
+! unit and one EN/EE geodesy unit (Compute_VLine with the sign convention
+! FLIPPED vs GICLine: dLat=Lat1-Lat2). Snapshot at Set frequency=0.1.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_gics basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000
+New Line.seg12 bus1=b1 bus2=b2 phases=3 r1=3.2 x1=0.1 r0=3.2 x0=0.1 c1=0 c0=0 length=1
+New Line.seg23 bus1=b2 bus2=b3 phases=3 r1=2.7 x1=0.1 r0=2.7 x0=0.1 c1=0 c0=0 length=1
+! Spliced sources: names match the Lines above.
+New GICsource.seg12 Volts=110 Angle=0 Frequency=0.1
+New GICsource.seg23 EN=1.0 EE=1.0 Frequency=0.1
+~ Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605
+! Grounding paths close the DC loops.
+New Reactor.g1 phases=3 bus1=b1 r=0.20 x=0
+New Reactor.g2 phases=3 bus1=b2 r=0.15 x=0
+New Reactor.g3 phases=3 bus1=b3 r=0.25 x=0
+Set voltagebases=[345]
+Calcvoltagebases
+Set frequency=0.1
+Solve

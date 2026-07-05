@@ -321,7 +321,8 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
 - `ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle).
 - A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
   gate: numerically identical to single-actor results.
-- GIC elements (`GICLine`, `GICsource`, `GICTransformer`); `Pstcalc` flicker (if not
+- ~~GIC elements (`GICLine`, `GICsource`, `GICTransformer`)~~ — **moved to
+  `GAPS_PLAN.md` WPG.17** (2026-07-05, with validated decks); `Pstcalc` flicker (if not
   already pulled in by Monitor); plotting callbacks as a data-only `PlotSink` trait.
 
 **Cumulative**: P0–P3 ≈ 35% → working vertical slice; P0–P6 ≈ 67% → production-usable

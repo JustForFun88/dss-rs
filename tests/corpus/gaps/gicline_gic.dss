@@ -1,0 +1,23 @@
+! GAPS deck: GICLine — the low-frequency induced-EMF line source (Pascal
+! GICLine.pas): one Volts-specified unit, one EN/EE+lat-lon geodesy unit
+! (Compute_VLine), one with the series blocking capacitor C (frequency-dependent
+! Xc in CalcYPrim). Zero-sequence injection, active only at Frequency=0.1
+! (the GIC_Example corpus pattern in micro form). Snapshot at Set frequency=0.1.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_gicl basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000
+! Direct Volts spec.
+New GICLine.gl12 bus1=b1 bus2=b2 R=3.5 Volts=120 Angle=0
+! Geodesy spec (EN/EE + endpoints; the GIC_Example numbers).
+New GICLine.gl23 bus1=b2 bus2=b3 R=2.8 EN=1.0 EE=1.0
+~ Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605
+! Blocking capacitor: near-zero GIC through this path at 0.1 Hz.
+New GICLine.gl13 bus1=b1 bus2=b3 R=3.1 C=32.0 Volts=80 Angle=0
+! Substation grounding paths (pure R) close the DC loops.
+New Reactor.g1 phases=3 bus1=b1 r=0.20 x=0
+New Reactor.g2 phases=3 bus1=b2 r=0.15 x=0
+New Reactor.g3 phases=3 bus1=b3 r=0.25 x=0
+Set voltagebases=[345]
+Calcvoltagebases
+Set frequency=0.1
+Solve

@@ -1,0 +1,27 @@
+! GAPS deck: GICTransformer — the resistance-only GIC winding paths (Pascal
+! GICTransformer.pas): types GSU / YY / Auto, R1/R2 vs %R1+kV+MVA specs, the
+! 4-terminal BusX promotion, neutral node-4 grounding through substation
+! ground-grid reactors (the GIC_Example corpus pattern in micro form). Driven by
+! GICLines at Set frequency=0.1.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_gict basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000
+New GICLine.gl12 bus1=b1 bus2=b2 R=3.5 Volts=100 Angle=0
+New GICLine.gl23 bus1=b2 bus2=b3 R=2.9 EN=1.0 EE=1.0
+~ Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605
+! GSU at b1: H winding only, neutral to the b1 ground grid (node 4).
+New GICTransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU
+! YY at b2: H and X windings, both neutrals on the b2 ground grid.
+New GICTransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 R1=0.2 R2=0.1 type=YY
+! Auto at b3: %R spec on the kV/MVA base + the VarCurve reactive-output hook.
+New XYcurve.vgic npts=3 xarray=(0 1 2) yarray=(0 0.6 1.0)
+New GICTransformer.tg3 busH=b3 busX=b3x busNX=b3.4.4.4 %R1=0.2 %R2=0.15
+~ kvll1=345 kvll2=138 mva=300 varcurve=vgic type=Auto
+! Substation ground grids: node 4 -> remote earth.
+New Reactor.gg1 phases=1 bus1=b1.4 r=0.20 x=0
+New Reactor.gg2 phases=1 bus1=b2.4 r=0.15 x=0
+New Reactor.gg3 phases=1 bus1=b3.4 r=0.25 x=0
+Set voltagebases=[345 138]
+Calcvoltagebases
+Set frequency=0.1
+Solve
