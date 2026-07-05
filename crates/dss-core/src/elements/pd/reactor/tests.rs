@@ -116,3 +116,75 @@ fn yprim_3ph_rxmatrix_matches_oracle() {
         assert!((yp.get(i, i + 3) + diag).norm() < 1e-5);
     }
 }
+
+/// Regression guard for the `stamp_series` asymmetric-YPrim bug (the two-terminal
+/// series stamp's bottom-left block was `(j+n, i)` instead of Pascal's `(i+n, j)`,
+/// `Reactor.pas:936`). A **symmetrical-components** reactor with `Z1 != Z2` (the
+/// induction-motor model) has a **non-reciprocal / asymmetric** Y; the transposed
+/// stamp violates KCL (`I_t1 + I_t2 = (Y - Yᵀ)·V1 != 0`) and corrupts an
+/// **unbalanced** solve — invisible to a balanced one. This solves an unbalanced
+/// deck and checks (a) KCL at the reactor (physics — catches the transpose
+/// directly) and (b) the per-conductor terminal currents against the pinned
+/// oracle (dss-python 0.15.7 / engine 0.14.5). Reverting the fix fails (a).
+#[test]
+fn asymmetric_sym_components_reactor_unbalanced_solve() {
+    use crate::exec::Dss;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.rasym basekv=12.47 bus1=src");
+    dss.command(
+        "new reactor.rk phases=3 bus1=src bus2=b \
+         Z1=[1.9775 1.3431] Z2=[0.1203 0.3623] Z0=[1 0]",
+    );
+    // Unbalanced per-phase loads → the reactor carries unbalanced currents, so the
+    // negative-sequence (asymmetric) coupling is exercised.
+    dss.command("new load.la bus1=b.1 phases=1 kv=7.2 kw=800 pf=0.9");
+    dss.command("new load.lb bus1=b.2 phases=1 kv=7.2 kw=200 pf=0.95");
+    dss.command("new load.lc bus1=b.3 phases=1 kv=7.2 kw=1400 pf=0.85");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcv");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let snap = dss.snapshot_elements();
+    let rk = snap
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("Reactor.rk"))
+        .expect("reactor.rk in snapshot");
+    let c = &rk.currents; // [re,im] per conductor: t1 phases 0-2, t2 phases 3-5.
+    assert_eq!(c.len(), 12, "6 conductors x (re,im)");
+
+    // (a) KCL: I_t1 + I_t2 == 0 per phase (the transpose bug breaks this).
+    for ph in 0..3 {
+        let re = c[ph * 2] + c[(ph + 3) * 2];
+        let im = c[ph * 2 + 1] + c[(ph + 3) * 2 + 1];
+        assert!(
+            re.abs() < 1e-3 && im.abs() < 1e-3,
+            "KCL violated at phase {}: I_t1+I_t2 = {re}+{im}j (asymmetric reactor \
+             stamp transpose?)",
+            ph + 1
+        );
+    }
+
+    // (b) Per-conductor terminal currents vs the pinned oracle.
+    let want = [
+        116.146461,
+        -57.769703,
+        -22.612834,
+        -20.041948,
+        7.672820,
+        240.310043,
+        -116.146461,
+        57.769703,
+        22.612834,
+        20.041948,
+        -7.672820,
+        -240.310043,
+    ];
+    for (k, (&a, &w)) in c.iter().zip(want.iter()).enumerate() {
+        assert!(
+            (a - w).abs() <= 1e-3 + 1e-6 * w.abs(),
+            "reactor current [{k}]: got {a}, oracle {w}"
+        );
+    }
+}
