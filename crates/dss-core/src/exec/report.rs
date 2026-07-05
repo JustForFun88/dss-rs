@@ -1735,12 +1735,138 @@ impl Dss {
             .push("Save is not ported yet (Phase 8 WP8.5).".to_string());
     }
 
-    /// Pascal `DumpProperties` (the `Dump` command, `ExecHelper.pas`). WP8.5 —
-    /// scoped `NOT_PORTED` until then (the `Dump` corpus decks are in
-    /// `skipped_unsupported`).
+    /// Pascal `DoPropertyDump` (the `Dump` command, `ExecHelper.pas:1194`):
+    /// dump object properties (and, with `debug`, the Complete Y/terminal/state
+    /// detail) as a `New "…"` + `~ prop=value` script to
+    /// `<OutputDir><CircuitName_>PropertyDump.txt`.
+    ///
+    /// WP8.5 **step 1** ports the single-object forms `Dump <class>.<name> [debug]`
+    /// / `Dump <class>.* [debug]` (the `Dump reactor.* debug` corpus deck), with
+    /// the `#903`/`#256` errors. The whole-circuit forms — bare `Dump` /
+    /// `Dump debug` (all elements + `Circuit.DebugDump` header), `Dump solution`
+    /// (`Solution.DumpProperties`), and the aux `Dump commands`/`buslist`/
+    /// `devicelist`/`alloc` files — are TODO(WP8) step 3.
     pub(crate) fn do_dump_cmd(&mut self) {
-        self.errors
-            .push("Dump is not ported yet (Phase 8 WP8.5).".to_string());
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars);
+        let pl = param.to_lowercase();
+
+        // The whole-circuit / aux forms (TODO(WP8) step 3).
+        if param.is_empty()
+            || matches!(
+                pl.as_str(),
+                "commands" | "buslist" | "devicelist" | "solution" | "debug"
+            )
+            || pl.get(..5) == Some("alloc")
+        {
+            self.errors.push(
+                "Dump (whole-circuit / solution / aux forms) is not ported yet (Phase 8 WP8.5 step 3)."
+                    .to_string(),
+            );
+            return;
+        }
+
+        // Single object (Pascal `SingleObject := TRUE`): read the optional
+        // trailing `debug`, then resolve `Param` as `<class>.<name>`.
+        self.parser.next_param(&self.vars);
+        let param2 = self.parser.make_string(&self.vars);
+        let complete = param2.eq_ignore_ascii_case("debug");
+
+        let (obj_class, obj_name) = {
+            let mut p = Parser::new();
+            crate::util::parse_object_class_and_name(&mut p, &self.vars, &param)
+        };
+        // Pascal `SetObjectClass`: an unknown (incl. empty) class logs #903 and
+        // Exits with no file written (`dump all` takes this path — `all` parses as
+        // an empty class + name `all`).
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+            self.errors
+                .push(format!("Error! Object Class \"{obj_class}\" not found. "));
+            return;
+        };
+
+        // Collect the object indices to dump (Pascal `case ObjName[1] of '*'` =
+        // all in class, else `SetActive(ObjName)` — #256 if not found).
+        let indices: Vec<usize> = if obj_name == "*" {
+            (0..self.classes[ci].objects.len()).collect()
+        } else {
+            match self.classes[ci].set_active(&obj_name) {
+                true => vec![self.classes[ci].active.expect("set_active set active")],
+                false => {
+                    self.errors
+                        .push(format!("Error! Object \"{obj_name}\" not found."));
+                    return;
+                }
+            }
+        };
+
+        let mut content = String::new();
+        for oi in indices {
+            self.dump_one_object(&mut content, ci, oi, complete);
+        }
+
+        // Write to `<OutputDir><CircuitName_>PropertyDump.txt`; `GlobalResult` =
+        // the produced path (Pascal `DSS.GlobalResult := FileName`).
+        let case = self
+            .circuit
+            .as_ref()
+            .map(|c| c.case_name.clone())
+            .unwrap_or_default();
+        let circuit_name_ = format!("{case}_");
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &circuit_name_,
+            "",
+            "PropertyDump.txt",
+        );
+        self.write_report(&path, &content);
+    }
+
+    /// Append one object's `DumpProperties` output to `content` (Pascal
+    /// top-level `pObject.DumpProperties(F, Complete, TRUE)`). Precomputes the PC
+    /// state-variable values for the Complete `! VARIABLES` block (the one part
+    /// needing the mutable solved-state walk).
+    fn dump_one_object(&mut self, content: &mut String, ci: usize, oi: usize, complete: bool) {
+        let r = crate::elements::traits::ElemRef { cls: ci, idx: oi };
+        let is_pc = self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.pc_elements.contains(&r));
+
+        // PC `! VARIABLES` values (empty unless Complete + PC).
+        let variables: Vec<(String, f64)> = if complete && is_pc {
+            let Dss {
+                classes, circuit, ..
+            } = self;
+            let ckt = circuit.as_ref().expect("post-circuit dispatch");
+            let sys = crate::solution::solution::sys_ctx(ckt);
+            let node_v = ckt.solution.node_v.clone();
+            if let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut() {
+                let nvar = elem.num_variables();
+                let names: Vec<String> = (1..=nvar).map(|i| elem.variable_name(i)).collect();
+                let mut states = vec![0.0f64; nvar];
+                elem.get_all_variables(&sys, &node_v, &mut states);
+                names.into_iter().zip(states).collect()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        let cx = crate::report::save::dump::DumpCtx {
+            cls: &self.classes[ci].props,
+            enums: &self.enums,
+            variables: &variables,
+        };
+        crate::report::save::dump::dump_object(
+            content,
+            &cx,
+            self.classes[ci].objects[oi].as_ref(),
+            complete,
+            is_pc,
+        );
     }
 }
 

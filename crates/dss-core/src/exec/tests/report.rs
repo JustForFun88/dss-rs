@@ -432,15 +432,37 @@ fn export_faultstudy_snapshot_ysc_none_is_zeroed() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `Save`/`Dump` record a scoped `NOT_PORTED` until WP8.5 (their corpus decks
-/// are all in `skipped_unsupported`).
+/// `Save` still records a scoped `NOT_PORTED` (WP8.5 step 2); `Dump`'s
+/// single-object form is ported (WP8.5 step 1) — its whole-circuit / `solution` /
+/// aux forms stay scoped for step 3.
 #[test]
-fn save_dump_record_scoped_not_ported() {
+fn save_records_scoped_not_ported() {
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
     dss.command("save circuit");
-    dss.command("dump line.foo");
-    assert_eq!(dss.errors().len(), 2, "{:?}", dss.errors());
+    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(dss.errors()[0].contains("Save"), "{:?}", dss.errors());
-    assert!(dss.errors()[1].contains("Dump"), "{:?}", dss.errors());
+}
+
+/// `Dump <class>.<name>` error fidelity: an unknown class → Pascal `#903`
+/// (`SetObjectClass` fail); a known class + unknown object → `#256`
+/// (`Object … not found`); `dump` / `dump solution` / `dump debug` (whole-circuit
+/// forms) stay scoped for WP8.5 step 3.
+#[test]
+fn dump_single_object_errors() {
+    let mut dss = Dss::new();
+    dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    // Errors accumulate across commands (only `clear` resets them), so check by
+    // cumulative index.
+    dss.command("dump badclass.foo"); // #903 SetObjectClass fail
+    dss.command("dump reactor.foo"); // #256 known class, unknown object
+    dss.command("dump solution"); // step-3 scoped
+    let e = dss.errors();
+    assert_eq!(e.len(), 3, "{e:?}");
+    assert!(e[0].contains("Object Class"), "#903 expected: {e:?}");
+    assert!(
+        e[1].contains("Object \"foo\" not found"),
+        "#256 expected: {e:?}"
+    );
+    assert!(e[2].contains("not ported yet"), "step-3 scoped: {e:?}");
 }

@@ -34,6 +34,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::util::sqrt3;
 
 mod accessors;
+mod dump;
 mod solve;
 
 /// 1-based property ordinals (Pascal `TReactorProp` + class tails).
@@ -72,14 +73,18 @@ pub mod prop {
 /// `TReactor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
+    // Property names carry the oracle's **display case** (Pascal `PropertyName[i]`),
+    // which `Dump`/`Save` emit verbatim; matching stays case-insensitive
+    // (`CommandList` lowercases both sides), so `bus1=`/`Bus1=` both parse. The
+    // canonical spelling is pinned by the `dump_reactor` golden (WP8.5 step 1).
     let defs = vec![
         // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
-        PropDef::bus("bus1", 1),
-        PropDef::bus("bus2", 2),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus2", 2),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kv").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
-        PropDef::mapped_string_enum("conn", enums.connection),
+        PropDef::double("kV").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
+        PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("RMatrix", PHASES),
         PropDef::double_sym_matrix("XMatrix", PHASES).flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::boolean("Parallel"),
@@ -98,14 +103,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .scale(1.0e-3)
             .flags(PropFlags::REDUNDANT | PropFlags::REQUIRED_IN_SPEC_SET),
         // TPDClass tail:
-        PropDef::double("normamps"),
-        PropDef::double("emergamps"),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Reactor", defs, true)

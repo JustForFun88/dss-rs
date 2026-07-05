@@ -1829,6 +1829,60 @@ def gen_deck_groups(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+# Synthesized Dump fixture (PHASE8_PLAN §WP8.5). Two reactors exercise the
+# `TReactorObj.DumpProperties` override: `r1` (series R+X, no matrices → the Z/LmH
+# custom formats + no RMatrix line) and `rz` (R/X matrices → the un-`~` `RMatrix=
+# (…)` / `XMatrix= (…)` lines). `debug` adds the CktElement Complete block
+# (NPhases/…/NodeRef/Terminal Status/Bus Ref + the `%13.10g` YPrim G/B matrices).
+# A load + solve so YPrim is built (the debug dump reads it).
+DUMP_R_FIXTURE = "dumpr8"
+DUMP_R_DECK = [
+    f"new circuit.{DUMP_R_FIXTURE} basekv=12.47 bus1=src",
+    "new reactor.r1 bus1=b1 bus2=b2 phases=3 R=1.1 X=2.2",
+    "new reactor.rz bus1=b4 phases=3 Rmatrix=(1 | 0.2 1 | 0.2 0.2 1) "
+    "Xmatrix=(3 | 0.5 3 | 0.5 0.5 3)",
+    "new load.ld1 bus1=b4 kv=12.47 kw=100",
+    "solve",
+]
+DUMP_DECKS = [
+    ("dump_reactor", "reactor.*"),
+    ("dump_reactor_debug", "reactor.* debug"),
+]
+
+
+def gen_dump_decks(d) -> None:
+    """Capture the oracle's `Dump reactor.*` (+ `debug`) on the synthesized reactor
+    deck. `Dump` sets `GlobalResult` to the produced `<case>_PropertyDump.txt`, so
+    the Rust golden (`golden_phase8.rs`) reads `dss.last_result_file()`."""
+    d.AllowEditor = False
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for stem, report in DUMP_DECKS:
+        tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+        try:
+            d.Text.Command = "clear"
+            for c in DUMP_R_DECK:
+                d.Text.Command = c
+            case = d.ActiveCircuit.Name
+            d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+            d.Text.Command = f"dump {report}"
+            produced = Path(d.Text.Result)  # GlobalResult = PropertyDump path
+            content = produced.read_text()
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": report,
+                "fixture": case,
+                "suffix": "PropertyDump.txt",
+                "deck": DUMP_R_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes)")
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -1874,6 +1928,7 @@ def main() -> None:
     gen_demand_interval(d)
     gen_di_overloads_1ph(d)
     gen_reliability_multimeter(d)
+    gen_dump_decks(d)
 
 
 if __name__ == "__main__":

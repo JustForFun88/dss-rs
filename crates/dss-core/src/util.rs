@@ -106,7 +106,17 @@ pub fn check_for_blanks(s: &str) -> String {
 /// comparisons must always parse numbers out instead of diffing strings
 /// (PORTING_PLAN.md §4 tolerance policy).
 pub fn float_to_str(v: f64) -> String {
-    format!("{v}")
+    // FPC `FloatToStr(Double)` = `FloatToStrF(v, ffGeneral, 15, 0)`: 15 significant
+    // digits, general (fixed-or-scientific) notation, trailing zeros stripped —
+    // i.e. C `%.15g` (what [`fmt_g`] with `sig = 15` produces). Rust's `{}` emits
+    // the *shortest round-tripping* form instead (up to 17 digits), which the
+    // numeric-tolerance gates (`props_roundtrip`) never distinguished but the
+    // byte-exact `Dump`/`Save` gate does (a 16th digit on e.g. `NormAmps`).
+    // TODO(compat): the scientific branch here is C-`%g` (lowercase `e`, 2-digit
+    // exponent), where FPC's `ffGeneral` emits `E` + a signed ≥2-digit exponent —
+    // no in-scope dump value reaches scientific notation, so it is not yet
+    // reproduced; add the FPC exponent form when one does.
+    fmt_g(v, 15)
 }
 
 /// Pascal `FloatToStrEx` from DSSObjectHelper.pas: NaN prints as `----`
