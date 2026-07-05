@@ -877,6 +877,10 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "relay_4647_asym.dss",
     "fuse_blow_asym.dss",
     "swtcontrol_time.dss",
+    "energymeter_sym.dss",
+    "energymeter_asym.dss",
+    "monitor_modes.dss",
+    "sensor_map.dss",
 ];
 
 /// Oracle-free structural guard: deck dir ↔ manifest bijection, the required

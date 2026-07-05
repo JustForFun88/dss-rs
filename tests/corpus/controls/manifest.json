@@ -98,6 +98,51 @@
    "compare_eventlog": true
   },
   {
+   "path": "energymeter_sym.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "EnergyMeter.em", "props": ["element", "terminal"]}
+   ]
+  },
+  {
+   "path": "energymeter_asym.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "EnergyMeter.em", "props": ["element", "terminal"]}
+   ]
+  },
+  {
+   "path": "monitor_modes.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Monitor.m0", "props": ["element", "terminal", "mode"]},
+    {"element": "Monitor.m2", "props": ["element", "terminal", "mode"]},
+    {"element": "Monitor.m3", "props": ["element", "terminal", "mode"]}
+   ],
+   "compare_variables": ["Storage.s1"],
+   "compare_eventlog": true
+  },
+  {
+   "path": "sensor_map.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Sensor.s1", "props": ["element", "terminal", "kvbase", "conn", "kws", "kvars", "currents", "%error"]},
+    {"element": "Sensor.s2", "props": ["element", "terminal", "kvbase", "conn", "currents"]},
+    {"element": "Sensor.s3", "props": ["element", "terminal", "kvbase", "conn", "kws", "kvars"]}
+   ]
+  },
+  {
    "path": "recloser_temp.dss",
    "kind": "micro",
    "n_steps": 12,

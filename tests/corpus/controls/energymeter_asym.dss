@@ -1,0 +1,28 @@
+// EnergyMeter asymmetric scenario: the metered zone carries per-phase-unequal
+// loads and a single-phase lateral — the phase-resolved register accumulation
+// (kWh, losses, max kW) and zone membership (including the 1-phase branch)
+// are compared per step. Daily 24 steps, check_meters_monitors.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.emasym basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+
+new line.feed bus1=src bus2=m1 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+new line.lat3 bus1=m1 bus2=m2 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+! Single-phase lateral on phase 2.
+new line.lat1 phases=1 bus1=m1.2 bus2=m3.2 r1=0.4 x1=0.8 r0=0.4 x0=0.8 c1=0 c0=0 length=1
+
+new loadshape.day npts=24 interval=1
+~ mult=(0.40 0.42 0.45 0.50 0.58 0.68 0.80 0.92 1.02 1.10 1.15 1.18 1.20 1.15 1.08 1.00 0.92 0.88 0.95 1.05 1.10 0.90 0.65 0.45)
+
+! Per-phase-unequal loads.
+new load.la bus1=m2.1 phases=1 conn=wye model=1 kv=7.2 kw=1200 pf=0.9 daily=day
+new load.lb bus1=m2.2 phases=1 conn=wye model=1 kv=7.2 kw=400 pf=0.95 daily=day
+new load.lc bus1=m2.3 phases=1 conn=wye model=1 kv=7.2 kw=1700 pf=0.85 daily=day
+new load.l1p bus1=m3.2 phases=1 conn=wye model=1 kv=7.2 kw=600 pf=0.92 daily=day
+
+new energymeter.em element=line.feed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1
