@@ -813,25 +813,42 @@ impl Dss {
                 .map(|ic| ic.der_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
-                let resolved: Option<&dyn DssObject> = if der_names.is_empty() {
-                    foreign
-                        .first_enabled("PVSystem")
-                        .or_else(|| foreign.first_enabled("Storage"))
-                } else {
-                    // Pascal `MonitoredElement := FDERPointerList.Get(1)` is the
-                    // first *enabled* member (MakeDERList skips disabled), so scan
-                    // the named list for the first entry resolving to an enabled DER.
-                    der_names.iter().find_map(|n| {
-                        let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
-                        foreign.find(class, name).and_then(|(_, o)| {
-                            let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                            enabled.then_some(o)
-                        })
-                    })
-                };
-                resolved
-                    .and_then(|o| o.as_ckt_element())
-                    .map(|e| (e.cd().get_bus(1).to_string(), e.cd().nphases))
+                // Pascal `MonitoredElement := FDERPointerList.Get(1)` is the
+                // first *enabled* member (the bus), but the recalc loop assigns
+                // `FNphases := ControlledElement[i].NPhases` for EVERY member —
+                // the LAST fleet member's phase count wins (InvControl.pas:916;
+                // visible with a mixed 3ph+1ph fleet, midi_invcontrol).
+                let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
+                    if der_names.is_empty() {
+                        // Empty list = every PVSystem then every Storage.
+                        (
+                            foreign
+                                .first_enabled("PVSystem")
+                                .or_else(|| foreign.first_enabled("Storage")),
+                            foreign
+                                .last_enabled("Storage")
+                                .or_else(|| foreign.last_enabled("PVSystem")),
+                        )
+                    } else {
+                        let resolve = |n: &String| {
+                            let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
+                            foreign.find(class, name).and_then(|(_, o)| {
+                                let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
+                                enabled.then_some(o)
+                            })
+                        };
+                        (
+                            der_names.iter().find_map(resolve),
+                            der_names.iter().rev().find_map(resolve),
+                        )
+                    };
+                match (
+                    first.and_then(|o| o.as_ckt_element()),
+                    last.and_then(|o| o.as_ckt_element()),
+                ) {
+                    (Some(f), Some(l)) => Some((f.cd().get_bus(1).to_string(), l.cd().nphases)),
+                    _ => None,
+                }
             };
             if let Some((bus, nphases)) = info
                 && let Some(ic) = objects[oi]
@@ -855,19 +872,34 @@ impl Dss {
                 .map(|ec| ec.pvsystem_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
-                let resolved: Option<&dyn DssObject> = if pv_names.is_empty() {
-                    foreign.first_enabled("PVSystem")
-                } else {
-                    pv_names.iter().find_map(|n| {
-                        foreign.find("PVSystem", n).and_then(|(_, o)| {
-                            let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                            enabled.then_some(o)
-                        })
+                // Bus from the FIRST enabled member; phase count from the LAST
+                // (the Pascal recalc loop assigns FNphases per member —
+                // ExpControl.pas:408, same last-wins as InvControl).
+                let resolve = |n: &String| {
+                    foreign.find("PVSystem", n).and_then(|(_, o)| {
+                        let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
+                        enabled.then_some(o)
                     })
                 };
-                resolved
-                    .and_then(|o| o.as_ckt_element())
-                    .map(|e| (e.cd().get_bus(1).to_string(), e.cd().nphases))
+                let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
+                    if pv_names.is_empty() {
+                        (
+                            foreign.first_enabled("PVSystem"),
+                            foreign.last_enabled("PVSystem"),
+                        )
+                    } else {
+                        (
+                            pv_names.iter().find_map(resolve),
+                            pv_names.iter().rev().find_map(resolve),
+                        )
+                    };
+                match (
+                    first.and_then(|o| o.as_ckt_element()),
+                    last.and_then(|o| o.as_ckt_element()),
+                ) {
+                    (Some(f), Some(l)) => Some((f.cd().get_bus(1).to_string(), l.cd().nphases)),
+                    _ => None,
+                }
             };
             if let Some((bus, nphases)) = info
                 && let Some(ec) = objects[oi]

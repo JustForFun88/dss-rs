@@ -154,9 +154,16 @@ def capture_all_meters(ckt) -> list:
     m = ckt.Meters
     i = m.First
     while i:
-        branches = list(m.AllBranchesInZone)
-        ends = list(m.AllEndElements)
-        pce = list(m.ZonePCE)
+        # An EMPTY string-array comes back as the C-API placeholder ['NONE']
+        # (DefaultResult, like CtrlQueue's 'No events') — filter it so an empty
+        # zone list compares as empty, not as a phantom one-element list.
+        def _lst(v):
+            xs = [str(s) for s in v]
+            return [] if xs == ["NONE"] else xs
+
+        branches = _lst(m.AllBranchesInZone)
+        ends = _lst(m.AllEndElements)
+        pce = _lst(m.ZonePCE)
         out.append(
             {
                 "name": m.Name,
