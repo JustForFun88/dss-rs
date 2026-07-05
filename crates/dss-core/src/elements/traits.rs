@@ -294,12 +294,20 @@ pub trait CktElement {
     /// rather than a single one). The reverse of Pascal's
     /// `ControlledElement.ControlElementList` — the reports that need the
     /// forward `PDElement → controls` mapping (`ShowControlledElements`,
-    /// `ShowTopology`) derive it by scanning `Circuit.controls` and matching this
-    /// (`Circuit.controls` is in creation order, so the derived per-element list
-    /// reproduces the Pascal `ControlElementList` insertion order, and a
-    /// reassigned control follows its *current* target — the same final state as
-    /// Pascal's remove-then-add `Set_ControlledElement`). Default `None`; every
-    /// control overrides it to return `self.ccd.controlled_element`.
+    /// `ShowTopology`) derive it by scanning `Circuit.controls` and matching this.
+    /// `Circuit.controls` is in creation order, so the derived per-element list
+    /// reproduces the Pascal `ControlElementList` insertion order, and a control
+    /// reassigned to a different target follows its *current* target — the same
+    /// final state as Pascal's remove-then-add `Set_ControlledElement`. **Known
+    /// narrow limitation:** when a control's element ref is *re-edited* after a
+    /// second control already registered on the same target, Pascal's remove-then-
+    /// add re-appends the re-edited control to the *end* of that target's list,
+    /// whereas the creation-order derive keeps the original order — so the two
+    /// disagree only for ≥2 controls on one element with a post-creation
+    /// element-ref edit (probe-only; no corpus deck hits it — the fully-faithful
+    /// fix would materialise the whole `ControlElementList`, disproportionate here).
+    /// Default `None`; every control overrides it to return
+    /// `self.ccd.controlled_element`.
     fn controlled_element(&self) -> Option<ElemRef> {
         None
     }
