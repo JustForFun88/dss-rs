@@ -3954,3 +3954,34 @@ fn dump_linegeometry_matches_oracle() {
 fn dump_xfmrcode_matches_oracle() {
     run_deck_dump_exact("dump_xfmrcode");
 }
+
+/// `? transformer.t1.wdgcurrents` after a solve must equal the oracle's live
+/// recompute — pins the `do_query_cmd` Vterminal refresh (audit-code follow-up).
+/// Pascal `GetAllWindingCurrents` reloads Vterminal from the solution internally;
+/// the Rust `&self` getter reads the cached buffer, so the query path (like Dump/
+/// Export) must refresh it first. Before the fix this returned all-zeros. The
+/// pinned string is the oracle's exact bytes (same deck/values the byte-exact
+/// `dump_transformer` golden already validates against the oracle).
+#[test]
+fn query_wdgcurrents_refreshes_vterminal() {
+    let deck = [
+        "clear",
+        "new circuit.p basekv=115 bus1=src",
+        "new transformer.t1 phases=3 windings=2 xhl=6 buses=[src mid] \
+         conns=[delta wye] kvs=[115 4.16] kvas=[5000 5000]",
+        "new load.ld1 bus1=mid kv=4.16 kw=2000 pf=0.9 conn=wye",
+        "set voltagebases=[115 4.16]",
+        "calcv",
+        "solve",
+    ];
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    dss.command("? transformer.t1.wdgcurrents");
+    assert_eq!(
+        dss.result(),
+        "6.535435, (-57.242), 312.9242, (122.76), 6.535435, (-177.24), \
+         312.9242, (2.7582), 6.535435, (62.758), 312.9242, (-117.24), "
+    );
+}
