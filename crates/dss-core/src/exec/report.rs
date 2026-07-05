@@ -1499,7 +1499,7 @@ impl Dss {
                     .enums
                     .get(self.enums.earth_model)
                     .ordinal_to_string(earth_model);
-                let (main, code) = show::show_line_constants(
+                let (main, code, errs) = show::show_line_constants(
                     &mut self.classes,
                     freq,
                     units,
@@ -1507,6 +1507,9 @@ impl Dss {
                     earth_model,
                     &earth_name,
                 );
+                // Pascal #9934 per-geometry compute errors (unreachable for valid
+                // geometries) → the executive error log.
+                self.errors.extend(errs);
                 // Pascal writes `LineConstantsCode.dss` (no `@lastshowfile`) then
                 // `LineConstants.txt` (which sets `@lastshowfile`).
                 self.write_show_path("LineConstantsCode.dss", &code, false);

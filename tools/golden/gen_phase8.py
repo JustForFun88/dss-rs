@@ -727,6 +727,10 @@ def gen_show_lineconstants(d) -> None:
     d.AllowEditor = False
     _gen_lineconstants(d, SHOW_LC_DECK, "", "show_lineconstants")
     _gen_lineconstants(d, SHOW_LC_DECK, "60 mi 250", "show_lineconstants_mi250")
+    # freq != DefaultBaseFreq (audit-code follow-up): pins that a non-default
+    # frequency propagates into the Carson recompute (the freq-parse arm is already
+    # hit by mi250's non-empty "60", but its value equals the default there).
+    _gen_lineconstants(d, SHOW_LC_DECK, "50", "show_lineconstants_f50")
     _gen_lineconstants(d, SHOW_LC_EMPTY_DECK, "", "show_lineconstants_empty")
 
 
