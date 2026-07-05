@@ -871,6 +871,12 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "storagectrl_peakshave.dss",
     "storagectrl_time.dss",
     "gendispatcher.dss",
+    "recloser_temp.dss",
+    "recloser_perm.dss",
+    "relay_oc_sym.dss",
+    "relay_4647_asym.dss",
+    "fuse_blow_asym.dss",
+    "swtcontrol_time.dss",
 ];
 
 /// Oracle-free structural guard: deck dir ↔ manifest bijection, the required

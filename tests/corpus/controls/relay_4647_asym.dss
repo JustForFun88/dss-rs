@@ -1,0 +1,32 @@
+// Relay types 46/47 — the INHERENTLY asymmetric protections: neither would
+// ever operate on a balanced condition. Two parallel branches from the source
+// so each relay trips independently: branch 1 carries a heavy single-phase
+// load (steady negative-sequence current -> the 46 relay trips it); branch 2
+// gets a line-to-line fault (negative-sequence voltage -> the 47 relay trips
+// it). Compared per step: full model + State/Normal + pickup probes + the
+// trip event log.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+
+! Branch 1: unbalanced load -> steady -seq current; 46 relay on the branch.
+new line.f1 bus1=src bus2=a linecode=lc length=1 units=mi
+new load.lu bus1=a.1 phases=1 kv=7.2 kw=400 pf=0.9 model=1
+new load.lb bus1=a phases=3 kv=12.47 kw=150 pf=0.95 model=1
+new relay.r46 type=46 monitoredobj=line.f1 monitoredterm=1
+~ switchedobj=line.f1 switchedterm=1 46baseamps=20 46%pickup=20 46isqt=1
+~ delay=0.1 shots=1 recloseintervals=None eventlog=yes
+
+! Branch 2: line-to-line fault -> -seq voltage; 47 relay on the branch.
+new line.f2 bus1=src bus2=b linecode=lc length=1 units=mi
+new load.l2 bus1=b phases=3 kv=12.47 kw=300 pf=0.95 model=1
+new relay.r47 type=47 monitoredobj=line.f2 monitoredterm=2
+~ switchedobj=line.f2 switchedterm=1 kvbase=12.47 47%pickup=2
+~ delay=0.2 shots=1 recloseintervals=None eventlog=yes
+new fault.f bus1=b.1 bus2=b.2 phases=1 ontime=0.1 r=0.5 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time
