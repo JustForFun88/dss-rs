@@ -428,6 +428,42 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
     (oracle, rust, scratch)
 }
 
+/// Drive one deck-based `Dump` report (PHASE8_PLAN §WP8.5): replay the deck, route
+/// output into a scratch dir, issue `Dump <report>`, and byte-compare the produced
+/// `<case>_PropertyDump.txt` against the oracle golden. Unlike `Show`, `Dump` sets
+/// `GlobalResult` to the produced path, so the file is read via
+/// `dss.last_result_file()` (no suffix glob). Byte-exact: the dump is pure DSS
+/// script text (no padded columns), so the oracle bytes are reproducible in full.
+fn run_deck_dump_exact(stem: &str) {
+    let dir = phase8_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("dump {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
+    assert_show_bytes_eq(&oracle, &rust, stem);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Compile a **heavy** master once and diff several reports against the oracle,
 /// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
 /// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the
@@ -3786,4 +3822,24 @@ fn di_overloads_single_phase_mapping_matches_oracle() {
     compare_export(&oracle, &rust, &di_policy(), "di_overloads_1ph");
 
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+// --- WP8.5 step 1: Dump (single-object forms) ---
+
+/// `Dump reactor.*` (base) — the `TReactorObj.DumpProperties` override: the
+/// `New "…"` header, `! ENABLED`, the property loop with the reactor's custom
+/// Z/LmH formats, the matrix skip (r1) and the un-`~` `RMatrix=`/`XMatrix=` lines
+/// (rz). Byte-exact.
+#[test]
+fn dump_reactor_matches_oracle() {
+    run_deck_dump_exact("dump_reactor");
+}
+
+/// `Dump reactor.* debug` — adds the `TDSSCktElement.DumpProperties` Complete
+/// block: NPhases/Nconds/Nterms/Yorder, the NodeRef list, terminal open/closed
+/// status + bus refs, and the `%13.10g` primitive-Y G/B full matrices. Byte-exact
+/// (the assembled Y is bit-exact on this LineCode-free reactor deck).
+#[test]
+fn dump_reactor_debug_matches_oracle() {
+    run_deck_dump_exact("dump_reactor_debug");
 }

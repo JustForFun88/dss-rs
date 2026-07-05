@@ -20,6 +20,7 @@
 pub mod export;
 pub mod format;
 pub mod output;
+pub mod save;
 pub mod show;
 
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`

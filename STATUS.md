@@ -9,11 +9,20 @@
 
 Last updated: 2026-07-05 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
-gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited** (WP8.4 = the whole `Show`
-family, all real reports ported + audited; `#24700` + the `autoadded`/`QueryLog`
-headless no-ops; the corpus refresh is a no-op — `Show` never blocked a deck).
-**next = WP8.5 (Save circuit + `Save <class>` + Dump).** golden_phase8 **125**; lib
-**744+**. **WP8.4 (Show) steps 1–16
+gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)
+IN PROGRESS — Dump step 1 gate-green** (single-object `Dump <class>.[name|*]
+[debug]`: the `report/save/dump.rs` generic base — the 3-kind `TDSSObject`/
+`TDSSCktElement`/`TPCElement` chain — + the **Reactor** override + `#903`/`#256`
+errors; the 13 other overrides + bare-`dump`/`solution`/aux forms are TODO(WP8)
+steps 2–3). **Two byte-fidelity gaps found + fixed** (both latent, surfaced by the
+first byte-exact property dump): property names now carry the oracle **display
+case** (`Bus1`/`kV`/`NormAmps`, Reactor done; matching stays case-insensitive), and
+`float_to_str` now emits FPC `FloatToStr`'s **15-sig-fig** general form (was Rust's
+17-digit shortest-round-trip — `props_roundtrip`'s numeric compare never caught it).
+golden_phase8 **125→127**; lib **744→745**. REACTORTest unblocked (pending the
+Dump-completion classify pass, PHASE8_PLAN §WP8.5 step 4). **next = Dump step 2**
+(Transformer/Line/LineCode/LineGeometry/XfmrCode per-winding/matrix overrides).
+**WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
 controlqueue/kvbasemismatch + step 8: Meters/Generators register tables +
@@ -534,7 +543,41 @@ frontier:
   voltage goldens pin). golden_phase8 **→125**. **next = the corpus classify/migrate
   pass** (Show was never a blocker, so likely a no-op — refresh + confirm), then the
   STATUS full sync + WP8.4 close.
-- **WP8.5 (Save/Dump) — NOT STARTED; exploration recorded.** The port map (from a
+- **WP8.5 (Save/Dump) — Dump step 1 COMPLETE, gate-green.** The `Dump`
+  single-object forms (`Dump <class>.<name> [debug]` / `Dump <class>.* [debug]`,
+  Pascal `DoPropertyDump`, `ExecHelper.pas:1194`): new `report/save/` module
+  (`dump.rs` = the generic base reproducing Pascal's 4-level `TDSSObject`→
+  `TDSSCktElement`→`TPCElement` chain, selected per element kind — plain / non-PC
+  CktElement / PCElement — with `dump.rs::overrides` downcast-dispatching the
+  per-class leaf overrides) + the **Reactor** override (`reactor/dump.rs`: the NIL-
+  matrix skip, the un-`~` `RMatrix=`/`XMatrix=` lines, the `%-.8g` Z/LmH forms) +
+  the `#903` (`SetObjectClass` fail) / `#256` (object-not-found) errors + the
+  `dump_one_object` dispatcher (`exec/report.rs`, precomputing the PC `! VARIABLES`
+  values via the mutable element walk). The whole-circuit forms (bare `Dump` /
+  `Dump debug` + `Circuit.DebugDump` header, `Dump solution`, `Dump commands`/
+  `buslist`/`devicelist`/`alloc`) are scoped TODO(WP8) step 3; the 13 non-Reactor
+  overrides are TODO(WP8) step 2 (until each lands, its class dumps via the generic
+  base). Property lines reuse `ClassProps::get_value` (Pascal `PropertyValue[i] ==
+  GetPropertyValue(i)`). goldens `dump_reactor`/`dump_reactor_debug` (synthesized
+  reactor deck: r1 series R+X + rz R/X-matrices; `debug` adds the CktElement
+  NPhases/…/NodeRef/Terminal Status/Bus Ref + the `%13.10g` YPrim G/B) **byte-exact**
+  (golden_phase8 **125→127**). **Two latent byte-fidelity bugs found + fixed**
+  (both surfaced by this first byte-exact property dump; `props_roundtrip`'s numeric
+  compare masked both): **(1)** the port stored property names in ad-hoc lowercase
+  (`bus1`/`kv`/`normamps`) but Pascal `PropertyName[i]` (what Dump/Save emit) is the
+  **display case** (`Bus1`/`kV`/`NormAmps`) — corrected for Reactor, pinned by the
+  golden; matching stays case-insensitive (`CommandList` lowercases both sides), so
+  no parse regression, and **Save's round-trip gate is case-insensitive** so only
+  Dump byte goldens need each class's names corrected (class-by-class as they land);
+  **(2)** `float_to_str` was `format!("{v}")` (Rust's 17-digit shortest-round-trip)
+  where FPC `FloatToStr` is `ffGeneral`/**15 sig figs** — fixed to `fmt_g(v, 15)`
+  (full workspace suite green, 745 lib tests, so no numeric-gate regression; the
+  scientific-exponent FPC form is a scoped `TODO(compat)`, unreached by in-scope
+  dumps). REACTORTest unblocked (converges clean on Rust) — migration deferred to
+  the Dump-completion classify pass (PHASE8_PLAN §WP8.5 step 4). **next = Dump step
+  2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original port map
+  below (still current for the remaining steps):
+- **WP8.5 (Save/Dump) — exploration/port map.** The port map (from a
   scoped explore pass) so the next session resumes without re-reading:
   - **Reuse (the oracle-validated primitive):** `ClassProps::get_value(obj, idx,
     enums)` (`obj/props/class_props/value.rs:16`) — the exact renderer the `?` query
@@ -651,10 +694,10 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 744, golden_feeders 1,
+cargo test --workspace      # dss-core lib 745, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 125,
+                            # golden_phase7_protection 1, golden_phase8 127,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

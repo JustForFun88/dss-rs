@@ -1,0 +1,12 @@
+{
+  "report": "reactor.* debug",
+  "fixture": "dumpr8",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpr8 basekv=12.47 bus1=src",
+    "new reactor.r1 bus1=b1 bus2=b2 phases=3 R=1.1 X=2.2",
+    "new reactor.rz bus1=b4 phases=3 Rmatrix=(1 | 0.2 1 | 0.2 0.2 1) Xmatrix=(3 | 0.5 3 | 0.5 0.5 3)",
+    "new load.ld1 bus1=b4 kv=12.47 kw=100",
+    "solve"
+  ]
+}
