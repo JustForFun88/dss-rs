@@ -21,11 +21,13 @@ fn g6(v: f64) -> String {
 }
 
 /// Build the two `Show LineConstants` files (Pascal `ShowLineConstants`): returns
-/// `(main_report, linecodes_dss)`. `earth_model` is `DSS.DefaultEarthModel` (passed
-/// as `DSS.ActiveEarthModel` into the Carson recompute); `earth_name` is
+/// `(main_report, linecodes_dss, errors)`. `earth_model` is `DSS.DefaultEarthModel`
+/// (passed as `DSS.ActiveEarthModel` into the Carson recompute); `earth_name` is
 /// `EarthModelEnum.OrdinalToString(earth_model)`. Iterates the `LineGeometry`
 /// objects in creation order, mutating each (`RhoEarth :=`, recompute) exactly like
-/// Pascal pokes the shared catalog object.
+/// Pascal pokes the shared catalog object. `errors` carries Pascal's #9934
+/// "Error computing line constants for …" message when a geometry's Carson recompute
+/// fails (the caller extends its error log with it).
 pub(crate) fn show_line_constants(
     classes: &mut [DssClass],
     freq: f64,
@@ -33,10 +35,11 @@ pub(crate) fn show_line_constants(
     rho: f64,
     earth_model: i32,
     earth_name: &str,
-) -> (String, String) {
+) -> (String, String, Vec<String>) {
     let units_str = LineUnits::from_code(units).as_str();
     let mut f = String::new(); // LineConstants.txt
     let mut f2 = String::new(); // LineConstantsCode.dss
+    let mut errors: Vec<String> = Vec::new();
 
     f.push_str("LINE CONSTANTS\n");
     f.push_str(&format!(
@@ -59,7 +62,7 @@ pub(crate) fn show_line_constants(
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case("LineGeometry"))
     else {
-        return (f, f2); // no geometries → header-only files
+        return (f, f2, errors); // no geometries → header-only files
     };
 
     for oi in 0..classes[ci].objects.len() {
@@ -77,13 +80,22 @@ pub(crate) fn show_line_constants(
             geom.yc_matrix(freq, 1.0, units, earth_model),
         ) {
             (Ok(z), Ok(yc)) => (z, yc),
-            // Pascal logs #9934 and (on a valid geometry never) would fault; skip.
-            _ => continue,
+            // Pascal `ShowResults.pas:3295-3298`: on a compute exception, log #9934
+            // and continue (Pascal then faults on the NIL `Z` — a crash we do NOT
+            // reproduce; the safe skip keeps the diagnostic without the AV). This is
+            // unreachable for a validly-parsed geometry (those errors fire at parse).
+            (z, y) => {
+                let msg = z.err().or_else(|| y.err()).unwrap_or_default();
+                errors.push(format!(
+                    "Error computing line constants for LineGeometry.{name}; Error message: {msg}"
+                ));
+                continue;
+            }
         };
         write_geometry(&mut f, &mut f2, &name, &z, &yc, freq, units, units_str);
     }
 
-    (f, f2)
+    (f, f2, errors)
 }
 
 /// One geometry's block in both files.

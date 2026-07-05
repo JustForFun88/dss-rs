@@ -1627,6 +1627,16 @@ fn show_lineconstants_mi250_matches_oracle() {
     run_lineconstants_show("show_lineconstants_mi250");
 }
 
+/// `Show LineConstants 50` (audit-code follow-up): a **non-default frequency**
+/// (freq=50 ≠ DefaultBaseFreq=60), units/rho defaulting. Pins that the freq value
+/// propagates into the Carson recompute (the freq-parse arm itself is also hit by
+/// `mi250`'s non-empty `60`, but its value there equals the default). Both files
+/// byte-exact.
+#[test]
+fn show_lineconstants_f50_matches_oracle() {
+    run_lineconstants_show("show_lineconstants_f50");
+}
+
 /// `Show LineConstants` on a **geometry-less** deck (circuit + WireData, no
 /// `LineGeometry`): both files are header-only (audit-tests step-14 follow-up). Pins
 /// the empty-geometry-list path — the `LineConstants.txt` `LINE CONSTANTS`/Frequency/

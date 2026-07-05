@@ -409,10 +409,22 @@ Phase-8 detail is in **§1f**; the current frontier:
   `set_rho_earth`-then-recompute path is correct** (a fresh geometry's `fline_data`
   is built at parse, so the rho takes effect; the suspected rho-drop is a non-issue),
   byte-exact on both files; (2) **`show_lineconstants_empty`** (a geometry-less deck)
-  pins the header-only path. golden_phase8 **106→108**. **next = continue WP8.4**
-  (`busflow` `ShowBusPowers`; the CktTree pair `Isolated`/`Topology` — need
-  `GetTopology`/`GetIsolatedSubArea` builders; then finalize: `autoadded`/`QueryLog`
-  no-ops + the `#24700` unknown-keyword error).
+  pins the header-only path. golden_phase8 **106→108**. **audit-code — no correctness
+  bug** (rho/full-`TwoPi`/matrix-math/units/two-file all verified faithful + byte-exact
+  incl. the auditor's own `mi250`/`freq=50` probes; the `twopi=TAU` confirmed —
+  `ShowResults.pas` pulls `DSSGlobals.TwoPi=2·PI`, not the truncated Carson one). One
+  **Minor** fixed: the geometry-compute error path silently dropped Pascal's **#9934**
+  `Error computing line constants for …` message — the formatter now returns it and
+  the dispatcher extends the error log (unreachable for a validly-parsed geometry, so
+  golden-uncoverable; the safe skip still does not reproduce Pascal's post-log NIL-`Z`
+  fault). One coverage golden added on the audit's recommendation: **`show_lineconstants_f50`**
+  (`show lineconstants 50`, freq≠DefaultBaseFreq) pins the non-default-frequency Carson
+  propagation. (Pre-existing, out-of-scope: `fmt_g` NaN/Inf formatting for a
+  pathological negative-surge-radicand order-3 geometry — unreachable for real lines.)
+  golden_phase8 **108→109**. **next = continue WP8.4** (`busflow` `ShowBusPowers`; the
+  CktTree pair `Isolated`/`Topology` — need `GetTopology`/`GetIsolatedSubArea`
+  builders; then finalize: `autoadded`/`QueryLog` no-ops + the `#24700`
+  unknown-keyword error).
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -492,7 +504,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 108,
+                            # golden_phase7_protection 1, golden_phase8 109,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
