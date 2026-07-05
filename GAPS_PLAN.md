@@ -4,11 +4,44 @@
 > `PHASE4_PLAN.md` §0 / `PHASE7_PLAN.md` §0 / `PHASE8_PLAN.md` §0 (Pascal is the
 > spec; probe the oracle, never guess FPC semantics; `TODO(compat)` /
 > `NOT_PORTED` discipline; goldens regenerated **manually** with the pinned
-> oracle `tools/golden/PIN.txt`; the standard three-command gate green per WP;
-> the full per-step ritual — gate → STATUS.md → commit → `/audit-code` +
-> `/audit-tests` by independent agents → fix-commits → STATUS sync — applies
-> per WP; commit only on explicit user request; **final per-step report to the
-> user in Russian**).
+> oracle `tools/golden/PIN.txt`).
+>
+> **Stop-and-confirm cadence (same as `PHASE8_PLAN §0`):** after each small
+> step (a WPG, or a self-contained stage of one — e.g. WPG.15's stages A/B/C)
+> run the per-step ritual below **autonomously, without pausing between its
+> sub-steps**; the single stop point is at the very end — then wait for the
+> user's explicit confirmation (unless the user authorized several WPs in one
+> pass).
+>
+> **Per-step ritual (do every step, in order, without being told):**
+> 1. **Gate green** — `cargo fmt --all --check`; `cargo clippy --workspace
+>    --all-targets -- -D warnings`; `cargo test --workspace` (runs **all**
+>    goldens + the always-on live corpus gates). No `#[ignore]`, no
+>    name-filter that could green on zero matches. For a WPG this includes
+>    its exit criteria: the deck's `pending` flipped to `false`, the live
+>    compare green at the family tolerance, the deck **graduated** to its
+>    permanent family (§3.1). A red test blocks the commit.
+> 2. **Update `STATUS.md`** (the §1 frontier + the GAPS record), **commit**
+>    (code + STATUS together).
+> 3. **`/audit-code` + `/audit-tests` in parallel** — two **fresh independent
+>    agents, never forks** (a scoped agent reviews more sharply than one
+>    buried in your context). Each gets a self-contained brief: the step's
+>    commit range (`<sha>^..HEAD`) or WPG label, the diff, the authoritative
+>    Pascal units + plan/STATUS sections, and the binding rules (the PIN,
+>    `TODO(compat)`/`NOT_PORTED`, the §2/§3 deck-validation protocol, the
+>    oracle is the spec). Auditors are **read-only** and return findings
+>    only; **you** settle each finding against the pinned oracle, fix what is
+>    real, note the follow-up in `STATUS.md`, re-run the gate, commit. A
+>    finding deliberately not fixed is **recorded in STATUS**, never dropped;
+>    if an audit finds nothing, skip its commit (no empty commits). For a
+>    trivial sub-step the inline audit skill is allowed.
+> 4. **`STATUS.md` full review** — read it end to end; sync whatever the step
+>    made stale (no two places disagreeing), archive dead weight to
+>    `docs/phase-records/`, dedup restated paragraphs; `docs:` commit if
+>    anything changed (gate re-run first).
+> 5. **Only now stop** and report **in Russian** (code, identifiers, commit
+>    messages and STATUS stay English): what landed, what the audits found
+>    and how it was settled, gate status, next step.
 >
 > **What this plan is.** Two kinds of unported work, one closure plan:
 >
