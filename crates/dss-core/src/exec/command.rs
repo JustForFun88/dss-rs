@@ -570,23 +570,42 @@ impl Dss {
             return;
         }
         let oi = self.classes[ci].active.expect("just set active");
-        // Refresh `Vterminal` from the solution before reading, so a read-only
-        // result getter that reads it live (Pascal reloads it internally, e.g.
-        // `TTransfObj.WdgCurrents` → `GetAllWindingCurrents`) reflects the current
-        // solve rather than a stale/zero buffer — the same refresh the Dump/Export
-        // paths do (`dump_one_object`, `export_elem_*`). Without it, `? transformer.
-        // x.wdgcurrents` returned all-zeros where the oracle recomputes live.
-        if let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
-            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
-        {
-            elem.cd_mut().compute_vterminal(&node_v);
-        }
         if let Some(idx) = self.classes[ci].props.property_index(&prop_name) {
+            self.refresh_vterminal_if_marked(ci, oi, Some(idx));
             self.last_result = self.classes[ci].props.get_value(
                 self.classes[ci].objects[oi].as_ref(),
                 idx,
                 &self.enums,
             );
+        }
+    }
+
+    /// Refresh `cd.vterminal` from the solution iff the property (`Some(idx)`)
+    /// — or, for the whole-object `Dump` render, *any* property of the class
+    /// (`None`) — is marked [`PropFlags::READS_VTERMINAL`]. Pascal's `?`/`Dump`
+    /// do no caller-side refresh at all: the lone live-result getter reloads
+    /// `Vterminal` from `Solution.NodeV` itself (`TTransfObj.GetAllWindingCurrents`,
+    /// `Transformer.pas` l.1538). The Rust `&self` getter can't reach the
+    /// solution, so this choke point performs exactly that reload, exactly for
+    /// the properties that declare the need.
+    pub(super) fn refresh_vterminal_if_marked(
+        &mut self,
+        ci: usize,
+        oi: usize,
+        prop_idx: Option<usize>,
+    ) {
+        use crate::obj::props::PropFlags;
+        let props = &self.classes[ci].props;
+        let marked = match prop_idx {
+            Some(i) => props.prop(i).flags.contains(PropFlags::READS_VTERMINAL),
+            None => (1..=props.num_properties())
+                .any(|i| props.prop(i).flags.contains(PropFlags::READS_VTERMINAL)),
+        };
+        if marked
+            && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
+            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
+        {
+            elem.cd_mut().compute_vterminal(&node_v);
         }
     }
 

@@ -1838,14 +1838,11 @@ impl Dss {
         let node_v: Option<Vec<num_complex::Complex64>> =
             self.circuit.as_ref().map(|c| c.solution.node_v.clone());
 
-        // Refresh `Vterminal` from the solution so result getters that read it
-        // live (Pascal `ComputeVTerminal`, e.g. the Transformer `WdgCurrents`
-        // property) see the current solve, not a stale/zero buffer.
-        if let Some(nv) = node_v.as_ref()
-            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
-        {
-            elem.cd_mut().compute_vterminal(nv);
-        }
+        // Live-result properties (Transformer `WdgCurrents`) render from
+        // `cd.vterminal`; refresh it iff this class declares the need. Once per
+        // object is equivalent to per-property: the refresh is an idempotent
+        // copy of `NodeV` and the dump render loop doesn't mutate.
+        self.refresh_vterminal_if_marked(ci, oi, None);
 
         // PC `! VARIABLES` values (empty unless Complete + PC).
         let variables: Vec<(String, f64)> = if complete && is_pc {

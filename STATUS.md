@@ -46,7 +46,21 @@ wdgcurrents` after a solve returned **all-zeros** where the oracle recomputes li
 `node_v`). `do_query_cmd` now refreshes `Vterminal` before `get_value`, mirroring
 the Dump/Export paths — pinned byte-exact by `query_wdgcurrents_refreshes_vterminal`
 (golden_phase8 **141→142**). Property `Save` is unaffected (it emits only
-explicitly-set properties, never the read-only `WdgCurrents` result). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+explicitly-set properties, never the read-only `WdgCurrents` result). **Follow-up
+(fundamental fix, 2026-07-05, gate-green):** full Pascal+Rust audit proved the
+stale-cache class is exactly the `WdgCurrents` family — the whole upstream property
+table has only three live-solution reads (`Transformer.WdgCurrents`; unported
+`AutoTrans.WdgCurrents`, vterminal-only too; `IndMach012.pf`, which upstream
+renders `''` **always** — `PropertyOffset` stays `-1` so the `GetObjPropertyValue`
+guard skips the read function even post-solve, probe-proven — Rust's
+`SILENT_READ_ONLY → ""` is byte-correct, its doc rationale corrected). The blanket
+`?`/Dump `compute_vterminal` (a Pascal-divergent write on *every* element) is
+replaced by a declarative Rust-only `PropFlags::READS_VTERMINAL` on the prop def +
+one choke point `Dss::refresh_vterminal_if_marked` used by both surfaces (a future
+AutoTrans port inherits correctness by setting the flag; an iterminal-needing
+property must add a separate marker with iterminal-then-vterminal order — VSource
+EMF side effect). New golden `query_indmach012_pf_empty_after_solve` freezes the
+post-solve `''` probe (golden_phase8 **142→143**). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
 property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
 Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
 `FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by
