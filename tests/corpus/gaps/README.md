@@ -2,7 +2,9 @@
 
 Hand-written DSS decks for every feature that was deferred during Phases 4–7
 **only because no vendored corpus deck exercises it** (the WP7.9
-"zero corpus cases → skip" anti-pattern, called out in `PHASE8_PLAN.md` §1).
+"zero corpus cases → skip" anti-pattern, called out in `PHASE8_PLAN.md` §1),
+**plus** (2026-07-05) the five **unported element classes** the registry still
+lacks — Isource, AutoTrans, GICLine, GICTransformer, GICsource (WPG.15–WPG.17).
 The execution plan that consumes them is **`GAPS_PLAN.md`** at the repo root —
 read it first; it records per-deck determinism proofs and gate strategy.
 
@@ -36,6 +38,15 @@ changes the oracle output).
 | `invcontrol_storage_vw.dss` | InvControl `mode=voltwatt` over Storage | WPG.10 |
 | `invcontrol_storage_vv_vw.dss` | InvControl `combimode=VV_VW` over Storage | WPG.10 |
 | `storagecontroller_seasonal.dss` | StorageController seasonal targets + `Set SeasonRating/SeasonSignal` | WPG.11 |
+| `isource_snap.dss` | Isource snapshot: 1-ph trio, explicit `Bus2`, `sequence=neg` | WPG.15 |
+| `isource_daily.dss` | Isource `daily=` shape drive (8 h, meter + monitors) | WPG.15 |
+| `isource_harm.dss` | Isource spectrum injection under `mode=harmonics` (+ `scantype=zero`) | WPG.15 |
+| `autotrans_snap.dss` | AutoTrans 3-wdg s/w/d (AutoAuto 330 MVA) + 2-wdg unit; `WdgCurrents` probe | WPG.16 |
+| `autotrans_reg.dss` | RegControl on AutoTrans common winding (daily, event log) | WPG.16 |
+| `autotrans_gic.dss` | AutoTrans `GICBuildYTerminal` (< 0.51 Hz Rdc-only branch) | WPG.16 |
+| `gicline_gic.dss` | GICLine: `Volts` + `EN/EE` geodesy + blocking-`C` units @ 0.1 Hz | WPG.17 |
+| `gictransformer_gic.dss` | GICTransformer GSU/YY/Auto, `R1/R2` + `%R1` specs, `VarCurve` | WPG.17 |
+| `gicsource_gic.dss` | GICsource named-Line splice (`GIC_<name>` bus, Bus2 rewrite) | WPG.17 |
 
 `ls8.sng`, `ls8.dbl`, `lspq8.csv`, `t8.sng`, `p8.dbl`, `g4.csv` are the committed
 input fixtures for `shape_binfiles.dss` (rebuildable via

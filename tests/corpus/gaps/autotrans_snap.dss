@@ -1,0 +1,29 @@
+! GAPS deck: AutoTrans snapshot — the built-in autotransformer (Pascal
+! AutoTrans.pas): Series/Common/Delta-tertiary windings (conn=s/w/d), the
+! XHX/XHT/XXT reactance set, the series->common node aliasing (SetNodeRef) and
+! the X-terminal current combination (GetCurrents override). Numbers follow the
+! corpus Test/AutoTrans/AutoAuto.dss 330 MVA YNad1 unit. Also a 2-winding
+! 115/69 kV auto unit. Read-only WdgCurrents is probed by the manifest.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_auto basekv=345.0 phases=3 mvasc3=2000000 2000000
+New Line.line1 bus1=sourcebus bus2=high switch=yes r1=1e-6 r0=1e-6 x1=0 x0=0 c1=0 c0=0
+! The AutoAuto.dss 330 MVA 345/161/13.8 YNad1 unit.
+New AutoTrans.t1 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 %imag=0.0329 %noloadloss=0.02402
+~ wdg=1 bus=high conn=s kV=345.0 kVA=330000 %r=0.0493
+~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556
+~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503
+New Load.l161 bus1=low phases=3 kv=161 kw=250000 pf=0.88 model=1
+New Load.l138 bus1=tert phases=3 kv=13.8 kw=30000 pf=0.95 model=1
+! 2-winding 115/69 auto spur fed from the tertiary side network is unrealistic;
+! feed it from its own subtransmission source bus instead.
+New Vsource.s2 bus1=sub2 basekv=115 pu=1.01 phases=3 mvasc3=15000 mvasc1=12000
+New AutoTrans.t2 phases=3 windings=2 xhx=8.5
+~ wdg=1 bus=sub2 conn=s kV=115 kVA=50000 %r=0.08
+~ wdg=2 bus=mid2 conn=w kV=69  kVA=50000 %r=0.09
+New Load.l69 bus1=mid2 phases=3 kv=69 kw=32000 pf=0.9 model=1
+New Monitor.m_t1 element=AutoTrans.t1 terminal=1 mode=0
+Set voltagebases=[345.0 161.0 115.0 69.0 13.8]
+Calcvoltagebases
+Set tolerance=1e-8
+Solve

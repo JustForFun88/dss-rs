@@ -707,6 +707,24 @@ frontier:
   only the ordinal, not the enum name; the option spelling is `Set
   SeasonRating`, not `SeasonalRating`. Also removed the stray empty
   `c/DI_yr_0/` artifact dir. No engine code touched (decks/plan/docs only).
+- **GAPS_PLAN extended (2026-07-05): the unported ELEMENT classes.** A registry
+  diff (Pascal `DSSClassDefs.pas` vs `exec/construct.rs`) found five
+  upstream-registered classes with no Rust port: **Isource** (541 ln),
+  **AutoTrans** (2065 ln — both were in the PORTING_PLAN crate sketch but never
+  assigned to a phase), **GICLine**/**GICTransformer**/**GICsource** (pulled in
+  from Phase 9). Now GAPS_PLAN §1b + WPG.15–17 (exit sweep renumbered →
+  WPG.18), each with Sonnet-executable staged steps (Pascal line refs, Rust
+  module templates, registration slots, gates, corpus reclassification).
+  **9 new decks** at `tests/corpus/gaps/` (isource snap/daily/harm, autotrans
+  snap/reg/gic, gicline/gictransformer/gicsource) — all §3-validated on the
+  pinned oracle (two-process bit-identical; `autotrans_reg` control-active:
+  10 tap events, tapnum=5; `gicsource` splice probe: `line.bus2 → gic_<name>`).
+  Probe-proven upstream facts recorded: GICTransformer parses `%R1` (not
+  `pctR1`); AutoTrans `WdgCurrents` = the `READS_VTERMINAL` family; corpus
+  `Auto1bus`/`Auto3bus` need no new class (stale `fault` tags — regular
+  transformers); `GICsource` has zero corpus decks. `ControlledTransformer` +
+  user-model DLL classes verified not-registered upstream (nothing to port).
+  No engine code touched (decks/plan/docs only).
 - **Per-element midi wave (2026-07-05, gate-green): every micro scenario
   replayed on the midi scaffold** — 12 per-element asymmetric decks
   (`midi_vsource_asym` … `midi_upfc_asym`, incl. VCCS behind a 12.47/0.36
