@@ -98,6 +98,74 @@
    "compare_eventlog": true
   },
   {
+   "path": "recloser_temp.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Recloser.r", "props": ["state", "normal", "numfast", "shots", "phasetrip", "groundtrip"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "recloser_perm.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Recloser.r", "props": ["state", "normal", "numfast", "shots", "phasetrip", "groundtrip"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "relay_oc_sym.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Relay.rl", "props": ["state", "normal", "type", "phasetrip", "groundtrip", "delay", "shots"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "relay_4647_asym.dss",
+   "kind": "micro",
+   "n_steps": 10,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Relay.r46", "props": ["state", "normal", "type", "delay"]},
+    {"element": "Relay.r47", "props": ["state", "normal", "type", "delay", "kvbase"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "fuse_blow_asym.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Fuse.fz", "props": ["state", "normal", "ratedcurrent", "fusecurve"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "swtcontrol_time.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "post": ["edit swtcontrol.sw action=open"],
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "SwtControl.sw", "props": ["state", "normal", "delay", "lock"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
    "path": "gendispatcher.dss",
    "kind": "micro",
    "n_steps": 12,
