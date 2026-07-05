@@ -1,0 +1,16 @@
+! GAPS deck: InvControl mode=VOLTWATT over a Storage fleet — deterministic.
+! The Storage volt-watt path (charging/discharging limit selection) is the
+! WP7.5 NOT_PORTED branch; gate pins the per-step storage powers + %stored.
+Clear
+New Circuit.gaps_icvw basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New XYcurve.vw npts=4 xarray=(0.5 1.0 1.05 1.5) yarray=(1.0 1.0 0.2 0.2)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=200 pf=0.95 model=1
+New Storage.batt bus1=b1 phases=3 kv=12.47 kva=400 kwrated=350 kwhrated=1400 %stored=80 state=discharging %discharge=100 dispmode=default
+New InvControl.ic derlist=[storage.batt] mode=voltwatt voltwatt_curve=vw voltage_curvex_ref=rated deltap_factor=0.4 eventlog=yes
+New Monitor.m_b element=Storage.batt terminal=1 mode=1 ppolar=no
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set maxcontroliter=200
+Set mode=daily stepsize=1h number=6
+Solve

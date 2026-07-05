@@ -1,0 +1,185 @@
+{
+ "comment": "GAPS live-gate decks (GAPS_PLAN.md): synthesized decks for every feature deferred in Phases 4-7 only because no vendored corpus deck exercises it. Same live-compare mandate as the controls family (full model + probes / compare_eventlog / compare_ctrlqueue / check_meters_monitors, run by a gaps_cases_match_oracle added at GAPS_PLAN execution). Every case starts with pending=true (the feature is NOT_PORTED; the Rust engine must error loudly, never silently fall back); the WP that ports the feature flips its cases to pending=false and they join the live compare. WPG.14 asserts no pending=true remains. All decks were validated on the pinned oracle 2026-07-05: deterministic across two separate oracle processes (see GAPS_PLAN.md section 2.1 for why that matters) and feature-sensitive. n_steps = solve sample points observed on the oracle. Binary/CSV fixtures (ls8.sng, ls8.dbl, lspq8.csv, t8.sng, p8.dbl, g4.csv) regenerate via tools/corpus/gen_gaps_binshapes.py.",
+ "cases": [
+  {
+   "path": "shape_binfiles.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Loadshape.ls_sng", "props": ["npts", "interval", "mult"]},
+    {"element": "Loadshape.ls_dbl", "props": ["npts", "interval", "mult"]},
+    {"element": "Loadshape.ls_pq", "props": ["npts", "interval", "mult", "qmult"]},
+    {"element": "Tshape.t_sng", "props": ["npts", "temp"]},
+    {"element": "Priceshape.p_dbl", "props": ["npts", "price"]},
+    {"element": "GrowthShape.g_csv", "props": ["npts", "year", "mult"]}
+   ],
+   "pending": true,
+   "wp": "WPG.1"
+  },
+  {
+   "path": "generaltime.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Storage.batt", "props": ["%stored", "state"]}
+   ],
+   "pending": true,
+   "wp": "WPG.2"
+  },
+  {
+   "path": "ld1.dss",
+   "kind": "micro",
+   "n_steps": 16,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.3"
+  },
+  {
+   "path": "ld2.dss",
+   "kind": "micro",
+   "n_steps": 5,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.3"
+  },
+  {
+   "path": "monte1.dss",
+   "kind": "micro",
+   "n_steps": 5,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "monte2.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "monte3.dss",
+   "kind": "micro",
+   "n_steps": 4,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "montefault.dss",
+   "kind": "micro",
+   "n_steps": 3,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "autoadd.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Generator.gadd1", "props": ["bus1", "kw", "pf", "kv"]}
+   ],
+   "pending": true,
+   "wp": "WPG.5",
+   "note": "Oracle segfaults at PROCESS EXIT after an AutoAdd solve (solve itself completes; Text.Result = 'b3, 0.0180069930672805', Generator.gadd1 appended, fingerprint bit-identical across runs). The oracle-side driver must capture everything before interpreter teardown; see GAPS_PLAN.md section 2.2."
+  },
+  {
+   "path": "newton.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": ["*"],
+   "pending": true,
+   "wp": "WPG.6"
+  },
+  {
+   "path": "capcontrol_follow.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "Capacitor.c1", "props": ["states"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "pending": true,
+   "wp": "WPG.7"
+  },
+  {
+   "path": "reactor_rlcurve.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": ["Reactor.rx"],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.8",
+   "note": "Harmonics case: the second Solve sweeps harmonics 1/5/7 (3 monitor samples). Feature-sensitive probe-proven: removing rcurve/lcurve shifts the harmonic monitor channels ~0.6%."
+  },
+  {
+   "path": "invcontrol_expmodel.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "PVSystem.pv", "props": ["kw", "kvar"]}
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.9",
+   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven)."
+  },
+  {
+   "path": "invcontrol_storage_vw.dss",
+   "kind": "micro",
+   "n_steps": 6,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Storage.batt", "props": ["%stored", "state", "kw"]}
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.10"
+  },
+  {
+   "path": "invcontrol_storage_vv_vw.dss",
+   "kind": "micro",
+   "n_steps": 6,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Storage.batt", "props": ["%stored", "state", "kw", "kvar"]}
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.10"
+  },
+  {
+   "path": "storagecontroller_seasonal.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "check_meters_monitors": true,
+   "probes": [
+    {"element": "Storage.batt", "props": ["%stored", "state"]}
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.11",
+   "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'."
+  }
+ ]
+}

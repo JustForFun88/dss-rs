@@ -1,0 +1,17 @@
+! GAPS deck: InvControl ControlModel=1 = Exponential (the TPICtrl PI controller)
+! — deterministic. Volt-var over a PVSystem with the exponential control model.
+! NB: the upstream text parser rejects the enum NAME ("Invalid inline math
+! entry: Exponential", probe-proven on dss-python 0.15.7); the numeric ordinal
+! is the only accepted spelling.
+Clear
+New Circuit.gaps_icexp basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.irrad8 npts=8 interval=1 mult=(0.30 0.50 0.70 0.85 0.95 1.00 1.00 0.98)
+New XYcurve.vv npts=4 xarray=(0.5 0.95 1.05 1.5) yarray=(1.0 1.0 -1.0 -1.0)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km
+New PVSystem.pv bus1=b1 phases=3 kv=12.47 kva=600 pmpp=500 pf=1.0 daily=irrad8 irradiance=1 %cutin=0.1 %cutout=0.1 varfollowinverter=no
+New InvControl.ic derlist=[pvsystem.pv] mode=voltvar vvc_curve1=vv voltage_curvex_ref=rated deltaq_factor=0.4 ControlModel=1 eventlog=yes
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set maxcontroliter=200
+Set mode=daily stepsize=1h number=8
+Solve

@@ -1,0 +1,18 @@
+! GAPS deck: SolveMode=MF (Pascal SolveMonteFault) — deterministic under two
+! pinned conditions: (1) exactly ONE Fault element, so PickAFault's
+! Whichone = Trunc(Random*1)+1 = 1 always (the RNG draw is consumed but the
+! result cannot vary); (2) Set random=none, so Fault.Randomize sets
+! RandomMult=1.0. LoadModel is forced to ADMITTANCE (direct solve) by the mode.
+Clear
+New Circuit.gaps_mf basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95 model=2
+New Fault.f1 bus1=b1.1 phases=1 r=0.05
+New Monitor.m_i element=Line.l1 terminal=1 mode=0
+New Monitor.m_f element=Fault.f1 terminal=1 mode=0
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set random=none
+Set mode=MF number=3
+Solve
