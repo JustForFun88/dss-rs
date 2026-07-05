@@ -614,8 +614,25 @@ frontier:
   Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **next = Dump
   step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
   port map below (still current for the remaining steps):
-- **Controls live gate (2026-07-05, `CONTROL_COVERAGE_PLAN.md`, steps 1–2
-  landed, gate-green).** The live gate extended with **element-specific state
+- **Controls live gate (2026-07-05, `CONTROL_COVERAGE_PLAN.md`, ALL 5 steps
+  COMPLETE — 22 decks, gate-green).** Steps 3–5 on top of the below: **protection**
+  (recloser temp/perm reclose+lockout, relay 51, relays 46/47 on parallel
+  branches — asymmetry-only trips, per-phase SLG fuse blow, delayed SwtControl
+  open via manifest `post`; duty mode, per-step event log + pending reclose
+  shots in the control queue), **metering** (energymeter sym/asym — all
+  registers incl. Overload/EEN/losses + zone membership; monitor modes 0/1/2/3;
+  sensor mapping probes), **combos** (`combo_protection` fuse-save coordination
+  under an EnergyMeter+monitor; `combo_voltvar_asym` LTC + kvar-CapControl +
+  volt-var InvControl interplay — a voltage-mode CapControl under an LTC never
+  toggles, hence kvar mode; `combo_metering`), and `compare_eventlog` opt-in on
+  the three daily IEEE feeders (13/37/123) in `solvable_now`. **Oracle capture
+  caveat found:** on a step whose solve rebuilt Y mid-step (fault applying at
+  ontime, protection trip opening a switch) the pinned engine's
+  `getYSparse(False)` returns None — `gen_checkpoints._get_y_sparse` retries
+  after the executive `BuildY` (proven trajectory-neutral: identical per-step
+  iterations/voltages/event log with and without); `getYSparse(True)` must NOT
+  be used (it corrupts the solution vector — YNodeVarray returns
+  injection-scale garbage, empirically). Original steps 1–2 record below: The live gate extended with **element-specific state
   channels** (all opt-in per manifest case): property **probes** (oracle
   `Properties(p).Val` vs the Rust `?` query, numeric-skeleton compare),
   **PC-element state variables** (`AllVariableValues` vs `element_variables`),

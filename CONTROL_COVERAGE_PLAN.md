@@ -71,17 +71,29 @@ physically (small wye capacitors), as proven in the asymmetric gate.
 
 ## Steps (each ends gate-green, STATUS.md synced, committed)
 
-1. **Infrastructure + `regcontrol_sym.dss`** — capture channels (probes /
+1. **DONE** — Infrastructure + `regcontrol_sym.dss`: capture channels (probes /
    variables / losses / eventlog / ctrlqueue / `"*"` YPrims) in
    `oracle_server.py`, comparators in `tests/harness/mod.rs`, manifest fields +
    runner + guard in `corpus_live.rs`, `Dss::control_queue_rows`; this doc.
-2. Volt/var + dispatch decks (regcontrol_asym, capcontrol, invcontrol,
-   storagectrl, gendispatcher).
-3. Protection decks (relay, fuse, recloser, swtcontrol — time/dynamics
-   scenarios).
-4. Metering decks (energymeter, monitor, sensor).
-5. Combination decks + opt-ins on existing `solvable_now` cases (e.g. the daily
-   IEEE13 run gains `compare_eventlog`).
+2. **DONE** — Volt/var + dispatch decks (regcontrol_asym, capcontrol sym/asym,
+   invcontrol VV / VV_VW, storagectrl peakshave/time, gendispatcher). Found and
+   fixed a real port bug: `update_storage`'s end-of-step state flip dropped
+   Pascal `Set_YprimInvalid`'s `SystemYChanged` side effect (stale YPrim on the
+   next step's first injection; see STATUS §1f).
+3. **DONE** — Protection decks (recloser temp/perm, relay 51 + 46/47, per-phase
+   fuse blow, delayed SwtControl via `post`), duty mode / controlmode=time.
+   Oracle capture caveat: on a step whose solve rebuilt Y mid-step (fault
+   applying, trip opening a switch) the pinned engine's `getYSparse(False)`
+   returns None — `_get_y_sparse` retries after the executive `BuildY`
+   (trajectory-neutral, proven); `getYSparse(True)` must NOT be used (it
+   corrupts the solution vector).
+4. **DONE** — Metering decks (energymeter sym/asym incl. overload registers +
+   zone membership, monitor modes 0/1/2/3, sensor mapping probes).
+5. **DONE** — Combination decks (`combo_protection` fuse-save coordination +
+   meter/monitor, `combo_voltvar_asym` LTC+kvar-CapControl+InvControl interplay
+   — a voltage-mode CapControl under an LTC never toggles, hence kvar mode —
+   `combo_metering`) + `compare_eventlog` opt-in on the three daily IEEE
+   feeders in `solvable_now` (IEEE13/37/123).
 
-`CONTROLS_REQUIRED` in `corpus_live.rs` grows with each step; the guard fails
-if a landed deck is ever dropped.
+22 decks total; `CONTROLS_REQUIRED` in `corpus_live.rs` pins the full set — the
+guard fails if a landed deck is ever dropped.
