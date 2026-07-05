@@ -494,7 +494,19 @@ detail is in **§1f**; the current frontier:
   pins both, byte-exact (golden_phase8 **115→121** incl. the step-15 busflow follow-up).
   Tracked low-payoff (not added): the `(Sensor:…)` topology annotation (needs a
   solved+metered+sensored deck), the `>30`-level `(* level *)` tab overflow, and the
-  no-source empty-tree branch.
+  no-source empty-tree branch. **audit-code follow-up — two real Major `ShowIsolated`
+  bugs found + fixed:** (A) the isolated-**sub-area** selection was missing the
+  `Enabled` guard (`ShowResults.pas:2915` `if TestElement.Enabled`), so a **disabled**
+  PD element (in `ckt_elements` but not the adjacency lists) would print a spurious
+  `*** START SUBAREA ***` block — fixed + pinned by `show_isolated_disabled`; (B)
+  `ShowIsolated` was missing its `if BusNameRedefined then ReprocessBusDefs`
+  (`:2859`, the one Show report that resolves bus refs itself), so on a compiled-but-
+  **unsolved** circuit the terminal `bus_ref`s stay `NO_BUS` and the walk yields a
+  degenerate one-source tree — fixed (reprocess in dispatcher arm 7, `ShowTopology`
+  correctly left without it) + pinned by `show_isolated_unsolved`. One **Minor** (the
+  inert `ToBusReference`, unread by the reports) filled for walk-fidelity. golden_phase8
+  **122→124**. (The `controls_of` multi-control annotation order the auditor flagged
+  is already validated by `show_controlled_multi` — same `ckt.controls` derive.)
 - **WP8.4 finalize — dispatch tail (partial), gate-green.** Now that every real
   `Show` keyword is ported, `do_show_cmd` gains the Pascal **`#24700`** unknown-keyword
   error (`ShowOptions.pas:119-124`, pushed + return before the solve-guard) and
@@ -585,7 +597,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 122,
+                            # golden_phase7_protection 1, golden_phase8 124,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

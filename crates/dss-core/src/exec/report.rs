@@ -1586,9 +1586,24 @@ impl Dss {
             7 => {
                 let content = {
                     let Dss {
-                        classes, circuit, ..
+                        classes,
+                        circuit,
+                        parser,
+                        vars,
+                        errors,
+                        ..
                     } = self;
                     let ckt = circuit.as_mut().expect("post-circuit dispatch");
+                    // Pascal `ShowIsolated` first `if BusNameRedefined then
+                    // ReprocessBusDefs` (`ShowResults.pas:2859-2860`) — the one Show
+                    // report that resolves bus refs itself, so it works on a compiled
+                    // but never-solved circuit (terminal `bus_ref`s default to
+                    // `NO_BUS` until reprocessed). `ShowTopology`/`GetTopology` have no
+                    // such guard (matched — arm 28 does not reprocess).
+                    if ckt.bus_name_redefined {
+                        let mut store = ClassStore { classes };
+                        ckt.reprocess_bus_defs(&mut store, parser, vars, errors);
+                    }
                     show::show_isolated(classes, ckt)
                 };
                 self.write_show("Isolated.txt", &content);

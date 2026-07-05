@@ -239,7 +239,15 @@ pub(crate) fn get_isolated_sub_area(
                     cd.terminals[iterm - 1].bus_ref,
                 )
             };
-            if checked || bus == NO_BUS || bus >= ckt.buses.len() {
+            if checked {
+                continue;
+            }
+            // Pascal `BranchList.PresentBranch.ToBusReference := TestBusNum`
+            // (`CktTree.pas:662`) — recorded on every unchecked terminal, before the
+            // `TestBusNum > 0` guard. Inert for the current reports (they don't read
+            // it), kept for walk-fidelity with `make_meter_zone_lists`.
+            tree.present_node_mut().add_to_bus_reference(bus);
+            if bus == NO_BUS || bus >= ckt.buses.len() {
                 continue;
             }
             ckt.buses[bus].bus_checked = true;

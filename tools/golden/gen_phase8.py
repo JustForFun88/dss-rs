@@ -1637,11 +1637,43 @@ SHOW_ISO_ORPHAN_DECK = [
 ]
 
 
+# `Show Isolated` disabled-PD coverage (audit-code step-16 follow-up): a **disabled**
+# line (`enabled=no`) must NOT emit a `*** START SUBAREA ***` block (Pascal's
+# `if TestElement.Enabled` sub-area guard). A disabled PD element is in `ckt_elements`
+# but never in the adjacency lists.
+SHOW_ISO_DISABLED_DECK = [
+    "clear",
+    "new circuit.dis basekv=12.47 bus1=src phases=3",
+    "new line.la bus1=src bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new load.ld bus1=b1 phases=3 kv=12.47 kw=500",
+    "new line.dead bus1=deada bus2=deadb phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 enabled=no",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+]
+# `Show Isolated` **unsolved** coverage (audit-code step-16 follow-up): a compiled but
+# never-solved circuit (no `calcvoltagebases`/`solve`) — `Show Isolated` reprocesses
+# bus defs itself, so the connected tree is still correct (without the reprocess the
+# port would give a degenerate one-source tree).
+SHOW_ISO_UNSOLVED_DECK = [
+    "clear",
+    "new circuit.uns basekv=12.47 bus1=src phases=3",
+    "new line.la bus1=src bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new load.ld bus1=b1 phases=3 kv=12.47 kw=500",
+]
+
+
 def gen_show_isolated_orphan(d) -> None:
-    """Capture `Show Isolated` on the orphan-bus deck (audit-tests step-16 follow-up)."""
+    """Capture `Show Isolated` on the orphan-bus deck (audit-tests step-16 follow-up)
+    + the disabled-PD + unsolved decks (audit-code step-16 follow-up)."""
     d.AllowEditor = False
     _gen_show_deck_group(
         d, SHOW_ISO_ORPHAN_DECK, [("isolated", "Isolated.txt", "show_isolated_orphan")]
+    )
+    _gen_show_deck_group(
+        d, SHOW_ISO_DISABLED_DECK, [("isolated", "Isolated.txt", "show_isolated_disabled")]
+    )
+    _gen_show_deck_group(
+        d, SHOW_ISO_UNSOLVED_DECK, [("isolated", "Isolated.txt", "show_isolated_unsolved")]
     )
 
 
