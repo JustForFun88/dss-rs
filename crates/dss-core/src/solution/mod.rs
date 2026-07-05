@@ -8,6 +8,7 @@ pub(crate) mod faults;
 pub(crate) mod meters;
 pub(crate) mod monitors;
 pub mod solution;
+pub(crate) mod topology;
 pub mod ymatrix;
 
 pub use control_queue::{ControlActioner, ControlQueue, TimeRec};

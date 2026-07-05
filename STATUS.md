@@ -9,7 +9,7 @@
 
 Last updated: 2026-07-05 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
-gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited; WP8.4 (Show) steps 1–15
+gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited; WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
 controlqueue/kvbasemismatch + step 8: Meters/Generators register tables +
@@ -18,11 +18,14 @@ step 9: Overloads/Unserved + step 10: FaultStudy + step 11: Yprim (+ the
 EnergyMeter zone-tree pair) + step 13: Controlled (the PD→controls map via the
 new `CktElement::controlled_element` accessor) + step 14: LineConstants (the
 LineGeometry Carson R/jX/L/C matrix dump + seq-component summary, two files) +
-**step 15: busflow** (`ShowBusPowers` seq+elem, reusing the extracted per-bus/
-per-element voltage/current/power helpers) + dispatcher; ~30 `Show` reports ported).
-**~2 real `Show` reports remain** (`Isolated`/`Topology`) + `autoadded`/`QueryLog`
-(headless FireOffEditor no-ops) + `deltaV` (deferred) — all still *silent* no-ops,
-`TODO(WP8)`. Full Phase-8 detail is in **§1f**; the current frontier:
+step 15: busflow (`ShowBusPowers` seq+elem, reusing the extracted per-bus/
+per-element voltage/current/power helpers) + **step 16: Isolated/Topology** (the
+circuit-wide CktTree pair, over the new `solution/topology.rs` `GetTopology`/
+`GetIsolatedSubArea` builder) + dispatcher; **~32 `Show` reports ported**). **All
+real `Show` reports are now ported.** Remaining: `autoadded`/`QueryLog` (headless
+FireOffEditor no-ops) + `deltaV` (deferred) — still *silent* no-ops, `TODO(WP8)`; and
+the `#24700` unknown-keyword error lands in the WP8.4-finalize step. Full Phase-8
+detail is in **§1f**; the current frontier:
 
 - **WP8.1 COMPLETE** (dispatch skeleton + output-path machinery + `Export Counts`
   + the `compare_export` golden harness).
@@ -442,9 +445,42 @@ per-element voltage/current/power helpers) + dispatcher; ~30 `Show` reports port
   ~0-kW / PF** faer-vs-KLU residual cells (gated on the row's kW `<1e-4`). Bus 675 was
   chosen over a richer junction (671) whose `%10.5g` kvar cell lands on a 5-sig
   rounding boundary (a print straddle). golden_phase8 **109→111**. No corpus migration
-  (`Show` never blocked a deck). **next = continue WP8.4** (the CktTree pair
-  `Isolated`/`Topology` — need `GetTopology`/`GetIsolatedSubArea` builders; then
-  finalize: `autoadded`/`QueryLog` no-ops + the `#24700` unknown-keyword error).
+  (`Show` never blocked a deck). **Both audits found no correctness bug** (audit-code
+  verified `ShowBusPowers` field-for-field incl. `check_bus_reference`, the seq
+  currents-all-terminals / powers-matched-terminal asymmetry, the element-section
+  PD-residual + PC/Faults order, both `write_terminal_power*` layouts, MVA scaling,
+  and the extraction faithfulness; audit-tests confirmed the goldens sound). The
+  recommended optional coverage (MVA form, the `<3`-phase seq path, `#219`) is folded
+  into the WP8.4-finalize follow-up.
+- **WP8.4 (Show reports) — step 16 COMPLETE, gate-green** (`Show Isolated` +
+  `Show Topology` — the circuit-wide CktTree pair): the new `solution/topology.rs`
+  ports Pascal `GetIsolatedSubArea` (`CktTree.pas:624`) + its 5 connectivity helpers
+  (`GetSources/GetPC/GetShuntPD/FindAllChildBranches`) and `GetTopology`
+  (`Circuit.pas:3034`) — the same bus-adjacency BFS `make_meter_zone_lists` runs per
+  meter, but circuit-wide from the source, reusing the WP6.4 `CktTree` primitives +
+  `build_active_bus_adjacency_lists` + `all_terminals_closed` + the loop/parallel
+  detection. Unlike the read-only reports these **mutate** element flags
+  (`CHECKED`/`IS_ISOLATED`/`terminals_checked`) + bus `bus_checked` (via `ClassStore`,
+  the mutable `ElemStore`), exactly as Pascal does. `report/show/isolated.rs`
+  (`ShowIsolated` → `Isolated.txt`, arm 7) builds the source tree + one sub-area per
+  unreached PD element and lists the not-connected buses / isolated sub-networks /
+  isolated enabled elements / connected tree; `report/show/topology.rs` (`ShowTopology`
+  → two files `TopoTree.txt`+`TopoSumm.txt`, arm 28) the TABCHAR-indented branch/shunt
+  tree with the `(PARALLEL:…)`/`(LOOP:…)`/`(Sensor:…)`/`(Control:…)`/`(Meter:…)`
+  annotations (the control annotations derive from the `ckt.controls` scan, like
+  `Show Controlled`, since `HAS_CONTROL` is not materialised) + the level/loop/parallel/
+  isolated/switch counts (`ShowTreeView` is a headless no-op). goldens
+  `show_{isolated,topology}` on metered IEEE13 (the connected tree + the 1-loop
+  regulator topology) + `show_{isolated_iso,topology_mesh}` on a **synthesized** deck
+  (a PARALLEL line pair + a switched line/SwtControl + a fully ISOLATED island) — all
+  compared **byte-exact** (pure text: names + tree levels + TABCHAR indent, no backend
+  width quirk), covering the non-empty isolated/parallel/switch branches the radial
+  IEEE13 misses (the deck is unsolved — the island is singular — and the topology walk
+  still resolves it: the port processes buses at `calcvoltagebases`, no
+  `ReprocessBusDefs` needed). golden_phase8 **111→115**. No corpus migration.
+  **next = the WP8.4 finalize** (`autoadded`/`QueryLog` headless no-ops + the `#24700`
+  unknown-keyword error + the step-15 busflow coverage follow-up), then the corpus
+  classify/migrate pass.
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -524,7 +560,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 111,
+                            # golden_phase7_protection 1, golden_phase8 115,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

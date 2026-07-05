@@ -1568,6 +1568,37 @@ impl Dss {
                 self.write_show_path("LineConstantsCode.dss", &code, false);
                 self.write_show("LineConstants.txt", &main);
             }
+            // 7 `isolated` (`ShowIsolated`): buses/branches not connected to the
+            // source, the isolated sub-networks, and the connected element tree.
+            // Builds the source + sub-area CktTrees (mutating CHECKED/bus_checked).
+            // No solution guard (arm 7 walks connectivity only).
+            7 => {
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_mut().expect("post-circuit dispatch");
+                    show::show_isolated(classes, ckt)
+                };
+                self.write_show("Isolated.txt", &content);
+            }
+            // 28 `topology` (`ShowTopology`): the connected-branch tree (TopoTree.txt)
+            // + the level/loop/parallel/isolated/switch counts (TopoSumm.txt). Builds
+            // the circuit-wide GetTopology tree (mutating CHECKED/IS_ISOLATED/
+            // bus_checked). Pascal writes both under `<OutputDir><CircuitName_>`; the
+            // summary is the `@lastshowfile`, the tree its companion. `ShowTreeView`
+            // is a headless no-op. No solution guard.
+            28 => {
+                let (summ, tree) = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_mut().expect("post-circuit dispatch");
+                    show::show_topology(classes, ckt)
+                };
+                self.write_show_named("TopoTree.txt", &tree, false);
+                self.write_show("TopoSumm.txt", &summ);
+            }
             // 33 `controlled` (`ShowControlledElements`): each PD element carrying a
             // control, followed by the control(s) acting on it. No solution guard
             // (Pascal arm 33 walks the control refs only).
@@ -1578,9 +1609,8 @@ impl Dss {
                 };
                 self.write_show("ControlledElements.csv", &content);
             }
-            // TODO(WP8): later steps — the remaining `Show` keywords (isolated,
-            // topology, autoadded, querylog,
-            // deltaV) and the unknown-keyword `#24700` error
+            // TODO(WP8): later steps — the remaining `Show` keywords (autoadded,
+            // querylog, deltaV) and the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
             // error — a deferred `Show` MUST stay a **silent** headless no-op: the

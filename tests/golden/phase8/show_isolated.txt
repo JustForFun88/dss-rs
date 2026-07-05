@@ -1,0 +1,55 @@
+
+ISOLATED CIRCUIT ELEMENT REPORT
+
+
+***  THE FOLLOWING BUSES HAVE NO CONNECTION TO THE SOURCE ***
+
+
+***********  THE FOLLOWING SUB NETWORKS ARE ISOLATED ************
+
+
+***********  THE FOLLOWING ENABLED ELEMENTS ARE ISOLATED ************
+
+
+***  THE FOLLOWING BUSES ARE NOT CONNECTED TO ANY POWER DELIVERY ELEMENT ***
+
+
+***********  CONNECTED CIRCUIT ELEMENT TREE ************
+
+(Lexical Level) Element name
+
+(0) Vsource.source
+(1) Transformer.sub
+(2) Transformer.reg3
+(3) Line.650632
+(4) Line.632645
+[SHUNT], Load.645
+(5) Line.645646
+[SHUNT], Load.646
+(4) Line.632633
+(5) Transformer.xfm1
+[SHUNT], Load.634a
+[SHUNT], Load.634b
+[SHUNT], Load.634c
+(4) Line.632670
+[SHUNT], Load.670a
+[SHUNT], Load.670b
+[SHUNT], Load.670c
+(5) Line.670671
+[SHUNT], Load.671
+(6) Line.671692
+[SHUNT], Load.692
+(7) Line.692675
+[SHUNT], Load.675a
+[SHUNT], Load.675b
+[SHUNT], Load.675c
+[SHUNT], Capacitor.cap1
+(6) Line.671684
+(7) Line.684652
+[SHUNT], Load.652
+(7) Line.684611
+[SHUNT], Load.611
+[SHUNT], Capacitor.cap2
+(6) Line.671680
+(2) Transformer.reg2
+(2) Transformer.reg1

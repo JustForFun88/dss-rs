@@ -1591,6 +1591,115 @@ SHOW_BUSFLOW_REPORTS = [
 ]
 
 
+# Coverage deck for the `Show Isolated`/`Show Topology` non-empty branches: a
+# PARALLEL line pair (la ‖ la2), a switched line + SwtControl (lb/sw1), and a fully
+# ISOLATED island (isoa-isob with a load) unreachable from the source. Not solved
+# (the island makes Y singular) — `Show Isolated`/`Topology` need only connectivity.
+SHOW_TOPO_DECK = [
+    "clear",
+    "new circuit.topo basekv=12.47 bus1=src phases=3",
+    "new line.la bus1=src bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new line.la2 bus1=src bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new line.lb bus1=b1 bus2=b2 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 switch=y",
+    "new swtcontrol.sw1 switchedobj=line.lb switchedterm=1 action=close",
+    "new load.ld bus1=b2 phases=3 kv=12.47 kw=500",
+    "new line.iso bus1=isoa bus2=isob phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new load.isold bus1=isob phases=3 kv=12.47 kw=100",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+]
+
+
+def gen_show_topo_coverage(d) -> None:
+    """Capture `Show Isolated`/`Show Topology` on `SHOW_TOPO_DECK` — the non-empty
+    branches the IEEE13 goldens miss: isolated buses + an isolated sub-network
+    (`show_isolated_iso`), and the PARALLEL / Controlled-Switch / Isolated-PD counts +
+    the `(PARALLEL:…)`/`(Control:…)`/`Isolated: …` tree annotations
+    (`show_topology_mesh` summary + `show_topology_mesh_tree`). Byte-exact."""
+    d.AllowEditor = False
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in SHOW_TOPO_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show isolated"
+        d.Text.Command = "show topology"
+        for suffix, stem in [
+            ("Isolated.txt", "show_isolated_iso"),
+            ("TopoSumm.txt", "show_topology_mesh"),
+            ("TopoTree.txt", "show_topology_mesh_tree"),
+        ]:
+            matches = list(Path(tmp).glob(f"*_{suffix}"))
+            if len(matches) != 1:
+                sys.exit(f"show topo coverage: expected 1 *_{suffix}, found {matches}")
+            content = matches[0].read_text()
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            report = "isolated" if suffix == "Isolated.txt" else "topology"
+            meta = {"report": report, "fixture": case, "suffix": suffix, "deck": SHOW_TOPO_DECK}
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def gen_show_isolated(d) -> None:
+    """Capture the oracle's `Show Isolated` (`ShowIsolated`) on the metered IEEE13:
+    the circuit is fully connected, so the isolated sections are empty and the report
+    is the connected element tree (`(Level) FullName` + `[SHUNT], FullName`). Pure
+    text → byte-exact."""
+    d.AllowEditor = False
+    _gen_show_group(d, REGISTER_A_POST, [("isolated", "Isolated.txt", "show_isolated")])
+
+
+def gen_show_topology(d) -> None:
+    """Capture the oracle's `Show Topology` (`ShowTopology`) on the metered IEEE13.
+    Writes TWO files: `<case>_TopoSumm.txt` (the level/loop/parallel/isolated/switch
+    counts) and `<case>_TopoTree.txt` (the TABCHAR-indented branch/shunt tree with the
+    inline `(LOOP:…)`/`(Control:…)`/`(Meter:…)` annotations). Both captured (stems
+    `show_topology` / `show_topology_tree`), byte-exact."""
+    d.AllowEditor = False
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        d.Text.Command = f'compile "{master_abs}"'
+        for c in REGISTER_A_POST:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show topology"
+        for suffix, stem in [
+            ("TopoSumm.txt", "show_topology"),
+            ("TopoTree.txt", "show_topology_tree"),
+        ]:
+            matches = list(Path(tmp).glob(f"*_{suffix}"))
+            if len(matches) != 1:
+                sys.exit(f"show topology: expected 1 *_{suffix}, found {matches}")
+            content = matches[0].read_text()
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": "topology",
+                "master": FEEDER_MASTER,
+                "post": REGISTER_A_POST,
+                "fixture": case,
+                "suffix": suffix,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_show_busflow(d) -> None:
     """Capture the oracle's `Show busflow` (`ShowBusPowers`) on solved IEEE13, bus
     675 — both the seq form (`show_busflow`) and the element form
@@ -1685,6 +1794,9 @@ def main() -> None:
     gen_show_zone_loops(d)
     gen_show_controlled(d)
     gen_show_busflow(d)
+    gen_show_isolated(d)
+    gen_show_topology(d)
+    gen_show_topo_coverage(d)
     gen_show_lineconstants(d)
     gen_sections(d)
     gen_profile(d)

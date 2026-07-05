@@ -1,0 +1,8 @@
+Branches and Loads in Circuit topo
+
+Vsource.source
+	Line.la2(PARALLEL:Line.la)(LOOP:Line.la)
+		Line.lb (Control: SwtControl.sw1) 
+			Load.ld
+	Line.la(PARALLEL:Line.lb)(LOOP:Line.lb)
+Isolated: Line.iso
