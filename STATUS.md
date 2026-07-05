@@ -27,9 +27,21 @@ byte-fidelity fixes landed:** (1) `fmt_g`'s low scientific threshold was C's
 `node_v` (Pascal `ComputeVTerminal`) so `WdgCurrents` reads the live solution, not
 a stale/zero buffer. Property display-case corrected for Line/Transformer/
 LineGeometry tails (LineCode/XfmrCode already correct; matching stays
-case-insensitive). golden_phase8 **125→138** (13 new dump goldens, all byte-exact);
-the 8 bare-`dump`/`solution`/aux + the 8 remaining overrides (Capacitor/Fault/
-VSource/UPFC/RegControl/Monitor/EnergyMeter/Spectrum) are TODO(WP8) step 3. **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+case-insensitive). golden_phase8 **125→141** (16 new dump goldens, all byte-exact);
+the bare-`dump`/`solution`/aux forms + the 8 remaining overrides (Capacitor/Fault/
+VSource/UPFC/RegControl/Monitor/EnergyMeter/Spectrum) are TODO(WP8) step 3.
+**Audits (both ran on `53d9006`):** audit-code — one Minor real fix:
+`get_all_winding_currents` dropped Pascal's `not Enabled` guard
+(`Transformer.pas:1530`), so a post-solve `enabled=no` transformer dumped stale
+non-zero `WdgCurrents` where the oracle prints `0` — guard restored + pinned by
+`dump_transformer_disabled`. audit-tests — one High coverage gap closed: the Line
+`LengthMult = Len` matrix-fold branch (geometry/spacing lines) was unexercised
+(both test lines had empty geometry) → added `dump_line_geo` (a Carson-geometry
+line, `length=2`, byte-exact — proving Rust's geometry-`Z` embeds length like
+Pascal) + `dump_line_switch` (`Switch=Yes`). Tracked (pre-existing, not this
+step): `?`-query/export `WdgCurrents` reads the cached `Vterminal` (fresh after a
+solve; the `&self` getter can't reach `node_v`, unlike the dump path which now
+refreshes it) — an edge-case stale-read the dump gate can't reach. **Two byte-fidelity gaps + TWO real bugs found + fixed:**
 property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
 Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
 `FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by

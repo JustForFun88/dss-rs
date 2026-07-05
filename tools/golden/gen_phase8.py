@@ -1908,9 +1908,45 @@ DUMP_XF3_DECK = [
     "solve",
 ]
 
+# A **disabled** transformer (audit-code follow-up): after a solve, `enabled=no`
+# leaves NodeRef populated, so the `WdgCurrents` result must go to `0` only via
+# the `not Enabled` guard (Pascal `Transformer.pas:1530`) — pins that guard.
+DUMP_XFDIS_DECK = [
+    "new circuit.dumpxfd basekv=115 bus1=src",
+    "new transformer.t1 phases=3 windings=2 xhl=6 buses=[src mid] "
+    "conns=[delta wye] kvs=[115 4.16] kvas=[5000 5000]",
+    "new load.ld1 bus1=mid kv=4.16 kw=2000 pf=0.9 conn=wye",
+    "set voltagebases=[115 4.16]",
+    "calcv",
+    "solve",
+    "transformer.t1.enabled=no",
+]
+
 # Line (`TLineObj.DumpProperties`): a sym-components line (the `%-.7g` R1/X1/R0/X0/
-# C1/C0 + the `RMatrix`/`XMatrix`/`CMatrix` folded out of `Z`/`Yc`), and a
-# LineCode-driven line (the matrix model → the `----` sequence-parameter path).
+# C1/C0 + the `RMatrix`/`XMatrix`/`CMatrix` folded out of `Z`/`Yc`), a
+# LineCode-driven line (the matrix model → the `----` sequence-parameter path), a
+# **geometry** line (the `LengthMult = Len` matrix-fold branch, `length≠1`), and a
+# **switch** line (`Switch=Yes`).
+DUMP_LINE_GEO_DECK = [
+    "new circuit.dumplgeo basekv=12.47 bus1=src",
+    "new wiredata.w1 diam=0.5 gmrac=0.2 rac=0.1 runits=mi radunits=in "
+    "gmrunits=ft normamps=600",
+    "new linegeometry.geo1 nconds=3 nphases=3 reduce=no",
+    "~ cond=1 wire=w1 x=-4 h=28 units=ft",
+    "~ cond=2 wire=w1 x=-1.5 h=28.5 units=ft",
+    "~ cond=3 wire=w1 x=3 h=28 units=ft",
+    "new line.lg bus1=src bus2=b2 geometry=geo1 length=2 units=km",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve",
+]
+DUMP_LINE_SW_DECK = [
+    "new circuit.dumplsw basekv=12.47 bus1=src",
+    "new line.sw bus1=src bus2=b2 phases=3 switch=yes",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve",
+]
 DUMP_LINE_SYM_DECK = [
     "new circuit.dumplsym basekv=12.47 bus1=src",
     "new line.l1 bus1=src bus2=b2 phases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 "
@@ -1974,8 +2010,11 @@ DUMP_DECKS = [
     ("dump_loadshape", DUMP_LS_DECK, "loadshape.ls1"),
     ("dump_transformer", DUMP_XF2_DECK, "transformer.t1 debug"),
     ("dump_transformer3", DUMP_XF3_DECK, "transformer.t3 debug"),
+    ("dump_transformer_disabled", DUMP_XFDIS_DECK, "transformer.t1"),
     ("dump_line_sym", DUMP_LINE_SYM_DECK, "line.l1"),
     ("dump_line_lc", DUMP_LINE_LC_DECK, "line.l2"),
+    ("dump_line_geo", DUMP_LINE_GEO_DECK, "line.lg"),
+    ("dump_line_switch", DUMP_LINE_SW_DECK, "line.sw"),
     ("dump_linecode_sym", DUMP_LC_SYM_DECK, "linecode.lc1"),
     ("dump_linecode_matrix", DUMP_LC_MAT_DECK, "linecode.lc2"),
     ("dump_linegeometry", DUMP_GEO_DECK, "linegeometry.geo1"),
