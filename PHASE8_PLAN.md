@@ -19,102 +19,37 @@
 > solve mode** (those all landed in Phase 7). The risk is not numerics; it is
 > **faithful field-by-field report layout** and **not silently faking output**.
 >
-> **Stop-and-confirm cadence (same as `PHASE4_PLAN §0.8` / `PHASE6_PLAN §0` /
-> `PHASE7_PLAN §0`):** after each small step (a WP or a self-contained sub-step),
-> run the full per-step ritual below, then stop and wait for the user's explicit
-> confirmation before the next step — unless the user has explicitly authorized
-> executing multiple WPs in one pass. **Run the whole ritual autonomously — do not
-> pause between its sub-steps to ask permission; the single stop point is at the
-> very end.**
+> **Stop-and-confirm cadence:** after each small step (a WP or a self-contained
+> sub-step) run the per-step ritual below **autonomously, without pausing between
+> its sub-steps**; the single stop point is at the very end — then wait for the
+> user's explicit confirmation (unless the user authorized several WPs in one
+> pass).
 >
 > **Per-step ritual (do every step, in order, without being told):**
-> 1. **Gate green.** The standard three-command gate (`cargo fmt --all --check`;
->    `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test
->    --workspace`) all pass. The third command runs **all golden tests** as part of
->    the workspace suite (`crates/dss-core/tests/golden_*.rs` — slice, feeders,
->    feeders_controls, phase5, phase6, phase7, phase7_protection, checkpoints,
->    ieee8500, reliability, allocation, gendispatcher, autoadd_reduce, smoke — plus
->    `props_roundtrip`, the always-on `corpus_*`, and Phase 8's new `golden_phase8`
->    + `save_roundtrip`); **every** golden must pass, no `#[ignore]`, no name-filter
->    that could green on zero matched tests. This is a hard requirement, not
->    advisory — a red golden blocks the commit (CLAUDE.md green-gate rule, §1 below).
-> 2. **Update `STATUS.md`** for the step (the §1e record + the §1 frontier/table),
->    then **commit** the step (gate-green code + STATUS together).
-> 3. **`/audit-code <scope>`** — run by an **independent agent** with a scoped brief
->    (see "Who runs the steps" below), not a fork of your full context. Scope it to
->    *this step's just-landed commit(s)*, not the whole branch: pass the step's
->    commit range (`<first-sha>^..HEAD`) or the step label (e.g. `WP8.2 step 1`).
->    Take back **only its findings report**; then *you* settle every finding against
->    the pinned oracle, **fix** what is real, update `STATUS.md` with an *audit-code
->    follow-up* note, and **commit** the fixes. (Re-run the gate before committing.)
-> 4. **`/audit-tests <scope>`** — same: an **independent agent**, same scope (the
->    step's commits / label), launched in parallel with step 3. Take back its
->    findings report; *you* fix every real finding, add an *audit-tests follow-up*
->    note to `STATUS.md`, and **commit**. (Re-run the gate before committing.)
-> 5. **`STATUS.md` full review + sync + cleanup.** Read **the whole of `STATUS.md`
->    end to end** (not just the section the step touched) and bring it back into a
->    lean, consistent state:
->    - **Sync:** fix anything the step made stale — the `Last updated:` line (today's
->      date + current step), the §1 phase table, the header frontier paragraph, and
->      §1e so they all agree on the active step / commit state / what's next (no two
->      places disagreeing, no "uncommitted" left after a commit).
->    - **Archive the dead weight:** move anything **no longer load-bearing for
->      executing the remaining plan** — long-completed/merged-phase logs, file-by-file
->      maps of finished phases, content fully superseded by `docs/phase-records/` —
->      out to `docs/phase-records/phase-N.md` (the established pattern: an `Archived
->      from STATUS.md (moved <date>)` header; leave a one-line pointer in `STATUS.md`,
->      add it to the §1b–1d archive index). **Do not** archive what the remaining
->      plan still reads: live gate descriptions, §3/§4/§5 (the records back-reference
->      them by number — preserve the numbering), the empirical oracle facts, run/
->      regenerate instructions, or the active §1e record.
->    - **Dedup:** collapse any paragraph that merely restates the frontier/another
->      section into a one-line pointer.
->    - **Commit** the sync+cleanup (a `docs:` commit; re-run the gate first since
->      docs-only — `cargo fmt`/`clippy`/`test` must still be green). If nothing is
->      stale or archivable this step, say so and skip the commit (no empty commits).
-> 6. **Only now stop** and wait for confirmation. **The final report to the user at
->    this stop point is written in Russian** (the working language of this project) —
->    a short summary of what the step landed, what the two audits found and how it
->    was resolved, the gate/golden status, the `STATUS.md` sync/cleanup done, and
->    what the next step is. (Code, identifiers, commit messages, and `STATUS.md` stay
->    in English as before; only the conversational summary is Russian.)
->
-> Notes: a finding that is *surfaced but deliberately not fixed* (needs
-> investigation / upstream divergence) is **recorded in `STATUS.md`**, not silently
-> dropped (the Phase-7 tracked-open notes are the template). If an audit finds
-> nothing, say so and skip its fix-commit (no empty commits). The audits are
-> **read-only** (they may write throwaway probes in a temp location and remove
-> them); all edits are yours to make in the fix steps. Commit messages follow the
-> existing `Phase 8 WPx.y step …: <audit-code|audit-tests> follow-up — <what>`
-> shape already in the history.
->
-> **Who runs the steps — default: you, in the main loop; the two audits go to
-> independent agents.** The ritual is about staying in the loop and owning the
-> result, so the gate, every `STATUS.md` edit, every fix, every commit, and the
-> final report are done by **you directly** — they need the conversation context,
-> the probe-the-oracle / Pascal-as-spec discipline, and ownership of the result.
-> **The discovery half of the audits (steps 3–4), however, is delegated to
-> independent agents** — `/audit-code` and `/audit-tests` each as its own agent, the
-> two in parallel since code vs tests are independent scopes. Use **fresh,
-> independent agents, not forks**: do **not** hand an auditor your whole context
-> window. Forking copies the entire conversation, which is wasteful and buries the
-> auditor in irrelevant state; a scoped agent reviews more sharply against a clean
-> brief. Pass each auditor a **self-contained brief with only what it needs**, and
-> nothing more:
-> - the exact scope — the step's commit range (`<first-sha>^..HEAD`) or label;
-> - the changed files / diff under audit;
-> - the authoritative baselines to check against — the specific Pascal unit(s) +
->   procedure/identifier names, the relevant `PORTING_PLAN.md`/`PHASE8_PLAN.md`/
->   `STATUS.md` section(s);
-> - the binding rules it must apply — the PIN (`tools/golden/PIN.txt`), the
->   `TODO(compat)` / `NOT_PORTED` discipline, and that the oracle is the spec.
->
-> Each audit agent returns **only its findings report**. **You** (the main loop)
-> then settle each finding against the oracle, fix what is real, and commit — the
-> auditors are read-only and never edit. For a trivial sub-step where authoring the
-> brief costs more than the audit, you may invoke the audit skill inline instead;
-> the independent-agent path is the default whenever the diff/prior-code/Pascal
-> reads would bloat the main context.
+> 1. **Gate green** — `cargo fmt --all --check`; `cargo clippy --workspace
+>    --all-targets -- -D warnings`; `cargo test --workspace` (runs **all**
+>    goldens + the always-on live corpus gates). No `#[ignore]`, no name-filter
+>    that could green on zero matches; a red test blocks the commit.
+> 2. **Update `STATUS.md`** (the §1 frontier + the phase record), **commit**
+>    (code + STATUS together).
+> 3. **`/audit-code` + `/audit-tests` in parallel** — two **fresh independent
+>    agents, never forks** (a scoped agent reviews more sharply than one buried
+>    in your context). Each gets a self-contained brief: the step's commit range
+>    (`<sha>^..HEAD`) or label, the diff, the authoritative Pascal units +
+>    plan/STATUS sections, and the binding rules (the PIN, `TODO(compat)`/
+>    `NOT_PORTED`, the oracle is the spec). Auditors are **read-only** and
+>    return findings only; **you** settle each finding against the pinned
+>    oracle, fix what is real, note the follow-up in `STATUS.md`, re-run the
+>    gate, commit. A finding deliberately not fixed is **recorded in STATUS**,
+>    never dropped; if an audit finds nothing, skip its commit (no empty
+>    commits). For a trivial sub-step the inline audit skill is allowed.
+> 4. **`STATUS.md` full review** — read it end to end; sync whatever the step
+>    made stale (no two places disagreeing), archive dead weight to
+>    `docs/phase-records/`, dedup restated paragraphs; `docs:` commit if
+>    anything changed (gate re-run first).
+> 5. **Only now stop** and report **in Russian** (code, identifiers, commit
+>    messages and STATUS stay English): what landed, what the audits found and
+>    how it was settled, gate status, next step.
 >
 > **On Pascal line references:** this plan is written just-in-time, before the
 > per-WP deep read. It cites Pascal **units + procedure/identifier names** (stable)
@@ -140,32 +75,45 @@ executive verbs (`BatchEdit`, `Interpolate`, `Distribute`, …), and the full
 
 **Execution order (dependency-respecting, risk-ascending):**
 
-1. **Report infrastructure + the comparison harness (WP8.1)** — the `report/`
-   module, the output-directory machinery, the Pascal number-formatting helpers,
-   the **new text/CSV golden-diff harness** (Phase 8's defining new test tool), and
-   the faithful **Plot/Visualize no-op**. Nothing else can be gated without the
-   harness, so it goes first.
-2. **Export: solution outputs (WP8.2)** — the exports that read solved state
-   (Voltages/Currents/Powers/Seq*/Losses/Taps/Summary/…). The simplest read-and-
-   format path; shakes out the harness.
-3. **Export: device/meter/reliability outputs (WP8.3)** — Monitors/Meters/DER/
-   EventLog/Faultstudy/reliability + the demand-interval/SystemMeter files carried
-   from Phase 6.
-4. **Show reports (WP8.4)** — upgrade the current no-op to real text reports; shares
-   field logic with WP8.2.
-5. **Save + Dump (WP8.5)** — `Circuit.Save`, `Save <class>`, `Dump`; the
-   re-compile/re-solve round-trip gate.
-6. **Executive tail (WP8.6)** — BatchEdit, Interpolate, Distribute, Uuids, and the
-   remaining executive verbs. Independent of the report infra — can be pulled
-   earlier if convenient.
-7. **ReduceAlgs full (WP8.7)** — the reduction strategies; needs the Phase-6-
-   deferred `TLineObj.MergeWith`.
+1. **Report infrastructure + the comparison harness (WP8.1)** — ✅ COMPLETE.
+2. **Export: solution outputs (WP8.2)** — ✅ COMPLETE.
+3. **Export: device/meter/reliability outputs (WP8.3)** — ✅ COMPLETE.
+4. **Show reports (WP8.4)** — ✅ COMPLETE.
+5. **Save + Dump (WP8.5)** — 🚧 IN PROGRESS: Dump single-object forms + 6 leaf
+   overrides landed; remaining = the 8 leaf overrides, the whole-circuit/aux
+   Dump forms, all `Save` forms, the round-trip gate.
+6. **Executive tail (WP8.6)** — BatchEdit, MakeBusList/GISCoords, SetBusXY +
+   Interpolate, Distribute, Uuids + `Export Uuids`, `cmd_coverage.py`.
+   Independent of the report infra — can be pulled earlier if convenient.
+7. **ReduceAlgs full (WP8.7)** — `TLineObj.MergeWith`, the 8 reduction
+   strategies, `Set KeepList=`, the `Remove` command.
 8. **Phase exit (WP8.8)** — marker sweep, `cmd_coverage.py` tail-coverage proof,
    full re-run + live re-classify, merge.
 
-WP boundaries are flex points (the Phase-7 convention): WP8.6 (BatchEdit etc.) is
-independent of the report infra and may be pulled earlier; the exports may be
-re-grouped by element family.
+WP boundaries are flex points (the Phase-7 convention): WP8.6 is independent of
+the report infra and may be pulled earlier.
+
+**Pre-validated test fixtures for the remaining WPs** (authored up front so
+each WP starts from a proven deck; every deck ran bit-identical across two
+separate oracle processes and is feature-sensitive):
+
+- **`tools/golden/phase8_decks/`** — fixture decks for the file-output gates
+  (`dump3.dss`, `dump_capacitor.dss`, `save_forms.dss`, `interp.dss`,
+  `distrib.dss`, `uuids.dss` + `uuids_pre.csv`; see its README). The WP that
+  ports a verb wires its deck into `tools/golden/gen_phase8.py` (deck text →
+  the golden `.meta.json`, the single source both engines replay) and adds the
+  `golden_phase8.rs` test.
+- **`tests/corpus/gaps/`** — 12 live staging decks with `pending: true` and
+  `wp: "WP8.6"/"WP8.7"` (`batchedit`, `midi_batchedit`, the 8 `reduce_*`
+  strategy decks, `reduce_remove`, `midi_reduce`); manifest notes record the
+  oracle-verified post-reduce element lists (merged names `l1~l2`/`b1||b2`,
+  disabled partners, node counts). The WP that ports the verb flips `pending`,
+  proves the live compare green and graduates the decks per GAPS_PLAN §3.1.
+  If the `gaps_cases_match_oracle` runner (a GAPS_PLAN deliverable) has not
+  landed yet when WP8.6/8.7 execute, collapse the two steps into one: move the
+  decks straight into their permanent family (`tests/corpus/modes/`, created
+  on first use) and register them in that family's manifest + live runner
+  (clone the `asymmetric`/`controls` runner pattern in `corpus_live.rs`).
 
 ## 1. Phase target and gate
 
@@ -232,8 +180,8 @@ never "we have no test for it."
 
 ### 2.1 A `report/` module: read-only formatters over disjoint borrows
 
-PORTING_PLAN's module tree already reserves `dss-core/src/report/`. It does not
-exist yet — create it as the home for all Phase-8 output:
+PORTING_PLAN's module tree reserves `dss-core/src/report/` as the home for all
+Phase-8 output (built by WP8.1–8.5; the target layout):
 
 ```
 dss-core/src/report/
@@ -246,8 +194,9 @@ dss-core/src/report/
   output.rs     # output-directory + file-handle machinery (§2.2)
   export/       # one submodule (or grouped file) per ExportResults procedure
   show/         # one per ShowResults procedure
-  save.rs       # Circuit.Save + WriteClassFile + DumpProperties (WP8.5)
-  reduce.rs     # ReduceAlgs (WP8.7) — or under support/ if it grows
+  save/         # DumpProperties (dump.rs, landed) + Circuit.Save/
+                #   WriteClassFile (save.rs, WP8.5 steps 4-5)
+  reduce.rs     # ReduceAlgs (WP8.7) — or under solution/ if it grows
 ```
 
 Reports are **read-only over the solved circuit**: each formatter takes the same
@@ -262,13 +211,10 @@ never hidden mutation. `DoExportCmd` calls it directly with no solve, so the por
 precomputed state (faithfully erroring/garbage if no faultstudy ran, like Pascal) — it
 must **not** silently re-run the study.
 
-`report/mod.rs` is the executive's new dispatch target. Today `Export`/`Save`/`Dump`
-(and `Plot`/`Visualize`) fall through to the `not_ported_command` catch-all in
-`exec/command.rs`, while `Show` and `Panel` are already no-op stubs
-(`command.rs:60-71`). Phase 8 replaces these with explicit arms calling
-`report::do_{export,show,save,dump}_cmd` (and turns `Plot`/`Visualize` into faithful
-no-ops, §2.5). The Export/Show **option tables** mirror `TExportOption`/`TShowOption`
-ordinal order with `TCommandList` abbreviation matching, exactly like the existing
+`report/mod.rs` is the executive's dispatch target (`Export`/`Show`/`Dump`/`Save`
+arms landed in WP8.1; `Save` still routes to the `do_save_cmd` stub until WP8.5
+step 4). The Export/Show **option tables** mirror `TExportOption`/`TShowOption`
+ordinal order with `TCommandList` abbreviation matching, exactly like the
 `EXEC_COMMANDS`/`EXEC_OPTIONS` tables in `exec/tables.rs` — scripts rely on
 abbreviations (`export v`, `show volt`).
 
@@ -396,197 +342,467 @@ file writers over it, gated by the same CSV comparator. The controlling `Set` op
 
 ---
 
-### WP8.1 — Report infrastructure: `report/` module, output paths, the CSV/text harness, GUI no-ops [12%]
+### WP8.1 — Report infrastructure [12%] — ✅ COMPLETE
 
-**Pascal:** `Executive/ExportOptions.pas` (`TExportOption` enum + `DoExportCmd`
-router), `Executive/ShowOptions.pas` (`TShowOption` + `DoShowCmd`),
-`Common/Utilities.pas` (`GetOutputDirectory` + number formatters), `Common/DSSGlobals`
-(`DSSDataDirectory`/`OutputDirectory`/`GlobalResult`), `DoPlotCmd`/`DoVisualizeCmd`.
-
-Steps:
-1. `report/mod.rs` + the `TExportOption`/`TShowOption` name tables with abbreviation
-   matching; route `exec/command.rs` `Export`/`Dump`/`Save` and the `Show` arm into
-   `report::do_*_cmd` (each dispatching to a per-keyword stub that records a *scoped*
-   `NOT_PORTED("<keyword> — WP8.x")` until its WP lands — so a half-ported Export
-   never silently emits nothing).
-2. `report/output.rs` — output-directory resolution (`DataPath`/`CaseName` handlers
-   wired into `set_cmd.rs`), explicit-filename parsing, `GlobalResult` = produced
-   path, the scratchpad redirect for tests. No auto-open.
-3. `report/format.rs` — the shared number/string formatters (probe the oracle for the
-   exact `Format` spec per use; `TODO(compat)` on truncations).
-4. `harness/mod.rs` — `compare_export` (§2.3) + `tests/golden_phase8.rs` skeleton;
-   `tools/golden/gen_phase8.py` skeleton (oracle writes a report to a temp dir,
-   captures bytes into `tests/golden/phase8/`).
-5. **Plot/Visualize faithful no-op** (§2.5) with citations; a regression test that a
-   `Plot`-containing micro deck solves clean and the model is unchanged.
-6. Gate: no numeric regressions; the harness self-tests on one trivial export (e.g.
-   `Export Counts` — tiny, no solve dependency) round-tripped through the new golden
-   path; migrate any **pure-`Plot`** corpus decks now.
+Record: `STATUS.md` §1f (dispatch skeleton, output paths, `compare_export`
+harness, `gen_phase8.py`, GUI no-ops).
 
 ---
 
-### WP8.2 — Export: solution outputs [18%]
+### WP8.2 — Export: solution outputs [18%] — ✅ COMPLETE
 
-**Pascal:** `Common/ExportResults.pas` — `ExportVoltages`, `ExportCurrents`,
-`ExportPowers`, `ExportSeqVoltages`/`ExportSeqCurrents`/`ExportSeqPowers`,
-`ExportLosses`, `ExportPbyphase`, `ExportTaps`, `ExportSummary`, `ExportCounts`,
-`ExportNodeOrder`/`ExportNodeNames`, `ExportYNodeList`, `ExportVoltagesElements`,
-`ExportElemVoltages`/`ExportElemCurrents`/`ExportElemPowers`, `ExportResult`,
-`ExportBusCoords`, `ExportY`/`ExportYprim`, `ExportSeqZ`; `DoExportCmd` dispatch.
-
-Steps:
-1. The bus/node solution exports (`Voltages`, `puVoltages`, `SeqVoltages`,
-   `VoltagesElements`, `NodeOrder`, `NodeNames`, `YNodeList`, `BusCoords`) — pure
-   reads of `node_v` + the symmetrical-components helper (already ported).
-2. The element exports (`Currents`, `Powers`, `SeqCurrents`, `SeqPowers`,
-   `P_byphase`, `ElemVoltages`/`ElemCurrents`/`ElemPowers`, `Losses`, `Taps`) — walk
-   elements in creation order, reuse the existing I/P/loss getters.
-3. The matrix/summary exports (`Y`, `Yprims`, `SeqZ`, `Summary`, `Counts`, `Result`)
-   — `Y`/`Yprims` serialize the assembled/per-element matrices the checkpoint gate
-   already exposes.
-4. Gate: targeted `phase8/export_{voltages,currents,powers,seq*,losses,taps,
-   summary,…}.csv` vs the oracle on solved **IEEE13/34/37/123**, plus the bus/summary
-   exports (`Voltages`/`Summary`/`Counts`) on **IEEE8500** — completing the
-   PORTING_PLAN §Phase 8 export-diff over 13/34/37/123/8500 (the 8500 per-element/matrix
-   dumps are omitted as enormous, the established 8500-golden discipline). Migrate the
-   `Export`-tagged **solution-report** decks; `COVERAGE.md` refresh.
+Record: `STATUS.md` §1f (all solution/element/matrix exports; `solvable_now`
+88→119).
 
 ---
 
-### WP8.3 — Export: monitors, meters, DER, reliability, fault study, demand-interval files [16%]
+### WP8.3 — Export: monitors, meters, DER, reliability, DI files [16%] — ✅ COMPLETE
 
-**Pascal:** `Common/ExportResults.pas` — `ExportMeters`, `ExportGenMeters`,
-`ExportLoads`, `ExportPVSystemMeters`, `ExportStorageMeters`, `ExportEventLog`,
-`ExportErrorLog`, `ExportFaultStudy`, `ExportCapacity`, `ExportOverloads`,
-`ExportUnserved`, `ExportBusReliability`/`ExportBranchReliability`, `ExportSections`,
-`ExportProfile`; `Executive/ExportOptions.pas` `DoExportCmd` → `Monitor.TranslateToCSV`
-(the `Export Monitors` path, case 15); `Common/Utilities.pas` `DumpAllocationFactors`;
-`Meters/EnergyMeter.pas` demand-interval + `TSystemMeter` core/file writers (Phase-6
-carry-forward, §2.6).
-
-Steps:
-1. `Monitors` — `TranslateToCSV` over the Phase-6 f32 stream + headers (the harmonic
-   header already labels Freq/Harmonic from WP7.6); per-channel CSV.
-2. `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` — register dumps
-   over the Phase-6/7 register arrays + names.
-3. `EventLog`/`ErrorLog` (the event-log line format already pinned by the Phase-5
-   control gates — reuse), `Faultstudy` (read-only over the WP7.9-precomputed bus
-   `Zsc`/`Ysc`/`BusCurrent` — local `YFault` scratch inversions only, no re-solve;
-   §2.1), `Capacity`/`Overloads`/`Unserved`,
-   `BusReliability`/`BranchReliability`/`Sections` (the WP7.2 `RelCalc` outputs),
-   `AllocationFactors`, `Profile`.
-4. The `TSystemMeter` register-accumulation core (`TSystemMeter.TakeSample`/`Integrate`
-   + the `SampleAll` hook — not landed in Phase 6, §2.6), **then** the demand-interval /
-   `SystemMeter` file writers over it + their `Set` option handlers.
-5. Gate: monitor CSV channels elementwise vs the oracle, registers vs the oracle;
-   migrate the `Export`-tagged monitor/meter/DER decks (incl. the harmonics decks
-   blocked only by a trailing `export monitor`); `COVERAGE.md` refresh.
+Record: `STATUS.md` §1f (device/meter/reliability/log exports + the
+`TSystemMeter` core + DI files; `solvable_now` 119→168).
 
 ---
 
-### WP8.4 — Show reports [14%]
+### WP8.4 — Show reports [14%] — ✅ COMPLETE
 
-**Pascal:** `Common/ShowResults.pas` (`ShowVoltages`, `ShowCurrents`, `ShowPowers`,
-`ShowLosses`, `ShowBuses`, `ShowElements`, `ShowRegulatorTaps`, `ShowMeters`,
-`ShowMeterZone`, `ShowFaultStudy`, `ShowIsolated`, `ShowLoops`, `ShowLineConstants`,
-`ShowYprim`/`ShowY`, `ShowTopology`, `ShowNodeCurrentSum` (mismatch),
-`ShowkVBaseMismatch`, `ShowRatings`, `ShowVariables`, `ShowControlledElements`,
-`ShowResult`, …); `Solution.WriteConvergenceReport`; `ControlQueue.WriteQueue`;
-`Executive/ShowOptions.pas` `DoShowCmd`.
-
-Steps:
-1. Replace the blanket `Show` no-op with the `DoShowCmd` dispatcher. `Show panel` is
-   **not** a no-op — the oracle faithfully errors it (`ShowOptions.pas:248`, error 999:
-   `Command "show panel" is not supported in DSS-Extensions`); reproduce that error
-   (§4). Port the solution-report Shows (Voltages/Currents/Powers/Losses/Buses/Elements/
-   Taps) first — they share field logic with the WP8.2 exports.
-2. Topology/diagnostic Shows (`Zone`, `Isolated`, `Loops`, `Topology`, `Mismatch`,
-   `kvbasemismatch`, `Convergence`, `controlqueue`) over the Phase-6 CktTree + the
-   solution residual.
-3. `LineConstants`, `Yprim`, `Y`, `Ratings`, `Variables`, `Controlled`, `Result`,
-   `EventLog`, `Faults`, `Meters`, `Generators`.
-4. Gate: targeted `phase8/show_*.txt` (numeric-skeleton diff) on a solved feeder;
-   migrate the pure-`Show` corpus decks (the geometry/cable `Show LineConstants`
-   family + `Dump,Show`); `COVERAGE.md` refresh.
+Record: `STATUS.md` §1f (~32 `Show` reports, steps 1–16 + finalize;
+golden_phase8 125).
 
 ---
 
-### WP8.5 — Save circuit + `Save <class>` + Dump [14%]
+### WP8.5 — Save circuit + `Save <class>` + Dump [14%] — 🚧 IN PROGRESS
 
-**Pascal:** `Common/Circuit.pas` `Save`/`SaveDSSObjects`/`SaveVoltageBases`/
-`SaveMasterFile`/`SaveBusCoords`/`SaveOpenTerminals`/`SaveFeeders`;
-`Common/Utilities.pas` `WriteClassFile`; `Executive/ExecHelper.pas` `DoSaveCmd`,
-`DumpProperties` (the `Dump` command).
+**Done (record: STATUS.md §1 frontier + §1f):** Dump steps 1–2 — the
+single-object forms `Dump <class>.[name|*] [debug]` (`report/save/dump.rs`
+generic 3-kind base + `#903`/`#256`), the Reactor / Transformer / Line /
+LineCode / LineGeometry / XfmrCode leaf overrides, the `READS_VTERMINAL`
+refresh, `fmt_g`/`float_to_str` byte fixes. 16 byte-exact dump goldens.
 
-Steps:
-1. `report/save.rs` — `Circuit.Save` over the property-dump getters (§2.4):
-   `SaveDSSObjects` (every object as `New …` + props in `PrpSequence` order),
-   `SaveVoltageBases`, `SaveMasterFile` (header `Clear`/`Set` preamble + `Redirect`
-   list + footer `MakeBusList`/`Set Voltagebases`/`CalcVoltageBases`/`Solve`),
-   `SaveBusCoords`, `SaveOpenTerminals`, `SaveFeeders`. If an oracle probe proves
-   Feeder objects are never instantiated (dead upstream, as Phase 6/7 found),
-   `SaveFeeders` is a faithful empty path — documented via that probe, **not** skipped
-   for lack of a corpus deck (§1).
-2. `Save <class>` via `WriteClassFile`; `Save meters`/`Save voltages` special forms
-   (`DoSaveCmd` branches).
-3. `Dump` (`DumpProperties`) — the `?`-getter set to one file (`Dump <class>.<name>`
-   and `Dump all`) and the `Dump debug` variant; synthesize a fixture for any variant
-   the corpus doesn't exercise (§1).
-4. Gate: `save_roundtrip.rs` — `Save circuit` on IEEE13/37/123 re-compiles on our
-   engine and re-solves to identical voltages (§1 gate #3); migrate `Save`/`Dump`
-   corpus decks; targeted golden for one `Dump` output.
+**Remaining steps (3–6). Fixture decks are pre-validated in
+`tools/golden/phase8_decks/` (README there records the probe-proven facts).**
+
+**Step 3a — the 8 remaining leaf `DumpProperties` overrides.** Each is a
+co-located `dump_body` dispatched from `report/save/dump/overrides.rs:35`
+(add the downcast arm), exactly like the six already ported. All eight call
+`inherited DumpProperties(F, Complete)` **dropping Leaf** (so the base does
+NOT print props; the override prints all props itself via
+`'~ '+PropertyName[i]+'='+PropertyValue[i]` — in Rust `ClassProps::get_value`),
+then add their Complete extras:
+
+- **Capacitor** (`Capacitor.pas:751-766`): all props; Complete →
+  `SpecType=<int>`. **Upstream garbage** (probe-proven 2026-07-05, two-process
+  diff): the oracle prints ASLR denormals in `~ CMatrix=(`/`~ FaultRate=`/
+  `~ pctPerm=` for EVERY capacitor. Not reproduced (nondeterministic UB —
+  CLAUDE.md rule): Rust renders the correct values; the golden
+  (`dump_capacitor.dss`) is captured AND compared with those three line
+  prefixes dropped on both sides; write the full report to
+  `investigations/dump-propertyvalue-garbage.md` (cover the Reactor+meter
+  case below in the same file).
+- **Fault** (`Fault.pas:502-542`): custom lines `~ bus1=`/`~ bus2=` (first/
+  next bus), `~ Phases=%d`, `~ R=%.2f` (= `1.0/G`), `~ pctStdDev=%.1f`
+  (`StdDev*100`), `~ Gmatrix= (` lower triangle `%.3f ` with `|` row
+  separators `)` only if set, `~ OnTime=%.3f`, `~ temporary= Yes/No`,
+  `~ MinAmps=%.1f`, then the inherited tail (`NumPropsthisClass..Num`);
+  Complete → `// SpecType=%d`.
+- **Vsource** (`VSource.pas:1137-1165`): all props; Complete → blank,
+  `BaseFrequency=%.1f`, `VMag=%.2f`, `Z Matrix=` lower triangle
+  `%.8g +j %.8g `.
+- **UPFC** (`UPFC.pas:1028-1056`): same shape as Vsource but NO `VMag` line.
+- **RegControl** (`RegControl.pas:682-698`): all props; Complete →
+  `! Bus =` + `GetBus(1)` + blank line.
+- **Monitor** (`Monitor.pas:1811-1849`): all props; Complete → blank,
+  `// BufferSize=`, `// Hour=`, `// Sec=`, `// BaseFrequency=%.1g`,
+  `// Bufptr=`, `// Buffer=` + the raw sample floats (`WriteStr %0:1`, i.e.
+  1 decimal), wrapped every `2 + Fnconds*4` values.
+- **EnergyMeter** (`EnergyMeter.pas:2082-2119`): all props; Complete →
+  `Registers` heading + per register `"%s" = %.0g`, then `Branch List:`
+  walking `BranchList` — per PD branch `Circuit Element = <name>` + nested
+  `   Shunt Element = <fullname>`.
+- **Spectrum** (`Spectrum.pas:326-347`): all props; Complete →
+  `Multiplier Array:`, header `Harmonic, Mult.re, Mult.im, Mag,  Angle`,
+  per-harmonic `%-g` fields.
+
+Also: correct each class's `PropDef` name literals to the oracle display case
+(the `elements/pd/reactor/mod.rs:76` convention) as its golden lands — the
+bare-dump golden (step 3b) additionally forces the pass for every class in
+`dump3.dss` **and** the default library objects (LoadShape/GrowthShape/
+Spectrum/TCC_Curve defaults). The two overrides NOT in this list belong to
+unported classes and land with their GAPS_PLAN ports: AutoTrans
+(`AutoTrans.pas:1246`, WPG.15) and GICLine (`GICLine.pas:627`, WPG.16) —
+cross-reference them there, do not port here.
+
+**Step 3b — the whole-circuit / aux Dump forms** (replace the stub at
+`exec/report.rs:1754-1767`; Pascal `DoPropertyDump`, `ExecHelper.pas:1194-1396`).
+Keyword dispatch on the first param (exact `CompareText` except `alloc*` =
+first-5-chars match):
+
+1. `commands` → `DumpAllDSSCommands` (`Utilities.pas:821-872`): file always
+   `<OutputDir>DSSCommandsDump.txt`; sections `[execcommands]` /
+   `[execoptions]` / one `[<ClassName>]` per class; lines `i, "name", "help"`
+   with help run through `ReplaceCRLF`. **Help data**: the pinned oracle loads
+   it from the gettext catalog shipped in the dss-python wheel
+   (`dss/messages/properties-en-US.mo`, 1697 entries; keys `Command.<name>`,
+   `Option.<name>`, `<Class>.<prop-lowercase>`; lookup falls back through
+   `ClassParents` and returns the KEY itself on a miss —
+   `DSSClass.pas:2166-2200`, `DSSGlobals.pas:719-724`). Add
+   `tools/golden/gen_help_catalog.py`: parse the `.mo` from the pinned wheel
+   → emit `crates/dss-core/src/report/help_catalog.rs` (a generated static;
+   regenerate manually with the PIN only, same rule as goldens). The dump is
+   then a pure formatter over the catalog + the existing command/option/prop
+   tables.
+2. `buslist` → `<OutputDir>Bus_Hash_List.txt`, `BusList.DumpToFile`;
+   `devicelist` → `<OutputDir>Device_Hash_List.txt`, `DeviceList.DumpToFile`
+   (both err 255 on open failure). This byte-pins **THashList internals**
+   (`Shared/HashList.pas` — port `MakeHash`, the bucket layout and
+   `DumpToFile`'s three sections: `Number of Hash Lists = N, Number of
+   Elements = M`, the per-bucket distribution + members `"name"  Idx= i`,
+   then `LINEAR LISTING...`). Empirically the bus list printed only the
+   LINEAR section while the device list printed all three — read
+   `HashList.pas` to find the structural reason (likely sub-list allocation
+   size) and reproduce it, don't special-case.
+3. `alloc*` → `<OutputDir>AllocationFactors.txt`, `DumpAllocationFactors`
+   (`Utilities.pas:784-819`): per load, `ConnectedkVA`-spec →
+   `Load.<name>.AllocationFactor=%-.5g`, `kwh`-spec → `Load.<name>.CFactor=%-.5g`,
+   any other LoadSpecType prints NOTHING (probe-proven: kW/PF loads absent).
+4. `debug` → set the flag, fall through to the bare dump; `solution` →
+   `Solution.DumpProperties(F, debug, Leaf=TRUE)`.
+5. bare `Dump` / `Dump debug` → open `<OutputDir><CircuitName_>PropertyDump.txt`
+   (err 255); if debug, `Circuit.DebugDump` header first (`Circuit.pas:
+   2285-2319`: `NumBuses=`/`NumNodes=`/`NumDevices=`, `BusList:` per bus
+   `Pad(name,12) (n Nodes) <nodes>`, `DeviceList:` per device `Pad(name,12)`
+   + `  DISABLED`, `NodeToBus Array:`); then every `CktElements` in order,
+   then every general `DSSObjs`, then `Solution.DumpProperties` — all with
+   Leaf=TRUE. GlobalResult = the file path.
+6. `Solution.DumpProperties` (`Solution.pas:1768-1891`): the `Set …` option
+   list — port line-for-line; the Leaf-gated lines (`Set Mode=`, `hour`,
+   `sec`, `year`, `circuit`, `editor`, `allowduplicates`, `voltagebases`)
+   print only for `dump solution`/bare dump, NOT for the Save
+   `IncludeOptions` path. `Set editor=NotePad.exe` is the pinned-oracle
+   Windows default — reproduce the platform default string. Formats: mostly
+   `%-g`; `%mean/%stddev` = `%-.4g` of value*100; `ueweight/lossweight`
+   `%8.2f`; voltagebases `%10.2f` list; Complete additionally factors Y and
+   dumps `System Y Matrix (Lower Triangle by Columns)` (`[%4d,%4d] = %12.5g +
+   j%12.5g`) — bare `dump debug` passes Complete=debug, so this fires there.
+
+**Step 3 gate:** wire `dump3.dss` + `dump_capacitor.dss` into `gen_phase8.py`
+(one meta per dump form — the validated post-command list is in the
+scratchpad validator and the phase8_decks README) + `run_deck_dump_exact`
+tests, all byte-exact except the masked capacitor lines. Then the audits +
+STATUS per the §0 ritual.
+
+**Step 4 — `Save <class>` / `save` (meters) / `save voltages`** (replace the
+stub `exec/report.rs:1733`; Pascal `DoSaveCmd`, `ExecHelper.pas:744-842`).
+Parse via the `SaveCommands` table `['class','file','dir','keepdisabled']`
+(positional-or-named; `keepdisabled` is parsed but IGNORED upstream —
+`:780`); defaults `ObjClass=''`, `SaveDir=OutputDirectory`, `SaveFile=''`.
+Branches, in order (`CompareTextShortest` prefix matching):
+
+1. empty or `meters` → for every Monitor `Save` (flushes the in-memory
+   sample buffer to the monitor's internal stream — NO file, probe-proven;
+   port as the equivalent buffer flush or a documented no-op if the Rust
+   monitor has no separate stream) + for every EnergyMeter `SaveRegisters`
+   (`EnergyMeter.pas:1235-1269`): file `<OutputDir>MTR_<name>.csv`, header
+   `Year, <year>,` then per register `"<RegName>",<value :0:0>`;
+   GlobalResult = the RELATIVE `MTR_<name>.csv` (probe-proven), err 526.
+2. `circuit` → `Circuit.Save(SaveDir)` (step 5).
+3. `voltages` → `Solution.SaveVoltages` (`Solution.pas:2277-2315`): file
+   `<OutputDir><CircuitName_>SavedVoltages.txt`, per node
+   `<bus>, <nodenum>, <|V| %-.7g>, <ang %-.7g>`; GlobalResult = full path,
+   err 488.
+4. any class name → `WriteClassFile` (`Utilities.pas:1134-1210`): default
+   filename = the bare class name (NO `.dss` extension — probe: `save load`
+   → a file named `load`), `SaveDir + PathDelim + SaveFile` when dir given
+   (mkdir, err 247); GlobalResult = the final SaveFile.
+
+The serializer pair (shared with step 5; `report/save/save.rs`):
+`WriteDSSObject` (`Utilities.pas:1221-1235`) = `New "Class.name"` (name
+always double-quoted) + `SaveWrite` + ` ENABLED=NO` when a disabled
+CktElement + mark `HasBeenSaved`; `SaveWrite` (`DSSObject.pas:145-165`) =
+ONLY explicitly-set props, in set order (Rust: `DssObjData::
+next_property_set`), skipping empty and the `----` sentinel, as
+` <Name>=<CheckForBlanks(value)>`; `CheckForBlanks` (`Utilities.pas:1212`) =
+quote with `"` only when the value contains a space and doesn't already
+start with `(`/`[`/`{`/`"`/`'`. **This is a different serializer from
+Dump** (all props, `~` lines) — do not conflate.
+
+Gate: goldens over `save_forms.dss` — `MTR_em1.csv` (integer registers,
+byte-exact viable), `svf_SavedVoltages.txt` + the `save load` file via
+`compare_export` (7-sig magnitudes can straddle the faer/KLU last digit).
+
+**Step 5 — `Save circuit` + the round-trip gate** (`Circuit.Save`,
+`Circuit.pas:2409-2655`; on the command path `saveFlags = []`, so every
+flag-gated branch — SingleFile/KeepOrder/IncludeOptions/SetVoltageBases/
+IsOpen/IncludeDisabled/ExcludeDefault — is DORMANT; implement the flag enum
+faithfully but only the empty-set path is reachable/gated):
+
+1. Directory logic: `Save circuit` always has non-empty `Dir` (default
+   `OutputDirectory`), so the classic `<Name>`/`<Name>000..999`
+   (`Format('%.3d')`) fresh-subdir loop (`:2457-2478`) is UNREACHABLE from
+   the executive — port it (C-API parity) but gate only the reachable
+   branch: normalize/create `Dir`, `SetCurrentDSSDir` equivalent
+   (`Dss::current_dir`), err 432 on create failure, restore the saved dir at
+   the end (`:2652`).
+2. Body order (`:2533-2614`): clear `SavedFileList` + all `HasBeenSaved`/
+   class `Saved` flags; `WriteClassFile` the library classes in the verbatim
+   order `wiredata, cndata, tsdata, linegeometry, linespacing, linecode,
+   xfmrcode, loadshape, TShape, priceshape, growthshape, XYcurve, TCC_Curve,
+   Spectrum, DynamicExp` (empty classes write nothing; a 0-record file is
+   deleted and not listed — `:1191-1198`); `WriteVsourceClassFile`
+   (`Utilities.pas:1088-1132`: FIRST vsource as `Edit "Vsource.source"`, the
+   rest as `New`); `SaveFeeders` (`:2817-2856`: one subdir per ENABLED
+   EnergyMeter named after it + `EnergyMeterObj.SaveZone` — read it in
+   `EnergyMeter.pas` at WP open; the probe shows it writes `Branches.dss` /
+   `Shunts…`/`Loads.dss`/`Capacitors.dss` and they join the Redirect list);
+   `SaveDSSObjects` (`:2657-2706`: every remaining class via
+   `WriteClassFile`); `SaveVoltageBases` (`:2708-2747`: file
+   `BusVoltageBases.dss` = `Set VoltageBases=<get voltagebases result>` +
+   `CalcVoltageBases` — reuse the ported `get` machinery); `SaveBusCoords`
+   (`:2942-2988`: file `BusCoords.dss` ALWAYS created, CSV rows
+   `<name>, %-g, %-g` only for coord-defined buses — probe: empty file when
+   none); `SaveMasterFile` (`:2749-2815`: header `! Last saved by …` —
+   write the port's own analogous stamp — `Clear`, `Set DefaultBaseFreq=`,
+   `New Circuit.<name>`, conditional `Set Cktmodel/AllowDuplicates/
+   LongLineCorrection`, `Set EarthModel=`; footer `Redirect <relative>` per
+   `SavedFileList` entry, `MakeBusList`, `Redirect BusVoltageBases.dss  !
+   set voltage bases`, `BusCoords BusCoords.dss` if the file exists).
+   `SaveOpenTerminals` is `IsOpen`-gated → dormant, document only.
+   GlobalResult `Circuit saved in directory: "<CurrentDSSDir>"`.
+3. **Gate — NEW `crates/dss-core/tests/save_roundtrip.rs`** (§1 gate #3):
+   on IEEE13/37/123 — solve, `save circuit dir=<tempdir>`, `clear`, compile
+   the emitted `Master.dss`, re-solve: node voltages ≤1e-6 rel vs pre-save,
+   iteration count exact. Round-trip through OUR parser, never byte-match vs
+   the oracle's Save (§2.4). Plus a `save_forms.dss` structural test: the
+   emitted file SET equals the oracle's probe-proven set (Master/
+   BusVoltageBases/BusCoords/LineCode/LoadShape/…/em1/*).
+4. `SaveFeeders`/Feeder note: the meter-zone subdir path above IS the
+   feeder save; the Feeder CLASS stays dead upstream (Phase-6/7 probes) —
+   nothing else to port.
+
+**Step 6 — classify/migrate.** `DSS_LIVE_CLASSIFY=1` + `apply_classify.py`:
+the two Dump-blocked decks (`Test/REACTORTest.DSS` — also unblocked by the
+step-1 Reactor work, tag refresh; `IEEE-TIA-LV Model/Split-Phase_IEEE_TIA`)
++ anything Save unblocks; `COVERAGE.md` refresh.
 
 ---
 
-### WP8.6 — Executive tail: BatchEdit, Interpolate, Distribute, Uuids, GISCoords, … [12%]
+### WP8.6 — Executive tail: BatchEdit, MakeBusList/GISCoords, SetBusXY+Interpolate, Distribute, Uuids [12%]
 
-**Pascal:** `Executive/ExecHelper.pas` `DoBatchEditCmd`, `DoInterpolateCmd`
-(`MetObj.InterpolateCoordinates`), `DoDistributeCmd`, `DoUuidsCmd`; `Executive/
-ExecCommands.pas` inline dispatch for `MakeBusList` (`:541`) and `GISCoords` (`:639`);
-plus the remaining `ExecCommands`/`ExecOptions` tail — drive from `tools/cmd_coverage.py`
-(built this WP per PORTING_PLAN §Phase 8) to *prove* coverage; where a needed verb has
-no corpus deck, synthesize a fixture (§1), never skip it.
+**Pascal:** `Executive/ExecHelper.pas` `DoBatchEditCmd:292`,
+`DoInterpolateCmd:3106`, `DoDistributeCmd:3755` + `makeDistributedGenerators:3701`,
+`DoUuidsCmd:4465`; `Common/Utilities.pas` `Write*Generators:1338-1531`;
+`Meters/EnergyMeter.pas` `InterpolateCoordinates:2298`;
+`Executive/ExecCommands.pas` `MakeBusList:541`, `GISCoords:639`;
+`Common/ExportResults.pas` `ExportUuids:2871`.
+
+**Dispatch prerequisite (first commit of the WP):** none of these commands has
+a `cmd::` ordinal — they all fall through to `not_ported_command`
+(`exec/command.rs:161`). Add the ordinals to `exec/tables.rs::cmd`
+(BatchEdit, Interpolate, Distribute, Uuids, MakeBusList, GISCoords, SetBusXY;
+indices = their 1-based positions in `EXEC_COMMANDS`) + the match arms.
 
 Steps:
-1. **Build `tools/cmd_coverage.py`** (PORTING_PLAN §Phase 8): enumerate every DSS
-   command/option used across the vendored corpus, cross-referenced with what the
-   engine already dispatches, to produce the *exact* tail list and prove coverage.
-   Drive the rest of this WP (and the WP8.8 sweep) from its output.
-2. **BatchEdit** (`DoBatchEditCmd` — `batchedit type=<class> name=<regex> <editstring>`)
-   — select by a **case-insensitive, unanchored regex** over each class object's name
-   (Pascal `TRegExpr` with `ModifierI := TRUE` + `Exec` = partial match,
-   `ExecHelper.pas:292`), then replay the edit string against every match in creation
-   order. Use the proven **`regex` crate** (`(?i)` + `is_match` mirrors `TRegExpr.Exec`'s
-   unanchored semantics); `TODO(compat)` only if a corpus pattern hits a `TRegExpr`-vs-
-   `regex` flavor gap (probe). No report infra needed; can land first in this WP.
-3. `Interpolate` (bus-coordinate interpolation along zones — reuses the Phase-6
-   `InterpolateCoordinates` if it landed; else port it here), `Distribute`
-   (`Utilities` `WriteUniform`/`Random`/`EveryOther`/`ProportionalGenerators`),
-   `Uuids`, `GISCoords`/`MakeBusList`, and the probed remainder.
-4. Gate: BatchEdit/Interpolate/Distribute behavior vs the oracle on a corpus case
-   (model compare via the live gate); migrate the `BatchEdit`-tagged decks;
-   `COVERAGE.md` refresh.
+
+1. **`tools/cmd_coverage.py`** (PORTING_PLAN §Phase 8): enumerate every DSS
+   command/option used across the vendored corpus, cross-referenced with the
+   dispatched set, producing the exact tail list. Drive the rest of this WP
+   (and the WP8.8 sweep) from its output.
+2. **BatchEdit** (`ExecHelper.pas:292-341`). Parse via `GetObjClassAndName`
+   (`:200-224`): one param, optionally named — the name must
+   abbreviation-match `object` (else error 240 with `CRLF+CmdString`); split
+   `Class.pattern` on the dot. `circuit` class → silent no-op. Unknown class
+   → error 267 `BatchEdit Command: Object Type "%s" not found. %s`. Else:
+   remember the parser position at the start of the trailing edit string,
+   walk the class list in creation order, and for each object whose NAME
+   matches the pattern **case-insensitively and UNANCHORED** (`TRegExpr`
+   `ModifierI` + `Exec` = search anywhere; Rust: `regex` crate,
+   `RegexBuilder::case_insensitive(true)` + `is_match`), replay the edit
+   string against it (re-parse from the saved position ↔ in Rust: capture
+   the remainder once, run the class `Edit` per match). **There is NO count
+   message** — the command always returns 0 silently; do not invent one.
+   `TODO(compat)` only if a corpus pattern hits a TRegExpr-vs-`regex` flavor
+   gap (probe first). Gate: flip `tests/corpus/gaps` `batchedit.dss` +
+   `midi_batchedit.dss` to `pending:false` (expected: `LA` edits
+   la1/la2/xla1 not lb1; `ld1` edits 11 loads; `^LD2$` exactly one), prove
+   the live compare green, graduate both decks (→ `tests/corpus/modes/`,
+   created here if this is the first graduation — GAPS_PLAN §3.1); migrate
+   the **39** `unsupported_command=BatchEdit` corpus decks.
+3. **MakeBusList + GISCoords** (`ExecCommands.pas:541-544`, `:639-644`):
+   `MakeBusList` = `if BusNameRedefined { reprocess_bus_defs() }` — nothing
+   else; `GISCoords` = documented no-op ("Do nothing here on DSS C-API").
+   Migrate the **13** MakeBusList- and **11** GISCoords-tagged decks (the
+   ADiakoptics `Torn_Circuit` family — check the paired tags first; a deck
+   also blocked by an ADiakoptics-only feature stays put with its tag
+   corrected).
+4. **SetBusXY + Interpolate.** `SetBusXY` (find `DoSetBusXYCmd` in
+   `ExecHelper.pas` at WP open — trivial: bus/x/y params, `BusList.Find`,
+   sets X/Y + `CoordDefined`, error if the bus doesn't exist yet).
+   `Interpolate` (`ExecHelper.pas:3106-3163`): clear `Flg.Checked` on every
+   ckt element; empty param → `'A'` = every ENABLED meter's
+   `InterpolateCoordinates`, else the named meter (disabled → error 283,
+   missing → error 277). `InterpolateCoordinates`
+   (`EnergyMeter.pas:2298-2369`): guard `CheckBranchList` → error 529
+   `'Meter Zone Lists need to be built. Do Solve or Makebuslist first!'`;
+   per zone end, walk parent branches to find the two nearest
+   coordinate-defined anchor buses, then `CalcBusCoordinates`
+   (`:2371-2409`) spaces the in-between buses EVENLY
+   (`Xinc=(X1-X2)/LineCount`) — port loop-for-loop. Gate: wire
+   `phase8_decks/interp.dss` into `gen_phase8.py`; the golden is the
+   `export buscoords` CSV after `interpolate` (anchors src/b1/b5/c2 →
+   b2/b3/b4 + c1 filled; oracle-validated deterministic).
+5. **Distribute** (`DoDistributeCmd:3755-3819` +
+   `makeDistributedGenerators:3701-3753`). Param table
+   `['kW','how','skip','pf','file','MW','what']`; defaults kW=1000,
+   How=`Proportional`, Skip=1, PF=1, file=`DistGenerators.dss`; `MW` =
+   kW×1000; `what` starting with `L` → loads AND unconditionally renames the
+   output to `DistLoads.dss` (probe-proven — an explicit `file=` is
+   overridden). Refuse to overwrite an existing file (error 721); header:
+   `! Created with Distribute Command:` +
+   `! Distribute kW=%-.6g PF=%-.6g How=%s Skip=%d  file=%s  what=%s` + blank.
+   Dispatch on the first letter of How: `U`/`R`/`S`/else-P →
+   `WriteUniform/Random/EveryOther/ProportionalGenerators`
+   (`Utilities.pas:1338-1531`); every writer iterates the Load class in
+   creation order, enabled loads only, one line
+   `new generator.DG_%d  bus1=%s phases=%d kV=%-g kW=%-g PF=%-.3g model=1`
+   (loads: `load.DL_%d`; Skip writer has a trailing space after kW —
+   `:1473`). kW math: Uniform = kW/Count (÷3 if PositiveSequence); Skip =
+   every (Skip+1)-th load, kW·kWBase/ΣkWBase over the selected; Proportional
+   = kW·kWBase/ΣkWBase over all enabled. **`How=Random` is RNG-carried**
+   (`randomize` + `random`, `:1400/:1415` — FPC time-seeded, probe-proven
+   class): port it with a fresh entropy-seeded RNG, never golden-gate it
+   (the GAPS_PLAN RNG rule). GlobalResult = the file name. Gate: wire
+   `phase8_decks/distrib.dss` — four deterministic variants
+   (Proportional/Uniform/Skip/what=Load; validated content in the probe
+   record), `compare_export` numeric-token compare.
+6. **Uuids + `Export Uuids`** (`DoUuidsCmd:4465-4535`;
+   `ExportUuids`, `ExportResults.pas:2871-2960`; UUID plumbing
+   `General/NamedObject.pas`). The command: read a comma-CSV of
+   `<fullname>, <uuid>` lines (AuxParser, delimiter `,`; missing file →
+   error 242); wrap a brace-less uuid in `{}`; a name containing `=` goes to
+   the CIM exporter's hashed-key list (`AddHashedUuid`), else dispatch
+   `circuit` / `Bus.<name>` (BusList find) / `<Class>.<name>` (SetActive)
+   and set the object's UUID. Rust plumbing: a lazily-generated UUID slot on
+   the object base + buses + circuit (`Get_UUID` creates a **random v4** on
+   first read, `CreateUUID4`, `NamedObject.pas:47-52` — use getrandom/rand;
+   never oracle-pinnable, which is why the fixture preloads everything).
+   `Export Uuids` (keyword 25, default file `EXP_UUIDS.csv` →
+   `<CircuitName_>` prefix applies): rows `<FullName> {UUID}` for circuit,
+   every bus, every ckt element, then the linecode/wiredata/linegeometry/
+   xfmrcode/linespacing/tsdata/cndata classes, then `WriteHashedUUIDs` — the
+   exporter auto-creates the hashed keys `Station=Station=1`,
+   `GeoRgn=GeoRgn=1`, `SubGeoRgn=SubGeoRgn=1` (probe-proven; the fixture
+   preloads all three). Probe-proven quirk to reproduce: `Text.Result` stays
+   EMPTY after `export uuids` (unlike every other export). Gate: wire
+   `phase8_decks/uuids.dss` + `uuids_pre.csv` (the `@FIXTURES@` token →
+   absolute fixtures dir on both the Python and Rust sides); byte-exact —
+   every object is preloaded. Migrate the 1 `Uuids`-tagged corpus deck (its
+   paired `Export` tag permitting).
+7. `COVERAGE.md` refresh + the §0 ritual (audits, STATUS).
 
 ---
 
-### WP8.7 — ReduceAlgs (full) + `TLineObj.MergeWith` [8%]
+### WP8.7 — ReduceAlgs (full) + `TLineObj.MergeWith` + `Remove` [8%]
 
-**Pascal:** `Meters/ReduceAlgs.pas` (`DoReduceDefault`, `DoReduceShortLines`,
-`DoReduceDangling`, `DoBreakLoops`, `DoMergeParallelLines`, `DoReduceSwitches`,
-`DoRemoveAll_1ph_Laterals`, `DoRemoveBranches`, `IsShortLine`);
-`Meters/EnergyMeter.pas` `ReduceZone`; `PDElements/Line.pas` `MergeWith` (the Phase-6
-blocker).
+**Pascal:** `PDElements/Line.pas` `MergeWith:1631-1840`;
+`Meters/ReduceAlgs.pas` (whole file, procedures below);
+`Meters/EnergyMeter.pas` `ReduceZone:2257-2284`;
+`Executive/ExecHelper.pas` `DoReduceCmd:1614-1663`, `DoKeeperBusList:2035-2095`,
+`DoSetReduceStrategy:3049-3104`, the `Remove` command handler (find
+`DoRemoveCmd` at WP open — it drives `DoRemoveBranches`).
+
+**Already in place (Phase 6 framing):** `do_reduce_cmd` (`exec/solve.rs:252`)
+reproduces `MarkCapandReactorBuses` / error 1890 / the `'A'`-vs-named-meter
+dispatch / error 262 — only the `ReduceZone` call is the
+`reduce_deferred_msg()` stub; `set_reduce_strategy` (`exec/helpers.rs:210`)
+fully parses `Set ReduceOption=` (first-letter B/D/E/L/M/S with the
+SWITCH-vs-Shortlines `CompareTextShortest` split) into `ReductionStrategy`;
+`Zmag`/`KeepLoad` are plain `Set` options (`ExecOptions` cases 113/112 →
+`ReductionZmag`/`ReduceLateralsKeepLoad`). `Set KeepList=` has the option
+name only — the handler is unported.
 
 Steps:
-1. Port `TLineObj.MergeWith` (the series-line merge `ReduceZone` needs). The Phase-6
-   `Reduce` work is **command-framing only** — `do_reduce_cmd` reproduces the meter
-   lookup / error-1890 / `'A'`-dispatch, but **every** `ReduceZone` strategy (incl.
-   `DoReduceDefault`) is `NOT_PORTED`, blocked on `MergeWith` (`exec/solve.rs:227-235`;
-   STATUS §7). So WP8.7 ports the strategies **including** `DoReduceDefault`.
-2. The reduction strategies + the `Set ReduceOption=` selector (already in
-   `EXEC_OPTIONS`) + `KeepList` (`DoKeeperBusList`).
-3. Gate: post-`Reduce` branch/node counts + a re-solve vs the oracle on a metered zone
-   (extend `golden_autoadd_reduce.rs`); migrate any `Reduce`-tagged corpus decks.
+
+1. **`TLineObj.MergeWith(other, series)`** (`Line.pas:1631-1840`) — port
+   loop-for-loop:
+   - guards: nil → error 184; `Fnphases` mismatch → return false;
+     `YPrimInvalid` set up front; `TotalLen` = series: `Len +
+     Other.Len·ConvertLineUnits(...)`, parallel: 1.0;
+   - series bus rewiring (`:1663-1706`): find the common bus by NodeRef→
+     BusRef scan, re-point this line's bus1/bus2 at the two OUTER buses via
+     the bus property setters;
+   - naming (`:1708-1719`): series → `Other.Name + '~' + Name` (the CHILD
+     survives, renamed), parallel → `<bus1-stripped>||<bus2-stripped>`;
+     `UpdateControlElements` (`:1842-1851`) re-points controls monitoring
+     `Other` onto `self`; series clears `IsSwitch`;
+   - impedance: (a) both sym-components & 3φ → length-weighted per-unit
+     R1/X1/R0/X0 averages (series) or `ParallelZ` on total-ohm Z1/Z0 +
+     summed C (parallel), applied through the property-edit path
+     (`BeginEdit`/`SetDouble`/`EndEdit` — so PrpSequence updates like a user
+     edit); (b) matrix parallel → `TotalLen = Len/2` (upstream "assume equal"
+     TODO — reproduce); (c) matrix series → element-wise
+     `(Z1·len1 + Z2·len2)/TotalLen` for Z and Yc, with `len=1.0` when
+     geometry/spacing-specified (length already baked into the matrices);
+   - finalize: `Other.Enabled := FALSE`, return true. Ratings are NOT
+     recombined — don't invent it.
+   Oracle-verified expectations to pin (from the pre-validated decks):
+   `l1~l2` / `s1~s2` / `b1||b2` names, the partner disabled, node counts in
+   the `tests/corpus/gaps` manifest notes.
+2. **The strategy procedures** (`ReduceAlgs.pas`; all early-exit when
+   `BranchList = NIL`; `First()` then `GoForward()` so the head branch is
+   always kept; `SERIESMERGE=TRUE`/`PARALLELMERGE=FALSE`):
+   - `DoMergeParallelLines:47` — `IsParallel` branch → merge with
+     `LoopLineObj`, parallel;
+   - `DoBreakLoops:69` — `IsLoopedHere` → disable the `LoopLineObj` partner;
+   - `DoReduceDangling:91` — `IsDangling` line whose to-bus ref > 0 and not
+     `Keep` → disable;
+   - `IsShortLine:119` — `|Z1|·len ≤ ReductionZmag` (sym-comp) /
+     `|Z[1,1]-Z[1,2]|·len` (multi-φ matrix) / `|Z[1,1]|·len` (1φ);
+   - `DoReduceShortLines:142` — pass 1 flags short lines; pass 2 (skip
+     `HasControl`/`IsMonitored`): 0 children + 0 shunts + not Keep →
+     disable; 0 children via in-line parent (parent must have exactly 1
+     child, no cap/reactor shunts) → parent-merge + move the shunts' `bus1=`
+     to the to-bus (`:226-227` re-edit through the parser); 1 child →
+     child-merge + move shunts to the FROM bus (`:277-278`), then an extra
+     `GoForward` (`:282`); tail: `ReprocessBusDefs` + `SystemYChanged`;
+   - `DoReduceSwitches:297` — `IsSwitch` lines: dangling+no-shunts →
+     disable; 1 child + no shunts + not Keep + child is a non-switch line →
+     child-merge;
+   - `DoReduceDefault:335` — non-switch, no control/monitor, 1 child +
+     0 shunts + not Keep → child-merge;
+   - `DoRemoveAll_1ph_Laterals:449` — a 1φ branch whose to-bus has EXACTLY
+     one node (a shared-bus pair is SKIPPED — `:474`); with
+     `ReduceLateralsKeepLoad` re-parent each shunt onto the head bus via
+     `Bus1=<head> kV=<head kVLN %.6g>` (`:509-510`), disable the lateral's
+     PD elements down to the start level; tail: `ReprocessBusDefs` +
+     `SystemYChanged`;
+   - `DoRemoveBranches:374` — position at the named PD element (miss →
+     error 5432100 `%s not found (Remove Command.)`); if KeepLoad, create
+     `Load.Eq_<elem>_<frombus-stripped>` at the FROM bus with
+     ` phases=%d Bus1=%s kW=%g kvar=%g kV=%g %s` from the branch's metered
+     power (kV from the bus kVBase, ×√3 when NPhases>1, else the
+     `|VBus[1]|·0.001` fallback); disable every branch + shunt below the
+     start level; tail: `ReprocessBusDefs` + `SystemYChanged`.
+   Only shortlines/laterals/removebranches reprocess bus defs themselves;
+   the other strategies rely on the bus1/bus2 edits raising
+   `BusNameRedefined` → the next solve reprocesses. Don't add extra
+   invalidation.
+3. **`ReduceZone` + wiring** (`EnergyMeter.pas:2257`): build zone lists if
+   `BranchList` unassigned (`MakeMeterZoneLists`), then dispatch the
+   `ReductionStrategy` enum → the procedures above (default incl. TapEnds →
+   `DoReduceDefault`; `rsTapEnds` is commented out upstream). Replace both
+   `reduce_deferred_msg()` sites in `do_reduce_cmd`.
+4. **`Set KeepList=`** (`DoKeeperBusList`, `ExecHelper.pas:2035-2095`):
+   cumulative; `File=<path>` (first token per line) or an inline bus-name
+   array; each hit sets `Bus.Keep` (the flag `mark_cap_and_reactor_buses`
+   already writes). **`Remove`** command: add the `cmd::` ordinal + handler
+   → `DoRemoveBranches`.
+5. Gate: flip the ten `tests/corpus/gaps` Reduce cases (the nine
+   `reduce_*.dss` + `midi_reduce.dss`) to `pending:false` (each manifest note records the oracle-verified
+   outcome: merged names, disabled partners, node counts, the KeepList
+   block, the skipped x2 pair, the `Load.eq_l2_b2` equivalent), prove the
+   live compare green at micro tolerance, graduate them (→ `modes/`);
+   extend `golden_autoadd_reduce.rs` with a post-`Reduce` re-solve on a
+   metered feeder (branch/node counts + voltages vs the oracle); no corpus
+   decks are Reduce-tagged (verified) — `COVERAGE.md` refresh only.
 
 ---
 
@@ -594,16 +810,22 @@ Steps:
 
 1. `rg "TODO\(compat\)"` / `rg "NOT_PORTED"` / `rg "TODO\(WP8\)"` sweep — every
    remaining site points at its phase (Phase 9 CIM/GIC/A-Diakoptics/exotics, or
-   "never" for DLLs/GUI).
+   "never" for DLLs/GUI). The WP8.4-era byte-pass notes (FPC `Format('%g')`
+   stand-ins flagged in STATUS) are settled here.
 2. Run `tools/cmd_coverage.py` to **prove tail coverage** of the corpus command/option
    set (PORTING_PLAN §Phase 8 deliverable); document the residual.
-3. Re-run the full suite + the **always-on live corpus compare**; run a final
+3. Verify every `tests/corpus/gaps` case with `wp: "WP8.*"` is `pending:false`
+   and graduated (the WPG.* cases stay until GAPS_PLAN executes; WPG.17 owns
+   deleting the emptied dir). Verify `tools/golden/phase8_decks/` decks are all
+   wired into `gen_phase8.py` (the dir then holds only the README + decks the
+   metas reference).
+4. Re-run the full suite + the **always-on live corpus compare**; run a final
    `DSS_LIVE_CLASSIFY=1` pass and migrate every newly-unblocked deck. Refresh
    `tests/corpus/COVERAGE.md`.
-4. Update `PORTING_PLAN.md` §Phase 8 cross-links; rewrite `STATUS.md` (Phase 8 record;
+5. Update `PORTING_PLAN.md` §Phase 8 cross-links; rewrite `STATUS.md` (Phase 8 record;
    "next = Phase 9 exotics — optional; stopping here is a complete usable simulator",
    per PORTING_PLAN §Phase 9 / cumulative note).
-5. Merge to `main` (`--no-ff`, the per-phase convention) — **only on explicit user
+6. Merge to `main` (`--no-ff`, the per-phase convention) — **only on explicit user
    request**.
 
 ## 4. Deferred in this phase (pointing forward)

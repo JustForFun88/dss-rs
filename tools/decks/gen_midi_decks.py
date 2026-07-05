@@ -933,6 +933,26 @@ AT_VBASES = "[115 69 12.47 4.16 0.48]"
 SNAP = ["Solve"]
 DAILY8 = ["Set mode=daily stepsize=1h number=8", "Solve"]
 
+BATCHEDIT_EXTRA = [
+    "",
+    "! BatchEdit family (PHASE8_PLAN WP8.6): the TRegExpr selection at scale.",
+    "! Pattern `ld1` is UNANCHORED + case-insensitive -> ld1 AND ld10..ld19;",
+    "! `^ld2$` is anchored -> ld2 only; `^l4` -> the l4a/l4b/l4c lateral run.",
+    "batchedit load.ld1 kw=150",
+    "batchedit load.^LD2$ pf=0.99",
+    "batchedit line.^l4 length=2.5",
+]
+
+REDUCE_EXTRA = [
+    "",
+    "! Reduce family (PHASE8_PLAN WP8.7): the DEFAULT in-line merge strategy",
+    "! at scale (the un-loaded lateral mid-buses l2m/l3m merge; buses with",
+    "! loads/branches survive; the loop tie + regulator bank stay).",
+    "new energymeter.em element=transformer.sub terminal=1",
+]
+
+REDUCE_SOLVES = ["Solve", "set reduceoption=default", "reduce", "Solve"]
+
 GAPS_MIDI_DECKS = {
     "midi_isource_asym": lambda: gaps_midi_deck(
         "isource-snapshot(gaps)", SRC_STD, ISOURCE_STATIC,
@@ -957,6 +977,14 @@ GAPS_MIDI_DECKS = {
     "midi_autotrans_both": lambda: gaps_midi_deck(
         "autotrans-snap+regdaily(gaps)", SRC_STD, AUTOTRANS_DAILY,
         daily=True, vbases=AT_VBASES, solves=SNAP + DAILY8,
+    ),
+    "midi_batchedit": lambda: gaps_midi_deck(
+        "batchedit-snapshot(gaps)", SRC_STD, BATCHEDIT_EXTRA,
+        daily=False, vbases=MIDI_VBASES, solves=SNAP,
+    ),
+    "midi_reduce": lambda: gaps_midi_deck(
+        "reduce-default(gaps)", SRC_STD, REDUCE_EXTRA,
+        daily=False, vbases=MIDI_VBASES, solves=REDUCE_SOLVES,
     ),
 }
 

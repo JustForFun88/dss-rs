@@ -1,0 +1,36 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the SHORTLINES strategy
+// (DoReduceShortLines, ReduceAlgs.pas:142) under `Set Zmag=` (ExecOptions
+// option 113 -> ActiveCircuit.ReductionZmag). Pass 1 flags lines with
+// |Z1|*len <= Zmag (IsShortLine, :119); pass 2 merges each flagged line
+// with its in-line parent/child and RECONNECTS the eliminated bus's shunt
+// objects via a `bus1=...` re-edit (:226/:277). s1 (0.02 km) and s2
+// (0.03 km) are short; l3 (0.7 km) is not. The load at b2 exercises the
+// shunt reconnect path.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrs basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.s1 bus1=b1 bus2=b2 linecode=lc length=0.02 units=km
+new line.s2 bus1=b2 bus2=b3 linecode=lc length=0.03 units=km
+new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.7 units=km
+
+new load.ldm bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=200 pf=0.95
+new load.ld4 bus1=b4 phases=3 conn=wye model=1 kv=12.47 kw=500 pf=0.92
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set reduceoption=shortlines
+set zmag=0.1
+reduce
+solve
