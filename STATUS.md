@@ -449,9 +449,17 @@ detail is in **§1f**; the current frontier:
   verified `ShowBusPowers` field-for-field incl. `check_bus_reference`, the seq
   currents-all-terminals / powers-matched-terminal asymmetry, the element-section
   PD-residual + PC/Faults order, both `write_terminal_power*` layouts, MVA scaling,
-  and the extraction faithfulness; audit-tests confirmed the goldens sound). The
-  recommended optional coverage (MVA form, the `<3`-phase seq path, `#219`) is folded
-  into the WP8.4-finalize follow-up.
+  and the extraction faithfulness; audit-tests confirmed the goldens sound). **Both
+  audits' recommended coverage landed** (5 tests): `show_busflow_mva`/`_mva_elem`
+  (the `Show`-path's only MVA coverage — `×0.001` + MW/Mvar/MVA headers),
+  `show_busflow_1ph`/`_1ph_elem` (bus 611 — the `<3`-phase seq path
+  `WriteSeqVoltages`<3 / `WriteTerminalPowerSeq` `S1`), and the
+  `show_busflow_unknown_bus_errors` unit test (`#219`, golden-uncoverable) — all
+  reusing the shared `busflow_seq_policy`/`busflow_elem_policy`; golden_phase8 **→120**.
+  Tracked (WP8.8 byte pass, not gated — the token comparator masks it): FPC `Format('%g')`
+  prints **fixed** notation for a value in ~[1e-5,1e-4) where C/`fmt_g` switches to
+  scientific (`0.000043053` vs `4.3053E-5`) — a `format::g` band divergence with no
+  current byte-exact test in that range.
 - **WP8.4 (Show reports) — step 16 COMPLETE, gate-green** (`Show Isolated` +
   `Show Topology` — the circuit-wide CktTree pair): the new `solution/topology.rs`
   ports Pascal `GetIsolatedSubArea` (`CktTree.pas:624`) + its 5 connectivity helpers
@@ -560,7 +568,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 115,
+                            # golden_phase7_protection 1, golden_phase8 120,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

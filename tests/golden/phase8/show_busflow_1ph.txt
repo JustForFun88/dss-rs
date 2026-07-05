@@ -1,0 +1,22 @@
+
+Bus      V1 (kV)    p.u.    V2 (kV)      %V2/V1    V0 (kV)  %V0/V1
+
+611              2.308     0.9608          0          0         0         0
+
+SYMMETRICAL COMPONENT CURRENTS BY CIRCUIT ELEMENT (first 3 phases)
+
+Element                Term      I1         I2       %I2/I1       I0      %I0/I1   %Normal %Emergency
+
+"CAPACITOR.CAP2"   1      40.065            0     0.00           0     0.00      0.00     0.00
+   -               2      40.065            0     0.00           0     0.00      0.00     0.00
+"LINE.684611"   1      71.153            0     0.00           0     0.00      0.00     0.00
+   -            2      71.153            0     0.00           0     0.00      0.00     0.00
+"LOAD.611"   1      78.285            0     0.00           0     0.00      0.00     0.00
+
+SYMMETRICAL COMPONENT POWERS BY CIRCUIT ELEMENT (first 3 phases)
+
+Element                      Term    P1(kW)   Q1(kvar)         P2         Q2      P0      Q0  
+
+"Capacitor.cap2"1        0.0     -277.4        0.0        0.0     0.0     0.0
+"Line.684611"2     -490.4       46.6        0.0        0.0     0.0     0.0
+"Load.611"1      490.4      230.8        0.0        0.0     0.0     0.0

@@ -1611,17 +1611,98 @@ fn run_lineconstants_show(stem: &str) {
 /// near-zero residual (675 has no de-energised branch — chosen for a fully-exact
 /// golden; a richer junction like 671 lands a `%10.5g` kvar cell on a 5-sig rounding
 /// boundary, a print straddle avoided here).
-#[test]
-fn show_busflow_matches_oracle() {
-    let policy = ExportPolicy {
+/// The `Show busflow` **seq** policy: full exact equality (no near-zero residual on a
+/// fully-energised bus).
+fn busflow_seq_policy() -> ExportPolicy {
+    ExportPolicy {
         sep: ' ',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
         col_tol: vec![],
+    }
+}
+
+/// The `Show busflow` **elem** policy: exact except the capacitor's near-zero kW
+/// (field 2) + PF (field 6), gated on the row's kW `< 1e-4` (see
+/// [`show_busflow_elem_matches_oracle`]).
+fn busflow_elem_policy() -> ExportPolicy {
+    let on = |sel: ColSel| ColTol {
+        sel,
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::MinCols(2, 2, 1e-4)),
     };
-    run_feeder_show("show_busflow", &policy);
+    ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![on(ColSel::Index(2)), on(ColSel::Index(6))],
+    }
+}
+
+#[test]
+fn show_busflow_matches_oracle() {
+    run_feeder_show("show_busflow", &busflow_seq_policy());
+}
+
+/// `Show busflow 675 m` (MVA form, audit-tests step-15 follow-up): the `×0.001`
+/// scaling + `MW/Mvar/MVA` headers — the only MVA coverage in the whole `Show` power
+/// path. Same seq policy (fully exact); the MVA kW is ~3.6e-18 but the seq form has no
+/// near-zero cells here.
+#[test]
+fn show_busflow_mva_matches_oracle() {
+    run_feeder_show("show_busflow_mva", &busflow_seq_policy());
+}
+
+/// `Show busflow 675 m e` (MVA element form): the `write_terminal_power` `×0.001`
+/// scaling + `MW/Mvar/MVA` headers. Same elem policy (capacitor near-zero kW/PF gated).
+#[test]
+fn show_busflow_mva_elem_matches_oracle() {
+    run_feeder_show("show_busflow_mva_elem", &busflow_elem_policy());
+}
+
+/// `Show busflow 611` (1-phase bus, audit-tests follow-up): the `<3`-phase seq path —
+/// `WriteSeqVoltages` (<3 nodes → `V2/V0 = 0`), `GetI0I1I2`/`WriteTerminalPowerSeq`
+/// (`Nphases < 3` / `S1`). Bus 611 has a 1-phase load + `Capacitor.Cap2`; the
+/// `<3`-phase cells are exact zeros → fully exact.
+#[test]
+fn show_busflow_1ph_matches_oracle() {
+    run_feeder_show("show_busflow_1ph", &busflow_seq_policy());
+}
+
+/// `Show busflow 611 e` (1-phase element form): the per-terminal branch currents/powers
+/// on a 1-phase bus. Same elem policy (Cap2's near-zero kW/PF gated).
+#[test]
+fn show_busflow_1ph_elem_matches_oracle() {
+    run_feeder_show("show_busflow_1ph_elem", &busflow_elem_policy());
+}
+
+/// `Show busflow <unknown bus>` (Pascal `#219 'Bus "%s" not found.'`, audit-tests
+/// step-15 follow-up): the negative path is golden-uncoverable (it pushes an error and
+/// writes no file), so pin it by unit test — a solved circuit + a nonexistent bus
+/// yields exactly the uppercase-name #219 message and no report file.
+#[test]
+fn show_busflow_unknown_bus_errors() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command("new load.l bus1=src phases=3 kv=12.47 kw=100");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    dss.command("show busflow nosuchbus");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e == "Bus \"NOSUCHBUS\" not found."),
+        "expected #219, got {:?}",
+        dss.errors()
+    );
 }
 
 /// `Show busflow 675 e` (Pascal `ShowBusPowers` code 1): the element form — node
@@ -1639,21 +1720,7 @@ fn show_busflow_matches_oracle() {
 /// capacitor power rows.
 #[test]
 fn show_busflow_elem_matches_oracle() {
-    let on = |sel: ColSel| ColTol {
-        sel,
-        rel: 0.0,
-        abs: 0.0,
-        gate: Some(GateSpec::MinCols(2, 2, 1e-4)),
-    };
-    let policy = ExportPolicy {
-        sep: ' ',
-        header_lines: 0,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![on(ColSel::Index(2)), on(ColSel::Index(6))],
-    };
-    run_feeder_show("show_busflow_elem", &policy);
+    run_feeder_show("show_busflow_elem", &busflow_elem_policy());
 }
 
 /// `Show Isolated` (Pascal `ShowIsolated`) on the metered IEEE13 — fully connected, so
