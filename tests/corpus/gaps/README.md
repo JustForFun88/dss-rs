@@ -3,10 +3,11 @@
 Hand-written / generated DSS decks for everything the Rust engine does not
 port yet: the Phase-4–7 feature deferrals whose only blocker was a missing
 corpus deck (the WP7.9 "zero corpus cases → skip" anti-pattern, called out in
-`PHASE8_PLAN.md` §1) **and** the unported element classes (Isource, AutoTrans,
-GICLine, GICTransformer, GICsource). The execution plan that consumes them is
-**`GAPS_PLAN.md`** at the repo root — read it first; it records per-deck
-determinism proofs and gate strategy.
+`PHASE8_PLAN.md` §1), the unported element classes (Isource, AutoTrans,
+GICLine, GICTransformer, GICsource), **and** the remaining Phase-8 executive
+verbs (BatchEdit, Reduce). Each case's `wp` field names the work package that
+ports it: `WPG.*` → **`GAPS_PLAN.md`** (read it first; it records per-deck
+determinism proofs and gate strategy), `WP8.*` → **`PHASE8_PLAN.md`**.
 
 **"Gaps" names a deck's state, not its nature** (GAPS_PLAN §3.1): a deck lives
 here only while its feature is unported (`pending: true` in `manifest.json` —
@@ -58,6 +59,17 @@ changes the oracle output).
 | `gictransformer_gic.dss` | GICTransformer GSU/YY/Auto, `R1/R2` + `%R1` specs, `VarCurve` | WPG.16 |
 | `gicsource_gic.dss` | GICsource named-Line splice (`GIC_<name>` bus, Bus2 rewrite) | WPG.16 |
 | `gic_midi.dss` | all three GIC classes on a 6-substation 345 kV ring (33 nodes) | WPG.16 |
+| `batchedit.dss`, `midi_batchedit.dss` | BatchEdit TRegExpr semantics: case-insensitive + unanchored (`LA` → la1/la2/xla1; `ld1` → ld1+ld10..ld19) vs anchored `^…$` | WP8.6 |
+| `reduce_default.dss` | `Reduce` default in-line merge (`Line.l1~l2`) + the cap-bus auto-keep | WP8.7 |
+| `reduce_shortlines.dss` | `Set Zmag=` short-line merge + eliminated-bus shunt re-parenting | WP8.7 |
+| `reduce_dangling.dss` | dangling dead-end disabled; loaded dead-end survives | WP8.7 |
+| `reduce_switches.dss` | in-line switch merged into downstream line; dangling switch disabled | WP8.7 |
+| `reduce_laterals.dss` | 1φ laterals removed, loads re-parented (`KeepLoad`); shared-bus pair skipped | WP8.7 |
+| `reduce_mergeparallel.dss` | parallel pair → `Line.b1\|\|b2` (ParallelZ) | WP8.7 |
+| `reduce_breakloop.dss` | loop-closing line disabled | WP8.7 |
+| `reduce_keeplist.dss` | `Set KeepList=(b2)` blocks the merge at b2 only | WP8.7 |
+| `reduce_remove.dss` | `Remove line.l2 keepload=yes` → sub-tree disabled + `Load.eq_l2_b2` equivalent | WP8.7 |
+| `midi_reduce.dss` | the default merge at midi scale (94→88 nodes, 3 merges) | WP8.7 |
 
 (No async/both decks for the GIC classes: none has a shape reference or any
 time-varying drive upstream — their corpus usage is a 0.1 Hz quasi-DC

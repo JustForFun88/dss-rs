@@ -92,9 +92,17 @@ reassessed), **16 oracle-validated decks** landed as the third live-gate family
 `tests/corpus/gaps/` (manifest, every case `pending: true`; two-process
 determinism + feature-sensitivity proven on the pinned oracle), WPG.1–17
 packaged; executes after/alongside the remaining Phase-8 WPs (§1f).
-**next = Dump step 3** (bare `dump`/`dump debug` whole-circuit +
+**PHASE8_PLAN tail refresh (2026-07-05, docs/decks only):** WP8.1–8.4
+collapsed to done-markers; WP8.5 steps 3–6, WP8.6 and WP8.7 rewritten to
+Sonnet-executable detail from a fresh Pascal deep-read + oracle probes, with
+the test fixtures authored up front — 7 golden fixture decks at
+`tools/golden/phase8_decks/` (dump3, dump_capacitor, save_forms, interp,
+distrib, uuids+csv) and 12 live staging decks at `tests/corpus/gaps/`
+(`wp: "WP8.6"/"WP8.7"`: batchedit ×2, the 8 reduce strategies + `Remove` +
+midi_reduce), all two-process oracle-validated + feature-sensitive (details
+in §1f). **next = Dump step 3** (bare `dump`/`dump debug` whole-circuit +
 `dump solution` + the `commands`/`buslist`/`devicelist`/`alloc` aux files, and
-the 8 remaining leaf overrides).
+the 8 remaining leaf overrides — per the refreshed PHASE8_PLAN §WP8.5).
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
@@ -730,6 +738,42 @@ frontier:
   has zero corpus decks. `ControlledTransformer` + user-model DLL classes
   verified not-registered upstream (nothing to port). No engine code touched
   (decks/plan/docs only).
+- **PHASE8_PLAN tail refresh (2026-07-05): the remaining WPs made
+  Sonnet-executable + their test corpus pre-built.** WP8.1–8.4 collapsed to
+  one-line done-markers (records live here, not in the plan); WP8.5 steps
+  3–6 / WP8.6 / WP8.7 / WP8.8 rewritten with exact Pascal line refs (from a
+  scoped deep-read of DoSaveCmd/Circuit.Save/WriteClassFile/DoPropertyDump +
+  the 8 remaining DumpProperties overrides; DoBatchEditCmd/DoInterpolateCmd/
+  DoDistributeCmd/DoUuidsCmd; ReduceAlgs.pas + Line.MergeWith + ReduceZone/
+  KeepList) and per-step gates over pre-validated decks. **Probe-proven
+  oracle facts recorded in the plan** (all 2026-07-05, two-process): (1)
+  `dump commands` help texts come from the wheel's gettext catalog
+  `dss/messages/properties-en-US.mo` (1697 entries; `Command.*`/`Option.*`/
+  `<Class>.<prop>` keys; miss → the key itself) → plan adds a generated
+  `help_catalog.rs`; (2) **upstream garbage reads in DumpProperties**:
+  Capacitor `CMatrix`/`FaultRate`/`pctPerm` print ASLR denormals ALWAYS,
+  Reactor `FaultRate`/`pctPerm` do so whenever an EnergyMeter exists
+  (Line/Transformer/Fault/Load stay clean) — not reproduced (UB rule),
+  masked-golden strategy planned + investigations/ report at WP8.5 step 3;
+  (3) `save` (meters) writes only `MTR_<name>.csv` with a RELATIVE
+  GlobalResult, Monitor.Save is stream-internal (no file); `save load`
+  emits an extension-less file `load`; `save circuit` = 14-file dir incl.
+  per-meter `SaveZone` subdirs and an always-created (possibly empty)
+  `BusCoords.dss`; Master.dss carries a wall-clock stamp line (round-trip
+  gate ignores it); (4) `distribute what=Load` overrides an explicit
+  `file=` to `DistLoads.dss`; `how=Random` is FPC time-seeded (never
+  golden-gated); (5) `export uuids` auto-creates hashed keys
+  `Station=…`/`GeoRgn=…`/`SubGeoRgn=…`, generates random v4 for anything
+  not preloaded, and leaves `Text.Result` EMPTY. **Decks:** 7 fixture decks
+  + `uuids_pre.csv` at `tools/golden/phase8_decks/` (README records the
+  facts above; wired into gen_phase8.py by their WPs) and 12 gaps staging
+  cases (`batchedit`/`midi_batchedit` with regex-semantics probes; 8
+  `reduce_*` strategy decks incl. keeplist + `reduce_remove`
+  (`Load.eq_l2_b2` equivalent pinned by probes) + `midi_reduce` 94→88
+  nodes, 3 merges), manifest notes carrying the oracle-verified post-reduce
+  element lists (`l1~l2`, `s1~s2`, `b1||b2`, disabled partners, node
+  counts). gen_midi_decks.py gained `midi_batchedit`/`midi_reduce`
+  (existing decks regenerate byte-identical). No engine code touched.
 - **Per-element midi wave (2026-07-05, gate-green): every micro scenario
   replayed on the midi scaffold** — 12 per-element asymmetric decks
   (`midi_vsource_asym` … `midi_upfc_asym`, incl. VCCS behind a 12.47/0.36
