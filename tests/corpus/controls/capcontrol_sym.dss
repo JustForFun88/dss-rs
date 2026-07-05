@@ -1,0 +1,26 @@
+// CapControl symmetric scenario: a voltage-mode CapControl switching a
+// two-step 3-phase bank as a balanced daily ramp drags the feeder-end voltage
+// through the ON/OFF settings. Compared per step: full model + capacitor step
+// states (discrete), CapControl setting probes, and the switching event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.capsym basekv=12.47 pu=1.03 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New line.lf bus1=src bus2=b r1=0.4 x1=0.9 r0=0.9 x0=2.4 c1=0 c0=0 length=4
+
+New capacitor.cb phases=3 bus1=b conn=wye kvar=1200 kv=12.47 numsteps=2
+
+New capcontrol.cc element=line.lf terminal=2 capacitor=cb type=voltage
+~ ptratio=60 onsetting=118 offsetting=122 eventlog=yes
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.30 0.32 0.35 0.40 0.50 0.65 0.80 0.95 1.10 1.20 1.25 1.20 1.10 1.00 0.90 0.80 0.70 0.75 0.90 1.05 1.15 0.90 0.55 0.35)
+
+New load.l1 bus1=b phases=3 conn=wye model=1 kv=12.47 kw=5500 pf=0.90
+~ daily=day
+
+Set voltagebases=[12.47]
+calcv
+Set mode=daily stepsize=1h number=1

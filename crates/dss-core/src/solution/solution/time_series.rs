@@ -25,13 +25,27 @@ pub(super) fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
 fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let interval_hrs = ckt.solution.interval_hrs;
+    let mut y_changed = false;
     for r in ckt.storages.clone() {
         let node_v = &ckt.solution.node_v;
         if let Some(st) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Storage>()
             && st.cd.enabled
         {
             st.update_storage(&sys, node_v, interval_hrs);
+            // Pascal `UpdateStorage` ends with `if StateChanged then
+            // YprimInvalid := TRUE` (Storage.pas:2559) and `Set_YprimInvalid`
+            // ALSO raises `Solution.SystemYChanged` (CktElement.pas:245), so
+            // the NEXT step rebuilds Y *before* its first injection pass — the
+            // first iteration then injects through the fresh (e.g. idle, after
+            // a full-charge flip) YPrim, not the stale previous-state one.
+            // Without this the first post-flip step starts one Yeq-sized jump
+            // away and takes an extra iteration (caught by the controls live
+            // gate, storagectrl_peakshave step 6).
+            y_changed |= st.cd.yprim_invalid;
         }
+    }
+    if y_changed {
+        ckt.solution.system_y_changed = true;
     }
 }
 

@@ -861,7 +861,17 @@ fn load_controls() -> Vec<SolvableCase> {
 
 /// The pinned per-class deck floor (grows as CONTROL_COVERAGE_PLAN.md steps
 /// land). Removing a deck (even with its manifest entry) fails here.
-const CONTROLS_REQUIRED: &[&str] = &["regcontrol_sym.dss"];
+const CONTROLS_REQUIRED: &[&str] = &[
+    "regcontrol_sym.dss",
+    "regcontrol_asym.dss",
+    "capcontrol_sym.dss",
+    "capcontrol_asym.dss",
+    "invcontrol_vv_sym.dss",
+    "invcontrol_vvvw_asym.dss",
+    "storagectrl_peakshave.dss",
+    "storagectrl_time.dss",
+    "gendispatcher.dss",
+];
 
 /// Oracle-free structural guard: deck dir ↔ manifest bijection, the required
 /// deck floor, and every case must exercise at least one element-specific

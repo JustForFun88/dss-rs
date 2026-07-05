@@ -1,0 +1,28 @@
+// StorageController Time-mode scenario (the corpus TechNote Time pattern):
+// charge the fleet at the 02:00 trigger, discharge at the 17:00 trigger over a
+// 24-hour daily run — the Storage State flips and kWhstored integrates in both
+// directions. Compared per step: full model + Storage State/kW/kWhstored
+// probes + Storage state variables + the controller's event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.sctime basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.50 0.48 0.45 0.45 0.50 0.60 0.72 0.85 0.95 1.00 1.05 1.08 1.10 1.12 1.10 1.05 1.02 1.00 0.95 0.85 0.75 0.65 0.58 0.52)
+
+New load.ld bus1=b phases=3 kv=12.47 kw=4000 pf=0.95 model=1 daily=day
+
+New storage.sa bus1=b phases=3 kv=12.47 kwrated=1000 kva=1000 kwhrated=4000
+~ %stored=50 %idlingkw=1 pf=1.0
+
+New storagecontroller.sc element=line.l1 terminal=1 modedis=time
+~ timedischargetrigger=17 modecharge=time timechargetrigger=2
+~ %ratekw=100 %ratecharge=50 %reserve=20 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1
