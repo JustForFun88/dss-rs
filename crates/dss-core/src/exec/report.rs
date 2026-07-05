@@ -1456,6 +1456,62 @@ impl Dss {
                 };
                 self.write_show("Loops.txt", &content);
             }
+            // 24 `lineconstants [freq] [units] [rho]` (`ShowLineConstants`): the
+            // per-unit-length R/jX/susceptance/L/C matrices for every LineGeometry
+            // at the requested frequency/units/earth-resistivity + the order-3
+            // symmetrical-component summary. Two files: `<CircuitName_>LineConstants
+            // .txt` (the report, sets `@lastshowfile`) and `LineConstantsCode.dss`
+            // (a LineCode script, same dir, NO `CircuitName_` prefix). No solution
+            // guard (Pascal arm 24 reads geometry catalog only). The three optional
+            // params default to `DefaultBaseFreq` / `kft` / `100` (Pascal
+            // `ShowOptions.pas:374-388`).
+            24 => {
+                let freq = {
+                    self.parser.next_param(&self.vars);
+                    let s = self.parser.make_string(&self.vars);
+                    if s.is_empty() {
+                        self.default_base_freq
+                    } else {
+                        get_dbl(&mut self.parser, &self.vars, &mut self.errors)
+                            .unwrap_or(self.default_base_freq)
+                    }
+                };
+                let units = {
+                    self.parser.next_param(&self.vars);
+                    let s = self.parser.make_string(&self.vars);
+                    if s.is_empty() {
+                        crate::support::line_units::LineUnits::Kft.code()
+                    } else {
+                        crate::support::line_units::LineUnits::parse(&s).code()
+                    }
+                };
+                let rho = {
+                    self.parser.next_param(&self.vars);
+                    let s = self.parser.make_string(&self.vars);
+                    if s.is_empty() {
+                        100.0
+                    } else {
+                        get_dbl(&mut self.parser, &self.vars, &mut self.errors).unwrap_or(100.0)
+                    }
+                };
+                let earth_model = self.default_earth_model;
+                let earth_name = self
+                    .enums
+                    .get(self.enums.earth_model)
+                    .ordinal_to_string(earth_model);
+                let (main, code) = show::show_line_constants(
+                    &mut self.classes,
+                    freq,
+                    units,
+                    rho,
+                    earth_model,
+                    &earth_name,
+                );
+                // Pascal writes `LineConstantsCode.dss` (no `@lastshowfile`) then
+                // `LineConstants.txt` (which sets `@lastshowfile`).
+                self.write_show_path("LineConstantsCode.dss", &code, false);
+                self.write_show("LineConstants.txt", &main);
+            }
             // 33 `controlled` (`ShowControlledElements`): each PD element carrying a
             // control, followed by the control(s) acting on it. No solution guard
             // (Pascal arm 33 walks the control refs only).
@@ -1467,7 +1523,7 @@ impl Dss {
                 self.write_show("ControlledElements.csv", &content);
             }
             // TODO(WP8): later steps — the remaining `Show` keywords (isolated,
-            // lineconstants, topology, busflow, autoadded, querylog,
+            // topology, busflow, autoadded, querylog,
             // deltaV) and the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`

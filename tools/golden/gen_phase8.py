@@ -646,6 +646,67 @@ def gen_show_yprim(d) -> None:
     )
 
 
+# `Show LineConstants` fixture (PHASE8_PLAN §WP8.4). A self-contained geometry deck
+# (no corpus deck is small + geometry-only): `g3` is a 3-conductor overhead line
+# (order 3 → exercises the R/jX/susceptance/L/C matrices AND the equivalent
+# symmetrical-component summary Z1/Z0/C1/C0/surge/velocity); `g1` is a 1-conductor
+# line (order 1 → the non-order-3 branch, no seq summary). No solve is needed
+# (`Show LineConstants` reads the LineGeometry catalog + recomputes Carson).
+SHOW_LC_DECK = [
+    "clear",
+    "new circuit.lcdemo basekv=12.47 bus1=sourcebus",
+    "new wiredata.acsr336 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in",
+    "new linegeometry.g3 nconds=3 nphases=3 reduce=n",
+    "~ cond=1 wire=acsr336 x=-1.25 h=28 units=ft",
+    "~ cond=2 wire=acsr336 x=0 h=28 units=ft",
+    "~ cond=3 wire=acsr336 x=1.25 h=28 units=ft",
+    "new linegeometry.g1 nconds=1 nphases=1 reduce=n",
+    "~ cond=1 wire=acsr336 x=0 h=28 units=ft",
+]
+
+
+def gen_show_lineconstants(d) -> None:
+    """Capture the oracle's `Show LineConstants` (`ShowLineConstants`). Writes TWO
+    files: `<case>_LineConstants.txt` (the R/jX/susceptance/L/C matrices + the
+    order-3 symmetrical-component summary) and `LineConstantsCode.dss` (a LineCode
+    script, same folder, NO `<case>_` prefix). Both are captured (stems
+    `show_lineconstants` / `show_lineconstants_code`) and diffed against the Rust
+    replay. `show lineconstants` (no args) defaults to freq=DefaultBaseFreq, kft,
+    rho=100."""
+    d.AllowEditor = False
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    try:
+        d.Text.Command = "clear"
+        for c in SHOW_LC_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "show lineconstants"
+        for suffix, stem, glob_pat in [
+            ("LineConstants.txt", "show_lineconstants", f"*_LineConstants.txt"),
+            ("LineConstantsCode.dss", "show_lineconstants_code", "LineConstantsCode.dss"),
+        ]:
+            matches = list(Path(tmp).glob(glob_pat))
+            if len(matches) != 1:
+                sys.exit(f"show lineconstants: expected 1 {glob_pat}, found {matches}")
+            content = matches[0].read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": "lineconstants",
+                "fixture": case,
+                "suffix": suffix,
+                "deck": SHOW_LC_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_show_variables(d) -> None:
     """Capture the oracle's `Show Variables` on IEEE13 + a Generator — a PC element
     with dynamic state variables (6: Frequency/Theta/Vd/PShaft/dSpeed/dTheta), so the
@@ -1575,6 +1636,7 @@ def main() -> None:
     gen_show_overload_unserved(d)
     gen_show_zone_loops(d)
     gen_show_controlled(d)
+    gen_show_lineconstants(d)
     gen_sections(d)
     gen_profile(d)
     gen_demand_interval(d)

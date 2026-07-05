@@ -1,0 +1,16 @@
+{
+  "report": "lineconstants",
+  "fixture": "lcdemo",
+  "suffix": "LineConstants.txt",
+  "deck": [
+    "clear",
+    "new circuit.lcdemo basekv=12.47 bus1=sourcebus",
+    "new wiredata.acsr336 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in",
+    "new linegeometry.g3 nconds=3 nphases=3 reduce=n",
+    "~ cond=1 wire=acsr336 x=-1.25 h=28 units=ft",
+    "~ cond=2 wire=acsr336 x=0 h=28 units=ft",
+    "~ cond=3 wire=acsr336 x=1.25 h=28 units=ft",
+    "new linegeometry.g1 nconds=1 nphases=1 reduce=n",
+    "~ cond=1 wire=acsr336 x=0 h=28 units=ft"
+  ]
+}

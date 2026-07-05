@@ -1586,6 +1586,30 @@ fn show_controlled_multi_matches_oracle() {
     run_deck_show_exact("show_controlled_multi");
 }
 
+/// `Show LineConstants` (Pascal `ShowLineConstants`) on a synthesized geometry deck:
+/// `g3` (3-conductor overhead line, order 3) exercises the R/jX/susceptance/L/C
+/// matrices AND the equivalent symmetrical-component summary (Z1/Z0, C1/C0, surge
+/// impedance, propagation velocity); `g1` (1-conductor, order 1) the non-order-3
+/// branch (no seq block). Verifies **both** produced files byte-exact: the report
+/// `<case>_LineConstants.txt` (via the deck harness) and the `LineConstantsCode.dss`
+/// LineCode script (no `<case>_` prefix, read directly from the scratch dir). The
+/// Carson recompute reuses the WP7.1 `LineGeometryObj` engine (bit-exact to the
+/// oracle bar a proven transcendental libm floor), and every `%.6g` cell lands
+/// byte-identical (no 6-sig straddle on this geometry).
+#[test]
+fn show_lineconstants_matches_oracle() {
+    let (oracle_main, rust_main, scratch) = produce_deck_show("show_lineconstants");
+    assert_show_bytes_eq(&oracle_main, &rust_main, "show_lineconstants");
+    // The second file: `LineConstantsCode.dss` (same dir, NO `<case>_` prefix).
+    let code_path = scratch.join("LineConstantsCode.dss");
+    let rust_code = std::fs::read_to_string(&code_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", code_path.display()));
+    let oracle_code = std::fs::read_to_string(phase8_dir().join("show_lineconstants_code.txt"))
+        .expect("read show_lineconstants_code golden");
+    assert_show_bytes_eq(&oracle_code, &rust_code, "show_lineconstants_code");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
 /// end in `ParserVars.Add('@lastshowfile', …)`, but the reports dispatched inline
 /// with only a `FireOffEditor` — `Show Convergence` (arm 4) and `Show controlqueue`
