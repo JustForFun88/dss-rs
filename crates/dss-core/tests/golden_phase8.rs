@@ -3985,3 +3985,35 @@ fn query_wdgcurrents_refreshes_vterminal() {
          312.9242, (2.7582), 6.535435, (62.758), 312.9242, (-117.24), "
     );
 }
+
+/// `? indmach012.m1.pf` is `""` even AFTER a solve — pins the empirical oracle
+/// probe (2026-07-05). Pascal registers `pf` as `[SilentReadOnly, ReadByFunction]`
+/// but never assigns its `PropertyOffset` (stays `-1`), so `GetObjPropertyValue`'s
+/// outer guard (`DSSObjectHelper.pas` l.2221, `PropertyOffset[Index] <> -1`)
+/// short-circuits to `''` before `PowerFactorProperty` ever runs — solved or not.
+/// The Rust render must stay `""` on a live solution (SILENT_READ_ONLY), and the
+/// query must not refresh anything for this unmarked property.
+#[test]
+fn query_indmach012_pf_empty_after_solve() {
+    let deck = [
+        "Set DefaultBaseFrequency=60",
+        "New Circuit.indtest basekv=12.47 pu=1.0 phases=3 bus1=src \
+         mvasc3=20000 mvasc1=21000",
+        "New Transformer.tg phases=3 windings=2 buses=(src, mbus) \
+         conns=(delta,wye) kvs=(12.47,0.48) kvas=(1500,1500) xhl=5",
+        "New Capacitor.cg conn=wye bus1=mbus phases=3 kvar=600 kv=0.48",
+        "New IndMach012.m1 bus1=mbus kV=0.48 kW=1200 conn=delta kVA=1500 H=6 \
+         puRs=0.048 puXs=0.075 puRr=0.018 puXr=0.12 puXm=3.8 slip=0.02 \
+         SlipOption=variableslip",
+        "set voltagebases=[12.47, 0.48]",
+        "calcv",
+        "solve",
+    ];
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    assert_eq!(dss.errors(), &[] as &[String]);
+    dss.command("? indmach012.m1.pf");
+    assert_eq!(dss.result(), "");
+}

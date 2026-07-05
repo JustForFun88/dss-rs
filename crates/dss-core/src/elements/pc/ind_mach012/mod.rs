@@ -80,8 +80,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kW"),
         // Pascal `pf` is `[SilentReadOnly, ReadByFunction]` → PowerFactor(Power[1]):
-        // read-only (writes silently ignored in set_f64), and the text dump renders
-        // empty (Power[1] needs a solved solution; see SILENT_READ_ONLY).
+        // read-only (writes silently ignored in set_f64), and the text render is ""
+        // always — upstream never sets PropertyOffset (stays -1), so the
+        // GetObjPropertyValue guard skips the read function even on a solved
+        // circuit (probe-proven; see SILENT_READ_ONLY).
         PropDef::double("PF").flags(PropFlags::SILENT_READ_ONLY),
         PropDef::mapped_string_enum("conn", enums.connection),
         PropDef::double("kVA"),

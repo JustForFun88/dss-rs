@@ -151,8 +151,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("X13").scale(pct).trap_zero(35.0),
         PropDef::double("X23").scale(pct).trap_zero(30.0),
         PropDef::mapped_string_enum("LeadLag", enums.lead_lag),
-        // Read-only result string (winding currents mag/angle).
-        PropDef::string("WdgCurrents"),
+        // Read-only result string (winding currents mag/angle); the render reads
+        // the live `cd.vterminal`, so the `?`/`Dump` surfaces refresh it first.
+        PropDef::string("WdgCurrents").flags(PropFlags::READS_VTERMINAL),
         PropDef::mapped_string_enum("Core", enums.core_type),
         PropDef::double("RDCOhms"),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),

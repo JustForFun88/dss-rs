@@ -145,10 +145,11 @@ impl DssObject for IndMach012 {
         match idx {
             KV => self.kv_generator_base,
             KW => self.kw_base,
-            // Pascal `pf` ReadByFunction → PowerFactor(Power[1]). The text dump is
-            // intercepted by SILENT_READ_ONLY (→ ""), so this arm is unreachable in
-            // practice; the `&self` getter has no solution access to compute the live
-            // Power[1] anyway. The live power factor is exposed as state variable #21
+            // Pascal `pf` ReadByFunction → PowerFactor(Power[1]). The text render is
+            // intercepted by SILENT_READ_ONLY (→ "" always — upstream leaves
+            // PropertyOffset at -1, so the GetObjPropertyValue guard never calls the
+            // read function, solved or not; probe-proven), so this arm is unreachable
+            // in practice. The live power factor is exposed as state variable #21
             // (`get_all_variables_impl`, where the solution exists). Return the
             // unsolved value (PowerFactor(0) = 1) as a placeholder.
             PF => power_factor(Complex64::ZERO),

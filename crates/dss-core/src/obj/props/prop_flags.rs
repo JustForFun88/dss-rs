@@ -52,14 +52,30 @@ impl PropFlags {
     /// unit logs the upstream error and leaves the field unchanged. Used by
     /// InvControl `AvgWindowLen` / `DynReacAvgWindowLen`.
     pub const INTERVAL_UNITS: Self = Self(1 << 14);
-    /// Pascal `SilentReadOnly` on a `ReadByFunction` double whose function needs a
-    /// solved solution (IndMach012 `pf` → `PowerFactor(Power[1])`): a set is
-    /// silently ignored, and the **text dump renders empty** — the oracle's
-    /// `Power[1]` raises "solution not initialized" on the unsolved props-probe
-    /// circuit, which the `?` query renders as `""`. The Rust `&self` getter has no
-    /// solution access either, so the dump is empty to match. (The value is still
-    /// available as a dynamics state variable, computed where the solution exists.)
+    /// Pascal `SilentReadOnly` on a `ReadByFunction` double (IndMach012 `pf` →
+    /// `PowerFactor(Power[1])`): a set is silently ignored, and the **text render
+    /// is `""` always** — Pascal never assigns `PropertyOffset` for such a
+    /// function-only property (it stays `-1`), so `GetObjPropertyValue`'s outer
+    /// guard `PropertyOffset[Index] <> -1` (`DSSObjectHelper.pas` l.2221) short-
+    /// circuits before the read function is ever called. Empirically probed
+    /// against the pinned oracle: `? indmach012.m1.pf` returns `''` on a **solved**
+    /// circuit too, not just pre-solve. (The live pf is still available as a
+    /// dynamics state variable, computed where the solution exists.)
     pub const SILENT_READ_ONLY: Self = Self(1 << 15);
+    /// Not a Pascal flag: marks a read-only result property whose string render
+    /// reads the live `cd.vterminal` cache (Transformer `WdgCurrents`; AutoTrans
+    /// `WdgCurrents` when ported). Pascal's getter is self-sufficient — it reloads
+    /// `Vterminal[i] := Solution.NodeV[NodeRef[i]]` internally
+    /// (`TTransfObj.GetAllWindingCurrents`, `Transformer.pas` l.1538) — but the
+    /// Rust `&self` getter cannot reach the solution, so the `?`/`Dump` read
+    /// surfaces refresh the buffer at one choke point,
+    /// `Dss::refresh_vterminal_if_marked`, exactly when this flag is present.
+    /// Future note: a result property whose render needs `iterminal` must add a
+    /// *separate* marker whose refresh runs `compute_iterminal` **then**
+    /// `compute_vterminal` (VSource's `GetCurrents` overwrites `vterminal` with
+    /// the source EMF — see `export_elem_powers` in `report/export/elem.rs`). No
+    /// Pascal property-table read needs `iterminal` today.
+    pub const READS_VTERMINAL: Self = Self(1 << 16);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

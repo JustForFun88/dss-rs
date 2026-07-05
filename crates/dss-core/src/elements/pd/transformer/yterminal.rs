@@ -316,8 +316,10 @@ impl Transformer {
     /// `Transformer.pas:1530`: `if (not Enabled) or (NodeRef = NIL) or
     /// (Solution.NodeV = NIL) then Exit`). Reads the caller-populated
     /// `cd.vterminal` (Pascal reloads it from `Solution.NodeV` internally; the
-    /// `&self` getter can't reach the solution, so the read paths refresh it
-    /// first — the solve for `Powers`/`Currents`, `dump_one_object` for `Dump`).
+    /// `&self` getter can't reach the solution, so the `WdgCurrents` prop def
+    /// carries `PropFlags::READS_VTERMINAL` and the `?`/`Dump` surfaces refresh
+    /// via `Dss::refresh_vterminal_if_marked`; the solve path for
+    /// `Powers`/`Currents` refreshes as before).
     fn get_all_winding_currents(&self) -> Vec<Complex64> {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;

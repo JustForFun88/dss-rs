@@ -18,9 +18,10 @@ impl ClassProps {
         if pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx) {
             return "----".to_string();
         }
-        // A `ReadByFunction` value that needs a solved solution dumps empty (the
-        // oracle raises "solution not initialized" pre-solve → `""`); see
-        // [`PropFlags::SILENT_READ_ONLY`].
+        // A function-only `ReadByFunction` value renders `""` always — Pascal
+        // leaves its `PropertyOffset` at `-1`, so `GetObjPropertyValue`'s outer
+        // guard short-circuits before the read function runs (probe-proven on a
+        // solved circuit too); see [`PropFlags::SILENT_READ_ONLY`].
         if pd.flags.contains(PropFlags::SILENT_READ_ONLY) {
             return String::new();
         }
