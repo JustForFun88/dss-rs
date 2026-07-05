@@ -494,9 +494,18 @@ detail is in **§1f**; the current frontier:
   pins both, byte-exact (golden_phase8 **115→121** incl. the step-15 busflow follow-up).
   Tracked low-payoff (not added): the `(Sensor:…)` topology annotation (needs a
   solved+metered+sensored deck), the `>30`-level `(* level *)` tab overflow, and the
-  no-source empty-tree branch. **next = the WP8.4 finalize** (`autoadded`/`QueryLog` headless no-ops + the `#24700`
-  unknown-keyword error + the step-15 busflow coverage follow-up), then the corpus
-  classify/migrate pass.
+  no-source empty-tree branch.
+- **WP8.4 finalize — dispatch tail (partial), gate-green.** Now that every real
+  `Show` keyword is ported, `do_show_cmd` gains the Pascal **`#24700`** unknown-keyword
+  error (`ShowOptions.pas:119-124`, pushed + return before the solve-guard) and
+  explicit **silent no-op** arms for the three headless-FireOffEditor keywords
+  `autoadded`(1) / `QueryLog`(32) / `deltaV`(31) (deltaV keeps its `TODO(WP8)`) —
+  replacing the blanket `_ => {}`. Safe: all 21 distinct corpus `Show` keywords (incl.
+  the ambiguous `v`/`y`/`f`/`mon`) map to ported arms (verified — corpus_live stays
+  green). New `show_unknown_and_deferred_keywords` unit test. golden_phase8 **→122**.
+  **next = the step-16 audit-code follow-up** (two ShowIsolated Major bugs — the
+  missing `Enabled` sub-area filter + the missing `ReprocessBusDefs`) + the deltaV
+  resolution + the corpus classify/migrate pass.
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -576,7 +585,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 121,
+                            # golden_phase7_protection 1, golden_phase8 122,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

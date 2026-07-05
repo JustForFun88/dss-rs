@@ -1705,6 +1705,45 @@ fn show_busflow_unknown_bus_errors() {
     );
 }
 
+/// The WP8.4-finalize dispatch tail: an **unknown** `Show` keyword now errors
+/// (`#24700`, `ShowOptions.pas:119-124`), while the deferred keywords `autoadded`
+/// (arm 1), `QueryLog` (arm 32) and `deltaV` (arm 31) stay **silent** headless no-ops
+/// (Pascal's `FireOffEditor` / the deferred `ShowDeltaV`). Pins that porting every
+/// real keyword did not turn the deferrals into errors, and that a genuine typo does.
+#[test]
+fn show_unknown_and_deferred_keywords() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 bus1=src phases=3");
+    dss.command("new load.l bus1=src phases=3 kv=12.47 kw=100");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+
+    // Unknown keyword → #24700.
+    dss.command("show nosuchreport");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("Unknown Show Command") && e.contains("nosuchreport")),
+        "expected #24700, got {:?}",
+        dss.errors()
+    );
+
+    // The deferred keywords must NOT error (silent no-ops).
+    let n = dss.errors().len();
+    dss.command("show autoadded");
+    dss.command("show querylog");
+    dss.command("show deltaV");
+    assert_eq!(
+        dss.errors().len(),
+        n,
+        "deferred keywords must stay silent no-ops: {:?}",
+        &dss.errors()[n..]
+    );
+}
+
 /// `Show busflow 675 e` (Pascal `ShowBusPowers` code 1): the element form — node
 /// voltages + per-terminal branch currents (PD residual) + branch power flow around
 /// bus 675. Reuses the `WriteBusVoltages`/`WriteTerminalCurrents`/`WriteTerminalPower`
