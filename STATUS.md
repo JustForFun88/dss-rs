@@ -27,8 +27,8 @@ byte-fidelity fixes landed:** (1) `fmt_g`'s low scientific threshold was C's
 `node_v` (Pascal `ComputeVTerminal`) so `WdgCurrents` reads the live solution, not
 a stale/zero buffer. Property display-case corrected for Line/Transformer/
 LineGeometry tails (LineCode/XfmrCode already correct; matching stays
-case-insensitive). golden_phase8 **130→141** (11 new byte-exact dump goldens this step; 16 dump
-goldens total);
+case-insensitive). golden_phase8 **130→142** (11 new byte-exact dump goldens + 1 `?`-query
+regression this step; 16 dump goldens total);
 the bare-`dump`/`solution`/aux forms + the 8 remaining overrides (Capacitor/Fault/
 VSource/UPFC/RegControl/Monitor/EnergyMeter/Spectrum) are TODO(WP8) step 3.
 **Audits (both ran on `53d9006`):** audit-code — one Minor real fix:
@@ -39,10 +39,14 @@ non-zero `WdgCurrents` where the oracle prints `0` — guard restored + pinned b
 `LengthMult = Len` matrix-fold branch (geometry/spacing lines) was unexercised
 (both test lines had empty geometry) → added `dump_line_geo` (a Carson-geometry
 line, `length=2`, byte-exact — proving Rust's geometry-`Z` embeds length like
-Pascal) + `dump_line_switch` (`Switch=Yes`). Tracked (pre-existing, not this
-step): `?`-query/export `WdgCurrents` reads the cached `Vterminal` (fresh after a
-solve; the `&self` getter can't reach `node_v`, unlike the dump path which now
-refreshes it) — an edge-case stale-read the dump gate can't reach. **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+Pascal) + `dump_line_switch` (`Switch=Yes`). Follow-up (deeper fix): the same
+stale-`Vterminal` read also broke the **`?`-query** path — `? transformer.x.
+wdgcurrents` after a solve returned **all-zeros** where the oracle recomputes live
+(`6.535435, (-57.242), 312.9242, …`; pre-existing, `&self` getters can't reach
+`node_v`). `do_query_cmd` now refreshes `Vterminal` before `get_value`, mirroring
+the Dump/Export paths — pinned byte-exact by `query_wdgcurrents_refreshes_vterminal`
+(golden_phase8 **141→142**). Property `Save` is unaffected (it emits only
+explicitly-set properties, never the read-only `WdgCurrents` result). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
 property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
 Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
 `FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by

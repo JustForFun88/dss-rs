@@ -569,12 +569,24 @@ impl Dss {
                 .push(format!("Error! Object \"{obj_name}\" not found."));
             return;
         }
-        let cls = &self.classes[ci];
-        let oi = cls.active.expect("just set active");
-        if let Some(idx) = cls.props.property_index(&prop_name) {
-            self.last_result = cls
-                .props
-                .get_value(cls.objects[oi].as_ref(), idx, &self.enums);
+        let oi = self.classes[ci].active.expect("just set active");
+        // Refresh `Vterminal` from the solution before reading, so a read-only
+        // result getter that reads it live (Pascal reloads it internally, e.g.
+        // `TTransfObj.WdgCurrents` → `GetAllWindingCurrents`) reflects the current
+        // solve rather than a stale/zero buffer — the same refresh the Dump/Export
+        // paths do (`dump_one_object`, `export_elem_*`). Without it, `? transformer.
+        // x.wdgcurrents` returned all-zeros where the oracle recomputes live.
+        if let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
+            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
+        {
+            elem.cd_mut().compute_vterminal(&node_v);
+        }
+        if let Some(idx) = self.classes[ci].props.property_index(&prop_name) {
+            self.last_result = self.classes[ci].props.get_value(
+                self.classes[ci].objects[oi].as_ref(),
+                idx,
+                &self.enums,
+            );
         }
     }
 
