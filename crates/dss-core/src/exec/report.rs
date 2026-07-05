@@ -1242,11 +1242,6 @@ impl Dss {
                 };
                 self.write_show("NodeMismatch.txt", &content);
             }
-            // TODO(WP8): 31 `deltaV` (`ShowDeltaV`) stays a silent no-op — the
-            // `WriteElementDeltaVoltages` `NodeRef[i+NCond]` cross-terminal read
-            // yields 0 rows for a **delta-primary** transformer (`Transformer.sub`)
-            // where the oracle writes 3; the delta-winding node_ref layout needs
-            // investigation before this ships (deltaV is not used by any corpus deck).
             // 10 `monitor <name>` (`ShowMonitor` = `Monitor.TranslateToCSV`): write
             // the named monitor's in-memory sample buffer to its fixed CSV file
             // (`<OutputDir><CircuitName_>Mon_<name>_1.csv`), the same content the
@@ -1643,13 +1638,16 @@ impl Dss {
             // 32 `QueryLog` (`ShowOptions.pas:427-428`): Pascal only
             // `FireOffEditor(QueryLogFileName)` — a headless no-op. Silent no-op.
             32 => {}
-            // TODO(WP8): 31 `deltaV` (`ShowDeltaV`) stays a silent no-op — the
-            // `WriteElementDeltaVoltages` `NodeRef[i+NCond]` cross-terminal read
-            // yields 0 rows for a **delta-primary** transformer (`Transformer.sub`)
-            // where the oracle writes 3; the delta-winding node_ref layout needs
-            // investigation before this ships (deltaV is not used by any corpus deck).
-            // Greppable via `rg "TODO\(WP8\)"` (the WP8.8 exit sweep).
-            31 => {}
+            // 31 `deltaV` (`ShowDeltaV`): the voltage across each enabled 2-terminal
+            // element (Sources/PD/PC), per conductor `NodeV[term1] − NodeV[term2]`.
+            // In the solve-guard set (29..=31).
+            31 => {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_delta_v(&self.classes, ckt)
+                };
+                self.write_show("DeltaV.txt", &content);
+            }
             // Every real keyword (1..34) now has an arm; `ptr == 0` is caught above.
             // This catch-all is unreachable, kept only for match exhaustiveness.
             _ => {}
