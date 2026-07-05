@@ -252,6 +252,9 @@ pub struct YFingerprint {
 }
 
 /// An element's terminal currents (A, re/im) and powers (kW/kvar).
+/// `loss_w` (W, var — the oracle `CktElement.Losses`, i.e. the engine's own
+/// `Get_Losses` path) is captured by the live gate only; committed checkpoint
+/// goldens predate it and leave it empty (skipped).
 #[derive(Debug, Deserialize)]
 pub struct ElementCap {
     pub name: String,
@@ -259,6 +262,8 @@ pub struct ElementCap {
     pub i_im: Vec<f64>,
     pub p_kw: Vec<f64>,
     pub p_kvar: Vec<f64>,
+    #[serde(default)]
+    pub loss_w: Vec<f64>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -637,6 +642,141 @@ pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolera
         tol.i_abs,
         &format!("{ctx} {} powers", exp.name),
     );
+    // Losses (`Get_Losses` — the engine's own losses path, distinct from the
+    // per-conductor powers above even though mathematically it is their sum).
+    // Captured by the live gate only; old checkpoint goldens leave it empty.
+    // The allowed error is the exact accumulation of the per-conductor power
+    // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
+    // — no new tolerance class, just the conductor policy summed.
+    if exp.loss_w.len() == 2 {
+        let mut allowed_kw = 0.0;
+        for k in 0..exp.p_kw.len() {
+            let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
+            let i_mag = (exp.i_re[k].powi(2) + exp.i_im[k].powi(2)).sqrt();
+            let vkv = if i_mag > 1e-12 { p_mag / i_mag } else { 1.0 };
+            allowed_kw += tol.i_abs * vkv.max(1.0) + tol.i_rel * p_mag;
+        }
+        let allowed_w = allowed_kw * 1000.0;
+        let (ar, ai) = snap.loss_w;
+        let (er, ei) = (exp.loss_w[0], exp.loss_w[1]);
+        let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
+        assert!(
+            diff <= allowed_w,
+            "{ctx} {} losses differ: actual ({ar}, {ai}) W vs oracle ({er}, {ei}) W; \
+             |diff| = {diff:e} > allowed {allowed_w:e}",
+            exp.name
+        );
+    }
+}
+
+/// One element-specific state probe: the value string of `element`'s property
+/// `prop` — oracle `Properties(p).Val` vs the Rust `?` query (both render via
+/// the class property surface). Compared as a numeric skeleton (numbers by
+/// value at the case tolerance, text case-insensitively), so number *rendering*
+/// is not load-bearing but every digit-bearing state (taps, kWh, counters) and
+/// every enum/state word is.
+#[derive(Debug, Deserialize)]
+pub struct ProbeCap {
+    pub element: String,
+    pub prop: String,
+    pub value: String,
+}
+
+/// Compare one property probe via the Rust `?` query (`do_query_cmd`).
+pub fn compare_probe(dss: &mut Dss, exp: &ProbeCap, tol: &Tolerances, ctx: &str) {
+    dss.command(&format!("? {}.{}", exp.element, exp.prop));
+    let actual = dss.result().to_string();
+    assert!(
+        !actual.eq_ignore_ascii_case("Property Unknown"),
+        "{ctx}: probe {}.{}: property unknown to the port",
+        exp.element,
+        exp.prop
+    );
+    assert_value_matches_tol(
+        &actual.to_lowercase(),
+        &exp.value.to_lowercase(),
+        tol.i_rel,
+        tol.i_abs,
+        &format!("{ctx}: probe {}.{}", exp.element, exp.prop),
+    );
+}
+
+/// A PC element's state variables (oracle `AllVariableNames`/`AllVariableValues`
+/// — the live f64 state; names travel along for diagnostics only).
+#[derive(Debug, Deserialize)]
+pub struct VariablesCap {
+    pub name: String,
+    pub var_names: Vec<String>,
+    pub values: Vec<f64>,
+}
+
+/// Compare a PC element's state variables (`Dss::element_variables`).
+pub fn compare_variables(dss: &mut Dss, exp: &VariablesCap, tol: &Tolerances, ctx: &str) {
+    let act = dss
+        .element_variables(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no element {} (variables)", exp.name));
+    assert_eq!(
+        act.len(),
+        exp.values.len(),
+        "{ctx}: {} variable count differs (oracle names: {:?})",
+        exp.name,
+        exp.var_names
+    );
+    for (i, (a, e)) in act.iter().zip(&exp.values).enumerate() {
+        let allowed = tol.i_abs + tol.i_rel * e.abs();
+        assert!(
+            (a - e).abs() <= allowed,
+            "{ctx}: {} variable {} ({}) differs: {a} vs {e} (|diff|={:.3e} > allowed {allowed:.3e})",
+            exp.name,
+            i + 1,
+            exp.var_names.get(i).map(String::as_str).unwrap_or("?"),
+            (a - e).abs()
+        );
+    }
+}
+
+/// Compare the event log line-for-line (normalized numeric skeleton at 1e-6
+/// rel — the exact policy `golden_phase7_protection.rs` pins trip/reclose
+/// sequences with). The log is cumulative, so a per-step compare pins *when*
+/// each control action happened, not just the final set.
+pub fn compare_eventlog(dss: &Dss, exp: &[String], ctx: &str) {
+    let log = dss.event_log();
+    assert_eq!(
+        log.len(),
+        exp.len(),
+        "{ctx}: event log length differs:\n  actual:\n    {}\n  oracle:\n    {}",
+        log.join("\n    "),
+        exp.join("\n    ")
+    );
+    for (i, (a, e)) in log.iter().zip(exp).enumerate() {
+        assert_value_matches_tol(a, e, 1e-6, 1e-9, &format!("{ctx}: event-log line {i}"));
+    }
+}
+
+/// Compare the pending control-action queue (oracle `CtrlQueue.Queue` rows vs
+/// `Dss::control_queue_rows`). Rows are trimmed and compared as numeric
+/// skeletons: Pascal's `%.9g` time rendering and its trailing space are not
+/// load-bearing, the handle/hour/sec/code/device content is. Meaningful only in
+/// time/dynamics modes where future-scheduled actions (e.g. recloser reclose
+/// shots) survive the solve; a drained queue compares as empty = empty.
+pub fn compare_ctrlqueue(dss: &Dss, exp: &[String], ctx: &str) {
+    let rows = dss.control_queue_rows();
+    assert_eq!(
+        rows.len(),
+        exp.len(),
+        "{ctx}: control queue length differs:\n  actual:\n    {}\n  oracle:\n    {}",
+        rows.join("\n    "),
+        exp.join("\n    ")
+    );
+    for (i, (a, e)) in rows.iter().zip(exp).enumerate() {
+        assert_value_matches_tol(
+            a.trim().to_lowercase().as_str(),
+            e.trim().to_lowercase().as_str(),
+            1e-6,
+            1e-9,
+            &format!("{ctx}: control-queue row {i}"),
+        );
+    }
 }
 
 /// Compare per-step discrete control state EXACTLY: transformer taps (1e-12 rel

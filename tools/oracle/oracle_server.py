@@ -37,6 +37,7 @@ import json
 import os
 import sys
 import traceback
+from math import isqrt
 from pathlib import Path
 
 # Reuse the exact capture helpers the checkpoint goldens use, so both sides of
@@ -57,15 +58,66 @@ def reply(obj: dict) -> None:
 
 
 def capture_all_elements(ckt) -> list:
-    """Every circuit element's terminal currents (A) and powers (kW/kvar).
+    """Every circuit element's terminal currents (A), powers (kW/kvar), and
+    losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path).
 
-    The plan mandates comparing *all* element currents/powers (not just the
-    selected set), so the live gate captures the whole element list here.
+    The plan mandates comparing *all* element currents/powers/losses (not just
+    the selected set), so the live gate captures the whole element list here.
     """
     out = []
     for name in ckt.AllElementNames:
-        out.append(gc.capture_element(ckt, name))
+        cap = gc.capture_element(ckt, name)
+        # capture_element leaves the element active; Losses reads it.
+        loss = ckt.ActiveCktElement.Losses
+        cap["loss_w"] = [float(loss[0]), float(loss[1])]
+        out.append(cap)
     return out
+
+
+def capture_probes(ckt, probes: list) -> list:
+    """Element-specific state via the generic property surface: for each
+    `{element, props: [...]}` spec, `Properties(p).Val` of the active element —
+    the same value string the Rust `?` query renders (CONTROL_COVERAGE_PLAN.md).
+    Compared by the harness with a numeric skeleton (numbers by value, text
+    case-insensitively), so display-format drift is not load-bearing here."""
+    out = []
+    for spec in probes:
+        name = spec["element"]
+        ckt.SetActiveElement(name)
+        el = ckt.ActiveCktElement
+        for p in spec.get("props") or []:
+            out.append({"element": name, "prop": p, "value": str(el.Properties(p).Val)})
+    return out
+
+
+def capture_variables(ckt, names: list) -> list:
+    """PC-element state variables (`AllVariableNames`/`AllVariableValues`) —
+    the live f64 state read (CLAUDE.md: the f32 monitor channel hides it)."""
+    out = []
+    for name in names:
+        ckt.SetActiveElement(name)
+        el = ckt.ActiveCktElement
+        out.append(
+            {
+                "name": name,
+                "var_names": [str(s) for s in el.AllVariableNames],
+                "values": [float(v) for v in el.AllVariableValues],
+            }
+        )
+    return out
+
+
+def capture_ctrlqueue(ckt) -> list:
+    """Pending control actions (`CtrlQueue.Queue` = `TControlQueue.QueueItem`
+    rows). Normalized here: the constant header row and the empty-queue
+    placeholder `'No events'` are dropped, so the result is exactly the pending
+    rows (`Handle, Hour, Sec, ActionCode, ProxyDevRef, Device`)."""
+    rows = [str(s) for s in ckt.CtrlQueue.Queue]
+    return [
+        r
+        for r in rows
+        if r.strip() and r.strip() != "No events" and not r.startswith("Handle,")
+    ]
 
 
 def capture_all_monitors(ckt) -> list:
@@ -226,6 +278,10 @@ def run_case(d, req: dict) -> dict:
     n_steps = int(req.get("n_steps", 1))
     selected = req.get("selected_elements") or []
     full_csc = bool(req.get("full_csc", True))
+    probes = req.get("probes") or []
+    variables = req.get("variables") or []
+    want_eventlog = bool(req.get("eventlog", False))
+    want_ctrlqueue = bool(req.get("ctrlqueue", False))
     # Monitors/meters are compared only for cases that deliberately define them in
     # deterministic modes (the daily IEEE13 case). Capturing every master's
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
@@ -242,6 +298,21 @@ def run_case(d, req: dict) -> dict:
                 d.Text.Command = c
 
             ckt = d.ActiveCircuit
+            # `selected_elements=["*"]` -> every element's YPrim (small decks;
+            # the Rust side then asserts the returned name set covers ALL
+            # YPrim-bearing elements instead of the fixed count). Control /
+            # meter elements have no YPrim (the API returns a 1-float stub) —
+            # skip them, mirroring the Rust `element_yprim() == None`.
+            if selected == ["*"]:
+                sel = []
+                for nm in ckt.AllElementNames:
+                    ckt.SetActiveElement(nm)
+                    flat = ckt.ActiveCktElement.Yprim
+                    n = isqrt(len(flat) // 2) if flat is not None else 0
+                    if n > 0 and 2 * n * n == len(flat):
+                        sel.append(nm)
+            else:
+                sel = selected
             for _ in range(n_steps):
                 d.Text.Command = "solve"
                 sol = ckt.Solution
@@ -258,7 +329,7 @@ def run_case(d, req: dict) -> dict:
                         "v_im": varray[1::2],
                         "y": gc.capture_system_y(d) if full_csc else None,
                         "y_fingerprint": gc.capture_fingerprint(d),
-                        "yprims": [gc.capture_yprim(ckt, nm) for nm in selected],
+                        "yprims": [gc.capture_yprim(ckt, nm) for nm in sel],
                         "elements": capture_all_elements(ckt),
                         "injection": gc.capture_injection(d),
                         "transformers": disc["transformers"],
@@ -266,6 +337,12 @@ def run_case(d, req: dict) -> dict:
                         "capacitors": disc["capacitors"],
                         "monitors": capture_all_monitors(ckt) if check_mm else [],
                         "meters": capture_all_meters(ckt) if check_mm else [],
+                        "probes": capture_probes(ckt, probes),
+                        "variables": capture_variables(ckt, variables),
+                        "eventlog": (
+                            [str(s) for s in sol.EventLog] if want_eventlog else []
+                        ),
+                        "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
                     }
                 )
             bad = [i for i, cp in enumerate(checkpoints) if not cp["converged"]]
