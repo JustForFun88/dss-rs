@@ -55,6 +55,10 @@ pub struct ElementSnapshot {
     pub powers: Vec<f64>,
     /// Amps, re/im interleaved per conductor and terminal (`Iterminal`).
     pub currents: Vec<f64>,
+    /// Element losses (W, var) — `TDSSCktElement.Get_Losses` (the dss-python
+    /// `CktElement.Losses` surface): `Σ NodeV[ref]·conj(Iterminal)` over all
+    /// conductors, ×3 under positive sequence.
+    pub loss_w: (f64, f64),
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -164,6 +168,9 @@ impl Dss {
                     }
                 }
             }
+            // The element's own losses path (`Get_Losses`) — compared as a
+            // separate channel from the per-conductor powers above.
+            let loss = elem.losses(&sys, &node_v);
             let cd = elem.cd();
             let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
             out.push(ElementSnapshot {
@@ -172,6 +179,7 @@ impl Dss {
                 bus_names,
                 powers,
                 currents,
+                loss_w: (loss.re, loss.im),
             });
         }
         out
@@ -535,6 +543,30 @@ impl Dss {
             Some(ckt) => ckt.solution.event_log.entries(),
             None => &[],
         }
+    }
+
+    /// The pending control-action queue as the dss-python `CtrlQueue.Queue`
+    /// rows (Pascal `TControlQueue.QueueItem`, `ControlQueue.pas:557`:
+    /// `Format('%d, %d, %.9g, %d, %d, %s ', [handle, hour, sec, code, proxy,
+    /// ControlElement.Name])` — bare device name, trailing space). Empty after
+    /// a drained snapshot; time/dynamics modes leave future-scheduled actions
+    /// (e.g. recloser reclose shots) pending between steps.
+    pub fn control_queue_rows(&self) -> Vec<String> {
+        let Some(ckt) = &self.circuit else {
+            return Vec::new();
+        };
+        ckt.solution
+            .control_queue
+            .queue_rows()
+            .into_iter()
+            .map(|(handle, hour, sec, code, proxy, ctrl)| {
+                let name = self.classes[ctrl.cls].objects[ctrl.idx].data().name();
+                format!(
+                    "{handle}, {hour}, {}, {code}, {proxy}, {name} ",
+                    crate::util::fmt_g(sec, 9)
+                )
+            })
+            .collect()
     }
 
     /// Coordinate dump of the **assembled, unfactored** system Y matrix:

@@ -38,9 +38,10 @@ use std::time::{Duration, Instant};
 
 use dss_core::exec::Dss;
 use harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, YFingerprint, YMat, YPrim, compare_discrete,
-    compare_element, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
-    compare_system_y, compare_yprim, tol_for,
+    ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, VariablesCap, YFingerprint, YMat, YPrim,
+    compare_ctrlqueue, compare_discrete, compare_element, compare_eventlog, compare_fingerprint,
+    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
+    compare_variables, compare_yprim, tol_for,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -92,6 +93,17 @@ struct Checkpoint {
     monitors: Vec<MonitorCap>,
     #[serde(default)]
     meters: Vec<MeterCap>,
+    /// Element-specific state channels (CONTROL_COVERAGE_PLAN.md) — empty unless
+    /// the case opts in via `probes` / `compare_variables` / `compare_eventlog` /
+    /// `compare_ctrlqueue` in its manifest entry.
+    #[serde(default)]
+    probes: Vec<ProbeCap>,
+    #[serde(default)]
+    variables: Vec<VariablesCap>,
+    #[serde(default)]
+    eventlog: Vec<String>,
+    #[serde(default)]
+    ctrlqueue: Vec<String>,
 }
 
 /// A handle to the pinned oracle. Each call spawns a fresh `oracle_server.py`
@@ -210,22 +222,24 @@ impl Oracle {
     }
 
     /// Run one case and return the oracle's per-step model.
-    fn run_case(
-        &self,
-        case_path: &str,
-        post: &[String],
-        n_steps: usize,
-        selected: &[String],
-        check_mm: bool,
-    ) -> CaseResult {
+    fn run_case(&self, case_path: &str, c: &SolvableCase) -> CaseResult {
+        let probes: Vec<serde_json::Value> = c
+            .probes
+            .iter()
+            .map(|p| json!({"element": p.element, "props": p.props}))
+            .collect();
         let req = json!({
             "cmd": "run",
             "case_path": case_path,
-            "post": post,
-            "n_steps": n_steps,
-            "selected_elements": selected,
+            "post": c.post,
+            "n_steps": c.n_steps,
+            "selected_elements": c.selected_elements,
             "full_csc": true,
-            "check_meters_monitors": check_mm,
+            "check_meters_monitors": c.check_meters_monitors,
+            "probes": probes,
+            "variables": c.compare_variables,
+            "eventlog": c.compare_eventlog,
+            "ctrlqueue": c.compare_ctrlqueue,
         });
         let r = self.call(&req);
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
@@ -369,20 +383,15 @@ impl Drop for CorpusGuard {
 }
 
 /// Compile + solve one case on both engines and compare every captured field at
-/// every step. `selected` is the YPrim focus set; element currents/powers are
-/// compared for *all* elements.
-#[allow(clippy::too_many_arguments)]
-fn run_and_compare(
-    oracle: &Oracle,
-    label: &str,
-    case_path: &str,
-    post: &[String],
-    n_steps: usize,
-    selected: &[String],
-    kind: &str,
-    check_mm: bool,
-) {
-    let tol = tol_for(kind);
+/// every step. `c.selected_elements` is the YPrim focus set (`["*"]` = every
+/// element); element currents/powers/losses are compared for *all* elements.
+/// The element-specific channels (`probes` / `compare_variables` /
+/// `compare_eventlog` / `compare_ctrlqueue`) run per step when the case opts in.
+fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
+    let tol = tol_for(&c.kind);
+    let n_steps = c.n_steps;
+    let post = &c.post;
+    let star = c.selected_elements == ["*"];
 
     // Keep the vendored corpus pristine: a migrated deck's `Export`/`Show`/`Save`
     // (Pascal `Compile` → `OutputDirectory := <case dir>`) or a `debugtrace=yes`
@@ -393,7 +402,7 @@ fn run_and_compare(
     // port doesn't write it, so only the oracle creates it).
     let _guard = CorpusGuard::new(case_path);
 
-    let oc = oracle.run_case(case_path, post, n_steps, selected, check_mm);
+    let oc = oracle.run_case(case_path, c);
     assert_eq!(oc.n_steps, n_steps, "{label}: oracle step count");
     assert_eq!(
         oc.checkpoints.len(),
@@ -472,15 +481,33 @@ fn run_and_compare(
         let snaps = dss.snapshot_elements();
 
         // The oracle returns one YPrim block per `selected_elements` entry
-        // (oracle_server.py). Assert that, so a case that names selected
-        // elements can never silently skip the YPrim comparison.
-        assert_eq!(
-            cp.yprims.len(),
-            selected.len(),
-            "{ctx}: oracle returned {} YPrim block(s) for {} selected element(s)",
-            cp.yprims.len(),
-            selected.len()
-        );
+        // (oracle_server.py; `["*"]` expands to every element). Assert that, so
+        // a case that names selected elements can never silently skip the YPrim
+        // comparison.
+        if star {
+            let yprim_names: BTreeSet<String> =
+                cp.yprims.iter().map(|y| y.name.to_lowercase()).collect();
+            // Controls/meters have no YPrim on either side — `"*"` covers every
+            // YPrim-bearing element (`element_yprim() == Some`).
+            let all_names: BTreeSet<String> = snaps
+                .iter()
+                .filter(|s| dss.element_yprim(&s.name).is_some())
+                .map(|s| s.name.to_lowercase())
+                .collect();
+            assert_eq!(
+                yprim_names, all_names,
+                "{ctx}: selected_elements=[\"*\"] must yield a YPrim block for every \
+                 YPrim-bearing element"
+            );
+        } else {
+            assert_eq!(
+                cp.yprims.len(),
+                c.selected_elements.len(),
+                "{ctx}: oracle returned {} YPrim block(s) for {} selected element(s)",
+                cp.yprims.len(),
+                c.selected_elements.len()
+            );
+        }
         for yp in &cp.yprims {
             compare_yprim(&dss, yp, &tol, &ctx);
         }
@@ -518,6 +545,31 @@ fn run_and_compare(
         for m in &cp.meters {
             compare_meter(&dss, m, &tol, &ctx);
         }
+
+        // Element-specific state channels (CONTROL_COVERAGE_PLAN.md) — per step,
+        // empty (skipped) unless the case opts in.
+        assert_eq!(
+            cp.probes.len(),
+            c.probes.iter().map(|p| p.props.len()).sum::<usize>(),
+            "{ctx}: oracle probe count differs from the manifest spec"
+        );
+        for p in &cp.probes {
+            compare_probe(&mut dss, p, &tol, &ctx);
+        }
+        assert_eq!(
+            cp.variables.len(),
+            c.compare_variables.len(),
+            "{ctx}: oracle variables-capture count differs from the manifest spec"
+        );
+        for v in &cp.variables {
+            compare_variables(&mut dss, v, &tol, &ctx);
+        }
+        if c.compare_eventlog {
+            compare_eventlog(&dss, &cp.eventlog, &ctx);
+        }
+        if c.compare_ctrlqueue {
+            compare_ctrlqueue(&dss, &cp.ctrlqueue, &ctx);
+        }
     }
 }
 
@@ -531,7 +583,15 @@ struct SolvableManifest {
     cases: Vec<SolvableCase>,
 }
 
+/// One element-specific property-probe spec: compare `element`'s listed
+/// property values (oracle `Properties(p).Val` vs the Rust `?` query).
 #[derive(Debug, Clone, Deserialize)]
+struct ProbeSpec {
+    element: String,
+    props: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
 struct SolvableCase {
     path: String,
     #[serde(default = "default_kind")]
@@ -540,6 +600,7 @@ struct SolvableCase {
     post: Vec<String>,
     #[serde(default = "default_steps")]
     n_steps: usize,
+    /// YPrim focus set; `["*"]` = every element (small decks).
     #[serde(default)]
     selected_elements: Vec<String>,
     /// Opt in to comparing this case's monitor channels + EnergyMeter
@@ -548,6 +609,17 @@ struct SolvableCase {
     /// are not compared (their bare-snapshot sampling is ill-defined).
     #[serde(default)]
     check_meters_monitors: bool,
+    /// Element-specific state channels (CONTROL_COVERAGE_PLAN.md), all opt-in:
+    /// property probes, PC-element state variables, the cumulative event log,
+    /// and the pending control-action queue — compared per step.
+    #[serde(default)]
+    probes: Vec<ProbeSpec>,
+    #[serde(default)]
+    compare_variables: Vec<String>,
+    #[serde(default)]
+    compare_eventlog: bool,
+    #[serde(default)]
+    compare_ctrlqueue: bool,
 }
 
 fn default_kind() -> String {
@@ -608,16 +680,7 @@ fn corpus_live_solvable_cases_match_oracle() {
     }
     for c in &cases {
         let abs = corpus_file(&c.path);
-        run_and_compare(
-            &oracle,
-            &c.path,
-            &abs,
-            &c.post,
-            c.n_steps,
-            &c.selected_elements,
-            &c.kind,
-            c.check_meters_monitors,
-        );
+        run_and_compare(&oracle, &c.path, &abs, c);
     }
     eprintln!(
         "corpus_live: {} solvable case(s) matched the oracle",
@@ -751,19 +814,115 @@ fn asymmetric_cases_match_oracle() {
     assert!(!cases.is_empty(), "asymmetric manifest must not be empty");
     for c in &cases {
         let abs = asymmetric_file(&c.path);
-        run_and_compare(
-            &oracle,
-            &c.path,
-            &abs,
-            &c.post,
-            c.n_steps,
-            &c.selected_elements,
-            &c.kind,
-            c.check_meters_monitors,
-        );
+        run_and_compare(&oracle, &c.path, &abs, c);
     }
     eprintln!(
         "asymmetric live gate: {} deck(s) matched the oracle",
+        cases.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Controls live gate (tests/corpus/controls/, CONTROL_COVERAGE_PLAN.md):
+// synthetic decks putting every control / protection / metering element class
+// (RegControl, CapControl, SwtControl, Relay, Fuse, Recloser, EnergyMeter,
+// Monitor, Sensor, InvControl, StorageController, GenDispatcher) through
+// symmetric, asymmetric, and combination scenarios, live-compared with the full
+// model mandate PLUS the element-specific state channels (property probes,
+// PC-element variables, event log, control queue) this file's runner wires.
+// ---------------------------------------------------------------------------
+
+fn controls_dir() -> PathBuf {
+    [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "controls",
+    ]
+    .iter()
+    .collect()
+}
+
+fn controls_file(rel: &str) -> String {
+    let p = controls_dir().join(rel);
+    assert!(p.is_file(), "controls deck missing: {}", p.display());
+    p.to_string_lossy().replace('\\', "/")
+}
+
+fn load_controls() -> Vec<SolvableCase> {
+    let p = controls_dir().join("manifest.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let m: SolvableManifest =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
+    m.cases
+}
+
+/// The pinned per-class deck floor (grows as CONTROL_COVERAGE_PLAN.md steps
+/// land). Removing a deck (even with its manifest entry) fails here.
+const CONTROLS_REQUIRED: &[&str] = &["regcontrol_sym.dss"];
+
+/// Oracle-free structural guard: deck dir ↔ manifest bijection, the required
+/// deck floor, and every case must exercise at least one element-specific
+/// channel (probes / variables / eventlog / ctrlqueue / meters+monitors) on top
+/// of the full-model compare — a controls case without state comparison would
+/// miss this gate's whole point.
+#[test]
+fn controls_manifest_is_complete() {
+    let dir = controls_dir();
+    assert!(dir.is_dir(), "controls deck dir missing: {}", dir.display());
+    let mut disk: BTreeSet<String> = BTreeSet::new();
+    for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            disk.insert(p.file_name().unwrap().to_string_lossy().into_owned());
+        }
+    }
+    let cases = load_controls();
+    let manifested: BTreeSet<String> = cases.iter().map(|c| c.path.clone()).collect();
+    assert_eq!(
+        manifested.len(),
+        cases.len(),
+        "duplicate paths in controls manifest"
+    );
+    assert_eq!(
+        disk, manifested,
+        "controls decks on disk and manifest entries must be a bijection \
+         (disk∖manifest = unclassified deck, manifest∖disk = ghost entry)"
+    );
+    for req in CONTROLS_REQUIRED {
+        assert!(
+            manifested.contains(*req),
+            "required controls deck missing: {req} (per-class coverage floor)"
+        );
+    }
+    for c in &cases {
+        assert!(
+            !c.probes.is_empty()
+                || !c.compare_variables.is_empty()
+                || c.compare_eventlog
+                || c.compare_ctrlqueue
+                || c.check_meters_monitors,
+            "{}: controls case must opt into at least one element-specific \
+             state channel (probes/variables/eventlog/ctrlqueue/meters)",
+            c.path
+        );
+    }
+}
+
+#[test]
+fn controls_cases_match_oracle() {
+    let oracle = Oracle::new();
+    oracle.ping();
+    let cases = load_controls();
+    assert!(!cases.is_empty(), "controls manifest must not be empty");
+    for c in &cases {
+        let abs = controls_file(&c.path);
+        run_and_compare(&oracle, &c.path, &abs, c);
+    }
+    eprintln!(
+        "controls live gate: {} deck(s) matched the oracle",
         cases.len()
     );
 }
@@ -829,7 +988,13 @@ fn corpus_live_classify() {
         let oref = &oracle;
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let abs = corpus_file(&path);
-            run_and_compare(oref, &path, &abs, &[], 1, &[], "feeder", false);
+            let case = SolvableCase {
+                path: path.clone(),
+                kind: "feeder".to_string(),
+                n_steps: 1,
+                ..Default::default()
+            };
+            run_and_compare(oref, &path, &abs, &case);
         }));
         match res {
             Ok(()) => solvable.push(c.path.clone()),

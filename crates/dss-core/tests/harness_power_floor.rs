@@ -19,6 +19,7 @@ fn cap(i_re: f64, p_kw: f64) -> ElementCap {
         i_im: vec![0.0],
         p_kw: vec![p_kw],
         p_kvar: vec![0.0],
+        loss_w: vec![],
     }
 }
 

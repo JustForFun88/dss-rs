@@ -1,0 +1,17 @@
+{
+ "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors).",
+ "cases": [
+  {
+   "path": "regcontrol_sym.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "RegControl.rg", "props": ["vreg", "band", "ptratio", "delay", "maxtapchange", "tapnum"]},
+    {"element": "Transformer.tr", "props": ["tap", "taps"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  }
+ ]
+}
