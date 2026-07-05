@@ -486,7 +486,15 @@ detail is in **§1f**; the current frontier:
   IEEE13 misses (the deck is unsolved — the island is singular — and the topology walk
   still resolves it: the port processes buses at `calcvoltagebases`, no
   `ReprocessBusDefs` needed). golden_phase8 **111→115**. No corpus migration.
-  **next = the WP8.4 finalize** (`autoadded`/`QueryLog` headless no-ops + the `#24700`
+  **audit-tests follow-up — one Major coverage gap closed:** the two `ShowIsolated`
+  sections the IEEE13 + mesh goldens leave empty (the "ENABLED ELEMENTS ARE ISOLATED"
+  `"FullName"  Buses: "bus"` list + the 1-based `get_bus(j)` walk, and the "BUSES NOT
+  CONNECTED TO ANY POWER DELIVERY ELEMENT" list) → the new `show_isolated_orphan`
+  deck golden (an orphan Load + Generator on PD-less, source-disconnected buses)
+  pins both, byte-exact (golden_phase8 **115→121** incl. the step-15 busflow follow-up).
+  Tracked low-payoff (not added): the `(Sensor:…)` topology annotation (needs a
+  solved+metered+sensored deck), the `>30`-level `(* level *)` tab overflow, and the
+  no-source empty-tree branch. **next = the WP8.4 finalize** (`autoadded`/`QueryLog` headless no-ops + the `#24700`
   unknown-keyword error + the step-15 busflow coverage follow-up), then the corpus
   classify/migrate pass.
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
@@ -568,7 +576,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 120,
+                            # golden_phase7_protection 1, golden_phase8 121,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

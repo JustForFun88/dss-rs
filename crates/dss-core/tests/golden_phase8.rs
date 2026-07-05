@@ -1762,6 +1762,17 @@ fn show_isolated_iso_matches_oracle() {
     run_deck_show_exact("show_isolated_iso");
 }
 
+/// `Show Isolated` orphan coverage (audit-tests step-16 follow-up): an orphan Load +
+/// Generator on PD-less, source-disconnected buses, so the two `ShowIsolated` sections
+/// the IEEE13 + mesh goldens leave empty are non-empty here — the "ENABLED ELEMENTS
+/// ARE ISOLATED" list (`"Load.orphan"  Buses:  "orphanbus"`, pinning the `  Buses:`
+/// format + the **1-based** `get_bus(j)` walk) and the "BUSES NOT CONNECTED TO ANY
+/// POWER DELIVERY ELEMENT" list (`"orphanbus"`/`"genbus"`). Byte-exact.
+#[test]
+fn show_isolated_orphan_matches_oracle() {
+    run_deck_show_exact("show_isolated_orphan");
+}
+
 /// `Show Topology` on the same coverage deck: pins the non-zero counts (`2 Parallel PD
 /// elements`, `1 Isolated PD components`, `1 Controlled Switches`) + the tree's
 /// `(PARALLEL:…)` / `(Control: …)` / `Isolated: …` annotations, none of which the
