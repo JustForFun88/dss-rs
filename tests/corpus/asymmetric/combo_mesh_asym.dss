@@ -1,0 +1,57 @@
+// Combination deck (meshed loop): two parallel 3-phase lines on different
+// FULL-asymmetric-input LineCodes close a loop through a 2-phase tie + 1-phase
+// jumper, with a wye-wye transformer (unequal taps -> circulating loop
+// current) in parallel with the tie. Shunt reactor/capacitor asymmetries on
+// both loop buses, and an induction machine (sequence-asymmetric) behind a
+// delta-wye transformer — all under unbalanced load.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.combo_mesh basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+New linecode.lca nphases=3 units=kft
+~ rmatrix=[0.087 0.029 0.028 | 0.031 0.089 0.030 | 0.027 0.032 0.087]
+~ xmatrix=[0.203 0.085 0.072 | 0.088 0.196 0.083 | 0.070 0.086 0.202]
+~ cmatrix=[2.74 -0.70 -0.34 | -0.72 2.96 -0.71 | -0.33 -0.69 2.74]
+
+New linecode.lcc nphases=3 units=kft
+~ rmatrix=[0.095 0.033 0.025 | 0.036 0.098 0.034 | 0.028 0.037 0.094]
+~ xmatrix=[0.215 0.092 0.078 | 0.096 0.208 0.090 | 0.075 0.093 0.212]
+~ cmatrix=[2.55 -0.62 -0.30 | -0.66 2.80 -0.64 | -0.31 -0.60 2.52]
+
+! Two radial feeds from the source...
+New line.lfa bus1=src bus2=m1 linecode=lca length=7 units=kft
+New line.lfb bus1=src bus2=m2 linecode=lcc length=9 units=kft
+
+! ...closed into a loop by a 2-phase tie + 1-phase jumper...
+New line.ltie phases=2 bus1=m1.1.2 bus2=m2.1.2 linecode=lca length=4 units=kft
+New line.lj3 phases=1 bus1=m1.3 bus2=m2.3 r1=0.07 x1=0.18 r0=0.07 x0=0.18 c1=0 c0=0 length=1
+
+! ...and a wye-wye transformer in parallel with the tie (taps unequal ->
+! circulating current around the loop).
+New transformer.tloop phases=3 windings=2 buses=(m1, m2) conns=(wye, wye)
+~ kvs=(12.47, 12.47) kvas=(5000, 5000) xhl=8 taps=[1.02 0.98]
+
+! Shunt asymmetries on both loop buses.
+New reactor.rsh phases=1 bus1=m1.3 kvar=120 kv=7.2
+New capacitor.cmat phases=3 bus1=m2
+~ cmatrix=[3.2 -0.9 -0.3 | -0.5 3.5 -0.7 | -0.4 -1.1 3.1]
+
+! Induction machine behind a delta-wye transformer at m2.
+New transformer.tg phases=3 windings=2 buses=(m2, mbus) conns=(delta, wye)
+~ kvs=(12.47, 0.48) kvas=(1500, 1500) xhl=5
+New capacitor.cg conn=wye bus1=mbus phases=3 kvar=600 kv=0.48
+New indmach012.m1 bus1=mbus kv=0.48 kw=1200 conn=delta kva=1500 h=6
+~ purs=0.048 puxs=0.075 purr=0.018 puxr=0.12 puxm=3.8 slip=0.02
+~ slipoption=variableslip
+
+! Unbalanced loads on both loop buses.
+New load.a1 bus1=m1.1 phases=1 conn=wye model=1 kv=7.2 kw=700 pf=0.9
+New load.a2 bus1=m1.2 phases=1 conn=wye model=2 kv=7.2 kw=200 pf=0.95
+New load.b2 bus1=m2.2 phases=1 conn=wye model=1 kv=7.2 kw=350 pf=0.92
+New load.b3 bus1=m2.3 phases=1 conn=wye model=5 kv=7.2 kw=1000 pf=0.85
+
+Set voltagebases=[12.47, 0.48]
+Set maxiterations=100
+calcv

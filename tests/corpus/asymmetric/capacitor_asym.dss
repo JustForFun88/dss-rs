@@ -1,0 +1,36 @@
+// Asymmetric Capacitor coverage: FULL asymmetric cmatrix input (pins the
+// ParseAsSymMatrix lower-triangle-wins order), delta bank, single-phase cuf,
+// SERIES capacitor (bus2 set), and a multi-step bank with mixed step states —
+// all under unbalanced load.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.cap_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New line.t1 bus1=src bus2=b1 r1=0.08 x1=0.25 r0=0.25 x0=0.8 c1=0 c0=0 length=1
+
+! FULL asymmetric cmatrix (nF) shunt bank.
+New capacitor.cmat phases=3 bus1=b1
+~ cmatrix=[3.2 -0.9 -0.3 | -0.5 3.5 -0.7 | -0.4 -1.1 3.1]
+
+! Delta-connected kvar bank.
+New capacitor.cdel phases=3 bus1=b1 conn=delta kvar=600 kv=12.47
+
+! Single-phase cuf bank on phase 3.
+New capacitor.c1p phases=1 bus1=b1.3 cuf=18 kv=7.2
+
+! SERIES capacitor (two-terminal stamp — the same series-stamp code path as
+! the fixed reactor bug).
+New capacitor.cser phases=3 bus1=b1 bus2=b2 kvar=20000 kv=12.47
+
+! Multi-step wye bank with mixed states.
+New capacitor.cstep phases=3 bus1=b2 kvar=600 kv=12.47 numsteps=4 states=[1 0 1 0]
+
+! Unbalanced excitation.
+New load.la bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=700 pf=0.9
+New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=250 pf=0.95
+New load.lc bus1=b2.3 phases=1 conn=wye model=1 kv=7.2 kw=1200 pf=0.85
+
+Set voltagebases=[12.47]
+calcv

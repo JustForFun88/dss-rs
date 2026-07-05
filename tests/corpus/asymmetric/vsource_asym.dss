@@ -1,0 +1,31 @@
+// Asymmetric Vsource coverage: a symmetrical-components source with Z2 <> Z1
+// has a NON-reciprocal 3x3 YPrim — the same class as the Reactor SpecType-4
+// stamp bug fixed in 03c63f2. Three sources stamp in parallel (explicit
+// Z1/Z2/Z0, MVAsc spec with distinct x1r1/x0r0, and a single-phase source),
+// excited by an unbalanced load.
+clear
+Set DefaultBaseFrequency=60
+
+! Main source: explicit Z1/Z2/Z0 with Z2 <> Z1 -> asymmetric YPrim.
+New circuit.vsrc_asym basekv=12.47 pu=1.02 angle=5 phases=3 bus1=src
+~ Z1=[1.05 3.9] Z2=[0.62 2.3] Z0=[2.4 7.1]
+
+New line.t1 bus1=src bus2=b1 r1=0.08 x1=0.25 r0=0.25 x0=0.8 c1=0 c0=0 length=1
+
+! Second 3-phase source: MVAsc spec, distinct X/R per sequence, shifted angle.
+New vsource.vs2 bus1=b1 basekv=12.47 pu=0.99 angle=-2 phases=3
+~ MVAsc3=900 MVAsc1=1100 x1r1=5 x0r0=2.5
+
+New line.t2 bus1=b1 bus2=b2 r1=0.09 x1=0.3 r0=0.3 x0=0.95 c1=0 c0=0 length=1
+
+! Single-phase source hanging on phase 2 (native phase-2 angle ~ -120 deg).
+New vsource.vs3 bus1=b2.2 basekv=7.2 pu=1.01 angle=-121 phases=1
+~ R1=0.5 X1=1.6 R0=0.5 X0=1.6
+
+! Unbalanced load pulls asymmetric currents through all three sources.
+New load.la bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=900 pf=0.9
+New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=150 pf=0.95
+New load.lc bus1=b2.3 phases=1 conn=wye model=1 kv=7.2 kw=1300 pf=0.85
+
+Set voltagebases=[12.47]
+calcv
