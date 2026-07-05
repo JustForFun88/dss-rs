@@ -10,28 +10,29 @@
 > per WP; commit only on explicit user request; **final per-step report to the
 > user in Russian**).
 >
-> **What this plan is.** During Phases 4–7 a set of features was deferred with
-> the empirical rule "port only if a corpus case needs it" — and the vendored
-> corpus (`tests/corpus/electricdss-tst`) has **no deck** for them, so they
-> stayed unported (the WP7.9 AutoAdd/Monte/LD decision and its smaller
-> cousins). `PHASE8_PLAN.md` §1 already names that rule the anti-pattern and
-> mandates **synthesized fixtures**: *test-absence is never a reason to defer a
-> port*. This plan is the promised correction: it inventories every
-> test-blocked deferral, ships a **validated synthesized deck** for each
-> (committed at `tests/corpus/gaps/` — the third first-party live-gate family
-> beside `asymmetric/` and `controls/`, see §3), and packages the porting work.
+> **What this plan is.** Two kinds of unported work, one closure plan:
 >
-> **Extended 2026-07-05 with the unported ELEMENT classes.** A registry diff
-> (Pascal `DSSClassDefs.pas` `CreateDSSClasses` vs the Rust `exec/construct.rs`
-> registry) found five upstream-registered element classes with **no Rust
-> port at all**: **Isource**, **AutoTrans**, **GICLine**, **GICTransformer**,
-> **GICsource**. Isource/AutoTrans were always in the PORTING_PLAN module
-> sketch (`pc/isource.rs`, `pd/autotrans.rs` — PORTING_PLAN.md §"crate layout")
-> but were never picked up by any phase; the GIC trio was parked at Phase 9.
-> All five are now §1b + WPG.15–WPG.17 here, with validated decks (§3).
-> (Not missing, verified: `ControlledTransformer.pas` and the user-model DLL
-> classes are **not registered** upstream — nothing to port; `Feeder` is dead
-> upstream, proven by probe.)
+> 1. **Test-blocked feature deferrals** (§1). During Phases 4–7 a set of
+>    features was deferred with the empirical rule "port only if a corpus case
+>    needs it" — and the vendored corpus (`tests/corpus/electricdss-tst`) has
+>    **no deck** for them, so they stayed unported (the WP7.9
+>    AutoAdd/Monte/LD decision and its smaller cousins). `PHASE8_PLAN.md` §1
+>    names that rule the anti-pattern and mandates **synthesized fixtures**:
+>    *test-absence is never a reason to defer a port*.
+> 2. **Unported element classes** (§1b). A registry diff (Pascal
+>    `DSSClassDefs.pas` `CreateDSSClasses` vs the Rust `exec/construct.rs`
+>    registry) shows five upstream-registered classes with no Rust port:
+>    **Isource**, **AutoTrans**, **GICLine**, **GICTransformer**,
+>    **GICsource**. Isource/AutoTrans sit in the PORTING_PLAN module sketch
+>    (`pc/isource.rs`, `pd/autotrans.rs`) but belong to no phase; the GIC trio
+>    was parked at Phase 9. (Verified non-gaps: `ControlledTransformer.pas`
+>    and the user-model DLL classes are **not registered** upstream — nothing
+>    to port; `Feeder` is dead upstream, proven by probe.)
+>
+> Every item ships a **validated synthesized deck** in the
+> `tests/corpus/gaps/` **staging family** (lifecycle in §3.1: a deck lives
+> there only while its feature is unported, then graduates to a permanent
+> family), and the porting work is packaged as independently-gated WPs (§4).
 >
 > **When to execute.** After (or interleaved with) Phase 8 — every WP here is
 > independent of the Phase-8 report work except where a dependency is called
@@ -68,7 +69,7 @@ the synthesized deck in `tests/corpus/gaps/` (all oracle-validated, §3).
 | 13 | Relay `Type=Generic` / `Type=TD21` `Sample` logic | WP7.7 tracked-open ("Plot-blocked") | `relay/mod.rs:601` `record_not_ported_once` | corpus decks exist (see WPG.12) | WPG.12 |
 | 14 | GFM grid-forming mode (InvControl `mode=GFM`/combi; Storage/PVSystem/Generator GFM voltage source path) | WP7.7 tracked-open ("Plot-blocked") | `NOT_PORTED` across `storage/dynamics.rs`, `inv_control/*`, `solution/dispatch.rs:70` GFM abort | corpus decks exist (see WPG.13) | WPG.13 |
 
-### 1b. Inventory — the unported element classes (added 2026-07-05)
+### 1b. Inventory — the unported element classes
 
 Upstream registration order (`DSSClassDefs.pas` `CreateDSSClasses`):
 `Isource` (early, with the sources) … `IndMach012` (l.264) → **GICsource**
@@ -77,13 +78,21 @@ Upstream registration order (`DSSClassDefs.pas` `CreateDSSClasses`):
 Registration order does not affect node ordering (creation order does) — the
 existing `construct.rs` comments already document that convention.
 
-| # | Class | Pascal unit (lines) | Corpus decks blocked on it | Decks (`tests/corpus/gaps/`) | WP |
-|---|---|---|---|---|---|
-| 15 | Isource | `PCElements/Isource.pas` (541) | `Examples/Microgrid/ISource/Master.DSS`, `Examples/Matlab/pst.dss`, `Examples/FreqScan/Run_Scan.dss` | `isource_snap.dss`, `isource_daily.dss`, `isource_harm.dss` | WPG.15 |
-| 16 | AutoTrans | `PDElements/AutoTrans.pas` (2065) | `Test/AutoTrans/{Auto1bus,Auto3bus,AutoAuto}.dss` + the byte-identical `Version8/Distrib/Examples/AutoTrans/*` copies (AutoAuto needs the class; Auto1bus/3bus carry stale `fault` tags) | `autotrans_snap.dss`, `autotrans_reg.dss`, `autotrans_gic.dss` | WPG.16 |
-| 17 | GICTransformer | `PDElements/GICTransformer.pas` (595) | `Examples/GICExample/GIC_Example.dss` | `gictransformer_gic.dss` | WPG.17 |
-| 17 | GICLine | `PCElements/GICLine.pas` (679) | same deck | `gicline_gic.dss` | WPG.17 |
-| 17 | GICsource | `PCElements/GICsource.pas` (478) | **zero corpus decks** (the classic gaps case) | `gicsource_gic.dss` | WPG.17 |
+Each element WP carries the full **deck matrix** {static snapshot ("sync") ×
+time-series ("async") × combined snapshot→time-series ("both", the cross-mode
+state-leak class)} at **both scales** — micro (hand-written) and midi (the
+shared IEEE123-class scaffold, generated by `tools/decks/gen_midi_decks.py`) —
+wherever the mode exists upstream. The GIC classes have **no async/both
+variants**: none has a shape reference or any time-varying drive (their
+corpus usage is a 0.1 Hz quasi-DC snapshot).
+
+| Class | Pascal unit (lines) | Corpus decks blocked on it | Decks (`tests/corpus/gaps/`) | WP |
+|---|---|---|---|---|
+| Isource | `PCElements/Isource.pas` (541) | `Examples/Microgrid/ISource/Master.DSS`, `Examples/Matlab/pst.dss`, `Examples/FreqScan/Run_Scan.dss` | micro: `isource_snap`, `isource_daily`, `isource_both`, `isource_harm`; midi: `midi_isource_asym`, `midi_isource`, `midi_isource_both` | WPG.14 |
+| AutoTrans | `PDElements/AutoTrans.pas` (2065) | `Test/AutoTrans/{Auto1bus,Auto3bus,AutoAuto}.dss` + the byte-identical `Version8/Distrib/Examples/AutoTrans/*` copies (AutoAuto needs the class; Auto1bus/3bus carry stale `fault` tags) | micro: `autotrans_snap`, `autotrans_reg`, `autotrans_both`, `autotrans_gic`; midi: `midi_autotrans_asym`, `midi_autotrans`, `midi_autotrans_both` | WPG.15 |
+| GICTransformer | `PDElements/GICTransformer.pas` (595) | `Examples/GICExample/GIC_Example.dss` | `gictransformer_gic` + the combined `gic_midi` | WPG.16 |
+| GICLine | `PCElements/GICLine.pas` (679) | same deck | `gicline_gic` + `gic_midi` | WPG.16 |
+| GICsource | `PCElements/GICsource.pas` (478) | **zero corpus decks** (the classic gaps case) | `gicsource_gic` + `gic_midi` | WPG.16 |
 
 **Explicitly NOT in this plan** (deferred elsewhere, with a real owner):
 - `Feeder` objects — **proven dead upstream by an oracle probe** (Phase 8
@@ -96,8 +105,7 @@ existing `construct.rs` comments already document that convention.
   stays `NOT_PORTED` with a loud error until something observable hinges on it
   (this is a *behavior*-based deferral, not a test-based one; revisit if a
   corpus deck ever sets it — none does today).
-- CIM export, actors/`SolveAll`, `Pstcalc` flicker — Phase 9. (GIC elements
-  were on this line until 2026-07-05; they are now WPG.17.)
+- CIM export, actors/`SolveAll`, `Pstcalc` flicker — Phase 9.
 - All user-model DLL hooks + `ControlledTransformer.pas` — never (safe Rust /
   not registered upstream).
 
@@ -167,8 +175,9 @@ the gate pins the winner bus, the improvement figure, the appended
   engine errors **loudly** on the unported feature" (assert the specific
   `NOT_PORTED`/unknown-mode error — never a silent skip, never a silent
   fallback), and a non-pending case as a full live compare. The WP that ports
-  a feature flips its cases to `pending: false` in the same commit. WPG.18
-  asserts no `pending: true` remains.
+  a feature flips its cases to `pending: false` in the same commit, then
+  **graduates** the decks out of the staging family (§3.1). WPG.17
+  asserts no `pending: true` — and no deck — remains.
 - **Per-deck sensitivity is already proven** (§3): removing the feature under
   test changes the oracle output, so a port that silently skips the feature
   cannot pass its live compare.
@@ -192,10 +201,12 @@ buses when the list is empty — port that branch too).
 
 ## 3. The synthesized decks (committed, oracle-validated)
 
-Sixteen feature decks + nine element decks (§1b) at `tests/corpus/gaps/` with
-their `manifest.json` (+ 6 committed binary/CSV input fixtures; regenerate via
-`tools/corpus/gen_gaps_binshapes.py`). Validation protocol, run 2026-07-05
-against the pinned oracle (dss-python 0.15.7):
+Sixteen feature decks (§1) + eighteen element decks (§1b) at
+`tests/corpus/gaps/` with their `manifest.json` (+ 6 committed binary/CSV
+input fixtures, regenerate via `tools/corpus/gen_gaps_binshapes.py`; the
+`midi_*` element decks regenerate via `tools/decks/gen_midi_decks.py`).
+Validation protocol, run 2026-07-05 against the pinned oracle (dss-python
+0.15.7):
 
 1. compiles + solves + converges;
 2. **bit-identical fingerprint across two separate oracle processes**
@@ -221,20 +232,22 @@ fact, cite in the code):
   decks encode the order.
 - AutoAdd teardown segfault (§2.2).
 
-Element-deck findings (2026-07-05 validation run; all nine decks compile +
-solve + converge, bit-identical across two oracle processes):
+Element-deck findings (probe-proven on the pinned oracle; all eighteen decks
+compile + solve + converge, bit-identical across two oracle processes):
 
 - The GICTransformer per-unit resistance spelling is **`%R1`/`%R2`** (the
   `pctR1` enum name does not parse — error #110).
-- `autotrans_reg.dss` is control-active on the oracle: **10 tap-change events**
-  over the 8 hours, final `RegControl.rat.tapnum = 5` (manifest probes pin
-  both). RegControl reaches AutoTrans via the Pascal `Transf_Or_AutoTrans`
-  proxy; the **Series-winding control path raises upstream**
-  (`RegControl.pas:1009`) — the deck regulates the common (wye) winding 2.
-- `gicsource_gic.dss`: the oracle **splices** each GICsource into its
-  same-named Line at edit time — bus list gains `gic_seg12`/`gic_seg23` and
-  `line.seg12.bus2` is rewritten to `gic_seg12` (manifest `bus2` probes pin
-  the splice).
+- The AutoTrans+RegControl decks are control-active: `autotrans_reg` logs
+  **10 tap-change events** over 8 hours (final `tapnum=5`), `midi_autotrans`
+  **10 events** at midi scale (final `tapnum=11`) — the manifest probes +
+  `compare_eventlog` pin them. RegControl reaches AutoTrans via the Pascal
+  `Transf_Or_AutoTrans` proxy; the **Series-winding control path raises
+  upstream** (`RegControl.pas:1009`) — the decks regulate the common (wye)
+  winding 2.
+- `gicsource_gic.dss` / `gic_midi.dss`: the oracle **splices** each GICsource
+  into its same-named Line at edit time — the bus list gains a `gic_<name>`
+  bus and the Line's `bus2` is rewritten to it (manifest `bus2` probes pin
+  the splice and the resulting bus order).
 - AutoTrans `? wdgcurrents` returns a live recompute (e.g. `66.95905,
   (-28.006), …` on `autotrans_reg`) — the same `READS_VTERMINAL` family as
   Transformer (see the WP8.5 follow-up in STATUS.md); the Rust prop def must
@@ -243,12 +256,32 @@ solve + converge, bit-identical across two oracle processes):
   `scan5` 1/5/7/11 merged with the load's `defaultload` 1/3/5/7/9/11/13
   spectrum) — 7 monitor samples on the oracle.
 
+### 3.1 Deck lifecycle — `gaps/` is a STAGING family, not a destination
+
+"Gaps" describes a deck's *state*, not its nature: once the feature is
+ported there is no gap left, so the deck must not stay. The rule:
+
+- A deck lives in `tests/corpus/gaps/` **only while** its feature is
+  unported (`pending: true` — the loud-error gate).
+- The WP that ports the feature, in the same change: flips `pending: false`,
+  proves the live compare green, then **moves the deck + its manifest entry
+  to the permanent family** it belongs to (re-cutting the deck to that
+  family's drive convention where needed — gaps decks are self-driving,
+  the permanent families let the harness drive):
+  - static/snapshot element coverage → `tests/corpus/asymmetric/`;
+  - control/time-series/both coverage → `tests/corpus/controls/`;
+  - solve-mode / algorithm / input-format decks (Monte, LD, Time, AutoAdd,
+    Newton, shape files, harmonic curves) → `tests/corpus/modes/` (created
+    at the first such graduation, same manifest shape as the siblings).
+  `midi_*` element decks also move their generator entry in
+  `tools/decks/gen_midi_decks.py` to the matching target directory.
+- WPG.17 (the exit sweep) asserts the staging family is **empty** and
+  deletes the directory.
+
 ## 4. Work packages (independently gated; risk-ascending)
 
 Effort ≈ share of this plan. Pascal line refs confirmed at WP open (the
-PHASE7 convention). Numbering note: the exit sweep was WPG.14 until the
-2026-07-05 element extension; it is now **WPG.18** and the number 14 is
-retired (WPG.15–WPG.17 are the element WPs).
+PHASE7 convention).
 
 ---
 
@@ -498,7 +531,7 @@ are oracle-troubled (`Master-unbal` non-convergent, `Run_RecloserSiting`
 
 ---
 
-### WPG.15 — Isource [5%]
+### WPG.14 — Isource [5%]
 
 **Pascal:** `PCElements/Isource.pas` (541 lines) — the ideal current source.
 Small and self-contained; the Rust source-element template is
@@ -549,10 +582,15 @@ Steps (in order; each cites the Pascal site to port loop-for-loop):
    - `props_roundtrip` picks the class up automatically (it iterates the
      registry) — run it, fix display-case/dump mismatches against the oracle.
    - Byte-exact `dump isource.x` golden vs the oracle (the WP8.5 dump harness).
-   - Flip `isource_snap.dss` / `isource_daily.dss` / `isource_harm.dss` to
+   - Flip the seven Isource decks (`isource_snap`/`_daily`/`_both`/`_harm` +
+     `midi_isource_asym`/`midi_isource`/`midi_isource_both`) to
      `pending: false` — the live compare covers snapshot injection, the
-     shape-driven daily run (8 steps, meter + monitors) and the harmonic
-     spectrum sweep (7 frequencies, §3 note).
+     shape-driven daily run, the snapshot→daily transition (cross-mode
+     state-leak), the harmonic spectrum sweep (7 frequencies, §3 note), and
+     all of it again at midi scale (94 nodes). Then graduate them per §3.1:
+     `isource_snap`/`midi_isource_asym` → `asymmetric/`, the rest →
+     `controls/` (`isource_harm` → `modes/` if the harmonics decks land
+     there — decide at the first graduation and stay consistent).
    - Corpus: re-classify (`DSS_LIVE_CLASSIFY=1` + `tools/corpus/
      apply_classify.py`). Expected: `Microgrid/ISource/Master.DSS` advances
      but may stay blocked on `MakeBusList` (check whether it is ported by
@@ -563,7 +601,7 @@ Steps (in order; each cites the Pascal site to port loop-for-loop):
 
 ---
 
-### WPG.16 — AutoTrans [15%]
+### WPG.15 — AutoTrans [15%]
 
 **Pascal:** `PDElements/AutoTrans.pas` (2065 lines). **Template: clone the
 ported Transformer module** (`elements/pd/transformer/` — mod/accessors/edit/
@@ -627,9 +665,10 @@ Port these AutoTrans-specific overrides loop-for-loop, citing lines:
    Series-case index arms (`VTerm[i+1] := Vterminal[iphase+Nphases]`;
    `VBuffer[i] = Vterminal[i+k] − Vterminal[i+Fnconds]`). `GetLosses`
    override (l.1674) is the standard total − no-load split.
-8. Gate B: flip `autotrans_snap.dss` and `autotrans_gic.dss` to
-   `pending: false` — full live compare (YNodeV, element currents/powers,
-   YPrim) + the `wdgcurrents` probes; the GIC deck pins step 5.
+8. Gate B: flip `autotrans_snap.dss`, `autotrans_gic.dss` and
+   `midi_autotrans_asym.dss` to `pending: false` — full live compare
+   (YNodeV, element currents/powers, YPrim, 100 nodes at midi scale) + the
+   `wdgcurrents` probes; the GIC deck pins step 5.
 
 **Stage C — RegControl + corpus:**
 
@@ -641,8 +680,13 @@ Port these AutoTrans-specific overrides loop-for-loop, citing lines:
    AutoTrans (shared trait or enum dispatch at the control-loop call sites)
    and port the **Series-winding guard error** (RegControl.pas l.1009:
    "Series connection … has not been implemented or tested!").
-2. Gate C: flip `autotrans_reg.dss` to `pending: false` — event log equal
-   (10 tap events, §3), `tapnum`/`taps`/`wdgcurrents` probes exact.
+2. Gate C: flip `autotrans_reg.dss`, `autotrans_both.dss`,
+   `midi_autotrans.dss` and `midi_autotrans_both.dss` to `pending: false` —
+   event logs equal (10/12/10 tap events, §3), `tapnum`/`taps`/`wdgcurrents`
+   probes exact, the `both` decks pinning the snapshot→daily transition.
+   Then graduate all seven AutoTrans decks per §3.1 (`autotrans_snap`/
+   `autotrans_gic`/`midi_autotrans_asym` → `asymmetric/`, the reg/both
+   decks → `controls/`; move the generator entries).
 3. Corpus: re-classify. `AutoAuto.dss` (both copies) needs the class +
    `BatchEdit autotrans..*` (WP8.6) + exports; `Auto1bus`/`Auto3bus` build
    the same unit from **regular transformers** — their `unsupported_class=
@@ -654,7 +698,7 @@ Port these AutoTrans-specific overrides loop-for-loop, citing lines:
 
 ---
 
-### WPG.17 — GIC family: GICTransformer, GICLine, GICsource [8%]
+### WPG.16 — GIC family: GICTransformer, GICLine, GICsource [8%]
 
 **Pascal:** `PDElements/GICTransformer.pas` (595), `PCElements/GICLine.pas`
 (679), `PCElements/GICsource.pas` (478). One WP — the three are small,
@@ -715,36 +759,39 @@ Port in this order:
      `GetVterminalForSource` (l.403) with the EPSILON2 frequency gate
      (`phase_shift` always 0).
 5. Register all three in `construct.rs` at their Pascal slots (§1b order).
-6. Gates: flip the three GIC decks to `pending: false` (full live compare —
-   the nets are linear, snapshot at 0.1 Hz); `props_roundtrip` + dump goldens
-   for the three classes; corpus: re-classify `GICExample/GIC_Example.dss`
-   (also uses `LatLongCoords` + `Show Current Elements` + `plot circuit` —
-   plot is a headless no-op since WP8.1; check the other two, tag honestly,
-   migrate if it solves).
+6. Gates: flip the four GIC decks (`gicline_gic`, `gictransformer_gic`,
+   `gicsource_gic`, the combined 33-node `gic_midi`) to `pending: false`
+   (full live compare — the nets are linear, snapshot at 0.1 Hz);
+   `props_roundtrip` + dump goldens for the three classes; graduate the four
+   decks per §3.1 (static snapshots → `asymmetric/`); corpus: re-classify
+   `GICExample/GIC_Example.dss` (also uses `LatLongCoords` + `Show Current
+   Elements` + `plot circuit` — plot is a headless no-op since WP8.1; check
+   the other two, tag honestly, migrate if it solves).
 
 ---
 
-### WPG.18 — Exit sweep [2%]
+### WPG.17 — Exit sweep [2%]
 
 1. `rg "no corpus case"` / `rg "NOT_PORTED"` / the §1 + §1b tables — every
    row either ported+gated here or explicitly re-owned (§1b "NOT in this
    plan" list); no "test-absence" deferral survives anywhere in the tree,
    and the Rust registry diff vs `DSSClassDefs.pas` is **empty** (modulo the
    never-port list).
-2. Full gate + live corpus run; COVERAGE.md refresh; STATUS.md record
-   (§1-style); PORTING_PLAN.md cross-link ("GAPS_PLAN executed"; drop the
-   GIC line from Phase 9).
-3. Merge per the per-phase convention — only on explicit user request.
+2. The staging family is **empty** (§3.1: every deck graduated with its WP)
+   — delete `tests/corpus/gaps/` and its `corpus_live.rs` gate section.
+3. Full gate + live corpus run; COVERAGE.md refresh; STATUS.md record
+   (§1-style); PORTING_PLAN.md cross-link ("GAPS_PLAN executed").
+4. Merge per the per-phase convention — only on explicit user request.
 
 ## 5. Execution notes
 
 - Order: WPG.1–WPG.11 are small and independent — run them in numeric order
   (cheapest first, the warm-up convention); then the element WPs by size —
-  **WPG.15 (Isource)**, **WPG.17 (GIC family)**, **WPG.16 (AutoTrans,
+  **WPG.14 (Isource)**, **WPG.16 (GIC family)**, **WPG.15 (AutoTrans,
   stage-committed A→B→C)**; WPG.12 next (corpus payoff); WPG.13 last
   (largest, and gated on WP8.6 for its corpus decks). The element WPs are
   fully independent of everything else and can also be interleaved earlier —
-  WPG.15 is a good warm-up-sized package.
+  WPG.14 is a good warm-up-sized package.
 - Every WP: the live gate runs against the PIN (`tools/golden/PIN.txt`);
   deck or manifest edits require re-running the §3 validation protocol
   (two-process determinism + sensitivity) on the pinned oracle.
