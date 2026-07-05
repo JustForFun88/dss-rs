@@ -534,6 +534,47 @@ frontier:
   voltage goldens pin). golden_phase8 **→125**. **next = the corpus classify/migrate
   pass** (Show was never a blocker, so likely a no-op — refresh + confirm), then the
   STATUS full sync + WP8.4 close.
+- **WP8.5 (Save/Dump) — NOT STARTED; exploration recorded.** The port map (from a
+  scoped explore pass) so the next session resumes without re-reading:
+  - **Reuse (the oracle-validated primitive):** `ClassProps::get_value(obj, idx,
+    enums)` (`obj/props/class_props/value.rs:16`) — the exact renderer the `?` query
+    (`exec/command.rs:549` `do_query_cmd`) + `props_roundtrip` use. Plus
+    `num_properties()`/`property_name(idx)` (`class_props/mod.rs`) and, for Save's
+    set-order walk, `DssObjData::next_property_set(after)` +
+    `set_as_next_seq`/`prp_specified` (`obj/base/mod.rs:64-93`). Save/Dump are thin
+    string-joins over these — **no new formatting**.
+  - **Dump** (Pascal `DoPropertyDump` `ExecHelper.pas:1194`; `TDSSObject.DumpProperties`
+    `DSSObject.pas:110`): `New "FullName"` + `~ name=get_value` for `1..num_properties`
+    (Leaf=true). `TDSSCktElement.DumpProperties` (`CktElement.pas:918`) adds
+    `! ENABLED`/`! DISABLED` + (Complete/`debug`) NPhases/Nconds/Nterms/Yorder/NodeRef/
+    Terminal-status/Bus-ref/YPrim. **Complication: ~17 element `DumpProperties`
+    overrides** (Reactor `Reactor.pas:966` skips NIL R/X-matrices + custom `~ Z1=[…]`
+    8-sig, etc.) — each must be reproduced faithfully (byte gate). File
+    `<OutputDir><CircuitName_>PropertyDump.txt`; forms `Dump <class>.<name>` /
+    `Dump <class>.*` / `Dump` (all: every CktElement + DSSObj + Solution) /
+    `Dump debug` / `Dump solution`. Corpus: 3 decks (`dump reactor`×2, `dump
+    transformer`) — needs synthesized fixtures + the byte gate.
+  - **Save** (Pascal `DoSaveCmd` `ExecHelper.pas:744`; `Circuit.Save` `Circuit.pas:2409`;
+    `WriteClassFile` `Utilities.pas:1134`; `WriteDSSObject`+`SaveWrite`
+    `Utilities.pas:1221`/`DSSObject.pas:145`): per-object `New "Class.name"` + ` name=
+    CheckForBlanks(value)` for each `next_property_set` prop (SET props only, set order)
+    + ` ENABLED=NO` if a disabled ckt element. `Save circuit` = a fresh `<Name>NNN`
+    subdir + the library-class `WriteClassFile`s + `SaveDSSObjects` (class-ordered) +
+    `SaveVoltageBases`(`BusVoltageBases.dss`) + `SaveBusCoords`(`BusCoords.dss`) +
+    `SaveMasterFile`(`Master.dss` header/`Redirect` list/footer) + `SaveOpenTerminals`
+    + `SaveFeeders` (per-meter zone subdirs). **New plumbing needed:** subdir creation
+    (no `SetCurrentDSSDir` yet), the `Save meters` primitives `Monitor::save`/
+    `EnergyMeter::save_registers` (NOT ported), and the **`save_roundtrip.rs`** gate
+    (re-compile+re-solve = identical V, per §1 gate #3 — round-trip, not byte-match).
+    `SaveFeeders`: `Feeder` is **not** an instantiable class (only a CIM-XML label,
+    probe-confirmed) → the meter-zone path, documented not skipped. Stubs at
+    `exec/report.rs` `do_save_cmd`/`do_dump_cmd`; dispatch `command.rs:135-136`.
+  - **Suggested sub-steps:** (1) Dump (base + ckt-element + the 17 overrides + the
+    dispatcher forms + a byte golden on the corpus `dump reactor`/`transformer` +
+    synthesized `dump … debug`/`dump all`); (2) `Save <class>` (WriteClassFile) +
+    `Dump`-shared `get_value` reuse; (3) `Save circuit` + `save_roundtrip.rs`; (4)
+    `Save meters`/`voltages` (needs the Monitor/EnergyMeter save primitives). Then the
+    `Save`/`Dump` corpus migration.
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
