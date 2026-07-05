@@ -382,6 +382,7 @@ pub(super) fn dispatch_control(
                 int_hour,
                 t,
                 loads_need_updating,
+                system_y_changed,
                 ..
             } = &mut ckt.solution;
             let mut env = InvDispEnv {
@@ -402,6 +403,7 @@ pub(super) fn dispatch_control(
                 dyna_h: sys.dyna_h,
                 dbl_hour: sys.dbl_hour,
                 loads_need_updating,
+                system_y_changed,
             };
             match op {
                 ControlOp::Sample => ic.sample(&mut env),
@@ -1558,6 +1560,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         int_hour,
         t,
         loads_need_updating,
+        system_y_changed,
         ..
     } = &mut ckt.solution;
 
@@ -1604,6 +1607,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 dyna_h: sys.dyna_h,
                 dbl_hour: sys.dbl_hour,
                 loads_need_updating: &mut *loads_need_updating,
+                system_y_changed: &mut *system_y_changed,
             };
             ic.update_inv_control(&mut env2);
         }
@@ -1640,6 +1644,7 @@ struct InvDispEnv<'a> {
     dyna_h: f64,
     dbl_hour: f64,
     loads_need_updating: &'a mut bool,
+    system_y_changed: &'a mut bool,
 }
 
 impl InvDispEnv<'_> {
@@ -1888,6 +1893,18 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             pv.set_nominal_der_output(sys);
         } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
             st.set_nominal_der_output(sys);
+            // Pascal `SetNominalDEROutput` → `RecalcElementData` consumes a
+            // pending `StateChanged` into `YprimInvalid`, and `Set_YprimInvalid`
+            // ALSO raises `Solution.SystemYChanged` (CktElement.pas:245). When a
+            // StorageController flipped the fleet state earlier in the SAME
+            // control round, the InvControl's DER refresh is what consumes that
+            // flag on the oracle — `CheckControls` (Solution.pas:1155) then
+            // rebuilds Y before the next round's solve. Dropping the propagation
+            // leaves the next round's first solve on the stale-state YPrim (+2
+            // iterations; caught by the midi_controls live deck at hour 2).
+            if st.cd.yprim_invalid {
+                *self.system_y_changed = true;
+            }
         }
     }
     fn der_set_kw_requested(&mut self, r: ElemRef, p: f64) {

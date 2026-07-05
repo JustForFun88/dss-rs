@@ -95,5 +95,42 @@ physically (small wye capacitors), as proven in the asymmetric gate.
    `combo_metering`) + `compare_eventlog` opt-in on the three daily IEEE
    feeders in `solvable_now` (IEEE13/37/123).
 
-22 decks total; `CONTROLS_REQUIRED` in `corpus_live.rs` pins the full set — the
-guard fails if a landed deck is ever dropped.
+## Midi network (IEEE123-class scale)
+
+Micro decks cannot exercise large-network failure modes; the vendored
+IEEE13/37/123/8500 corpus runs exercise the scale but not the asymmetric
+element configs or the element-state channels. The **midi network**
+(`tools/decks/gen_midi_decks.py` — a deterministic generator; the decks are
+committed artifacts) closes that gap at the MINIMAL scale that reliably
+reproduces large-net traits: ~94 nodes, a 14-segment backbone (deep-chain
+drop), a loop + a parallel segment (duplicate-stamp density), 3 voltage
+levels, mixed 3/2/1-phase laterals, multi-digit node ordering, and — the trait
+that actually caught a bug — MANY controls acting in the same control rounds.
+
+- `tests/corpus/asymmetric/midi_asym.dss` — the asymmetric configs at scale
+  (Z1≠Z2 source + series reactor, full-asym matrices, unequal bank taps, delta
+  tertiary w/ pin, IndMach012), micro tolerance.
+- `tests/corpus/controls/midi_controls.dss` — cascaded regulators (LTC + 3×1φ
+  bank) + 2 kvar CapControls + volt-var InvControl over 2 PVs + peakshave/time
+  StorageController + meter/monitors/sensor, daily 24 h. Field lessons baked
+  into the deck: a kvar CapControl's ON/OFF deadband must exceed its own bank
+  size (else it hunts — hour-6 open/close cycle to MaxControlIter), and a
+  voltage-mode CapControl under regulators never toggles.
+- `tests/corpus/controls/midi_protection.dss` — relay → recloser → fuse
+  coordination with the SLG fault at the END of the deep lateral (fuse-save
+  race across the chain), duty mode.
+
+**Third real port bug caught (midi_controls hour 2, +2 iterations):** when a
+StorageController flips the fleet state and an InvControl refreshes its DER
+list in the SAME control round, the InvControl env's `der_set_nominal` (the
+DER `SetNominalDEROutput` refresh) consumed the Storage `StateChanged` into
+`yprim_invalid` but dropped Pascal `Set_YprimInvalid`'s `SystemYChanged` side
+effect (CktElement.pas:245) — the oracle rebuilds Y in `CheckControls`
+(Solution.pas:1155) inside the round, the port only one round later, off the
+stale-state YPrim. Fixed in `dispatch.rs::InvDispEnv::der_set_nominal`. The
+micro decks could not catch this: it needs two control classes touching the
+same Storage in one round.
+
+39 decks total (15 asymmetric + 24 controls); `ASYMMETRIC_REQUIRED` /
+`CONTROLS_REQUIRED` in `corpus_live.rs` pin the full sets — the guards fail if
+a landed deck is ever dropped.
