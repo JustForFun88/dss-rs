@@ -3889,12 +3889,34 @@ fn dump_transformer3_matches_oracle() {
     run_deck_dump_exact("dump_transformer3");
 }
 
+/// `Dump transformer.t1` on a **disabled** (post-solve `enabled=no`) transformer:
+/// NodeRef stays populated, so `WdgCurrents` reaches `0` only via the `not
+/// Enabled` guard (Pascal `Transformer.pas:1530`; audit-code follow-up).
+#[test]
+fn dump_transformer_disabled_matches_oracle() {
+    run_deck_dump_exact("dump_transformer_disabled");
+}
+
 /// `Dump line.l1` — the `TLineObj.DumpProperties` sym-components path: the
 /// `%-.7g` sequence params + the `RMatrix`/`XMatrix`/`CMatrix` folded out of
 /// `Z`/`Yc`.
 #[test]
 fn dump_line_sym_matches_oracle() {
     run_deck_dump_exact("dump_line_sym");
+}
+
+/// `Dump line.lg` — a **geometry**-driven line: `length` is embedded in `Z`/`Yc`,
+/// so the matrix cells divide by `LengthMult = Len` (≠1) to recover per-unit
+/// length (the branch the sym/linecode decks never hit; audit-tests follow-up #1).
+#[test]
+fn dump_line_geo_matches_oracle() {
+    run_deck_dump_exact("dump_line_geo");
+}
+
+/// `Dump line.sw` — a **switch** line pins `Switch=Yes` (audit-tests follow-up #2).
+#[test]
+fn dump_line_switch_matches_oracle() {
+    run_deck_dump_exact("dump_line_switch");
 }
 
 /// `Dump line.l2` — a LineCode-driven line: the matrix model, so the sequence

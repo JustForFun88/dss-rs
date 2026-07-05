@@ -1,0 +1,41 @@
+
+New "Line.sw"
+! ENABLED
+~ Bus1=src
+~ Bus2=b2
+~ LineCode=
+~ Length=0.001
+~ Phases=3
+~ R1=1
+~ X1=1
+~ R0=1
+~ X0=1
+~ C1=1.1
+~ C0=1
+~ RMatrix="1.000000000 0.000000000 0.000000000 |0.000000000 1.000000000 0.000000000 |0.000000000 0.000000000 1.000000000 |"
+~ XMatrix="1.000000000 0.000000000 0.000000000 |0.000000000 1.000000000 0.000000000 |0.000000000 0.000000000 1.000000000 |"
+~ CMatrix="1.067 -0.033 -0.033 |-0.033 1.067 -0.033 |-0.033 -0.033 1.067 |"
+~ Switch=Yes
+~ Rg=0.01805
+~ Xg=0.155081
+~ rho=100
+~ Geometry=
+~ Units=none
+~ Spacing=
+~ Wires=[]
+~ EarthModel=Deri
+~ CNCables=[]
+~ TSCables=[]
+~ B1=0.414690230273853
+~ B0=0.376991118430775
+~ Seasons=1
+~ Ratings=[ 400]
+~ LineType=oh
+~ NormAmps=400
+~ EmergAmps=600
+~ FaultRate=0.1
+~ pctPerm=20
+~ Repair=3
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
