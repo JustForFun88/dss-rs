@@ -1656,6 +1656,60 @@ fn show_busflow_elem_matches_oracle() {
     run_feeder_show("show_busflow_elem", &policy);
 }
 
+/// `Show Isolated` (Pascal `ShowIsolated`) on the metered IEEE13 — fully connected, so
+/// the isolated sections are empty and the report is the connected element tree
+/// (`(Level) FullName` + `[SHUNT], FullName`, built from the source via
+/// `get_isolated_sub_area`). Pure text (names + tree levels, no floats) → **byte-exact**
+/// (`assert_show_bytes_eq`): pins the source-tree walk order, per-level numbering, and
+/// the shunt attachment, plus the four empty-section headers.
+#[test]
+fn show_isolated_matches_oracle() {
+    run_feeder_show_exact("show_isolated");
+}
+
+/// `Show Topology` (Pascal `ShowTopology`) on the metered IEEE13: verifies **both**
+/// files byte-exact — the counts summary `<case>_TopoSumm.txt` (levels/loops/parallel/
+/// isolated/switches; IEEE13 = `7 Levels Deep, 1 Loops`, the regulator loop) and the
+/// TABCHAR-indented `<case>_TopoTree.txt` with the inline `(LOOP:…)` / `(Control: …)`
+/// (via the derived control scan) / `(Meter: …)` annotations. Pins the `get_topology`
+/// tree walk + the loop/parallel/sensor/meter/control annotation logic.
+#[test]
+fn show_topology_matches_oracle() {
+    let (oracle_summ, rust_summ, scratch) = produce_feeder_show("show_topology");
+    assert_show_bytes_eq(&oracle_summ, &rust_summ, "show_topology");
+    let rust_tree = locate_show_report(&scratch, "TopoTree.txt", "show_topology_tree");
+    let oracle_tree = std::fs::read_to_string(phase8_dir().join("show_topology_tree.txt"))
+        .expect("read show_topology_tree golden");
+    assert_show_bytes_eq(&oracle_tree, &rust_tree, "show_topology_tree");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `Show Isolated` on the synthesized coverage deck (a PARALLEL line pair, a switched
+/// line, and a fully ISOLATED island unreachable from the source) — exercises the
+/// non-empty isolated branches the IEEE13 golden misses: the isolated-bus list
+/// (`"isoa"`/`"isob"`), the `*** START SUBAREA ***` sub-network walk, and the parallel
+/// connected tree. Byte-exact (deck not solved — the island is singular; the report
+/// needs only connectivity).
+#[test]
+fn show_isolated_iso_matches_oracle() {
+    run_deck_show_exact("show_isolated_iso");
+}
+
+/// `Show Topology` on the same coverage deck: pins the non-zero counts (`2 Parallel PD
+/// elements`, `1 Isolated PD components`, `1 Controlled Switches`) + the tree's
+/// `(PARALLEL:…)` / `(Control: …)` / `Isolated: …` annotations, none of which the
+/// radial IEEE13 golden produces. Both files byte-exact.
+#[test]
+fn show_topology_mesh_matches_oracle() {
+    let (oracle_summ, rust_summ, scratch) = produce_deck_show("show_topology_mesh");
+    assert_show_bytes_eq(&oracle_summ, &rust_summ, "show_topology_mesh");
+    let rust_tree = locate_show_report(&scratch, "TopoTree.txt", "show_topology_mesh_tree");
+    let oracle_tree = std::fs::read_to_string(phase8_dir().join("show_topology_mesh_tree.txt"))
+        .expect("read show_topology_mesh_tree golden");
+    assert_show_bytes_eq(&oracle_tree, &rust_tree, "show_topology_mesh_tree");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// `Show LineConstants` (Pascal `ShowLineConstants`) on a synthesized geometry deck
 /// with **default** args (freq=60/kft/rho=100): `g3` (3-conductor overhead, order 3)
 /// exercises the R/jX/susceptance/L/C matrices AND the equivalent symmetrical-

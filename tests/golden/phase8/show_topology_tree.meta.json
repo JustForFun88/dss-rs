@@ -1,0 +1,11 @@
+{
+  "report": "topology",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "new energymeter.em1 element=Line.650632 terminal=1",
+    "set mode=daily number=3 stepsize=1h",
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "TopoTree.txt"
+}

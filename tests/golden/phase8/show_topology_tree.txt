@@ -1,0 +1,37 @@
+Branches and Loads in Circuit ieee13nodeckt
+
+Vsource.source
+	Transformer.sub
+		Transformer.reg3(LOOP:Transformer.reg2) (Control: RegControl.reg3) 
+			Line.650632 (Meter: em1) 
+				Line.632645
+					Load.645
+					Line.645646
+						Load.646
+				Line.632633
+					Transformer.xfm1
+						Load.634a
+						Load.634b
+						Load.634c
+				Line.632670
+					Load.670a
+					Load.670b
+					Load.670c
+					Line.670671
+						Load.671
+						Line.671692
+							Load.692
+							Line.692675
+								Load.675a
+								Load.675b
+								Load.675c
+								Capacitor.cap1
+						Line.671684
+							Line.684652
+								Load.652
+							Line.684611
+								Load.611
+								Capacitor.cap2
+						Line.671680
+		Transformer.reg2(LOOP:Line.650632) (Control: RegControl.reg2) 
+		Transformer.reg1(LOOP:Line.650632) (Control: RegControl.reg1) 
