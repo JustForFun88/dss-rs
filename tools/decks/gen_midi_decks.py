@@ -353,12 +353,506 @@ def deck_midi_protection() -> str:
     return "\n".join(parts) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# Per-element midi decks: every micro-gate scenario replayed on the SAME midi
+# scaffold (source + backbone + laterals + the 24 unequal loads), one deck per
+# element/control class — so element-specific bugs that need scale (node
+# ordering, sparse fill, deep-chain drop, shared control rounds) are caught
+# per class, not only by the combined midi_asym/midi_controls decks.
+# ---------------------------------------------------------------------------
+
+SRC_STD = [
+    "new circuit.midi basekv=115 pu=1.02 angle=0 phases=3 bus1=src",
+    "~ mvasc3=20000 mvasc1=21000",
+]
+SRC_ASYM = [
+    "! Z1<>Z2 source (asymmetric source YPrim).",
+    "new circuit.midi basekv=115 pu=1.02 angle=0 phases=3 bus1=src",
+    "~ Z1=[0.9 3.6] Z2=[0.55 2.1] Z0=[2.1 6.6]",
+]
+DAILY_SHAPE = (
+    "new loadshape.day npts=24 interval=1\n"
+    "~ mult=(0.35 0.37 0.40 0.45 0.52 0.60 0.70 0.80 0.87 0.92 0.95 0.94 "
+    "0.90 0.85 0.80 0.75 0.70 0.72 0.80 0.88 0.92 0.75 0.55 0.40)"
+)
+
+
+def scaffold(variant: str, src: list[str], fixed_taps: bool, daily: bool) -> list[str]:
+    """The shared midi body: source + backbone + laterals + unequal loads
+    (NO shunt caps / DER — the per-element decks add their own family)."""
+    parts = [
+        HEADER.format(variant=variant),
+        *src,
+        "",
+        LINECODES,
+        *backbone(fixed_taps=fixed_taps),
+        *laterals(),
+    ]
+    if daily:
+        parts += ["", DAILY_SHAPE]
+    parts += loads(daily=daily)
+    return parts
+
+
+def snap_deck(variant: str, src: list[str], extra: list[str]) -> str:
+    """An asymmetric-family snapshot deck on the fixed-tap scaffold."""
+    parts = [
+        *scaffold(variant, src, fixed_taps=True, daily=False),
+        *extra,
+        FOOTER,
+        "Set maxiterations=100",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+def daily_deck(variant: str, extra: list[str], fixed_taps: bool = True) -> str:
+    """A controls-family daily deck (24 h) on the scaffold."""
+    parts = [
+        *scaffold(variant, SRC_STD, fixed_taps=fixed_taps, daily=True),
+        *extra,
+        FOOTER,
+        "Set maxcontroliter=2000",
+        "Set maxiterations=100",
+        "Set mode=daily stepsize=1h number=1",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+def duty_deck(variant: str, extra: list[str], keep_tie: bool = False) -> str:
+    """A protection-family duty deck (0.1 s steps, controlmode=time) on the
+    fixed-tap scaffold. By default the loop tie is disabled (RADIAL, for
+    deterministic fault coordination); `keep_tie` keeps it in service for the
+    scenarios that SWITCH it (midi_swtcontrol opens the live loop mid-run)."""
+    lat = laterals()
+    if not keep_tie:
+        lat = [ln.replace("switch=yes", "switch=yes enabled=no") for ln in lat]
+    parts = [
+        HEADER.format(variant=variant),
+        *SRC_STD,
+        "",
+        LINECODES,
+        *backbone(fixed_taps=True),
+        *lat,
+        *loads(daily=False),
+        *extra,
+        FOOTER,
+        "Set maxiterations=100",
+        "set mode=duty stepsize=0.1 number=1 controlmode=time",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+# --- Asymmetric family (element variants from the micro decks, at scale) ----
+
+ASYM_DECKS = {
+    "midi_vsource_asym": lambda: snap_deck(
+        "vsource",
+        SRC_ASYM,
+        [
+            "",
+            "! Second 3-phase source mid-feeder (MVAsc spec, distinct X/R).",
+            "new vsource.vs2 bus1=bb6 basekv=12.47 pu=0.99 angle=-2 phases=3",
+            "~ MVAsc3=900 MVAsc1=1100 x1r1=5 x0r0=2.5",
+            "! 1-phase source on a lateral (native phase-2 angle ~ -120 deg).",
+            "new vsource.vs3 bus1=l4m.2 basekv=7.2 pu=1.0 angle=-121 phases=1",
+            "~ R1=0.5 X1=1.6 R0=0.5 X0=1.6",
+        ],
+    ),
+    "midi_reactor_asym": lambda: snap_deck(
+        "reactor",
+        SRC_ASYM,
+        [
+            "",
+            "! (scaffold already carries the SpecType-4 Z1<>Z2 series reactor rser)",
+            "! SpecType-3 FULL asymmetric matrices, series to a spur load.",
+            "new reactor.rmat phases=3 bus1=bb4 bus2=x_rmat",
+            "~ rmatrix=[0.9 0.15 0.05 | 0.35 1.1 0.1 | 0.22 0.4 1.0]",
+            "~ xmatrix=[2.4 0.5 0.2 | 0.9 2.7 0.45 | 0.6 1.2 2.5]",
+            "new load.xr1 bus1=x_rmat.1 phases=1 conn=wye model=1 kv=7.2 kw=200 pf=0.9",
+            "new load.xr3 bus1=x_rmat.3 phases=1 conn=wye model=1 kv=7.2 kw=320 pf=0.88",
+            "! SpecType-2 two-phase series reactor.",
+            "new reactor.rrx phases=2 bus1=bb6.1.3 bus2=x_rrx.1.3 R=0.25 X=0.9",
+            "new load.xr2 bus1=x_rrx.1.3 phases=2 conn=wye model=1 kv=7.2 kw=180 pf=0.92",
+            "! SpecType-1 kvar shunt (1-phase) + delta shunt + Rp series.",
+            "new reactor.rsh phases=1 bus1=bb9.2 kvar=120 kv=7.2",
+            "new reactor.rdel phases=3 bus1=l6m conn=delta kvar=300 kv=12.47",
+            "new reactor.rp phases=3 bus1=bb13 bus2=x_rp R=0.15 X=1.2 Rp=800",
+            "new load.xrp bus1=x_rp phases=3 conn=wye model=1 kv=12.47 kw=350 pf=0.9",
+        ],
+    ),
+    "midi_capacitor_asym": lambda: snap_deck(
+        "capacitor",
+        SRC_STD,
+        [
+            "",
+            "! FULL asymmetric cmatrix shunt + delta bank + 1-phase cuf.",
+            "new capacitor.cmat phases=3 bus1=bb6",
+            "~ cmatrix=[3.2 -0.9 -0.3 | -0.5 3.5 -0.7 | -0.4 -1.1 3.1]",
+            "new capacitor.cdel phases=3 bus1=bb13 conn=delta kvar=300 kv=12.47",
+            "new capacitor.c1p phases=1 bus1=l4n.3 cuf=18 kv=7.2",
+            "! SERIES capacitor (the two-terminal series stamp) to a spur load.",
+            "new capacitor.cser phases=3 bus1=bb7 bus2=x_cser kvar=20000 kv=12.47",
+            "new load.xc bus1=x_cser phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.9",
+            "! Multi-step bank with mixed states at the regulated bus.",
+            "new capacitor.cstep phases=3 bus1=rb kvar=600 kv=12.47 numsteps=4 states=[1 0 1 0]",
+        ],
+    ),
+    "midi_line_asym": lambda: snap_deck(
+        "line",
+        SRC_STD,
+        [
+            "",
+            "! (scaffold lines already use the FULL-asym-input codes, 3/2/1-phase)",
+            "! Sequence-spec line with r0 <> r1 + a switch line, to spur loads.",
+            "new line.lseq bus1=bb9 bus2=x_seq r1=0.06 x1=0.14 r0=0.17 x0=0.44 c1=3.1 c0=1.5 length=5 units=kft",
+            "new line.lsw bus1=x_seq bus2=x_sw switch=yes",
+            "new load.xs1 bus1=x_sw.1 phases=1 conn=wye model=1 kv=7.2 kw=260 pf=0.9",
+            "new load.xs3 bus1=x_sw.3 phases=1 conn=wye model=1 kv=7.2 kw=380 pf=0.87",
+        ],
+    ),
+    "midi_transformer_asym": lambda: snap_deck(
+        "transformer",
+        SRC_STD,
+        [
+            "",
+            "! (scaffold: Dy sub w/ taps, 3-winding t8 w/ delta tertiary + pin,",
+            "!  the per-phase-unequal 1-phase bank rbank1..3, the 1-phase spur t5)",
+            "! Wye-wye with a neutral impedance on winding 2.",
+            "new transformer.tn phases=3 windings=2 buses=(bb5, x_tn) conns=(wye, wye)",
+            "~ kvs=(12.47, 0.48) kvas=(1500, 1500) xhl=5 wdg=2 rneut=0.02 xneut=0.08",
+            "new load.xn1 bus1=x_tn.1 phases=1 conn=wye model=1 kv=0.277 kw=300 pf=0.9",
+            "new load.xn2 bus1=x_tn.2 phases=1 conn=wye model=1 kv=0.277 kw=90 pf=0.95",
+            "! Wye-wye with an UNGROUNDED secondary (rneut=-1): L-L loads + the",
+            "! physical common-mode pin (the proven ppm-antifloat floor).",
+            "new transformer.tu phases=3 windings=2 buses=(bb12, x_tu) conns=(wye, wye)",
+            "~ kvs=(12.47, 0.48) kvas=(1000, 1000) xhl=4 wdg=2 rneut=-1",
+            "new capacitor.cpinu phases=3 bus1=x_tu conn=wye kvar=15 kv=0.48",
+            "new load.xu1 bus1=x_tu.1.2 phases=1 conn=delta model=1 kv=0.48 kw=140 pf=0.92",
+            "new load.xu2 bus1=x_tu.2.3 phases=1 conn=delta model=1 kv=0.48 kw=220 pf=0.9",
+        ],
+    ),
+    "midi_fault_asym": lambda: snap_deck(
+        "fault",
+        SRC_STD,
+        [
+            "",
+            "! Always-on faults (no ontime) at deep buses: SLG, L-L, asym Gmatrix.",
+            "new fault.fslg phases=1 bus1=l6e.1 r=0.5",
+            "new fault.fll phases=1 bus1=l1e.2 bus2=l1e.3 r=1.2",
+            "new fault.fmat phases=3 bus1=bb15",
+            "~ gmatrix=[0.8 0.1 0.05 | 0.25 0.9 0.15 | 0.12 0.3 0.7]",
+        ],
+    ),
+    "midi_load_asym": lambda: snap_deck(
+        "load",
+        SRC_STD,
+        [
+            "",
+            "! The full micro model set on top of the scaffold's 1/2/5/8 mix.",
+            "new load.m1d phases=1 bus1=l9e.1.2 conn=delta model=1 kv=12.47 kw=180 pf=0.88 vminpu=0.8",
+            "new load.m2d phases=3 bus1=l4e conn=delta model=2 kv=12.47 kw=260 pf=0.95",
+            "new load.m3 phases=3 bus1=bb15 conn=wye model=3 kv=12.47 kw=240 kvar=110",
+            "new load.m4 phases=1 bus1=l6n.1 conn=wye model=4 kv=7.2 kw=190 pf=0.9",
+            "~ cvrwatts=0.9 cvrvars=2.5",
+            "new load.m2t phases=2 bus1=l3e.1.3 conn=wye model=1 kv=7.2 kw=150 pf=0.9",
+        ],
+    ),
+    "midi_generator_asym": lambda: snap_deck(
+        "generator",
+        SRC_STD,
+        [
+            "",
+            "! Generator models 1/2/3 + 1-phase units at deep buses.",
+            "new generator.g1 phases=3 bus1=bb15 conn=wye model=1 kv=12.47 kw=500 pf=0.9 vminpu=0.8",
+            "new generator.g2 phases=3 bus1=l1m conn=delta model=2 kv=12.47 kw=300 pf=1",
+            "new generator.g3 phases=3 bus1=bb11 conn=wye model=3 kv=12.47 kw=400 kvar=150",
+            "~ maxkvar=400 minkvar=-400",
+            "new generator.g1a phases=1 bus1=l6m.1 conn=wye model=1 kv=7.2 kw=150 pf=0.95",
+            "new generator.g1c phases=1 bus1=l2e.2 conn=wye model=1 kv=7.2 kw=120 pf=0.9",
+        ],
+    ),
+    "midi_der_asym": lambda: snap_deck(
+        "der",
+        SRC_STD,
+        [
+            "",
+            "! DER: delta + 1-phase PVSystems, discharging + charging Storage.",
+            "new pvsystem.pv3 phases=3 bus1=l9e conn=delta kv=12.47 kva=600 pmpp=500",
+            "~ irradiance=0.9 pf=0.98",
+            "new pvsystem.pv1 phases=1 bus1=l6m.2 kv=7.2 kva=150 pmpp=120 irradiance=0.85 pf=1",
+            "new storage.st3 phases=3 bus1=l9e kv=12.47 kwrated=400 kva=400 kwhrated=1600",
+            "~ %stored=75 %idlingkw=0 pf=1.0 state=discharging %discharge=80",
+            "new storage.st1 phases=1 bus1=l4m.3 kv=7.2 kwrated=120 kwhrated=240",
+            "~ state=charging %charge=60",
+        ],
+    ),
+    "midi_indmach_asym": lambda: snap_deck(
+        "indmach",
+        SRC_STD,
+        [
+            "",
+            "! Induction machine (sequence-asymmetric) at the 0.48 kV tertiary.",
+            "new capacitor.cg conn=wye bus1=l8mv phases=3 kvar=300 kv=0.48",
+            "new indmach012.m1 bus1=l8mv kv=0.48 kw=800 conn=delta kva=1000 h=6",
+            "~ purs=0.048 puxs=0.075 purr=0.018 puxr=0.12 puxm=3.8 slip=0.02",
+            "~ slipoption=variableslip",
+        ],
+    ),
+    "midi_vccs_asym": lambda: snap_deck(
+        "vccs",
+        SRC_STD,
+        [
+            "",
+            "! VCCS inverters behind a 12.47/0.36 service transformer off bb3.",
+            "new transformer.tv phases=3 windings=2 buses=(bb3, xvlv) conns=(wye, wye)",
+            "~ kvs=(12.47, 0.36) kvas=(150, 150) xhl=3",
+            "new xycurve.bp1_1phase npts=3",
+            "~ xarray=[-0.820 0.0 0.820]",
+            "~ yarray=[-0.788 0.0 0.788]",
+            "new xycurve.bp2_1phase npts=5",
+            "~ xarray=[-0.4 -0.225 0.0  0.225 0.4]",
+            "~ yarray=[ 2.5  1.0   0.0 -1.0  -2.5]",
+            VCCS_Z_CURVE,
+            "new vccs.pva phases=1 bus1=xvlv.1 prated=3000 vrated=208",
+            "~ ppct=100 bp1='bp1_1phase' bp2='bp2_1phase' filter='z_1phase' fsample=10000",
+            "new vccs.pvb phases=1 bus1=xvlv.2 prated=3000 vrated=208",
+            "~ ppct=60 bp1='bp1_1phase' bp2='bp2_1phase' filter='z_1phase' fsample=10000",
+            "new vccs.pvc phases=3 bus1=xvlv prated=3000 vrated=360",
+            "~ ppct=50 bp1='bp1_1phase' bp2='bp2_1phase' filter='z_1phase' fsample=10000",
+            "new load.xv1 bus1=xvlv.1 phases=1 conn=wye model=2 kv=0.2078 kw=2.5 pf=0.98",
+            "new load.xv3 bus1=xvlv.3 phases=1 conn=wye model=2 kv=0.2078 kw=4.0 pf=0.95",
+        ],
+    ),
+    "midi_upfc_asym": lambda: snap_deck(
+        "upfc",
+        SRC_STD,
+        [
+            "",
+            "! The proven mode-1 UPFC chain, fed from bb7 phase 1 (7.2 kV L-N)",
+            "! instead of an ideal source.",
+            "new xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]",
+            "new xfmrcode.1-ph50kva-2 phases=1 windings=2 ppm=0 xhl=2.04 %noloadloss=.02",
+            "~ kvs=[7.2 0.24] kvas=[50 50] %rs=[0.9 0.9] conns=[wye wye]",
+            "new xfmrcode.upfcinterface phases=1 windings=3 ppm=0 xhl=.0204 xht=.0204",
+            "~ xlt=.0136 %noloadloss=.01 kvs=[0.24 0.12 0.12] kvas=[50 50 50]",
+            "~ %rs=[0.006 .012 .012] conns=[wye wye wye]",
+            "new transformer.service50kva xfmrcode=1-ph50kva-2 buses=[bb7.1.0 upfc_input.1]",
+            "new upfc.test phases=1 bus1=upfc_input.1 bus2=upfc_output.1 refkv=0.242 mode=1",
+            "~ losscurve=losses tol1=0.001 xs=0.02",
+            "new upfccontrol.myupfcctrl",
+            "new transformer.tupfcout xfmrcode=upfcinterface",
+            "~ buses=[upfc_output.1.0 load_bus.1.0 load_bus.0.2]",
+            "new load.load120a phases=1 model=1 bus1=load_bus.1.0 kv=0.12 kw=14.98 kvar=10.08",
+            "new load.load120b phases=1 model=1 bus1=load_bus.2.0 kv=0.12 kw=12.38 kvar=1.71",
+        ],
+    ),
+}
+
+VCCS_Z_CURVE = (
+    "new xycurve.z_1phase npts=51\n"
+    "~ xarray=[ 1.0000000000000 2.2359152843239 1.6751565366704 -1.2893178605388 "
+    "-3.4980502585637 -3.2443310587837 -1.1309602219179 1.3269732197636 2.4826834307583 "
+    "1.4795252902708  -0.5884400677158 -1.2561011006753 -0.8964007493426 -0.2502448288646 "
+    "0.1965696305611 0.3541448415191 -0.2571272710122 -0.2896061130545 1.0381554433511 "
+    "1.7902915763337  0.6996933333927 -0.9684861791958 -1.4454321523992 -0.5432488991394 "
+    "1.1818507841993 2.0988090314141 1.0282299403587 -0.5858290175152 -1.5724867767607 "
+    "-1.4364098494357  -0.4589795471098 1.0797066033630 1.2169198126213 0.0989602314997 "
+    "-0.5405493831806 0.0719007537281 0.8335799892472 0.6702151256323 -0.3752279208451 "
+    "-2.0558001553503  -2.4079823319574 -0.7183817553617 1.4783061268845 1.8364227325943 "
+    "0.8536174817937 -0.2214277108881 -0.8122729458514 -0.6287067458017 0.0932869797062 "
+    "0.4451827855865  0.2061659162831 ]\n"
+    "~ yarray=[ 0.0000000000000 0.3244315432891 0.3171628091832 -0.2108501016545 "
+    "-0.9762351880777 -0.7399698479841 -0.0201950653926 0.7829480615341 1.0000000000000 "
+    "0.5717944958992  -0.2214550588660 -0.7186565790504 -0.4161841874969 -0.1375954370224 "
+    "0.2162389236219 0.2237111774825 0.1877288446256 -0.1317180644316 0.0414232423271 "
+    "0.3254504869366  0.1656064075817 -0.3122432515571 -0.5338989690946 -0.2226466108170 "
+    "0.2190599020462 0.5646897251848 0.2987290891686 -0.2824847857947 -0.4879416418683 "
+    "-0.4023401442574  0.0120224675079 0.3287890263068 0.5747202855193 0.0774026330753 "
+    "-0.2599646325554 -0.2699498867569 0.0796571331425 0.1805481938835 -0.0057638157865 "
+    "-0.2824852607177  -0.5297496233260 -0.0661668775840 0.4919305500678 0.7384140169868 "
+    "0.2048616585611 -0.1949185400439 -0.4230393984319 -0.3065235657524 -0.0469453167609 "
+    "0.1601452633341  0.1119255091190 ]"
+)
+
+
+# --- Controls family (one deck per control/metering class, on the scaffold) --
+
+CONTROLS_DECKS = {
+    "midi_regcontrol": lambda: daily_deck(
+        "regcontrol",
+        [
+            "",
+            "! Cascaded regulators: substation LTC + the 3x1-phase bank.",
+            "new regcontrol.ltc transformer=sub winding=2 vreg=123 band=2 ptratio=60",
+            "~ eventlog=yes",
+            "new regcontrol.rga transformer=rbank1 winding=2 vreg=116 band=2 ptratio=60",
+            "~ eventlog=yes",
+            "new regcontrol.rgb transformer=rbank2 winding=2 vreg=116 band=2 ptratio=60",
+            "~ eventlog=yes",
+            "new regcontrol.rgc transformer=rbank3 winding=2 vreg=116 band=2 ptratio=60",
+            "~ eventlog=yes",
+        ],
+        fixed_taps=False,
+    ),
+    "midi_capcontrol": lambda: daily_deck(
+        "capcontrol",
+        [
+            "",
+            "! No regulators here, so VOLTAGE mode is viable at the deep bus;",
+            "! plus a kvar-mode control (deadband > its own bank, else it hunts).",
+            "new capacitor.cv phases=3 bus1=bb15 conn=wye kvar=450 kv=12.47 numsteps=2",
+            "new capcontrol.ccv element=line.l9a terminal=1 capacitor=cv type=voltage",
+            "~ ptratio=60 onsetting=115 offsetting=121 eventlog=yes",
+            "new capacitor.ck phases=3 bus1=bb13 conn=delta kvar=300 kv=12.47",
+            "new capcontrol.cck element=line.bb12_13 terminal=1 capacitor=ck type=kvar",
+            "~ onsetting=450 offsetting=150 eventlog=yes",
+        ],
+    ),
+    "midi_invcontrol": lambda: daily_deck(
+        "invcontrol",
+        [
+            "",
+            "! Combined volt-var + volt-watt over the two feeder-end PVs.",
+            "new pvsystem.pv3 phases=3 bus1=l9e conn=delta kv=12.47 kva=600 pmpp=500",
+            "~ irradiance=0.9 pf=1.0",
+            "new pvsystem.pv1 phases=1 bus1=l6m.2 kv=7.2 kva=150 pmpp=120 irradiance=0.85 pf=1",
+            "new xycurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.005 1.1)",
+            "new xycurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)",
+            "new invcontrol.ic combimode=VV_VW voltage_curvex_ref=rated vvc_curve1=vv",
+            "~ voltwatt_curve=vw deltaq_factor=0.2 deltap_factor=0.45",
+            "~ activepchangetolerance=0.0001 varchangetolerance=0.0001",
+            "~ voltwattyaxis=PMPPPU refreactivepower=VARMAX",
+        ],
+    ),
+    "midi_storagectrl": lambda: daily_deck(
+        "storagectrl",
+        [
+            "",
+            "! PeakShave at the feeder head + the default TIME charge trigger.",
+            "new storage.st1 phases=3 bus1=l9e kv=12.47 kwrated=800 kva=800 kwhrated=3200",
+            "~ %stored=60 %idlingkw=0 pf=1.0",
+            "new storagecontroller.sc element=line.bb1_2 terminal=1 modedis=peakshave",
+            "~ monphase=avg kwtarget=4800 %reserve=20 eventlog=yes",
+        ],
+    ),
+    "midi_gendispatcher": lambda: daily_deck(
+        "gendispatcher",
+        [
+            "",
+            "! Weighted redispatch against the feeder-head kW through the peak.",
+            "new generator.g1 phases=3 bus1=bb11 conn=wye model=1 kv=12.47 kw=400 pf=0.95",
+            "new generator.g2 phases=3 bus1=bb15 conn=wye model=1 kv=12.47 kw=400 pf=0.95",
+            "new gendispatcher.gd1 element=line.bb1_2 terminal=1 kwlimit=3800 kwband=150",
+            "~ kvarlimit=900 genlist=[g1, g2] weights=[3, 1]",
+        ],
+    ),
+    "midi_recloser_temp": lambda: duty_deck(
+        "recloser-temp",
+        [
+            "",
+            "! Temporary 3-phase fault at the deep-lateral end; recloser midline.",
+            "new recloser.r monitoredobj=line.bb11_12 monitoredterm=1",
+            "~ switchedobj=line.bb11_12 switchedterm=1 numfast=1 shots=2",
+            "~ phasetrip=150 groundtrip=75 recloseintervals=(0.5, 1.0)",
+            "new fault.f bus1=l6e phases=3 ontime=0.2 r=1 temporary=yes",
+        ],
+    ),
+    "midi_recloser_perm": lambda: duty_deck(
+        "recloser-perm",
+        [
+            "",
+            "! Permanent 3-phase fault -> FAST -> reclose -> DELAYED -> lockout.",
+            "new recloser.r monitoredobj=line.bb11_12 monitoredterm=1",
+            "~ switchedobj=line.bb11_12 switchedterm=1 numfast=1 shots=2",
+            "~ phasetrip=150 groundtrip=75 recloseintervals=(0.5, 1.0)",
+            "new fault.f bus1=l6e phases=3 ontime=0.2 r=1 temporary=no",
+        ],
+    ),
+    "midi_relay_4647": lambda: duty_deck(
+        "relay-4647",
+        [
+            "",
+            "! 46 on the (steadily unbalanced) L4 lateral; 47 on L7 with an L-L",
+            "! fault — both asymmetry-only protections, at midi scale.",
+            "new relay.r46 type=46 monitoredobj=line.l4a monitoredterm=1",
+            "~ switchedobj=line.l4a switchedterm=1 46baseamps=15 46%pickup=20 46isqt=1",
+            "~ delay=0.1 shots=1 recloseintervals=None eventlog=yes",
+            "new relay.r47 type=47 monitoredobj=line.l7a monitoredterm=2",
+            "~ switchedobj=line.l7a switchedterm=1 kvbase=12.47 47%pickup=2",
+            "~ delay=0.2 shots=1 recloseintervals=None eventlog=yes",
+            "new fault.f bus1=l7e.2 bus2=l7e.3 phases=1 ontime=0.1 r=0.5 temporary=no",
+        ],
+    ),
+    "midi_fuse": lambda: duty_deck(
+        "fuse",
+        [
+            "",
+            "! SLG at the L1 lateral end melts ONE phase of the lateral fuse.",
+            "new fuse.fz monitoredobj=line.l1a monitoredterm=1",
+            "~ switchedobj=line.l1a switchedterm=1 ratedcurrent=50",
+            "new fault.f bus1=l1e.2 phases=1 ontime=0.1 r=0.5 temporary=no",
+        ],
+    ),
+    "midi_swtcontrol": lambda: duty_deck(
+        "swtcontrol",
+        [
+            "",
+            "! Delayed open of the LOOP TIE (manifest post arms action=open):",
+            "! a mid-run topology change from meshed to radial.",
+            "new swtcontrol.sw switchedobj=line.tie switchedterm=1 normal=closed",
+            "~ delay=0.25",
+        ],
+        keep_tie=True,
+    ),
+    "midi_energymeter": lambda: daily_deck(
+        "energymeter",
+        [
+            "",
+            "! Nested zones over the branching midi topology: a head meter and a",
+            "! sub-meter behind the regulator bank split the zone.",
+            "new energymeter.em element=transformer.sub terminal=1",
+            "new energymeter.em2 element=line.rb_bb11 terminal=1",
+        ],
+    ),
+    "midi_monitor": lambda: daily_deck(
+        "monitor",
+        [
+            "",
+            "! Monitor modes 0/1/2/3 on midi elements over the daily run.",
+            "new storage.st1 phases=3 bus1=l9e kv=12.47 kwrated=400 kva=400 kwhrated=1600",
+            "~ %stored=90 %idlingkw=1 pf=1.0 state=discharging %discharge=100",
+            "new monitor.m0 element=line.bb5_6 terminal=1 mode=0",
+            "new monitor.m1 element=load.ld20 terminal=1 mode=1",
+            "new monitor.m2 element=transformer.rbank1 terminal=2 mode=2",
+            "new monitor.m3 element=storage.st1 terminal=1 mode=3",
+        ],
+    ),
+    "midi_sensor": lambda: daily_deck(
+        "sensor",
+        [
+            "",
+            "! Sensor mapping specs on backbone / lateral terminal-2 / delta load.",
+            "new sensor.s1 element=line.bb1_2 terminal=1 kvbase=7.2 conn=wye",
+            "~ kws=[1900 1500 2300] kvars=[900 700 1100] currents=[290 230 350] %error=1",
+            "new sensor.s2 element=line.l6a terminal=2 kvbase=7.2 conn=wye",
+            "~ currents=[60 25 55]",
+            "new sensor.s3 element=load.ld17 terminal=1 kvbase=0.48 conn=delta",
+            "~ kws=[140 140 140] kvars=[68 68 68]",
+        ],
+    ),
+}
+
+
 def main() -> None:
     targets = {
         REPO / "tests" / "corpus" / "asymmetric" / "midi_asym.dss": deck_midi_asym(),
         REPO / "tests" / "corpus" / "controls" / "midi_controls.dss": deck_midi_controls(),
         REPO / "tests" / "corpus" / "controls" / "midi_protection.dss": deck_midi_protection(),
     }
+    for name, build in ASYM_DECKS.items():
+        targets[REPO / "tests" / "corpus" / "asymmetric" / f"{name}.dss"] = build()
+    for name, build in CONTROLS_DECKS.items():
+        targets[REPO / "tests" / "corpus" / "controls" / f"{name}.dss"] = build()
     for path, text in targets.items():
         path.write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {path.relative_to(REPO)} ({len(text.splitlines())} lines)")

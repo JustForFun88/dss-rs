@@ -759,6 +759,18 @@ const ASYMMETRIC_REQUIRED: &[&str] = &[
     "combo_chain_asym.dss",
     "combo_mesh_asym.dss",
     "midi_asym.dss",
+    "midi_vsource_asym.dss",
+    "midi_reactor_asym.dss",
+    "midi_capacitor_asym.dss",
+    "midi_line_asym.dss",
+    "midi_transformer_asym.dss",
+    "midi_fault_asym.dss",
+    "midi_load_asym.dss",
+    "midi_generator_asym.dss",
+    "midi_der_asym.dss",
+    "midi_indmach_asym.dss",
+    "midi_vccs_asym.dss",
+    "midi_upfc_asym.dss",
 ];
 
 /// Oracle-free structural guard: the asymmetric deck directory and its manifest
@@ -887,6 +899,19 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "combo_metering.dss",
     "midi_controls.dss",
     "midi_protection.dss",
+    "midi_regcontrol.dss",
+    "midi_capcontrol.dss",
+    "midi_invcontrol.dss",
+    "midi_storagectrl.dss",
+    "midi_gendispatcher.dss",
+    "midi_recloser_temp.dss",
+    "midi_recloser_perm.dss",
+    "midi_relay_4647.dss",
+    "midi_fuse.dss",
+    "midi_swtcontrol.dss",
+    "midi_energymeter.dss",
+    "midi_monitor.dss",
+    "midi_sensor.dss",
 ];
 
 /// Oracle-free structural guard: deck dir ↔ manifest bijection, the required

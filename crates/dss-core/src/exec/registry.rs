@@ -221,6 +221,27 @@ impl<'a> ForeignClasses<'a> {
         None
     }
 
+    /// The LAST *enabled* object of a class, in creation order. Pascal's
+    /// InvControl/ExpControl `RecalcElementData` fleet loop assigns the
+    /// control's `FNphases := ControlledElement[i].NPhases` on EVERY member, so
+    /// the LAST one wins — the control's terminal shape follows the last fleet
+    /// member (the `MonitoredElement`/bus stays the first).
+    pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
+        let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
+            c.objects
+                .iter()
+                .rev()
+                .map(|o| o.as_ref())
+                .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
+        };
+        for c in self.left.iter().chain(self.right.iter()) {
+            if c.props.class_name().eq_ignore_ascii_case(class) {
+                return scan(c);
+            }
+        }
+        None
+    }
+
     /// Resolve a (class name, object name) pair to its global [`ElemRef`] plus
     /// the live object, scanning both halves. A class match with no object
     /// match short-circuits to `None`, like `cls.Find` returning NIL.

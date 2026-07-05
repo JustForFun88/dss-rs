@@ -5,91 +5,276 @@
    "path": "vsource_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Vsource.source", "Vsource.vs2", "Vsource.vs3"]
+   "selected_elements": [
+    "Vsource.source",
+    "Vsource.vs2",
+    "Vsource.vs3"
+   ]
   },
   {
    "path": "reactor_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Reactor.rz12", "Reactor.rmat", "Reactor.rrx", "Reactor.rsh", "Reactor.rdel", "Reactor.rp"]
+   "selected_elements": [
+    "Reactor.rz12",
+    "Reactor.rmat",
+    "Reactor.rrx",
+    "Reactor.rsh",
+    "Reactor.rdel",
+    "Reactor.rp"
+   ]
   },
   {
    "path": "capacitor_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Capacitor.cmat", "Capacitor.cdel", "Capacitor.c1p", "Capacitor.cser", "Capacitor.cstep"]
+   "selected_elements": [
+    "Capacitor.cmat",
+    "Capacitor.cdel",
+    "Capacitor.c1p",
+    "Capacitor.cser",
+    "Capacitor.cstep"
+   ]
   },
   {
    "path": "line_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Line.l3", "Line.l2", "Line.l1", "Line.lseq", "Line.lsw"]
+   "selected_elements": [
+    "Line.l3",
+    "Line.l2",
+    "Line.l1",
+    "Line.lseq",
+    "Line.lsw"
+   ]
   },
   {
    "path": "transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Transformer.tdy", "Transformer.t3w", "Transformer.bka", "Transformer.bkb", "Transformer.bkc", "Transformer.tn", "Transformer.tu"]
+   "selected_elements": [
+    "Transformer.tdy",
+    "Transformer.t3w",
+    "Transformer.bka",
+    "Transformer.bkb",
+    "Transformer.bkc",
+    "Transformer.tn",
+    "Transformer.tu"
+   ]
   },
   {
    "path": "fault_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Fault.fslg", "Fault.fll", "Fault.fmat"]
+   "selected_elements": [
+    "Fault.fslg",
+    "Fault.fll",
+    "Fault.fmat"
+   ]
   },
   {
    "path": "load_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Load.m1a", "Load.m1d", "Load.m2", "Load.m3", "Load.m4", "Load.m5", "Load.m8", "Load.m1t"]
+   "selected_elements": [
+    "Load.m1a",
+    "Load.m1d",
+    "Load.m2",
+    "Load.m3",
+    "Load.m4",
+    "Load.m5",
+    "Load.m8",
+    "Load.m1t"
+   ]
   },
   {
    "path": "generator_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Generator.g1", "Generator.g2", "Generator.g3", "Generator.g1a", "Generator.g1c"]
+   "selected_elements": [
+    "Generator.g1",
+    "Generator.g2",
+    "Generator.g3",
+    "Generator.g1a",
+    "Generator.g1c"
+   ]
   },
   {
    "path": "der_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["PVSystem.pv3", "PVSystem.pv1", "Storage.st3", "Storage.st1"]
+   "selected_elements": [
+    "PVSystem.pv3",
+    "PVSystem.pv1",
+    "Storage.st3",
+    "Storage.st1"
+   ]
   },
   {
    "path": "indmach_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["IndMach012.m1", "Transformer.tg", "Capacitor.cg"]
+   "selected_elements": [
+    "IndMach012.m1",
+    "Transformer.tg",
+    "Capacitor.cg"
+   ]
   },
   {
    "path": "vccs_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["VCCS.pv1", "VCCS.pv2", "VCCS.pv3"]
+   "selected_elements": [
+    "VCCS.pv1",
+    "VCCS.pv2",
+    "VCCS.pv3"
+   ]
   },
   {
    "path": "upfc_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["UPFC.test", "Transformer.service50kva", "Transformer.tupfcout"]
+   "selected_elements": [
+    "UPFC.test",
+    "Transformer.service50kva",
+    "Transformer.tupfcout"
+   ]
   },
   {
    "path": "combo_chain_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Vsource.source", "Line.la", "Transformer.tdy", "Reactor.rz", "Capacitor.cd", "Fault.fa", "Generator.g1", "PVSystem.pv1", "Storage.s1"]
+   "selected_elements": [
+    "Vsource.source",
+    "Line.la",
+    "Transformer.tdy",
+    "Reactor.rz",
+    "Capacitor.cd",
+    "Fault.fa",
+    "Generator.g1",
+    "PVSystem.pv1",
+    "Storage.s1"
+   ]
   },
   {
    "path": "midi_asym.dss",
    "kind": "micro",
    "n_steps": 2,
-   "selected_elements": ["*"]
+   "selected_elements": [
+    "*"
+   ]
   },
   {
    "path": "combo_mesh_asym.dss",
    "kind": "micro",
    "n_steps": 1,
-   "selected_elements": ["Line.lfa", "Line.lfb", "Line.ltie", "Line.lj3", "Transformer.tloop", "Reactor.rsh", "Capacitor.cmat", "Transformer.tg", "IndMach012.m1"]
+   "selected_elements": [
+    "Line.lfa",
+    "Line.lfb",
+    "Line.ltie",
+    "Line.lj3",
+    "Transformer.tloop",
+    "Reactor.rsh",
+    "Capacitor.cmat",
+    "Transformer.tg",
+    "IndMach012.m1"
+   ]
+  },
+  {
+   "path": "midi_vsource_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_reactor_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_capacitor_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_line_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_transformer_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_fault_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_load_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_generator_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_der_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_indmach_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_vccs_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_upfc_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
   }
  ]
 }

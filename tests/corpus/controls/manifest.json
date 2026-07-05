@@ -5,10 +5,28 @@
    "path": "regcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "RegControl.rg", "props": ["vreg", "band", "ptratio", "delay", "maxtapchange", "tapnum"]},
-    {"element": "Transformer.tr", "props": ["tap", "taps"]}
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "vreg",
+      "band",
+      "ptratio",
+      "delay",
+      "maxtapchange",
+      "tapnum"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap",
+      "taps"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -17,11 +35,30 @@
    "path": "regcontrol_asym.dss",
    "kind": "micro",
    "n_steps": 12,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "RegControl.rga", "props": ["tapnum", "vreg", "band"]},
-    {"element": "RegControl.rgb", "props": ["tapnum"]},
-    {"element": "RegControl.rgc", "props": ["tapnum"]}
+    {
+     "element": "RegControl.rga",
+     "props": [
+      "tapnum",
+      "vreg",
+      "band"
+     ]
+    },
+    {
+     "element": "RegControl.rgb",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rgc",
+     "props": [
+      "tapnum"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -30,10 +67,25 @@
    "path": "capcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "CapControl.cc", "props": ["type", "onsetting", "offsetting", "ptratio"]},
-    {"element": "Capacitor.cb", "props": ["states"]}
+    {
+     "element": "CapControl.cc",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting",
+      "ptratio"
+     ]
+    },
+    {
+     "element": "Capacitor.cb",
+     "props": [
+      "states"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -42,12 +94,40 @@
    "path": "capcontrol_asym.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "CapControl.ck", "props": ["type", "onsetting", "offsetting"]},
-    {"element": "CapControl.ci", "props": ["type", "onsetting", "offsetting", "ctphase", "ctratio"]},
-    {"element": "Capacitor.cb1", "props": ["states"]},
-    {"element": "Capacitor.cb2", "props": ["states"]}
+    {
+     "element": "CapControl.ck",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "CapControl.ci",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting",
+      "ctphase",
+      "ctratio"
+     ]
+    },
+    {
+     "element": "Capacitor.cb1",
+     "props": [
+      "states"
+     ]
+    },
+    {
+     "element": "Capacitor.cb2",
+     "props": [
+      "states"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -56,66 +136,205 @@
    "path": "invcontrol_vv_sym.dss",
    "kind": "micro",
    "n_steps": 8,
-   "selected_elements": ["*"],
-   "probes": [
-    {"element": "InvControl.ic", "props": ["mode", "deltaq_factor", "refreactivepower"]}
+   "selected_elements": [
+    "*"
    ],
-   "compare_variables": ["PVSystem.pv"]
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "deltaq_factor",
+      "refreactivepower"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ]
   },
   {
    "path": "invcontrol_vvvw_asym.dss",
    "kind": "micro",
    "n_steps": 6,
-   "selected_elements": ["*"],
-   "probes": [
-    {"element": "InvControl.ic", "props": ["combimode", "deltaq_factor", "deltap_factor", "voltwattyaxis"]}
+   "selected_elements": [
+    "*"
    ],
-   "compare_variables": ["PVSystem.pva", "PVSystem.pvb", "PVSystem.pvc"]
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "combimode",
+      "deltaq_factor",
+      "deltap_factor",
+      "voltwattyaxis"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pva",
+    "PVSystem.pvb",
+    "PVSystem.pvc"
+   ]
   },
   {
    "path": "storagectrl_peakshave.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
-   "probes": [
-    {"element": "StorageController.sc", "props": ["kwtarget", "ModeDischarge", "%reserve"]},
-    {"element": "Storage.sa", "props": ["state", "kw", "kwhstored", "%stored"]},
-    {"element": "Storage.sb", "props": ["state", "kw", "kwhstored", "%stored"]}
+   "selected_elements": [
+    "*"
    ],
-   "compare_variables": ["Storage.sa", "Storage.sb"],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "kwtarget",
+      "ModeDischarge",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    },
+    {
+     "element": "Storage.sb",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa",
+    "Storage.sb"
+   ],
    "compare_eventlog": true
   },
   {
    "path": "storagectrl_time.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
-   "probes": [
-    {"element": "StorageController.sc", "props": ["ModeDischarge", "ModeCharge", "timedischargetrigger", "timechargetrigger"]},
-    {"element": "Storage.sa", "props": ["state", "kw", "kwhstored", "%stored"]}
+   "selected_elements": [
+    "*"
    ],
-   "compare_variables": ["Storage.sa"],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "ModeCharge",
+      "timedischargetrigger",
+      "timechargetrigger"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
    "compare_eventlog": true
   },
   {
    "path": "midi_controls.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "RegControl.ltc", "props": ["tapnum"]},
-    {"element": "RegControl.rga", "props": ["tapnum"]},
-    {"element": "RegControl.rgb", "props": ["tapnum"]},
-    {"element": "RegControl.rgc", "props": ["tapnum"]},
-    {"element": "CapControl.ccv", "props": ["type", "onsetting", "offsetting"]},
-    {"element": "CapControl.cck", "props": ["type", "onsetting", "offsetting"]},
-    {"element": "Capacitor.cmat", "props": ["states"]},
-    {"element": "Capacitor.cdel", "props": ["states"]},
-    {"element": "Storage.st1", "props": ["state", "kw", "kwhstored"]},
-    {"element": "Sensor.sn", "props": ["element", "terminal", "kvbase", "conn", "currents"]}
+    {
+     "element": "RegControl.ltc",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rga",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rgb",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rgc",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "CapControl.ccv",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "CapControl.cck",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "Capacitor.cmat",
+     "props": [
+      "states"
+     ]
+    },
+    {
+     "element": "Capacitor.cdel",
+     "props": [
+      "states"
+     ]
+    },
+    {
+     "element": "Storage.st1",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored"
+     ]
+    },
+    {
+     "element": "Sensor.sn",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "currents"
+     ]
+    }
    ],
-   "compare_variables": ["PVSystem.pv3", "PVSystem.pv1", "Storage.st1"],
+   "compare_variables": [
+    "PVSystem.pv3",
+    "PVSystem.pv1",
+    "Storage.st1"
+   ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
   },
@@ -123,12 +342,36 @@
    "path": "midi_protection.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "Recloser.r", "props": ["state", "normal", "shots", "numfast"]},
-    {"element": "Fuse.fz", "props": ["state", "normal", "ratedcurrent"]},
-    {"element": "Relay.backup", "props": ["state", "normal", "delay"]}
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "shots",
+      "numfast"
+     ]
+    },
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal",
+      "ratedcurrent"
+     ]
+    },
+    {
+     "element": "Relay.backup",
+     "props": [
+      "state",
+      "normal",
+      "delay"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -137,12 +380,32 @@
    "path": "combo_protection.dss",
    "kind": "micro",
    "n_steps": 20,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "Recloser.r", "props": ["state", "normal"]},
-    {"element": "Fuse.fz", "props": ["state", "normal"]},
-    {"element": "Relay.backup", "props": ["state", "normal"]}
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal"
+     ]
+    },
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal"
+     ]
+    },
+    {
+     "element": "Relay.backup",
+     "props": [
+      "state",
+      "normal"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -151,13 +414,34 @@
    "path": "combo_voltvar_asym.dss",
    "kind": "micro",
    "n_steps": 12,
-   "selected_elements": ["*"],
-   "probes": [
-    {"element": "RegControl.rg", "props": ["tapnum"]},
-    {"element": "CapControl.cc", "props": ["type", "onsetting", "offsetting"]},
-    {"element": "Capacitor.cb", "props": ["states"]}
+   "selected_elements": [
+    "*"
    ],
-   "compare_variables": ["PVSystem.pv"],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "CapControl.cc",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "Capacitor.cb",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
   },
@@ -165,11 +449,27 @@
    "path": "combo_metering.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "RegControl.rg", "props": ["tapnum"]},
-    {"element": "Sensor.sn", "props": ["element", "terminal", "kvbase", "conn", "currents"]}
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "Sensor.sn",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "currents"
+     ]
+    }
    ],
    "compare_eventlog": true
   },
@@ -177,54 +477,140 @@
    "path": "energymeter_sym.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "EnergyMeter.em", "props": ["element", "terminal"]}
+    {
+     "element": "EnergyMeter.em",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    }
    ]
   },
   {
    "path": "energymeter_asym.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "EnergyMeter.em", "props": ["element", "terminal"]}
+    {
+     "element": "EnergyMeter.em",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    }
    ]
   },
   {
    "path": "monitor_modes.dss",
    "kind": "micro",
    "n_steps": 12,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "check_meters_monitors": true,
    "probes": [
-    {"element": "Monitor.m0", "props": ["element", "terminal", "mode"]},
-    {"element": "Monitor.m2", "props": ["element", "terminal", "mode"]},
-    {"element": "Monitor.m3", "props": ["element", "terminal", "mode"]}
+    {
+     "element": "Monitor.m0",
+     "props": [
+      "element",
+      "terminal",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.m2",
+     "props": [
+      "element",
+      "terminal",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.m3",
+     "props": [
+      "element",
+      "terminal",
+      "mode"
+     ]
+    }
    ],
-   "compare_variables": ["Storage.s1"],
+   "compare_variables": [
+    "Storage.s1"
+   ],
    "compare_eventlog": true
   },
   {
    "path": "sensor_map.dss",
    "kind": "micro",
    "n_steps": 2,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "Sensor.s1", "props": ["element", "terminal", "kvbase", "conn", "kws", "kvars", "currents", "%error"]},
-    {"element": "Sensor.s2", "props": ["element", "terminal", "kvbase", "conn", "currents"]},
-    {"element": "Sensor.s3", "props": ["element", "terminal", "kvbase", "conn", "kws", "kvars"]}
+    {
+     "element": "Sensor.s1",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "kws",
+      "kvars",
+      "currents",
+      "%error"
+     ]
+    },
+    {
+     "element": "Sensor.s2",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "currents"
+     ]
+    },
+    {
+     "element": "Sensor.s3",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "kws",
+      "kvars"
+     ]
+    }
    ]
   },
   {
    "path": "recloser_temp.dss",
    "kind": "micro",
    "n_steps": 12,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "Recloser.r", "props": ["state", "normal", "numfast", "shots", "phasetrip", "groundtrip"]}
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "numfast",
+      "shots",
+      "phasetrip",
+      "groundtrip"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -233,9 +619,21 @@
    "path": "recloser_perm.dss",
    "kind": "micro",
    "n_steps": 24,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "Recloser.r", "props": ["state", "normal", "numfast", "shots", "phasetrip", "groundtrip"]}
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "numfast",
+      "shots",
+      "phasetrip",
+      "groundtrip"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -244,9 +642,22 @@
    "path": "relay_oc_sym.dss",
    "kind": "micro",
    "n_steps": 8,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "Relay.rl", "props": ["state", "normal", "type", "phasetrip", "groundtrip", "delay", "shots"]}
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "phasetrip",
+      "groundtrip",
+      "delay",
+      "shots"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -255,10 +666,29 @@
    "path": "relay_4647_asym.dss",
    "kind": "micro",
    "n_steps": 10,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "Relay.r46", "props": ["state", "normal", "type", "delay"]},
-    {"element": "Relay.r47", "props": ["state", "normal", "type", "delay", "kvbase"]}
+    {
+     "element": "Relay.r46",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    },
+    {
+     "element": "Relay.r47",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay",
+      "kvbase"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -267,9 +697,19 @@
    "path": "fuse_blow_asym.dss",
    "kind": "micro",
    "n_steps": 8,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "Fuse.fz", "props": ["state", "normal", "ratedcurrent", "fusecurve"]}
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal",
+      "ratedcurrent",
+      "fusecurve"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -278,10 +718,22 @@
    "path": "swtcontrol_time.dss",
    "kind": "micro",
    "n_steps": 12,
-   "post": ["edit swtcontrol.sw action=open"],
-   "selected_elements": ["*"],
+   "post": [
+    "edit swtcontrol.sw action=open"
+   ],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "SwtControl.sw", "props": ["state", "normal", "delay", "lock"]}
+    {
+     "element": "SwtControl.sw",
+     "props": [
+      "state",
+      "normal",
+      "delay",
+      "lock"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
@@ -290,13 +742,409 @@
    "path": "gendispatcher.dss",
    "kind": "micro",
    "n_steps": 12,
-   "selected_elements": ["*"],
+   "selected_elements": [
+    "*"
+   ],
    "probes": [
-    {"element": "GenDispatcher.gd1", "props": ["kwlimit", "kwband", "kvarlimit", "weights"]},
-    {"element": "Generator.g1", "props": ["kw", "kvar"]},
-    {"element": "Generator.g2", "props": ["kw", "kvar"]}
+    {
+     "element": "GenDispatcher.gd1",
+     "props": [
+      "kwlimit",
+      "kwband",
+      "kvarlimit",
+      "weights"
+     ]
+    },
+    {
+     "element": "Generator.g1",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g2",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    }
    ],
    "compare_eventlog": true
+  },
+  {
+   "path": "midi_regcontrol.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.ltc",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rga",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rgb",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "RegControl.rgc",
+     "props": [
+      "tapnum"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_capcontrol.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.ccv",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "CapControl.cck",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "Capacitor.cv",
+     "props": [
+      "states"
+     ]
+    },
+    {
+     "element": "Capacitor.ck",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_invcontrol.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "combimode",
+      "deltaq_factor",
+      "deltap_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv3",
+    "PVSystem.pv1"
+   ]
+  },
+  {
+   "path": "midi_storagectrl.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "kwtarget",
+      "ModeDischarge",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.st1",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.st1"
+   ],
+   "compare_eventlog": true
+  },
+  {
+   "path": "midi_gendispatcher.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "GenDispatcher.gd1",
+     "props": [
+      "kwlimit",
+      "kwband",
+      "weights"
+     ]
+    },
+    {
+     "element": "Generator.g1",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g2",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "compare_eventlog": true
+  },
+  {
+   "path": "midi_recloser_temp.dss",
+   "kind": "micro",
+   "n_steps": 16,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "numfast",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_recloser_perm.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "numfast",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_relay_4647.dss",
+   "kind": "micro",
+   "n_steps": 10,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.r46",
+     "props": [
+      "state",
+      "normal",
+      "type"
+     ]
+    },
+    {
+     "element": "Relay.r47",
+     "props": [
+      "state",
+      "normal",
+      "type"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_fuse.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal",
+      "ratedcurrent"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_swtcontrol.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "post": [
+    "edit swtcontrol.sw action=open"
+   ],
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "SwtControl.sw",
+     "props": [
+      "state",
+      "normal",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "midi_energymeter.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "EnergyMeter.em",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    },
+    {
+     "element": "EnergyMeter.em2",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    }
+   ]
+  },
+  {
+   "path": "midi_monitor.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Monitor.m0",
+     "props": [
+      "element",
+      "terminal",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.m3",
+     "props": [
+      "element",
+      "terminal",
+      "mode"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.st1"
+   ]
+  },
+  {
+   "path": "midi_sensor.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Sensor.s1",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "kws",
+      "kvars",
+      "currents",
+      "%error"
+     ]
+    },
+    {
+     "element": "Sensor.s2",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "currents"
+     ]
+    },
+    {
+     "element": "Sensor.s3",
+     "props": [
+      "element",
+      "terminal",
+      "kvbase",
+      "conn",
+      "kws",
+      "kvars"
+     ]
+    }
+   ]
   }
  ]
 }

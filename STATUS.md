@@ -614,6 +614,26 @@ frontier:
   Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **next = Dump
   step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
   port map below (still current for the remaining steps):
+- **Per-element midi wave (2026-07-05, gate-green): every micro scenario
+  replayed on the midi scaffold** — 12 per-element asymmetric decks
+  (`midi_vsource_asym` … `midi_upfc_asym`, incl. VCCS behind a 12.47/0.36
+  service transformer and the proven UPFC chain fed from a backbone phase) +
+  13 per-class controls decks (`midi_regcontrol` … `midi_sensor`, incl. nested
+  EnergyMeter zones and the loop-tie SwtControl open), all from
+  `gen_midi_decks.py`'s shared scaffold; gates now 27 asymmetric + 37 controls
+  decks, all micro tolerance. **FOURTH real port bug caught**
+  (`midi_invcontrol`, InvControl element conductor count 3 vs oracle 1): the
+  parse-time fleet resolver took the control's terminal phase count from the
+  FIRST enabled DER, but Pascal's recalc loop assigns `FNphases :=
+  ControlledElement[i].NPhases` per member — the LAST wins (InvControl.pas:916;
+  ExpControl.pas:408 has the same shape, fixed too; Pascal itself carries a
+  "what if these are different sizes" TODO). Invisible with equal-phase fleets
+  (all micro decks); a mixed 3φ+1φ fleet exposes it. Fixed in
+  `exec/command.rs` + new `ForeignClasses::last_enabled`. Also fixed: oracle
+  capture counted the C-API empty-array placeholder `['NONE']` as a
+  one-element `ZonePCE` list (nested-meter zone with genuinely no PCE); and a
+  deck-scaffold bug (the swtcontrol deck was switching the DISABLED loop tie —
+  a disabled element's YPrim view diverges between engines by construction).
 - **Midi network gate (2026-07-05, gate-green): the IEEE123-class synthetic
   network** (`tools/decks/gen_midi_decks.py`, deterministic generator; decks
   committed) — the asymmetric configs + control/protection density at the
