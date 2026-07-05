@@ -1,0 +1,11 @@
+{
+  "report": "reactor.* debug",
+  "fixture": "dumpdis",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpdis basekv=12.47 bus1=src",
+    "new reactor.ren bus1=b1 bus2=b2 phases=3 R=1.1 X=2.2",
+    "new reactor.rdis bus1=b3 bus2=b4 phases=3 R=2.2 X=3.3 enabled=no",
+    "solve"
+  ]
+}

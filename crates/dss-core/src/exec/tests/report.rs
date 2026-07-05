@@ -444,6 +444,63 @@ fn save_records_scoped_not_ported() {
     assert!(dss.errors()[0].contains("Save"), "{:?}", dss.errors());
 }
 
+/// The **generic-base ordering** for the two `Dump` element kinds that have no
+/// byte golden yet (their property names are not yet in the oracle display case —
+/// tracked for the systematic name pass), pinned structurally by line position so
+/// the `dump_generic` logic can't silently reorder (WP8.5 audit-tests #2). The
+/// orderings are oracle-probe-confirmed: a **PCElement** (Load) writes
+/// `! ENABLED` + (debug) Y-block + `! VARIABLES` **before** its `~ prop` lines;
+/// a non-PC **CktElement** (CapControl) writes its `~ prop` lines **before**
+/// `! ENABLED`. Plain-`TDSSObject` order is byte-pinned by `dump_loadshape`.
+#[test]
+fn dump_generic_base_ordering() {
+    let dir = std::env::temp_dir().join("dss_dump_generic_order");
+    std::fs::create_dir_all(&dir).ok();
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.gord basekv=12.47 bus1=src");
+    dss.command("new line.l1 bus1=src bus2=b r1=0.1 x1=0.1");
+    dss.command("new load.ld1 bus1=b kv=12.47 kw=100");
+    dss.command("new capacitor.c1 bus1=b kv=12.47 kvar=200");
+    dss.command(
+        "new capcontrol.cc1 element=line.l1 capacitor=c1 type=current \
+         ptratio=1 ctratio=1 onsetting=10 offsetting=5",
+    );
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+
+    let dump = |dss: &mut Dss, cmd: &str| -> Vec<String> {
+        dss.command(cmd);
+        assert!(dss.errors().is_empty(), "{cmd}: {:?}", dss.errors());
+        std::fs::read_to_string(dss.last_result_file())
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    };
+    let pos = |lines: &[String], pred: &dyn Fn(&str) -> bool| -> usize {
+        lines.iter().position(|l| pred(l)).expect("line present")
+    };
+
+    // PCElement (Load), debug: ENABLED + VARIABLES both precede the first `~` prop.
+    let load = dump(&mut dss, "dump load.ld1 debug");
+    let en = pos(&load, &|l| l == "! ENABLED");
+    let vars = pos(&load, &|l| l == "! VARIABLES");
+    let first_prop = pos(&load, &|l| l.starts_with("~ "));
+    assert!(en < vars && vars < first_prop, "PC order: {load:?}");
+
+    // non-PC CktElement (CapControl): the first `~` prop precedes `! ENABLED`.
+    let cc = dump(&mut dss, "dump capcontrol.cc1");
+    let cc_en = pos(&cc, &|l| l == "! ENABLED");
+    let cc_first_prop = pos(&cc, &|l| l.starts_with("~ "));
+    assert!(cc_first_prop < cc_en, "non-PC order: {cc:?}");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// `Dump <class>.<name>` error fidelity: an unknown class → Pascal `#903`
 /// (`SetObjectClass` fail); a known class + unknown object → `#256`
 /// (`Object … not found`); `dump` / `dump solution` / `dump debug` (whole-circuit

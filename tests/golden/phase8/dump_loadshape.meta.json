@@ -1,0 +1,9 @@
+{
+  "report": "loadshape.ls1",
+  "fixture": "dumpls",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpls basekv=12.47 bus1=src",
+    "new loadshape.ls1 npts=3 interval=1 mult=(1 2 3)"
+  ]
+}

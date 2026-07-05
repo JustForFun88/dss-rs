@@ -3843,3 +3843,30 @@ fn dump_reactor_matches_oracle() {
 fn dump_reactor_debug_matches_oracle() {
     run_deck_dump_exact("dump_reactor_debug");
 }
+
+/// `Dump reactor.rk debug` — a **symmetrical-components** (`SpecType=4`) reactor
+/// (the corpus `KerstingMotor` shape): pins the NON-zero `Z1/Z2/Z0` `%-.8g`
+/// complex path (audit-tests #1) that the r1/rz fixtures never exercised, and the
+/// **single-object** (non-glob) dispatch form (audit-tests #5).
+#[test]
+fn dump_reactor_symcomp_matches_oracle() {
+    run_deck_dump_exact("dump_reactor_symcomp");
+}
+
+/// `Dump reactor.* debug` with a **disabled** reactor: pins `! DISABLED`,
+/// `NodeRef = "nil"`, and `Terminal Bus Ref: [-1 …]` — the Pascal `BusRef = -1`
+/// "not set" value for an unresolved terminal (audit-code Finding 1: the port
+/// previously printed `0`; audit-tests #4).
+#[test]
+fn dump_reactor_disabled_matches_oracle() {
+    run_deck_dump_exact("dump_reactor_disabled");
+}
+
+/// `Dump loadshape.ls1` — the **generic base** plain-`TDSSObject` path (no
+/// override, no `! ENABLED`): header + `~ prop=value` loop. LoadShape's port
+/// property names already carry the oracle display case, so this pins the
+/// generic plain-object dump for free (audit-tests #2).
+#[test]
+fn dump_loadshape_matches_oracle() {
+    run_deck_dump_exact("dump_loadshape");
+}
