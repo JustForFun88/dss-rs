@@ -665,38 +665,43 @@ SHOW_LC_DECK = [
 ]
 
 
-def gen_show_lineconstants(d) -> None:
-    """Capture the oracle's `Show LineConstants` (`ShowLineConstants`). Writes TWO
-    files: `<case>_LineConstants.txt` (the R/jX/susceptance/L/C matrices + the
-    order-3 symmetrical-component summary) and `LineConstantsCode.dss` (a LineCode
-    script, same folder, NO `<case>_` prefix). Both are captured (stems
-    `show_lineconstants` / `show_lineconstants_code`) and diffed against the Rust
-    replay. `show lineconstants` (no args) defaults to freq=DefaultBaseFreq, kft,
-    rho=100."""
-    d.AllowEditor = False
+# A geometry-less deck (circuit + WireData, NO LineGeometry) → `Show LineConstants`
+# writes only the file headers (empty geometry list). Pins that header-only path.
+SHOW_LC_EMPTY_DECK = [
+    "clear",
+    "new circuit.lcempty basekv=12.47 bus1=sourcebus",
+    "new wiredata.acsr336 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in",
+]
+
+
+def _gen_lineconstants(d, deck, args: str, stem_prefix: str) -> None:
+    """Capture `Show LineConstants <args>` on `deck` into two goldens:
+    `<stem_prefix>.txt` (`<case>_LineConstants.txt`) and `<stem_prefix>_code.txt`
+    (`LineConstantsCode.dss`, no `<case>_` prefix). `args` is the trailing
+    `[freq] [units] [rho]` (empty = the defaults freq=DefaultBaseFreq/kft/100)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
     try:
         d.Text.Command = "clear"
-        for c in SHOW_LC_DECK:
+        for c in deck:
             d.Text.Command = c
         case = d.ActiveCircuit.Name
         d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
-        d.Text.Command = "show lineconstants"
+        d.Text.Command = f"show lineconstants {args}".rstrip()
         for suffix, stem, glob_pat in [
-            ("LineConstants.txt", "show_lineconstants", f"*_LineConstants.txt"),
-            ("LineConstantsCode.dss", "show_lineconstants_code", "LineConstantsCode.dss"),
+            ("LineConstants.txt", stem_prefix, "*_LineConstants.txt"),
+            ("LineConstantsCode.dss", f"{stem_prefix}_code", "LineConstantsCode.dss"),
         ]:
             matches = list(Path(tmp).glob(glob_pat))
             if len(matches) != 1:
-                sys.exit(f"show lineconstants: expected 1 {glob_pat}, found {matches}")
+                sys.exit(f"show lineconstants {args}: expected 1 {glob_pat}, found {matches}")
             content = matches[0].read_text()  # universal newlines -> LF
             (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
             meta = {
-                "report": "lineconstants",
+                "report": f"lineconstants {args}".rstrip(),
                 "fixture": case,
                 "suffix": suffix,
-                "deck": SHOW_LC_DECK,
+                "deck": deck,
             }
             (OUT_DIR / f"{stem}.meta.json").write_text(
                 json.dumps(meta, indent=2) + "\n", newline="\n"
@@ -705,6 +710,24 @@ def gen_show_lineconstants(d) -> None:
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def gen_show_lineconstants(d) -> None:
+    """Capture the oracle's `Show LineConstants` (`ShowLineConstants`). Each case
+    writes TWO files: `<case>_LineConstants.txt` (the R/jX/susceptance/L/C matrices +
+    the order-3 symmetrical-component summary) and `LineConstantsCode.dss` (a
+    LineCode script, same folder, NO `<case>_` prefix). Two cases: **defaults**
+    (`show_lineconstants`, no args = freq=DefaultBaseFreq/kft/rho=100) and
+    **non-default args** (`show_lineconstants_mi250` = `60 mi 250` — pins the
+    freq/units/rho arg-parse AND the rho=250 earth-return + units=mi scaling
+    propagating into the Carson recompute and the `ohms per mi` labels /
+    `To_per_Meter` velocity, none of which the default case exercises), and the
+    **empty geometry list** (`show_lineconstants_empty` — a geometry-less deck →
+    header-only files, pinning the no-`LineGeometry` early-return path)."""
+    d.AllowEditor = False
+    _gen_lineconstants(d, SHOW_LC_DECK, "", "show_lineconstants")
+    _gen_lineconstants(d, SHOW_LC_DECK, "60 mi 250", "show_lineconstants_mi250")
+    _gen_lineconstants(d, SHOW_LC_EMPTY_DECK, "", "show_lineconstants_empty")
 
 
 def gen_show_variables(d) -> None:
