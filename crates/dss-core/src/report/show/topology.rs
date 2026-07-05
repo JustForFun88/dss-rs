@@ -54,16 +54,16 @@ fn controls_of(classes: &[DssClass], ckt: &Circuit, r: ElemRef) -> Vec<ElemRef> 
 /// Whether the control at `cr` is a SwtControl (Pascal `(DSSObjType and CLASSMASK) =
 /// SWT_CONTROL`), counted into `nSwitches`.
 fn is_swt_control(classes: &[DssClass], cr: ElemRef) -> bool {
-    classes[cr.cls].objects[cr.idx]
-        .as_any()
-        .is::<SwtControl>()
+    classes[cr.cls].objects[cr.idx].as_any().is::<SwtControl>()
 }
 
 /// The `(Sensor: …)` / `(Control: …)` / `(Meter: …)` annotations shared by the
 /// branch and shunt writers; increments `n_switches` per SwtControl. Returns the
 /// annotation string.
 fn annotations(classes: &[DssClass], ckt: &Circuit, r: ElemRef, n_switches: &mut i32) -> String {
-    let cd = classes[r.cls].objects[r.idx].as_ckt_element().map(|e| e.cd());
+    let cd = classes[r.cls].objects[r.idx]
+        .as_ckt_element()
+        .map(|e| e.cd());
     let mut s = String::new();
     if let Some(cd) = cd {
         if cd.flags.contains(ElemFlags::HAS_SENSOR_OBJ)
@@ -162,8 +162,7 @@ pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (Str
 
     // Isolated PD elements (Pascal walks `PDElements`, `Flg.IsIsolated`).
     for &pd_ref in &ckt.pd_elements {
-        let isolated = classes[pd_ref.cls]
-            .objects[pd_ref.idx]
+        let isolated = classes[pd_ref.cls].objects[pd_ref.idx]
             .as_ckt_element()
             .is_some_and(|e| e.cd().flags.contains(ElemFlags::IS_ISOLATED));
         if isolated {

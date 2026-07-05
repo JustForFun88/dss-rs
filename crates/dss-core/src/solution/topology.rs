@@ -55,12 +55,20 @@ fn get_sources_connected_to_bus(
         }
         if (analyze || !checked) && on_bus {
             if analyze {
-                store.ckt_elem_mut(src).cd_mut().flags.exclude(ElemFlags::IS_ISOLATED);
+                store
+                    .ckt_elem_mut(src)
+                    .cd_mut()
+                    .flags
+                    .exclude(ElemFlags::IS_ISOLATED);
                 tree.present_node_mut().is_dangling = false;
             }
             if !checked {
                 tree.add_new_object(src);
-                store.ckt_elem_mut(src).cd_mut().flags.include(ElemFlags::CHECKED);
+                store
+                    .ckt_elem_mut(src)
+                    .cd_mut()
+                    .flags
+                    .include(ElemFlags::CHECKED);
             }
         }
     }
@@ -79,12 +87,20 @@ fn get_pc_elements_connected_to_bus(
             continue;
         }
         if analyze {
-            store.ckt_elem_mut(p).cd_mut().flags.exclude(ElemFlags::IS_ISOLATED);
+            store
+                .ckt_elem_mut(p)
+                .cd_mut()
+                .flags
+                .exclude(ElemFlags::IS_ISOLATED);
             tree.present_node_mut().is_dangling = false;
         }
         if !store.ckt_elem(p).cd().flags.contains(ElemFlags::CHECKED) {
             tree.add_new_object(p);
-            store.ckt_elem_mut(p).cd_mut().flags.include(ElemFlags::CHECKED);
+            store
+                .ckt_elem_mut(p)
+                .cd_mut()
+                .flags
+                .include(ElemFlags::CHECKED);
         }
     }
 }
@@ -105,12 +121,20 @@ fn get_shunt_pd_elements_connected_to_bus(
             continue;
         }
         if analyze {
-            store.ckt_elem_mut(p).cd_mut().flags.exclude(ElemFlags::IS_ISOLATED);
+            store
+                .ckt_elem_mut(p)
+                .cd_mut()
+                .flags
+                .exclude(ElemFlags::IS_ISOLATED);
             tree.present_node_mut().is_dangling = false;
         }
         if !store.ckt_elem(p).cd().flags.contains(ElemFlags::CHECKED) {
             tree.add_new_object(p);
-            store.ckt_elem_mut(p).cd_mut().flags.include(ElemFlags::CHECKED);
+            store
+                .ckt_elem_mut(p)
+                .cd_mut()
+                .flags
+                .include(ElemFlags::CHECKED);
         }
     }
 }
@@ -146,7 +170,11 @@ fn find_all_child_branches(
                 continue;
             }
             if analyze {
-                store.ckt_elem_mut(p).cd_mut().flags.exclude(ElemFlags::IS_ISOLATED);
+                store
+                    .ckt_elem_mut(p)
+                    .cd_mut()
+                    .flags
+                    .exclude(ElemFlags::IS_ISOLATED);
                 tree.present_node_mut().is_dangling = false;
                 if checked && tree.level() > 0 {
                     let node = tree.present_node_mut();
@@ -163,7 +191,11 @@ fn find_all_child_branches(
             if !checked {
                 tree.add_new_child(p, bus_num, j);
                 store.ckt_elem_mut(p).cd_mut().terminals_checked[j - 1] = true;
-                store.ckt_elem_mut(p).cd_mut().flags.include(ElemFlags::CHECKED);
+                store
+                    .ckt_elem_mut(p)
+                    .cd_mut()
+                    .flags
+                    .include(ElemFlags::CHECKED);
                 break;
             }
         }
@@ -184,9 +216,17 @@ pub(crate) fn get_isolated_sub_area(
     let mut tree = CktTree::new();
     tree.add(start);
     if analyze {
-        store.ckt_elem_mut(start).cd_mut().flags.exclude(ElemFlags::IS_ISOLATED);
+        store
+            .ckt_elem_mut(start)
+            .cd_mut()
+            .flags
+            .exclude(ElemFlags::IS_ISOLATED);
     }
-    store.ckt_elem_mut(start).cd_mut().flags.include(ElemFlags::CHECKED);
+    store
+        .ckt_elem_mut(start)
+        .cd_mut()
+        .flags
+        .include(ElemFlags::CHECKED);
 
     let mut active = Some(start);
     while let Some(branch) = active {
@@ -194,7 +234,10 @@ pub(crate) fn get_isolated_sub_area(
         for iterm in 1..=nterms {
             let (checked, bus) = {
                 let cd = store.ckt_elem(branch).cd();
-                (cd.terminals_checked[iterm - 1], cd.terminals[iterm - 1].bus_ref)
+                (
+                    cd.terminals_checked[iterm - 1],
+                    cd.terminals[iterm - 1].bus_ref,
+                )
             };
             if checked || bus == NO_BUS || bus >= ckt.buses.len() {
                 continue;

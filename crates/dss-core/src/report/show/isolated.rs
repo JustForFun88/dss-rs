@@ -37,7 +37,11 @@ fn full_name(classes: &[DssClass], r: ElemRef) -> String {
 fn write_tree(s: &mut String, classes: &[DssClass], tree: &mut CktTree) {
     let mut br = tree.first();
     while let Some(br_ref) = br {
-        s.push_str(&format!("({}) {}\n", tree.level(), full_name(classes, br_ref)));
+        s.push_str(&format!(
+            "({}) {}\n",
+            tree.level(),
+            full_name(classes, br_ref)
+        ));
         let shunts = tree.present_node().shunts.clone();
         for sh in shunts {
             s.push_str(&format!("[SHUNT], {}\n", full_name(classes, sh)));
@@ -90,11 +94,19 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
         // Mark all controls + meter elements CHECKED so they don't appear in the
         // "enabled isolated elements" list (Pascal marks DSSControls + MeterElements).
         for &cr in &ckt.controls {
-            store.ckt_elem_mut(cr).cd_mut().flags.include(ElemFlags::CHECKED);
+            store
+                .ckt_elem_mut(cr)
+                .cd_mut()
+                .flags
+                .include(ElemFlags::CHECKED);
         }
         for list in [&ckt.energy_meters, &ckt.monitors, &ckt.sensors] {
             for &mr in list {
-                store.ckt_elem_mut(mr).cd_mut().flags.include(ElemFlags::CHECKED);
+                store
+                    .ckt_elem_mut(mr)
+                    .cd_mut()
+                    .flags
+                    .include(ElemFlags::CHECKED);
             }
         }
         // Enabled + still-unchecked elements (in CktElements order).
@@ -135,7 +147,9 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     s.push_str("***********  THE FOLLOWING ENABLED ELEMENTS ARE ISOLATED ************\n");
     s.push('\n');
     for &r in &isolated_elems {
-        let cd = classes[r.cls].objects[r.idx].as_ckt_element().map(|e| e.cd());
+        let cd = classes[r.cls].objects[r.idx]
+            .as_ckt_element()
+            .map(|e| e.cd());
         if let Some(cd) = cd {
             s.push('"');
             s.push_str(&full_name(classes, r));
@@ -149,9 +163,7 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     }
 
     s.push('\n');
-    s.push_str(
-        "***  THE FOLLOWING BUSES ARE NOT CONNECTED TO ANY POWER DELIVERY ELEMENT ***\n",
-    );
+    s.push_str("***  THE FOLLOWING BUSES ARE NOT CONNECTED TO ANY POWER DELIVERY ELEMENT ***\n");
     s.push('\n');
     for (i, &checked) in bus_checked_final.iter().enumerate() {
         if !checked {
