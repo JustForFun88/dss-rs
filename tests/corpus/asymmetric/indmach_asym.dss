@@ -1,0 +1,28 @@
+// Asymmetric IndMach012 coverage: the induction machine is the inherently
+// sequence-asymmetric PC element (distinct positive/negative-sequence rotor
+// response). The proven snapshot deck (exec/tests/dynamics.rs indmach_deck)
+// plus per-phase-unequal loads at the motor bus so the machine runs
+// unbalanced.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.indtest basekv=12.47 pu=1.0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+New transformer.tg phases=3 windings=2 buses=(src, mbus) conns=(delta, wye)
+~ kvs=(12.47, 0.48) kvas=(1500, 1500) xhl=5
+
+New capacitor.cg conn=wye bus1=mbus phases=3 kvar=600 kv=0.48
+
+New indmach012.m1 bus1=mbus kv=0.48 kw=1200 conn=delta kva=1500 h=6
+~ purs=0.048 puxs=0.075 purr=0.018 puxr=0.12 puxm=3.8 slip=0.02
+~ slipoption=variableslip
+
+! Unbalanced load at the motor bus (0.48 kV, L-N = 0.277).
+New load.la bus1=mbus.1 phases=1 conn=wye model=1 kv=0.277 kw=90 pf=0.9
+New load.lb bus1=mbus.2 phases=1 conn=wye model=1 kv=0.277 kw=25 pf=0.95
+New load.lc bus1=mbus.3 phases=1 conn=wye model=1 kv=0.277 kw=140 pf=0.85
+
+Set voltagebases=[12.47, 0.48]
+Set maxiterations=100
+calcv

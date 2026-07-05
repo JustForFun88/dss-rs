@@ -24,9 +24,13 @@ coverage golden — a **latent Phase-4 reactor bug**: `stamp_series` transposed 
 series-stamp bottom-left block (`(j+n,i)` vs Pascal `(i+n,j)`), harmless for
 symmetric reactor Y but corrupting the asymmetric induction-motor (`Z1≠Z2`) YPrim /
 an unbalanced solve — both fixed, full suite green. golden_phase8 **125→130**; lib
-**744→748**. REACTORTest unblocked (migration deferred to Dump completion). **next =
-Dump step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode per-winding/matrix
-overrides).
+**744→748**. REACTORTest unblocked (migration deferred to Dump completion). The
+stamp-bug class is now guarded corpus-wide: **asymmetric live gate** —
+`tests/corpus/asymmetric/` (14 synthetic decks: every stamping element +
+combinations, asymmetric configs, unbalanced solves) live-compared at micro
+tolerance by `corpus_live.rs::asymmetric_cases_match_oracle` (details in §1f).
+**next = Dump step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode
+per-winding/matrix overrides).
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
@@ -610,6 +614,35 @@ frontier:
   Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **next = Dump
   step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
   port map below (still current for the remaining steps):
+- **WP8.5 follow-up — asymmetric live gate (2026-07-05, gate-green).** The reactor
+  stamp bug class generalized into a standing guard: **`tests/corpus/asymmetric/`**
+  — 14 synthetic decks covering **every stamping element** (Vsource / Reactor /
+  Capacitor / Line / Transformer / Fault / Load models 1–5+8 / Generator models
+  1–3 / PVSystem / Storage / IndMach012 / VCCS / UPFC) + 2 **combination** decks
+  (series chain; meshed loop w/ circulating-tap transformer + IndMach012) in
+  deliberately asymmetric configurations: `Z1≠Z2` sym-components sources+reactors
+  (the non-reciprocal-YPrim class of the fixed bug), **FULL asymmetric matrix
+  inputs** (pin the parser's `ParseAsSymMatrix` lower-triangle-wins overwrite
+  order — Pascal symmetrizes, `ParserDel.pas:616`), per-phase-unequal 1φ bank
+  taps, 1φ/2φ subsets, delta conns, series capacitor, neutral-impedance +
+  ungrounded-wye windings — all solved **unbalanced** and live-compared by
+  `corpus_live.rs::asymmetric_cases_match_oracle` with the full mandate (V, full
+  system Y, every element's currents/powers, named YPrim blocks — the direct
+  transposed-stamp catch regardless of excitation) at **micro (1e-9) tolerance**;
+  oracle-free `asymmetric_manifest_is_complete` pins the dir↔manifest bijection,
+  the 14-deck per-element floor (`ASYMMETRIC_REQUIRED`), and `selected_elements`
+  non-empty per case. **VSConverter deliberately excluded** (upstream
+  state-mutating `GetCurrents`; stays gated in `exec/tests/vs_converter.rs`).
+  **Proven floor found while calibrating** (decomposition, per CLAUDE.md — not a
+  tolerance sweep): a bus whose only ground path is the transformer
+  `ppm_antifloat` (~1e-6) adder — a delta tertiary or ungrounded-wye secondary
+  serving only L-L loads — has a near-singular **common mode** where faer-vs-KLU
+  last-ulp noise reaches ~1.7e-7 rel from iteration 1 (phase-to-phase voltages
+  match to ~1e-12 V, ALL YPrims + system Y match ≤1e-12; ONLY the bus common
+  mode differs, and iteration counts drift at tight tol). Not a port bug and not
+  reproducible-pinnable; the decks pin such buses **physically** with small
+  wye-grounded capacitors (the cable-capacitance surrogate every real feeder
+  has), never by widening tolerances.
 - **WP8.5 (Save/Dump) — exploration/port map.** The port map (from a
   scoped explore pass) so the next session resumes without re-reading:
   - **Reuse (the oracle-validated primitive):** `ClassProps::get_value(obj, idx,

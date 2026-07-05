@@ -1,0 +1,33 @@
+// Asymmetric Generator coverage: models 1 (PQ), 2 (const Z) delta, 3 (PV-type
+// with dQ/dV steps), plus two 1-phase units on different phases — embedded in
+// an unbalanced-load network so generator injections run asymmetric.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.gen_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New line.t1 bus1=src bus2=b1 r1=0.08 x1=0.25 r0=0.25 x0=0.8 c1=0 c0=0 length=1
+New line.t2 bus1=b1 bus2=b2 r1=0.09 x1=0.3 r0=0.3 x0=0.95 c1=0 c0=0 length=1
+
+! Model 1 (const PQ), 3-phase wye.
+New generator.g1 phases=3 bus1=b1 conn=wye model=1 kv=12.47 kw=800 pf=0.9 vminpu=0.8
+
+! Model 2 (const Z), 3-phase delta.
+New generator.g2 phases=3 bus1=b1 conn=delta model=2 kv=12.47 kw=500 pf=1
+
+! Model 3 (PV type): regulates |V| by dQ/dV steps within kvar limits.
+New generator.g3 phases=3 bus1=b2 conn=wye model=3 kv=12.47 kw=600 kvar=200
+~ maxkvar=500 minkvar=-500
+
+! 1-phase units on different phases with different outputs.
+New generator.g1a phases=1 bus1=b2.1 conn=wye model=1 kv=7.2 kw=200 pf=0.95
+New generator.g1c phases=1 bus1=b2.3 conn=wye model=1 kv=7.2 kw=350 pf=0.9
+
+! Net unbalanced load exceeding local generation.
+New load.la bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=1500 pf=0.9
+New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=500 pf=0.95
+New load.lc bus1=b2.3 phases=1 conn=wye model=1 kv=7.2 kw=2100 pf=0.85
+
+Set voltagebases=[12.47]
+calcv

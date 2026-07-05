@@ -626,6 +626,149 @@ fn corpus_live_solvable_cases_match_oracle() {
 }
 
 // ---------------------------------------------------------------------------
+// Asymmetric synthetic decks (tests/corpus/asymmetric/): per-element and
+// combination coverage of orientation-sensitive YPrim stamping. Motivated by the
+// Phase-4 `Reactor::stamp_series` bug (03c63f2): the series stamp's bottom-left
+// block was written at `(j+n, i)` instead of Pascal's `(i+n, j)` — identical for
+// every *symmetric* YPrim, wrong exactly when the element's Y is non-reciprocal
+// (sym-components `Z1 <> Z2`) or the excitation is unbalanced. No vendored corpus
+// case exercised that configuration, so the live gate never saw it. These decks
+// close the class: every stamping element (and combinations) in deliberately
+// asymmetric configurations — `Z1 <> Z2` sources/reactors, FULL asymmetric
+// matrix inputs (pinning the parser's `ParseAsSymMatrix` lower-triangle-wins
+// overwrite order), per-phase-unequal transformer bank taps, 1φ/2φ subsets,
+// delta connections — solved unbalanced and compared against the pinned oracle
+// with the full `run_and_compare` mandate (V, full system Y, every element's
+// currents/powers, and the named elements' YPrim blocks, which catch a
+// transposed stamp regardless of excitation).
+//
+// VSConverter is deliberately absent: the upstream `GetCurrents` bug (see
+// CLAUDE.md "Known upstream bugs") makes the oracle's reported currents violate
+// KCL and mutate state on every read, so it is gated separately in
+// `exec/tests/vs_converter.rs` and must not enter a live full-model compare.
+// ---------------------------------------------------------------------------
+
+fn asymmetric_dir() -> PathBuf {
+    [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "asymmetric",
+    ]
+    .iter()
+    .collect()
+}
+
+/// Absolute, forward-slashed path to a deck under `tests/corpus/asymmetric/`.
+fn asymmetric_file(rel: &str) -> String {
+    let p = asymmetric_dir().join(rel);
+    assert!(p.is_file(), "asymmetric deck missing: {}", p.display());
+    p.to_string_lossy().replace('\\', "/")
+}
+
+fn load_asymmetric() -> Vec<SolvableCase> {
+    let p = asymmetric_dir().join("manifest.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let m: SolvableManifest =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
+    m.cases
+}
+
+/// The pinned element-coverage floor: one deck per stamping element class plus
+/// the combination decks. Removing a deck (even together with its manifest
+/// entry) fails here — mirrors the "no silent omission" role of
+/// `corpus_manifest.rs` for the vendored corpus.
+const ASYMMETRIC_REQUIRED: &[&str] = &[
+    "vsource_asym.dss",
+    "reactor_asym.dss",
+    "capacitor_asym.dss",
+    "line_asym.dss",
+    "transformer_asym.dss",
+    "fault_asym.dss",
+    "load_asym.dss",
+    "generator_asym.dss",
+    "der_asym.dss",
+    "indmach_asym.dss",
+    "vccs_asym.dss",
+    "upfc_asym.dss",
+    "combo_chain_asym.dss",
+    "combo_mesh_asym.dss",
+];
+
+/// Oracle-free structural guard: the asymmetric deck directory and its manifest
+/// are a bijection, the required per-element deck set is present, and every case
+/// compares at least one YPrim block (the direct transposed-stamp catch).
+#[test]
+fn asymmetric_manifest_is_complete() {
+    let dir = asymmetric_dir();
+    assert!(
+        dir.is_dir(),
+        "asymmetric deck dir missing: {}",
+        dir.display()
+    );
+    let mut disk: BTreeSet<String> = BTreeSet::new();
+    for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            disk.insert(p.file_name().unwrap().to_string_lossy().into_owned());
+        }
+    }
+    let cases = load_asymmetric();
+    let manifested: BTreeSet<String> = cases.iter().map(|c| c.path.clone()).collect();
+    assert_eq!(
+        manifested.len(),
+        cases.len(),
+        "duplicate paths in asymmetric manifest"
+    );
+    assert_eq!(
+        disk, manifested,
+        "asymmetric decks on disk and manifest entries must be a bijection \
+         (disk∖manifest = unclassified deck, manifest∖disk = ghost entry)"
+    );
+    for req in ASYMMETRIC_REQUIRED {
+        assert!(
+            manifested.contains(*req),
+            "required asymmetric deck missing: {req} (per-element coverage floor)"
+        );
+    }
+    for c in &cases {
+        assert!(
+            !c.selected_elements.is_empty(),
+            "{}: asymmetric case must name selected_elements (live YPrim compare \
+             is the direct transposed-stamp catch)",
+            c.path
+        );
+    }
+}
+
+#[test]
+fn asymmetric_cases_match_oracle() {
+    let oracle = Oracle::new();
+    oracle.ping();
+    let cases = load_asymmetric();
+    assert!(!cases.is_empty(), "asymmetric manifest must not be empty");
+    for c in &cases {
+        let abs = asymmetric_file(&c.path);
+        run_and_compare(
+            &oracle,
+            &c.path,
+            &abs,
+            &c.post,
+            c.n_steps,
+            &c.selected_elements,
+            &c.kind,
+            c.check_meters_monitors,
+        );
+    }
+    eprintln!(
+        "asymmetric live gate: {} deck(s) matched the oracle",
+        cases.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Classifier (growth engine): probe the `skipped_needs_investigation` candidates
 // with the full live comparison, catching per-case failures, and write a report
 // proposing which become `solvable_now`. Opt-in via DSS_LIVE_CLASSIFY=1;
