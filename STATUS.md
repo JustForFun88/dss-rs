@@ -27,7 +27,8 @@ byte-fidelity fixes landed:** (1) `fmt_g`'s low scientific threshold was C's
 `node_v` (Pascal `ComputeVTerminal`) so `WdgCurrents` reads the live solution, not
 a stale/zero buffer. Property display-case corrected for Line/Transformer/
 LineGeometry tails (LineCode/XfmrCode already correct; matching stays
-case-insensitive). golden_phase8 **125→141** (16 new dump goldens, all byte-exact);
+case-insensitive). golden_phase8 **130→141** (11 new byte-exact dump goldens this step; 16 dump
+goldens total);
 the bare-`dump`/`solution`/aux forms + the 8 remaining overrides (Capacitor/Fault/
 VSource/UPFC/RegControl/Monitor/EnergyMeter/Spectrum) are TODO(WP8) step 3.
 **Audits (both ran on `53d9006`):** audit-code — one Minor real fix:
@@ -656,9 +657,10 @@ frontier:
   the existing `do_select_cmd` #903 convention); `#256` doesn't create an empty
   `PropertyDump.txt` (unobservable — `GlobalResult` unchanged); the systematic
   property display-name pass (needed for step-3 bare-`dump`; done class-by-class as
-  Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **next = Dump
-  step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
-  port map below (still current for the remaining steps):
+  Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **Dump step 2**
+  (the five per-winding/matrix overrides + the `fmt_g`/`WdgCurrents`/`Vterminal`
+  fixes + both audit follow-ups) is recorded in the header §1 frontier above.
+  Original port map below (still current for the remaining steps):
 - **GAPS_PLAN authored (2026-07-05): the test-blocked-deferral closure plan +
   the third live-gate family.** `GAPS_PLAN.md` (repo root) inventories every
   Phase-4–7 deferral whose only blocker was a missing corpus deck — the WP7.9
