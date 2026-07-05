@@ -1812,6 +1812,26 @@ fn show_isolated_orphan_matches_oracle() {
     run_deck_show_exact("show_isolated_orphan");
 }
 
+/// `Show Isolated` with a **disabled** PD element (audit-code step-16 follow-up): a
+/// `line.dead enabled=no` must NOT emit a `*** START SUBAREA ***` block — the sub-area
+/// selection is gated on `Enabled` (a disabled PD element is in `ckt_elements` but not
+/// the adjacency lists). Without the guard the port would print a spurious subarea.
+/// Byte-exact.
+#[test]
+fn show_isolated_disabled_matches_oracle() {
+    run_deck_show_exact("show_isolated_disabled");
+}
+
+/// `Show Isolated` on a compiled-but-**unsolved** circuit (audit-code step-16
+/// follow-up): no `calcvoltagebases`/`solve`, so terminal `bus_ref`s are unresolved
+/// (`NO_BUS`) until `ShowIsolated`'s own `ReprocessBusDefs` runs. Pins that the
+/// reprocess makes the connected tree correct (Vsource → Line.la → Load.ld) — without
+/// it the port would give a degenerate one-source tree. Byte-exact.
+#[test]
+fn show_isolated_unsolved_matches_oracle() {
+    run_deck_show_exact("show_isolated_unsolved");
+}
+
 /// `Show Topology` on the same coverage deck: pins the non-zero counts (`2 Parallel PD
 /// elements`, `1 Isolated PD components`, `1 Controlled Switches`) + the tree's
 /// `(PARALLEL:…)` / `(Control: …)` / `Isolated: …` annotations, none of which the

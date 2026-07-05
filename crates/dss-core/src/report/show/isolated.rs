@@ -81,11 +81,18 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
         };
         bus_checked_after_source = ckt.buses.iter().map(|b| b.bus_checked).collect();
 
-        // One sub-area per still-unchecked PD element, in CktElements order.
+        // One sub-area per **enabled**, still-unchecked PD element, in CktElements
+        // order (Pascal `if TestElement.Enabled then if not Checked then if
+        // PD_ELEMENT`, `ShowResults.pas:2915-2918` — a disabled PD element is in
+        // `ckt_elements` but never in the adjacency lists, so without the `enabled`
+        // guard it would emit a spurious `*** START SUBAREA ***` block).
         for i in 0..ckt.ckt_elements.len() {
             let r = ckt.ckt_elements[i];
-            let checked = store.ckt_elem(r).cd().flags.contains(ElemFlags::CHECKED);
-            if !checked && is_pd_element(&store, r) {
+            let (enabled, checked) = {
+                let cd = store.ckt_elem(r).cd();
+                (cd.enabled, cd.flags.contains(ElemFlags::CHECKED))
+            };
+            if enabled && !checked && is_pd_element(&store, r) {
                 sub_areas.push(get_isolated_sub_area(ckt, &mut store, &adj, r, false));
             }
         }
