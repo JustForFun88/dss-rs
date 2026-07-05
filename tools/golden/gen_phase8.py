@@ -1619,6 +1619,32 @@ SHOW_TOPO_DECK = [
 ]
 
 
+# `Show Isolated` orphan coverage (audit-tests step-16 follow-up): enabled elements
+# on PD-less, source-disconnected buses — an orphan Load + Generator — so the
+# "ENABLED ELEMENTS ARE ISOLATED" list (the `"FullName"  Buses:  "bus"` + 1-based
+# `get_bus(j)` walk) and the "BUSES NOT CONNECTED TO ANY POWER DELIVERY ELEMENT" list
+# are both non-empty (they are empty on IEEE13 + the mesh deck). Not solved (the
+# orphan buses make Y singular).
+SHOW_ISO_ORPHAN_DECK = [
+    "clear",
+    "new circuit.orph basekv=12.47 bus1=src phases=3",
+    "new line.la bus1=src bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new load.ld bus1=b1 phases=3 kv=12.47 kw=500",
+    "new load.orphan bus1=orphanbus phases=3 kv=12.47 kw=50",
+    "new generator.og bus1=genbus phases=3 kv=12.47 kw=50 model=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+]
+
+
+def gen_show_isolated_orphan(d) -> None:
+    """Capture `Show Isolated` on the orphan-bus deck (audit-tests step-16 follow-up)."""
+    d.AllowEditor = False
+    _gen_show_deck_group(
+        d, SHOW_ISO_ORPHAN_DECK, [("isolated", "Isolated.txt", "show_isolated_orphan")]
+    )
+
+
 def gen_show_topo_coverage(d) -> None:
     """Capture `Show Isolated`/`Show Topology` on `SHOW_TOPO_DECK` — the non-empty
     branches the IEEE13 goldens miss: isolated buses + an isolated sub-network
@@ -1806,6 +1832,7 @@ def main() -> None:
     gen_show_isolated(d)
     gen_show_topology(d)
     gen_show_topo_coverage(d)
+    gen_show_isolated_orphan(d)
     gen_show_lineconstants(d)
     gen_sections(d)
     gen_profile(d)
