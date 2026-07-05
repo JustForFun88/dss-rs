@@ -1578,6 +1578,27 @@ SHOW_CTRL_DECK = [
 ]
 
 
+SHOW_BUSFLOW_REPORTS = [
+    # `Show busflow <bus>` (code 0 seq) and `<bus> e` (code 1 elem). Bus 675 is a
+    # fully-energised 3-phase leaf (Line.692675 + Capacitor.Cap1 + a 3-phase load) →
+    # exercises the seq-V header, per-element seq I (all terminals) + seq P (matched
+    # terminal), and the element-form node voltages + WriteTerminalCurrents (PD
+    # residual) + WriteTerminalPower. Chosen over a richer junction (671) that lands a
+    # `%10.5g` kvar cell on a 5-sig rounding boundary (a print straddle) — 675 is
+    # fully byte-exact bar the capacitor's ~0-kW / PF faer-vs-KLU residual.
+    ("busflow 675", "675_seq_kVA.txt", "show_busflow"),
+    ("busflow 675 e", "675_elem_kVA.txt", "show_busflow_elem"),
+]
+
+
+def gen_show_busflow(d) -> None:
+    """Capture the oracle's `Show busflow` (`ShowBusPowers`) on solved IEEE13, bus
+    675 — both the seq form (`show_busflow`) and the element form
+    (`show_busflow_elem`). `Show` sets no GlobalResult; find by suffix."""
+    d.AllowEditor = False
+    _gen_show_group(d, FEEDER_POST, SHOW_BUSFLOW_REPORTS)
+
+
 def gen_show_controlled(d) -> None:
     """Capture the oracle's `Show Controlled` (`ShowControlledElements`). Two goldens:
     the feeder case (`show_controlled`) — solved IEEE13's three voltage-regulator
@@ -1663,6 +1684,7 @@ def main() -> None:
     gen_show_overload_unserved(d)
     gen_show_zone_loops(d)
     gen_show_controlled(d)
+    gen_show_busflow(d)
     gen_show_lineconstants(d)
     gen_sections(d)
     gen_profile(d)

@@ -1603,6 +1603,59 @@ fn run_lineconstants_show(stem: &str) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// `Show busflow 675` (Pascal `ShowBusPowers` code 0): the seq voltages / currents /
+/// powers around bus 675 (a fully-energised leaf: Line.692675 + Capacitor.Cap1 + a
+/// 3-phase load) on solved IEEE13. Same value paths as `Show Voltages`/`Currents`/
+/// `Powers` (bit-exact LineCode-based feeder), filtered to the bus's elements →
+/// **exact equality** (`rel = 0`, `abs = 0`): every cell is byte-identical, no
+/// near-zero residual (675 has no de-energised branch — chosen for a fully-exact
+/// golden; a richer junction like 671 lands a `%10.5g` kvar cell on a 5-sig rounding
+/// boundary, a print straddle avoided here).
+#[test]
+fn show_busflow_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_busflow", &policy);
+}
+
+/// `Show busflow 675 e` (Pascal `ShowBusPowers` code 1): the element form — node
+/// voltages + per-terminal branch currents (PD residual) + branch power flow around
+/// bus 675. Reuses the `WriteBusVoltages`/`WriteTerminalCurrents`/`WriteTerminalPower`
+/// value paths → **exact equality** except the **capacitor's real-power** cell:
+/// `Capacitor.Cap1` consumes ~0 kW, so its power rows carry two faer-vs-KLU
+/// artefacts vs the oracle: field 2 (kW) is a ~1e-15 residual (the oracle prints an
+/// exact `0` on two phases), and consequently the **power factor** (field 6) diverges
+/// — the oracle's exact-0 kW gives `PF = 1.0000` (`P = 0` → `PowerFactor := 1`),
+/// while Rust's ~1e-15 kW gives `≈ 0`. Both are the same physical capacitor (its
+/// real kvar/kVA are checked exact). Gate the near-zero kW (field 2) **and** the PF
+/// (field 6) on the row's kW `< 1e-4` (incl. exact zero via `MinCols`). Field 2 is
+/// `|I|` in the current rows (all real ≥-amp at 675) so the gate fires only on the
+/// capacitor power rows.
+#[test]
+fn show_busflow_elem_matches_oracle() {
+    let on = |sel: ColSel| ColTol {
+        sel,
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::MinCols(2, 2, 1e-4)),
+    };
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![on(ColSel::Index(2)), on(ColSel::Index(6))],
+    };
+    run_feeder_show("show_busflow_elem", &policy);
+}
+
 /// `Show LineConstants` (Pascal `ShowLineConstants`) on a synthesized geometry deck
 /// with **default** args (freq=60/kft/rho=100): `g3` (3-conductor overhead, order 3)
 /// exercises the R/jX/susceptance/L/C matrices AND the equivalent symmetrical-

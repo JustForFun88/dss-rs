@@ -1456,6 +1456,59 @@ impl Dss {
                 };
                 self.write_show("Loops.txt", &content);
             }
+            // 23 `busflow <bus> [m] [e]` (`ShowBusPowers`): the power flow around a
+            // named bus — seq (code 0) or per-element (code 1) currents + powers.
+            // `ShowOptions.pas:339-372`: 1st param = bus name; 2nd `m`→MVA / `e`→elem;
+            // 3rd `e`→elem. Filename `<BusName|BusPower>_{seq|elem}_{kVA|MVA}.txt`.
+            // An unknown bus raises #219.
+            23 => {
+                self.parser.next_param(&self.vars);
+                let bus_name = self.parser.make_string(&self.vars);
+                let (mut mva, mut code) = (0, 0);
+                self.parser.next_param(&self.vars);
+                let p1 = self.parser.make_string(&self.vars).to_lowercase();
+                match p1.chars().next() {
+                    Some('m') => mva = 1,
+                    Some('e') => code = 1,
+                    _ => {}
+                }
+                self.parser.next_param(&self.vars);
+                let p2 = self.parser.make_string(&self.vars).to_lowercase();
+                if p2.starts_with('e') {
+                    code = 1;
+                }
+                let bus_idx = self
+                    .circuit
+                    .as_ref()
+                    .expect("post-circuit dispatch")
+                    .bus_list
+                    .find(&bus_name);
+                let Some(bus_idx) = bus_idx else {
+                    // Pascal #219 `'Bus "%s" not found.'` (UPPERCASE bus name).
+                    self.errors
+                        .push(format!("Bus \"{}\" not found.", bus_name.to_uppercase()));
+                    return;
+                };
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    let sys = crate::solution::solution::sys_ctx(ckt);
+                    let node_v = ckt.solution.node_v.clone();
+                    show::show_bus_powers(classes, ckt, &sys, &node_v, bus_idx, mva, code)
+                };
+                // Filename: `<BusName|BusPower>_{seq|elem}_{kVA|MVA}.txt`.
+                let base = if bus_name.is_empty() {
+                    "BusPower".to_string()
+                } else {
+                    bus_name.clone()
+                };
+                let seq_elem = if code == 1 { "elem" } else { "seq" };
+                let kmva = if mva == 1 { "MVA" } else { "kVA" };
+                let fname = format!("{base}_{seq_elem}_{kmva}.txt");
+                self.write_show(&fname, &content);
+            }
             // 24 `lineconstants [freq] [units] [rho]` (`ShowLineConstants`): the
             // per-unit-length R/jX/susceptance/L/C matrices for every LineGeometry
             // at the requested frequency/units/earth-resistivity + the order-3
@@ -1526,7 +1579,7 @@ impl Dss {
                 self.write_show("ControlledElements.csv", &content);
             }
             // TODO(WP8): later steps — the remaining `Show` keywords (isolated,
-            // topology, busflow, autoadded, querylog,
+            // topology, autoadded, querylog,
             // deltaV) and the unknown-keyword `#24700` error
             // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
             // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`

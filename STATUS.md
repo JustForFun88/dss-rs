@@ -9,19 +9,20 @@
 
 Last updated: 2026-07-05 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
-gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited; WP8.4 (Show) steps 1–14
+gate-green Phase-7 tip). **WP8.1–8.3 COMPLETE + audited; WP8.4 (Show) steps 1–15
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
 controlqueue/kvbasemismatch + step 8: Meters/Generators register tables +
 step 9: Overloads/Unserved + step 10: FaultStudy + step 11: Yprim (+ the
 `Select` command / active-ckt-element surface) + step 12: Loops/Zone (the
 EnergyMeter zone-tree pair) + step 13: Controlled (the PD→controls map via the
-new `CktElement::controlled_element` accessor) + **step 14: LineConstants** (the
+new `CktElement::controlled_element` accessor) + step 14: LineConstants (the
 LineGeometry Carson R/jX/L/C matrix dump + seq-component summary, two files) +
-dispatcher; ~29 `Show` reports ported). **~3 real `Show` reports remain**
-(`Isolated`/`Topology`/`busflow`) + `autoadded`/`QueryLog` (headless FireOffEditor
-no-ops) + `deltaV` (deferred) — all still *silent* no-ops, `TODO(WP8)`. Full
-Phase-8 detail is in **§1f**; the current frontier:
+**step 15: busflow** (`ShowBusPowers` seq+elem, reusing the extracted per-bus/
+per-element voltage/current/power helpers) + dispatcher; ~30 `Show` reports ported).
+**~2 real `Show` reports remain** (`Isolated`/`Topology`) + `autoadded`/`QueryLog`
+(headless FireOffEditor no-ops) + `deltaV` (deferred) — all still *silent* no-ops,
+`TODO(WP8)`. Full Phase-8 detail is in **§1f**; the current frontier:
 
 - **WP8.1 COMPLETE** (dispatch skeleton + output-path machinery + `Export Counts`
   + the `compare_export` golden harness).
@@ -421,10 +422,29 @@ Phase-8 detail is in **§1f**; the current frontier:
   (`show lineconstants 50`, freq≠DefaultBaseFreq) pins the non-default-frequency Carson
   propagation. (Pre-existing, out-of-scope: `fmt_g` NaN/Inf formatting for a
   pathological negative-surge-radicand order-3 geometry — unreachable for real lines.)
-  golden_phase8 **108→109**. **next = continue WP8.4** (`busflow` `ShowBusPowers`; the
-  CktTree pair `Isolated`/`Topology` — need `GetTopology`/`GetIsolatedSubArea`
-  builders; then finalize: `autoadded`/`QueryLog` no-ops + the `#24700`
-  unknown-keyword error).
+  golden_phase8 **108→109**.
+- **WP8.4 (Show reports) — step 15 COMPLETE, gate-green** (`Show busflow`):
+  `ShowBusPowers` (`ShowResults.pas:1493`, dispatcher arm 23) — the power flow around
+  a named bus, two forms: **code 0** (seq) the bus's seq voltages + per-element seq
+  currents (all terminals) + seq powers (the `CheckBusReference`-matched terminal);
+  **code 1** (elem) the node voltages + per-terminal branch currents (PD residual) +
+  branch power flow. New `report/show/bus_powers.rs` filters every element by
+  `check_bus_reference` and **reuses the extracted per-bus / per-element helpers**:
+  `voltages::{seq_voltage_row, bus_voltage_block}` (pulled out of `show_voltages`/
+  `show_voltages_nodes`, byte-preserving — the 4 voltage goldens still pass),
+  `currents::{get_i0i1i2, write_seq_currents, write_terminal_currents}` (`write_seq_currents`
+  = the Pascal `WriteSeqCurrents` with `NormAmps=EmergAmps=0`), `powers::write_terminal_power_seq`
+  (`WriteTerminalPowerSeq`, incl. the 1-/2-phase `S1` special cases), plus a local
+  `WriteTerminalPower`. The `#219 Bus not found` error + the `<BusName|BusPower>_{seq|
+  elem}_{kVA|MVA}.txt` filename are in the dispatcher. goldens `show_busflow` +
+  `show_busflow_elem` on solved IEEE13 **bus 675** (a fully-energised leaf) — the seq
+  form **fully exact** (`rel=0, abs=0`), the elem form exact bar the **capacitor's
+  ~0-kW / PF** faer-vs-KLU residual cells (gated on the row's kW `<1e-4`). Bus 675 was
+  chosen over a richer junction (671) whose `%10.5g` kvar cell lands on a 5-sig
+  rounding boundary (a print straddle). golden_phase8 **109→111**. No corpus migration
+  (`Show` never blocked a deck). **next = continue WP8.4** (the CktTree pair
+  `Isolated`/`Topology` — need `GetTopology`/`GetIsolatedSubArea` builders; then
+  finalize: `autoadded`/`QueryLog` no-ops + the `#24700` unknown-keyword error).
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -504,7 +524,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 109,
+                            # golden_phase7_protection 1, golden_phase8 111,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,
