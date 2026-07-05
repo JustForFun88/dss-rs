@@ -1020,6 +1020,17 @@ impl Dss {
             .map(|i| i + 1)
             .unwrap_or(0);
 
+        // Pascal `#24700` (`ShowOptions.pas:119-124`): an unknown keyword errors and
+        // exits BEFORE the solution guard. Now that every real `Show` keyword is
+        // ported (WP8.4), an unmatched keyword is genuinely unknown — so this replaces
+        // the earlier "deferred keyword stays a silent no-op" behavior (all the
+        // `solvable_now`/`corpus_live` decks use ported keywords, verified).
+        if ptr == 0 {
+            self.errors
+                .push(format!("Error: Unknown Show Command:\"{param}\""));
+            return;
+        }
+
         // Solution guard (`ShowOptions.pas:127-141`, `case ParamPointer of 4, 6,
         // 8..10, 12, 13..17, 19..23, 29..31`): the solution-reading Shows need a
         // solved circuit. As with `Export`, the no-circuit half (#24701) is
@@ -1609,17 +1620,23 @@ impl Dss {
                 };
                 self.write_show("ControlledElements.csv", &content);
             }
-            // TODO(WP8): later steps — the remaining `Show` keywords (autoadded,
-            // querylog, deltaV) and the unknown-keyword `#24700` error
-            // (`ShowOptions.pas:119-124`), are still deferred. Unlike the `Export`/
-            // `Save`/`Dump` routers — whose deferrals push a scoped `NOT_PORTED`
-            // error — a deferred `Show` MUST stay a **silent** headless no-op: the
-            // `solvable_now`/`corpus_live` decks run `Show Power`/`Show Voltage`/
-            // `Show f` and the live gate asserts `errors().is_empty()`, so emitting
-            // the `#24700` (or any error) here would regress them. The later WP8.4
-            // steps land the formatters; the `#24700` lands with them (once every
-            // real keyword is ported, an unmatched keyword is genuinely unknown).
+            // 1 `autoadded` (`ShowOptions.pas:146-150`): Pascal only `FireOffEditor`s
+            // `AutoAddedGenerators.txt`/`AutoAddedCapacitors.txt` (written by the
+            // AutoAdd solve mode, deferred — WP7.9); `FireOffEditor` is a headless
+            // no-op. So arm 1 is a faithful silent no-op.
+            1 => {}
+            // 32 `QueryLog` (`ShowOptions.pas:427-428`): Pascal only
+            // `FireOffEditor(QueryLogFileName)` — a headless no-op. Silent no-op.
+            32 => {}
+            // TODO(WP8): 31 `deltaV` (`ShowDeltaV`) stays a silent no-op — the
+            // `WriteElementDeltaVoltages` `NodeRef[i+NCond]` cross-terminal read
+            // yields 0 rows for a **delta-primary** transformer (`Transformer.sub`)
+            // where the oracle writes 3; the delta-winding node_ref layout needs
+            // investigation before this ships (deltaV is not used by any corpus deck).
             // Greppable via `rg "TODO\(WP8\)"` (the WP8.8 exit sweep).
+            31 => {}
+            // Every real keyword (1..34) now has an arm; `ptr == 0` is caught above.
+            // This catch-all is unreachable, kept only for match exhaustiveness.
             _ => {}
         }
     }
