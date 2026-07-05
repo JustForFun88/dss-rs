@@ -1,0 +1,38 @@
+// InvControl combined volt-var + volt-watt, asymmetric scenario: three
+// 1-phase PVSystems with unequal Pmpp on a weak feeder, one CombiMode=VV_VW
+// InvControl over all of them, per-phase-unequal loads — each phase's inverter
+// settles at its own kW limit / kvar absorption. Compared per step: full model
+// + each PVSystem's state variables + InvControl probes.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.vvvwasym basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=6 units=km
+
+New loadshape.irrad npts=6 interval=1 mult=(.5 .7 .9 1.0 1.0 .95)
+
+New xycurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.005 1.1)
+New xycurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)
+
+New pvsystem.pva bus1=b.1 phases=1 kv=7.2 kva=500 pmpp=420 pf=1.0
+~ daily=irrad irradiance=1
+New pvsystem.pvb bus1=b.2 phases=1 kv=7.2 kva=300 pmpp=250 pf=1.0
+~ daily=irrad irradiance=1
+New pvsystem.pvc bus1=b.3 phases=1 kv=7.2 kva=650 pmpp=550 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic combimode=VV_VW voltage_curvex_ref=rated vvc_curve1=vv
+~ voltwatt_curve=vw deltaq_factor=0.2 deltap_factor=0.45
+~ activepchangetolerance=0.0001 varchangetolerance=0.0001
+~ voltwattyaxis=PMPPPU refreactivepower=VARMAX
+
+! Per-phase-unequal loads keep the phases at different voltages.
+New load.la bus1=b.1 phases=1 conn=wye model=1 kv=7.2 kw=120 pf=0.95
+New load.lb bus1=b.2 phases=1 conn=wye model=1 kv=7.2 kw=40 pf=0.9
+New load.lc bus1=b.3 phases=1 conn=wye model=1 kv=7.2 kw=60 pf=0.92
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

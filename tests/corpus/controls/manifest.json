@@ -12,6 +12,102 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true
+  },
+  {
+   "path": "regcontrol_asym.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "RegControl.rga", "props": ["tapnum", "vreg", "band"]},
+    {"element": "RegControl.rgb", "props": ["tapnum"]},
+    {"element": "RegControl.rgc", "props": ["tapnum"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "capcontrol_sym.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "CapControl.cc", "props": ["type", "onsetting", "offsetting", "ptratio"]},
+    {"element": "Capacitor.cb", "props": ["states"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "capcontrol_asym.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "CapControl.ck", "props": ["type", "onsetting", "offsetting"]},
+    {"element": "CapControl.ci", "props": ["type", "onsetting", "offsetting", "ctphase", "ctratio"]},
+    {"element": "Capacitor.cb1", "props": ["states"]},
+    {"element": "Capacitor.cb2", "props": ["states"]}
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true
+  },
+  {
+   "path": "invcontrol_vv_sym.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "InvControl.ic", "props": ["mode", "deltaq_factor", "refreactivepower"]}
+   ],
+   "compare_variables": ["PVSystem.pv"]
+  },
+  {
+   "path": "invcontrol_vvvw_asym.dss",
+   "kind": "micro",
+   "n_steps": 6,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "InvControl.ic", "props": ["combimode", "deltaq_factor", "deltap_factor", "voltwattyaxis"]}
+   ],
+   "compare_variables": ["PVSystem.pva", "PVSystem.pvb", "PVSystem.pvc"]
+  },
+  {
+   "path": "storagectrl_peakshave.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "StorageController.sc", "props": ["kwtarget", "ModeDischarge", "%reserve"]},
+    {"element": "Storage.sa", "props": ["state", "kw", "kwhstored", "%stored"]},
+    {"element": "Storage.sb", "props": ["state", "kw", "kwhstored", "%stored"]}
+   ],
+   "compare_variables": ["Storage.sa", "Storage.sb"],
+   "compare_eventlog": true
+  },
+  {
+   "path": "storagectrl_time.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "StorageController.sc", "props": ["ModeDischarge", "ModeCharge", "timedischargetrigger", "timechargetrigger"]},
+    {"element": "Storage.sa", "props": ["state", "kw", "kwhstored", "%stored"]}
+   ],
+   "compare_variables": ["Storage.sa"],
+   "compare_eventlog": true
+  },
+  {
+   "path": "gendispatcher.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": ["*"],
+   "probes": [
+    {"element": "GenDispatcher.gd1", "props": ["kwlimit", "kwband", "kvarlimit", "weights"]},
+    {"element": "Generator.g1", "props": ["kw", "kvar"]},
+    {"element": "Generator.g2", "props": ["kw", "kvar"]}
+   ],
+   "compare_eventlog": true
   }
  ]
 }

@@ -614,6 +614,39 @@ frontier:
   Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **next = Dump
   step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
   port map below (still current for the remaining steps):
+- **Controls live gate (2026-07-05, `CONTROL_COVERAGE_PLAN.md`, steps 1–2
+  landed, gate-green).** The live gate extended with **element-specific state
+  channels** (all opt-in per manifest case): property **probes** (oracle
+  `Properties(p).Val` vs the Rust `?` query, numeric-skeleton compare),
+  **PC-element state variables** (`AllVariableValues` vs `element_variables`),
+  the cumulative **event log** per step (`Solution.EventLog` vs `event_log()`,
+  the phase7-protection policy), and the pending **control queue** (new
+  `Dss::control_queue_rows`, `%.9g` QueueItem format); the mandatory full-model
+  compare additionally gained per-element **losses** (`CktElement.Losses`
+  channel, tolerance = the summed per-conductor power policy — new
+  `ElementSnapshot.loss_w`) and `selected_elements: ["*"]` (every YPrim-bearing
+  element). Decks in **`tests/corpus/controls/`** (runner
+  `controls_cases_match_oracle` + structural guard, `CONTROLS_REQUIRED` floor):
+  step 1 `regcontrol_sym` (24-step daily LTC, taps 0→3→0, 8 events); step 2
+  `regcontrol_asym` (3×1φ bank, per-phase-unequal taps, 21 events),
+  `capcontrol_sym`/`capcontrol_asym` (voltage / kvar+current-CT-phase-3 modes,
+  verified switching both directions), `invcontrol_vv_sym` (rolling-avg daily
+  VOLTVAR), `invcontrol_vvvw_asym` (CombiMode VV_VW over 3×1φ PVs, per-phase kW
+  caps + kvar), `storagectrl_peakshave` / `storagectrl_time` (charge/idle/
+  discharge trajectories, per-step kWhstored/State probes),
+  `gendispatcher` (weighted 3:1 daily redispatch). **REAL PORT BUG found and
+  fixed by the new gate** (storagectrl_peakshave step 6, +1 iteration):
+  `update_storage`'s end-of-step state flip (full → idling) set
+  `cd.yprim_invalid` as a bare field write, dropping Pascal
+  `Set_YprimInvalid`'s side effect of raising `Solution.SystemYChanged`
+  (`CktElement.pas:245`) — the next step then injected through the **stale
+  charging YPrim** on its first iteration (extra ~61 A/phase RHS, proven by
+  first-iterate injection-vector diff; V/kWh state bit-identical to ≤1e-15
+  entering the step) and needed an extra iteration to reach the same fixpoint.
+  Fixed in `time_series.rs::update_all_storage` (propagates `yprim_invalid` →
+  `system_y_changed`); all 9 decks + full corpus green at micro tolerance.
+  **next:** step 3 protection decks (relay/fuse/recloser/swtcontrol), step 4
+  metering, step 5 combos + corpus opt-ins.
 - **WP8.5 follow-up — asymmetric live gate (2026-07-05, gate-green).** The reactor
   stamp bug class generalized into a standing guard: **`tests/corpus/asymmetric/`**
   — 14 synthetic decks covering **every stamping element** (Vsource / Reactor /

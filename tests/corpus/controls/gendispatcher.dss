@@ -1,0 +1,26 @@
+// GenDispatcher scenario: two generators redispatched to hold the feeder-head
+// power under kWLimit as a daily load ramp crosses it — off-peak the gens sit
+// at base, through the peak the dispatcher raises them (weighted). Compared
+// per step: full model + generator kW/kvar probes (the dispatched bases).
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.gdisp basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6
+
+New loadshape.day npts=12 interval=1
+~ mult=(0.40 0.55 0.70 0.85 1.00 1.10 1.15 1.05 0.90 0.75 0.60 0.45)
+
+New load.ld1 bus1=b1 phases=3 kv=12.47 kw=5000 pf=0.95 daily=day
+
+New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1
+New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.95 model=1
+
+New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2000 kwband=100
+~ kvarlimit=500 genlist=[g1, g2] weights=[3, 1]
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=200
+Set mode=daily stepsize=1h number=1
