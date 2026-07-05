@@ -418,6 +418,34 @@ def daily_deck(variant: str, extra: list[str], fixed_taps: bool = True) -> str:
     return "\n".join(parts) + "\n"
 
 
+def gaps_midi_deck(
+    variant: str,
+    src: list[str],
+    extra: list[str],
+    daily: bool,
+    vbases: str,
+    solves: list[str],
+) -> str:
+    """A SELF-DRIVING midi deck for the tests/corpus/gaps staging family
+    (unported-element coverage on the shared scaffold; GAPS_PLAN.md 1b).
+    Unlike the asymmetric/controls families, gaps decks issue their own
+    Solve commands. `vbases` lists the voltage bases (the scaffold FOOTER is
+    not used so decks with extra voltage levels, e.g. the 69 kV AutoTrans
+    spur, can declare them). On graduation (pending -> false) the deck moves
+    to its permanent family and is re-cut to that family's drive convention."""
+    parts = [
+        *scaffold(variant, src, fixed_taps=True, daily=daily),
+        *extra,
+        "",
+        f"set voltagebases={vbases}",
+        "calcvoltagebases",
+        "Set maxcontroliter=1000",
+        "Set maxiterations=100",
+        *solves,
+    ]
+    return "\n".join(parts) + "\n"
+
+
 def duty_deck(variant: str, extra: list[str], keep_tie: bool = False) -> str:
     """A protection-family duty deck (0.1 s steps, controlmode=time) on the
     fixed-tap scaffold. By default the loop tie is disabled (RADIAL, for
@@ -843,6 +871,96 @@ CONTROLS_DECKS = {
 }
 
 
+# --- Gaps staging family (unported elements on the scaffold; GAPS_PLAN 1b) --
+
+PV8_SHAPE = (
+    "new loadshape.pv8 npts=8 interval=1 "
+    "mult=(0.0 0.15 0.45 0.80 1.00 0.85 0.40 0.05)"
+)
+
+ISOURCE_STATIC = [
+    "",
+    "! Isource family: 1-phase trio at the feeder end + a 3-phase neg-seq",
+    "! unit mid-feeder (the Microgrid/ISource corpus pattern at midi scale).",
+    "new isource.i1 bus1=l9e.1 phases=1 amps=30 angle=0",
+    "new isource.i2 bus1=l9e.2 phases=1 amps=22 angle=-120",
+    "new isource.i3 bus1=l9e.3 phases=1 amps=26 angle=120",
+    "new isource.ineg bus1=bb6 phases=3 amps=6 angle=0 sequence=neg",
+    "new monitor.m_i element=isource.i1 terminal=1 mode=0",
+    "new monitor.m_l9 element=line.l9a terminal=1 mode=1 ppolar=no",
+]
+
+ISOURCE_DAILY = [
+    "",
+    "! Isource family, shape-driven: the same units under a PV daily shape.",
+    PV8_SHAPE,
+    "new isource.i1 bus1=l9e.1 phases=1 amps=30 angle=0 daily=pv8",
+    "new isource.i2 bus1=l9e.2 phases=1 amps=22 angle=-120 daily=pv8",
+    "new isource.i3 bus1=l9e.3 phases=1 amps=26 angle=120 daily=pv8",
+    "new isource.ineg bus1=bb6 phases=3 amps=6 angle=0 sequence=neg daily=pv8",
+    "new monitor.m_i element=isource.i1 terminal=1 mode=0",
+    "new monitor.m_l9 element=line.l9a terminal=1 mode=1 ppolar=no",
+    "new energymeter.em element=transformer.sub terminal=1",
+]
+
+AUTOTRANS_UNIT = [
+    "",
+    "! AutoTrans family: a 115/69 kV series/common auto spur off the source",
+    "! bus with its own 69 kV feeder + load.",
+    "new autotrans.at phases=3 windings=2 xhx=9",
+    "~ wdg=1 bus=src  conn=s kV=115 kVA=40000 %r=0.10 maxtap=1.10 mintap=0.90 numtaps=32",
+    "~ wdg=2 bus=at69 conn=w kV=69  kVA=40000 %r=0.10 maxtap=1.10 mintap=0.90 numtaps=32",
+    "new line.lat bus1=at69 bus2=atf phases=3 r1=0.4 x1=1.1 r0=1.2 x0=3.3 c1=0 c0=0 length=1",
+    "new monitor.m_at element=autotrans.at terminal=2 mode=0",
+]
+
+AUTOTRANS_STATIC = AUTOTRANS_UNIT + [
+    "new load.lat bus1=atf phases=3 kv=69 kw=26000 pf=0.9 model=1",
+]
+
+AUTOTRANS_DAILY = AUTOTRANS_UNIT + [
+    "new load.lat bus1=atf phases=3 kv=69 kw=26000 pf=0.9 model=1 daily=day",
+    "! RegControl on the COMMON (wye) winding via the Transf_Or_AutoTrans proxy",
+    "! (vreg above the natural bus voltage so taps work through the whole day).",
+    "new regcontrol.rat transformer=at winding=2 vreg=123 band=1.5 ptratio=332",
+    "~ eventlog=yes",
+    "new monitor.m_tap element=autotrans.at terminal=2 mode=2",
+    "new energymeter.em element=transformer.sub terminal=1",
+]
+
+MIDI_VBASES = "[115 12.47 4.16 0.48]"
+AT_VBASES = "[115 69 12.47 4.16 0.48]"
+SNAP = ["Solve"]
+DAILY8 = ["Set mode=daily stepsize=1h number=8", "Solve"]
+
+GAPS_MIDI_DECKS = {
+    "midi_isource_asym": lambda: gaps_midi_deck(
+        "isource-snapshot(gaps)", SRC_STD, ISOURCE_STATIC,
+        daily=False, vbases=MIDI_VBASES, solves=SNAP,
+    ),
+    "midi_isource": lambda: gaps_midi_deck(
+        "isource-daily(gaps)", SRC_STD, ISOURCE_DAILY,
+        daily=True, vbases=MIDI_VBASES, solves=DAILY8,
+    ),
+    "midi_isource_both": lambda: gaps_midi_deck(
+        "isource-snap+daily(gaps)", SRC_STD, ISOURCE_DAILY,
+        daily=True, vbases=MIDI_VBASES, solves=SNAP + DAILY8,
+    ),
+    "midi_autotrans_asym": lambda: gaps_midi_deck(
+        "autotrans-snapshot(gaps)", SRC_STD, AUTOTRANS_STATIC,
+        daily=False, vbases=AT_VBASES, solves=SNAP,
+    ),
+    "midi_autotrans": lambda: gaps_midi_deck(
+        "autotrans-regdaily(gaps)", SRC_STD, AUTOTRANS_DAILY,
+        daily=True, vbases=AT_VBASES, solves=DAILY8,
+    ),
+    "midi_autotrans_both": lambda: gaps_midi_deck(
+        "autotrans-snap+regdaily(gaps)", SRC_STD, AUTOTRANS_DAILY,
+        daily=True, vbases=AT_VBASES, solves=SNAP + DAILY8,
+    ),
+}
+
+
 def main() -> None:
     targets = {
         REPO / "tests" / "corpus" / "asymmetric" / "midi_asym.dss": deck_midi_asym(),
@@ -853,6 +971,8 @@ def main() -> None:
         targets[REPO / "tests" / "corpus" / "asymmetric" / f"{name}.dss"] = build()
     for name, build in CONTROLS_DECKS.items():
         targets[REPO / "tests" / "corpus" / "controls" / f"{name}.dss"] = build()
+    for name, build in GAPS_MIDI_DECKS.items():
+        targets[REPO / "tests" / "corpus" / "gaps" / f"{name}.dss"] = build()
     for path, text in targets.items():
         path.write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {path.relative_to(REPO)} ({len(text.splitlines())} lines)")
