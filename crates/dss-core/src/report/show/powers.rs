@@ -221,6 +221,67 @@ pub(crate) fn show_powers_elements(
     s
 }
 
+/// One symmetrical-component power row for terminal `j` (Pascal
+/// `WriteTerminalPowerSeq`, `ShowResults.pas:1357`): `P1 Q1 P2 Q2 P0 Q0` (kW/kvar,
+/// or MW/Mvar for `opt = 1`; each `× 0.003`). Used by `Show busflow`'s seq-powers
+/// section (called for the single terminal `j` `CheckBusReference` matched). The
+/// name label is `Pad(EncloseQuotes(FullName), mdnl+2) + IntToStr(j)` (native case,
+/// no space before `j`). Reproduces the Pascal 1-/2-phase `S1` special cases.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_terminal_power_seq(
+    s: &mut String,
+    name: &str,
+    elem: &mut dyn CktElement,
+    sys: &SysCtx,
+    node_v: &[Complex64],
+    j: usize,
+    opt: i32,
+    mdnl: usize,
+) {
+    elem.compute_iterminal(sys, node_v);
+    let ncond = elem.cd().nconds;
+    let nphases = elem.cd().nphases;
+    let cd = elem.cd();
+    let mut vph = [Complex64::ZERO; 3];
+    let mut iph = [Complex64::ZERO; 3];
+    for i in 0..nphases.min(3) {
+        let k = (j - 1) * ncond + i;
+        vph[i] = node_v[cd.node_ref[k]];
+        iph[i] = cd.iterminal[k];
+    }
+    // Sym-comp for >=3 phases; else only the positive sequence (pos-seq model),
+    // zero-seq/neg-seq stay 0 (Pascal V012[1]/V012[3] := CZERO; 0-based [0]/[2]).
+    let (mut v012, mut i012) = ([Complex64::ZERO; 3], [Complex64::ZERO; 3]);
+    if nphases >= 3 {
+        let sc = SymComp::default();
+        sc.phase_to_sym(&iph, &mut i012);
+        sc.phase_to_sym(&vph, &mut v012);
+    } else if sys.positive_sequence {
+        v012[1] = vph[0];
+        i012[1] = iph[0];
+    }
+    s.push_str(&format::pad(&format::enclose_quotes(name), mdnl + 2));
+    s.push_str(&j.to_string());
+    let mva = if opt == 1 { 0.001 } else { 1.0 };
+    // P1/Q1: 1-phase → Vph1·conj(Iph1); 2-phase → +Vph2·conj(Iph3); else pos seq.
+    let s1 = match nphases {
+        1 => vph[0] * iph[0].conj(),
+        2 => vph[0] * iph[0].conj() + vph[1] * iph[2].conj(),
+        _ => v012[1] * i012[1].conj(),
+    } * mva;
+    s.push_str(&format::fixed_w(s1.re * 0.003, 11, 1));
+    s.push_str(&format::fixed_w(s1.im * 0.003, 11, 1));
+    // P2/Q2: neg seq (V012[3]·conj(I012[3]); 0-based [2]).
+    let s2 = v012[2] * i012[2].conj() * mva;
+    s.push_str(&format::fixed_w(s2.re * 0.003, 11, 1));
+    s.push_str(&format::fixed_w(s2.im * 0.003, 11, 1));
+    // P0/Q0: zero seq (V012[1]·conj(I012[1]); 0-based [0]).
+    let s0 = v012[0] * i012[0].conj() * mva;
+    s.push_str(&format::fixed_w(s0.re * 0.003, 8, 1));
+    s.push_str(&format::fixed_w(s0.im * 0.003, 8, 1));
+    s.push('\n');
+}
+
 /// One element's power-flow block for `show_powers_elements` (Pascal `ShowPowers`
 /// case 1 inner body). `is_pd` enables the 1-phase/2-terminal floating special case.
 ///

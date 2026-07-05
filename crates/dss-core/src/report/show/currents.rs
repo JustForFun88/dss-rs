@@ -184,9 +184,95 @@ pub(crate) fn show_currents_elements(
     s
 }
 
-/// One element's terminal-current block (Pascal `WriteTerminalCurrents`).
+/// Pascal `GetI0I1I2(I0, I1, I2, Cmax, Nphases, koff, cBuffer)`: over terminal
+/// conductors `koff..koff+min(3,nphases)` of `iterminal`, the sym-comp magnitudes
+/// `(I0, I1, I2)` and `Cmax` = the max phase magnitude. For `< 3` phases, `I1 =
+/// |first-phase current|` unconditionally (`Cmax = I1`), `I0 = I2 = 0`. Shared by
+/// `Show busflow`'s per-element seq-current section.
+pub(crate) fn get_i0i1i2(
+    iterminal: &[Complex64],
+    koff: usize,
+    nphases: usize,
+) -> (f64, f64, f64, f64) {
+    if nphases >= 3 {
+        let iph = [iterminal[koff], iterminal[koff + 1], iterminal[koff + 2]];
+        let cmax = iph.iter().map(|c| c.norm()).fold(0.0, f64::max);
+        let mut i012 = [Complex64::ZERO; 3];
+        SymComp::default().phase_to_sym(&iph, &mut i012);
+        (i012[0].norm(), i012[1].norm(), i012[2].norm(), cmax)
+    } else {
+        let i1 = iterminal[koff].norm();
+        (0.0, i1, 0.0, i1)
+    }
+}
+
+/// One symmetrical-component current row (Pascal `WriteSeqCurrents`,
+/// `ShowResults.pas:542`): `I1 I2 %I2/I1 I0 %I0/I1 %Normal %Emergency`. `Show
+/// busflow` calls this per matched element+terminal with `norm_amps = emerg_amps =
+/// 0` (so the overload columns are `0.00`); the `-` continuation for `j > 1` is
+/// handled internally. `padded_br_name` is `pad_dots(enclose_quotes(FullName),
+/// mdnl+2)` (native case; uppercased here, matching Pascal `AnsiUpperCase(Name)`).
+/// `is_cap` gates the overload columns off for capacitors.
 #[allow(clippy::too_many_arguments)]
-fn write_terminal_currents(
+pub(crate) fn write_seq_currents(
+    s: &mut String,
+    padded_br_name: &str,
+    i0: f64,
+    i1: f64,
+    i2: f64,
+    cmax: f64,
+    norm_amps: f64,
+    emerg_amps: f64,
+    j: usize,
+    is_cap: bool,
+) {
+    let name = if j == 1 {
+        padded_br_name.to_string()
+    } else {
+        format::pad("   -", padded_br_name.len())
+    };
+    let (i2i1, i0i1) = if i1 > 0.0 {
+        (100.0 * i2 / i1, 100.0 * i0 / i1)
+    } else {
+        (0.0, 0.0)
+    };
+    // Overloads only for non-capacitors and terminal 1.
+    let (inormal, iemerg) = if !is_cap && j == 1 {
+        (
+            if norm_amps > 0.0 {
+                cmax / norm_amps * 100.0
+            } else {
+                0.0
+            },
+            if emerg_amps > 0.0 {
+                cmax / emerg_amps * 100.0
+            } else {
+                0.0
+            },
+        )
+    } else {
+        (0.0, 0.0)
+    };
+    // `'%s %3d  %10.5g   %10.5g %8.2f  %10.5g %8.2f  %8.2f %8.2f'`.
+    s.push_str(&name.to_uppercase());
+    s.push(' ');
+    s.push_str(&format::fixed_w_int(j as i64, 3));
+    s.push_str(&format!(
+        "  {}   {} {}  {} {}  {} {}\n",
+        format::g_w(i1, 10, 5),
+        format::g_w(i2, 10, 5),
+        format::fixed_w(i2i1, 8, 2),
+        format::g_w(i0, 10, 5),
+        format::fixed_w(i0i1, 8, 2),
+        format::fixed_w(inormal, 8, 2),
+        format::fixed_w(iemerg, 8, 2),
+    ));
+}
+
+/// One element's terminal-current block (Pascal `WriteTerminalCurrents`). Shared by
+/// [`show_currents_elements`] and `Show busflow` (the per-bus branch-current form).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_terminal_currents(
     s: &mut String,
     ckt: &Circuit,
     name: &str,

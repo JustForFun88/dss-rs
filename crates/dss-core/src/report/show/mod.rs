@@ -8,6 +8,7 @@
 //! commas (PHASE8_PLAN §2.3), so the exact padding is not gate-load-bearing — but
 //! the field structure and the number formats are ported faithfully.
 
+mod bus_powers;
 mod buses;
 mod controlled;
 mod currents;
@@ -26,6 +27,7 @@ mod unserved;
 mod voltages;
 mod yprim;
 
+pub(crate) use bus_powers::show_bus_powers;
 pub(crate) use buses::show_buses;
 pub(crate) use controlled::show_controlled;
 pub(crate) use currents::{show_currents, show_currents_elements};
