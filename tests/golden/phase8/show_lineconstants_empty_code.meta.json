@@ -1,0 +1,10 @@
+{
+  "report": "lineconstants",
+  "fixture": "lcempty",
+  "suffix": "LineConstantsCode.dss",
+  "deck": [
+    "clear",
+    "new circuit.lcempty basekv=12.47 bus1=sourcebus",
+    "new wiredata.acsr336 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in"
+  ]
+}

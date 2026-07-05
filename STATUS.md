@@ -400,7 +400,16 @@ Phase-8 detail is in **§1f**; the current frontier:
   lowercase-`e` exponent (C printf) but FPC `Format('%g')` emits **uppercase `E`**
   (`1.19304E-6`) — fixed in `format::g` (+ `g_w`/`g_left_w` routed through it); the
   value-parsing gate was case-blind so it hid until now. golden_phase8 **105→106**.
-  No corpus migration (`Show` never blocked a deck). **next = continue WP8.4**
+  No corpus migration (`Show` never blocked a deck). **audit-tests follow-up (2
+  coverage goldens):** the step-14 golden used only default args + a non-empty
+  geometry list → two branches unexercised: (1) **`show_lineconstants_mi250`**
+  (`show lineconstants 60 mi 250`) pins the `freq`/`units`/`rho` arg-parse arms AND
+  that `rho=250` (earth-return) + `units=mi` propagate into the Carson recompute
+  (values, `ohms per mi` labels, `To_per_Meter` velocity) — also **proves the
+  `set_rho_earth`-then-recompute path is correct** (a fresh geometry's `fline_data`
+  is built at parse, so the rho takes effect; the suspected rho-drop is a non-issue),
+  byte-exact on both files; (2) **`show_lineconstants_empty`** (a geometry-less deck)
+  pins the header-only path. golden_phase8 **106→108**. **next = continue WP8.4**
   (`busflow` `ShowBusPowers`; the CktTree pair `Isolated`/`Topology` — need
   `GetTopology`/`GetIsolatedSubArea` builders; then finalize: `autoadded`/`QueryLog`
   no-ops + the `#24700` unknown-keyword error).
@@ -483,7 +492,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 106,
+                            # golden_phase7_protection 1, golden_phase8 108,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

@@ -1586,28 +1586,55 @@ fn show_controlled_multi_matches_oracle() {
     run_deck_show_exact("show_controlled_multi");
 }
 
-/// `Show LineConstants` (Pascal `ShowLineConstants`) on a synthesized geometry deck:
-/// `g3` (3-conductor overhead line, order 3) exercises the R/jX/susceptance/L/C
-/// matrices AND the equivalent symmetrical-component summary (Z1/Z0, C1/C0, surge
-/// impedance, propagation velocity); `g1` (1-conductor, order 1) the non-order-3
-/// branch (no seq block). Verifies **both** produced files byte-exact: the report
+/// Drive one `Show LineConstants` case: replay `<stem>`'s deck, issue its `show
+/// lineconstants <args>`, and verify **both** produced files byte-exact — the report
 /// `<case>_LineConstants.txt` (via the deck harness) and the `LineConstantsCode.dss`
-/// LineCode script (no `<case>_` prefix, read directly from the scratch dir). The
-/// Carson recompute reuses the WP7.1 `LineGeometryObj` engine (bit-exact to the
-/// oracle bar a proven transcendental libm floor), and every `%.6g` cell lands
-/// byte-identical (no 6-sig straddle on this geometry).
-#[test]
-fn show_lineconstants_matches_oracle() {
-    let (oracle_main, rust_main, scratch) = produce_deck_show("show_lineconstants");
-    assert_show_bytes_eq(&oracle_main, &rust_main, "show_lineconstants");
-    // The second file: `LineConstantsCode.dss` (same dir, NO `<case>_` prefix).
+/// LineCode script (no `<case>_` prefix, read directly from the scratch dir, golden
+/// `<stem>_code.txt`).
+fn run_lineconstants_show(stem: &str) {
+    let (oracle_main, rust_main, scratch) = produce_deck_show(stem);
+    assert_show_bytes_eq(&oracle_main, &rust_main, stem);
     let code_path = scratch.join("LineConstantsCode.dss");
     let rust_code = std::fs::read_to_string(&code_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", code_path.display()));
-    let oracle_code = std::fs::read_to_string(phase8_dir().join("show_lineconstants_code.txt"))
-        .expect("read show_lineconstants_code golden");
-    assert_show_bytes_eq(&oracle_code, &rust_code, "show_lineconstants_code");
+    let oracle_code = std::fs::read_to_string(phase8_dir().join(format!("{stem}_code.txt")))
+        .unwrap_or_else(|e| panic!("read {stem}_code golden: {e}"));
+    assert_show_bytes_eq(&oracle_code, &rust_code, &format!("{stem}_code"));
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `Show LineConstants` (Pascal `ShowLineConstants`) on a synthesized geometry deck
+/// with **default** args (freq=60/kft/rho=100): `g3` (3-conductor overhead, order 3)
+/// exercises the R/jX/susceptance/L/C matrices AND the equivalent symmetrical-
+/// component summary (Z1/Z0, C1/C0, surge impedance, propagation velocity); `g1`
+/// (1-conductor, order 1) the non-order-3 branch (no seq block). The Carson recompute
+/// reuses the WP7.1 `LineGeometryObj` engine (bit-exact to the oracle bar a proven
+/// transcendental libm floor), and every `%.6g` cell lands byte-identical (no 6-sig
+/// straddle on this geometry). Both files byte-exact.
+#[test]
+fn show_lineconstants_matches_oracle() {
+    run_lineconstants_show("show_lineconstants");
+}
+
+/// `Show LineConstants 60 mi 250` (audit-recommended non-default coverage): pins the
+/// `freq`/`units`/`rho` arg-parse arms AND that `rho=250` (earth-return) + `units=mi`
+/// propagate into the Carson recompute — the matrix values, the `ohms per mi` labels,
+/// and the `To_per_Meter(mi)` velocity all differ from the default case. Guards the
+/// `set_rho_earth`-then-recompute path (a fresh geometry's `fline_data` is built at
+/// parse, so the rho takes effect). Both files byte-exact.
+#[test]
+fn show_lineconstants_mi250_matches_oracle() {
+    run_lineconstants_show("show_lineconstants_mi250");
+}
+
+/// `Show LineConstants` on a **geometry-less** deck (circuit + WireData, no
+/// `LineGeometry`): both files are header-only (audit-tests step-14 follow-up). Pins
+/// the empty-geometry-list path — the `LineConstants.txt` `LINE CONSTANTS`/Frequency/
+/// Earth-Model header + trailing blank line, and the `LineConstantsCode.dss` three
+/// `!---` header lines — with no per-geometry body. Byte-exact on both files.
+#[test]
+fn show_lineconstants_empty_matches_oracle() {
+    run_lineconstants_show("show_lineconstants_empty");
 }
 
 /// The `@lastshowfile` split (Pascal `DoShowCmd`): `ShowY`/`ShowkVBaseMismatch`
