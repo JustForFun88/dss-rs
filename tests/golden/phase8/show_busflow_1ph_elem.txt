@@ -1,0 +1,68 @@
+
+  Bus   (node ref)  Node       V (kV)    Angle    p.u.   Base kV
+
+611 ........ 3       2.3077 /_  115.7   0.96084     4.160
+
+CIRCUIT ELEMENT CURRENTS
+
+(Currents into element from indicated bus)
+
+Power Delivery Elements
+
+  Bus         Phase    Magnitude, A     Angle      (Real)   +j  (Imag)
+
+ELEMENT = "Capacitor.cap2"
+611              3           40.065 /_ -154.3 =     -36.09 +j   -17.399
+------------
+611              0           40.065 /_   25.7 =      36.09 +j    17.399
+
+
+ELEMENT = "Line.684611"
+684              3           71.153 /_  121.2 =    -36.824 +j    60.883
+------------
+611              3           71.153 /_  -58.8 =     36.824 +j   -60.883
+
+
+= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =
+
+Power Conversion Elements
+
+  Bus         Phase    Magnitude, A     Angle      (Real)   +j  (Imag)
+
+ELEMENT = "Load.611"
+611              3           78.285 /_   90.5 =   -0.73373 +j    78.281
+611              0           78.285 /_  -89.5 =    0.73373 +j   -78.281
+
+
+
+CIRCUIT ELEMENT POWER FLOW
+
+(Power Flow into element from indicated Bus)
+
+  Bus       Phase     kW     +j   kvar           kVA           PF
+
+ELEMENT = "Capacitor.cap2"
+611             3          0 +j    -92.459        92.459      1.0000
+ TERMINAL TOTAL            0 +j    -92.459        92.459      1.0000
+------------
+ELEMENT = "Capacitor.cap2"
+611             0          0 +j          0             0      1.0000
+ TERMINAL TOTAL            0 +j          0             0      1.0000
+ELEMENT = "Line.684611"
+611             3    -163.46 +j     15.534         164.2     -0.9955
+ TERMINAL TOTAL      -163.46 +j     15.534         164.2     -0.9955
+------------
+ELEMENT = "Line.684611"
+684             3     163.85 +j    -15.147        164.55     -0.9958
+ TERMINAL TOTAL       163.85 +j    -15.147        164.55     -0.9958
+= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =
+
+Power Conversion Elements
+
+  Bus         Phase     kW   +j  kvar         kVA         PF
+
+ELEMENT = "Load.611"
+611             3     163.46 +j     76.925        180.66      0.9048
+611             0          0 +j          0             0      1.0000
+ TERMINAL TOTAL       163.46 +j     76.925        180.66      0.9048
+

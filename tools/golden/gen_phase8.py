@@ -1588,6 +1588,15 @@ SHOW_BUSFLOW_REPORTS = [
     # fully byte-exact bar the capacitor's ~0-kW / PF faer-vs-KLU residual.
     ("busflow 675", "675_seq_kVA.txt", "show_busflow"),
     ("busflow 675 e", "675_elem_kVA.txt", "show_busflow_elem"),
+    # MVA form (audit-tests step-15 follow-up): the ×0.001 scaling + MW/Mvar/MVA
+    # headers — the only MVA coverage in the whole `Show` power path.
+    ("busflow 675 m", "675_seq_MVA.txt", "show_busflow_mva"),
+    ("busflow 675 m e", "675_elem_MVA.txt", "show_busflow_mva_elem"),
+    # 1-phase bus 611 (audit-tests follow-up): the `<3`-phase seq path
+    # (WriteSeqVoltages<3 nodes → V2/V0=0, WriteTerminalPowerSeq S1). Bus 611 has a
+    # 1-phase load + Capacitor.Cap2.
+    ("busflow 611", "611_seq_kVA.txt", "show_busflow_1ph"),
+    ("busflow 611 e", "611_elem_kVA.txt", "show_busflow_1ph_elem"),
 ]
 
 
