@@ -112,7 +112,14 @@ impl Reactor {
                 work.set(i, j, value);
                 work.set(i + nphases, j + nphases, value);
                 work.set(i, j + nphases, -value);
-                work.set(j + nphases, i, -value);
+                // Pascal `YPrimTemp[i + Fnphases, j] := -Value` (`Reactor.pas:936`,
+                // the SpecType-3/4 stamp) — the bottom-left block is `(i+n, j)`, NOT
+                // `(j+n, i)`. For a **symmetric** series Y (R+X, R/X matrices) the two
+                // coincide; the **asymmetric** sym-components Y (`SpecType=4`, Z1≠Z2 —
+                // the induction-motor model) is transposed by `(j+n, i)`, corrupting
+                // the bottom-left YPrim block (invisible to a balanced solve, wrong
+                // under unbalance). Pinned by `dump_reactor_symcomp`.
+                work.set(i + nphases, j, -value);
             }
         }
     }

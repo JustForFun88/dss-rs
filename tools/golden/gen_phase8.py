@@ -1844,23 +1844,64 @@ DUMP_R_DECK = [
     "new load.ld1 bus1=b4 kv=12.47 kw=100",
     "solve",
 ]
+
+# Symmetrical-components reactor (`SpecType=4`) — the corpus `REACTORTest.DSS`
+# `KerstingMotor` shape (WP8.5 audit-tests #1): NON-zero `Z1/Z2/Z0` through the
+# `%-.8g` complex path the r1/rz fixtures never touch (both had `Z*=[0,0]`).
+# Dumped single-object (`reactor.rk debug`) — also covers the non-glob form.
+DUMP_SC_DECK = [
+    "new circuit.dumpsc basekv=12.47 bus1=src",
+    "new transformer.t1 xhl=2 kvas=25 buses=[src lb] kvs=[12.47 0.24] conns=[y y]",
+    "new reactor.rk phases=3 bus1=lb.1.2.3 bus2=lb2.4.4.4 "
+    "Z1=[1.9775 1.3431] Z2=[0.1203 0.3623] Z0=[1 0]",
+    "set voltagebases=[12.47 0.24]",
+    "calcv",
+    "solve",
+]
+
+# A **disabled** reactor (WP8.5 audit-code Finding 1 + audit-tests #4): `dump
+# reactor.* debug` walks enabled AND disabled objects — the disabled one prints
+# `! DISABLED`, `NodeRef = "nil"` (bus refs resolve only for enabled elements) and
+# `Terminal Bus Ref: [-1 …]` (Pascal `Terminal.BusRef = -1` "not set", NOT 0).
+DUMP_DIS_DECK = [
+    "new circuit.dumpdis basekv=12.47 bus1=src",
+    "new reactor.ren bus1=b1 bus2=b2 phases=3 R=1.1 X=2.2",
+    "new reactor.rdis bus1=b3 bus2=b4 phases=3 R=2.2 X=3.3 enabled=no",
+    "solve",
+]
+
+# The generic base (no Pascal `DumpProperties` override): LoadShape is a plain
+# `TDSSObject` (header + props, no `! ENABLED`) whose port property names already
+# carry the oracle display case, so it pins the plain-object generic path for free
+# (WP8.5 audit-tests #2). The PC / non-PC-CktElement generic paths need those
+# classes' names corrected first (tracked for the systematic name pass).
+DUMP_LS_DECK = [
+    "new circuit.dumpls basekv=12.47 bus1=src",
+    "new loadshape.ls1 npts=3 interval=1 mult=(1 2 3)",
+]
+
+# (stem, deck, report). Each captures `<case>_PropertyDump.txt` (Dump sets
+# GlobalResult), read back by the Rust golden via `dss.last_result_file()`.
 DUMP_DECKS = [
-    ("dump_reactor", "reactor.*"),
-    ("dump_reactor_debug", "reactor.* debug"),
+    ("dump_reactor", DUMP_R_DECK, "reactor.*"),
+    ("dump_reactor_debug", DUMP_R_DECK, "reactor.* debug"),
+    ("dump_reactor_symcomp", DUMP_SC_DECK, "reactor.rk debug"),
+    ("dump_reactor_disabled", DUMP_DIS_DECK, "reactor.* debug"),
+    ("dump_loadshape", DUMP_LS_DECK, "loadshape.ls1"),
 ]
 
 
 def gen_dump_decks(d) -> None:
-    """Capture the oracle's `Dump reactor.*` (+ `debug`) on the synthesized reactor
-    deck. `Dump` sets `GlobalResult` to the produced `<case>_PropertyDump.txt`, so
-    the Rust golden (`golden_phase8.rs`) reads `dss.last_result_file()`."""
+    """Capture the oracle's `Dump` on the synthesized decks. `Dump` sets
+    `GlobalResult` to the produced `<case>_PropertyDump.txt`, so the Rust golden
+    (`golden_phase8.rs`) reads `dss.last_result_file()`."""
     d.AllowEditor = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for stem, report in DUMP_DECKS:
+    for stem, deck, report in DUMP_DECKS:
         tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
         try:
             d.Text.Command = "clear"
-            for c in DUMP_R_DECK:
+            for c in deck:
                 d.Text.Command = c
             case = d.ActiveCircuit.Name
             d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
@@ -1872,7 +1913,7 @@ def gen_dump_decks(d) -> None:
                 "report": report,
                 "fixture": case,
                 "suffix": "PropertyDump.txt",
-                "deck": DUMP_R_DECK,
+                "deck": deck,
             }
             (OUT_DIR / f"{stem}.meta.json").write_text(
                 json.dumps(meta, indent=2) + "\n", newline="\n"

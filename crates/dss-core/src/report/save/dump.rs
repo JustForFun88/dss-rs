@@ -109,15 +109,17 @@ pub(crate) fn cktelem_complete(out: &mut String, cd: &CktElementData) {
     out.push_str("! Terminal Bus Ref: [");
     for t in 0..cd.nterms {
         // Pascal `Terminals[t].BusRef` is 1-based into `BusList`; our `bus_ref` is
-        // the 0-based `ckt.buses` index, so +1 to match (an unset terminal — MAX —
-        // prints 0, mirroring a NIL/0 Pascal ref).
-        let br = cd
+        // the 0-based `ckt.buses` index, so +1 to match. An **unset** terminal
+        // (`bus_ref == MAX`, e.g. a disabled element — `ReprocessBusDefs` resolves
+        // refs only for enabled elements) is Pascal `BusRef = -1` (`Terminal.pas:41`,
+        // "signify not set"), which `IntToStr` renders `-1` — NOT 0.
+        let br: i64 = cd
             .terminals
             .get(t)
             .map(|term| term.bus_ref)
             .filter(|&b| b != usize::MAX)
-            .map(|b| b + 1)
-            .unwrap_or(0);
+            .map(|b| b as i64 + 1)
+            .unwrap_or(-1);
         for _ in 0..cd.nconds {
             out.push_str(&format!("{br} "));
         }

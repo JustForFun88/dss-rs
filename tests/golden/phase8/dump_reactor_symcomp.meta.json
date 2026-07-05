@@ -1,0 +1,13 @@
+{
+  "report": "reactor.rk debug",
+  "fixture": "dumpsc",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpsc basekv=12.47 bus1=src",
+    "new transformer.t1 xhl=2 kvas=25 buses=[src lb] kvs=[12.47 0.24] conns=[y y]",
+    "new reactor.rk phases=3 bus1=lb.1.2.3 bus2=lb2.4.4.4 Z1=[1.9775 1.3431] Z2=[0.1203 0.3623] Z0=[1 0]",
+    "set voltagebases=[12.47 0.24]",
+    "calcv",
+    "solve"
+  ]
+}

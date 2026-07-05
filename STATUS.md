@@ -10,18 +10,23 @@
 Last updated: 2026-07-05 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
 gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)
-IN PROGRESS — Dump step 1 gate-green** (single-object `Dump <class>.[name|*]
-[debug]`: the `report/save/dump.rs` generic base — the 3-kind `TDSSObject`/
-`TDSSCktElement`/`TPCElement` chain — + the **Reactor** override + `#903`/`#256`
-errors; the 13 other overrides + bare-`dump`/`solution`/aux forms are TODO(WP8)
-steps 2–3). **Two byte-fidelity gaps found + fixed** (both latent, surfaced by the
-first byte-exact property dump): property names now carry the oracle **display
-case** (`Bus1`/`kV`/`NormAmps`, Reactor done; matching stays case-insensitive), and
-`float_to_str` now emits FPC `FloatToStr`'s **15-sig-fig** general form (was Rust's
-17-digit shortest-round-trip — `props_roundtrip`'s numeric compare never caught it).
-golden_phase8 **125→127**; lib **744→745**. REACTORTest unblocked (pending the
-Dump-completion classify pass, PHASE8_PLAN §WP8.5 step 4). **next = Dump step 2**
-(Transformer/Line/LineCode/LineGeometry/XfmrCode per-winding/matrix overrides).
+IN PROGRESS — Dump step 1 COMPLETE + audited, gate-green** (single-object
+`Dump <class>.[name|*] [debug]`: the `report/save/dump.rs` generic base — the
+3-kind `TDSSObject`/`TDSSCktElement`/`TPCElement` chain — + the **Reactor** override
++ `#903`/`#256` errors; the 13 other overrides + bare-`dump`/`solution`/aux forms
+are TODO(WP8) steps 2–3). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
+Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
+`FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by
+`props_roundtrip`'s numeric compare); **audit** then found (Finding 1) `Terminal
+Bus Ref` = `0` vs Pascal `-1` for an unset terminal, and — via the sym-components
+coverage golden — a **latent Phase-4 reactor bug**: `stamp_series` transposed the
+series-stamp bottom-left block (`(j+n,i)` vs Pascal `(i+n,j)`), harmless for
+symmetric reactor Y but corrupting the asymmetric induction-motor (`Z1≠Z2`) YPrim /
+an unbalanced solve — both fixed, full suite green. golden_phase8 **125→130**; lib
+**744→747**. REACTORTest unblocked (migration deferred to Dump completion). **next =
+Dump step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode per-winding/matrix
+overrides).
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
@@ -574,9 +579,33 @@ frontier:
   (full workspace suite green, 745 lib tests, so no numeric-gate regression; the
   scientific-exponent FPC form is a scoped `TODO(compat)`, unreached by in-scope
   dumps). REACTORTest unblocked (converges clean on Rust) — migration deferred to
-  the Dump-completion classify pass (PHASE8_PLAN §WP8.5 step 4). **next = Dump step
-  2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original port map
-  below (still current for the remaining steps):
+  the Dump-completion classify pass (PHASE8_PLAN §WP8.5 step 4).
+  **Both audits ran (`5550cf5`) — one real Dump byte bug + ONE latent Phase-4
+  reactor bug found, both fixed:** **(audit-code Finding 1, Major)** `Terminal Bus
+  Ref` printed `0` for an unresolved terminal (disabled element), but Pascal
+  `Terminal.BusRef = -1` "not set" (`Terminal.pas:41`) renders `-1` — fixed +
+  pinned by `dump_reactor_disabled`. **(audit-tests #1 → a real latent bug)** the
+  coverage golden for a symmetrical-components reactor (`SpecType=4`, Z1≠Z2 — the
+  induction-motor `KerstingMotor`) exposed that `reactor/solve.rs::stamp_series`
+  wrote the two-terminal series stamp's **bottom-left block at `(j+n, i)` instead
+  of Pascal's `(i+n, j)`** (`Reactor.pas:936`) — invisible for every *symmetric*
+  reactor Y (R+X / matrices, all prior cases) but **transposes the asymmetric
+  sym-components YPrim**, corrupting an *unbalanced* solve (a balanced solve is
+  unaffected — verified Rust≡oracle node V). Fixed; full suite green (no
+  symmetric-reactor regression). Coverage added for every audit gap: goldens
+  `dump_reactor_symcomp` (nonzero Z1/Z2/Z0 + the single-object form),
+  `dump_reactor_disabled` (`! DISABLED` + the `-1` fix), `dump_loadshape` (the
+  generic plain-`TDSSObject` path — LoadShape names already match the oracle) +
+  unit tests `float_to_str_is_15_sig_figs` (pins the 15-sig fix directly) and
+  `dump_generic_base_ordering` (the PC `! VARIABLES`/props-after and non-PC
+  props-before-`! ENABLED` orderings, oracle-probe-confirmed). Tracked (not fixed,
+  low): the `#903` message drops Pascal's `CRLF+CmdString` suffix (consistent with
+  the existing `do_select_cmd` #903 convention); `#256` doesn't create an empty
+  `PropertyDump.txt` (unobservable — `GlobalResult` unchanged); the systematic
+  property display-name pass (needed for step-3 bare-`dump`; done class-by-class as
+  Dump goldens land). golden_phase8 **127→130**; lib **745→747**. **next = Dump
+  step 2** (Transformer/Line/LineCode/LineGeometry/XfmrCode overrides). Original
+  port map below (still current for the remaining steps):
 - **WP8.5 (Save/Dump) — exploration/port map.** The port map (from a
   scoped explore pass) so the next session resumes without re-reading:
   - **Reuse (the oracle-validated primitive):** `ClassProps::get_value(obj, idx,
@@ -694,10 +723,10 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 745, golden_feeders 1,
+cargo test --workspace      # dss-core lib 747, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 127,
+                            # golden_phase7_protection 1, golden_phase8 130,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

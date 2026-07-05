@@ -408,4 +408,22 @@ mod tests {
         assert_eq!(float_to_str_ex(f64::NAN), "----");
         assert_eq!(float_to_str_ex(0.5), "0.5");
     }
+
+    /// FPC `FloatToStr` = `ffGeneral`/15 significant digits, NOT Rust's shortest
+    /// round-trip (`{}`, up to 17 digits). Directly pins the WP8.5 fix (else only
+    /// the `dump_reactor` golden gates it). Each value's shortest form needs ≥16
+    /// digits; `%.15g` rounds to 15 (the `Dump`/`Save` byte-fidelity contract).
+    #[test]
+    fn float_to_str_is_15_sig_figs() {
+        // 4.6299139469897817… — the reactor NormAmps: shortest `{}` is 16 digits.
+        assert_eq!(float_to_str(4.629913946989782), "4.62991394698978");
+        // 1/3: shortest is 0.3333333333333333 (16), FloatToStr → 15 sig.
+        assert_eq!(float_to_str(1.0 / 3.0), "0.333333333333333");
+        // 2/3 rounds the 15th digit up.
+        assert_eq!(float_to_str(2.0 / 3.0), "0.666666666666667");
+        // Integers + short decimals are unaffected (trailing zeros stripped).
+        assert_eq!(float_to_str(60.0), "60");
+        assert_eq!(float_to_str(12.47), "12.47");
+        assert_eq!(float_to_str(0.0), "0");
+    }
 }
