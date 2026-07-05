@@ -1,0 +1,18 @@
+! GAPS deck: SolveMode=AutoAdd (Pascal TAutoAdd.Solve) — deterministic capacity
+! search: for each bus in AutoBusList a test generator (genkw/genpf) is placed,
+! solved, and scored by weighted loss+UE improvement; the winner is permanently
+! added. Requires an EnergyMeter for the EEN/UE registers. Writes AutoAddLog.
+Clear
+New Circuit.gaps_aa basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Line.l3 bus1=b2 bus2=b3 phases=3 r1=0.40 x1=1.00 r0=1.1 x0=2.9 c1=3.0 c0=1.5 length=1.0 units=km
+New Load.ld1 bus1=b2 phases=3 kv=12.47 kw=700 pf=0.95 model=1
+New Load.ld2 bus1=b3 phases=3 kv=12.47 kw=500 pf=0.92 model=1
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set addtype=generator genkw=300 genpf=1.0
+Set autobuslist=(b1, b2, b3)
+Set mode=AutoAdd
+Solve

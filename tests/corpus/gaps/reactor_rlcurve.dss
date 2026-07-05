@@ -1,0 +1,17 @@
+! GAPS deck: Reactor RCurve/LCurve (frequency-dependent R and L via XYcurve) —
+! deterministic. The curves only bite in the harmonic CalcYPrim rebuild, so the
+! gate is a harmonics solve: per-harmonic voltages/currents through the reactor.
+Clear
+New Circuit.gaps_rlc basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New XYcurve.rvsf npts=4 xarray=(60 180 300 420) yarray=(1.0 1.4 2.1 3.0)
+New XYcurve.lvsf npts=4 xarray=(60 180 300 420) yarray=(1.0 0.95 0.88 0.80)
+New Spectrum.h5 numharm=3 harmonic=(1 5 7) %mag=(100 8 5) angle=(0 0 0)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Reactor.rx bus1=b1 bus2=b2 phases=3 r=0.5 x=6.0 rcurve=rvsf lcurve=lvsf
+New Load.ld1 bus1=b2 phases=3 kv=12.47 kw=600 pf=0.92 model=1 spectrum=h5
+New Monitor.m_rx element=Reactor.rx terminal=1 mode=0
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve
+Set mode=harmonics
+Solve
