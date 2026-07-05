@@ -1731,17 +1731,35 @@ fn show_unknown_and_deferred_keywords() {
         dss.errors()
     );
 
-    // The deferred keywords must NOT error (silent no-ops).
+    // The deferred keywords must NOT error (silent headless no-ops).
     let n = dss.errors().len();
     dss.command("show autoadded");
     dss.command("show querylog");
-    dss.command("show deltaV");
     assert_eq!(
         dss.errors().len(),
         n,
         "deferred keywords must stay silent no-ops: {:?}",
         &dss.errors()[n..]
     );
+}
+
+/// `Show DeltaV` (Pascal `ShowDeltaV` + `WriteElementDeltaVoltages`): the voltage across
+/// each enabled 2-terminal element (Sources/PD/PC), per conductor `NodeV[term1] −
+/// NodeV[term2]`. On solved IEEE13 the delta-primary `Transformer.SUB` writes 3 rows
+/// (the port's node_ref layout now resolves both terminals' buses — the step-4
+/// deferral is resolved). Values are the same solved `node_v` the voltage goldens
+/// pin, so exact equality.
+#[test]
+fn show_deltav_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_feeder_show("show_deltav", &policy);
 }
 
 /// `Show busflow 675 e` (Pascal `ShowBusPowers` code 1): the element form — node

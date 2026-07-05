@@ -22,10 +22,12 @@ step 15: busflow (`ShowBusPowers` seq+elem, reusing the extracted per-bus/
 per-element voltage/current/power helpers) + **step 16: Isolated/Topology** (the
 circuit-wide CktTree pair, over the new `solution/topology.rs` `GetTopology`/
 `GetIsolatedSubArea` builder) + dispatcher; **~32 `Show` reports ported**). **All
-real `Show` reports are now ported.** Remaining: `autoadded`/`QueryLog` (headless
-FireOffEditor no-ops) + `deltaV` (deferred) — still *silent* no-ops, `TODO(WP8)`; and
-the `#24700` unknown-keyword error lands in the WP8.4-finalize step. Full Phase-8
-detail is in **§1f**; the current frontier:
+real `Show` reports are now ported** (incl. `deltaV` — the step-4 delta-winding
+node_ref deferral is **resolved**: later Phase-7 transformer work fixed the layout,
+so `Show DeltaV` now writes the `Transformer.SUB` rows the oracle does). Remaining
+`Show` no-ops: only `autoadded`/`QueryLog` (headless FireOffEditor); the `#24700`
+unknown-keyword error is ported. Full Phase-8 detail is in **§1f**; the current
+frontier:
 
 - **WP8.1 COMPLETE** (dispatch skeleton + output-path machinery + `Export Counts`
   + the `compare_export` golden harness).
@@ -515,9 +517,19 @@ detail is in **§1f**; the current frontier:
   replacing the blanket `_ => {}`. Safe: all 21 distinct corpus `Show` keywords (incl.
   the ambiguous `v`/`y`/`f`/`mon`) map to ported arms (verified — corpus_live stays
   green). New `show_unknown_and_deferred_keywords` unit test. golden_phase8 **→122**.
-  **next = the step-16 audit-code follow-up** (two ShowIsolated Major bugs — the
-  missing `Enabled` sub-area filter + the missing `ReprocessBusDefs`) + the deltaV
-  resolution + the corpus classify/migrate pass.
+- **WP8.4 finalize — `Show DeltaV` (the last deferred report), gate-green.**
+  `ShowDeltaV` + `WriteElementDeltaVoltages` (`ShowResults.pas:3822`/`339`, arm 31,
+  in the solve-guard set): the voltage across each enabled 2-terminal element
+  (Sources/PD/PC), per conductor `NodeV[term1] − NodeV[term2]` — magnitude / percent
+  (0 when the terminals' kVBase differ, e.g. a transformer) / base-kV / angle
+  (`%12.5g`/`%6.1f`). New `report/show/delta_v.rs`. **The step-4 deferral is
+  resolved**: the `NodeRef[i+NCond]` cross-terminal read now resolves both terminals'
+  buses for the delta-primary `Transformer.SUB` (3 rows, matching the oracle) — later
+  Phase-7 transformer node_ref work fixed the layout that produced 0 rows at step 4.
+  golden `show_deltav` on solved IEEE13 (exact equality — same solved `node_v` the
+  voltage goldens pin). golden_phase8 **→125**. **next = the corpus classify/migrate
+  pass** (Show was never a blocker, so likely a no-op — refresh + confirm), then the
+  STATUS full sync + WP8.4 close.
 - **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
   `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
   their oracle captures (a temporary harness audit mode collecting max deviations
@@ -597,7 +609,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace      # dss-core lib 744, golden_feeders 1,
                             # golden_feeders_controls 4, golden_phase5 1,
                             # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 124,
+                            # golden_phase7_protection 1, golden_phase8 125,
                             # golden_checkpoints 1, golden_ieee8500 1,
                             # golden_reliability 1, golden_allocation 1,
                             # golden_gendispatcher 1, golden_autoadd_reduce 1,

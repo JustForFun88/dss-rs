@@ -549,6 +549,9 @@ SHOW_REPORTS = [
     # block alone (proves the family-header logic; the value/generator branches are
     # exercised by the synthesized `gen_show_kvbasemismatch`).
     ("kvbasemismatch", "kVBaseMismatch.txt", "show_kvbasemismatch"),
+    # `Show DeltaV` (`ShowDeltaV`): the voltage across each enabled 2-terminal element
+    # (per conductor `NodeV[term1] - NodeV[term2]`); `Transformer.SUB` etc.
+    ("deltaV", "DeltaV.txt", "show_deltav"),
 ]
 
 

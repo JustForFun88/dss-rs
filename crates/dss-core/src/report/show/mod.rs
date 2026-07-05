@@ -12,6 +12,7 @@ mod bus_powers;
 mod buses;
 mod controlled;
 mod currents;
+mod delta_v;
 mod diagnostics;
 mod elements;
 mod fault_study;
@@ -33,6 +34,7 @@ pub(crate) use bus_powers::show_bus_powers;
 pub(crate) use buses::show_buses;
 pub(crate) use controlled::show_controlled;
 pub(crate) use currents::{show_currents, show_currents_elements};
+pub(crate) use delta_v::show_delta_v;
 pub(crate) use diagnostics::{
     show_control_queue, show_convergence, show_event_log, show_kvbase_mismatch, show_mismatch,
     show_ratings, show_result, show_variables,
