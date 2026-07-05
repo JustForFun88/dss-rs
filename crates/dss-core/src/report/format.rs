@@ -10,12 +10,20 @@
 
 use crate::util::fmt_g;
 
-/// Pascal `Format('%.*g', [sig, v])`: `sig` significant digits, the C `%g`
-/// notation rules (see [`fmt_g`]). The field-width / justification prefixes in
-/// the Pascal specs (`%10.6g`, `%-13.11g`, …) only space-pad, which the
-/// comparator trims, so they are not reproduced here.
+/// Pascal `Format('%.*g', [sig, v])`: `sig` significant digits, the `%g` notation
+/// rules (see [`fmt_g`]). The field-width / justification prefixes in the Pascal
+/// specs (`%10.6g`, `%-13.11g`, …) only space-pad, which the comparator trims, so
+/// they are not reproduced here.
+///
+/// Note the one byte-level difference from C `printf`: FPC `Format`'s `%g`/`%e`
+/// conversions emit an **uppercase** `E` exponent (`1.19304E-6`), where C's `%g`
+/// emits lowercase `e`. [`fmt_g`] follows C, so we uppercase the exponent to match
+/// the oracle (only visible in a byte-exact report — the value-parsing gate is
+/// case-blind; surfaced by `Show LineConstants`' scientific susceptance cells).
 pub fn g(v: f64, sig: usize) -> String {
-    fmt_g(v, sig)
+    // `fmt_g` output is a pure number token (digits, `.`, `+`/`-`, `e`), so the
+    // only `e` is the exponent marker — the uppercase swap is unambiguous.
+    fmt_g(v, sig).replace('e', "E")
 }
 
 /// Pascal `Format('%.*f', [decimals, v])`: fixed-point with `decimals`
@@ -40,16 +48,17 @@ pub fn fixed_w_int(v: i64, width: usize) -> String {
 }
 
 /// Pascal `Format('%W.Pg', [v])`: `%g` with `sig` significant digits, right-
-/// justified in field width `width`.
+/// justified in field width `width`. Uppercase-`E` exponent (see [`g`]).
 pub fn g_w(v: f64, width: usize, sig: usize) -> String {
-    let s = fmt_g(v, sig);
+    let s = g(v, sig);
     format!("{s:>width$}")
 }
 
 /// Pascal `Format('%-W.Pg', [v])`: `%g` with `sig` significant digits,
 /// **left**-justified in field width `width` (the `ShowBuses` coordinate columns).
+/// Uppercase-`E` exponent (see [`g`]).
 pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
-    let s = fmt_g(v, sig);
+    let s = g(v, sig);
     format!("{s:<width$}")
 }
 

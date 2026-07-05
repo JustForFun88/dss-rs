@@ -14,6 +14,7 @@ mod currents;
 mod diagnostics;
 mod elements;
 mod fault_study;
+mod line_constants;
 mod losses;
 mod matrix;
 mod meter_zone;
@@ -34,6 +35,7 @@ pub(crate) use diagnostics::{
 };
 pub(crate) use elements::show_elements;
 pub(crate) use fault_study::show_fault_study;
+pub(crate) use line_constants::show_line_constants;
 pub(crate) use losses::show_losses;
 pub(crate) use matrix::show_y;
 pub(crate) use meter_zone::{show_loops, show_meter_zone};
