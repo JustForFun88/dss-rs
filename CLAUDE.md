@@ -12,6 +12,12 @@ authoritative roadmap and encodes binding decisions:
   (0.15.7, backend = dss_capi 0.14.5 — the exact vendored Pascal source).
   Goldens live in `tests/golden/`; regenerate only manually, with the pinned
   versions, via `tools/golden/*.py`.
+- A second, **opt-in** oracle channel drives official EPRI OpenDSS binaries
+  (r3723 / r4088 / r4133) via the AltDSS Oddie bridge — `tools/opendss/`
+  (separate venv, `PIN_OPENDSS.txt`). It never gates commits: divergence
+  **reports** only (`DSS_LIVE_OPENDSS=<rev>` test, `ab_compare.py` A/B diff),
+  for inventorying upstream changes ahead of porting newer engine behavior.
+  See `tools/opendss/README.md`.
 - Later phases may freely refactor earlier code; passing tests are the only contract.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)

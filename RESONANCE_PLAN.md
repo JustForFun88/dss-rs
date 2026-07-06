@@ -187,6 +187,11 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
 - WP-R1 is solver-internal and broadly beneficial (any ill-conditioned system, not only
   harmonics); WP-R2 is opt-in tooling (a resonance/frequency-scan command). WP-R3 is a
   diagnostic. They are independent and can land separately.
+- **Extra reference engines (2026-07-07):** the opt-in official-EPRI-binary oracle
+  (`tools/opendss/`, Oddie bridge) makes r3723/r4088/r4133 available for cross-engine
+  probes — useful in WP-R2/R3 validation to check whether newer upstream OpenDSS changed
+  near-resonance behavior (`ab_compare.py` on the harmonics decks). Reference-only; the
+  acceptance spec stays the analytical values (§4), not any engine.
 - **Testing note:** WP-R1's `rcond` gate means well-conditioned solves are bit-identical
   with refinement on — so the parity↔default differential gate (`DE_PASCALIZE_PLAN` Part
   IV.2) is unaffected on the corpus except at documented ill-conditioned cases, where the

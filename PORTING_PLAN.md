@@ -364,6 +364,17 @@ simulator; P7–P8 → full behavior parity; P9 → 1:1 including exotics.
   full model — full Y, voltages, every element's currents/powers, YPrim,
   injection, discrete state — reusing the checkpoint gate's comparators and
   policy. The `solvable_now` manifest expands toward 100% as the port matures.
+- **Official-EPRI-OpenDSS oracle channel** (`tools/opendss/`, added 2026-07-07;
+  **opt-in only — the mandatory gate and the pinned dss-python oracle are
+  unchanged**): the same `oracle_server.py` protocol and captures driven over
+  vendored official EPRI `OpenDSSDirect.dll` binaries (r3723 = the 0.14.x base,
+  r4088 = the 0.15.x base, r4133 = release 11.0.0.1) through the AltDSS Oddie
+  bridge (`DSS_ORACLE_ENGINE=oddie`; separate venv, `tools/opendss/PIN_OPENDSS.txt`).
+  Two workflows: `corpus_live_opendss` (`DSS_LIVE_OPENDSS=<rev>`, divergence
+  *report* mode — the port is calibrated to dss_capi, which intentionally
+  differs from EPRI upstream) and `tools/opendss/ab_compare.py` (EPRI-vs-EPRI
+  diff = the upstream-change inventory for the future "port newer OpenDSS
+  behavior" work). See `tools/opendss/README.md`.
 - **Unit tests**: inline `#[cfg(test)]` (existing convention); golden values obtained by
   probing the Pascal behavior through dss-python (e.g. a single Line's YPrim entries).
 - **Auto-generated property tests**: every registered class gets default-dump +

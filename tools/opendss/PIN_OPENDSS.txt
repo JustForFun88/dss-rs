@@ -1,0 +1,8 @@
+# Oddie-bridge pin — the OFFICIAL-EPRI-binary oracle env. This is a SEPARATE
+# venv from tools/golden/PIN.txt (dss-python 0.15.7 and 0.16.0b2 cannot coexist
+# in one environment/process). dss-python here is only the bridge (IOddieDSS);
+# the engine under test is the vendored EPRI OpenDSSDirect.dll per revision
+# (tools/opendss/bin/, pinned in revisions.json expect_version).
+python==3.12.x
+dss-python==0.16.0b2
+dss-python-backend==0.15.0b4
