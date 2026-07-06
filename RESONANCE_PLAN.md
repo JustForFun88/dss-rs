@@ -6,6 +6,12 @@
 > from OpenDSS, in the spirit of `PORTING_PLAN.md` §6 (final acceptance) and the
 > post-port cleanup pass. It is **not** a `TODO(compat)` (we are not reproducing an
 > upstream bug — we are hitting a numerical-conditioning limit).
+>
+> **Sequencing (see `PLAN_SEQUENCE.md`):** this plan runs **after `DE_PASCALIZE_PLAN.md`
+> Stage F** (the `oracle-parity` feature split) and **before `MULTITHREADING_PLAN.md`**.
+> Stage F is what lets WP-R1 land cleanly: refinement is **on in the default build** and
+> `#[cfg(feature = "oracle-parity")]`-**off in the parity build**, so every 1:1 oracle
+> gate stays untouched while the product gets the accuracy win.
 
 ## 1. Context
 
@@ -135,8 +141,11 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
      accumulate `b − A·x` with a compensated (Kahan/two-product) complex dot — pure
      Rust, no new dependency, honours `#![forbid(unsafe_code)]`.
   5. **Gate on `rcond` / residual norm** (both already exposed): well-conditioned corpus
-     solves skip refinement entirely → bit-identical to today → oracle-match gate
-     untouched. Off by default during the port; this *is* the post-1:1 divergence.
+     solves skip refinement entirely → bit-identical to today. During the port: off
+     entirely. Post-acceptance: the on/off switch lives in the Stage-F `compat` module —
+     **on in the default build, off under `oracle-parity`** (the parity lane's oracle
+     gates never see it; the default lane pins the improvement with its own
+     analytical-value tests from the Acceptance bullet above).
   **Limit (= §2.3):** rescue needs `u·κ(Y) ≲ 1`, not merely nonsingularity. A truly
   singular `Y` (lossless pole) is hopeless, but so is a *nonsingular* `Y` once it is
   "*badly conditioned w.r.t. the machine precision*" (GVL: "*no improvement may result*"
@@ -170,13 +179,23 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
 
 ## 5. Sequencing & contract
 
-- Land **after** 1:1 acceptance (`PORTING_PLAN.md` §6). Each WP regenerates any goldens
-  it intentionally changes, one at a time, and records the divergence-from-OpenDSS as a
-  deliberate improvement (mirrors the §4.1 `TODO(compat)` cleanup discipline, though this
-  is not itself a `TODO(compat)`).
+- Land **after** 1:1 acceptance (`PORTING_PLAN.md` §6) **and after `DE_PASCALIZE_PLAN.md`
+  Stage F** (position 5 in `PLAN_SEQUENCE.md`, before `MULTITHREADING_PLAN.md`). With the
+  `oracle-parity` split, WPs no longer regenerate parity goldens at all: the divergence
+  lives in the **default lane only** (its self-goldens + the analytical-value acceptance
+  tests), while the parity lane remains byte-stable.
 - WP-R1 is solver-internal and broadly beneficial (any ill-conditioned system, not only
   harmonics); WP-R2 is opt-in tooling (a resonance/frequency-scan command). WP-R3 is a
   diagnostic. They are independent and can land separately.
+- **Testing note:** WP-R1's `rcond` gate means well-conditioned solves are bit-identical
+  with refinement on — so the parity↔default differential gate (`DE_PASCALIZE_PLAN` Part
+  IV.2) is unaffected on the corpus except at documented ill-conditioned cases, where the
+  default lane's analytical-value acceptance tests take over. Iteration counts on refined
+  solves are naturally unpinned (default-lane policy).
+- **Per-WP ritual — same as `PHASE8_PLAN`/`DE_PASCALIZE_PLAN`:** (1) gate green in both
+  lanes + differential job; (2) STATUS.md update + commit; (3) `/audit-code` +
+  `/audit-tests` as fresh parallel agents, findings settled empirically and recorded;
+  (4) STATUS full review; (5) stop and report in Russian.
 
 ## 6. References
 
