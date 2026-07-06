@@ -38,7 +38,8 @@ parity↔default differential job).
 
 Tier vocabulary: **`opus-medium+`** / **`opus-high+`** / **`opus-xhigh`** — meaning "Opus
 at that reasoning effort *or anything stronger*" (a stronger model at equal-or-higher
-effort always qualifies). Every execution plan carries a per-stage tier table
+effort always qualifies). `PHASE8_PLAN` additionally uses **`sonnet-high+`** for its
+deliberately Sonnet-executable porting WPs — same "or stronger" rule. Every execution plan carries a per-stage tier table
 (**exec tier** = who may execute; **audit tier** = the model/effort the spawned
 `/audit-code` + `/audit-tests` agents must run at).
 
@@ -55,15 +56,21 @@ mid-plan — only the user can (`/model` + effort). What IS automatic:
    **«Этот шаг требует <exec tier>. Переключи сессию (/model + reasoning effort) и повтори
    команду.»** — under-tier execution fails safe instead of failing silently.
 
-Tier map at a glance (full tables live in each plan):
+Tier map at a glance (full tables live in each plan; the audit tier always applies to
+**both** spawned auditors, `/audit-code` and `/audit-tests`):
 - **`opus-xhigh`**: DE_PASCALIZE **R1**, **Stage F**, **P15 item 2**; MULTITHREADING
   **M2**; RESONANCE **WP-R2**.
 - **`opus-high+`**: DE_PASCALIZE R2, P10, P15 (rest); MULTITHREADING M3a/M3b/M3d/M4;
-  RESONANCE WP-R1. Audits everywhere are `opus-high+` minimum, `opus-xhigh` on the
-  xhigh-exec stages.
-- **`opus-medium+`**: everything else (R0/R3, Part II, P8/P9/P11–P14, P3, M0/M1/M3c,
-  WP-R3) — mechanical-with-guardrails: named pinning tests, forbidden-move lists, and the
-  "when stuck: leave green, record in STATUS, surface" escape protocol.
+  RESONANCE WP-R1; GAPS **WPG.13** (GFM). Audits everywhere are `opus-high+` minimum,
+  `opus-xhigh` on the xhigh-exec stages.
+- **`opus-medium+`**: everything else in the post-acceptance plans (R0/R3, Part II,
+  P8/P9/P11–P14, P3, M0/M1/M3c, WP-R3) — mechanical-with-guardrails: named pinning
+  tests, forbidden-move lists, and the "when stuck: leave green, record in STATUS,
+  surface" escape protocol.
+- **Porting plans (`PHASE8_PLAN` §0, `GAPS_PLAN` §0-tiers)** carry their own per-WP
+  tables: mostly `sonnet-high+` (deliberately Sonnet-executable, pre-validated decks),
+  with `opus-medium+` on the non-mechanical spots (WP8.5 step 5, WP8.7; the numeric
+  WPGs 4/5/6/9/10/12/15/16) and `opus-high+` on WPG.13.
 
 Supporting documents (not stages — referenced throughout):
 - `CLAUDE.md` — conventions + the green gate (gets its two-lane update at Stage F).

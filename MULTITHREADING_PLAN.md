@@ -27,8 +27,8 @@ judged against both:
 > oracle-divergent.
 
 Anything whose *order* is semantic (control-queue order, registration order, time-step
-sequence; Y stamp/dedup order in the parity lane) stays sequential — see the inventory at
-the end. Never loosen a tolerance to admit a parallel version — in either lane. The full
+sequence; Y stamp/dedup order — shared by **both** lanes, see `DE_PASCALIZE_PLAN` Part
+IV.1) stays sequential — see the inventory at the end. Never loosen a tolerance to admit a parallel version — in either lane. The full
 default-lane drift model (what may move — iteration counts — and what must not — discrete
 states, floor-level continuous accuracy) and the parity↔default differential gate are
 defined once in `DE_PASCALIZE_PLAN.md` Part IV.2 and apply here verbatim.
@@ -255,7 +255,7 @@ parity lane still runs `Par::Seq` (a test that the compat knob is wired).
 
 Monte1/2/3, MonteFault and load-duration modes are currently unported stubs. When they
 arrive, per-scenario independence maps onto either actor fan-out (M2 machinery) or
-`rayon`-over-cloned-`Dss` — decided then. Constraint carried from DE_PASCALIZE Part III:
+`rayon`-over-cloned-`Dss` — decided then. Constraint carried from DE_PASCALIZE Part IV.1:
 RNG state lives on (per-`Dss`) `Solution`; per-scenario seeding must be explicit and
 deterministic so a parallel run equals the sequential run scenario-for-scenario.
 

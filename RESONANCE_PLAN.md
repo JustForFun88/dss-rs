@@ -180,7 +180,7 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
 ## 5. Sequencing & contract
 
 - Land **after** 1:1 acceptance (`PORTING_PLAN.md` §6) **and after `DE_PASCALIZE_PLAN.md`
-  Stage F** (position 5 in `PLAN_SEQUENCE.md`, before `MULTITHREADING_PLAN.md`). With the
+  Stage F** (position 4 in `PLAN_SEQUENCE.md`, before `MULTITHREADING_PLAN.md`). With the
   `oracle-parity` split, WPs no longer regenerate parity goldens at all: the divergence
   lives in the **default lane only** (its self-goldens + the analytical-value acceptance
   tests), while the parity lane remains byte-stable.
