@@ -44,6 +44,12 @@ Every work package is tagged with a stratum:
 
 ## Per-step ritual (every WP/stage, in order, autonomously — the `PHASE8_PLAN` discipline)
 
+0. **Tier check (before touching anything)** — look up this WP's **exec tier** in the
+   difficulty table below and compare against the session (model name is in your system
+   prompt; if the effort level is not visible to you, ask the user to confirm it — always
+   confirm for `opus-xhigh` stages). Below tier → do NOT execute; reply exactly:
+   «Этот шаг требует <exec tier>. Переключи сессию (/model + reasoning effort) и повтори
+   команду.» and stop. (Protocol defined in `PLAN_SEQUENCE.md`.)
 1. **Gate green** — `cargo fmt --all --check` · `cargo clippy --workspace --all-targets
    -- -D warnings` · `cargo test --workspace` (all goldens + the always-on live corpus
    gate). **After Stage F lands: both lanes** (default and `--features oracle-parity`) +
@@ -51,16 +57,80 @@ Every work package is tagged with a stratum:
    matches; a red test blocks the commit.
 2. **Update `STATUS.md`** (frontier + phase record), **commit** (code + STATUS together).
 3. **`/audit-code` + `/audit-tests` in parallel** — two fresh independent agents (never
-   forks), each briefed with the step's commit range, the diff, the relevant plan Part/WP,
-   and the binding rules (stratum [A] = goldens byte-identical / Stage F = lane
-   discipline; the Part IV keep list; no tolerance fudging). Settle every finding
-   empirically; a finding deliberately not fixed is recorded in STATUS, never dropped;
-   re-run the gate, commit.
+   forks), **spawned with an explicit model/effort override matching this WP's audit tier
+   from the table below** (never "whatever the session runs"). Each gets a self-contained
+   brief: the step's commit range, the diff, the relevant plan Part/WP, and the binding
+   rules (stratum [A] = goldens byte-identical / Stage F = lane discipline; the Part IV
+   keep list; no tolerance fudging). Settle every finding empirically; a finding
+   deliberately not fixed is recorded in STATUS, never dropped; re-run the gate, commit.
 4. **`STATUS.md` full review** — sync whatever the step made stale, archive dead weight to
    `docs/phase-records/`; `docs:` commit if anything changed (gate re-run first).
 5. **Only now stop** and report in Russian (code/identifiers/commits/STATUS stay English):
    what landed, audit findings and how they were settled, gate status (per lane once
    Stage F exists), next step.
+
+## Executor guidance (difficulty map, forbidden moves, escape protocol)
+
+This plan is written to be executable by a mid-tier model. Difficulty map — where to slow
+down and where mechanical execution is enough:
+
+| Stage | Exec tier | Audit tier | Executor notes |
+|---|---|---|---|
+| R0, R3, Part II (P1/P2/P5/P6/P7), P3 | opus-medium+ | opus-high+ | compiler-guided; each WP names its pattern and pinning tests — follow them literally |
+| **R1** | **opus-xhigh** | **opus-xhigh** | follow the macro sketch below **literally**; land as two commits (arena types first, ownership flip second). If the macro fights: **hand-writing the 34 match arms behind the same API is the sanctioned fallback** — the macro is a convenience, not a requirement |
+| R2 | opus-high+ | opus-high+ | flip one class/cross-ref cluster at a time; the build must compile between clusters; `pair_mut`-style disjoint borrows, `mem::take` as escape hatch |
+| Part III P8/P9/P11/P12/P13/P14 | opus-medium+ | opus-high+ | bit-neutrality: after each rewritten file, run that WP's named pinning tests; a failing golden means *your* rewrite changed arithmetic |
+| P10 (transformer core) | opus-high+ | opus-high+ | densest index math in the tree; same bit-neutrality invariant |
+| P15 | opus-high+ (**item 2: opus-xhigh**) | opus-high+ (item 2: xhigh) | the dedup-mapping cache + its invalidation is the subtle part; everything else follows the file:line list; checkpoint Y goldens are the bit-exact proof |
+| **Stage F** | **opus-xhigh** | **opus-xhigh** | follow the compat sketch below; the dual-kernel table in Part IV.2 is the complete, closed inventory — do not invent new compat items |
+
+Tier vocabulary and the step-0 refuse protocol: `PLAN_SEQUENCE.md` §Model-tier protocol.
+
+**Forbidden moves (hard rules; violating any one = stop, revert the change, record in STATUS):**
+1. Never regenerate any golden in an [A] stage.
+2. Never loosen any tolerance, anywhere, for any reason.
+3. Never reorder floating-point accumulation "because it's cleaner" — order changes are
+   Stage F's job, behind the feature.
+4. Never write `#[cfg(feature = "oracle-parity")]` outside the `compat` modules.
+5. Never delete a compat kernel or a `TODO(compat)` site outside Stage F.
+6. Never change class registration order or any Part IV.1 semantic order.
+7. Never introduce `Rc`/`RefCell`/`Mutex`/statics (Part V; P7's grep gate enforces it).
+
+**When stuck (escape protocol — do NOT improvise a new design):** if a downcast site
+doesn't fit its category (A–E), a rewrite can't be made bit-neutral, or a borrow fight
+survives `pair_mut`/`mem::take` — leave the old code in place (gate stays green), record
+the site + blocker in `STATUS.md`, finish the WP's remaining sites, and surface the list at
+the stop point for the user to decide.
+
+**R1 macro sketch (the one hard artifact — follow literally):**
+
+```rust
+// obj/arena.rs — ONE class list, in exec/construct.rs registration order (invariant!).
+macro_rules! with_all_classes { ($m:ident) => { $m! {
+    //  variant     field          concrete type
+    (Line,        lines,         Line),
+    (Load,        loads,         Load),
+    (Transformer, transformers,  Transformer),
+    /* … one row per registered class — ALL 34, registration order … */
+} } }
+// ONE consumer macro expands that list into: `enum ElemId`, `struct Elements`,
+// and every impl (ckt_elem/ckt_elem_mut/obj/obj_mut/kind/find/pair_mut) as match arms.
+// Mandatory test: ElemId variant order == construct.rs registration order
+// (assert via a generated `ElemId::CLASS_NAMES` array compared to the registry).
+```
+
+**Stage F compat sketch (the alias pattern — both impls always compiled):**
+
+```rust
+// dss-core/src/compat.rs — the ONLY file in the crate allowed to contain the cfg string.
+pub fn cdiv_fpc_impl(a: Complex64, b: Complex64) -> Complex64 { /* Smith, moved as-is */ }
+pub fn cdiv_std_impl(a: Complex64, b: Complex64) -> Complex64 { a / b }
+#[cfg(feature = "oracle-parity")]      pub use cdiv_fpc_impl as cdiv;
+#[cfg(not(feature = "oracle-parity"))] pub use cdiv_std_impl as cdiv;
+// Same alias pattern for: round_i32, PI, stddev_single_point, SymComp variant,
+// DedupOrder (dss-sparse), the two bug-fix branches, the solver Par/refinement knobs.
+// Unit tests call BOTH `_impl`s directly and assert the documented bound — in any build.
+```
 
 ---
 
@@ -536,12 +606,64 @@ that boundary conversion is by design):
   property semantics: negative *input* means open); parser `-1` node sentinel (parse-boundary,
   converted immediately).
 
+## P15 — `dss-sparse` allocation & indexing hygiene [A] — the solver hot path
+
+The sparse *formats* (COO/CSC) stay index-based by nature, but the audited implementation
+(`crates/dss-sparse/src/lib.rs` + its dss-core call sites) re-allocates the world on every
+Y rebuild and every solve iteration. All fixes below are **bit-neutral** — same values,
+same summation order — and are pinned by the strongest gate in the tree (the checkpoint
+goldens compare the assembled Y **bit-exactly** as full CSC on micro/feeders):
+
+1. **Reuse the `SparseSet` across Y rebuilds.** `build_y_matrix` constructs a fresh
+   `SparseSet::new` every rebuild (`ymatrix.rs:69/73`), throwing away the symbolic
+   factorization that `factor()` (`lib.rs:382-387`) is designed to cache — on a tap-change
+   rebuild the *pattern* is unchanged and only values move. Keep the `SparseSet` in
+   `Solution`, `zero()` + restamp, and **retain `symbolic` when the assembled pattern is
+   provably identical** (exact check: same stamp-sequence `(r,c)` pattern, see item 2;
+   any mismatch → recompute). Numeric factorization of the same scaled matrix under the
+   same symbolic analysis is deterministic → bit-neutral.
+2. **Cache the dedup mapping in `assemble` (`lib.rs:297-332`).** Today every rebuild pays
+   a `HashMap<(usize,usize), usize>` + 3 full-nnz `Vec`s + a `Triplet` vec + faer's
+   builder. The stamp sequence is deterministic (elements in creation order), so cache
+   `map: Vec<u32>` (triplet index → cell index) + the CSC skeleton once per pattern;
+   subsequent rebuilds just re-accumulate `vals[map[k]] += triplets[k].2` **in the same
+   insertion order** — zero hashing, one reused buffer, bit-identical sums by
+   construction. Invalidate on any `(r,c)` sequence mismatch (cheap incremental compare
+   while stamping) — `Clear`/topology changes rebuild the cache.
+3. **Kill the per-element `to_row_major()`** in the stamping loop (`ymatrix.rs:145-164`):
+   add a stamping entry that reads the `CMatrix` column-major storage directly but
+   **traverses in the exact same row-major `(i,j)` order** as today (`lib.rs:136-148`) —
+   traversal order defines triplet insertion order defines dedup summation order, so the
+   swap is index arithmetic only, not a reorder.
+4. **Stop copying in `build_scaled` (`lib.rs:355-368`):** `vals.to_vec()` + full
+   `symbolic.to_owned()` per factorization → scale into a reused `Vec<Complex64>` field
+   and build/keep one owned symbolic per pattern (falls out of item 1). Replace the
+   manual `pos` running index with per-column slices.
+5. **Caller-side per-iteration allocations:** `Solution::solve_system`
+   (`state.rs:312-329`) does `self.currents[1..].to_vec()` every fixed-point iteration →
+   reusable RHS scratch field. `rcond()` (`lib.rs:218-232`) allocates two n-vectors per
+   call → reuse or accept (cold path).
+6. **Idiom sweep [A]:** `solve_one`'s `for i in 0..n { x[i] = b[i] * row_scale[i] }` →
+   `zip`; `find_islands`' recursive `find` → iterative path-compression (recursion depth
+   is unbounded on a degenerate 8500-node chain); `for col in 0..n` walks → iterator over
+   column slices.
+
+**DoD:** checkpoint goldens + `corpus_live` byte/floor-identical (items 1–4 are provably
+bit-neutral; a diff = implementation bug); `MULTITHREADING_PLAN` M1 benches
+(`ybuild_8500`, `lu_factor_solve`, `snapshot_8500`) before/after recorded in STATUS —
+this WP is the main reason those benches should exist *before* Part III lands.
+**Executor note:** item 2 (dedup cache + invalidation) is the subtle one — high effort
+recommended; items 3–6 are mechanical. Forbidden here specifically: changing triplet
+traversal/insertion order, or "simplifying" to faer's native dedup — that is Stage F's
+default-lane option (`DedupOrder` in the compat table), never P15's.
+
 ## Explicitly indexed-by-design (not in scope of Part III)
 
 - `Idx<T>`/`ElemId` arena handles (Part I) — typed indices **are** the target architecture.
 - `HashList` index == append order — that *is* the bus/node numbering semantics.
-- `dss-sparse` triplet/CSC internals — sparse formats are index arithmetic by nature; the
-  insertion-order dedup is semantic (see keep list).
+- `dss-sparse` triplet/CSC **formats** and the insertion-order dedup *semantics* — the
+  formats stay index arithmetic; P15 removes the avoidable allocations and raw-index
+  idioms around them without touching the semantics (see keep list).
 - Monitor `mon_buffer: Vec<f32>` stream + header layout — the channel format is the external
   contract (a typed record layer on top is allowed if the emitted bytes/CSV are identical).
 
@@ -685,7 +807,8 @@ Phase-9 parallelism:
 ```
 1. Part I  R0 → R1(+P7) → R2(+riders) → R3          — arenas, downcast removal      [A]
 2. Part II P1 (enums) · P2 (monitor mode) · P6 (ascii) · P5 (errors)   — independent [A]
-3. Part III P8 → P10 → P11 → P12 → P13 → P14 · P9 · P3(after R2)      — de-indexing  [A]
+3. Part III P8 → P10 → P11 → P12 → P13 → P14 · P9 · P15 · P3(after R2) — de-indexing +
+   solver hot-path hygiene [A]  (M1 benches should exist before P15 — its wins are measured)
    ── all [A] stages BEFORE Stage F: the still-stable byte-exact goldens are the free
       equivalence proof for every [A] rewrite ──
 4. Stage F (Part IV.2) — the `oracle-parity` feature split; absorbs the TODO(compat)

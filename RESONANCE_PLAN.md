@@ -192,10 +192,27 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   IV.2) is unaffected on the corpus except at documented ill-conditioned cases, where the
   default lane's analytical-value acceptance tests take over. Iteration counts on refined
   solves are naturally unpinned (default-lane policy).
-- **Per-WP ritual — same as `PHASE8_PLAN`/`DE_PASCALIZE_PLAN`:** (1) gate green in both
-  lanes + differential job; (2) STATUS.md update + commit; (3) `/audit-code` +
-  `/audit-tests` as fresh parallel agents, findings settled empirically and recorded;
-  (4) STATUS full review; (5) stop and report in Russian.
+- **Per-WP ritual — same as `PHASE8_PLAN`/`DE_PASCALIZE_PLAN`:** (0) tier check against
+  the tiers below — below tier → do NOT execute, reply exactly «Этот шаг требует <exec
+  tier>. Переключи сессию (/model + reasoning effort) и повтори команду.» and stop
+  (`PLAN_SEQUENCE.md` §Model-tier protocol); (1) gate green in both lanes + differential
+  job; (2) STATUS.md update + commit; (3) `/audit-code` + `/audit-tests` as fresh parallel
+  agents **spawned with an explicit model/effort override matching the WP's audit tier**,
+  findings settled empirically and recorded; (4) STATUS full review; (5) stop and report
+  in Russian.
+- **Tiers:** WP-R1 — exec `opus-high+`, audit `opus-high+`; **WP-R2 — exec+audit
+  `opus-xhigh`**; WP-R3 — exec `opus-medium+`, audit `opus-high+`.
+- **Executor guidance.** WP-R1 is **recipe-grade** — follow integration steps 1–5 in §4
+  literally; definition of done: (a) the refinement wrapper in `dss-sparse` behind the
+  Stage-F `compat` knob, (b) the damped-resonance convergence test + residual-bound test
+  from the Acceptance bullet, (c) corpus untouched (differential gate unchanged on
+  well-conditioned decks — the `rcond` gate is mandatory, refinement must never run
+  unconditionally), (d) parity lane provably refinement-free (a test asserts the knob).
+  WP-R3 is trivial (diagnostic on existing `rcond`/`singular_col`). **WP-R2 is the one
+  design-heavy WP** (eigen-analysis command: new user surface, faer dense eig) — treat the
+  paper's Case Study 1 numbers (§4 Acceptance) as the binding spec. Forbidden moves: never
+  enable refinement in the parity lane; never weaken the `u·κ(Y) ≲ 1` limit note into
+  "refinement fixes singular systems".
 
 ## 6. References
 

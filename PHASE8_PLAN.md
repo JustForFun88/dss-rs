@@ -26,6 +26,12 @@
 > pass).
 >
 > **Per-step ritual (do every step, in order, without being told):**
+> 0. **Tier check** (added 2026-07-06; protocol: `PLAN_SEQUENCE.md` §Model-tier
+>    protocol). Phase-8 WPs are deliberately **Sonnet-executable** — exec tier
+>    `sonnet-high+ / opus-medium+`; audit tier **`opus-high+`**. If the session
+>    is below the exec tier, do NOT execute; reply exactly: «Этот шаг требует
+>    <exec tier>. Переключи сессию (/model + reasoning effort) и повтори
+>    команду.» and stop.
 > 1. **Gate green** — `cargo fmt --all --check`; `cargo clippy --workspace
 >    --all-targets -- -D warnings`; `cargo test --workspace` (runs **all**
 >    goldens + the always-on live corpus gates). No `#[ignore]`, no name-filter
@@ -34,7 +40,9 @@
 >    (code + STATUS together).
 > 3. **`/audit-code` + `/audit-tests` in parallel** — two **fresh independent
 >    agents, never forks** (a scoped agent reviews more sharply than one buried
->    in your context). Each gets a self-contained brief: the step's commit range
+>    in your context), **spawned with an explicit model/effort override matching
+>    the audit tier above** (never "whatever the session runs"). Each gets a
+>    self-contained brief: the step's commit range
 >    (`<sha>^..HEAD`) or label, the diff, the authoritative Pascal units +
 >    plan/STATUS sections, and the binding rules (the PIN, `TODO(compat)`/
 >    `NOT_PORTED`, the oracle is the spec). Auditors are **read-only** and
