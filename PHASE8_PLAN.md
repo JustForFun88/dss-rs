@@ -27,11 +27,13 @@
 >
 > **Per-step ritual (do every step, in order, without being told):**
 > 0. **Tier check** (added 2026-07-06; protocol: `PLAN_SEQUENCE.md` §Model-tier
->    protocol). Phase-8 WPs are deliberately **Sonnet-executable** — exec tier
->    `sonnet-high+ / opus-medium+`; audit tier **`opus-high+`**. If the session
->    is below the exec tier, do NOT execute; reply exactly: «Этот шаг требует
->    <exec tier>. Переключи сессию (/model + reasoning effort) и повтори
->    команду.» and stop.
+>    protocol). Look up the step's **exec tier** in the per-WP tier table (§0
+>    below); most Phase-8 steps are deliberately **Sonnet-executable**
+>    (`sonnet-high+`), two are `opus-medium+`. Audit tier is **`opus-high+`**
+>    everywhere — spawn the auditors with an explicit model/effort override.
+>    If the session is below the step's exec tier, do NOT execute; reply
+>    exactly: «Этот шаг требует <exec tier>. Переключи сессию (/model +
+>    reasoning effort) и повтори команду.» and stop.
 > 1. **Gate green** — `cargo fmt --all --check`; `cargo clippy --workspace
 >    --all-targets -- -D warnings`; `cargo test --workspace` (runs **all**
 >    goldens + the always-on live corpus gates). No `#[ignore]`, no name-filter
@@ -100,6 +102,19 @@ executive verbs (`BatchEdit`, `Interpolate`, `Distribute`, …), and the full
 
 WP boundaries are flex points (the Phase-7 convention): WP8.6 is independent of
 the report infra and may be pulled earlier.
+
+**Per-WP model tiers** (vocabulary + step-0 refuse protocol:
+`PLAN_SEQUENCE.md` §Model-tier protocol; audit tier is `opus-high+` for every
+row — auditors are spawned with an explicit model/effort override):
+
+| WP / step | Exec tier | Why |
+|---|---|---|
+| WP8.1–8.4 | — (✅ complete) | landed |
+| WP8.5 steps 3a, 3b, 4, 6 | `sonnet-high+` | mechanical ports: the pattern is established by the landed Dump steps 1–2, each item cites its Pascal unit:lines, gates are pre-wired (`dump3.dss`/`dump_capacitor.dss`/`save_forms.dss`) |
+| WP8.5 **step 5** (`Save circuit` + round-trip gate) | **`opus-medium+`** | the one non-mechanical WP8.5 piece: whole-circuit script emission + round-trip re-compile/re-solve debugging (failures surface as downstream voltage diffs, not local errors) |
+| WP8.6 (all steps) | `sonnet-high+` | each verb has a pre-validated deck (`tools/golden/phase8_decks/`, `tests/corpus/gaps/`) with oracle-pinned expectations; Uuids is a byte-exact golden recipe |
+| WP8.7 (ReduceAlgs + `MergeWith` + `Remove`) | **`opus-medium+`** | graph surgery on the meter-zone tree + numeric impedance merge (`TLineObj.MergeWith`); the staging manifests' oracle-verified post-reduce element lists are the binding spec; the 8 strategy decks catch wrong-shape results, but *why* a shape is wrong takes real debugging |
+| WP8.8 (phase exit) | `sonnet-high+` | marker sweep + coverage proof + re-classify, mechanical |
 
 **Pre-validated test fixtures for the remaining WPs** (authored up front so
 each WP starts from a proven deck; every deck ran bit-identical across two

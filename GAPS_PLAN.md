@@ -14,6 +14,13 @@
 > pass).
 >
 > **Per-step ritual (do every step, in order, without being told):**
+> 0. **Tier check** (protocol: `PLAN_SEQUENCE.md` §Model-tier protocol). Look
+>    up the WPG's **exec tier** in the tier table below (§0-tiers); the audit
+>    tier is **`opus-high+`** for every WPG — both auditors (`/audit-code` and
+>    `/audit-tests`) are spawned with an explicit model/effort override. If
+>    the session is below the exec tier, do NOT execute; reply exactly: «Этот
+>    шаг требует <exec tier>. Переключи сессию (/model + reasoning effort) и
+>    повтори команду.» and stop.
 > 1. **Gate green** — `cargo fmt --all --check`; `cargo clippy --workspace
 >    --all-targets -- -D warnings`; `cargo test --workspace` (runs **all**
 >    goldens + the always-on live corpus gates). No `#[ignore]`, no
@@ -42,6 +49,26 @@
 > 5. **Only now stop** and report **in Russian** (code, identifiers, commit
 >    messages and STATUS stay English): what landed, what the audits found
 >    and how it was settled, gate status, next step.
+>
+> **Per-WPG model tiers (§0-tiers)** — audit tier `opus-high+` everywhere
+> (applies to **both** `/audit-code` and `/audit-tests`); exec tier:
+>
+> | WPG | Exec tier | Why |
+> |---|---|---|
+> | WPG.1, 2, 3 (shape files, mode=Time, LD1/LD2) | `sonnet-high+` | thin drivers/parsers over existing machinery; decks pre-validated |
+> | WPG.4 (Monte Carlo + FPC RNG) | **`opus-medium+`** | the RNG port must reproduce FPC's generator per the §2.1 probe-proven pinning — sequence-exact numerics |
+> | WPG.5 (AutoAdd) | **`opus-medium+`** | capacity-search solve mode + the §2.2 documented oracle fragility |
+> | WPG.6 (Newton) | **`opus-medium+`** | a second solution algorithm — convergence-path numerics |
+> | WPG.7, 8 (CapControl Follow, Reactor curves) | `sonnet-high+` | small, spec'd, deck-gated |
+> | WPG.9, 10 (InvControl TPICtrl / VOLTWATT-Storage) | **`opus-medium+`** | InvControl state machines have twice hidden real port bugs behind "conditioning" (STATUS §WP7.5) — divergences here need the prove-it discipline |
+> | WPG.11 (StorageController seasonal) | `sonnet-high+` | table-driven target selection |
+> | WPG.12 (Relay Generic + TD21) | **`opus-medium+`** | TD21 distance-relay algorithm; multi-sample memory logic |
+> | WPG.13 (GFM mode) | **`opus-high+`** | the largest, most numeric WPG — dynamics-adjacent inverter machinery; debugging may hit cancellation-floor analysis (CLAUDE.md decomposition rule) |
+> | WPG.14 (Isource) | `sonnet-high+` | simple PC element |
+> | WPG.15 (AutoTrans) | **`opus-medium+`** | full transformer-family element (winding/yterminal math density), though it mirrors the ported Transformer closely |
+> | WPG.16 (GIC family) | **`opus-medium+`** | three elements with custom Y stamping paths |
+> | WPG.18 (CIM XML export) | `sonnet-high+` | pure output, byte-exact golden gate via the `uuids file=` determinism recipe — big but mechanical |
+> | WPG.17 (exit sweep) | `sonnet-high+` | marker sweep + coverage proof |
 >
 > **What this plan is.** Three kinds of unported work, one closure plan:
 >

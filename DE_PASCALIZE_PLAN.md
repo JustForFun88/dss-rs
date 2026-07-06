@@ -23,7 +23,9 @@ stage:
    pinned dss-python *live*, under calibrated tolerance floors (`tests/TOLERANCE_NOTES.md`).
    Any refactor that changes floating-point results must stay inside those floors — or come
    with the empirical decomposition proof the `CLAUDE.md` rules demand. No fudging: a
-   tolerance is never loosened to admit a refactor.
+   tolerance is never loosened to admit a refactor. (The only exceptions are Stage F's
+   **documented deliberate divergences** — its dual-kernel table — which are excluded from
+   oracle comparison field-by-field and pinned by expected-value tests instead.)
 2. **Committed byte-exact goldens are the cheapest equivalence oracle we will ever have.**
    A refactor that preserves arithmetic exactly (same operations, same order) is *proven*
    equivalent by the existing goldens for free. Therefore: **bit-neutral refactors run
@@ -128,7 +130,7 @@ pub fn cdiv_std_impl(a: Complex64, b: Complex64) -> Complex64 { a / b }
 #[cfg(feature = "oracle-parity")]      pub use cdiv_fpc_impl as cdiv;
 #[cfg(not(feature = "oracle-parity"))] pub use cdiv_std_impl as cdiv;
 // Same alias pattern for: round_i32, PI, stddev_single_point, SymComp variant,
-// DedupOrder (dss-sparse), the two bug-fix branches, the solver Par/refinement knobs.
+// the two bug-fix branches, the solver Par/refinement knobs (dss-sparse).
 // Unit tests call BOTH `_impl`s directly and assert the documented bound — in any build.
 ```
 
@@ -363,7 +365,7 @@ boundary. Non-contiguous families (Relay has a gap at 2; StorageController has
 | Generator `dispatch_mode`, PVSystem var-mode, ExpControl pending, ESPVLControl `f_type`, LoadShape interp | `generator/mod.rs:43`, `pvsystem/mod.rs:58`, `exp_control/mod.rs:43`, `espvl_control/mod.rs:150`, `load_shape/mod.rs:75` | |
 | AutoAdd `add_type` (`GENADD=1/CAPADD=2`) | `circuit/auto_add.rs:17` | |
 | `load.status` (0=Variable/1=Fixed/2=Exempt — compared as bare literals) | `load/mod.rs:189` | today documented only in a comment |
-| bare-`i32` DssEnum-backed fields with no local const chain: `transformer.core_type`, `reactor/capacitor.spec_type`, `line.line_type`, `vsource.{z_spec_type,scan_type,sequence_type}`, `vs_converter.f_mode`, `line_code/line_geometry.fline_type`, `energymeter.ocp_device_type` | various | same pattern, one small enum each |
+| bare-`i32` DssEnum-backed fields with no local const chain: `transformer.core_type`, **`Winding.connection` (0=wye/1=delta — matched as bare `0/1` literals in `set_term_ref`; P10's rewrite depends on this enum)**, `reactor/capacitor.spec_type`, `line.line_type`, `vsource.{z_spec_type,scan_type,sequence_type}`, `vs_converter.f_mode`, `line_code/line_geometry.fline_type`, `energymeter.ocp_device_type` | various | same pattern, one small enum each |
 
 **Tier 2 — internal-only (pure enums, no numeric baggage):** ControlElem action codes
 `CTRL_NONE..CTRL_UNLOCK` (`control_elem.rs:23`), InvControl pending/combi/RoC *internal*
@@ -468,7 +470,7 @@ mostly vacuous but stay as documentation + regression guard.
 
 ---
 
-# Part III — Index elimination (WPs P8–P14)
+# Part III — Index elimination (WPs P8–P15)
 
 **Decision (user, 2026-07-06):** raw index access goes away **everywhere it can be expressed
 better** — the loop-for-loop porting rule is retired post-acceptance. The 2026-07-06 audit
@@ -483,7 +485,7 @@ near-zero `chunks_exact`/slice-view usage in production, ~20 parallel arrays in
   `chunks_exact(nconds)` view, a `[usize; 2]` pair, or a `zip` does not change one floating
   point operation or its order. The existing byte-exact goldens (`transformer_yprim_bitexact`,
   checkpoint Y/YPrim captures, dump goldens) then *prove* each rewrite equivalent — run
-  Part III **before** the `TODO(compat)` sweep regenerates anything, precisely to keep that
+  Part III **before** Stage F re-baselines anything, precisely to keep that
   free proof.
 - Where an idiomatic form would genuinely reorder arithmetic (rare — e.g. replacing a manual
   running-sum with `.sum()` changes nothing, but restructuring a Kron elimination might),
@@ -654,8 +656,9 @@ bit-neutral; a diff = implementation bug); `MULTITHREADING_PLAN` M1 benches
 this WP is the main reason those benches should exist *before* Part III lands.
 **Executor note:** item 2 (dedup cache + invalidation) is the subtle one — high effort
 recommended; items 3–6 are mechanical. Forbidden here specifically: changing triplet
-traversal/insertion order, or "simplifying" to faer's native dedup — that is Stage F's
-default-lane option (`DedupOrder` in the compat table), never P15's.
+traversal/insertion order, or "simplifying" to faer's native dedup — banned in **both**
+lanes: after P15 the cached-mapping insertion-order assemble is the shared kernel (faster
+than faer's hashing dedup *and* parity-correct), so Stage F has **no** dedup dual kernel.
 
 ## Explicitly indexed-by-design (not in scope of Part III)
 
@@ -675,6 +678,9 @@ default-lane option (`DedupOrder` in the compat table), never P15's.
 
 - Class **registration order** (bare-name lookup tie-breaking), **control-queue order**,
   `HashList` index==append order (bus/node numbering), `NodeRef == 0` ground convention.
+- **Y triplet stamp order + `assemble` insertion-order dedup** — shared by both lanes
+  (P15's cached-mapping kernel, no Stage F split); stamping remains a sequential ordered
+  commit in every future parallel design (`MULTITHREADING_PLAN`).
 - Property-index ordinals (~1000 consts — dump/Save order contract), `exec/tables.rs`
   command codes, DssEnum ordinals (user-visible numbers), `CommandList` abbreviation
   matching.
@@ -699,7 +705,7 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 (that freezes Pascal warts). It moves behind `#[cfg(feature = "oracle-parity")]`:
 
 - **default build** (no features) — idiomatic Rust everywhere: `num_complex` division,
-  `f64::consts::PI`, `round_ties_even`, faer-native assembly, upstream bugs *fixed*,
+  `f64::consts::PI`, `round_ties_even`, upstream bugs *fixed*,
   parallelism and (later) iterative refinement allowed;
 - **parity build** (`--features oracle-parity`) — the exact 1:1 engine: every existing
   oracle gate (byte goldens, checkpoint Y, `corpus_live` floors, **iteration counts**)
@@ -715,7 +721,7 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 | RPN pi | `3.14159265359` | `f64::consts::PI` |
 | FPC round | `pascal_round_to_i32` (integer-indefinite artifact) | `round_ties_even` + saturation |
 | single-point stddev | value itself (upstream bug) | `0.0` |
-| Y triplet dedup | insertion-order sum (`assemble`, CSparse `cs_dupl`) | faer-native triplet assembly |
+| Y triplet dedup | *shared kernel — no split*: P15's cached-mapping insertion-order assemble serves **both** lanes (parity-correct and faster than faer-native dedup) | same |
 | Export SeqCurrents `Iresidual` | reproduced terminal-1 bug | fixed `(j-1)*Ncond` offset |
 | multi-meter `Bus_Int_Duration` | reproduced cross-zone overwrite | foreign section ids skipped |
 | solver execution | `Par::Seq`, no refinement (iterate paths pinned) | `Par::rayon` allowed (`MULTITHREADING_PLAN` M3c), WP-R1 iterative refinement on (`RESONANCE_PLAN`) |
@@ -724,9 +730,8 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 **Mechanism — no cfg spaghetti, and both kernels always compiled:**
 - One `compat` module per affected crate (`dss-core/src/compat.rs`, `dss-sparse/src/compat.rs`)
   holds *all* `#[cfg(feature = "oracle-parity")]`-selected definitions; call sites are
-  unconditional (`compat::cdiv(a, b)`, `compat::round_i32(x)`, `compat::PI`, a
-  `DedupOrder` strategy handed to `assemble`). CI grep gate: the cfg string appears
-  **only** inside `compat` modules (plus test attributes).
+  unconditional (`compat::cdiv(a, b)`, `compat::round_i32(x)`, `compat::PI`). CI grep
+  gate: the cfg string appears **only** inside `compat` modules (plus test attributes).
 - **Both implementations of every dual kernel are always compiled** (plain sibling
   functions, e.g. `cdiv_fpc_impl` / `cdiv_std_impl`); the cfg selects only which one the
   `compat::` alias points at. This is what makes them unit-testable against each other in
