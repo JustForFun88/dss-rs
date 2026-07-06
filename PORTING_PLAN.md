@@ -83,7 +83,7 @@ dss-core/src/
                 #   growth_shape/mod.rs...
   exec/         # Executive.pas, ExecCommands.pas, ExecHelper.pas, ExecOptions.pas
   report/       # ShowResults.pas, ExportResults.pas, Show/ExportOptions, save.rs
-  cim/          # ExportCIMXML.pas (Phase 9)
+  cim/          # ExportCIMXML.pas (GAPS_PLAN WPG.18)
 ```
 
 Dependencies: `num-complex`, `faer` (dss-sparse only), `thiserror`, `serde`/`serde_json`
@@ -318,7 +318,9 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
   (`tests/save_roundtrip.rs`).
 
 ### Phase 9 — Exotics (~8%, optional — stopping before this still = complete simulator)
-- `ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle).
+- ~~`ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle)~~ —
+  **moved to `GAPS_PLAN.md` WPG.18** (byte-exact golden XML gate via the
+  `uuids file=` determinism recipe).
 - A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
   gate: numerically identical to single-actor results.
 - ~~GIC elements (`GICLine`, `GICsource`, `GICTransformer`)~~ — **moved to

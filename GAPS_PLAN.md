@@ -43,7 +43,7 @@
 >    messages and STATUS stay English): what landed, what the audits found
 >    and how it was settled, gate status, next step.
 >
-> **What this plan is.** Two kinds of unported work, one closure plan:
+> **What this plan is.** Three kinds of unported work, one closure plan:
 >
 > 1. **Test-blocked feature deferrals** (§1). During Phases 4–7 a set of
 >    features was deferred with the empirical rule "port only if a corpus case
@@ -61,8 +61,14 @@
 >    was parked at Phase 9. (Verified non-gaps: `ControlledTransformer.pas`
 >    and the user-model DLL classes are **not registered** upstream — nothing
 >    to port; `Feeder` is dead upstream, proven by probe.)
+> 3. **One pulled-forward Phase-9 subsystem** (added 2026-07-06): the CIM XML
+>    export (`ExportCIMXML.pas`, 4.8k lines) — **WPG.18**. Not test-blocked,
+>    but *pure output over solved state*, so it gates exactly like the Phase-8
+>    report work (byte-exact goldens against the pinned oracle), not like the
+>    live-solve WPs. All design decisions are pre-made in the WP; the work is
+>    staged transcription.
 >
-> Every item ships a **validated synthesized deck** in the
+> Every §1/§1b item ships a **validated synthesized deck** in the
 > `tests/corpus/gaps/` **staging family** (lifecycle in §3.1: a deck lives
 > there only while its feature is unported, then graduates to a permanent
 > family), and the porting work is packaged as independently-gated WPs (§4).
@@ -138,7 +144,8 @@ corpus usage is a 0.1 Hz quasi-DC snapshot).
   stays `NOT_PORTED` with a loud error until something observable hinges on it
   (this is a *behavior*-based deferral, not a test-based one; revisit if a
   corpus deck ever sets it — none does today).
-- CIM export, actors/`SolveAll`, `Pstcalc` flicker — Phase 9.
+- Actors/`SolveAll`, `Pstcalc` flicker — Phase 9. (CIM export sat on this
+  line until 2026-07-06 — pulled into this plan as **WPG.18**.)
 - All user-model DLL hooks + `ControlledTransformer.pas` — never (safe Rust /
   not registered upstream).
 
@@ -803,6 +810,188 @@ Port in this order:
 
 ---
 
+### WPG.18 — CIM XML export (`Export CIM100`/`CIM100Fragments`) [20%] — after WP8.6 (UUID substrate) + WPG.15 (AutoTrans arm)
+
+**Pascal:** `Common/ExportCIMXML.pas` (4790 lines — the whole unit), plus
+plumbing already owned elsewhere: the `Export` dispatch/option parse
+(`ExportOptions.pas:141-142/185-188/227-259/351-353/539-541`) and the WP8.6
+UUID substrate (`DoUuidsCmd`, `Export Uuids`, lazy-v4 object UUIDs, the
+hashed-key list, `DefaultCircuitUUIDs` — PHASE8_PLAN §WP8.6 step 6 owns all of
+it, with the fixture `tools/golden/phase8_decks/uuids.dss` + `uuids_pre.csv`
+already authored; **do not rebuild any of it here**).
+
+Pulled forward from PORTING_PLAN Phase 9 on 2026-07-06 (the older WPs' effort
+shares are left unrenormalized). 4.8k lines, but **mechanically simple**: pure
+text output over already-solved state — no numerics beyond `%.8g` rendering,
+no convergence, no iteration; per-class sweeps writing fixed XML templates.
+The whole port is transcription + byte-diffing. Numbering note: WPG.17 (the
+exit sweep) keeps its number and still runs **last**.
+
+**Pre-made decisions (binding — do not re-derive):**
+
+1. **Determinism.** Every UUID in the output is either a lazy
+   `TNamedObject.UUID` or `GetHashedUuid` (l.952) — both bottom out in
+   `CreateUUID4` = **random v4** (`NamedObject.pas:47-52`), which can never be
+   oracle-pinned. Therefore **every gate preloads every UUID** via the WP8.6
+   `uuids file=<fixture>` command before exporting, on both engines. A key
+   missing from the fixture ⇒ a fresh random v4 ⇒ the byte-diff fails
+   **loudly** ⇒ fix the fixture (regenerate; never weaken the comparison).
+2. **Gate = byte-exact goldens** (not the §2.3 live machinery): the XML is
+   newline-delimited text with a fixed header (`IEC61970CIMVersion.date` is
+   the constant `2019-04-01` — no timestamps, no absolute paths), so with the
+   fixture preloaded two oracle processes are bit-identical and the golden
+   compare is **exact bytes** (CRLF-normalized), zero tolerance — the WP8.5
+   dump-golden pattern. New generator `tools/golden/gen_cim.py` (clone the
+   `gen_phase8.py` deck pattern: micro decks in `tools/golden/cim_decks/`,
+   goldens in `tests/golden/cim/`; corpus-feeder cases reference the vendored
+   corpus master like the existing feeder goldens). Per case the generator
+   must: (a) process 1 — compile → solve → `export cim100` (output discarded)
+   → `export uuids` → save the fixture CSV; (b) process 2 — compile → solve →
+   `uuids file=<fixture>` → `export cim100` (+ `export cim100fragments` where
+   the case says so) → save goldens; (c) process 3 — repeat (b), assert
+   bit-identity with (b)'s output: the fixture-completeness proof. Commit
+   fixture + goldens together; regenerate only manually with the PIN.
+3. **Rust test driver** `crates/dss-core/tests/golden_cim.rs` (thin, on the
+   existing harness): replay the deck → `uuids file=<fixture>` →
+   `export cim100 fil=<tmp>` → byte-compare against the golden.
+4. **Module:** `crates/dss-core/src/cim/` (the PORTING_PLAN sketch):
+   `mod.rs` (exporter state: hashed-UUID list, bank/ECP/op-limit lists),
+   `writer.rs` (profiles + node helpers), `catalog.rs` (wire/cable/linecode/
+   spacing/xfmrcode info), `power_xfmr.rs`, `der.rs`, `ieee1547.rs`,
+   `export.rs` (`ExportCDPSM`); split further per SPLITTING_RULES as files
+   grow.
+5. **Formatting:** doubles are `Format('%.8g')` — reuse the WP8.5-audited
+   FPC-`%g` implementation (`report::format::g` at 8 significant digits;
+   uppercase `E`, the `exp < -5` fixed-notation rule). Integers `%d`; booleans
+   lowercase `true`/`false`. The `CIM_ID` string form is `UUIDToCIMString`
+   (`NamedObject.pas:64`) — port exactly (leading `_`, braces stripped,
+   lowercase — read the source, don't guess).
+6. **Ordering:** byte-diffing makes element order load-bearing. Pascal sweeps
+   class lists in creation order; the Rust registries already iterate the same
+   way (the WP8.5 dump/save goldens rely on it) — sweep identically and byte
+   equality follows.
+7. **Staging discipline (no silent omissions):** Stage A ports the **entire
+   `ExportCDPSM` control flow top-to-bottom** (l.3203-4707), with every
+   not-yet-ported class arm replaced by a scoped `NOT_PORTED` error that fires
+   **when the circuit contains instances of that class** (empty list ⇒ the arm
+   is a no-op, matching Pascal). Stages B–F replace arms with real ports;
+   stage F removes the last error — a partially-ported exporter can never
+   silently drop a section.
+
+**Stage A — writer core + skeleton + sources [4%]:**
+
+1. Writer: `ProfileChoice` (Fun/Ep/Geo/Topo/Cat/Ssh/DynPrf), **combined mode
+   only** (`Separate=false`; fragments = stage F): `WriteCimLn` (l.376),
+   `StartInstance` (410), `StartFreeInstance` (422), `EndInstance` (432),
+   `StartCIMFile` (3188; the `CIM_NS` const), `FD_Create`/`FD_Destroy`
+   (4729/4752 — combined arm + the `</rdf:RDF>` closers).
+2. All scalar/enum node helpers l.1340-1626 in one mechanical pass
+   (`DoubleNode`…`StringNode`, the ~20 enum writers, the `PhaseNode` family)
+   + `IsGroundBus` (2025).
+3. UUID surface over the WP8.6 substrate: `GetHashedUuid`/`AddHashedUuid` +
+   the `GetDevUuid` `UuidChoice` key table (952-1128), `GetTermUuid` (1299),
+   `GetBaseVUuid`/`GetOpLimVUuid`/`GetOpLimIUuid` + their name builders
+   (1309-1339).
+4. `ExportCDPSM` skeleton in source order: Region/SubRegion/Substation/
+   feeder-circuit instances + CRS + Location; base-voltage and
+   op-limit-type objects (`<ckt>_NormAmpsType`…); buses →
+   `ConnectivityNode`/`TopologicalNode`, the single `TopologicalIsland` +
+   swing bus (= first enabled Vsource); `WritePositions` (2044),
+   `WriteTerminals` (2117), `WriteReferenceTerminals` (2073), `VbaseNode`
+   (2124); op-limit list plumbing (806-950) + the closing
+   `OperationalLimitSet`/`CurrentLimit` sweep (~4658); the **EnergySource**
+   sweep (Vsource, ~3680). Every other class arm = the scoped `NOT_PORTED`
+   of decision 7.
+5. Dispatch: `exec/report.rs` ptr 20/21 — the option loop
+   `subs/subg/g/fil/fid/sid/sg/rg` (`ExportOptions.pas:227-259`;
+   `AssignNewUUID` — locate its unit at WP open), the defaults l.185-188,
+   default filenames `CIM100` / `CIM100x.xml` (351/353); ptr 21 = combined,
+   ptr 20 = fragments (errors `NOT_PORTED` until stage F).
+6. Gate A: deck `cim_src.dss` (Vsource + buscoords, nothing else) —
+   full-file byte diff.
+
+**Stage B — loads [2%]:** the EnergyConsumer sweep + `WriteLoadModel` (1998)
++ the `LoadResponseCharacteristic` constants (~4410),
+`AttachLoadPhases`/`AttachSecondaryPhases` (1749/1736), ECP machinery
+(`TECPObject` 340-365, list plumbing 837-930, `AddLoadECP` 1130, the closing
+`EnergyConnectionProfile` sweep ~4620). Gate: `cim_load.dss` (wye + delta +
+1-phase-secondary loads; a daily shape so an ECP row with `dssDaily` exists).
+
+**Stage C — lines, switches, conductor catalog [4%]:** the
+ACLineSegment-vs-LoadBreakSwitch sweep (~4290-4410; `ParseSwitchClass` 451
+reads ratings off an attached Fuse/Recloser/Relay/SwtControl),
+`AttachLinePhases`/`AttachSwitchPhases` (1627/1661), the phase-string family
+(`PhaseString`/`PhaseOrderString`/`DeltaPhaseString`/`FirstPhaseString`
+491-697), `LineCodeRefNode`/`LineSpacingRefNode`/`PhaseWireRefNode`
+(1371-1385), and the catalog: PerLength(Phase|Sequence)Impedance from
+LineCodes, `WriteWireData` (2277), `WriteCableData` (2232), `WriteTapeData`
+(2250), `WriteConcData` (2262), spacings + `WirePositions`. Gate:
+`cim_lines.dss` — coded 3-ph + 1-ph lines, a LineGeometry line
+(wiredata+spacing), a CN and a TS cable line, a switch line with a Fuse.
+
+**Stage D — caps + reactors [2%]:** shunt capacitors →
+`LinearShuntCompensator` + `AttachCapPhases` (1703, the `sections` argument),
+CapControl → `RegulatingControl` (`RegulatingControlEnum`,
+`MonitoredPhaseNode`), series reactors → `SeriesCompensator` (~4274; note the
+upstream 3-phase-only comment). Gate: `cim_shunt.dss` — wye/delta/1-ph caps,
+a voltage- and a current-mode CapControl, a series reactor.
+
+**Stage E — transformers + AutoTrans + regulators [4%]:** `TCIMBankObject`
+(698-805; `BuildVectorGroup` 724, `AddTransformer` 759, `AddAutoTransformer`
+786), the three transformer cases (comment l.3934: balanced-3ph-no-code →
+`PowerTransformerEnd` + mesh/core; with XfmrCode → tanks + `TankInfo` refs;
+else synthesize infos), `WriteXfmrCode` (2133), `XfmrTankPhasesAndGround`
+(1531), the aux Wdg/Core/Mesh lists (~3783), the AutoTrans sweep (~3804 —
+YNa/YNad1 vector groups; **needs WPG.15**), the banks write (~4157),
+RegControl → `RatioTapChanger` + `TapChangerControl` (~4197;
+`TransformerControlEnum`; the OpenDSS-only `maxLimitVoltage` note l.4237).
+Gate: `cim_xfmr.dss` (2-w + 3-w + XfmrCode-tank transformers + a RegControl +
+the `autotrans_snap.dss` body) — then the first two feeder goldens:
+**IEEE13** and **IEEE123** full-file byte diffs.
+
+**Stage F — DER + IEEE1547 + fragments mode [4%]:**
+
+1. The DER sweeps: Generator → `SynchronousMachine` (~3514;
+   `SynchMachTypeEnum`/`SynchMachModeEnum`/`GeneratorControlEnum`), PVSystem →
+   `PowerElectronicsConnection` + `PhotovoltaicUnit` (~3562), Storage → +
+   `BatteryUnit`/`BatteryStateEnum` (~3605), their `Attach*Phases`
+   (1806-1997) and `Add*ECP` (1170-1275).
+2. `TIEEE1547Controller` (2318-3187): `PullFromInvControl` (2493),
+   `PullFromExpControl` (2846), `SetDefaults` CatA/CatB tables (2881),
+   nameplates (2958-3023), `WriteCIM` (3024), `FindSignalTerminals` (2376) +
+   `TRemoteSignalObject` (2318); `ConverterControlEnum` (4774).
+3. Fragments mode (`Separate=true`): `WriteCimLn`'s auto-`StartFreeInstance`
+   on first child write into another profile (the "stack overflow" comment
+   l.412), `EndInstance` closing **every** open profile root, the seven
+   `_FUN/_GEO/_TOPO/_SSH/_CAT/_EP/_DYN.xml` files (`FD_Create` 4729), ptr 20
+   wired.
+4. Gate: `cim_der.dss` (Generator + PVSystem + Storage + an InvControl
+   volt-var + an ExpControl) — combined golden **and** the same deck's seven
+   fragment files; the last `NOT_PORTED` arm removed;
+   `rg "NOT_PORTED" crates/dss-core/src/cim/` returns nothing.
+
+**Traps (source-proven; keep in view):**
+
+- `GetDevUuid` keys are exact strings (`'Bank=' + name + '=' + seq`,
+  l.1002-1128) and the fixture round-trips through them — a typo in a key =
+  a random UUID = a loud diff (good: it cannot pass silently).
+- Temporary (non-DSS-managed) objects get `=`-prefixed names (comment
+  l.1001) — e.g. the `Station=Station=1` key in the WP8.6 fixture.
+- Disabled elements are skipped ("disabled elements don't have terminal
+  references", comment ~4313) — port every `Enabled` guard.
+- `FD_Create` opens `F_DYN` passing `EpPrf` (l.4745) — an upstream oddity
+  with no output effect (the header is profile-independent); do the same.
+- `Export CIM100` requires a solved circuit (ptr 20/21 sit in the
+  `1..24` guard range) — the existing `do_export_cmd` guard already covers
+  it; don't add a second check.
+
+**STATUS/corpus:** no `tests/corpus/gaps/` decks — this WP is golden-gated
+(§2.3/§3.1 do not apply to it; WPG.17's staging-empty assert is unaffected).
+At close, re-check corpus tags for anything blocked on `export cim` (none
+known at authoring) and record the WP in STATUS §1 per the ritual.
+
+---
+
 ### WPG.17 — Exit sweep [2%]
 
 1. `rg "no corpus case"` / `rg "NOT_PORTED"` / the §1 + §1b tables — every
@@ -821,7 +1010,8 @@ Port in this order:
 - Order: WPG.1–WPG.11 are small and independent — run them in numeric order
   (cheapest first, the warm-up convention); then the element WPs by size —
   **WPG.14 (Isource)**, **WPG.16 (GIC family)**, **WPG.15 (AutoTrans,
-  stage-committed A→B→C)**; WPG.12 next (corpus payoff); WPG.13 last
+  stage-committed A→B→C)**; WPG.12 next (corpus payoff); **WPG.18 (CIM XML
+  export, stage-committed A→F)** once WP8.6 and WPG.15 are in; WPG.13 last
   (largest, and gated on WP8.6 for its corpus decks). The element WPs are
   fully independent of everything else and can also be interleaved earlier —
   WPG.14 is a good warm-up-sized package.
