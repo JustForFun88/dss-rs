@@ -5,8 +5,12 @@
 //! 533-536`) — an upstream quirk: `NumPropsThisClass = Ord(High(TProp)) = 9 =
 //! MinAmps`, so the tail loop **reprints `MinAmps` a second time**, generically,
 //! right after its custom `%.1f` line above, before continuing into the real
-//! tail (`NormAmps..Enabled`). Faithfully reproduced (not "fixed" — the oracle
-//! genuinely double-prints it). Complete adds `// SpecType=%d`.
+//! tail (`NormAmps..Enabled`). Complete adds `// SpecType=%d`.
+//!
+//! TODO(compat): the `MinAmps` double-print above is a deterministic upstream
+//! off-by-one (`NumPropsThisClass` should have started the tail one property
+//! later); faithfully reproduced, not "fixed" — the oracle genuinely
+//! double-prints it, pinned byte-exact by `dump_fault`/`dump_fault_gmatrix`.
 
 use crate::report::format::fixed;
 use crate::report::save::dump::{self, DumpCtx};
