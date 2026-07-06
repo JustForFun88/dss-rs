@@ -1,0 +1,13 @@
+
+New "Spectrum.sp5"
+~ NumHarm=3
+~ Harmonic=[ 1 5 7]
+~ %Mag=[ 100 20 12]
+~ Angle=[ 0 30 60]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+5, 0.173205080754071, 0.100000000004879, 0.2, 30
+7, 0.0599999999941454, 0.103923048457513, 0.12, 60

@@ -1,0 +1,57 @@
+
+New "UPFC.u1"
+! ENABLED
+! NPhases = 1
+! Nconds = 1
+! Nterms = 2
+! Yorder = 2
+! NodeRef = "10 11 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [4 5 ]
+
+! YPrim (G matrix)
+!              0 |             0 |
+!              0 |             0 |
+! YPrim (B Matrix) = 
+!            -50 |            50 |
+!             50 |           -50 |
+! VARIABLES
+!  1: ModeUPFC = 1
+!  2: IUPFC = 0
+!  3: Re{Vbin} = 222.71
+!  4: Im{Vbin} = -31.735
+!  5: Re{Vbout} = 239.61
+!  6: Im{Vbout} = -34.105
+!  7: Losses = 1.0124
+!  8: P_UPFC = 0
+!  9: Q_UPFC = 0
+! 10: Qideal = 0
+! 11: Re{Sr0^[1]} = -79.506
+! 12: Im{Sr0^[1]} = -864.56
+! 13: Re{Sr1^[1]} = 77.038
+! 14: Im{Sr1^[1]} = 864.56
+~ Bus1=ui.1
+~ Bus2=uo.1
+~ RefkV=0.242
+~ PF=1
+~ Frequency=60
+~ Phases=1
+~ Xs=0.02
+~ Tol1=0.001
+~ Mode=1
+~ VpqMax=24
+~ LossCurve=losses
+~ VHLimit=300
+~ VLLimit=125
+~ CLimit=265
+~ refkV2=0
+~ kvarLimit=5
+~ Element=
+~ Spectrum=default
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+BaseFrequency=60.0
+Z Matrix=
+0 +j 0.02 

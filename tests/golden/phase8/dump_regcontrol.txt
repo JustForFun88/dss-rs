@@ -1,0 +1,48 @@
+
+New "RegControl.rc1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 1
+! Yorder = 3
+! NodeRef = "7 8 9 "
+! Terminal Status: [C C C ]
+! Terminal Bus Ref: [3 3 3 ]
+
+~ Transformer=tr1
+~ Winding=2
+~ VReg=115
+~ Band=3
+~ PTRatio=2.4
+~ CTPrim=300
+~ R=0
+~ X=0
+~ Bus=
+~ Delay=15
+~ Reversible=No
+~ RevVReg=120
+~ RevBand=3
+~ RevR=0
+~ RevX=0
+~ TapDelay=2
+~ DebugTrace=No
+~ MaxTapChange=16
+~ InverseTime=No
+~ TapWinding=2
+~ VLimit=0
+~ PTPhase=1
+~ RevThreshold=100
+~ RevDelay=60
+~ RevNeutral=No
+~ EventLog=No
+~ RemotePTRatio=2.4
+~ TapNum=8
+~ Reset=No
+~ LDC_Z=0
+~ Rev_Z=0
+~ Cogen=No
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+! Bus =blv
+

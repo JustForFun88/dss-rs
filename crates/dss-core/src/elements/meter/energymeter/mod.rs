@@ -33,6 +33,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::meters::demand_interval::MeterStream;
 
 mod accessors;
+mod dump;
 mod sample;
 mod zone;
 
@@ -121,10 +122,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         // Pascal `DSSObjectReferenceProperty` with `PropertyOffset2 = 0`: any
         // circuit element by full name (defaults to the first circuit element).
-        PropDef::object_ref_any("element"),
-        PropDef::integer("terminal"),
-        PropDef::action("action", enums.energy_meter_action),
-        PropDef::string_list("option"),
+        PropDef::object_ref_any("Element"),
+        PropDef::integer("Terminal"),
+        PropDef::action("Action", enums.energy_meter_action),
+        PropDef::string_list("Option"),
         PropDef::double("kVANormal"),
         PropDef::double("kVAEmerg"),
         // `DoubleVArrayProperty` over `SensorCurrent` (length = nphases).
@@ -136,8 +137,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("LineLosses"),
         PropDef::boolean("XfmrLosses"),
         PropDef::boolean("SeqLosses"),
-        PropDef::boolean("3phaseLosses"),
-        PropDef::boolean("VbaseLosses"),
+        PropDef::boolean("3PhaseLosses"),
+        PropDef::boolean("VBaseLosses"),
         PropDef::boolean("PhaseVoltageReport"),
         PropDef::double("Int_Rate"),
         PropDef::double("Int_Duration"),
@@ -149,8 +150,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("CAIDI"),
         PropDef::double("CustInterrupts"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("EnergyMeter", defs, true)

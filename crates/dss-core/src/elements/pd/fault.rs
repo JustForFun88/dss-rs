@@ -25,6 +25,7 @@
 //! whose solve loop is deferred to WP7.9; until then `RandomMult` stays `1.0`
 //! (`CalcYPrim` forces it for every non-MonteFault mode) and the field is inert.
 
+mod dump;
 #[cfg(test)]
 mod tests;
 
@@ -81,14 +82,14 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         PropDef::double("MinAmps"),
         // TPDClass tail (Pascal suppresses normamps/emergamps from JSON — inert
         // here; the text dump still carries them).
-        PropDef::double("normamps"),
-        PropDef::double("emergamps"),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Fault", defs, true)

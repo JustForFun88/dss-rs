@@ -63,25 +63,30 @@ pub fn g_left_w(v: f64, width: usize, sig: usize) -> String {
 }
 
 /// Pascal FPC `Str(v: width)` (the default real-to-string with *only* a field
-/// width): scientific notation with `width - 8` fraction digits and a signed,
-/// ≥3-digit zero-padded exponent, the whole value right-justified in `width`
-/// (a leading space carries the positive-sign slot — `6.639353E+004` →
-/// ` 6.639353E+004` at width 14). The convergence report's `|V|`/`Vbase`
-/// columns write `VmagSaved: 14` / `NodeVbase: 14` (`Solution.pas`
-/// `WriteConvergenceReport`). Probe-matched to the pinned oracle's bytes; the
-/// value comparison in the golden is by parsed value, so any last-digit rounding
-/// difference (FPC-vs-Rust `{:E}`) is absorbed by the column's printing-floor tol.
+/// width): scientific notation with `width - 8` fraction digits (floored at 1)
+/// and a signed, ≥3-digit zero-padded exponent, an explicit sign slot (`' '`
+/// for non-negative, `'-'` for negative — part of the *minimum* representation,
+/// not incidental padding), the whole right-justified in `width` (`6.639353E
+/// +004` → ` 6.639353E+004` at width 14; probe-confirmed the sign slot survives
+/// even at width 0 — Monitor's `// Sec=` `WriteStr(sout, '// Sec=', Sec: 0)`
+/// renders `0.0` as `// Sec= 0.0E+000`, the 9-char floor `frac=1` + sign). The
+/// convergence report's `|V|`/`Vbase` columns write `VmagSaved: 14` /
+/// `NodeVbase: 14` (`Solution.pas` `WriteConvergenceReport`). Probe-matched to
+/// the pinned oracle's bytes; the value comparison in the golden is by parsed
+/// value, so any last-digit rounding difference (FPC-vs-Rust `{:E}`) is
+/// absorbed by the column's printing-floor tol.
 pub fn fpc_sci_w(v: f64, width: usize) -> String {
-    let frac = width.saturating_sub(8);
-    // Rust `{:.*E}` → `6.639353E4` / `-4.2E-3`; reformat the exponent to a sign
-    // plus an at-least-3-digit zero-padded magnitude.
-    let s = format!("{v:.frac$E}");
+    let frac = ((width as i64) - 8).max(1) as usize;
+    let sign = if v.is_sign_negative() { '-' } else { ' ' };
+    // Rust `{:.*E}` → `6.639353E4`; reformat the exponent to a sign plus an
+    // at-least-3-digit zero-padded magnitude (sign handled explicitly above).
+    let s = format!("{:.frac$E}", v.abs());
     let (mant, exp) = s.split_once('E').unwrap_or((s.as_str(), "0"));
     let (esign, edig) = match exp.strip_prefix('-') {
         Some(r) => ('-', r),
         None => ('+', exp.trim_start_matches('+')),
     };
-    let body = format!("{mant}E{esign}{edig:0>3}");
+    let body = format!("{sign}{mant}E{esign}{edig:0>3}");
     format!("{body:>width$}")
 }
 

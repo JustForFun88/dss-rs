@@ -27,6 +27,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
 
 mod accessors;
+mod dump;
 mod solve;
 mod source;
 
@@ -74,16 +75,16 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let mut defs = vec![
-        PropDef::bus("bus1", 1).flags(PropFlags::NONE),
-        PropDef::double("basekv"),
+        PropDef::bus("Bus1", 1).flags(PropFlags::NONE),
+        PropDef::double("BasekV"),
         PropDef::double("pu"),
-        PropDef::double("angle"),
-        PropDef::double("frequency").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("MVAsc3"),
-        PropDef::double("MVAsc1"),
-        PropDef::double("x1r1"),
-        PropDef::double("x0r0"),
+        PropDef::double("Angle"),
+        PropDef::double("Frequency").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("MVASC3"),
+        PropDef::double("MVASC1"),
+        PropDef::double("X1R1"),
+        PropDef::double("X0R0"),
         PropDef::double("Isc3"),
         PropDef::double("Isc1"),
         PropDef::double("R1").flags(PropFlags::REDUNDANT),
@@ -92,24 +93,24 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("X0").flags(PropFlags::REDUNDANT),
         PropDef::mapped_string_enum("ScanType", enums.scan_type),
         PropDef::mapped_string_enum("Sequence", enums.sequence),
-        PropDef::bus("bus2", 2),
+        PropDef::bus("Bus2", 2),
         PropDef::complex("Z1"),
         PropDef::complex("Z0"),
         PropDef::complex("Z2"),
         PropDef::complex("puZ1"),
         PropDef::complex("puZ0"),
         PropDef::complex("puZ2"),
-        PropDef::double("baseMVA"),
+        PropDef::double("BaseMVA"),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),
         PropDef::object_ref_class("LoadShape", "Duty"),
         PropDef::mapped_string_enum("Model", enums.vsource_model),
-        PropDef::complex("puZideal"),
+        PropDef::complex("puZIdeal"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     defs.shrink_to_fit();
