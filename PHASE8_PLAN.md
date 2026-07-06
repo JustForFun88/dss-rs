@@ -687,10 +687,22 @@ Steps:
    `Export Uuids` (keyword 25, default file `EXP_UUIDS.csv` →
    `<CircuitName_>` prefix applies): rows `<FullName> {UUID}` for circuit,
    every bus, every ckt element, then the linecode/wiredata/linegeometry/
-   xfmrcode/linespacing/tsdata/cndata classes, then `WriteHashedUUIDs` — the
-   exporter auto-creates the hashed keys `Station=Station=1`,
-   `GeoRgn=GeoRgn=1`, `SubGeoRgn=SubGeoRgn=1` (probe-proven; the fixture
-   preloads all three). Probe-proven quirk to reproduce: `Text.Result` stays
+   xfmrcode/linespacing/tsdata/cndata classes, then `WriteHashedUUIDs`
+   (`ExportCIMXML.pas:1286`) — the exporter auto-creates the hashed keys
+   `Station=Station=1`, `GeoRgn=GeoRgn=1`, `SubGeoRgn=SubGeoRgn=1`
+   (probe-proven; the fixture preloads all three). **Mechanism + storage
+   (port these exactly — GAPS_PLAN WPG.18 builds on them):** the three keys
+   come from `DefaultCircuitUUIDs` (`ExportCIMXML.pas:1276`), which
+   `DoExportCmd` calls on **every** export keyword (`ExportOptions.pas:188`),
+   via `GetDevUuid` (`:1002`, the exact `'Station=' + name + '=' + seq` key
+   strings) → `GetHashedUuid` (`:952`, find-or-CreateUUID4). The hashed list
+   (`UuidHash`/`UuidList`/`UuidKeyList`) **persists across commands** on the
+   DSS context (the `FreeUuidList` call after CIM export is commented out —
+   "deferred for UUID export", `:4697`); `DoUuidsCmd` resets it first via
+   `StartUuidList` (`:822`, called at `ExecHelper.pas:4472`). Rust home:
+   seed `crates/dss-core/src/cim/` (the PORTING_PLAN module) with this state
+   + the four helpers, keeping the Pascal surface — WPG.18 fills the rest of
+   the module later; don't invent a different storage shape here. Probe-proven quirk to reproduce: `Text.Result` stays
    EMPTY after `export uuids` (unlike every other export). Gate: wire
    `phase8_decks/uuids.dss` + `uuids_pre.csv` (the `@FIXTURES@` token →
    absolute fixtures dir on both the Python and Rust sides); byte-exact —
@@ -809,8 +821,8 @@ Steps:
 ### WP8.8 — Phase exit [6%]
 
 1. `rg "TODO\(compat\)"` / `rg "NOT_PORTED"` / `rg "TODO\(WP8\)"` sweep — every
-   remaining site points at its phase (Phase 9 CIM/GIC/A-Diakoptics/exotics, or
-   "never" for DLLs/GUI). The WP8.4-era byte-pass notes (FPC `Format('%g')`
+   remaining site points at its owner (GAPS_PLAN WPG.* — incl. WPG.18 for CIM —
+   Phase 9 GIC/A-Diakoptics/exotics, or "never" for DLLs/GUI). The WP8.4-era byte-pass notes (FPC `Format('%g')`
    stand-ins flagged in STATUS) are settled here.
 2. Run `tools/cmd_coverage.py` to **prove tail coverage** of the corpus command/option
    set (PORTING_PLAN §Phase 8 deliverable); document the residual.
@@ -830,11 +842,15 @@ Steps:
 
 ## 4. Deferred in this phase (pointing forward)
 
-- **Phase 9 (exotics)** — the CIM XML exports `CIM100`/`CIM100Fragments`
-  (`ExportCIMXML.pas`, explicitly Phase 9 per PORTING_PLAN); the
+- **GAPS_PLAN WPG.18** — the CIM XML exports `CIM100`/`CIM100Fragments`
+  (`ExportCIMXML.pas`; pulled out of Phase 9 on 2026-07-06 — byte-exact golden
+  gate on the WP8.6 `uuids file=` determinism recipe). Until it runs, the two
+  keywords stay scoped `NOT_PORTED`.
+- **Phase 9 (exotics)** — the
   A-Diakoptics exports `IncMatrix`/`IncMatrixRows`/`IncMatrixCols`/`BusLevels`/
   `Laplacian` and the `DSS_CAPI_ADIAKOPTICS`-only `ZLL`/`ZCC`/`Contours`/`Y4`; the GIC
-  export `GICMvars` (GIC elements are Phase 9); `Pstcalc` flicker outputs (Monitor
+  export `GICMvars` (GIC elements are GAPS_PLAN WPG.16, which decides whether to
+  pull this export in); `Pstcalc` flicker outputs (Monitor
   mode 4). Each remains a scoped `NOT_PORTED("… — Phase 9")` Export keyword, never a
   silent no-op.
 - **Faithfully-errored upstream** — the `CDPSMAsset`/`CDPSMElec`/`CDPSMGeo`/
