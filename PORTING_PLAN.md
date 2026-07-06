@@ -321,8 +321,11 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
 - ~~`ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle)~~ —
   **moved to `GAPS_PLAN.md` WPG.18** (byte-exact golden XML gate via the
   `uuids file=` determinism recipe).
-- A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
-  gate: numerically identical to single-actor results.
+- ~~A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
+  gate: numerically identical to single-actor results.~~ — **moved to
+  `MULTITHREADING_PLAN.md` (2026-07-06):** actor mode = stage M2 there (same
+  std::thread + channels design, gate unchanged); A-Diakoptics explicitly deferred
+  (out of initial scope). Runs last in `PLAN_SEQUENCE.md`.
 - ~~GIC elements (`GICLine`, `GICsource`, `GICTransformer`)~~ — **moved to
   `GAPS_PLAN.md` WPG.16**; `Pstcalc` flicker (if not
   already pulled in by Monitor); plotting callbacks as a data-only `PlotSink` trait.
@@ -395,6 +398,14 @@ Rules:
    swept in one dedicated cleanup pass: replace each quirk with the correct/precise
    implementation and regenerate the affected goldens deliberately, one quirk at a time.
 
+   > **Update (2026-07-06, supersedes rule 4's "replace" — rules 1–3 unchanged):** the
+   > sweep is now **Stage F of `DE_PASCALIZE_PLAN.md`** (Part IV.2). Compat quirks are
+   > **not deleted** — each becomes a dual kernel behind `#[cfg(feature =
+   > "oracle-parity")]`: the default build gets the correct/precise implementation, the
+   > parity build keeps the quirk so every 1:1 oracle gate stays permanently re-runnable.
+   > Only the default lane re-baselines. See `PLAN_SEQUENCE.md` for the post-acceptance
+   > order (DE_PASCALIZE → RESONANCE → MULTITHREADING).
+
 ## 5. Risk Register
 
 | Risk | L/I | Mitigation |
@@ -417,6 +428,19 @@ Final acceptance for the 1:1 port: all electricdss-tst cases covered by
 `cmd_coverage.py` run through both engines with the harness reporting zero
 out-of-tolerance values and exact discrete-state matches, plus `save_roundtrip` and
 export-diff suites green on IEEE 13/34/37/123/8500.
+
+> **Update (2026-07-06) — verification after acceptance.** Final acceptance itself is
+> unchanged (it runs on the 1:1 engine — the configuration that becomes the
+> `oracle-parity` build). From `DE_PASCALIZE_PLAN.md` Stage F onward, verification is
+> **two permanent CI lanes**: the **parity lane** (`--features oracle-parity`) keeps this
+> section's full gate — byte goldens, calibrated floors, exact discrete states and
+> iteration counts — bitwise-green forever; the **default lane** (idiomatic kernels,
+> upstream bugs fixed, parallel LU / iterative refinement allowed) keeps the same floors
+> on continuous quantities and exact discrete states but **unpins iteration counts**,
+> and is anchored to the oracle transitively via the parity↔default differential gate.
+> Drift model and lane rules: `DE_PASCALIZE_PLAN.md` Part IV.2; ordering:
+> `PLAN_SEQUENCE.md`; per-step ritual: as in `PHASE8_PLAN.md`, adopted by every
+> post-acceptance plan.
 
 ## 7. Immediate first actions
 
