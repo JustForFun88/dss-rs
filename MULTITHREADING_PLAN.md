@@ -35,12 +35,17 @@ defined once in `DE_PASCALIZE_PLAN.md` Part IV.2 and apply here verbatim.
 
 ## Per-step ritual (every M-stage, in order, autonomously — the `PHASE8_PLAN` discipline)
 
+0. **Tier check** — compare the session against this stage's **exec tier** (table below);
+   below tier → do NOT execute, reply exactly: «Этот шаг требует <exec tier>. Переключи
+   сессию (/model + reasoning effort) и повтори команду.» and stop
+   (`PLAN_SEQUENCE.md` §Model-tier protocol).
 1. **Gate green** — fmt · clippy `-D warnings` · `cargo test --workspace` in **both lanes**
    (default and `--features oracle-parity`) + the parity↔default differential job + this
    plan's determinism tests (`RAYON_NUM_THREADS=1` vs `=8` bitwise for bit-neutral stages;
    fixed-thread run-to-run bitwise for M3c). A red test blocks the commit.
 2. **Update `STATUS.md`**, **commit** (code + STATUS together).
 3. **`/audit-code` + `/audit-tests` in parallel** — fresh independent agents (never forks),
+   **spawned with an explicit model/effort override matching the stage's audit tier**,
    briefed with the commit range, diff, the M-stage's section here, and the binding rules
    (ordered-commit pattern, sequential-forever inventory, lane discipline, no tolerance
    fudging). Settle findings empirically; record deliberate no-fixes in STATUS; re-run the
@@ -48,6 +53,38 @@ defined once in `DE_PASCALIZE_PLAN.md` Part IV.2 and apply here verbatim.
 4. **`STATUS.md` full review** — sync stale sections, archive to `docs/phase-records/`.
 5. **Only now stop** and report in Russian: what landed, audit findings + resolution,
    before/after criterion numbers, gate status per lane, next step.
+
+## Executor guidance (difficulty map, forbidden moves, escape protocol)
+
+| Stage | Exec tier | Audit tier | Executor notes |
+|---|---|---|---|
+| M0 | opus-medium+ | opus-high+ | three supertrait bounds + one const assert + one cross-thread test |
+| M1 | opus-medium+ | opus-high+ | criterion boilerplate; take deck paths from `tests/corpus/manifests/`; record numbers in STATUS |
+| **M2** | **opus-xhigh** | **opus-xhigh** | **the design step of this plan** — follow the `DssPool` sketch; the rules below are binding |
+| M3a/M3b | opus-high+ | opus-high+ | mechanical after R2 — the seams already exist (R2 riders); pinning = the bitwise determinism tests, run them after every file |
+| M3c | opus-medium+ | opus-high+ | one `compat` knob; requires Stage F; do NOT attempt before it |
+| M3d/M4 | opus-high+ | opus-high+ | deferred — do not start unless M1 benchmarks (M3d) / a ported Monte Carlo (M4) justify it |
+
+Tier vocabulary and the step-0 refuse protocol: `PLAN_SEQUENCE.md` §Model-tier protocol.
+
+**M2 binding rules (each is also a test):**
+- Actors **own** their `Dss` — `Arc<Mutex<Dss>>` (or any shared engine state) is forbidden.
+- Lifecycle: `Shutdown` message + `join` on pool drop; a panicked actor surfaces as an
+  error status, never a hang (`recv` on a dead channel must time out or error, not block
+  forever).
+- **Single-actor zero-overhead test:** a pool of 1 must produce bitwise-identical output
+  to plain `Dss` — the default path bypasses channels entirely.
+- Replies flow over per-request channels; the pool never blocks on a busy actor except in
+  `Wait`.
+
+**Forbidden moves:** no `Arc<Mutex>` around engine state; no atomics/racing `+=` on floats
+(ordered commit only, both lanes); no tolerance loosening; no parallel stage lands without
+its determinism test; never parallelize the sequential-forever inventory; no `tokio`.
+
+**When stuck:** same escape protocol as `DE_PASCALIZE_PLAN.md` — leave code sequential
+(green), record the blocker in `STATUS.md`, surface at the stop point. A parallel stage
+that can't pass its determinism test **stays sequential**; that is a valid outcome, not a
+failure to hide.
 
 ## Where the codebase stands (audited 2026-07-06)
 
@@ -112,7 +149,10 @@ No `benches/` exist. Add `crates/dss-core/benches/`:
 Record numbers in `STATUS.md`. Every later stage quotes before/after from these benches.
 Expected profile (from architecture, to be confirmed): LU factor dominates Y-rebuild-heavy
 runs; the fixed-point loop = triangular solve + injection sweep; time-series adds the meter
-zone walk.
+zone walk. These benches also serve `DE_PASCALIZE_PLAN` **P15** (dss-sparse allocation
+hygiene: SparseSet/symbolic reuse across rebuilds, dedup-mapping cache, per-element
+`to_row_major` and per-iteration RHS `to_vec` removal) — land M1 before Part III so P15's
+wins are measured, not asserted.
 
 ### M2 — Actor mode: parallel-machine parity (coarse-grained, the upstream model)
 

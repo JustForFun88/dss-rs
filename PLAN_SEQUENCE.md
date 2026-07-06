@@ -34,6 +34,37 @@ Universal discipline: the **per-step ritual** (gate green → STATUS+commit → 
 adapted copy; after DE_PASCALIZE Stage F "gate green" means **both CI lanes** + the
 parity↔default differential job).
 
+## Model-tier protocol (binding for every plan below)
+
+Tier vocabulary: **`opus-medium+`** / **`opus-high+`** / **`opus-xhigh`** — meaning "Opus
+at that reasoning effort *or anything stronger*" (a stronger model at equal-or-higher
+effort always qualifies). Every execution plan carries a per-stage tier table
+(**exec tier** = who may execute; **audit tier** = the model/effort the spawned
+`/audit-code` + `/audit-tests` agents must run at).
+
+Harness reality (do not over-promise): the main session's model **cannot switch itself**
+mid-plan — only the user can (`/model` + effort). What IS automatic:
+1. **Auditor override** — audits run as spawned subagents, and the ritual requires
+   spawning them with an **explicit model/effort override** per the stage's audit tier
+   (never "whatever the session runs").
+2. **The refuse protocol (ritual step 0)** — before executing any WP, the executor
+   compares the session tier against the stage's `exec` tier (the model name is in the
+   system prompt; if the effort level is not visible, ask the user to confirm — mandatory
+   for `opus-xhigh` stages). If the session is below tier, the executor must NOT attempt
+   the work and must reply exactly:
+   **«Этот шаг требует <exec tier>. Переключи сессию (/model + reasoning effort) и повтори
+   команду.»** — under-tier execution fails safe instead of failing silently.
+
+Tier map at a glance (full tables live in each plan):
+- **`opus-xhigh`**: DE_PASCALIZE **R1**, **Stage F**, **P15 item 2**; MULTITHREADING
+  **M2**; RESONANCE **WP-R2**.
+- **`opus-high+`**: DE_PASCALIZE R2, P10, P15 (rest); MULTITHREADING M3a/M3b/M3d/M4;
+  RESONANCE WP-R1. Audits everywhere are `opus-high+` minimum, `opus-xhigh` on the
+  xhigh-exec stages.
+- **`opus-medium+`**: everything else (R0/R3, Part II, P8/P9/P11–P14, P3, M0/M1/M3c,
+  WP-R3) — mechanical-with-guardrails: named pinning tests, forbidden-move lists, and the
+  "when stuck: leave green, record in STATUS, surface" escape protocol.
+
 Supporting documents (not stages — referenced throughout):
 - `CLAUDE.md` — conventions + the green gate (gets its two-lane update at Stage F).
 - `STATUS.md` — living snapshot; `SPLITTING_RULES.md` — module-split protocol.

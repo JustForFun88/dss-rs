@@ -440,7 +440,10 @@ export-diff suites green on IEEE 13/34/37/123/8500.
 > and is anchored to the oracle transitively via the parity↔default differential gate.
 > Drift model and lane rules: `DE_PASCALIZE_PLAN.md` Part IV.2; ordering:
 > `PLAN_SEQUENCE.md`; per-step ritual: as in `PHASE8_PLAN.md`, adopted by every
-> post-acceptance plan.
+> post-acceptance plan. Executor/auditor **model tiers** (per-stage exec+audit
+> requirements, the step-0 refuse protocol, explicit model override for spawned
+> auditors): `PLAN_SEQUENCE.md` §Model-tier protocol — adopted by `PHASE8_PLAN.md`
+> and every subsequent plan.
 
 ## 7. Immediate first actions
 
