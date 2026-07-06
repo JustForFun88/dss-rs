@@ -6,6 +6,13 @@
 > `NOT_PORTED` discipline; goldens regenerated **manually** with the pinned
 > oracle `tools/golden/PIN.txt`).
 >
+> **Oracle scope note (2026-07-07):** every WPG gates on the **pinned
+> dss-python oracle only**. The opt-in official-EPRI-binary channel
+> (`tools/opendss/`, Oddie bridge, r3723/r4088/r4133) is available for
+> *diagnostic* cross-checks (e.g. "is this quirk dss_capi-specific or upstream
+> OpenDSS?") via `ab_compare.py --a capi --b oddie:r3723` — it never replaces
+> the pinned oracle in a WPG's exit criteria.
+>
 > **Stop-and-confirm cadence (same as `PHASE8_PLAN §0`):** after each small
 > step (a WPG, or a self-contained stage of one — e.g. WPG.15's stages A/B/C)
 > run the per-step ritual below **autonomously, without pausing between its

@@ -77,6 +77,12 @@ Supporting documents (not stages — referenced throughout):
 - `STATUS.md` — living snapshot; `SPLITTING_RULES.md` — module-split protocol.
 - `CORPUS_TEST_PLAN.md`, `CONTROL_COVERAGE_PLAN.md`, `tests/TOLERANCE_NOTES.md` — test
   infrastructure, woven through all stages.
+- `tools/opendss/README.md` — the **official-EPRI-binary oracle** (Oddie bridge,
+  r3723/r4088/r4133; added 2026-07-07, opt-in, gates nothing). Infrastructure for a
+  **future UPGRADE plan** — porting newer upstream OpenDSS behavior (r4088/r4133) after
+  final acceptance; its `ab_compare.py` r3723↔r4088↔r4133 inventory is that plan's
+  scoping input. The upgrade plan is not yet written and slots after final acceptance,
+  ordered against DE_PASCALIZE/RESONANCE/MULTITHREADING when drafted.
 - `PHASE4..7_PLAN.md`, `docs/phase-records/` — completed phases (historical).
 
 Key cross-plan dependencies (why the order is what it is):

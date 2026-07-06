@@ -2,6 +2,7 @@
 .inputs
 /investigations
 __pycache__/
+.venv/
 /tmp
 .claude
 *SavedVoltages.dbl

@@ -1631,6 +1631,29 @@ Oracle pin: Python 3.12.4, dss-python 0.15.7, dss-python-backend 0.14.5
 (the same dss_capi release vendored in `.inputs/dss_capi`). `python` works in
 this environment; the `py` launcher is broken — use `python` directly.
 
+**Official-EPRI-OpenDSS oracle (opt-in, `tools/opendss/` — 2026-07-07):**
+vendored EPRI `OpenDSSDirect.dll` r3723 (9.8.0.1) / r4088 (10.2.0.1) / r4133
+(11.0.0.1) driven through the AltDSS Oddie bridge (dss-python 0.16.0b2 in a
+separate venv, `PIN_OPENDSS.txt`), reusing `oracle_server.py` unchanged via
+`DSS_ORACLE_ENGINE=oddie`. For inventorying upstream changes ahead of porting
+them; the mandatory gate is untouched. Workflows (see `tools/opendss/README.md`):
+`DSS_LIVE_OPENDSS=<rev> cargo test ... corpus_live_opendss` → report
+`tmp/opendss_report_<rev>.json` (r3723 baseline: 150 matched / 82 diverged of
+232 — divergence classes = dss_capi `known_differences`, monitor-header
+whitespace, property-value formats, iteration deltas); `ab_compare.py --a
+oddie:r3723 --b oddie:r4133` → upstream-change inventory (baseline: 109/168
+match; deltas in distance relays, harmonics, InvControl iteration behavior).
+Two operational gotchas, both handled: (1) EPRI's Delphi `FireOffEditor`
+ShellExecutes the editor on every `Show`/`Export` with NO `NoFormsAllowed`
+check and Oddie can't set `AllowEditor` — a corpus sweep opened hundreds of
+Notepads; `make_engine()` now issues `Set RegistryUpdate=No` + `Set
+Editor=rundll32.exe` (silent no-op; registry write suppressed so the user's
+OpenDSS editor setting is untouched) — verified on all 3 revisions with a
+`Show` deck, zero spawns. (2) `.inputs/electricdss-tst` is now a re-checkout
+with different EOLs: `tools/corpus/vendor.py --force` produces a ~1544-file
+EOL-only diff — clean run pollution with `git restore tests/corpus` instead;
+re-vendor only deliberately.
+
 ---
 
 ## 7. Phase 7 — inherited deferrals & architecture in place

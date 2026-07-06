@@ -865,6 +865,13 @@ Steps:
 
 ## 4. Deferred in this phase (pointing forward)
 
+- **Out-of-band infrastructure landed mid-phase (2026-07-07, no effect on this
+  phase's gate):** the **official-EPRI-binary oracle** `tools/opendss/` — Oddie
+  bridge over vendored `OpenDSSDirect.dll` r3723/r4088/r4133, opt-in only
+  (`DSS_LIVE_OPENDSS=<rev>` report-mode test + `ab_compare.py` A/B inventory).
+  Phase 8 WPs keep gating on the pinned dss-python oracle exactly as §1 states;
+  the EPRI channel exists to scope the future post-acceptance upgrade work
+  (see `PLAN_SEQUENCE.md`, `tools/opendss/README.md`).
 - **GAPS_PLAN WPG.18** — the CIM XML exports `CIM100`/`CIM100Fragments`
   (`ExportCIMXML.pas`; pulled out of Phase 9 on 2026-07-06 — byte-exact golden
   gate on the WP8.6 `uuids file=` determinism recipe). Until it runs, the two

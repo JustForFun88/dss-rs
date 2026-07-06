@@ -27,6 +27,13 @@ Rust side restarting the process and recording the case as a failure.
 Startup hard-asserts the pin in tools/golden/PIN.txt (dss-python 0.15.7); a wrong
 oracle version exits non-zero, never a silent pass.
 
+Engine selection (`make_engine`): `DSS_ORACLE_ENGINE=capi` (default, the pinned
+dss-python oracle above) or `oddie` — an official EPRI `OpenDSSDirect.dll`
+(`DSS_OPENDSS_REV` -> tools/opendss/revisions.json) driven through the AltDSS
+Oddie bridge from the separate venv pinned in tools/opendss/PIN_OPENDSS.txt.
+See tools/opendss/README.md. The capture surface is identical; `ping` echoes
+`{"oddie":true,"rev":...}` so the caller can verify which engine answered.
+
 Usage (normally spawned by the Rust gate; manual smoke test):
     echo {"cmd":"ping"} | python tools/oracle/oracle_server.py
 """
@@ -45,6 +52,12 @@ from pathlib import Path
 GOLDEN = Path(__file__).resolve().parent.parent / "golden"
 sys.path.insert(0, str(GOLDEN))
 import gen_checkpoints as gc  # noqa: E402
+
+# Resolved at import time — the EPRI engine chdirs the process on Compile
+# (`AllowChangeDir` is not settable through Oddie), so nothing may rely on
+# relative paths after the first `run` request.
+OPENDSS_DIR = Path(__file__).resolve().parent.parent / "opendss"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def log(msg: str) -> None:
@@ -364,9 +377,104 @@ def run_case(d, req: dict) -> dict:
     return {"node_order": node_order, "n_steps": n_steps, "checkpoints": checkpoints}
 
 
+def _oddie_get_y_sparse(d):
+    """Oddie-mode replacement for `gc._get_y_sparse`: the fastdss dss-python
+    (0.16.0b2) `getYSparse()` takes no `factor` argument (Oddie ignores the
+    flag; EPRI's `InitAndGetYparams` ALWAYS factors before the CSC export —
+    proven solution-neutral by `tools/opendss/smoke.py`'s bit-identical
+    YNodeVarray check). Same `BuildY` retry as the capi original."""
+    r = d.YMatrix.getYSparse()
+    if r is None:
+        d.Text.Command = "BuildY"
+        r = d.YMatrix.getYSparse()
+    if r is None:
+        raise RuntimeError("YMatrix.getYSparse returned None even after a BuildY retry")
+    return r
+
+
+def _read_pin_opendss() -> dict:
+    pins = {}
+    for line in (OPENDSS_DIR / "PIN_OPENDSS.txt").read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if "==" in line:
+            k, v = line.split("==", 1)
+            pins[k.strip()] = v.strip()
+    return pins
+
+
+def make_engine():
+    """Bind the oracle engine from `DSS_ORACLE_ENGINE`:
+
+    - "capi" (default) — the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle,
+      exactly as before (`gc.check_pin()` + the `dss.DSS` singleton);
+    - "oddie" — an OFFICIAL EPRI `OpenDSSDirect.dll` loaded by absolute path
+      through the AltDSS Oddie bridge (dss-python 0.16.0b2 `IOddieDSS`, the
+      separate venv pinned in tools/opendss/PIN_OPENDSS.txt). The revision
+      comes from `DSS_OPENDSS_REV` (looked up in tools/opendss/revisions.json,
+      whose `expect_version` must be non-empty — no silent pass), or a direct
+      `DSS_OPENDSS_DLL` path override (+ optional `DSS_OPENDSS_EXPECT`
+      version-substring check).
+    """
+    engine = os.environ.get("DSS_ORACLE_ENGINE", "capi")
+    if engine == "capi":
+        oracle = gc.check_pin()  # hard-asserts dss-python 0.15.7 / engine 0.14.5
+        from dss import DSS as d
+
+        return d, oracle
+    if engine != "oddie":
+        sys.exit(f"unknown DSS_ORACLE_ENGINE={engine!r} (expected 'capi' or 'oddie')")
+
+    import dss
+
+    pin = _read_pin_opendss()
+    if dss.__version__ != pin["dss-python"]:
+        sys.exit(
+            f"dss-python {dss.__version__} != pinned {pin['dss-python']} "
+            "(tools/opendss/PIN_OPENDSS.txt — is DSS_ORACLE_PYTHON the Oddie venv?)"
+        )
+    rev = os.environ.get("DSS_OPENDSS_REV", "")
+    dll = os.environ.get("DSS_OPENDSS_DLL", "")
+    expect = os.environ.get("DSS_OPENDSS_EXPECT", "")
+    if not dll:
+        revs = json.loads((OPENDSS_DIR / "revisions.json").read_text())
+        if rev not in revs:
+            sys.exit(f"DSS_OPENDSS_REV={rev!r} not in revisions.json ({sorted(revs)})")
+        dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
+        expect = expect or revs[rev].get("expect_version", "")
+        if not expect:
+            sys.exit(
+                f"revisions.json expect_version for {rev} is empty — "
+                "run tools/opendss/smoke.py and pin it (no silent pass)"
+            )
+    from dss import IOddieDSS
+
+    d = IOddieDSS(library_path=dll)
+    ver = str(d.Version)
+    if expect and expect not in ver:
+        sys.exit(f"engine {ver!r} does not contain pinned {expect!r} (rev={rev!r})")
+    # Suppress dialogs BEFORE any Text command — an engine error message while
+    # forms are still allowed pops a modal dialog (main() sets this again;
+    # harmless).
+    d.AllowForms = False
+    # EPRI's Delphi `FireOffEditor` (Utilities.pas) ShellExecutes `DefaultEditor`
+    # on every `Show`/`Export` UNCONDITIONALLY — it has no NoFormsAllowed check,
+    # and `AllowEditor` is not settable through Oddie, so a corpus sweep would
+    # open hundreds of Notepads (empirically did). Point the editor at
+    # rundll32.exe — a GUI-subsystem no-op (no DLL entry point given -> exits
+    # silently, no window) — and stop the engine from persisting that override
+    # into the user's OpenDSS registry settings on dispose (`Set RegistryUpdate`,
+    # ExecOption[102] — the option name differs from the Pascal variable
+    # `UpdateRegistry`; identical in r3723/r4088/r4133).
+    d.Text.Command = "Set RegistryUpdate=No"
+    d.Text.Command = "Set Editor=rundll32.exe"
+    # fastdss getYSparse() signature differs; capture_system_y/capture_fingerprint
+    # route through gc._get_y_sparse, so rebind it for this process.
+    gc._get_y_sparse = _oddie_get_y_sparse
+    return d, {"engine": ver, "oddie": True, "rev": rev, "dll": dll}
+
+
 def main() -> None:
-    oracle = gc.check_pin()  # hard-asserts dss-python 0.15.7 / engine 0.14.5
-    from dss import DSS as d
+    d, oracle = make_engine()
 
     d.AllowForms = False
     # `Show`/`Export`/`FileEdit` call `FireOffEditor`, which opens the report in

@@ -115,10 +115,14 @@ struct Checkpoint {
 struct Oracle {
     python: String,
     server: PathBuf,
+    /// Extra environment for the spawned server (engine selector). Empty for
+    /// the pinned capi oracle; `Oracle::opendss` sets `DSS_ORACLE_ENGINE=oddie`
+    /// + `DSS_OPENDSS_REV` to drive an official EPRI `OpenDSSDirect.dll`.
+    envs: Vec<(&'static str, String)>,
 }
 
 impl Oracle {
-    fn new() -> Oracle {
+    fn server_path() -> PathBuf {
         let server: PathBuf = [
             env!("CARGO_MANIFEST_DIR"),
             "..",
@@ -134,8 +138,56 @@ impl Oracle {
             "oracle server missing: {}",
             server.display()
         );
+        server
+    }
+
+    fn new() -> Oracle {
         let python = std::env::var("DSS_ORACLE_PYTHON").unwrap_or_else(|_| "python".to_string());
-        Oracle { python, server }
+        Oracle {
+            python,
+            server: Self::server_path(),
+            envs: Vec::new(),
+        }
+    }
+
+    /// An oracle over an ORIGINAL EPRI `OpenDSSDirect.dll` (AltDSS Oddie bridge,
+    /// `tools/opendss/`): same server, same protocol, same captures — only the
+    /// engine binding differs (`DSS_ORACLE_ENGINE=oddie` + the revision). The
+    /// interpreter must be the separate Oddie venv (dss-python 0.16.0b2,
+    /// tools/opendss/PIN_OPENDSS.txt): `DSS_OPENDSS_PYTHON`, defaulting to
+    /// `tools/opendss/.venv/Scripts/python.exe`. Never falls back to the pinned
+    /// capi oracle's interpreter — a wrong env must fail loudly, not silently
+    /// compare against the wrong engine (the server re-asserts its own pin too).
+    fn opendss(rev: &str) -> Oracle {
+        let python = std::env::var("DSS_OPENDSS_PYTHON").unwrap_or_else(|_| {
+            let venv: PathBuf = [
+                env!("CARGO_MANIFEST_DIR"),
+                "..",
+                "..",
+                "tools",
+                "opendss",
+                ".venv",
+                "Scripts",
+                "python.exe",
+            ]
+            .iter()
+            .collect();
+            assert!(
+                venv.is_file(),
+                "Oddie venv interpreter missing: {} — create it per \
+                 tools/opendss/README.md or set DSS_OPENDSS_PYTHON",
+                venv.display()
+            );
+            venv.to_string_lossy().into_owned()
+        });
+        Oracle {
+            python,
+            server: Self::server_path(),
+            envs: vec![
+                ("DSS_ORACLE_ENGINE", "oddie".to_string()),
+                ("DSS_OPENDSS_REV", rev.to_string()),
+            ],
+        }
     }
 
     /// One-shot request/response with a wall-clock timeout (so a pathological
@@ -153,6 +205,7 @@ impl Oracle {
         let mut child = Command::new(&self.python)
             .arg("-u")
             .arg(&self.server)
+            .envs(self.envs.iter().map(|(k, v)| (*k, v.as_str())))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -217,8 +270,39 @@ impl Oracle {
 
     /// Validate the oracle is reachable and pinned (a one-shot ping).
     fn ping(&self) {
+        self.ping_engine(None);
+    }
+
+    /// Ping, and when `want_oddie = Some(rev)` also assert the answering engine
+    /// IS the requested EPRI revision (`oracle.oddie == true`, `oracle.rev ==
+    /// rev`) — so a lost env var can never silently compare against the pinned
+    /// capi oracle instead. Returns the server-reported engine version string.
+    fn ping_engine(&self, want_oddie: Option<&str>) -> String {
         let r = self.call(&json!({"cmd": "ping"}));
         assert!(r.ok, "oracle ping failed: {:?}", r.error);
+        let oracle = r
+            .result
+            .as_ref()
+            .and_then(|v| v.get("oracle"))
+            .cloned()
+            .unwrap_or_default();
+        if let Some(rev) = want_oddie {
+            assert_eq!(
+                oracle.get("oddie").and_then(|v| v.as_bool()),
+                Some(true),
+                "oracle is not the Oddie/EPRI engine: {oracle}"
+            );
+            assert_eq!(
+                oracle.get("rev").and_then(|v| v.as_str()),
+                Some(rev),
+                "oracle answered for the wrong revision: {oracle}"
+            );
+        }
+        oracle
+            .get("engine")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
     }
 
     /// Run one case and return the oracle's per-step model.
@@ -1082,4 +1166,107 @@ fn corpus_live_classify() {
         failures.len(),
         rp.display()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Opt-in A/B gate against ORIGINAL EPRI OpenDSS binaries (tools/opendss/):
+// the same full-model comparison as the mandatory gate, but with the oracle
+// bound to an official `OpenDSSDirect.dll` (r3723 / r4088 / r4133) through the
+// AltDSS Oddie bridge. The Rust port is calibrated to dss_capi 0.14.5, which
+// intentionally differs from EPRI upstream (dss_capi docs/known_differences.md)
+// on top of Delphi-vs-FPC numeric drift — so divergences here are *inventory*
+// for the upstream-porting work, not failures. Default = report mode
+// (tmp/opendss_report_<rev>.json, same catch_unwind pattern as the classifier);
+// DSS_LIVE_OPENDSS_ASSERT=1 promotes any divergence to a test failure (intended
+// for r3723 once its report triages clean). The shared comparators/tolerances
+// are reused as-is — never weakened for this gate.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn corpus_live_opendss() {
+    let Ok(rev) = std::env::var("DSS_LIVE_OPENDSS") else {
+        eprintln!(
+            "SKIPPED: set DSS_LIVE_OPENDSS=r3723|r4088|r4133 to compare against EPRI OpenDSS"
+        );
+        return;
+    };
+    assert!(
+        matches!(rev.as_str(), "r3723" | "r4088" | "r4133"),
+        "DSS_LIVE_OPENDSS={rev:?} — expected r3723|r4088|r4133 (tools/opendss/revisions.json)"
+    );
+    let assert_mode = std::env::var("DSS_LIVE_OPENDSS_ASSERT")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let oracle = Oracle::opendss(&rev);
+    let engine = oracle.ping_engine(Some(&rev));
+    eprintln!("opendss oracle ({rev}): {engine}");
+
+    // Same case universe as the mandatory gate, labeled by source manifest.
+    let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
+    for c in load_solvable() {
+        universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
+    }
+    for c in load_asymmetric() {
+        universe.push((
+            format!("asymmetric:{}", c.path),
+            asymmetric_file(&c.path),
+            c,
+        ));
+    }
+    for c in load_controls() {
+        universe.push((format!("controls:{}", c.path), controls_file(&c.path), c));
+    }
+
+    let mut matched: Vec<String> = Vec::new();
+    let mut diverged: Vec<(String, String)> = Vec::new();
+    let total = universe.len();
+    for (i, (label, abs, c)) in universe.iter().enumerate() {
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_and_compare(&oracle, label, abs, c);
+        }));
+        match res {
+            Ok(()) => matched.push(label.clone()),
+            Err(e) => diverged.push((label.clone(), panic_msg(e))),
+        }
+        if (i + 1) % 25 == 0 {
+            eprintln!("opendss {rev}: {}/{total} compared", i + 1);
+        }
+    }
+
+    matched.sort();
+    diverged.sort();
+    let report = serde_json::json!({
+        "rev": rev,
+        "engine": engine,
+        "total": total,
+        "matched": matched,
+        "diverged": diverged
+            .iter()
+            .map(|(label, r)| serde_json::json!({
+                "path": label,
+                "reason": r.chars().take(400).collect::<String>(),
+            }))
+            .collect::<Vec<_>>(),
+    });
+    let rp: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
+        .iter()
+        .collect::<PathBuf>()
+        .join(format!("opendss_report_{rev}.json"));
+    let _ = std::fs::create_dir_all(rp.parent().unwrap());
+    std::fs::write(&rp, serde_json::to_string_pretty(&report).unwrap())
+        .unwrap_or_else(|e| panic!("write {}: {e}", rp.display()));
+    eprintln!(
+        "opendss {rev}: {} matched, {} diverged (of {total}); report -> {}",
+        matched.len(),
+        diverged.len(),
+        rp.display()
+    );
+    if assert_mode && !diverged.is_empty() {
+        panic!(
+            "opendss {rev}: {} case(s) diverged from the EPRI engine \
+             (DSS_LIVE_OPENDSS_ASSERT=1); see {}",
+            diverged.len(),
+            rp.display()
+        );
+    }
 }

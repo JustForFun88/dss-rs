@@ -33,6 +33,12 @@ stage:
    Stage F's feature split (Part IV) — which absorbs and supersedes the `TODO(compat)`
    "wipe-out" sweep of `PORTING_PLAN §6`.**
 
+Available but not a contract: the opt-in **official-EPRI-binary oracle**
+(`tools/opendss/`, Oddie bridge, r3723/r4088/r4133, added 2026-07-07) — a third
+reference for settling "is this dss_capi-specific or upstream?" questions during
+Stage F's dual-kernel table work (`ab_compare.py --a capi --b oddie:r3723`). It
+gates nothing here; the pinned dss-python oracle remains the parity-lane spec.
+
 Every work package is tagged with a stratum:
 
 - **[A] bit-neutral** — same arithmetic, same order; existing goldens must stay green
