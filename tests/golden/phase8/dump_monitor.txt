@@ -1,0 +1,29 @@
+
+New "Monitor.mon1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 1
+! Yorder = 3
+! NodeRef = "1 2 3 "
+! Terminal Status: [C C C ]
+! Terminal Bus Ref: [1 1 1 ]
+
+~ Element=Line.l1
+~ Terminal=1
+~ Mode=0
+~ Action=
+~ Residual=No
+~ VIPolar=Yes
+~ PPolar=Yes
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+// BufferSize=1024
+// Hour=0
+// Sec= 0.0E+000
+// BaseFrequency=60
+// Bufptr=0
+// Buffer=
+

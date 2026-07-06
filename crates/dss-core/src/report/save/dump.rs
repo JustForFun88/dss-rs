@@ -20,6 +20,8 @@
 //! override), so the ported renderer is byte-faithful (`props_roundtrip` pins it).
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::meter::EnergyMeter;
+use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::ClassProps;
@@ -28,13 +30,45 @@ use crate::report::format;
 mod overrides;
 
 /// Context handed to every object dump: the object's class prop table, the enum
-/// registry (`ClassProps::get_value` needs it), and — for the PCElement
-/// `! VARIABLES` block — the precomputed `(name, value)` per dynamic-state
-/// variable (empty unless `complete` and the element is a PC element).
+/// registry (`ClassProps::get_value` needs it), the precomputed `(name, value)`
+/// per PC dynamic-state variable (empty unless `complete` and the element is a
+/// PC element, for the `! VARIABLES` block), and the precomputed `Branch List:`
+/// body text for the EnergyMeter override (empty for every other class — needs
+/// the full class registry to resolve each branch/shunt `ElemRef`'s name, which
+/// this per-object context otherwise has no reach into).
 pub struct DumpCtx<'a> {
     pub cls: &'a ClassProps,
     pub enums: &'a EnumRegistry,
     pub variables: &'a [(String, f64)],
+    pub branch_list: &'a str,
+}
+
+/// Pascal `EnergyMeter.pas:2102-2116`, the `Branch List:` walk for the
+/// `Dump energymeter.…` Complete tail: one `Circuit Element = <bare Name>` line
+/// per branch (`BranchList.First`/`GoForward`), then one `   Shunt Element =
+/// <FullName>` per attached shunt object (`FirstObject`/`NextObject`) — no tab
+/// indentation (unlike `Show Zone`'s tree-level tabs). Empty (no rows, just the
+/// caller's `Branch List:` header) when the zone was never built
+/// (`BranchList = NIL`).
+pub(crate) fn energy_meter_branch_list(classes: &[DssClass], em: &EnergyMeter) -> String {
+    let mut s = String::new();
+    let Some(tree) = em.branch_list() else {
+        return s;
+    };
+    for (i, &br) in em.sequence_list().iter().enumerate() {
+        let node = tree.node(em.sequence_nodes()[i]);
+        let name = classes[br.cls].objects[br.idx].data().name();
+        s.push_str(&format!("Circuit Element = {name}\n"));
+        for &shunt in &node.shunts {
+            let full = format!(
+                "{}.{}",
+                classes[shunt.cls].props.class_name(),
+                classes[shunt.cls].objects[shunt.idx].data().name()
+            );
+            s.push_str(&format!("   Shunt Element = {full}\n"));
+        }
+    }
+    s
 }
 
 /// Pascal `EncloseQuotes(s) = '"' + s + '"'` (`Utilities.pas:395`).
@@ -281,5 +315,26 @@ pub(crate) fn prefix_ckt(
     enabled_line(out, cd.enabled);
     if complete {
         cktelem_complete(out, cd);
+    }
+}
+
+/// The shared prefix an override inherits from a **`TPCElement`** base
+/// (`Leaf=FALSE`): header + `! ENABLED` + (Complete) the Y/terminal block +
+/// `! VARIABLES`. Used by the PC overrides (VSource, UPFC) — `TPCElement.
+/// DumpProperties` prints `! VARIABLES` itself (unlike the plain CktElement
+/// base), so it is folded into this prefix rather than the generic-path
+/// `pc_variables` call site.
+pub(crate) fn prefix_pc(
+    out: &mut String,
+    cx: &DumpCtx,
+    obj: &dyn DssObject,
+    cd: &CktElementData,
+    complete: bool,
+) {
+    header(out, &full_name(cx, obj));
+    enabled_line(out, cd.enabled);
+    if complete {
+        cktelem_complete(out, cd);
+        pc_variables(out, cx.variables);
     }
 }

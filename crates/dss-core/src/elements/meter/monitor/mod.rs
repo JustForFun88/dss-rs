@@ -31,6 +31,7 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef};
 
 mod accessors;
+mod dump;
 mod header;
 mod sample;
 
@@ -60,18 +61,18 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         // Pascal `PropertyOffset2 = 0` + `DynamicDefault`: any circuit element
         // by full name (defaults to the first circuit element = the source).
-        PropDef::object_ref_any("element"),
-        PropDef::integer("terminal"),
-        PropDef::integer("mode"),
-        PropDef::action("action", enums.monitor_action),
-        PropDef::boolean("residual"),
+        PropDef::object_ref_any("Element"),
+        PropDef::integer("Terminal"),
+        PropDef::integer("Mode"),
+        PropDef::action("Action", enums.monitor_action),
+        PropDef::boolean("Residual"),
         PropDef::boolean("VIPolar"),
         PropDef::boolean("PPolar"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(
+        PropDef::double("BaseFreq").flags(
             crate::obj::props::PropFlags::NON_NEGATIVE | crate::obj::props::PropFlags::NON_ZERO,
         ),
-        PropDef::enabled("enabled"),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("Monitor", defs, true)

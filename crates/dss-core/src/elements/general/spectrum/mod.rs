@@ -6,6 +6,7 @@
 //! Pascal `TProp`: `NumHarm=1`, `Harmonic=2`, `pctMag=3` (modern name `%Mag`),
 //! `Angle=4`, `CSVFile=5`; the base class appends `Like=6`.
 
+mod dump;
 #[cfg(test)]
 mod tests;
 
@@ -47,8 +48,9 @@ pub struct SpectrumObj {
     angle_array: Option<Vec<f64>>,
     csvfile: String,
     /// `MultArray` — the complex per-harmonic phasors built by `SetMultArray`,
-    /// each shifted so the fundamental sits at zero phase. Consumed only by the
-    /// harmonic solution mode (`get_mult`); nothing in the property dump reads it.
+    /// each shifted so the fundamental sits at zero phase. Consumed by the
+    /// harmonic solution mode (`get_mult`) and the Complete `Dump` tail's
+    /// `Multiplier Array:` block (`dump.rs`).
     mult_array: Option<Vec<Complex64>>,
     /// Deferred `CSVFile` reads queued for the executive (the WP5.2b
     /// `FileLoad` pattern — the property hook can't reach the filesystem).

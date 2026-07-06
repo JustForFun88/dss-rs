@@ -7,10 +7,10 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-05 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
+Last updated: 2026-07-06 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
 gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)
-IN PROGRESS — Dump steps 1–2 COMPLETE, gate-green** (single-object
+IN PROGRESS — Dump steps 1–3a COMPLETE, gate-green** (single-object
 `Dump <class>.[name|*] [debug]`: the `report/save/dump.rs` generic base — the
 3-kind `TDSSObject`/`TDSSCktElement`/`TPCElement` chain — + `#903`/`#256` errors).
 **Dump step 2 (2026-07-05):** the **per-winding / matrix `DumpProperties`
@@ -100,9 +100,55 @@ the test fixtures authored up front — 7 golden fixture decks at
 distrib, uuids+csv) and 12 live staging decks at `tests/corpus/gaps/`
 (`wp: "WP8.6"/"WP8.7"`: batchedit ×2, the 8 reduce strategies + `Remove` +
 midi_reduce), all two-process oracle-validated + feature-sensitive (details
-in §1f). **next = Dump step 3** (bare `dump`/`dump debug` whole-circuit +
-`dump solution` + the `commands`/`buslist`/`devicelist`/`alloc` aux files, and
-the 8 remaining leaf overrides — per the refreshed PHASE8_PLAN §WP8.5).
+in §1f). **Dump step 3a COMPLETE (2026-07-06), gate-green:** the 8 remaining
+leaf `DumpProperties` overrides — Capacitor, Fault, VSource, UPFC, RegControl,
+Monitor, EnergyMeter, Spectrum — each a co-located `dump_body` dispatched from
+`report/save/dump/overrides.rs` (every ported class's Pascal override is now
+wired; only the Phase-9-deferred AutoTrans/GICLine are outstanding). New
+`report/save/dump.rs` shared prefix `prefix_pc` (header + `! ENABLED` + Complete
+Y-block + `! VARIABLES`, mirroring `prefix_ckt`) and the EnergyMeter-only
+`energy_meter_branch_list` helper (the `Branch List:` zone-tree walk needs the
+full class registry to resolve each branch/shunt name, which a per-object
+`DumpCtx` can't reach — precomputed by the dispatcher like the PC `variables`
+block, threaded through a new `DumpCtx.branch_list` field). Verified against the
+pinned oracle by direct probe (not guessed): the Fault `MinAmps` double-print
+quirk (`NumPropsThisClass = Ord(High(TProp)) = 9 = MinAmps`, so the generic tail
+reprints it), the Monitor `// Sec=`/`// BaseFrequency=%.1g` comment lines, and
+the Capacitor `SpecType=` bare (no `~`) line all matched the implementation
+written from the Pascal source alone — but the probe caught **two real
+byte-fidelity bugs**, both fixed: (1) `format::fpc_sci_w` (`Str(v:width)`) had
+no floor under `width=8`, so `width=0` (`Sec: 0` in `Monitor.pas`) produced
+`"0E+000"` instead of the oracle's `" 0.0E+000"` — FPC's minimum scientific
+representation reserves an explicit sign slot AND floors the fraction digits at
+1, not 0; fixed (`frac = (width-8).max(1)`, explicit `' '`/`'-'` sign prefix,
+mantissa formatted from `v.abs()`) — the one existing caller (`show_convergence`
+at width 14) is bit-identical before/after (verified full-suite green); (2)
+`util::float_to_str` (`FloatToStrEx`/complex-property renderer) emitted a
+lowercase-`e` exponent in its scientific branch (a `TODO(compat)` already
+flagged this as unreproduced, "no in-scope dump value reaches scientific
+notation" — VSource's `puZIdeal=[1E-6, 0.001]` now does) — fixed to uppercase
+`E` (matching `report::format::g`'s existing fixup exactly, probe-confirmed
+`1E-6` not `1E-06`/`1e-6`). **Also landed:** the systematic PropDef display-case
+pass for all 8 classes (Reactor-convention: `Bus1`/`kV`/`NormAmps`/…), catching
+several real mismatches only visible byte-exact — `MVASC3`/`MVASC1`/`X1R1`/
+`X0R0`/`puZIdeal`/`BasekV`/`BaseMVA` (VSource), `RefkV` (UPFC), `CMatrix`/`Cuf`/
+`States`/`Conn`/`kV` (Capacitor), `3PhaseLosses`/`VBaseLosses`/`Option`/
+`Element`/`Terminal`/`Action` (EnergyMeter), `Element`/`Terminal`/`Mode`/
+`Action`/`Residual` (Monitor) — plus the universal `BaseFreq`/`Enabled`/
+`Spectrum` tails; Fault/RegControl/Spectrum needed only the tail fix (RegControl
+and Spectrum were already fully correct). 10 new byte-exact dump goldens
+(`dump_{vsource,upfc,regcontrol,monitor,energymeter,spectrum,fault,
+fault_gmatrix,capacitor_cmatrix,capacitor_steps}`, golden_phase8 **143→153**)
+over the pre-validated `dump3.dss`/`dump_capacitor.dss` fixtures; the Capacitor
+pair uses a new `run_deck_dump_exact_masked` (drops the `~ CMatrix=(`/
+`~ FaultRate=`/`~ pctPerm=` ASLR-garbage line prefixes from **both** sides —
+the golden was captured pre-stripped, the Rust output stripped at compare time,
+since Rust's own values are correct and therefore genuinely different text).
+**next = Dump step 3b** (bare `dump`/`dump debug` whole-circuit + `dump
+solution` + the `commands`/`buslist`/`devicelist`/`alloc` aux files — the
+`DumpAllDSSCommands` gettext-catalog generator and the `THashList.DumpToFile`
+port are the two pieces of genuinely new machinery — per the refreshed
+PHASE8_PLAN §WP8.5).
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/

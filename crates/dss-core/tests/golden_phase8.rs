@@ -464,6 +464,47 @@ fn run_deck_dump_exact(stem: &str) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// `run_deck_dump_exact` twin for the Capacitor decks: the oracle golden was
+/// captured with the `~ CMatrix=(`/`~ FaultRate=`/`~ pctPerm=` lines already
+/// dropped (probe-proven ASLR-garbage in this pinned build, `tools/golden/
+/// phase8_decks/README.md`); this drops the same line prefixes from the Rust
+/// output (which renders the correct, non-garbage values — a genuinely
+/// different line, not comparable) before the byte-exact compare.
+fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
+    let dir = phase8_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("dump {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
+    let masked: String = rust
+        .lines()
+        .filter(|ln| !mask_prefixes.iter().any(|p| ln.starts_with(p)))
+        .map(|ln| format!("{ln}\n"))
+        .collect();
+    assert_show_bytes_eq(&oracle, &masked, stem);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Compile a **heavy** master once and diff several reports against the oracle,
 /// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
 /// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the
@@ -3953,6 +3994,92 @@ fn dump_linegeometry_matches_oracle() {
 #[test]
 fn dump_xfmrcode_matches_oracle() {
     run_deck_dump_exact("dump_xfmrcode");
+}
+
+// --- WP8.5 step 3a: the 8 remaining leaf `DumpProperties` overrides ---
+
+/// `Dump vsource.source debug` — `TVsourceObj.DumpProperties`: generic props,
+/// then Complete's `BaseFrequency`/`VMag`/base-frequency series `Z Matrix`
+/// lower triangle (`%.8g +j %.8g `, no `~` prefix).
+#[test]
+fn dump_vsource_matches_oracle() {
+    run_deck_dump_exact("dump_vsource");
+}
+
+/// `Dump upfc.u1 debug` — `TUPFCObj.DumpProperties`: same shape as VSource but
+/// with no `VMag` line; `Z Matrix` is the diagonal `(0, Xs)` series reactance.
+#[test]
+fn dump_upfc_matches_oracle() {
+    run_deck_dump_exact("dump_upfc");
+}
+
+/// `Dump regcontrol.rc1 debug` — `TRegControlObj.DumpProperties`: generic
+/// props then Complete's `! Bus =<GetBus(1)>` + blank line.
+#[test]
+fn dump_regcontrol_matches_oracle() {
+    run_deck_dump_exact("dump_regcontrol");
+}
+
+/// `Dump monitor.mon1 debug` — `TMonitorObj.DumpProperties`: generic props
+/// then Complete's `// BufferSize`/`// Hour`/`// Sec`/`// BaseFrequency`/
+/// `// Bufptr`/`// Buffer` comment block (an unsampled monitor: empty buffer).
+#[test]
+fn dump_monitor_matches_oracle() {
+    run_deck_dump_exact("dump_monitor");
+}
+
+/// `Dump energymeter.em1 debug` — `TEnergyMeterObj.DumpProperties`: generic
+/// props then Complete's `Registers` block + the `Branch List:` zone-tree walk
+/// (`Circuit Element =`/`   Shunt Element =`).
+#[test]
+fn dump_energymeter_matches_oracle() {
+    run_deck_dump_exact("dump_energymeter");
+}
+
+/// `Dump spectrum.sp5 debug` — `TSpectrumObj.DumpProperties`: a plain
+/// `TDSSObject` (no `! ENABLED`); Complete adds the `Multiplier Array:` table.
+#[test]
+fn dump_spectrum_matches_oracle() {
+    run_deck_dump_exact("dump_spectrum");
+}
+
+/// `Dump fault.f1 debug` — `TFaultObj.DumpProperties` (`SpecType=1`, single
+/// `r`): the custom Bus1/Bus2/Phases/R/pctStdDev/OnTime/Temporary/MinAmps
+/// lines, then the tail from `MinAmps` — pinning the upstream double-print
+/// quirk (`MinAmps` appears twice: the custom `%.1f` line, then generically).
+#[test]
+fn dump_fault_matches_oracle() {
+    run_deck_dump_exact("dump_fault");
+}
+
+/// `Dump fault.fg debug` — `TFaultObj.DumpProperties` (`SpecType=2`, a
+/// `Gmatrix`): pins the custom `~ GMatrix= (…)` lower-triangle render.
+#[test]
+fn dump_fault_gmatrix_matches_oracle() {
+    run_deck_dump_exact("dump_fault_gmatrix");
+}
+
+/// `Dump capacitor.cm1 debug` (a `CMatrix`-spec bank) — `TCapacitorObj.
+/// DumpProperties`: generic props then the bare `SpecType=<int>` line (no
+/// `~`/`//` prefix). The three ASLR-garbage lines (`~ CMatrix=(`/
+/// `~ FaultRate=`/`~ pctPerm=`) are masked on both sides — see
+/// `run_deck_dump_exact_masked` and `investigations/`.
+#[test]
+fn dump_capacitor_cmatrix_matches_oracle() {
+    run_deck_dump_exact_masked(
+        "dump_capacitor_cmatrix",
+        &["~ CMatrix=(", "~ FaultRate=", "~ pctPerm="],
+    );
+}
+
+/// `Dump capacitor.cs1 debug` (a switchable-step `kvar`/`kV`-spec bank,
+/// `SpecType=1`) — the same override, different spec/step-array shape.
+#[test]
+fn dump_capacitor_steps_matches_oracle() {
+    run_deck_dump_exact_masked(
+        "dump_capacitor_steps",
+        &["~ CMatrix=(", "~ FaultRate=", "~ pctPerm="],
+    );
 }
 
 /// `? transformer.t1.wdgcurrents` after a solve must equal the oracle's live

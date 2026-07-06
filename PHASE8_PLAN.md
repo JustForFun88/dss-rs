@@ -400,11 +400,15 @@ single-object forms `Dump <class>.[name|*] [debug]` (`report/save/dump.rs`
 generic 3-kind base + `#903`/`#256`), the Reactor / Transformer / Line /
 LineCode / LineGeometry / XfmrCode leaf overrides, the `READS_VTERMINAL`
 refresh, `fmt_g`/`float_to_str` byte fixes. 16 byte-exact dump goldens.
+**Step 3a DONE** — the 8 remaining leaf overrides (Capacitor, Fault, VSource,
+UPFC, RegControl, Monitor, EnergyMeter, Spectrum) + the display-case PropDef
+pass for all 8; 10 new byte-exact dump goldens (26 total). Detail in STATUS.md.
 
-**Remaining steps (3–6). Fixture decks are pre-validated in
+**Remaining steps (3b–6). Fixture decks are pre-validated in
 `tools/golden/phase8_decks/` (README there records the probe-proven facts).**
 
-**Step 3a — the 8 remaining leaf `DumpProperties` overrides.** Each is a
+**Step 3a — ✅ DONE (2026-07-06) — the 8 remaining leaf `DumpProperties`
+overrides.** Each is a
 co-located `dump_body` dispatched from `report/save/dump/overrides.rs:35`
 (add the downcast arm), exactly like the six already ported. All eight call
 `inherited DumpProperties(F, Complete)` **dropping Leaf** (so the base does

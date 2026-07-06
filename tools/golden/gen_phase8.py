@@ -2000,6 +2000,67 @@ DUMP_XC_DECK = [
     "kvs=[115 4.16] kvas=[5000 5000]",
 ]
 
+# --- WP8.5 step 3a: the 8 remaining leaf `DumpProperties` overrides ---
+# `tools/golden/phase8_decks/dump3.dss` (see its header comment): every
+# override except Capacitor (Fault ×2 spec types, Vsource — the implicit
+# `circuit.dmp3` source, UPFC, RegControl, Monitor, EnergyMeter, Spectrum) in
+# one micro deck, `clear` dropped (issued by the runner loop below).
+DUMP3_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.dmp3 basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new transformer.tr1 phases=3 windings=2 buses=(b1, blv) conns=(delta, wye)",
+    "~ kvs=(12.47, 0.48) kvas=(500, 500) xhl=5 %rs=(0.6, 0.6)",
+    "new regcontrol.rc1 transformer=tr1 winding=2 vreg=115 band=3 ptratio=2.4",
+    "new fault.f1 bus1=b1.1 bus2=b1.0 phases=1 r=20 ontime=0.2 temporary=yes",
+    "~ minamps=3",
+    "new fault.fg bus1=b1 phases=3",
+    "~ gmatrix=[0.05 -0.01 -0.01 | -0.01 0.05 -0.01 | -0.01 -0.01 0.05]",
+    "new spectrum.sp5 numharm=3 harmonic=[1 5 7] %mag=[100 20 12] angle=[0 30 60]",
+    "new load.ldk bus1=blv phases=3 conn=wye model=1 kv=0.48 kw=150 pf=0.92",
+    "~ spectrum=sp5",
+    "new load.ldx bus1=b1.1 phases=1 conn=wye kv=7.2 xfkva=300 allocationfactor=0.55",
+    "new load.ldc bus1=b1.2 phases=1 conn=wye kv=7.2 kwh=12000 cfactor=3.5",
+    "new monitor.mon1 element=line.l1 terminal=1 mode=0",
+    "new energymeter.em1 element=line.l1 terminal=1",
+    "new xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]",
+    "new transformer.tup phases=1 windings=2 buses=(b1.1, ui.1) kvs=(7.2, 0.24)",
+    "~ kvas=(50, 50) xhl=2 ppm=0",
+    "new upfc.u1 phases=1 bus1=ui.1 bus2=uo.1 refkv=0.242 mode=1 losscurve=losses",
+    "~ tol1=0.001 xs=0.02",
+    "new upfccontrol.uc1",
+    "new load.ldu phases=1 bus1=uo.1 kv=0.24 kw=10 pf=0.95",
+    "set voltagebases=[12.47 0.48 0.24]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "Set maxcontroliter=100",
+    "solve",
+]
+
+# `tools/golden/phase8_decks/dump_capacitor.dss`: the Capacitor override,
+# isolated because of the proven upstream ASLR-garbage bug in `CMatrix`/
+# `FaultRate`/`pctPerm` (see the mask below).
+DUMP_CAP_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.dmpc basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new capacitor.cm1 bus1=b1 phases=3",
+    "~ cmatrix=[3.2 -0.9 -0.3 | -0.5 3.5 -0.7 | -0.4 -1.1 3.1]",
+    "new capacitor.cs1 bus1=b1 phases=3 kvar=100 kv=12.47 numsteps=2",
+    "~ states=[1 0]",
+    "new load.ld1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.92",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "solve",
+]
+
 # (stem, deck, report). Each captures `<case>_PropertyDump.txt` (Dump sets
 # GlobalResult), read back by the Rust golden via `dss.last_result_file()`.
 DUMP_DECKS = [
@@ -2019,7 +2080,24 @@ DUMP_DECKS = [
     ("dump_linecode_matrix", DUMP_LC_MAT_DECK, "linecode.lc2"),
     ("dump_linegeometry", DUMP_GEO_DECK, "linegeometry.geo1"),
     ("dump_xfmrcode", DUMP_XC_DECK, "xfmrcode.xc1"),
+    ("dump_vsource", DUMP3_DECK, "vsource.source debug"),
+    ("dump_upfc", DUMP3_DECK, "upfc.u1 debug"),
+    ("dump_regcontrol", DUMP3_DECK, "regcontrol.rc1 debug"),
+    ("dump_monitor", DUMP3_DECK, "monitor.mon1 debug"),
+    ("dump_energymeter", DUMP3_DECK, "energymeter.em1 debug"),
+    ("dump_spectrum", DUMP3_DECK, "spectrum.sp5 debug"),
+    ("dump_fault", DUMP3_DECK, "fault.f1 debug"),
+    ("dump_fault_gmatrix", DUMP3_DECK, "fault.fg debug"),
+    ("dump_capacitor_cmatrix", DUMP_CAP_DECK, "capacitor.cm1 debug"),
+    ("dump_capacitor_steps", DUMP_CAP_DECK, "capacitor.cs1 debug"),
 ]
+
+# Line prefixes dropped from BOTH sides of `dump_capacitor_*` (probe-proven
+# ASLR-garbage — see the phase8_decks README and `investigations/`): the
+# oracle's captured golden never contains them (stripped at capture time
+# below); the Rust replay drops the same prefixes from its own output before
+# the byte-exact compare (`golden_phase8.rs::run_deck_dump_exact_masked`).
+DUMP_CAPACITOR_GARBAGE_PREFIXES = ("~ CMatrix=(", "~ FaultRate=", "~ pctPerm=")
 
 
 def gen_dump_decks(d) -> None:
@@ -2039,6 +2117,14 @@ def gen_dump_decks(d) -> None:
             d.Text.Command = f"dump {report}"
             produced = Path(d.Text.Result)  # GlobalResult = PropertyDump path
             content = produced.read_text()
+            if stem.startswith("dump_capacitor"):
+                lines = content.splitlines(keepends=True)
+                lines = [
+                    ln
+                    for ln in lines
+                    if not ln.startswith(DUMP_CAPACITOR_GARBAGE_PREFIXES)
+                ]
+                content = "".join(lines)
             (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
             meta = {
                 "report": report,

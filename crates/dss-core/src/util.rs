@@ -112,11 +112,11 @@ pub fn float_to_str(v: f64) -> String {
     // the *shortest round-tripping* form instead (up to 17 digits), which the
     // numeric-tolerance gates (`props_roundtrip`) never distinguished but the
     // byte-exact `Dump`/`Save` gate does (a 16th digit on e.g. `NormAmps`).
-    // TODO(compat): the scientific branch here is C-`%g` (lowercase `e`, 2-digit
-    // exponent), where FPC's `ffGeneral` emits `E` + a signed ≥2-digit exponent —
-    // no in-scope dump value reaches scientific notation, so it is not yet
-    // reproduced; add the FPC exponent form when one does.
-    fmt_g(v, 15)
+    // The one byte-level difference from C `%g`: FPC's `ffGeneral` emits an
+    // **uppercase** `E` exponent, unpadded (probe-confirmed via the VSource
+    // `puZIdeal` complex property dump: `1E-6`, not `1e-6`/`1E-06`) — matches
+    // [`crate::report::format::g`]'s exponent fixup exactly.
+    fmt_g(v, 15).replace('e', "E")
 }
 
 /// Pascal `FloatToStrEx` from DSSObjectHelper.pas: NaN prints as `----`

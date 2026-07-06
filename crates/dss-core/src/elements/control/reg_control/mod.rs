@@ -25,6 +25,7 @@ mod tests;
 
 mod accessors;
 mod control_loop;
+mod dump;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
 use crate::obj::base::RefAction;
@@ -121,8 +122,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Rev_Z"),
         PropDef::boolean("Cogen"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("RegControl", defs, true)

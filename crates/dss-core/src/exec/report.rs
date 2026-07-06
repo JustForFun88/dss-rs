@@ -1865,6 +1865,19 @@ impl Dss {
             Vec::new()
         };
 
+        // EnergyMeter `Branch List:` body (Complete only) — needs the full
+        // class registry to resolve each branch/shunt `ElemRef`'s Name, which
+        // `DumpCtx` otherwise can't reach (`EnergyMeter.pas:2102-2116`).
+        let branch_list_text: String = if complete {
+            self.classes[ci].objects[oi]
+                .as_any()
+                .downcast_ref::<crate::elements::meter::EnergyMeter>()
+                .map(|em| crate::report::save::dump::energy_meter_branch_list(&self.classes, em))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
         // Split-borrow: the `LineGeometry` override needs `&mut` on the object
         // (it walks conductors via `ActiveCond`), while `cx` reads `.props`
         // (disjoint field) + the shared `.enums`.
@@ -1874,6 +1887,7 @@ impl Dss {
             cls: &cls.props,
             enums,
             variables: &variables,
+            branch_list: &branch_list_text,
         };
         crate::report::save::dump::dump_object(
             content,
