@@ -257,7 +257,7 @@ fn kvar_open_arms_close_above_onsetting() {
     let mut mon = MockMon::new(3);
     mon.power = Complex64::new(0.0, 200_000.0); // 200 kvar inductive
     let mut sc = Scratch::new();
-    cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.should_switch);
     assert!(cc.armed);
@@ -276,7 +276,7 @@ fn kvar_closed_arms_open_below_offsetting() {
     let mut mon = MockMon::new(3);
     mon.power = Complex64::new(0.0, -300_000.0); // -300 kvar (too leading)
     let mut sc = Scratch::new();
-    cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_OPEN);
     assert!(cc.armed);
     assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
@@ -292,7 +292,7 @@ fn kvar_in_band_does_not_switch() {
     let mut mon = MockMon::new(3);
     mon.power = Complex64::new(0.0, -50_000.0); // -50 kvar: between off and on
     let mut sc = Scratch::new();
-    cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_NONE);
     assert!(!cc.armed);
     assert!(sc.queue.is_empty());
@@ -361,7 +361,7 @@ fn time_control_closes_inside_window() {
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
     // 12:00 is inside [6, 21) → close.
-    cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 12, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 12, 0.0));
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.armed);
 }
@@ -378,7 +378,7 @@ fn pf_control_closes_when_leading_room_remains() {
     // 100 kW + 50 kvar → PF1to2 = 0.894 < 0.95; 50 kvar > 50·50·0.01 = 25.
     mon.power = Complex64::new(100_000.0, 50_000.0);
     let mut sc = Scratch::new();
-    cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.armed);
 }

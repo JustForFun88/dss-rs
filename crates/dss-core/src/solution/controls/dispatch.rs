@@ -598,6 +598,13 @@ pub(super) fn dispatch_control(
         self_ref: r,
     };
 
+    // Pascal's control `Sample` sets the global `DSS.SolutionAbort` directly;
+    // `CtrlCtx` borrows `ckt.solution`, so a control that wants to abort returns
+    // the request and we lift it to `ckt.solution.solution_abort` after the
+    // borrow ends (below). Only CapControl's FOLLOW-without-ControlSignal path
+    // does this today.
+    let mut solution_abort_requested = false;
+
     match kind {
         // Handled (and returned) above, before the CtrlCtx was built.
         ControlKind::GenDispatch { .. } => unreachable!("GenDispatcher handled above"),
@@ -1012,7 +1019,7 @@ pub(super) fn dispatch_control(
                             ));
                         };
                         let mut mon_clone = cap.clone();
-                        cc.sample(cap, &mut mon_clone, &mut ctx);
+                        solution_abort_requested = cc.sample(cap, &mut mon_clone, &mut ctx);
                     } else {
                         let (cobj, capobj, monobj) = store.triple_mut(r, target, mon);
                         let cc = cobj
@@ -1033,7 +1040,7 @@ pub(super) fn dispatch_control(
                                 "Monitored element is not a circuit element",
                             ));
                         };
-                        cc.sample(cap, mon_elem, &mut ctx);
+                        solution_abort_requested = cc.sample(cap, mon_elem, &mut ctx);
                     }
                 }
                 ControlOp::Action { .. } => {
@@ -1071,6 +1078,12 @@ pub(super) fn dispatch_control(
                 }
             }
         }
+    }
+
+    // Lift a control's abort request to the solution now that `ctx`'s borrow of
+    // `ckt.solution` has ended (Pascal `DSS.SolutionAbort := TRUE`).
+    if solution_abort_requested {
+        ckt.solution.solution_abort = true;
     }
 
     Ok(())

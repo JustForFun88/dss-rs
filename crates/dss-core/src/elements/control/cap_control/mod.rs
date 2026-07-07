@@ -26,6 +26,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::{
     CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, ControlElemData, RefSnapshot,
 };
+use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -108,8 +109,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("pctMinkvar"),
         // Pascal: BooleanActionProperty (DoReset); the getter is always 0.
         PropDef::boolean("Reset"),
-        // LoadShape references arrive in Phase 5 (WP5.1); `Follow` mode needs it.
-        PropDef::object_ref("ControlSignal").flags(PropFlags::NOT_PORTED),
+        // `ctrlSignalShape` (`CapControl.pas` l.288): a LoadShape ref read by the
+        // FOLLOWCONTROL arm of `Sample`. Bound to the LoadShape class
+        // (`PropertyOffset2 := ptruint(DSS.LoadShapeClass)`); no WriteByFunction
+        // in Pascal (the commented-out `CheckForVar` flag is also inert).
+        PropDef::object_ref_class("LoadShape", "ControlSignal"),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),
@@ -129,6 +133,13 @@ pub struct CapControl {
     /// Parse-time shape snapshots of the two references.
     ctrl_snap: Option<RefSnapshot>,
     mon_snap: Option<RefSnapshot>,
+    /// Dump name of the `ControlSignal` LoadShape (bare object name, like
+    /// `StorageController`'s `Yearly`/`Daily`/`Duty`).
+    control_signal_name: String,
+    /// `ctrlSignalShape`: a snapshot-clone of the resolved `ControlSignal`
+    /// LoadShape (the WP4.2 `FetchLineCode` pattern), read by the
+    /// FOLLOWCONTROL arm of `Sample`.
+    ctrl_signal_shape: Option<LoadShapeObj>,
 
     /// `ECapControlType` ordinal (0=Current ... 5=Follow).
     control_type: i32,
@@ -183,6 +194,8 @@ impl CapControl {
             monitored_full_name: String::new(),
             ctrl_snap: None,
             mon_snap: None,
+            control_signal_name: String::new(),
+            ctrl_signal_shape: None, // Pascal `ctrlSignalShape := NIL;`
             control_type: ctrl_type::CURRENT,
             fct_phase: 1,
             fpt_phase: 1,
