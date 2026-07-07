@@ -172,8 +172,14 @@ pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64
     );
     for (i, (a, e)) in anums.iter().zip(&enums).enumerate() {
         let allowed = abs + rel * e.abs();
+        // Exact bit-equality (covers ±inf == ±inf) short-circuits the tolerance
+        // check: two identical value strings whose numeric substring overflows
+        // to inf — e.g. a machine-generated EPRI bus name `0x008e1248` that the
+        // skeleton scanner reads as `8e1248` = inf — must compare equal, but
+        // `(inf - inf).abs()` is NaN and fails `<= allowed`. Not a loosening:
+        // exactly-equal is the tightest possible match.
         assert!(
-            (a - e).abs() <= allowed,
+            a == e || (a - e).abs() <= allowed,
             "{ctx}: number {i} differs: actual {a} vs expected {e} \
              (from {actual:?} vs {expected:?})"
         );
@@ -704,6 +710,125 @@ pub fn compare_probe(dss: &mut Dss, exp: &ProbeCap, tol: &Tolerances, ctx: &str)
         tol.i_abs,
         &format!("{ctx}: probe {}.{}", exp.element, exp.prop),
     );
+}
+
+/// WP8.5b corpus property parity: every property of one circuit element —
+/// oracle `Properties(p).Val` over `AllPropertyNames` (read via `? name.prop`,
+/// the WPG.1-safe probe path) as ordered `(name, value)` pairs. Compared
+/// against the Rust `?`-surface (`Dss::element_properties`) property-for-property
+/// by [`compare_all_properties`]: the property-index order is the contract.
+#[derive(Debug, Deserialize)]
+pub struct PropsCap {
+    pub element: String,
+    /// `[[prop_name, value_string], ...]` in `AllPropertyNames` order.
+    pub props: Vec<(String, String)>,
+}
+
+/// `(class, prop)` pairs (matched case-insensitively) whose value is provably
+/// NOT comparable property-for-property between the Rust `?`-surface and the
+/// pinned oracle — a comparability EXCLUSION whose proof is cited in
+/// `tests/TOLERANCE_NOTES.md` (§"WP8.5b property parity"), NEVER a tolerance
+/// loosening. The property NAME is still order-checked (only the VALUE compare
+/// is skipped). Populated only after the Phase-A pilot triage proves a prop
+/// non-comparable (path echo / RNG / oracle UB); empty until then.
+const SKIP_PROPS: &[(&str, &str)] = &[
+    // (class, prop) — each row is a proven comparability exclusion cited in
+    // tests/TOLERANCE_NOTES.md §"WP8.5b property parity"; NEVER a tolerance
+    // loosening. Grouped by cause:
+    //
+    // (a) DoubleSymMatrixProperty getter reads uninitialized memory (a dss_capi
+    //     bug; TODO(compat) in obj/props/class_props/value.rs renders a
+    //     deterministic zero matrix). The oracle returns nondeterministic garbage
+    //     (denormals ~1e-310 OR huge ~1e123, process-dependent) — oracle UB, not
+    //     reproduced (CLAUDE.md).
+    ("Capacitor", "CMatrix"),
+    ("Reactor", "RMatrix"),
+    ("Reactor", "XMatrix"),
+    ("Fault", "GMatrix"),
+    // (b) Near-zero winding-current angle: WdgCurrents renders `mag, (angle)`
+    //     pairs; a ~1e-12 A (numerically-zero) winding current's angle is
+    //     faer-vs-KLU noise (a cancellation floor). The magnitudes and the
+    //     non-degenerate angles match; only the zero-magnitude angle diverges.
+    ("Transformer", "WdgCurrents"),
+    // (c) Transformer ActiveWinding cursor + the per-winding SINGULAR getters
+    //     it indexes (`Bus`/`Conn`/`kV`/... = `windings[aw()]`). The oracle's own
+    //     capture (`gc.capture_discrete`'s `Transformers.Wdg=i` winding walk,
+    //     which runs before the property sweep) leaves ActiveWinding at
+    //     NumWindings, so these render the LAST winding regardless of the deck's
+    //     trailing `wdg=` (3-winding t3w ends `wdg=2`, so Rust reads winding 2,
+    //     the oracle winding 3). The stable ARRAY forms (`Buses`/`Conns`/`kVs`/
+    //     `kVAs`/`Taps`) carry the identical per-winding data un-contaminated and
+    //     ARE compared. No stable comparable value for the singular forms.
+    ("Transformer", "Wdg"),
+    ("Transformer", "Bus"),
+    ("Transformer", "Conn"),
+    ("Transformer", "kV"),
+    ("Transformer", "kVA"),
+    ("Transformer", "Tap"),
+    ("Transformer", "%R"),
+    ("Transformer", "RNeut"),
+    ("Transformer", "XNeut"),
+    ("Transformer", "MaxTap"),
+    ("Transformer", "MinTap"),
+    ("Transformer", "NumTaps"),
+    ("Transformer", "RDCOhms"),
+    // (d) Reliability inputs on shunt PD elements read uninitialized in the
+    //     oracle inside a metered deck (nondeterministic across processes —
+    //     proven UB). Rust keeps the correct defaults (FaultRate 0.0005,
+    //     pctperm 100). The same properties on Line/Transformer are clean and
+    //     stay compared, so the Double-property render path is still covered.
+    ("Capacitor", "FaultRate"),
+    ("Capacitor", "pctperm"),
+    ("Reactor", "FaultRate"),
+    ("Reactor", "pctperm"),
+];
+
+fn skip_prop(class: &str, prop: &str) -> bool {
+    SKIP_PROPS
+        .iter()
+        .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
+}
+
+/// Compare EVERY property of EVERY captured element (WP8.5b): the property-NAME
+/// lists must be equal IN ORDER (case-insensitive — pins the property-table
+/// shape), then each value through [`assert_value_matches_tol`] (the same
+/// `compare_probe` numeric-skeleton semantics). A `(class, prop)` in
+/// [`SKIP_PROPS`] is excluded from the VALUE compare only (its name is still
+/// order-checked). This catches latent property-rendering/port bugs the
+/// live-model gate (Y/V/I/P) cannot see.
+pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances, ctx: &str) {
+    for pc in exp {
+        let class = pc.element.split('.').next().unwrap_or("");
+        let actual = dss
+            .element_properties(&pc.element)
+            .unwrap_or_else(|| panic!("{ctx}: no element {} (all_properties)", pc.element));
+        assert_eq!(
+            actual.len(),
+            pc.props.len(),
+            "{ctx}: {} property count differs (rust {} vs oracle {}) — property-table shape changed",
+            pc.element,
+            actual.len(),
+            pc.props.len()
+        );
+        for (i, ((aname, aval), (ename, eval))) in actual.iter().zip(&pc.props).enumerate() {
+            assert!(
+                aname.eq_ignore_ascii_case(ename),
+                "{ctx}: {} property {i} name differs: rust {aname:?} vs oracle {ename:?} \
+                 (property-index order is the contract)",
+                pc.element
+            );
+            if skip_prop(class, ename) {
+                continue;
+            }
+            assert_value_matches_tol(
+                &aval.to_lowercase(),
+                &eval.to_lowercase(),
+                tol.i_rel,
+                tol.i_abs,
+                &format!("{ctx}: {} property {ename}", pc.element),
+            );
+        }
+    }
 }
 
 /// A PC element's state variables (oracle `AllVariableNames`/`AllVariableValues`

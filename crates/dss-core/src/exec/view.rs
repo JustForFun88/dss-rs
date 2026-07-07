@@ -213,6 +213,44 @@ impl Dss {
         None
     }
 
+    /// WP8.5b corpus property parity: every property of the named element,
+    /// rendered EXACTLY as the `?` executive query does (the choke-point
+    /// `refresh_vterminal_if_marked` then [`ClassProps::get_value`] — the
+    /// byte-proven WP8.5 Dump surface), as `(name, value)` pairs in
+    /// property-index order (`1..=num_properties`). `full_name` is a `Class.name`
+    /// (case-insensitive), resolved like [`Dss::do_query_cmd`] (no executive
+    /// round-trip). `None` if no such element exists. The oracle side reads
+    /// `Properties(p).Val` over `AllPropertyNames` (via `? name.prop`), so the two
+    /// compare property-for-property.
+    pub fn element_properties(&mut self, full_name: &str) -> Option<Vec<(String, String)>> {
+        // Split `Class.name` exactly as `do_query_cmd` does (the @var-aware
+        // splitter; a query name needs no other parser work).
+        let (class_name, name) = {
+            let mut p = Parser::new();
+            parse_object_class_and_name(&mut p, &self.vars, full_name)
+        };
+        let &ci = self.class_by_name.get(&class_name.to_lowercase())?;
+        if !self.classes[ci].set_active(&name) {
+            return None;
+        }
+        let oi = self.classes[ci].active.expect("just set active");
+        let n = self.classes[ci].props.num_properties();
+        let mut out = Vec::with_capacity(n);
+        for idx in 1..=n {
+            // Same choke point `do_query_cmd` uses: reload Vterminal from the
+            // solution for the properties that declare the need before rendering.
+            self.refresh_vterminal_if_marked(ci, oi, Some(idx));
+            let pname = self.classes[ci].props.property_name(idx).to_string();
+            let value = self.classes[ci].props.get_value(
+                self.classes[ci].objects[oi].as_ref(),
+                idx,
+                &self.enums,
+            );
+            out.push((pname, value));
+        }
+        Some(out)
+    }
+
     /// Read a bus's short-circuit results after a FaultStudy solve — the
     /// dss-python `Bus.Zsc1`/`Zsc0`/`Isc` surface. `name` is the bus name
     /// (case-insensitive). `None` if no such bus exists.

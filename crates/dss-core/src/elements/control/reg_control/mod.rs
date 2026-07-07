@@ -336,6 +336,30 @@ impl RegControl {
         ((tr.present_tap(w as usize) - mid) / inc).round_ties_even() as i32
     }
 
+    /// Resync every winding's `tap_snap` from the **live** controlled
+    /// transformer, so the `&self` `TapNum` getter (and the property dump) render
+    /// Pascal `Get_TapNum`'s live `PresentTap[TapWinding]` reading rather than a
+    /// stale parse-time / control-action snapshot. Pascal's `Get_TapNum` reaches
+    /// the transformer pointer directly; the Rust getter can't cross the class
+    /// registry, so the executive calls this at the property-read choke point
+    /// (`Dss::refresh_vterminal_if_marked`, alongside the Vterminal reload). A
+    /// control action that moved the tap, or a direct `Transformer.X.Taps=` edit,
+    /// otherwise leaves `tap_snap` stale (WP8.5b: `? regcontrol.X.TapNum`
+    /// diverged from the oracle on the IEEE13 geometry decks).
+    pub(crate) fn sync_tap_snap_from_live(
+        &mut self,
+        tr: &dyn crate::elements::pd::transformer::ControlledTransformer,
+    ) {
+        for w in 1..=self.tap_snap.len() {
+            self.tap_snap[w - 1] = (
+                tr.present_tap(w),
+                tr.max_tap(w),
+                tr.min_tap(w),
+                tr.tap_increment(w),
+            );
+        }
+    }
+
     /// Pascal `Set_TapNum`: position the controlled winding's tap at
     /// `mid-tap + value · increment`. The transformer write is deferred (see
     /// [`RefAction`]); the local tap snapshot applies the identical clamp so a
