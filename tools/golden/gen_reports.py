@@ -2277,6 +2277,140 @@ def gen_interp(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# --- WP8.6 step 5: the Distribute command (PHASE8_PLAN §WP8.6) ---
+# `tools/golden/report_decks/distrib.dss`: loads with three different kW bases
+# and specs (kW/PF, xfkva+allocationfactor, kwh+cfactor) so the Proportional
+# weights differ per load, plus a disabled load (pins the enabled filter AND
+# Uniform's count — which includes disabled loads, probe-proven
+# `Utilities.pas:1349`). Four deterministic variants; `how=Random` is
+# RNG-carried upstream (`randomize`, `Utilities.pas:1400`) and never
+# golden-gated. The `what=Load` variant passes an explicit `file=` that the
+# oracle overrides to `DistLoads.dss` (probe-proven). `Distribute` writes the
+# file relative to the engine cwd (= datapath) and sets `GlobalResult` to the
+# bare filename.
+DISTRIB_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.dst basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new line.l2 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km",
+    "new load.ld_kw bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=800 pf=0.92",
+    "new load.ld_xf bus1=b1.1 phases=1 conn=wye kv=7.2 xfkva=300",
+    "~ allocationfactor=0.55",
+    "new load.ld_ac bus1=b1.2 phases=1 conn=wye kv=7.2 kwh=12000 cfactor=3.5",
+    "new load.ld_off bus1=b2.3 phases=1 conn=wye kv=7.2 kw=120 pf=0.9 enabled=no",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "solve",
+]
+DISTRIB_VARIANTS = [
+    ("distribute kw=1500 pf=0.95", "DistGenerators.dss", "distrib_proportional"),
+    ("distribute kw=1200 how=Uniform pf=0.9", "DistGenerators.dss", "distrib_uniform"),
+    ("distribute kw=900 how=Skip skip=1 pf=0.85", "DistGenerators.dss", "distrib_skip"),
+    ("distribute kw=750 what=Load file=Explicit.dss", "DistLoads.dss", "distrib_load"),
+]
+
+
+def gen_distribute(d) -> None:
+    """Capture the oracle's `Distribute` output scripts (four deterministic
+    variants). Each runs in a fresh dir (the command refuses to overwrite an
+    existing file — error 721); `Text.Result` (GlobalResult) is the bare
+    produced filename, pinned into the meta."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for command, fname, stem in DISTRIB_VARIANTS:
+        tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+        try:
+            d.Text.Command = "clear"
+            for c in DISTRIB_DECK:
+                d.Text.Command = c
+            case = d.ActiveCircuit.Name
+            d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+            d.Text.Command = command
+            if d.Text.Result != fname:
+                sys.exit(f"{stem}: expected GlobalResult {fname!r}, got {d.Text.Result!r}")
+            content = (Path(tmp) / fname).read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "command": command,
+                "fixture": case,
+                "file": fname,
+                "deck": DISTRIB_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+# --- WP8.6 step 6: Uuids + `Export Uuids` (PHASE8_PLAN §WP8.6) ---
+# `tools/golden/report_decks/uuids.dss` + `uuids_pre.csv`: the deck preloads a
+# UUID for the circuit, EVERY bus, EVERY ckt element, the library linecode AND
+# the three hashed keys the CIM exporter auto-creates (`DefaultCircuitUUIDs` →
+# Station=Station=1 / GeoRgn=GeoRgn=1 / SubGeoRgn=SubGeoRgn=1) — any object
+# left out gets a RANDOM v4 at export time (`NamedObject.pas` CreateUUID4),
+# which can never be oracle-pinned. The `@FIXTURES@` token resolves to the
+# absolute `report_decks` dir on BOTH engines (here and `golden_reports.rs`);
+# the meta stores the token form so the golden is machine-portable. The
+# produced `<case>_EXP_UUIDS.csv` is byte-exact; probe-proven quirk pinned at
+# capture time: `Text.Result` (GlobalResult) stays EMPTY after `export uuids`,
+# unlike every other export.
+FIXTURES_DIR = Path(__file__).resolve().parent / "report_decks"
+UUIDS_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.uid basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new load.ld1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.92",
+    "new monitor.mon1 element=line.l1 terminal=1 mode=0",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "solve",
+    "uuids file=@FIXTURES@/uuids_pre.csv",
+]
+
+
+def gen_uuids(d) -> None:
+    """Capture the oracle's `Export Uuids` on the fully-preloaded uuids fixture."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+    try:
+        d.Text.Command = "clear"
+        for c in UUIDS_DECK:
+            d.Text.Command = c.replace("@FIXTURES@", FIXTURES_DIR.as_posix())
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "export uuids"
+        if d.Text.Result != "":
+            sys.exit(f"export uuids: expected EMPTY GlobalResult, got {d.Text.Result!r}")
+        matches = list(Path(tmp).glob("*_EXP_UUIDS.csv"))
+        if len(matches) != 1:
+            sys.exit(f"export uuids: expected 1 *_EXP_UUIDS.csv, found {matches}")
+        content = matches[0].read_text()  # universal newlines -> LF
+        (OUT_DIR / "export_uuids.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "uuids",
+            "fixture": case,
+            "suffix": "EXP_UUIDS.csv",
+            "deck": UUIDS_DECK,  # token form; both engines resolve @FIXTURES@
+        }
+        (OUT_DIR / "export_uuids.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(f"wrote export_uuids.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -2325,6 +2459,8 @@ def main() -> None:
     gen_dump_decks(d)
     gen_save_decks(d)
     gen_interp(d)
+    gen_distribute(d)
+    gen_uuids(d)
 
 
 if __name__ == "__main__":

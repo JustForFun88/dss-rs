@@ -78,8 +78,16 @@ impl Dss {
             return;
         }
 
+        // Pascal `ExportOptions.pas:188`: `DefaultCircuitUUIDs` runs on EVERY
+        // export keyword (after the solve guard, before the dispatch — even an
+        // unknown keyword reaches it): starts the CIM hashed-UUID list if not
+        // already started, lazily creates the circuit UUID, and find-or-creates
+        // the `Station=`/`GeoRgn=`/`SubGeoRgn=` keys (WP8.6 step 6).
+        self.default_circuit_uuids();
+
         if ptr == 0 {
-            // Pascal error 24713 (`'Error: Unknown Export command: "%s"'`).
+            // Pascal error 24713 (`'Error: Unknown Export command: "%s"'`),
+            // raised by the dispatch `else` — after `DefaultCircuitUUIDs`.
             self.errors
                 .push(format!("Error: Unknown Export command: \"{parm1}\""));
             return;
@@ -238,6 +246,7 @@ impl Dss {
             18 => self.export_with(&explicit, "EXP_SEQZ.csv", export::export_seq_z),
             23 => self.export_with(&explicit, "EXP_BUSCOORDS.csv", export::export_bus_coords),
             24 => self.export_with_mut(&explicit, "EXP_LOSSES.csv", export::export_losses),
+            25 => self.export_uuids_to_file(&explicit), // Uuids (WP8.6 step 6)
             26 => self.export_counts_to_file(&explicit), // Counts (WP8.1)
             27 => self.export_summary_to_file(&explicit),
             39 => self.export_with(&explicit, "EXP_NodeNames.csv", export::export_node_names),
@@ -956,7 +965,7 @@ impl Dss {
     /// overrides it verbatim. Show/Save do NOT set `@lastexportfile` (Show sets
     /// neither; Save sets `@lastfile` + `GlobalResult`), so it lives here, not in
     /// the generic `write_report`.
-    fn write_export(&mut self, explicit: &str, default_name: &str, content: &str) {
+    pub(super) fn write_export(&mut self, explicit: &str, default_name: &str, content: &str) {
         let case = self
             .circuit
             .as_ref()

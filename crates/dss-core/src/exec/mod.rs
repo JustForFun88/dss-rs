@@ -49,6 +49,7 @@ pub(crate) use crate::util::{float_to_str, interpret_yes_no, parse_object_class_
 
 mod command;
 mod construct;
+mod distribute;
 mod get_cmd;
 mod helpers;
 pub(crate) mod registry;
@@ -56,6 +57,7 @@ mod report;
 mod set_cmd;
 mod solve;
 mod tables;
+mod uuids_cmd;
 mod view;
 
 pub(crate) use helpers::*;
@@ -119,6 +121,9 @@ pub struct Dss {
     /// `DSS.In_Redirect` / `DSS.Redirect_Abort`.
     in_redirect: bool,
     redirect_abort: bool,
+    /// `DSS.CIMExporter`: the persistent hashed-UUID list state (WP8.6 step 6;
+    /// GAPS_PLAN WPG.18 adds the CIM XML exporters on top).
+    cim: crate::cim::CimExporter,
 }
 
 impl Dss {

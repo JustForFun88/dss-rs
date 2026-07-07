@@ -33,6 +33,11 @@ pub struct DssObjData {
     /// records and deletes the file); only `Circuit.Save` clears them all
     /// (WP8.5 step 5).
     has_been_saved: bool,
+    /// `TNamedObject.pUuid` (`NamedObject.pas`): the lazily-created UUID slot —
+    /// `Get_UUID` makes a **random v4** on first read; the `Uuids` command
+    /// preloads it. `MakeLike` does not copy it (Pascal copies fields, not
+    /// `pUuid`), and our class `make_like` impls never touch `DssObjData`.
+    uuid: Option<crate::cim::Uuid>,
 }
 
 impl DssObjData {
@@ -42,6 +47,7 @@ impl DssObjData {
             prp_sequence: vec![0; num_props + 1],
             deferred_errors: Vec::new(),
             has_been_saved: false,
+            uuid: None,
         }
     }
 
@@ -54,6 +60,17 @@ impl DssObjData {
     /// `Exclude` reset (WP8.5 step 5).
     pub fn set_has_been_saved(&mut self, saved: bool) {
         self.has_been_saved = saved;
+    }
+
+    /// Pascal `TNamedObject.Get_UUID` (`NamedObject.pas:47-52`): return the
+    /// object's UUID, creating a random v4 on first read.
+    pub fn uuid(&mut self) -> crate::cim::Uuid {
+        crate::cim::get_or_create_uuid(&mut self.uuid)
+    }
+
+    /// Pascal `TNamedObject.Set_UUID` (the `Uuids` command's re-assignment).
+    pub fn set_uuid(&mut self, uuid: crate::cim::Uuid) {
+        self.uuid = Some(uuid);
     }
 
     /// Queue a `DoSimpleMsg`-style message from inside a property hook; the

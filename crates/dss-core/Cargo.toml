@@ -9,6 +9,7 @@ dss-sparse = { path = "../dss-sparse" }
 num-complex.workspace = true
 regex.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
