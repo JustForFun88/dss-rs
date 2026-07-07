@@ -4,15 +4,24 @@
 //! daily/yearly/duty multiplier source (wired in WP5.3) and by the time-series
 //! solution modes (WP5.8).
 //!
-//! Scope (WP5.2a/b): the in-memory core — fixed- and variable-interval data,
-//! `GetMultAtHour` (the consumer-facing lookup), `Normalize`, `SetMaxPandQ`,
-//! lazy mean/std-dev, `MakeLike`, and `CSVFile` (WP5.2b: the read is deferred
-//! to the executive via [`FileLoad`], which resolves the path relative to the
-//! script's current directory and hands back the text). The binary file props
-//! (`SngFile`/`DblFile`/`PQCSVFile`) stay `NOT_PORTED`. Single-precision arrays
-//! (`sP`/`sH`/`sQ`) and memory-mapped files (`MemoryMapping`) are not ported (no
-//! corpus case needs them); `MemoryMapping=yes` stores the flag but the lookup
-//! never takes the MMF path.
+//! Scope (WP5.2a/b, WPG.1): the in-memory core — fixed- and variable-interval
+//! data, `GetMultAtHour` (the consumer-facing lookup), `Normalize`,
+//! `SetMaxPandQ`, lazy mean/std-dev, `MakeLike`, and the four file inputs —
+//! `CSVFile`/`PQCSVFile` (text) and `SngFile`/`DblFile` (little-endian binary)
+//! — all deferred to the executive via [`FileLoad`], which resolves the path
+//! relative to the script's current directory and hands back the content
+//! (text or raw bytes per [`FileLoad::binary`]). `Interval = 0` reads
+//! `(hour, value)` pairs; `Interval <> 0` reads a bare value stream (Pascal
+//! `TLoadShapeObj.ReadCSVFile`/`ReadSngFile`/`ReadDblFile`/`Read2ColCSVFile`,
+//! `LoadShape.pas`). Single-precision *storage* (`sP`/`sH`/`sQ`, Pascal's
+//! "take the opportunity to use float32 data" branch when no `QMult` is set
+//! yet) is not modeled separately — a binary read always widens into the f64
+//! `p_mult`/`hour` arrays, which is bit-identical to the single-precision path
+//! for every corpus case (index/exact-point lookups only; no case interpolates
+//! a single-precision-only curve, the one place the two paths could diverge in
+//! rounding). Memory-mapped files (`MemoryMapping`) are not ported (no corpus
+//! case needs them); `MemoryMapping=yes` stores the flag but the lookup never
+//! takes the MMF path.
 //!
 //! Split into submodules (no behavioral change): the struct, its constructor and
 //! the simple accessors live here; the curve lookup / normalization / statistics
@@ -42,12 +51,10 @@ define_properties! {
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     8  SNGFILE   => PropDef::string("SngFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     9  DBLFILE   => PropDef::string("DblFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     10 ACTION    => PropDef::action("Action", enums.load_shape_action);
     11 QMULT     => PropDef::double_array("QMult", NPTS);
@@ -64,8 +71,7 @@ define_properties! {
     18 QBASE     => PropDef::double("QBase");
     19 PMULT     => PropDef::double_array("PMult", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);
     20 PQCSVFILE => PropDef::string("PQCSVFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     21 MEMORYMAPPING => PropDef::boolean("MemoryMapping");
     22 INTERPOLATION => PropDef::mapped_string_enum("Interpolation", enums.load_shape_interp);

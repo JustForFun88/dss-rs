@@ -263,10 +263,8 @@ impl DssObject for SpectrumObj {
                 // Pascal `DoCSVFile` (Spectrum.pas:210) runs here, but the hook
                 // can't reach the filesystem/current dir: queue the read for
                 // the executive (the WP5.2b deferred-`FileLoad` path).
-                self.pending_file_loads.push(FileLoad {
-                    prop: CSV_FILE,
-                    filename: self.csvfile.clone(),
-                });
+                self.pending_file_loads
+                    .push(FileLoad::text(CSV_FILE, self.csvfile.clone()));
             }
             _ => {}
         }

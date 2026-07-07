@@ -14,13 +14,16 @@
 //! (which falls through to the *second-to-last* point). So this is ported from
 //! TempShape/PriceShape directly, not derived from [`super::load_shape`].
 //!
-//! The data storage and the three algorithms that are byte-identical between the
-//! two classes — the hour lookup, the lazy mean/std-dev, and the `CSVFile`
-//! reader — live here on [`ScalarShapeCore`]; the per-class property tables and
-//! their differing `PropertySideEffects` live in [`super::temp_shape`] and
-//! [`super::price_shape`]. Binary file props (`SngFile`/`DblFile`) stay
-//! `NOT_PORTED`; `CSVFile` is read via the deferred [`FileLoad`] path, exactly
-//! like LoadShape (WP5.2b).
+//! The data storage and the algorithms that are byte-identical between the two
+//! classes — the hour lookup, the lazy mean/std-dev, and the `CSVFile`/
+//! `SngFile`/`DblFile` readers (Pascal's shared `Common/Utilities.pas`
+//! `DoCSVFile`/`DoSngFile`/`DoDblFile`, called with `OnlyLoadB = Interval <> 0`
+//! — i.e. a fixed interval loads only the value column, `Interval = 0` loads
+//! `(hour, value)` pairs from both) — live here on [`ScalarShapeCore`]; the
+//! per-class property tables and their differing `PropertySideEffects` live in
+//! [`super::temp_shape`] and [`super::price_shape`]. All three file props are
+//! read via the deferred [`FileLoad`] path, exactly like LoadShape (WP5.2b /
+//! WPG.1 for the binary pair).
 
 use crate::obj::base::{DssObjData, FileLoad};
 use crate::support::mathutil::{curve_mean_and_std_dev, mean_and_std_dev};
@@ -239,6 +242,67 @@ impl ScalarShapeCore {
             self.hours = store_array(h);
         }
         self.num_points = i as i32;
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoSngFile` (little-endian `f32` stream),
+    /// called with `OnlyLoadB = Interval <> 0`: a fixed interval reads a bare
+    /// value stream (`Hours` untouched); `Interval = 0` reads `(hour, value)`
+    /// pairs into both arrays. Reads at most `NumPoints` points and shrinks
+    /// `NumPoints` to the count actually read.
+    pub fn read_sng_file(&mut self, content: &[u8]) {
+        let npts = self.n();
+        if self.interval == 0.0 {
+            let mut h = Vec::with_capacity(npts);
+            let mut v = Vec::with_capacity(npts);
+            let mut off = 0usize;
+            while v.len() < npts && off + 8 <= content.len() {
+                let hr = f32::from_le_bytes(content[off..off + 4].try_into().unwrap());
+                let val = f32::from_le_bytes(content[off + 4..off + 8].try_into().unwrap());
+                h.push(hr as f64);
+                v.push(val as f64);
+                off += 8;
+            }
+            self.num_points = v.len() as i32;
+            self.hours = store_array(h);
+            self.values = store_array(v);
+        } else {
+            let n = (content.len() / 4).min(npts);
+            let v: Vec<f64> = content[..n * 4]
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes(c.try_into().unwrap()) as f64)
+                .collect();
+            self.num_points = n as i32;
+            self.values = store_array(v);
+        }
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoDblFile` (little-endian `f64` stream);
+    /// same row layout as [`Self::read_sng_file`] but double precision.
+    pub fn read_dbl_file(&mut self, content: &[u8]) {
+        let npts = self.n();
+        if self.interval == 0.0 {
+            let mut h = Vec::with_capacity(npts);
+            let mut v = Vec::with_capacity(npts);
+            let mut off = 0usize;
+            while v.len() < npts && off + 16 <= content.len() {
+                let hr = f64::from_le_bytes(content[off..off + 8].try_into().unwrap());
+                let val = f64::from_le_bytes(content[off + 8..off + 16].try_into().unwrap());
+                h.push(hr);
+                v.push(val);
+                off += 16;
+            }
+            self.num_points = v.len() as i32;
+            self.hours = store_array(h);
+            self.values = store_array(v);
+        } else {
+            let n = (content.len() / 8).min(npts);
+            let v: Vec<f64> = content[..n * 8]
+                .chunks_exact(8)
+                .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                .collect();
+            self.num_points = n as i32;
+            self.values = store_array(v);
+        }
     }
 
     /// Pascal `MakeLike` (shared body): copy points and interval; the hour array

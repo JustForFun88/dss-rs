@@ -295,9 +295,13 @@ SCENARIOS = [
         ],
     },
     # --- LoadShape (WP5.2a, in-memory core) ---
-    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are NOT_PORTED here; the
-    # CSVFile scenario arrives in WP5.2b. Mean/StdDev on the empty default raise
-    # (61107) in the oracle, so they are skipped for that one scenario only.
+    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are all ported (WP5.2b /
+    # WPG.1) but none of these scenarios actually loads a file — every default
+    # here stays the empty string, so no file-fixture scenario is needed on
+    # this round-trip gate (the executive integration tests + the live
+    # shape_binfiles corpus deck cover an actual load). Mean/StdDev on the
+    # empty default raise (61107) in the oracle, so they are skipped for that
+    # one scenario only.
     {
         "name": "loadshape_default",
         "target": "LoadShape.d",

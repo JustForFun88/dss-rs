@@ -4,8 +4,15 @@ The fixtures are committed (they are deterministic inputs, not goldens); this
 script only exists so they can be rebuilt from source if ever needed. Layouts
 follow the Pascal readers (LoadShape.pas `DoSngFile`/`DoDblFile`, interval<>0
 branch = a bare value stream, little-endian):
-  ls8.sng    -- 8 x float32 P multipliers      (LoadShape SngFile)
-  ls8.dbl    -- 8 x float64 P multipliers      (LoadShape DblFile)
+  ls8.sng    -- 8 x float32 P multipliers      (LoadShape SngFile, interval=1)
+  ls8.dbl    -- 8 x float64 P multipliers      (LoadShape DblFile, interval=1)
+  ls8v.sng   -- 8 x float32 (hour, mult) pairs (LoadShape SngFile, interval=0
+                — WPG.1's "port both branches" case; hours 0..7 line up
+                exactly with the daily solve's sample hours, so the lookup
+                takes the exact-point branch on both engines, never the
+                interpolation branch, which is the only place a single-
+                precision-only curve could diverge from double-precision
+                arithmetic — see load_shape/compute.rs::read_sng_file)
   lspq8.csv  -- 8 x "P, Q" rows                (LoadShape PQCSVFile)
   t8.sng     -- 8 x float32 temperatures       (TShape SngFile)
   p8.dbl     -- 8 x float64 prices             (PriceShape DblFile)
@@ -31,6 +38,9 @@ def main() -> None:
         f.write(struct.pack("<8f", *MULT))
     with open(os.path.join(OUT, "ls8.dbl"), "wb") as f:
         f.write(struct.pack("<8d", *MULT))
+    with open(os.path.join(OUT, "ls8v.sng"), "wb") as f:
+        for h, m in enumerate(MULT):
+            f.write(struct.pack("<ff", float(h), m))
     with open(os.path.join(OUT, "lspq8.csv"), "w", newline="\n") as f:
         for p, q in zip(MULT, QMULT):
             f.write(f"{p}, {q}\n")
