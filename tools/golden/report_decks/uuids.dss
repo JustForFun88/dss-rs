@@ -3,8 +3,8 @@
 // the CIM exporter auto-creates (Station=Station=1, GeoRgn=GeoRgn=1,
 // SubGeoRgn=SubGeoRgn=1) - any object left out gets a RANDOM v4 at export
 // time (NamedObject.pas CreateUUID4), which can never be oracle-pinned.
-// The @FIXTURES@ token is replaced with the absolute phase8_decks dir by
-// gen_phase8.py and golden_phase8.rs before replay. `export uuids` then
+// The @FIXTURES@ token is replaced with the absolute report_decks dir by
+// gen_reports.py and golden_reports.rs before replay. `export uuids` then
 // writes <circ>_EXP_UUIDS.csv fully deterministically (NOTE the probe-
 // proven quirk: Text.Result stays EMPTY for this export).
 clear

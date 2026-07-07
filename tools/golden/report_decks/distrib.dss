@@ -1,6 +1,6 @@
 // PHASE8_PLAN WP8.6 Distribute fixture: loads with three different kW
 // bases and specs (kW/PF, xfkva+allocationfactor, kwh+cfactor) so the
-// Proportional weights differ per load. The gen_phase8.py DISTRIB group
+// Proportional weights differ per load. The gen_reports.py DISTRIB group
 // issues the deterministic variants (Proportional / Uniform / Skip /
 // what=Load) after this deck; How=Random is RNG-carried
 // (Utilities.pas:1400 `randomize`) and is never golden-gated.

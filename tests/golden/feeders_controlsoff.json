@@ -7,7 +7,7 @@
  "scenarios": [
   {
    "name": "ieee13",
-   "script": "tests/golden/phase4/ieee13_controlsoff.dss",
+   "script": "tests/golden/feeders_controlsoff/ieee13_controlsoff.dss",
    "converged": true,
    "iterations": 3,
    "node_order": [
@@ -954,7 +954,7 @@
   },
   {
    "name": "ieee37",
-   "script": "tests/golden/phase4/ieee37_controlsoff.dss",
+   "script": "tests/golden/feeders_controlsoff/ieee37_controlsoff.dss",
    "converged": true,
    "iterations": 3,
    "node_order": [
@@ -3058,7 +3058,7 @@
   },
   {
    "name": "ieee123",
-   "script": "tests/golden/phase4/ieee123_controlsoff.dss",
+   "script": "tests/golden/feeders_controlsoff/ieee123_controlsoff.dss",
    "converged": true,
    "iterations": 3,
    "node_order": [

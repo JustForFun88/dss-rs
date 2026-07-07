@@ -1,7 +1,7 @@
 //! Phase 8 report goldens (PHASE8_PLAN §2.3): pin the **report file the oracle
-//! writes**. `tools/golden/gen_phase8.py` runs a fixture on the pinned engine,
+//! writes**. `tools/golden/gen_reports.py` runs a fixture on the pinned engine,
 //! issues the `Export`/`Show`/... command, and captures the produced file's
-//! bytes into `tests/golden/phase8/<report>.txt` (+ a `<report>.meta.json` with
+//! bytes into `tests/golden/reports/<report>.txt` (+ a `<report>.meta.json` with
 //! the exact deck, so the Rust and oracle fixtures can never drift). This driver
 //! replays the same deck, writes its own report into a temp dir, and diffs the
 //! two **after parsing numbers out** via `harness::compare_export` — never a raw
@@ -15,7 +15,7 @@
 //! gate (it shakes out the whole output path: registry walk → format → file IO →
 //! the `compare_export` harness), not a self-comparison.
 //!
-//! Regenerate only manually: `python tools/golden/gen_phase8.py`.
+//! Regenerate only manually: `python tools/golden/gen_reports.py`.
 
 mod harness;
 
@@ -27,14 +27,14 @@ use harness::{
 };
 use serde::Deserialize;
 
-fn phase8_dir() -> PathBuf {
+fn reports_dir() -> PathBuf {
     [
         env!("CARGO_MANIFEST_DIR"),
         "..",
         "..",
         "tests",
         "golden",
-        "phase8",
+        "reports",
     ]
     .iter()
     .collect()
@@ -62,7 +62,7 @@ struct DeckMeta {
 /// into a scratch dir, export, and diff the produced file against the captured
 /// oracle file via `compare_export`. The deck-fixture twin of `run_feeder_export`.
 fn run_deck_export(stem: &str, policy: &ExportPolicy) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -101,7 +101,7 @@ fn run_deck_export(stem: &str, policy: &ExportPolicy) {
 /// A unique scratch dir for this test process (no `tempfile` dep; cleaned up at
 /// the end). `Set DataPath=` points the engine's report output here.
 fn scratch_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("dss_phase8_{tag}_{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("dss_reports_{tag}_{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap_or_else(|e| panic!("mkdir {}: {e}", d.display()));
     d
 }
@@ -112,7 +112,7 @@ fn scratch_dir(tag: &str) -> PathBuf {
 /// are pinned exactly (integers — zero tolerance).
 #[test]
 fn export_counts_matches_oracle() {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: ReportMeta = {
         let p = dir.join("export_counts.meta.json");
         let text =
@@ -195,7 +195,7 @@ struct FeederMeta {
 /// the post commands, route the report into a scratch dir, export, and diff the
 /// produced file against the captured oracle file via `compare_export`.
 fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: FeederMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -322,7 +322,7 @@ fn run_feeder_show(stem: &str, policy: &ExportPolicy) {
 /// scratch dir)`. Shared by [`run_feeder_show`] (token diff) and
 /// [`run_feeder_show_exact`] (byte-exact diff); the caller removes the scratch dir.
 fn produce_feeder_show(stem: &str) -> (String, String, PathBuf) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: FeederMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -402,7 +402,7 @@ fn run_deck_show_exact(stem: &str) {
 /// scratch dir)`. Shared by [`run_deck_show`] and [`run_deck_show_exact`]; the
 /// caller removes the scratch dir.
 fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -435,7 +435,7 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
 /// `dss.last_result_file()` (no suffix glob). Byte-exact: the dump is pure DSS
 /// script text (no padded columns), so the oracle bytes are reproducible in full.
 fn run_deck_dump_exact(stem: &str) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -467,11 +467,11 @@ fn run_deck_dump_exact(stem: &str) {
 /// `run_deck_dump_exact` twin for the Capacitor decks: the oracle golden was
 /// captured with the `~ CMatrix=(`/`~ FaultRate=`/`~ pctPerm=` lines already
 /// dropped (probe-proven ASLR-garbage in this pinned build, `tools/golden/
-/// phase8_decks/README.md`); this drops the same line prefixes from the Rust
+/// report_decks/README.md`); this drops the same line prefixes from the Rust
 /// output (which renders the correct, non-garbage values — a genuinely
 /// different line, not comparable) before the byte-exact compare.
 fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -511,7 +511,7 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
 /// master/post/fixture (asserted — they are the same solved circuit), single-
 /// sourced exactly like `run_feeder_export`.
 fn run_shared_exports(reports: &[(&str, ExportPolicy)]) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let metas: Vec<FeederMeta> = reports
         .iter()
         .map(|(stem, _)| {
@@ -753,7 +753,7 @@ fn show_buses_matches_oracle() {
 
 /// `Show Taps` (Pascal `ShowRegulatorTaps`): per-RegControl tap/min/max/step
 /// (`%8.5f`), integer position/winding, direction/cogen text. The tap fractions
-/// are exact discrete decisions (the phase5/checkpoint gates pin `tap_number`
+/// are exact discrete decisions (the timeseries_controls/checkpoint gates pin `tap_number`
 /// exactly), so they match to the last `%8.5f` digit — exact equality.
 #[test]
 fn show_taps_matches_oracle() {
@@ -1093,7 +1093,7 @@ fn show_ratings_matches_oracle() {
 /// `Show` path emits the identical log the `Export` path does — line-for-line vs the
 /// oracle, the non-integer tap values (`CHANGED n TAPS TO <pu>`) exercising the
 /// numeric-token compare. Exact equality — the tap decisions are exact (pinned
-/// by the phase5 `daily_ieee13` gate).
+/// by the timeseries_controls `daily_ieee13` gate).
 #[test]
 fn show_eventlog_matches_oracle() {
     let policy = ExportPolicy {
@@ -1674,7 +1674,7 @@ fn run_lineconstants_show(stem: &str) {
     let code_path = scratch.join("LineConstantsCode.dss");
     let rust_code = std::fs::read_to_string(&code_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", code_path.display()));
-    let oracle_code = std::fs::read_to_string(phase8_dir().join(format!("{stem}_code.txt")))
+    let oracle_code = std::fs::read_to_string(reports_dir().join(format!("{stem}_code.txt")))
         .unwrap_or_else(|e| panic!("read {stem}_code golden: {e}"));
     assert_show_bytes_eq(&oracle_code, &rust_code, &format!("{stem}_code"));
     std::fs::remove_dir_all(&scratch).ok();
@@ -1879,7 +1879,7 @@ fn show_topology_matches_oracle() {
     let (oracle_summ, rust_summ, scratch) = produce_feeder_show("show_topology");
     assert_show_bytes_eq(&oracle_summ, &rust_summ, "show_topology");
     let rust_tree = locate_show_report(&scratch, "TopoTree.txt", "show_topology_tree");
-    let oracle_tree = std::fs::read_to_string(phase8_dir().join("show_topology_tree.txt"))
+    let oracle_tree = std::fs::read_to_string(reports_dir().join("show_topology_tree.txt"))
         .expect("read show_topology_tree golden");
     assert_show_bytes_eq(&oracle_tree, &rust_tree, "show_topology_tree");
     std::fs::remove_dir_all(&scratch).ok();
@@ -1936,7 +1936,7 @@ fn show_topology_mesh_matches_oracle() {
     let (oracle_summ, rust_summ, scratch) = produce_deck_show("show_topology_mesh");
     assert_show_bytes_eq(&oracle_summ, &rust_summ, "show_topology_mesh");
     let rust_tree = locate_show_report(&scratch, "TopoTree.txt", "show_topology_mesh_tree");
-    let oracle_tree = std::fs::read_to_string(phase8_dir().join("show_topology_mesh_tree.txt"))
+    let oracle_tree = std::fs::read_to_string(reports_dir().join("show_topology_mesh_tree.txt"))
         .expect("read show_topology_mesh_tree golden");
     assert_show_bytes_eq(&oracle_tree, &rust_tree, "show_topology_mesh_tree");
     std::fs::remove_dir_all(&scratch).ok();
@@ -2688,7 +2688,7 @@ fn export_der_registers_match_oracle() {
 /// stay oracle-anchored transitively.
 #[test]
 fn export_meters_multifile_switch() {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: FeederMeta = {
         let p = dir.join("export_meters.meta.json");
         let text =
@@ -2752,7 +2752,7 @@ fn export_meters_multifile_switch() {
 /// reports into a fresh scratch dir, and hand the driven `Dss` + scratch path to
 /// `body`. Shared by the append / Storage-`/m` self-consistency tests below.
 fn with_register_fixture(stem: &str, tag: &str, body: impl FnOnce(&mut Dss, &std::path::Path)) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: FeederMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -2828,7 +2828,7 @@ fn export_meters_append_accumulates() {
 #[test]
 fn export_storage_multifile_uses_pv_prefix() {
     let single = {
-        let p = phase8_dir().join("export_storage_meters.txt");
+        let p = reports_dir().join("export_storage_meters.txt");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
     };
     with_register_fixture(
@@ -2865,16 +2865,16 @@ fn export_storage_multifile_uses_pv_prefix() {
 // `Export EventLog` / `Export ErrorLog` (Pascal `ExportEventLog`/`ExportErrorLog`)
 // are `TStringList.SaveToFile` dumps of `DSS.EventStrings` / `DSS.ErrorStrings`.
 // The event-log lines are `Hour=…, Sec=…, Iteration=…, …` records: the stamps and
-// the in-action tap values are *numbers*, so — like the phase5 event-log gate —
+// the in-action tap values are *numbers*, so — like the timeseries_controls event-log gate —
 // they are compared line-for-line with numbers parsed out (`numeric_skeleton`),
 // never as raw float-strings.
 
 /// Compile the fixture, replay its post commands, export the log report into a
 /// scratch dir, and compare the produced file to the oracle's line-for-line with
-/// numbers parsed out at 1e-6 rel (the phase5 event-log policy). A count mismatch
+/// numbers parsed out at 1e-6 rel (the timeseries_controls event-log policy). A count mismatch
 /// (a missing/extra LogThisEvent marker) fails loudly before the per-line compare.
 fn run_log_export(stem: &str) {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: FeederMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
         let text =
@@ -2949,7 +2949,7 @@ fn run_log_export(stem: &str) {
 /// numeric-tolerance compare, not just the integer stamps). Pins the export
 /// **and** that our engine emits every LogThisEvent call site + every tap-change
 /// action line-for-line vs the oracle (the Circuit-build markers landed in WP8.3
-/// step 3a; the tap logic is the same the phase5 `daily_ieee13` gate pins).
+/// step 3a; the tap logic is the same the timeseries_controls `daily_ieee13` gate pins).
 #[test]
 fn export_eventlog_matches_oracle() {
     run_log_export("export_eventlog");
@@ -3219,7 +3219,7 @@ fn export_capacity_reliability_skip_disabled_pd() {
 // No corpus deck exports these, so each is a synthesized deck fixture
 // (PHASE8_PLAN §1) tailored to make the report non-empty: an under-rated
 // overloaded line (Overloads), a voltage-sagged feeder (Unserved), and
-// allocation-spec loads (AllocationFactors). `gen_phase8.py` captures the oracle
+// allocation-spec loads (AllocationFactors). `gen_reports.py` captures the oracle
 // output; the Rust golden replays the same deck.
 
 /// The shared `Export Overloads` tolerance policy: every fixed-point column
@@ -3361,7 +3361,7 @@ fn export_sections_meter_matches_oracle() {
 /// (Pascal `Find` returns NIL → the all-meters branch, no error).
 #[test]
 fn export_sections_edge_paths() {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join("export_sections.meta.json");
         let text =
@@ -3453,7 +3453,7 @@ fn export_profile_variants_match_oracle() {
 // voltage-exception reports. The fixture pre-solves a snapshot so the meter
 // zone (VBaseList + vbase register names) exists when the files open — without
 // it the oracle renders *uninitialized heap garbage* as PHV vbase labels
-// (unpinnable; see gen_phase8.py).
+// (unpinnable; see gen_reports.py).
 
 /// Meta for a demand-interval golden: the produced file's path relative to the
 /// datapath (`<case>/DI_yr_0/<file>`) instead of an export suffix.
@@ -3501,7 +3501,7 @@ fn demand_interval_files_match_oracle() {
         "di_grand_totals",
         "di_systemmeter_registers",
     ];
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let metas: Vec<DiMeta> = stems
         .iter()
         .map(|stem| {
@@ -3566,7 +3566,7 @@ fn demand_interval_files_match_oracle() {
 /// then writes it with one row per solved step.
 #[test]
 fn demand_interval_yearly_stays_open_until_closedi() {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DiMeta = {
         let p = dir.join("di_em1.meta.json");
         let text =
@@ -3635,7 +3635,7 @@ fn demand_interval_yearly_stays_open_until_closedi() {
 /// a fresh yearly run then writes into a new `DI_yr_1/`.
 #[test]
 fn set_year_closes_di_and_rolls_the_year_directory() {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DiMeta = {
         let p = dir.join("di_em1.meta.json");
         let text =
@@ -3832,7 +3832,7 @@ struct DeckDiMeta {
 /// are 3-phase); this is the discriminating case.
 #[test]
 fn di_overloads_single_phase_mapping_matches_oracle() {
-    let dir = phase8_dir();
+    let dir = reports_dir();
     let meta: DeckDiMeta = {
         let p = dir.join("di_overloads_1ph.meta.json");
         let text =

@@ -1,8 +1,9 @@
-"""Generate the Phase-6 goldens from the pinned oracle (PHASE6_PLAN WP6.9 §1.2).
+"""Generate the metering/monitor goldens from the pinned oracle (PHASE6_PLAN
+WP6.9 §1.2; historically "Phase 6").
 
-Command-replay style like the phase5 goldens. Four scenarios exercise the Phase-6
+Command-replay style like the time-series goldens. Four scenarios exercise the
 meter/monitor/generator/topology machinery against the oracle; the Rust harness
-(`golden_phase6.rs`) replays the identical command lists and must match.
+(`golden_metering_monitors.rs`) replays the identical command lists and must match.
 
   - monitor_daily_ieee13: IEEE13 (controls active, inlined) + a 24-pt daily
     shape on every load, with four monitors on `line.650632` / `transformer.reg1`
@@ -25,9 +26,9 @@ meter/monitor/generator/topology machinery against the oracle; the Rust harness
     `ZonePCE`) exact for both meters (the parent zone stops at the sub-meter).
 
 Usage:
-    python tools/golden/gen_phase6.py
+    python tools/golden/gen_metering_monitors.py
 
-Writes one file per scenario under tests/golden/phase6/ (<name>.json). Regeneration
+Writes one file per scenario under tests/golden/metering_monitors/ (<name>.json). Regeneration
 is manual and must use the exact versions in tools/golden/PIN.txt.
 """
 
@@ -38,10 +39,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_phase5 import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
+from gen_timeseries_controls import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase6"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "metering_monitors"
 SCHEMA = 1
 
 
@@ -217,7 +218,7 @@ def main() -> None:
         scenario_generator_snap(d),
         scenario_meter_zone_micro(d),
     ]
-    # One file per scenario under OUT_DIR; golden_phase6.rs runs every *.json in
+    # One file per scenario under OUT_DIR; golden_metering_monitors.rs runs every *.json in
     # the directory, so adding a scenario is just dropping a new file.
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     names = {sc["name"] for sc in scenarios}

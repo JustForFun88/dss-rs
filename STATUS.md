@@ -30,6 +30,42 @@ run/converge on the listed revs; skipped up front, reported under
 documented in the catalog's own comment block; still never consulted by the
 mandatory gate.
 
+**Porting-era `phaseN` names retired (2026-07-07).** The golden dirs,
+generators, and Rust gates carried porting-phase numbers that mean nothing on
+their own. Renamed to what they cover (all `git mv`; goldens **not**
+regenerated — the sole content edit was 3 embedded variant-path strings in
+`feeders_controlsoff.json`, no numerics). The `phase7` bucket (60 files, name
+said "line constants" but held DER + harmonics too) was **split by content**
+into three families sharing one `harness::scenario` gate. This table is the
+old→new map; historical STATUS entries and the `PHASEn_PLAN.md` docs keep the
+old names on purpose (they date the work).
+
+| old | new |
+|---|---|
+| `tests/golden/phase4.json` + `phase4/` | `feeders_controlsoff.json` + `feeders_controlsoff/` |
+| `tests/golden/phase5/` | `timeseries_controls/` |
+| `tests/golden/phase6/` | `metering_monitors/` |
+| `tests/golden/phase7/` (60) | split → `line_constants/` (5) + `der_controls/` (45) + `harmonics/` (10) |
+| `tests/golden/phase7_protection/` | `protection/` |
+| `tests/golden/phase8/` | `reports/` |
+| `tools/golden/gen_phase4.py` | `gen_feeders_controlsoff.py` |
+| `tools/golden/gen_phase5.py` | `gen_timeseries_controls.py` |
+| `tools/golden/gen_phase6.py` | `gen_metering_monitors.py` |
+| `tools/golden/gen_phase7.py` | `gen_der_lines_harmonics.py` (one file, scenario→dir map) |
+| `tools/golden/gen_phase7_protection.py` | `gen_protection.py` |
+| `tools/golden/gen_phase8.py` | `gen_reports.py` |
+| `tools/golden/phase8_decks/` | `report_decks/` |
+| `tools/golden/probe_line_{constants,spacing}_phase7.py` | `probe_line_{constants,spacing}.py` |
+| `golden_phase5.rs` | `golden_timeseries_controls.rs` |
+| `golden_phase6.rs` | `golden_metering_monitors.rs` |
+| `golden_phase7.rs` | split → `golden_line_constants.rs` + `golden_der_controls.rs` + `golden_harmonics.rs` |
+| `golden_phase7_protection.rs` | `golden_protection.rs` |
+| `golden_phase8.rs` | `golden_reports.rs` |
+
+Already-semantic names kept as-is: `checkpoints/`, `props/`, `slice`,
+`allocation`, `autoadd_reduce`, `gendispatcher`, `ieee*`, `reliability`,
+`parser`, `golden_feeders.rs`, `golden_feeders_controls.rs`, `golden_smoke.rs`.
+
 **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
 gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)

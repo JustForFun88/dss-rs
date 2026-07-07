@@ -8,6 +8,11 @@
 //! uses only a subset, so dead-code analysis is suppressed module-wide.
 #![allow(dead_code)]
 
+/// Command-replay scenario gate shared by `golden_line_constants.rs`,
+/// `golden_der_controls.rs`, and `golden_harmonics.rs` (the split of the former
+/// Phase-7 golden bucket).
+pub mod scenario;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -736,7 +741,7 @@ pub fn compare_variables(dss: &mut Dss, exp: &VariablesCap, tol: &Tolerances, ct
 }
 
 /// Compare the event log line-for-line (normalized numeric skeleton at 1e-6
-/// rel — the exact policy `golden_phase7_protection.rs` pins trip/reclose
+/// rel — the exact policy `golden_protection.rs` pins trip/reclose
 /// sequences with). The log is cumulative, so a per-step compare pins *when*
 /// each control action happened, not just the final set.
 pub fn compare_eventlog(dss: &Dss, exp: &[String], ctx: &str) {
@@ -847,7 +852,7 @@ pub struct MonitorCap {
     pub sample_count: i32,
     pub channels: Vec<Vec<f64>>,
     /// 0-based channel indices to skip (e.g. the mode-5 wall-clock timing
-    /// channels, which the port records as 0 — see `golden_phase6.rs`). Empty
+    /// channels, which the port records as 0 — see `golden_metering_monitors.rs`). Empty
     /// for the live gate, which only captures deterministic monitor modes.
     #[serde(default)]
     pub skip_channels: Vec<usize>,
@@ -856,7 +861,7 @@ pub struct MonitorCap {
 /// An EnergyMeter's register names/values and zone branch/end/PCE counts.
 /// `branches`/`ends`/`pce` are the zone member name lists; when non-empty (the
 /// live gate captures them) membership is compared as a case-insensitive set,
-/// strengthening the bare count check. `golden_phase6.rs`'s meter golden leaves
+/// strengthening the bare count check. `golden_metering_monitors.rs`'s meter golden leaves
 /// them empty (it pins micro-zone membership separately, ordered).
 #[derive(Debug, Deserialize)]
 pub struct MeterCap {
@@ -876,7 +881,7 @@ pub struct MeterCap {
 
 /// Compare a monitor's header (data channels, exact), sample count (exact), and
 /// every channel's sample array (`tol.i_rel`/`i_abs` on the f32 samples — the
-/// same policy `golden_phase6.rs` uses). Channels listed in `exp.skip_channels`
+/// same policy `golden_metering_monitors.rs` uses). Channels listed in `exp.skip_channels`
 /// (the mode-5 wall-clock timings) are skipped; the live gate leaves it empty
 /// (it captures only deterministic modes, so every channel is compared).
 pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str) {

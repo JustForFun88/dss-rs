@@ -859,7 +859,7 @@ plumbing already owned elsewhere: the `Export` dispatch/option parse
 (`ExportOptions.pas:141-142/185-188/227-259/351-353/539-541`) and the WP8.6
 UUID substrate (`DoUuidsCmd`, `Export Uuids`, lazy-v4 object UUIDs, the
 hashed-key list, `DefaultCircuitUUIDs` — PHASE8_PLAN §WP8.6 step 6 owns all of
-it, with the fixture `tools/golden/phase8_decks/uuids.dss` + `uuids_pre.csv`
+it, with the fixture `tools/golden/report_decks/uuids.dss` + `uuids_pre.csv`
 already authored; **do not rebuild any of it here**).
 
 Pulled forward from PORTING_PLAN Phase 9 on 2026-07-06 (the older WPs' effort
@@ -884,7 +884,7 @@ exit sweep) keeps its number and still runs **last**.
    fixture preloaded two oracle processes are bit-identical and the golden
    compare is **exact bytes** (CRLF-normalized), zero tolerance — the WP8.5
    dump-golden pattern. New generator `tools/golden/gen_cim.py` (clone the
-   `gen_phase8.py` deck pattern: micro decks in `tools/golden/cim_decks/`,
+   `gen_reports.py` deck pattern: micro decks in `tools/golden/cim_decks/`,
    goldens in `tests/golden/cim/`; corpus-feeder cases reference the vendored
    corpus master like the existing feeder goldens). Per case the generator
    must: (a) process 1 — compile → solve → `export cim100` (output discarded)

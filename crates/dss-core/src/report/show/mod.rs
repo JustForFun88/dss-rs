@@ -4,7 +4,7 @@
 //!
 //! Unlike the `Export` CSV formatters, `Show` emits Pascal's fixed-width text
 //! tables (`Pad`/`PadDots` columns, `Format('%W.Df', …)` widths). The targeted
-//! text golden (`golden_phase8.rs`) diffs them after tokenizing on whitespace +
+//! text golden (`golden_reports.rs`) diffs them after tokenizing on whitespace +
 //! commas (PHASE8_PLAN §2.3), so the exact padding is not gate-load-bearing — but
 //! the field structure and the number formats are ported faithfully.
 

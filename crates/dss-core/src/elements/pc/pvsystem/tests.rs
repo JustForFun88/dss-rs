@@ -1,5 +1,5 @@
 //! Spec-pinned unit tests for the PVSystem element (`TPVsystemObj`). The
-//! numeric oracle pinning lives in the integration goldens (`phase7/pvsystem*`)
+//! numeric oracle pinning lives in the integration goldens (`der_controls/pvsystem*`)
 //! and the live corpus gate; these pin the ported Pascal bodies that the oracle
 //! does not expose directly (Create defaults, the inverter clamp branches,
 //! `ComputePanelPower`, the YEQ derivation).
@@ -18,7 +18,7 @@ use super::*;
 /// NOT the (negated) power-flow admittance. Pins the harmonic `CalcYPrimMatrix`
 /// branch entry-by-entry and, as a discriminator, asserts it is far from the
 /// power-flow stamping. Oracle-independent backstop for the
-/// `phase7/harmonics_pvsystem_h5` golden.
+/// `harmonics/harmonics_pvsystem_h5` golden.
 #[test]
 fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
     let mut pv = PVSystem::new("pv1");
@@ -138,7 +138,7 @@ fn inverter_cuts_out_below_threshold() {
 /// 640 > 500 forces the no-priority back-off `kW_out := sqrt(kVA²−kvar²)` → kW =
 /// sqrt(500²−400²) = **300**, kvar **stays 400**. (Pinned exactly — not just an
 /// upper bound — so a regression that zeroed the output or backed off the wrong
-/// leg can't pass; the oracle pins the same state in golden `phase7/pvsystem_clamps`
+/// leg can't pass; the oracle pins the same state in golden `der_controls/pvsystem_clamps`
 /// element `pva`.)
 #[test]
 fn kva_clamp_backs_off_kw() {
@@ -164,7 +164,7 @@ fn kva_clamp_backs_off_kw() {
 /// `kvarMaxAbs`=300 clamps to kvar_out=−300 (absorption limit), then the kVA
 /// back-off sets kW = sqrt(500²−300²) = **400**. Pins the absorption direction
 /// (the `kvarNEG` corpus sibling that would cover it is deferred at ~4e-6;
-/// the oracle pins this state in golden `phase7/pvsystem_clamps` element `pvc`).
+/// the oracle pins this state in golden `der_controls/pvsystem_clamps` element `pvc`).
 #[test]
 fn kvar_absorption_clamp_then_backoff() {
     let mut pv = PVSystem::new("pv1");

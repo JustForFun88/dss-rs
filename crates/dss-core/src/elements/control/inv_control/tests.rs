@@ -155,7 +155,7 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
 // --- WP7.5 step 2b/2c: the dispatch math, pinned through a mock env ---
 //
 // The full end-to-end convergence is oracle-pinned by the
-// `tests/golden/phase7/invcontrol_{voltvar,voltwatt,vv_vw}.json` goldens (the live
+// `tests/golden/der_controls/invcontrol_{voltvar,voltwatt,vv_vw}.json` goldens (the live
 // corpus volt-var/volt-watt families migrate them too). These mock-env tests pin
 // the *per-call* arithmetic — the fleet build, the Sample triggers, `Calc_QHeadRoom`/
 // `Calc_PBase`, and the first DoPendingAction curve→clamp→delta step — independent
@@ -758,7 +758,7 @@ mod dispatch {
     // per-step voltage *change* vs the DRC rolling-average window, so these mocks
     // seed the window directly (the window is fed only by the time-step cleanup,
     // which the mock env does not run — exactly why the end-to-end gate is the
-    // *daily* `phase7/invcontrol_drc` golden, not a snapshot).
+    // *daily* `der_controls/invcontrol_drc` golden, not a snapshot).
 
     /// A DRC control: no curve, zero-width deadband (DbVMin=DbVMax=1.0), steep
     /// slopes (ArGra=50), VARMAX, deltaQ_factor=0.2, named-list fleet `pv`.
@@ -1023,7 +1023,7 @@ mod dispatch {
     #[test]
     fn avr_storage_dispatches_in_kvar_mode() {
         // A Storage in AVR regulates like a PVSystem (the converged kvar is oracle-
-        // pinned by phase7/invcontrol_avr_storage). Here the mock pins the var-mode
+        // pinned by der_controls/invcontrol_avr_storage). Here the mock pins the var-mode
         // fix: iter-1 sets the DER `Varmode := VARMODEKVAR` (so `set_nominal` applies
         // the request, not its VARMODE_PF default) and pushes QHeadRoom/2 = 300 kvar.
         let mut ic = avr_ic();
@@ -1091,7 +1091,7 @@ mod dispatch {
     #[test]
     fn wattpf_storage_dispatches_in_kvar_mode() {
         // A Storage in WATTPF regulates (the converged magnitude is oracle-pinned by
-        // phase7/invcontrol_wattpf_storage). FDCkW=0 for Storage so the wattpf curve is
+        // der_controls/invcontrol_wattpf_storage). FDCkW=0 for Storage so the wattpf curve is
         // read at panel-pu 0; with a non-unity pf there (-0.95) and WattPriority the
         // watt term `p = kW_out_desired` (= present 400) is non-zero, so the Storage
         // absorbs Q = -400·tan(acos(0.95)) = -131.47 kvar. Pins the var-mode fix AND a
@@ -1174,7 +1174,7 @@ mod dispatch {
         // y(0)=-0.3 → QDesireWVpu=-0.3 → QDesiredWV = -0.3·QHeadRoom(=600) = -180. The
         // fix under test: `Varmode := VARMODE_KVAR` so the request is applied (a Storage
         // would otherwise keep VARMODE_PF and discard it). (The converged value is
-        // oracle-pinned by phase7/invcontrol_wattvar_storage.)
+        // oracle-pinned by der_controls/invcontrol_wattvar_storage.)
         let mut ic = wattvar_ic();
         // Override the curve so y(0) = -0.3 (the curve point Storage actually reads).
         ic.wattvar_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(

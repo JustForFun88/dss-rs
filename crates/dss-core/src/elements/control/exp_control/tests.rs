@@ -5,7 +5,7 @@
 //! curve→clamp→delta step, the `Vreg` slew, the not-injecting / `PreferQ`
 //! branches) is pinned per-call through a mock env, independent of the PVSystem
 //! injection model; the end-to-end convergence is oracle-pinned by the targeted
-//! `phase7/expcontrol_*` golden + the live corpus.
+//! `der_controls/expcontrol_*` golden + the live corpus.
 
 use super::*;
 use crate::obj::base::DssObject;

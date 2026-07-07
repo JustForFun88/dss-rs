@@ -5,7 +5,7 @@ frequency overhead case (radius branch), and a non-default rho_earth case.
 Builds each geometry through a Line and reads RMatrix/XMatrix (ohm per unit
 length, here ohm/m) and CMatrix (nF per unit length, here nF/m) — the same
 engine outputs the Rust LineConstants engine produces. Run:
-    python tools/golden/probe_line_constants_phase7.py
+    python tools/golden/probe_line_constants.py
 
 Earth-model keyword → code (DSSClass.pas:1074): Carson=1, FullCarson=2, Deri=3.
 Note the Line `Cmatrix` getter scales reported nF by the *solve* frequency, so

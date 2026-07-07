@@ -41,7 +41,7 @@ holds 1e-8 in every class.
 **Maintenance:** a new corpus case defaults to `large`; promote it to `feeder`
 only after `corpus_live` confirms it holds the tighter floor. Golden tests that
 drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios in
-`golden_phase6/7`) pass `"large"` explicitly.
+`golden_metering_monitors` / the DER/harmonics/protection scenarios) pass `"large"` explicitly.
 
 ## Field-specific exceptions
 
@@ -56,18 +56,18 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   `|V_kv| = |P_kW|/|I_A|` keeps the power floor the exact image of the
   already-accepted current floor — without it, high-voltage near-zero
   through-currents (connector lines) would trip a flat kW floor.
-- **Tap float 1e-12 rel** (`golden_feeders_controls.rs` / `golden_phase5.rs`):
+- **Tap float 1e-12 rel** (`golden_feeders_controls.rs` / `golden_timeseries_controls.rs`):
   the discrete `tap_number` is exact; only the accumulated float differs by an ulp
   when regulators partition the same net movement differently.
 - **Monitor channels are f32** (1:1 with Pascal `MonBuffer: pSingleArray`), so
   the comparison floor is the f32 ULP — monitor/dynamics channels at `i_rel`/`i_abs`
-  (`golden_phase6.rs`, `exec/tests/dynamics.rs`). The mode-5 wall-clock channels
+  (`golden_metering_monitors.rs`, `exec/tests/dynamics.rs`). The mode-5 wall-clock channels
   are skipped.
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
   pin is a stronger guard than an `abs < ε` bound.
-- **`Export Counts` is a `RustSubsetByKey` compare** (`golden_phase8.rs`,
+- **`Export Counts` is a `RustSubsetByKey` compare** (`golden_reports.rs`,
   `harness::compare_export`): the report lists every DSS class + its instance
   count, but the Rust class registry is a **proper subset** of the oracle's (only
   a subset of classes is ported so far). So the Rust file is required to be a
@@ -84,7 +84,7 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   `DSSClassList` order (they currently differ) — or an order-independent
   exact-set-by-key variant.
 - **`Export`/`Show` reports (WP8): exact equality is the default**
-  (`golden_phase8.rs`, `harness::compare_export`). **WP8 exactness audit
+  (`golden_reports.rs`, `harness::compare_export`). **WP8 exactness audit
   (2026-07-04):** every WP8 golden was re-measured cell-by-cell against its
   oracle capture; the produced reports are parse-value-identical (byte-identical
   modulo tokenization) on **74 of 93** compares, so those policies are pinned at

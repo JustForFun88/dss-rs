@@ -2,7 +2,7 @@
 // class whose DumpProperties override is still unported EXCEPT Capacitor
 // (Fault, Vsource, UPFC, RegControl, Monitor, EnergyMeter, Spectrum) plus
 // the loads the `dump alloc` file needs (xfkva- and kwh-spec). The
-// gen_phase8.py DUMP3 group replays this deck and captures one golden per
+// gen_reports.py DUMP3 group replays this deck and captures one golden per
 // dump form (single-object [debug], bare dump, dump debug, solution,
 // buslist, devicelist, commands, alloc).
 // Capacitor AND Reactor are deliberately ABSENT - two probe-proven

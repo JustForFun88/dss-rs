@@ -1,5 +1,5 @@
 //! Spec-pinned unit tests for the Storage element (`TStorageObj`). The numeric
-//! oracle pinning lives in the integration goldens (`phase7/storage*`) and the
+//! oracle pinning lives in the integration goldens (`der_controls/storage*`) and the
 //! live corpus gate; these pin the ported Pascal bodies that the oracle does not
 //! expose directly (Create defaults, the state machine, `ComputePresentkW`, the
 //! inverter clamp, the `%stored` read/write).
@@ -21,7 +21,7 @@ fn ctx() -> crate::elements::traits::SysCtx {
 /// NOT the state-dependent power-flow admittance. Pins the harmonic
 /// `CalcYPrimMatrix` branch entry-by-entry and discriminates it from the
 /// power-flow stamping. Oracle-independent backstop for the
-/// `phase7/harmonics_storage_h5` golden.
+/// `harmonics/harmonics_storage_h5` golden.
 #[test]
 fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
     let mut st = Storage::new("s1");

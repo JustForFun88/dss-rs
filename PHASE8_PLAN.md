@@ -115,7 +115,7 @@ row — auditors are spawned with an explicit model/effort override):
 | WP8.1–8.4 | — (✅ complete) | landed |
 | WP8.5 steps 3a, 3b, 4, 6 | `sonnet-high+` | mechanical ports: the pattern is established by the landed Dump steps 1–2, each item cites its Pascal unit:lines, gates are pre-wired (`dump3.dss`/`dump_capacitor.dss`/`save_forms.dss`) |
 | WP8.5 **step 5** (`Save circuit` + round-trip gate) | **`opus-medium+`** | the one non-mechanical WP8.5 piece: whole-circuit script emission + round-trip re-compile/re-solve debugging (failures surface as downstream voltage diffs, not local errors) |
-| WP8.6 (all steps) | `sonnet-high+` | each verb has a pre-validated deck (`tools/golden/phase8_decks/`, `tests/corpus/modes/`) with oracle-pinned expectations; Uuids is a byte-exact golden recipe |
+| WP8.6 (all steps) | `sonnet-high+` | each verb has a pre-validated deck (`tools/golden/report_decks/`, `tests/corpus/modes/`) with oracle-pinned expectations; Uuids is a byte-exact golden recipe |
 | WP8.7 (ReduceAlgs + `MergeWith` + `Remove`) | **`opus-medium+`** | graph surgery on the meter-zone tree + numeric impedance merge (`TLineObj.MergeWith`); the staging manifests' oracle-verified post-reduce element lists are the binding spec; the 8 strategy decks catch wrong-shape results, but *why* a shape is wrong takes real debugging |
 | WP8.8 (phase exit) | `sonnet-high+` | marker sweep + coverage proof + re-classify, mechanical |
 
@@ -123,12 +123,12 @@ row — auditors are spawned with an explicit model/effort override):
 each WP starts from a proven deck; every deck ran bit-identical across two
 separate oracle processes and is feature-sensitive):
 
-- **`tools/golden/phase8_decks/`** — fixture decks for the file-output gates
+- **`tools/golden/report_decks/`** — fixture decks for the file-output gates
   (`dump3.dss`, `dump_capacitor.dss`, `save_forms.dss`, `interp.dss`,
   `distrib.dss`, `uuids.dss` + `uuids_pre.csv`; see its README). The WP that
-  ports a verb wires its deck into `tools/golden/gen_phase8.py` (deck text →
+  ports a verb wires its deck into `tools/golden/gen_reports.py` (deck text →
   the golden `.meta.json`, the single source both engines replay) and adds the
-  `golden_phase8.rs` test.
+  `golden_reports.rs` test.
 - **`tests/corpus/modes/`** — 12 live decks with `pending: true` and
   `wp: "WP8.6"/"WP8.7"` (`batchedit`, `midi_batchedit`, the 8 `reduce_*`
   strategy decks, `reduce_remove`, `midi_reduce`); manifest notes record the
@@ -158,9 +158,9 @@ Two distinct correctness axes hold, and the plan keeps them separate:
 1. The **standard three-command gate** (`cargo fmt --all --check`; `cargo clippy
    --workspace --all-targets -- -D warnings`; `cargo test --workspace`) green after
    every step, with **all** prior goldens still green.
-2. **New targeted text/CSV golden** — `tools/golden/gen_phase8.py` →
-   `tests/golden/phase8/<report>.{csv,txt}` (the oracle's exact export/show output)
-   + `crates/dss-core/tests/golden_phase8.rs` driving the new harness comparator
+2. **New targeted text/CSV golden** — `tools/golden/gen_reports.py` →
+   `tests/golden/reports/<report>.{csv,txt}` (the oracle's exact export/show output)
+   + `crates/dss-core/tests/golden_reports.rs` driving the new harness comparator
    (§2.3). Coverage grows per WP. Canonical feeders: IEEE13/34/37/123 and 8500.
 3. **Save round-trip** — `crates/dss-core/tests/save_roundtrip.rs`: `Save circuit`
    on IEEE13/37/123 → the emitted master + sub-files **re-compile on our own
@@ -191,7 +191,7 @@ Two distinct correctness axes hold, and the plan keeps them separate:
 **No in-scope port is skipped for lack of a test.** Where no vendored corpus deck
 exercises a Phase-8 verb/option/mode, the test is **synthesized** — copy the nearest
 corpus deck (or hand-write a minimal one), add the missing command, save it as a
-fixture, and gate it through **both** engines (`gen_phase8.py` + `golden_phase8.rs`,
+fixture, and gate it through **both** engines (`gen_reports.py` + `golden_reports.rs`,
 exactly as the Phase-7 protection / fault-study / UPFC goldens already synthesize their
 scenarios). Test-absence is **never** a reason to defer a port (the WP7.9
 AutoAdd/Monte/LD/Feeder "zero corpus cases → skip" was the anti-pattern, corrected
@@ -368,7 +368,7 @@ file writers over it, gated by the same CSV comparator. The controlling `Set` op
 ### WP8.1 — Report infrastructure [12%] — ✅ COMPLETE
 
 Record: `STATUS.md` §1f (dispatch skeleton, output paths, `compare_export`
-harness, `gen_phase8.py`, GUI no-ops).
+harness, `gen_reports.py`, GUI no-ops).
 
 ---
 
@@ -389,7 +389,7 @@ Record: `STATUS.md` §1f (device/meter/reliability/log exports + the
 ### WP8.4 — Show reports [14%] — ✅ COMPLETE
 
 Record: `STATUS.md` §1f (~32 `Show` reports, steps 1–16 + finalize;
-golden_phase8 125).
+golden_reports 125).
 
 ---
 
@@ -402,7 +402,7 @@ LineCode / LineGeometry / XfmrCode leaf overrides, the `READS_VTERMINAL`
 refresh, `fmt_g`/`float_to_str` byte fixes. 16 byte-exact dump goldens.
 
 **Remaining steps (3–6). Fixture decks are pre-validated in
-`tools/golden/phase8_decks/` (README there records the probe-proven facts).**
+`tools/golden/report_decks/` (README there records the probe-proven facts).**
 
 **Step 3a — the 8 remaining leaf `DumpProperties` overrides.** Each is a
 co-located `dump_body` dispatched from `report/save/dump/overrides.rs:35`
@@ -507,9 +507,9 @@ first-5-chars match):
    dumps `System Y Matrix (Lower Triangle by Columns)` (`[%4d,%4d] = %12.5g +
    j%12.5g`) — bare `dump debug` passes Complete=debug, so this fires there.
 
-**Step 3 gate:** wire `dump3.dss` + `dump_capacitor.dss` into `gen_phase8.py`
+**Step 3 gate:** wire `dump3.dss` + `dump_capacitor.dss` into `gen_reports.py`
 (one meta per dump form — the validated post-command list is in the
-scratchpad validator and the phase8_decks README) + `run_deck_dump_exact`
+scratchpad validator and the report_decks README) + `run_deck_dump_exact`
 tests, all byte-exact except the masked capacitor lines. Then the audits +
 STATUS per the §0 ritual.
 
@@ -711,7 +711,7 @@ Steps:
    coordinate-defined anchor buses, then `CalcBusCoordinates`
    (`:2371-2409`) spaces the in-between buses EVENLY
    (`Xinc=(X1-X2)/LineCount`) — port loop-for-loop. Gate: wire
-   `phase8_decks/interp.dss` into `gen_phase8.py`; the golden is the
+   `report_decks/interp.dss` into `gen_reports.py`; the golden is the
    `export buscoords` CSV after `interpolate` (anchors src/b1/b5/c2 →
    b2/b3/b4 + c1 filled; oracle-validated deterministic).
 5. **Distribute** (`DoDistributeCmd:3755-3819` +
@@ -735,7 +735,7 @@ Steps:
    (`randomize` + `random`, `:1400/:1415` — FPC time-seeded, probe-proven
    class): port it with a fresh entropy-seeded RNG, never golden-gate it
    (the GAPS_PLAN RNG rule). GlobalResult = the file name. Gate: wire
-   `phase8_decks/distrib.dss` — four deterministic variants
+   `report_decks/distrib.dss` — four deterministic variants
    (Proportional/Uniform/Skip/what=Load; validated content in the probe
    record), `compare_export` numeric-token compare.
 6. **Uuids + `Export Uuids`** (`DoUuidsCmd:4465-4535`;
@@ -769,7 +769,7 @@ Steps:
    + the four helpers, keeping the Pascal surface — WPG.18 fills the rest of
    the module later; don't invent a different storage shape here. Probe-proven quirk to reproduce: `Text.Result` stays
    EMPTY after `export uuids` (unlike every other export). Gate: wire
-   `phase8_decks/uuids.dss` + `uuids_pre.csv` (the `@FIXTURES@` token →
+   `report_decks/uuids.dss` + `uuids_pre.csv` (the `@FIXTURES@` token →
    absolute fixtures dir on both the Python and Rust sides); byte-exact —
    every object is preloaded. Migrate the 1 `Uuids`-tagged corpus deck (its
    paired `Export` tag permitting).
@@ -893,8 +893,8 @@ Steps:
    set (PORTING_PLAN §Phase 8 deliverable); document the residual.
 3. Verify every family-manifest case with `wp: "WP8.*"` is `pending:false`
    (the WPG.* cases stay pending until GAPS_PLAN executes; WPG.17 owns the
-   final no-pending sweep). Verify `tools/golden/phase8_decks/` decks are all
-   wired into `gen_phase8.py` (the dir then holds only the README + decks the
+   final no-pending sweep). Verify `tools/golden/report_decks/` decks are all
+   wired into `gen_reports.py` (the dir then holds only the README + decks the
    metas reference).
 4. Re-run the full suite + the **always-on live corpus compare**; run a final
    `DSS_LIVE_CLASSIFY=1` pass and migrate every newly-unblocked deck. Refresh

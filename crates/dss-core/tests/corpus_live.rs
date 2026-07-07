@@ -26,7 +26,7 @@
 //! current mandate, no exceptions) plus every element's powers and the discrete
 //! control state, for every case. Monitor channels and EnergyMeter
 //! registers/zones are **also** compared — per step, with the same
-//! `compare_monitor`/`compare_meter` comparators `golden_phase6.rs` uses — for
+//! `compare_monitor`/`compare_meter` comparators `golden_metering_monitors.rs` uses — for
 //! the cases that opt in via `check_meters_monitors` in `solvable_now.json` (the
 //! daily IEEE13/IEEE37/IEEE123 runs that define meters + deterministic-mode
 //! monitors). Incidental master-defined monitors are *not* compared: the pinned
@@ -744,7 +744,7 @@ fn load_solvable() -> Vec<SolvableCase> {
 /// a multi-step run that also compares meters/monitors, and a case that compares
 /// YPrim — so editing those down to bare snapshots fails `cargo test --workspace`
 /// rather than silently dropping the multi-step / meter / monitor / YPrim live
-/// coverage. Mirrors the count guards in `golden_phase5.rs` / `golden_phase6.rs`.
+/// coverage. Mirrors the count guards in `golden_timeseries_controls.rs` / `golden_metering_monitors.rs`.
 #[test]
 fn solvable_now_has_multistep_depth() {
     let cases = load_solvable();

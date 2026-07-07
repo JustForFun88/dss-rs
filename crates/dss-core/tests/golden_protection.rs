@@ -1,10 +1,10 @@
 //! Phase 7 WP7.2 step-4 **protection** golden (PHASE7_PLAN §1 focused gate 3):
 //! command-replay trip/reclose sequences that pin the Fault + Recloser / Relay /
 //! Fuse / SwtControl control path against the pinned oracle
-//! (`tools/golden/gen_phase7_protection.py`). Each scenario builds a small radial
+//! (`tools/golden/gen_protection.py`). Each scenario builds a small radial
 //! feeder, drives the **ported** `mode=duty controlmode=time` control sweep (the
 //! corpus relay demos use dynamics mode, unported until WP7.7), solves step by
-//! step, and must match its file under `tests/golden/phase7_protection/` (one
+//! step, and must match its file under `tests/golden/protection/` (one
 //! `<scenario>.json` per scenario; the gate runs every file in the dir):
 //!
 //!   - recloser_temp: temporary fault -> trip FAST -> self-clear -> reclose;
@@ -24,7 +24,7 @@
 //! recloser/fuse state pinned exactly). Unlike the live corpus gate this golden is
 //! committed, so it guards the protection control path offline.
 //!
-//! Regenerate only manually: `python tools/golden/gen_phase7_protection.py`.
+//! Regenerate only manually: `python tools/golden/gen_protection.py`.
 
 mod harness;
 
@@ -70,7 +70,7 @@ struct Step {
     v_im: Vec<f64>,
 }
 
-/// Load every `*.json` scenario file from `tests/golden/phase7_protection/`,
+/// Load every `*.json` scenario file from `tests/golden/protection/`,
 /// sorted by file name for deterministic run order.
 fn load_scenarios() -> Vec<Scenario> {
     let dir: PathBuf = [
@@ -79,7 +79,7 @@ fn load_scenarios() -> Vec<Scenario> {
         "..",
         "tests",
         "golden",
-        "phase7_protection",
+        "protection",
     ]
     .iter()
     .collect();
@@ -99,7 +99,7 @@ fn load_scenarios() -> Vec<Scenario> {
             assert_eq!(
                 f.schema,
                 1,
-                "{}: phase7_protection golden schema mismatch",
+                "{}: protection golden schema mismatch",
                 p.display()
             );
             f.scenario
@@ -216,11 +216,11 @@ fn run_scenario(sc: &Scenario, tol: &harness::Tolerances) {
 }
 
 #[test]
-fn phase7_protection_scenarios_match_oracle() {
+fn protection_scenarios_match_oracle() {
     let scenarios = load_scenarios();
     // Every protection device must stay represented, so a future edit can't
     // silently drop a device's trip/reclose coverage (mirrors the count guards in
-    // golden_phase5/6/7 and corpus_live's depth guard).
+    // golden_{timeseries_controls,metering_monitors,der_controls} and corpus_live's depth guard).
     for must in [
         "recloser_temp",
         "recloser_perm",
@@ -230,7 +230,7 @@ fn phase7_protection_scenarios_match_oracle() {
     ] {
         assert!(
             scenarios.iter().any(|s| s.name == must),
-            "phase7_protection golden missing required scenario {must}"
+            "protection golden missing required scenario {must}"
         );
     }
     let tol = tol_for("large");
