@@ -1,0 +1,43 @@
+
+New "Isource.i1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 2
+! Yorder = 6
+! NodeRef = "1 2 3 0 0 0 "
+! Terminal Status: [C C C C C C ]
+! Terminal Bus Ref: [1 1 1 1 1 1 ]
+
+! YPrim (G matrix)
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+! YPrim (B Matrix) = 
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+! VARIABLES
+~ Bus1=src.1.2.3
+~ Amps=25
+~ Angle=45
+~ Frequency=60
+~ Phases=3
+~ ScanType=Zero
+~ Sequence=Negative
+~ Yearly=ds1
+~ Daily=ds1
+~ Duty=
+~ Bus2=src.0.0.0
+~ Spectrum=sp1
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+

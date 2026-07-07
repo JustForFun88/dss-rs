@@ -2063,6 +2063,28 @@ DUMP_CAP_DECK = [
     "solve",
 ]
 
+# WPG.14 — Isource has no Pascal `DumpProperties` override, so it dumps via
+# the ancestor `TPCElement.DumpProperties` ordering (ENABLED + Y-block +
+# VARIABLES + props). Two units: `i1` (3-phase, full spec — daily/spectrum
+# refs, ScanType=zero/Sequence=neg) and `iz` (1-phase, disabled — the
+# `! DISABLED` / unresolved-NodeRef path, same coverage as `DUMP_DIS_DECK`
+# for Reactor). A load + solve so the debug Y-block/NodeRef render live
+# values (Isource's own Yprim is always zero regardless).
+DUMP_ISRC_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.dmpisrc basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+    "new spectrum.sp1 numharm=2 harmonic=[1 3] %mag=[100 30] angle=[0 15]",
+    "new isource.i1 bus1=src.1.2.3 phases=3 amps=25 angle=45 frequency=60 "
+    "scantype=zero sequence=neg daily=ds1 spectrum=sp1",
+    "new isource.iz bus1=src.2 phases=1 amps=6 angle=-120 enabled=no",
+    "new load.ld1 bus1=src phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.92",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve",
+]
+
 # (stem, deck, report). Each captures `<case>_PropertyDump.txt` (Dump sets
 # GlobalResult), read back by the Rust golden via `dss.last_result_file()`.
 DUMP_DECKS = [
@@ -2092,6 +2114,8 @@ DUMP_DECKS = [
     ("dump_fault_gmatrix", DUMP3_DECK, "fault.fg debug"),
     ("dump_capacitor_cmatrix", DUMP_CAP_DECK, "capacitor.cm1 debug"),
     ("dump_capacitor_steps", DUMP_CAP_DECK, "capacitor.cs1 debug"),
+    ("dump_isource", DUMP_ISRC_DECK, "isource.*"),
+    ("dump_isource_debug", DUMP_ISRC_DECK, "isource.i1 debug"),
 ]
 
 # WP8.5 step 3b — the whole-circuit / aux Dump forms, all over the same
@@ -2119,13 +2143,13 @@ DUMP3_AUX = [
 DUMP_CAPACITOR_GARBAGE_PREFIXES = ("~ CMatrix=(", "~ FaultRate=", "~ pctPerm=")
 
 # `[<ClassName>]` sections dropped from the `dump3_commands` golden at
-# capture: these classes are NOT_PORTED (Isource → GAPS_PLAN WPG.14, AutoTrans
-# → WPG.15, GICsource/GICLine/GICTransformer → WPG.16), so the Rust registry
-# — and therefore its byte-exact `Dump commands` output — has no section for
-# them yet. Prune this tuple (and regenerate) as each class lands; every
-# *ported* class's section stays byte-pinned (order, property names, help).
+# capture: these classes are NOT_PORTED (AutoTrans → GAPS_PLAN WPG.15,
+# GICsource/GICLine/GICTransformer → WPG.16), so the Rust registry — and
+# therefore its byte-exact `Dump commands` output — has no section for them
+# yet. Prune this tuple (and regenerate) as each class lands; every *ported*
+# class's section stays byte-pinned (order, property names, help). Isource
+# landed in WPG.14 and is pruned from this list.
 DUMP_COMMANDS_UNPORTED_SECTIONS = (
-    "Isource",
     "GICsource",
     "AutoTrans",
     "GICLine",

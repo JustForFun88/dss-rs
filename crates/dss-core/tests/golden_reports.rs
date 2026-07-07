@@ -4104,6 +4104,24 @@ fn dump_capacitor_steps_matches_oracle() {
     );
 }
 
+// --- WPG.14: Isource ---
+
+/// `Dump isource.*` — Isource has no Pascal `DumpProperties` override, so it
+/// falls through to the ancestor `TPCElement.DumpProperties` ordering; pins
+/// the two-unit glob (a full-spec 3-phase unit + a disabled 1-phase unit —
+/// the `! DISABLED` / default-Bus2-uses-nphases-at-Bus1-parse-time render).
+#[test]
+fn dump_isource_matches_oracle() {
+    run_deck_dump_exact("dump_isource");
+}
+
+/// `Dump isource.i1 debug` — the CktElement Y-block (all-zero, ideal current
+/// source) + `! VARIABLES` (empty, `NumVariables=0`) + generic props.
+#[test]
+fn dump_isource_debug_matches_oracle() {
+    run_deck_dump_exact("dump_isource_debug");
+}
+
 // --- WP8.5 step 4: the `Save` forms (Pascal `DoSaveCmd`) ---
 
 /// Replay the `save_forms` deck **fresh** (Pascal `Flg.HasBeenSaved` persists

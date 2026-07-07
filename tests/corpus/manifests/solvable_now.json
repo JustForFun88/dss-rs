@@ -662,6 +662,11 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss",
    "kind": "feeder",
    "n_steps": 1

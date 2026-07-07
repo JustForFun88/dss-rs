@@ -75,6 +75,15 @@ impl Dss {
                 |name| Box::new(vsource::VSource::new(name)),
                 ElemKind::Source,
             ),
+            // Isource registers right after VSource (Pascal
+            // DSSClassDefs.pas:198, immediately below VSource:192) — VCCS sits
+            // between them upstream but is registered later in this file
+            // (WP7.8), and registration order does not affect node ordering.
+            DssClass::ckt_class(
+                isource::class_props(&enums),
+                |name| Box::new(isource::Isource::new(name)),
+                ElemKind::Source,
+            ),
             DssClass::ckt_class(
                 line::class_props(&enums),
                 |name| Box::new(line::Line::new(name)),

@@ -1,0 +1,36 @@
+
+New "Isource.i1"
+! ENABLED
+~ Bus1=src.1.2.3
+~ Amps=25
+~ Angle=45
+~ Frequency=60
+~ Phases=3
+~ ScanType=Zero
+~ Sequence=Negative
+~ Yearly=ds1
+~ Daily=ds1
+~ Duty=
+~ Bus2=src.0.0.0
+~ Spectrum=sp1
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+New "Isource.iz"
+! DISABLED
+~ Bus1=src.2
+~ Amps=6
+~ Angle=-120
+~ Frequency=60
+~ Phases=1
+~ ScanType=Positive
+~ Sequence=Positive
+~ Yearly=
+~ Daily=
+~ Duty=
+~ Bus2=src.0.0.0
+~ Spectrum=default
+~ BaseFreq=60
+~ Enabled=No
+~ Like=
