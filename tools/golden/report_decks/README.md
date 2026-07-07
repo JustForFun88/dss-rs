@@ -1,12 +1,14 @@
-# tools/golden/phase8_decks — fixture decks for the remaining Phase-8 goldens
+# tools/golden/report_decks — fixture decks for the report goldens
+
+(Historically `phase8_decks`, for "Phase 8" = the reporting/output layer.)
 
 Oracle-validated (2026-07-05, two separate oracle processes, bit-identical
 produced files) fixture decks for the PHASE8_PLAN.md work packages that gate
 on **file output**, not on the live model compare — Dump step 3 (WP8.5),
 Save forms (WP8.5), Interpolate / Distribute / Uuids (WP8.6). The WP that
-ports each verb wires its deck into `tools/golden/gen_phase8.py` (the deck
+ports each verb wires its deck into `tools/golden/gen_reports.py` (the deck
 text goes into the golden `.meta.json`, the single source both engines
-replay) and adds the matching `golden_phase8.rs` test; until then the decks
+replay) and adds the matching `golden_reports.rs` test; until then the decks
 sit here, pre-validated.
 
 | Deck | Feeds | Notes |

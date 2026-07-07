@@ -1,7 +1,7 @@
 //! Phase 6 golden (PHASE6_PLAN.md WP6.9 / §1.2): command-replay scenarios that
 //! pin the meter / monitor / generator / topology machinery against the pinned
-//! oracle (`tools/golden/gen_phase6.py`). The Rust engine replays each
-//! scenario's command list and must match its file under `tests/golden/phase6/`
+//! oracle (`tools/golden/gen_metering_monitors.py`). The Rust engine replays each
+//! scenario's command list and must match its file under `tests/golden/metering_monitors/`
 //! (one `<scenario>.json` per scenario; the gate runs every file in the dir):
 //!
 //!   - monitor_daily_ieee13: per-monitor header + SampleCount exact, channel
@@ -14,7 +14,7 @@
 //!     generator's terminal powers 1e-6 rel;
 //!   - meter_zone_micro: zone membership exact for the meter and its sub-meter.
 //!
-//! Regenerate only manually: `python tools/golden/gen_phase6.py`.
+//! Regenerate only manually: `python tools/golden/gen_metering_monitors.py`.
 
 mod harness;
 
@@ -73,7 +73,7 @@ struct GenExpect {
     powers: Vec<f64>,
 }
 
-/// Load every `*.json` scenario file from `tests/golden/phase6/`, sorted by
+/// Load every `*.json` scenario file from `tests/golden/metering_monitors/`, sorted by
 /// file name for deterministic run order.
 fn load_scenarios() -> Vec<Scenario> {
     let dir: PathBuf = [
@@ -82,7 +82,7 @@ fn load_scenarios() -> Vec<Scenario> {
         "..",
         "tests",
         "golden",
-        "phase6",
+        "metering_monitors",
     ]
     .iter()
     .collect();
@@ -102,7 +102,7 @@ fn load_scenarios() -> Vec<Scenario> {
             assert_eq!(
                 f.schema,
                 1,
-                "{}: phase6 golden schema mismatch",
+                "{}: metering_monitors golden schema mismatch",
                 p.display()
             );
             f.scenario
@@ -234,9 +234,9 @@ fn run_generator_snap(sc: &Scenario, dss: &mut Dss) {
 }
 
 #[test]
-fn phase6_scenarios_match_oracle() {
+fn metering_monitors_scenarios_match_oracle() {
     let scenarios = load_scenarios();
-    assert_eq!(scenarios.len(), 4, "expected 4 phase6 scenarios");
+    assert_eq!(scenarios.len(), 4, "expected 4 metering_monitors scenarios");
     for sc in &scenarios {
         let mut dss = replay(sc);
         match sc.name.as_str() {

@@ -47,7 +47,7 @@ SNAP_COMMANDS = [
     "New Energymeter.m1 Line.ln5815900-1 1",
     # A per-step power monitor on the metered feeder head (rectangular P/Q — `ppolar=no`,
     # which pins the actual P/Q and avoids the polar power-angle's ill-defined sign when
-    # Q is numerically zero; see the note in gen_phase7.py) so the 24-step daily segment
+    # Q is numerically zero; see the note in gen_der_lines_harmonics.py) so the 24-step daily segment
     # is pinned at EVERY hour, not only by the cumulative EnergyMeter registers (which
     # could mask a transient per-step divergence that integrates away).
     "New Monitor.mday Line.ln5815900-1 1 mode=1 ppolar=no",

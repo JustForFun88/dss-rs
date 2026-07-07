@@ -1,4 +1,5 @@
-"""Generate the Phase 5 time-series/control golden from dss-python (oracle).
+"""Generate the time-series/control goldens from dss-python (oracle;
+historically "Phase 5", PHASE5_PLAN.md).
 
 Command-replay style like slice.json (PHASE5_PLAN.md WP5.9): each scenario
 stores its full command list, the per-`solve`-step captures (dblHour,
@@ -22,9 +23,9 @@ Scenarios:
                      500/300 on/off settings toggle the bank), one solve.
 
 Usage:
-    python tools/golden/gen_phase5.py
+    python tools/golden/gen_timeseries_controls.py
 
-Writes one file per scenario under tests/golden/phase5/ (<name>.json).
+Writes one file per scenario under tests/golden/timeseries_controls/ (<name>.json).
 
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
@@ -36,7 +37,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase5"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "timeseries_controls"
 SCHEMA = 1
 
 # The unmodified IEEE13 master, inlined (Clear/Redirect/Solve/BusCoords
@@ -273,7 +274,7 @@ def main() -> None:
     ]
     results = [run_scenario(DSS, sc) for sc in scenarios]
 
-    # One file per scenario under OUT_DIR; golden_phase5.rs runs every *.json in
+    # One file per scenario under OUT_DIR; golden_timeseries_controls.rs runs every *.json in
     # the directory, so adding a scenario is just dropping a new file.
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     names = {sc["name"] for sc in results}

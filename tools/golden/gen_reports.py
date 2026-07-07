@@ -1,10 +1,12 @@
-"""Generate the Phase-8 targeted report goldens from the pinned oracle.
+"""Generate the targeted report goldens from the pinned oracle (historically
+"Phase 8", PHASE8_PLAN.md).
 
-Phase 8 is the reporting/output layer (Export/Show/Save/Dump). Unlike the
-command-replay goldens (phase5/6/7), these pin the **report file the oracle
-writes**: `gen_phase8.py` runs a small fixture on the pinned engine, issues the
+The reporting/output layer (Export/Show/Save/Dump). Unlike the command-replay
+goldens (timeseries_controls / metering_monitors / der_controls), these pin the
+**report file the oracle writes**: `gen_reports.py` runs a small fixture on the
+pinned engine, issues the
 `Export`/`Show`/... command, and captures the produced file's exact bytes into
-`tests/golden/phase8/<report>.txt`. The Rust side (`golden_phase8.rs`) replays
+`tests/golden/reports/<report>.txt`. The Rust side (`golden_reports.rs`) replays
 the same fixture, writes its own report, and diffs the two **after parsing
 numbers out** via the `compare_export` harness (PHASE8_PLAN §2.3) — never a raw
 float-string diff.
@@ -17,7 +19,7 @@ count is pinned against the oracle, the classes we do not yet register are
 ignored (documented in `tests/TOLERANCE_NOTES.md`).
 
 Usage:
-    python tools/golden/gen_phase8.py            # regenerate all phase-8 goldens
+    python tools/golden/gen_reports.py            # regenerate all report goldens
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
 
@@ -33,12 +35,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_checkpoints import check_pin  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase8"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "reports"
 
 # The Counts fixture: a tiny circuit exercising a few class counts (Line=2,
 # Load=1, Vsource=1) on top of the default DSS items. Counts depend only on
 # *instance counts*, not on bus names or a solve. The Rust golden test
-# (`golden_phase8.rs`) reads this same deck back from the meta file, so the two
+# (`golden_reports.rs`) reads this same deck back from the meta file, so the two
 # can never drift.
 COUNTS_FIXTURE = "counts8"
 COUNTS_DECK = [
@@ -51,7 +53,7 @@ COUNTS_DECK = [
 
 def gen_counts(d) -> None:
     """Capture the oracle's `Export Counts` for the fixture."""
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in COUNTS_DECK:
@@ -76,7 +78,7 @@ def gen_counts(d) -> None:
 
 # The solution-export fixture: the unmodified IEEE13 feeder, compiled + solved,
 # then each report captured from the file the oracle writes. The Rust golden
-# (`golden_phase8.rs`) compiles the same master from `tests/corpus`, replays the
+# (`golden_reports.rs`) compiles the same master from `tests/corpus`, replays the
 # same post commands, and diffs each report via `compare_export` — so the two
 # fixtures can never drift. Each tuple: (export keyword, oracle default-filename
 # suffix, golden stem).
@@ -148,7 +150,7 @@ def gen_ieee8500_reports(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -207,7 +209,7 @@ def gen_monitor_reports(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -281,7 +283,7 @@ def _gen_register_group(d, post, reports) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -324,7 +326,7 @@ def _gen_show_group(d, post, reports) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -412,12 +414,12 @@ def gen_show_meter_edgecases(d) -> None:
 #     tap values, so the numeric-tolerance compare path is genuinely exercised).
 #     Our engine wires all these LogThisEvent call sites (the Circuit-build ones
 #     landed in WP8.3 step 3a) and matches the oracle's tap decisions line-for-line
-#     (the phase5 `daily_ieee13` gate pins the same tap logic). This golden pins
+#     (the timeseries_controls `daily_ieee13` gate pins the same tap logic). This golden pins
 #     the **export** (SaveToFile → `EXP_EventLog.csv` naming + the `%g` render
 #     into the file) on top of the marker + tap-change stream.
 #   ErrorLog: a clean solve → an empty `ErrorStrings` dump — pins the plumbing +
 #     the `EXP_ErrorLog.txt` naming (a clean IEEE13 run logs no DoSimpleMsg). The
-#     non-empty content path is gated Rust-side (`golden_phase8.rs`), since
+#     non-empty content path is gated Rust-side (`golden_reports.rs`), since
 #     cross-engine error *message text* is not a Phase-8 correctness axis.
 EVENTLOG_POST = [
     "RegControl.reg1.eventlog=yes",
@@ -456,7 +458,7 @@ def gen_feeder_reports(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -562,7 +564,7 @@ def gen_show_reports(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -604,7 +606,7 @@ def gen_show_eventlog(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -683,7 +685,7 @@ def _gen_lineconstants(d, deck, args: str, stem_prefix: str) -> None:
     (`LineConstantsCode.dss`, no `<case>_` prefix). `args` is the trailing
     `[freq] [units] [rho]` (empty = the defaults freq=DefaultBaseFreq/kft/100)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in deck:
@@ -748,7 +750,7 @@ def gen_show_variables(d) -> None:
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     post = ["new generator.g1 bus1=675 phases=3 kv=4.16 kw=100 model=1", "solve"]
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -802,7 +804,7 @@ def gen_show_kvbasemismatch(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -844,7 +846,7 @@ def gen_show_monitor(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -880,7 +882,7 @@ def gen_seqz(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -967,7 +969,7 @@ def gen_show_faultstudy(d) -> None:
 #   * `Capacity`         — per-PDElement Imax/%normal/%emergency/kW/kvar/customers/kVBase
 # This is exactly the `relcalc_head_recloser_matches_oracle` feeder (the reliability
 # unit test proves both engines' `RelCalc` arithmetic agrees), so the report values
-# match tightly. The Rust golden (`golden_phase8.rs`) replays the same deck.
+# match tightly. The Rust golden (`golden_reports.rs`) replays the same deck.
 RELIABILITY_FIXTURE = "rel"
 RELIABILITY_DECK = [
     f"new circuit.{RELIABILITY_FIXTURE} basekv=12.47 bus1=src phases=3",
@@ -1027,7 +1029,7 @@ SECTIONS_REPORTS = [
 def gen_sections(d) -> None:
     """Capture the oracle's `Export Sections` reports (all meters + named meter)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in SECTIONS_DECK:
@@ -1127,7 +1129,7 @@ def gen_demand_interval(d) -> None:
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -1184,7 +1186,7 @@ OV1PH_POST = [
 def gen_di_overloads_1ph(d) -> None:
     """Capture DI_Overloads for a single-phase (phase-2) overloaded lateral."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in OV1PH_DECK:
@@ -1253,7 +1255,7 @@ RELIABILITY_MULTIMETER_DECK = [
 def gen_reliability_multimeter(d) -> None:
     """Capture the oracle's multi-meter `Export BusReliability` (cross-zone contamination)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in RELIABILITY_MULTIMETER_DECK:
@@ -1281,7 +1283,7 @@ def gen_reliability_multimeter(d) -> None:
 def gen_reliability(d) -> None:
     """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in RELIABILITY_DECK:
@@ -1319,7 +1321,7 @@ def gen_reliability(d) -> None:
 #   * AllocationFactors — one connected-kVA-spec load (`xfkva=`) and one kWh-spec
 #     load (`kwh=`); only these two spec types emit a line.
 # Each is a deck fixture (DeckMeta with the oracle default-filename suffix), the
-# Rust golden (`golden_phase8.rs`) replays the same deck.
+# Rust golden (`golden_reports.rs`) replays the same deck.
 DECK_GROUPS = [
     (
         "ovl",
@@ -1407,7 +1409,7 @@ def _gen_show_deck_group(d, deck, reports) -> None:
     compile): replay the deck, `show <keyword>`, and capture the fixed-name file the
     report writes (found by its suffix glob — `Show` sets no `GlobalResult`)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in deck:
@@ -1688,7 +1690,7 @@ def gen_show_topo_coverage(d) -> None:
     (`show_topology_mesh` summary + `show_topology_mesh_tree`). Byte-exact."""
     d.AllowEditor = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         for c in SHOW_TOPO_DECK:
@@ -1736,7 +1738,7 @@ def gen_show_topology(d) -> None:
     d.AllowEditor = False
     master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / FEEDER_MASTER).resolve()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
     try:
         d.Text.Command = "clear"
         d.Text.Command = f'compile "{master_abs}"'
@@ -1802,7 +1804,7 @@ def gen_deck_groups(d) -> None:
     """Capture the oracle's Overloads/Unserved/AllocationFactors reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for _case, deck, reports in DECK_GROUPS:
-        tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+        tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
         try:
             d.Text.Command = "clear"
             for c in deck:
@@ -2001,7 +2003,7 @@ DUMP_XC_DECK = [
 ]
 
 # --- WP8.5 step 3a: the 8 remaining leaf `DumpProperties` overrides ---
-# `tools/golden/phase8_decks/dump3.dss` (see its header comment): every
+# `tools/golden/report_decks/dump3.dss` (see its header comment): every
 # override except Capacitor (Fault ×2 spec types, Vsource — the implicit
 # `circuit.dmp3` source, UPFC, RegControl, Monitor, EnergyMeter, Spectrum) in
 # one micro deck, `clear` dropped (issued by the runner loop below).
@@ -2040,7 +2042,7 @@ DUMP3_DECK = [
     "solve",
 ]
 
-# `tools/golden/phase8_decks/dump_capacitor.dss`: the Capacitor override,
+# `tools/golden/report_decks/dump_capacitor.dss`: the Capacitor override,
 # isolated because of the proven upstream ASLR-garbage bug in `CMatrix`/
 # `FaultRate`/`pctPerm` (see the mask below).
 DUMP_CAP_DECK = [
@@ -2093,21 +2095,21 @@ DUMP_DECKS = [
 ]
 
 # Line prefixes dropped from BOTH sides of `dump_capacitor_*` (probe-proven
-# ASLR-garbage — see the phase8_decks README and `investigations/`): the
+# ASLR-garbage — see the report_decks README and `investigations/`): the
 # oracle's captured golden never contains them (stripped at capture time
 # below); the Rust replay drops the same prefixes from its own output before
-# the byte-exact compare (`golden_phase8.rs::run_deck_dump_exact_masked`).
+# the byte-exact compare (`golden_reports.rs::run_deck_dump_exact_masked`).
 DUMP_CAPACITOR_GARBAGE_PREFIXES = ("~ CMatrix=(", "~ FaultRate=", "~ pctPerm=")
 
 
 def gen_dump_decks(d) -> None:
     """Capture the oracle's `Dump` on the synthesized decks. `Dump` sets
     `GlobalResult` to the produced `<case>_PropertyDump.txt`, so the Rust golden
-    (`golden_phase8.rs`) reads `dss.last_result_file()`."""
+    (`golden_reports.rs`) reads `dss.last_result_file()`."""
     d.AllowEditor = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for stem, deck, report in DUMP_DECKS:
-        tmp = tempfile.mkdtemp(prefix="dss_gen_phase8_")
+        tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
         try:
             d.Text.Command = "clear"
             for c in deck:

@@ -226,7 +226,7 @@ fn show_zone_disabled_meter_is_empty() {
 /// The export router's three non-formatting outcomes: the WP8.2 solution guard
 /// (#24712), a still-unported keyword's scoped `NOT_PORTED` (loud, not a silent
 /// fake), and an unknown keyword's Pascal 24713. The *happy* path (a real report
-/// written + diffed vs the oracle) is the `golden_phase8.rs` gate. (`Export`
+/// written + diffed vs the oracle) is the `golden_reports.rs` gate. (`Export`
 /// decks all sit in `skipped_unsupported`, so this never reaches the live gate.)
 #[test]
 fn export_records_scoped_not_ported() {
@@ -253,7 +253,7 @@ fn export_records_scoped_not_ported() {
     //     is a Phase-9 GIC export (stays unported through all of Phase 8) and is
     //     not solution-guarded (36 ∉ the #24712 ptr set), so no solve is needed.
     //     (WP8.3 step 3a ported `EventLog`(33)/`ErrorLog`(52), so those are now
-    //     real dumps gated by `golden_phase8.rs`, not this NOT_PORTED test.)
+    //     real dumps gated by `golden_reports.rs`, not this NOT_PORTED test.)
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
     dss.command(&set_dp);
@@ -382,7 +382,7 @@ fn compile_moves_output_directory_redirect_does_not() {
 /// columns take the `if let Some(ysc)` *else* path and stay `0.00`, the same
 /// degenerate output the oracle produces (`ExportFaultStudy` reads precomputed
 /// state — "Isc has been previously computed" — and garbage/zeros it if none ran).
-/// This guards that `Ysc == None` branch (the `golden_phase8` fixture always runs
+/// This guards that `Ysc == None` branch (the `golden_reports` fixture always runs
 /// a faultstudy first, so it never exercises it; audit-tests WP8.3 step 3b). No
 /// oracle capture needed — the zeros are structural (`max_1ph`/`max_ll` never
 /// leave their `0.0` init), so a Rust-only assertion is faithful and non-vacuous.

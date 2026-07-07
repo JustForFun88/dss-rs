@@ -242,7 +242,7 @@ fn sym_scalar_detaches_geometry() {
 // Each test builds a spacing+conductor line and asserts its total `Z`/`Yc` equal
 // the matrices the *equivalent* `geometry=` line produces — which the step-3a
 // `geometry_tests` and the `line_geometry` unit tests pin entry-by-entry to the
-// dss-python oracle. `probe_line_spacing_phase7.py` confirmed the two paths agree
+// dss-python oracle. `probe_line_spacing.py` confirmed the two paths agree
 // **exactly** (maxdiff 0) in the oracle for all three forms, so this transitively
 // pins the spacing path; the hardcoded `Z[0][0]` anchors pin it directly too.
 
@@ -264,7 +264,7 @@ fn build_wire() -> WireDataObj {
     w
 }
 
-/// The shared CN cable `cn1` (the `probe_line_spacing_phase7.py` / line_constants
+/// The shared CN cable `cn1` (the `probe_line_spacing.py` / line_constants
 /// CN reference).
 fn build_cn() -> CnDataObj {
     let enums = EnumRegistry::new();
@@ -455,7 +455,7 @@ fn spacing_cncables_match_geometry() {
     );
 }
 
-/// The shared TS cable `ts1` (the `probe_line_constants_phase7.py` TS reference).
+/// The shared TS cable `ts1` (the `probe_line_constants.py` TS reference).
 fn build_ts() -> crate::elements::general::conductor_data::TsDataObj {
     use crate::elements::general::conductor_data::{TsDataObj, ts_data};
     let enums = EnumRegistry::new();

@@ -6,7 +6,7 @@ For each scenario it builds the SAME multi-conductor line two ways in the oracle
 `wires=`/`cncables=` — and prints both Rmatrix/Xmatrix/Cmatrix plus their max
 abs difference. A ~0 difference confirms the spacing path reproduces the geometry
 path in the oracle, so the Rust spacing port can pin against the step-3a
-reference. Run:  python tools/golden/probe_line_spacing_phase7.py
+reference. Run:  python tools/golden/probe_line_spacing.py
 """
 from dss import dss
 

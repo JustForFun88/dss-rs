@@ -1,9 +1,11 @@
-"""Generate the Phase-7 WP7.2 step-4 **protection** targeted goldens from the
-pinned oracle (PHASE7_PLAN §1 focused gate 3: "a fault + protection sequence
+"""Generate the **protection** targeted goldens from the pinned oracle
+(PHASE7_PLAN WP7.2 step-4 / §1 focused gate 3: "a fault + protection sequence
 (recloser/relay/fuse trip + reclose), event logs equal (normalized, line-for-line,
-like the Phase-5 control gate), final switch/recloser states exact").
+like the time-series control gate), final switch/recloser states exact";
+historically part of "Phase 7").
 
-Command-replay like phase5 (per-`solve`-step captures + the event log), but the
+Command-replay like the time-series goldens (per-`solve`-step captures + the
+event log), but the
 scenarios are protection trip/reclose sequences driven through the **ported**
 `mode=duty controlmode=time` control sweep (dynamics mode — which the corpus relay
 demos use — is unported until WP7.7). Each scenario pins, against the oracle:
@@ -21,7 +23,7 @@ A scenario may interleave `edit` commands before chosen steps via `pre_solve`
 (step-index -> [commands]), mirroring the corpus `edit swtcontrol.x action=o`
 manual-switch usage.
 
-Scenarios (one file each under tests/golden/phase7_protection/):
+Scenarios (one file each under tests/golden/protection/):
   - recloser_temp:  temporary fault -> Recloser trips FAST, fault self-clears
                     below MinAmps, Recloser recloses (ends CLOSED).
   - recloser_perm:  permanent fault -> Recloser trips FAST -> reclose -> DELAYED
@@ -34,8 +36,8 @@ Scenarios (one file each under tests/golden/phase7_protection/):
                     (the corpus civanlar pattern) after its delay.
 
 Usage:
-    python tools/golden/gen_phase7_protection.py              # regenerate all
-    python tools/golden/gen_phase7_protection.py recloser_perm  # one scenario
+    python tools/golden/gen_protection.py              # regenerate all
+    python tools/golden/gen_protection.py recloser_perm  # one scenario
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
 
@@ -49,7 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_checkpoints import capture_element, check_pin  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase7_protection"
+OUT_DIR = REPO_ROOT / "tests" / "golden" / "protection"
 SCHEMA = 1
 
 # A small radial feeder: source -> line.feed -> line.lat -> 3-phase load. The

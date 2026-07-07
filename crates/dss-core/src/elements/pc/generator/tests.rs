@@ -29,7 +29,7 @@ fn default_nominal_generation() {
 /// discriminator, asserts it is far from the power-flow path: a regression that
 /// forgot to overwrite `Yeq` in `init_harmonics_impl` (reusing the power-flow
 /// `Yeq`) fails here. Oracle-independent — the offline backstop the
-/// `phase7/harmonics_generator_h5` golden complements (mirrors the step-1 Load
+/// `harmonics/harmonics_generator_h5` golden complements (mirrors the step-1 Load
 /// `harmonic_yprim_uses_series_rl_split_not_naive_yeq` discriminator).
 #[test]
 fn harmonic_yprim_is_subtransient_admittance_not_powerflow() {

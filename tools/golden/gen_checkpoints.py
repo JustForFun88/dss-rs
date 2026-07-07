@@ -1,7 +1,7 @@
 """Generate the checkpointed-model goldens from the pinned oracle.
 
 The *checkpointed-model* gate (see the golden-infrastructure plan). Unlike the
-phase5/phase6 command-replay goldens — which compare only converged outputs
+timeseries_controls/metering_monitors command-replay goldens — which compare only converged outputs
 (voltages, currents, registers) — these goldens capture the **assembled
 electrical model itself** after every committed time step: the system Y matrix,
 selected element YPrim blocks, the injection vector, and discrete control state.
@@ -41,8 +41,8 @@ from math import isqrt
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_phase5 import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
-from gen_phase6 import MICRO  # noqa: E402
+from gen_timeseries_controls import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
+from gen_metering_monitors import MICRO  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "checkpoints"

@@ -1,35 +1,20 @@
-//! Phase 7 golden (PHASE7_PLAN.md WP7.1 / §1 focused gate 1): command-replay
-//! scenarios that pin the line-constants / geometry path against the pinned
-//! oracle (`tools/golden/gen_phase7.py`). Each scenario builds a small circuit
-//! whose Line gets its Z/Yc from the Carson engine (via `geometry=`, or
-//! `spacing=` with `wires=`/`cncable=`), solves once, and must match its file
-//! under `tests/golden/phase7/` (one `<scenario>.json` per scenario; the gate
-//! runs every file in the dir):
-//!
-//!   - line_geometry: 3-phase overhead via `geometry=` (no reduce);
-//!   - line_geometry_reduce: 3 phases + a neutral, `reduce=yes` (Kron reduce);
-//!   - line_spacing: 3-phase overhead via `spacing=` + `wires=`;
-//!   - cable_cn: 3-phase concentric-neutral cable via `geometry=` + `cncable=`;
-//!   - cable_ts: 3-phase tape-shield cable via `geometry=` + `tscable=`.
-//!
-//! Pins: converged + iteration count + node order exact, node voltages 1e-6 rel,
-//! the **Line YPrim entry-by-entry** (the Carson Z/Yc is the new math under
-//! test), and every element's terminal currents/powers (voltage-scaled power
-//! floor). Unlike the live corpus gate this golden is committed, so it guards the
-//! geometry path offline (no oracle install needed to catch a regression).
-//!
-//! Regenerate only manually: `python tools/golden/gen_phase7.py`.
-
-mod harness;
+//! Command-replay scenario harness shared by the targeted golden gates that
+//! split the former Phase-7 bucket: `golden_line_constants.rs`,
+//! `golden_der_controls.rs`, `golden_harmonics.rs`. Each scenario replays a
+//! command list on the Rust engine, solves, and compares the state against its
+//! committed `tests/golden/<family>/<scenario>.json` (schema 1, regenerated
+//! only manually via `tools/golden/gen_der_lines_harmonics.py` with the pinned
+//! oracle).
 
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::{
+use serde::Deserialize;
+
+use super::{
     ElementCap, MonitorCap, YPrim, assert_complex_close, compare_element, compare_monitor,
     compare_yprim, tol_for,
 };
-use serde::Deserialize;
 
 /// One scenario file: `{schema, oracle, scenario}` (the `oracle` block is
 /// ignored here).
@@ -48,7 +33,9 @@ struct Scenario {
     node_order: Vec<String>,
     v_re: Vec<f64>,
     v_im: Vec<f64>,
-    /// The Line's YPrim from the Carson geometry/spacing/cable path.
+    /// The scenario Line's YPrim (for the line-constants family this is the
+    /// Carson geometry/spacing/cable path under test; the DER/harmonics decks
+    /// pin their line the same way).
     line_yprim: YPrim,
     /// Every element's terminal currents/powers, in the oracle's element order.
     elements: Vec<ElementCap>,
@@ -70,16 +57,16 @@ struct StorageCap {
     properties: std::collections::BTreeMap<String, String>,
 }
 
-/// Load every `*.json` scenario file from `tests/golden/phase7/`, sorted by file
-/// name for deterministic run order.
-fn load_scenarios() -> Vec<Scenario> {
+/// Load every `*.json` scenario file from `tests/golden/<dir_name>/`, sorted by
+/// file name for deterministic run order.
+fn load_scenarios(dir_name: &str) -> Vec<Scenario> {
     let dir: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
         "..",
         "..",
         "tests",
         "golden",
-        "phase7",
+        dir_name,
     ]
     .iter()
     .collect();
@@ -99,7 +86,7 @@ fn load_scenarios() -> Vec<Scenario> {
             assert_eq!(
                 f.schema,
                 1,
-                "{}: phase7 golden schema mismatch",
+                "{}: {dir_name} golden schema mismatch",
                 p.display()
             );
             f.scenario
@@ -107,78 +94,16 @@ fn load_scenarios() -> Vec<Scenario> {
         .collect()
 }
 
-#[test]
-fn phase7_targeted_scenarios_match_oracle() {
-    let scenarios = load_scenarios();
-    // Every path these targeted goldens cover must stay represented, so a future
-    // edit can't silently drop a path's coverage (mirrors the count guards in
-    // golden_phase5/6 and corpus_live's depth guard): the WP7.1 Line fetch
-    // resolvers and the WP7.3 PVSystem injection / panel-inverter model.
-    for must in [
-        "line_geometry",
-        "line_geometry_reduce",
-        "line_spacing",
-        "cable_cn",
-        "cable_ts",
-        "pvsystem_snapshot",
-        "pvsystem_curves",
-        "pvsystem_clamps",
-        "storage_snapshot",
-        "storage_clamps",
-        "storage_daily",
-        "storage_daily_charge",
-        "storagecontroller_peakshave",
-        "storagecontroller_daily",
-        "invcontrol_voltvar",
-        "invcontrol_voltvar_avg",
-        "invcontrol_voltwatt",
-        "invcontrol_voltwatt_adaptive",
-        "invcontrol_voltwatt_daily",
-        "invcontrol_vv_vw",
-        "invcontrol_drc",
-        "invcontrol_vv_drc",
-        "invcontrol_wattpf",
-        "invcontrol_wattvar",
-        "invcontrol_wattvar_asym",
-        "invcontrol_wattvar_qlim",
-        "invcontrol_avr",
-        "invcontrol_avr_daily",
-        "invcontrol_avr_kvarlim",
-        "invcontrol_avr_storage",
-        "invcontrol_avr_storage_wattprio",
-        "invcontrol_wattpf_storage",
-        "invcontrol_wattvar_storage",
-        "invcontrol_avr_24h",
-        "invcontrol_wattpf_24h",
-        "invcontrol_wattvar_24h",
-        "invcontrol_avr_storage_24h",
-        "invcontrol_wattpf_storage_24h",
-        "invcontrol_wattvar_storage_24h",
-        "invcontrol_voltvar_avg_24h",
-        "invcontrol_voltvar_mixed_24h",
-        "invcontrol_voltvar_lpf",
-        "invcontrol_voltvar_risefall",
-        "invcontrol_voltwatt_lpf",
-        "invcontrol_voltwatt_risefall",
-        "invcontrol_voltvar_monbus",
-        "expcontrol_daily",
-        "expcontrol_daily_preferq",
-        "expcontrol_duty",
-        "expcontrol_24h",
-        "harmonics_load_h5",
-        "harmonics_load_h7",
-        "harmonics_vsource",
-        "harmonics_doall",
-        "harmonics_doall_t",
-        "harmonics_load_motor_h5",
-        "harmonics_generator_h5",
-        "harmonics_pvsystem_h5",
-        "harmonics_storage_h5",
-        "harmonics_generator_delta_h5",
-    ] {
+/// The family gate body: every `required` scenario must be present (so a future
+/// edit can't silently drop a path's coverage — mirrors the count guards in the
+/// other golden gates and corpus_live's depth guard), then each scenario is
+/// replayed and compared.
+pub fn check_family(dir_name: &str, required: &[&str]) {
+    let scenarios = load_scenarios(dir_name);
+    for must in required {
         assert!(
-            scenarios.iter().any(|s| s.name == must),
-            "phase7 golden missing required scenario {must}"
+            scenarios.iter().any(|s| s.name == *must),
+            "{dir_name} golden missing required scenario {must}"
         );
     }
     let tol = tol_for("large");
@@ -222,8 +147,7 @@ fn phase7_targeted_scenarios_match_oracle() {
             assert_complex_close(&actual, &expected, 1e-6, 1e-9, &format!("{ctx} voltages"));
         }
 
-        // The Line YPrim from the Carson geometry/spacing/cable path — the new
-        // math under test, pinned entry-by-entry.
+        // The scenario Line's YPrim, pinned entry-by-entry.
         compare_yprim(&dss, &sc.line_yprim, &tol, ctx);
 
         // Every element's terminal currents/powers.

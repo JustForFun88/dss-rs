@@ -1,25 +1,31 @@
-"""Generate the Phase-7 WP7.1 targeted goldens (line-constants / geometry path)
-from the pinned oracle.
+"""Generate the DER / line-constants / harmonics command-replay goldens
+(historically the "Phase-7" bucket: WP7.1 line constants, WP7.3-7.5 DER +
+smart-inverter controls, WP7.6 harmonics) from the pinned oracle.
 
-Command-replay like the phase5/phase6 goldens, but each scenario ALSO pins the
-**Line's YPrim block entry-by-entry** — the Carson Z/Yc produced by the
-geometry/spacing/cable path is the new math under test (PHASE7_PLAN §1 focused
-gate 1: "the Line YPrim from the geometry path matches entry-by-entry"). Unlike
-the live corpus gate, this golden is committed, so it guards the geometry path
-offline (no oracle install needed to catch a regression) and pins the exact
-numbers in git.
+Command-replay like the feeders/metering goldens, but each scenario ALSO pins
+the **Line's YPrim block entry-by-entry** — for the line-constants family the
+Carson Z/Yc produced by the geometry/spacing/cable path is the math under test
+(PHASE7_PLAN §1 focused gate 1: "the Line YPrim from the geometry path matches
+entry-by-entry"). Unlike the live corpus gate, these goldens are committed, so
+they guard the paths offline (no oracle install needed to catch a regression)
+and pin the exact numbers in git.
 
-The Rust harness (`golden_phase7.rs`) replays the identical command list, solves
-once, and must match: converged flag + iteration count + node order exact, node
-voltages 1e-6 rel, the Line YPrim entry-by-entry, and every element's terminal
-currents/powers (the voltage-scaled power floor).
+The three Rust gates (`golden_line_constants.rs`, `golden_der_controls.rs`,
+`golden_harmonics.rs`) each replay their family's command lists, solve, and must
+match: converged flag + iteration count + node order exact, node voltages 1e-6
+rel, the Line YPrim entry-by-entry, and every element's terminal currents/powers
+(the voltage-scaled power floor), plus Storage SOC readback and per-step monitor
+trajectories where the scenario defines them.
+
+Output is split by family (see FAMILY_OF): scenarios starting `harmonics_` →
+`tests/golden/harmonics/`, the five line-constants scenarios →
+`tests/golden/line_constants/`, everything else (pvsystem/storage/invcontrol/
+expcontrol) → `tests/golden/der_controls/`. One `<name>.json` per scenario.
 
 The geometry/spacing/cable definitions are the oracle-verified decks from
-`probe_line_constants_phase7.py` / `probe_line_spacing_phase7.py` (the same wire /
-CN data the Carson-engine unit tests pin), wrapped in a small solvable circuit
-(source -> geometry line -> 3-phase load).
-
-Scenarios (one file each under tests/golden/phase7/):
+`probe_line_constants.py` / `probe_line_spacing.py` (the same wire / CN data the
+Carson-engine unit tests pin), wrapped in a small solvable circuit
+(source -> geometry line -> 3-phase load):
   - line_geometry: 3-phase overhead via `geometry=` (FetchGeometryCode /
     FMakeZFromGeometry), DERI earth, no reduce.
   - line_geometry_reduce: 3 phases + a neutral (nconds=4, reduce=yes) via
@@ -31,8 +37,8 @@ Scenarios (one file each under tests/golden/phase7/):
     TSData / TapeShield arm — CN/TS parity, the path twice flagged TS-zero-cov).
 
 Usage:
-    python tools/golden/gen_phase7.py                 # regenerate all
-    python tools/golden/gen_phase7.py line_spacing    # one scenario
+    python tools/golden/gen_der_lines_harmonics.py                 # regenerate all
+    python tools/golden/gen_der_lines_harmonics.py line_spacing    # one scenario
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 """
 
@@ -47,8 +53,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_checkpoints import capture_element, capture_yprim, check_pin  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = REPO_ROOT / "tests" / "golden" / "phase7"
+GOLDEN_ROOT = REPO_ROOT / "tests" / "golden"
 SCHEMA = 1
+
+# The five line-constants scenarios; everything else routes by prefix.
+LINE_CONSTANTS = {
+    "line_geometry",
+    "line_geometry_reduce",
+    "line_spacing",
+    "cable_cn",
+    "cable_ts",
+}
+
+
+def family_dir(name: str) -> Path:
+    """The golden directory a scenario is written to (the former single
+    `phase7/` bucket, split into three semantic families)."""
+    if name.startswith("harmonics_"):
+        return GOLDEN_ROOT / "harmonics"
+    if name in LINE_CONSTANTS:
+        return GOLDEN_ROOT / "line_constants"
+    return GOLDEN_ROOT / "der_controls"
 
 LINE = "Line.l1"
 
@@ -1296,8 +1321,9 @@ def deck_harmonics_generator_delta_h5() -> list[str]:
     ]
 
 
-# name -> deck builder. One file per entry under OUT_DIR; golden_phase7.rs runs
-# every *.json in the directory, so this is the single source of truth.
+# name -> deck builder. One file per entry under its `family_dir`; each family's
+# Rust gate runs every *.json in its directory, so this is the single source of
+# truth for what scenarios exist.
 SCENARIOS = {
     "line_geometry": deck_line_geometry,
     "line_geometry_reduce": deck_line_geometry_reduce,
@@ -1430,7 +1456,7 @@ def build(d, name: str, cmds: list[str]) -> dict:
     # elementwise (per step) via `compare_monitor`. A multi-step (daily/duty) deck adds
     # a `mode=1` power monitor on each controlled DER, so the golden pins the DER's
     # P/Q at EVERY step, not just the final-state capture above. Snapshot decks define
-    # no monitor → empty list. Same capture shape as `gen_phase6.py`.
+    # no monitor → empty list. Same capture shape as `gen_metering_monitors.py`.
     mon = ckt.Monitors
     monitors = []
     names = list(mon.AllNames)
@@ -1474,10 +1500,11 @@ def main() -> None:
         sys.exit(f"unknown scenario(s): {sorted(unknown)}; known: {sorted(SCENARIOS)}")
     names = [n for n in SCENARIOS if not wanted or n in wanted]
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name in names:
         sc = build(d, name, SCENARIOS[name]())
-        path = OUT_DIR / f"{name}.json"
+        out_dir = family_dir(name)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / f"{name}.json"
         path.write_text(
             json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
         )
@@ -1485,10 +1512,11 @@ def main() -> None:
 
     # On a full regen, drop any stale scenario files no longer in the registry.
     if not wanted:
-        for p in OUT_DIR.glob("*.json"):
-            if p.stem not in SCENARIOS:
-                p.unlink()
-                print(f"removed stale {p.relative_to(REPO_ROOT)}")
+        for fam in ("line_constants", "der_controls", "harmonics"):
+            for p in (GOLDEN_ROOT / fam).glob("*.json"):
+                if p.stem not in SCENARIOS:
+                    p.unlink()
+                    print(f"removed stale {p.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":

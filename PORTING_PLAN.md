@@ -267,7 +267,7 @@ when such a file exists it supersedes the summary here for execution purposes.
   RegControl/CapControl as parse-only objects (the IEEE masters create them).
   Introduce `define_properties!` macro; retrofit Phase 3 classes.
 - **Gate**: `golden_feeders.rs` — IEEE13/IEEE37/IEEE123 controls-off variant scripts vs
-  new `tests/golden/phase4.json` (oracle run the same way) — voltages/powers/losses to
+  new `tests/golden/feeders_controlsoff.json` (oracle run the same way) — voltages/powers/losses to
   1e-6 rel, iteration counts exact; property-dump tests for all new classes.
 
 ### Phase 5 — Control loop, RegControl/CapControl, time-series modes (~10%)
@@ -281,7 +281,7 @@ when such a file exists it supersedes the summary here for execution purposes.
 - **Gate**: IEEE13 full master (regulator+caps): final tap positions **exactly** equal,
   voltages 1e-6; IEEE123 with regulators: same — both vs the committed Phase-0 goldens;
   event log equality (numbers normalized); a daily-mode loadshape case matches hourly
-  voltage trajectories (`tests/golden/phase5.json`).
+  voltage trajectories (`tests/golden/timeseries_controls/`).
 
 ### Phase 6 — Meters, monitors, topology, Generator; large-feeder gate (~12%)
 - Scope: `MeterElement`, `EnergyMeter.pas` (zones, registers, SAIFI/SAIDI),
