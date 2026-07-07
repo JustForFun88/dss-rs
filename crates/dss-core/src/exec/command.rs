@@ -654,14 +654,21 @@ impl Dss {
         }
     }
 
-    /// Refresh `cd.vterminal` from the solution iff the property (`Some(idx)`)
-    /// — or, for the whole-object `Dump` render, *any* property of the class
-    /// (`None`) — is marked [`PropFlags::READS_VTERMINAL`]. Pascal's `?`/`Dump`
-    /// do no caller-side refresh at all: the lone live-result getter reloads
-    /// `Vterminal` from `Solution.NodeV` itself (`TTransfObj.GetAllWindingCurrents`,
-    /// `Transformer.pas` l.1538). The Rust `&self` getter can't reach the
-    /// solution, so this choke point performs exactly that reload, exactly for
-    /// the properties that declare the need.
+    /// Refresh a `&self` getter's live-state dependencies before a `?`/`Dump`
+    /// property render, exactly for the properties that declare the need — the
+    /// Rust choke point for readers that Pascal backs with a live pointer the
+    /// `&self` getter can't reach across the class registry:
+    ///
+    /// 1. `cd.vterminal` from the solution when the property (`Some(idx)`) — or,
+    ///    for the whole-object `Dump`, *any* property (`None`) — is marked
+    ///    [`PropFlags::READS_VTERMINAL`]. Pascal's live-result getter reloads
+    ///    `Vterminal` from `Solution.NodeV` itself
+    ///    (`TTransfObj.GetAllWindingCurrents`, `Transformer.pas` l.1538).
+    /// 2. A RegControl's `tap_snap` from its **live** controlled transformer
+    ///    when reading `TapNum` (or the whole-object dump). Pascal `Get_TapNum`
+    ///    reads `Transformer().PresentTap[TapWinding]` live; the Rust getter
+    ///    reads a cached snapshot that a control action / direct `Taps=` edit
+    ///    leaves stale (WP8.5b).
     pub(super) fn refresh_vterminal_if_marked(
         &mut self,
         ci: usize,
@@ -680,6 +687,34 @@ impl Dss {
             && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
         {
             elem.cd_mut().compute_vterminal(&node_v);
+        }
+
+        // RegControl `TapNum` live-tap resync (see item 2 above). Gate on the
+        // TapNum property (or the whole-object dump) so a non-RegControl class,
+        // or a RegControl read of an unrelated property, does no registry walk.
+        let touches_tapnum = match prop_idx {
+            Some(i) => i == reg_control::prop::TAPNUM,
+            None => true,
+        };
+        if touches_tapnum
+            && let Some(tref) = self.classes[ci].objects[oi]
+                .as_any()
+                .downcast_ref::<reg_control::RegControl>()
+                .and_then(|rc| rc.controlled_ref())
+        {
+            let rc_ref = ElemRef { cls: ci, idx: oi };
+            let mut store = ClassStore {
+                classes: &mut self.classes,
+            };
+            let (rc_obj, tr_obj) = store.pair_mut(rc_ref, tref);
+            if let (Some(rc), Some(tr)) = (
+                rc_obj
+                    .as_any_mut()
+                    .downcast_mut::<reg_control::RegControl>(),
+                tr_obj.as_any().downcast_ref::<transformer::Transformer>(),
+            ) {
+                rc.sync_tap_snap_from_live(tr);
+            }
         }
     }
 
