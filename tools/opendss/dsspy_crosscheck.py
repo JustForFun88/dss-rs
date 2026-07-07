@@ -23,7 +23,7 @@ Outputs (re-runnable snapshots, `tmp/` per the classify_report convention):
   tmp/dsspy_crosscheck.md    - human report grouped by bucket, promotion
                                candidates sorted by tag, reverse view
 
-Usage:  python tools/corpus/dsspy_crosscheck.py
+Usage:  python tools/opendss/dsspy_crosscheck.py
 """
 
 from __future__ import annotations

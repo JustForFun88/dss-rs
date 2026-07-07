@@ -22,7 +22,7 @@ mandatory gate, or any commit decision.**
   resolves the vendored EPRI DLL via `../revisions.json` and hard-verifies
   `expect_version`; upstream's unused `ZIP_FN` dropped. The 206-case list is
   verbatim upstream (all 206 exist in the vendored corpus —
-  `tools/corpus/dsspy_crosscheck.py`).
+  `tools/opendss/dsspy_crosscheck.py`).
 - `save_outputs.py`: COM/comtypes branch dropped (machine-global regsvr32 —
   ruled out, see `../README.md`); editor suppression replaced with the proven
   `Set RegistryUpdate=No` + `Set Editor=rundll32.exe` pair (upstream's
