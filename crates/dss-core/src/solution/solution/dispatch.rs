@@ -11,7 +11,9 @@ use super::dynamics::solve_dynamic;
 use super::fault_study::solve_fault_study;
 use super::harmonics::{solve_harmonic, solve_harmonic_t};
 use super::power_flow::{solve_direct, solve_snap, solve_zero_load_snapshot};
-use super::time_series::{solve_daily, solve_duty, solve_peak_day, solve_yearly};
+use super::time_series::{
+    solve_daily, solve_duty, solve_general_time, solve_peak_day, solve_yearly,
+};
 use super::{SolveEnv, SolveMode, SolveResult};
 
 /// Pascal `TSolutionObj.Solve`: the mode dispatcher (Phase 3: Snapshot and
@@ -92,12 +94,13 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::FaultStudy => solve_fault_study(ckt, env),
         SolveMode::Harmonic => solve_harmonic(ckt, env),
         SolveMode::HarmonicT => solve_harmonic_t(ckt, env),
+        SolveMode::Time => solve_general_time(ckt, env),
         _ => {
             // The remaining modes — AutoAdd, MonteCarlo (Monte1/2/3), MonteFault,
-            // LoadDuration (LD1/LD2) and GeneralTime — have **no corpus deck** that
-            // exercises them (WP7.9 probe), so each keeps the Pascal "Unknown
-            // solution mode." error (`TSolutionObj.Solve` else, #481) rather than a
-            // partial port. Port on demand if a future gate needs one.
+            // LoadDuration (LD1/LD2) — have **no corpus deck** that exercises them
+            // (WP7.9 probe), so each keeps the Pascal "Unknown solution mode." error
+            // (`TSolutionObj.Solve` else, #481) rather than a partial port. Port on
+            // demand if a future gate needs one.
             env.errors
                 .push("Unknown solution mode. (mode not ported — no corpus case)".to_string());
             Ok(())

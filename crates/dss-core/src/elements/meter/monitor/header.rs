@@ -82,6 +82,10 @@ impl Monitor {
     fn clear_monitor_stream(&mut self, is_harmonic: bool) {
         self.header.clear();
         self.sample_count = 0;
+        // Pascal `MonitorStream.Clear` (Monitor.pas:703): the flushed history is
+        // wiped too (`BufPtr`/`MonBuffer` — the pending scratch — is untouched by
+        // `ClearMonitorStream` itself; `ResetIt` separately clears `mon_buffer`).
+        self.flushed_records = 0;
         if is_harmonic {
             self.header.push("Freq".into());
             self.header.push("Harmonic".into());

@@ -72,7 +72,9 @@ pub(super) fn solve_daily(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult 
         crate::solution::meters::open_all_di_files(ckt, env.store);
     }
     let result = solve_daily_body(ckt, env);
-    // Pascal `finally`: `if SampleTheMeters then CloseAllDIFiles`.
+    // Pascal `finally`: `MonitorClass.SaveAll(); if SampleTheMeters then
+    // CloseAllDIFiles` — both run unconditionally, even on an aborted step.
+    crate::solution::monitors::save_all_monitors(ckt, env);
     if ckt.solution.sample_the_meters {
         crate::solution::meters::close_all_di_files(ckt, env.store, env.errors);
     }
@@ -117,12 +119,21 @@ pub(super) fn solve_peak_day(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResu
 /// Opens the demand-interval files but — unlike daily/duty — does **not**
 /// close them at the end (Pascal's close is commented out, "See
 /// DIFilesAreOpen Logic": yearly runs accumulate until a `Reset`/`Set year=`/
-/// `CloseDI` closes them).
+/// `CloseDI` closes them). The `finally`'s lone action, `MonitorClass.
+/// SaveAll()`, still runs unconditionally (even on an early `Err`/aborted
+/// step).
 pub(super) fn solve_yearly(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
     if !ckt.em_di.di_files_are_open {
         crate::solution::meters::open_all_di_files(ckt, env.store);
     }
+    let result = solve_yearly_body(ckt, env);
+    crate::solution::monitors::save_all_monitors(ckt, env);
+    result
+}
+
+/// The `SolveYearly` stepping loop (the Pascal `try` body).
+fn solve_yearly_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             continue;
@@ -152,6 +163,9 @@ pub(super) fn solve_yearly(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
 pub(super) fn solve_duty(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
     let result = solve_duty_body(ckt, env);
+    // Pascal `finally`: `MonitorClass.SaveAll(); if SampleTheMeters then
+    // CloseAllDIFiles` — both run unconditionally, even on an aborted step.
+    crate::solution::monitors::save_all_monitors(ckt, env);
     if ckt.solution.sample_the_meters {
         crate::solution::meters::close_all_di_files(ckt, env.store, env.errors);
     }
@@ -176,4 +190,47 @@ fn solve_duty_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         end_of_time_step_cleanup(ckt, env);
     }
     Ok(())
+}
+
+/// Pascal `SolveGeneralTime` (`SolutionAlgs.pas` l.298, "For Rolling your own
+/// solution modes"): step `number_of_times` times, computing `DefaultHourMult`
+/// from the CURRENT clock (time starts at the `Set_Mode`-reset zero), solving,
+/// then calling `FinishTimeStep`. Unlike `SolveDaily`/`SolveYearly`/
+/// `SolveDuty` — which call `IncrementTime` at the TOP of the loop — GeneralTime
+/// increments at the END, inside `FinishTimeStep`. It also does **not** touch
+/// `PriceCurveObj`/`PriceSignal`, does **not** open/close the demand-interval
+/// files, and does **not** call `MonitorClass.SaveAll` when done: ported 1:1
+/// as the deliberately bare-bones "custom solution" loop, not enriched to
+/// match the other time-series modes.
+pub(super) fn solve_general_time(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    ckt.solution.interval_hrs = ckt.solution.h / 3600.0; // needed for energy meters and storage devices
+    for _ in 1..=ckt.solution.number_of_times {
+        if ckt.solution.solution_abort {
+            continue;
+        }
+        // Compute basic multiplier from Default loadshape to use in generator
+        // dispatch, if any.
+        let dbl_hour = ckt.solution.dbl_hour;
+        match ckt.default_daily_shape_obj.as_mut() {
+            Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
+            None => return Err("Default daily load shape not found.".to_string()),
+        }
+
+        solve_snap(ckt, env)?;
+
+        finish_time_step(ckt, env);
+    }
+    Ok(())
+}
+
+/// Pascal `FinishTimeStep` (`SolutionAlgs.pas` l.74, "Sample Cleanup and
+/// increment time — For custom solutions"): sample all monitors
+/// unconditionally, sample the EnergyMeters only if `SampleTheMeters`, run
+/// `EndOfTimeStepCleanup`, THEN increment time — the mirror image of the
+/// daily/yearly/duty loops, which increment first.
+fn finish_time_step(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sample_meters = ckt.solution.sample_the_meters;
+    sample_all_monitors_and_meters(ckt, env, sample_meters);
+    end_of_time_step_cleanup(ckt, env);
+    ckt.solution.increment_time();
 }
