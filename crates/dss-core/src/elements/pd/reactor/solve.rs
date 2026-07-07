@@ -215,10 +215,19 @@ impl CktElement for Reactor {
 
         match self.spec_type {
             1 | 2 => {
-                // Some form of R and X specified. RCurve/LCurve are NOT_PORTED, so
-                // R(f)/L(f) always use the stored values (unity curve).
-                let r_value = z.re;
-                let l_value = self.l;
+                // Some form of R and X specified. Adjust for frequency: when
+                // assigned, RCurve/LCurve scale R/L by GetYValue(FYprimFreq) — the
+                // curve's X axis is Hz, not the frequency multiplier (Pascal
+                // `Reactor.pas` `CalcYPrim`: `RValue := Z.re *
+                // RCurveObj.GetYValue(FYprimFreq)`).
+                let r_value = match self.r_curve.as_mut() {
+                    Some(c) => z.re * c.get_y_value(yprim_freq),
+                    None => z.re,
+                };
+                let l_value = match self.l_curve.as_mut() {
+                    Some(c) => self.l * c.get_y_value(yprim_freq),
+                    None => self.l,
+                };
                 let mut value = Complex64::new(r_value, l_value * two_pi * yprim_freq).inv();
                 if self.rp_specified {
                     value += self.gp;
