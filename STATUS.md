@@ -21,7 +21,14 @@ asymmetric/controls runners; all 46 pending decks proven to error loudly,
 (GAPS_PLAN §3.1 reworked; PHASE8_PLAN WP8.6/8.7 paths synced). Deck bytes
 untouched. Multi-file cases live in a deck-named subfolder
 (`modes/shape_binfiles/`); `gen_gaps_binshapes.py` → `tools/decks/
-gen_shape_fixtures.py`.
+gen_shape_fixtures.py`. **known_diffs v2:** the EPRI triage catalog moved
+`tools/opendss/known_diffs.json` → **`tests/corpus/known_diffs.json`** (next
+to the manifests it triages) and gained a `kind` field — `diff` (default,
+reason-matched divergence triage) vs `skip` (case not expected to
+run/converge on the listed revs; skipped up front, reported under
+`known_skipped` by both `corpus_live_opendss` and `ab_compare.py`). Schema
+documented in the catalog's own comment block; still never consulted by the
+mandatory gate.
 
 **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
