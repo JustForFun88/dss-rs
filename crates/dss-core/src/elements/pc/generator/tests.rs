@@ -1,11 +1,80 @@
 use super::*;
 
+use crate::elements::general::load_shape::{self, LoadShapeObj};
 use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::obj::dss_enum::EnumRegistry;
+use crate::obj::props::PropEngine;
+use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
+use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
 fn snap_ctx() -> SysCtx {
     default_recalc_ctx()
+}
+
+/// Build a populated `LoadShapeObj` through its real property engine.
+fn build_shape(mult: &str) -> LoadShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = load_shape::class_props(&enums);
+    let mut obj = LoadShapeObj::new("s");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
+}
+
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..default_recalc_ctx()
+    }
+}
+
+/// Pascal `SetNominalGeneration` GENERALTIME arm (Generator.pas:1129): the
+/// `ActiveLoadShapeClass` (`Set LoadShapeClass=`) picks WHICH of the three
+/// distinct curves drives `ShapeFactor` (at hr 2: daily→0.6, yearly→0.7,
+/// duty→0.5); default `USENONE` leaves it 1+j1. Gates a copy-paste arm swap.
+#[test]
+fn time_loadshapeclass_selects_matching_curve() {
+    let mut g = Generator::new("g1");
+    g.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    g.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    g.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+
+    g.set_nominal_generation(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (g.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly: {}",
+        g.shape_factor.re
+    );
+    g.set_nominal_generation(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (g.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty: {}",
+        g.shape_factor.re
+    );
+    g.set_nominal_generation(&time_class_ctx(USENONE, 2.0));
+    assert!(
+        (g.shape_factor.re - 1.0).abs() < 1e-9,
+        "none: {}",
+        g.shape_factor.re
+    );
 }
 
 /// A default generator's nominal quantities (oracle dss-python 0.15.7):

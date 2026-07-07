@@ -127,6 +127,46 @@
    "wp": "WPG.2"
   },
   {
+   "path": "generaltime_yearly.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.2"
+  },
+  {
+   "path": "generaltime_duty.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.2"
+  },
+  {
    "path": "ld1.dss",
    "kind": "micro",
    "n_steps": 16,
