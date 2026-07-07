@@ -63,13 +63,20 @@ asymmetric + controls):
 DSS_LIVE_OPENDSS=r4133 cargo test -p dss-core --test corpus_live corpus_live_opendss -- --nocapture
 ```
 
-writes `tmp/opendss_report_<rev>.json` (`matched` / `diverged` with reasons).
-Divergences are **inventory, not failures**: the port is calibrated to
-dss_capi 0.14.5, which intentionally differs from EPRI upstream (dss_capi
-`docs/known_differences.md`) on top of Delphi-vs-FPC numeric drift.
-`DSS_LIVE_OPENDSS_ASSERT=1` promotes divergences to a test failure (for r3723
-once its report triages clean). Comparators/tolerances are shared with the
-mandatory gate and are never weakened for this one.
+writes `tmp/opendss_report_<rev>.json` (`matched` / `known_diverged` /
+`diverged_new` + per-entry `known_hits`). Divergences are **inventory, not
+failures**: the port is calibrated to dss_capi 0.14.5, which intentionally
+differs from EPRI upstream (dss_capi `docs/known_differences.md`) on top of
+Delphi-vs-FPC numeric drift. Triaged divergence classes live in
+`known_diffs.json` (modeled on DSS-Python's `KNOWN_COM_DIFF`): substring match
+on (case label, first-failure reason), every entry must state its `cause`,
+zero-hit entries are warned about so the catalog can't rot.
+`DSS_LIVE_OPENDSS_ASSERT=1` fails only on **new** (uncataloged) divergences —
+green for r3723, whose 82 divergences are fully triaged. Caveat: the
+comparison stops at a case's first divergence, so a known first divergence
+masks any later one in that case; entries retire as upstream deltas get
+ported, re-exposing what was behind them. Comparators/tolerances are shared
+with the mandatory gate and are never weakened for this one.
 
 **2. EPRI vs EPRI (upstream-change inventory)** — diff two engines on the same
 cases to see what changed between revisions (the porting-planning tool):
@@ -83,6 +90,10 @@ Engine specs: `capi` | `oddie:<rev>` | `oddie:@<dll-path>`. Writes
 `tmp/ab_<a>_vs_<b>.json` + `.md` summary. Tolerances are CLI flags (`--v-rel`
 etc.) — this is a diff report, not a calibrated gate. Additional manifests via
 `--manifest tests/corpus/asymmetric/manifest.json` (repeatable).
+`--known-diffs known_diffs.json` relabels cases whose every issue matches a
+catalog entry as `known_diverged` (entries use `ab_contains` where this tool's
+issue wording differs from the Rust panics) and exits 0 when only known
+differences remain.
 
 **3. Smoke** — after re-vendoring or bumping pins:
 `tools/opendss/.venv/Scripts/python tools/opendss/smoke.py`.
