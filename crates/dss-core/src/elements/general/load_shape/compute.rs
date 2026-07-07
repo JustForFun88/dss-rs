@@ -476,6 +476,11 @@ impl LoadShapeObj {
     /// (`Interval = 0`) each row is `hour, mult`. Reads at most `NumPoints` rows
     /// and shrinks `NumPoints` to the count actually read.
     pub(super) fn read_csv_file(&mut self, content: &str) {
+        // Pascal `ReadCSVFile` runs `UseFloat64` first (`LoadShape.pas:1044`):
+        // a CSV read ends any live single-precision storage before it
+        // overwrites `dP`/`dH` (audit follow-up — without this a stale `sP`
+        // from an earlier `sngfile=` would keep winning the lookup).
+        self.use_float64();
         let npts = self.n();
         let variable = self.interval == 0.0;
         let mut p = vec![0.0; npts];
@@ -519,6 +524,8 @@ impl LoadShapeObj {
     /// path): each row is `P, Q` (or `hour, P, Q` when `Interval = 0`). Reads at
     /// most `NumPoints` rows and shrinks `NumPoints` to the count actually read.
     pub(super) fn read_pq_csv_file(&mut self, content: &str) {
+        // Pascal `Read2ColCSVFile` runs `UseFloat64` first (`LoadShape.pas:970`).
+        self.use_float64();
         let npts = self.n();
         let variable = self.interval == 0.0;
         let mut p = vec![0.0; npts];
@@ -644,6 +651,8 @@ impl LoadShapeObj {
     /// row layout as [`Self::read_sng_file`] but always double precision (no
     /// float32/float64 branch in Pascal here).
     pub(super) fn read_dbl_file(&mut self, content: &[u8]) {
+        // Pascal `ReadDblFile` runs `UseFloat64` first (`LoadShape.pas:1220`).
+        self.use_float64();
         let npts = self.n();
         if self.interval == 0.0 {
             let mut h = Vec::with_capacity(npts);

@@ -2710,6 +2710,18 @@ SCENARIOS = [
             "New Isource.i1 like=base bus1=c1",
         ],
     },
+    {
+        # The CLOBBER direction of the Bus2Defined quirk (WPG.14 audit
+        # follow-up): Isource PropertySideEffects never latches Bus2Defined,
+        # so an explicit Bus2= parsed BEFORE Bus1= is silently re-derived from
+        # Bus1 (grounded-Y default) - the opposite ordering sticks
+        # (isource_full pins that side).
+        "name": "isource_bus2_clobbered_by_bus1",
+        "target": "Isource.i1",
+        "commands": [
+            "New Isource.i1 bus2=b2 bus1=b1 phases=3 amps=10",
+        ],
+    },
 ]
 
 

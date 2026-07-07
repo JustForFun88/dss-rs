@@ -76,9 +76,11 @@ impl Dss {
                 ElemKind::Source,
             ),
             // Isource registers right after VSource (Pascal
-            // DSSClassDefs.pas:198, immediately below VSource:192) — VCCS sits
-            // between them upstream but is registered later in this file
-            // (WP7.8), and registration order does not affect node ordering.
+            // DSSClassDefs.pas:198, immediately below VSource:192; VCCS comes
+            // AFTER Isource upstream, :201, but is registered later in this
+            // file — WP7.8) — registration order does not affect node
+            // ordering, and the class order the oracle observes is pinned by
+            // the dump3_commands golden (Vsource → Isource → VCCS).
             DssClass::ckt_class(
                 isource::class_props(&enums),
                 |name| Box::new(isource::Isource::new(name)),
