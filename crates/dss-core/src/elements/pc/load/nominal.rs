@@ -149,11 +149,32 @@ impl Load {
                     }
                     f
                 }
-                // The remaining modes (MonteCarlo*/LoadDuration*/PeakDay/
-                // AutoAdd/...) are not reachable yet — the solve dispatcher only
-                // runs the modes above (plus Dynamic, handled above) — so they
-                // default to growth-only with a unit ShapeFactor, matching the
-                // Pascal trailing `else`. Wired in later phases as the modes land.
+                // Pascal groups Monte2/Monte3/LOADDURATION1/LOADDURATION2 in one
+                // case arm: growth × the load's own daily-shape lookup (via
+                // `CalcDailyMult`, exactly like `DAILYMODE`) × LoadMultiplier
+                // unless Exempt. Monte2/Monte3 are not reachable yet (WPG.4 —
+                // the solve dispatcher still errors loudly on them), but LD1/LD2
+                // are (WPG.3), so this arm is live.
+                SolveMode::Monte2 | SolveMode::Monte3 | SolveMode::LD1 | SolveMode::LD2 => {
+                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_daily_mult(sys.dbl_hour);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    f
+                }
+                // MonteCarlo1/AutoAdd/... are not reachable yet — the solve
+                // dispatcher still errors loudly on them — so they default to
+                // growth-only with a unit ShapeFactor, matching the Pascal
+                // trailing `else`; wired in later phases as those modes land.
+                // NOTE: `SolveMode::PeakDay` also falls through here even
+                // though its solve loop *is* wired (`solve_peak_day`,
+                // WPG.3-adjacent code) — Pascal's own PEAKDAY arm is
+                // `Factor := GrowthFactor(Year); CalcDailyMult(dblHour);` (no
+                // `CalcDailyMult` here, so PeakDay loads never pick up their
+                // daily shape). Pre-existing gap, out of this WP's scope
+                // (WPG.3 is LD1/LD2 only) and not currently corpus-gated —
+                // flagged for a future WP, not fixed here.
                 _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };
