@@ -7,7 +7,43 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-07.
+Last updated: 2026-07-08.
+
+**Parallel WPG/WP8.5b round (2026-07-08): five isolated-worktree agents merged
+into `phase-8-reporting` (HEAD `de6f56c`), each with its own opus
+`/audit-code` + `/audit-tests` pair; full gate green after merge** (fmt/clippy/
+`cargo test --workspace`, 0 failures; corpus_live: modes 22 matched/6 pending,
+asymmetric 29/7, controls 42 matched + **1 abort-both**/8 pending, **178 solvable
+cases, 169 with full property parity**). Landed:
+- **WPG.8 — Reactor `RCurve`/`LCurve`** (harmonic freq-dependent R/L; `GetYValue(FYprimFreq)`
+  in Hz, GIC-clamped; snapshot-clone XYcurve). Deck `reactor_rlcurve` live.
+- **WPG.3 — LD1/LD2 + `Set LDCurve`** (`SolveLD1`/`SolveLD2`, option 27). **Fixed 2 real
+  Load-dispatch bugs:** the Monte2/3+LD1/2 `SetNominalLoad` arm (missing → ~40-unit divergence)
+  and — via audit — **`SolveMode::PeakDay` loads skipping their daily shape** (pre-existing latent;
+  Pascal `Load.pas:1082` PEAKDAY = GrowthFactor + CalcDailyMult, no LoadMultiplier; only Load omitted
+  it). New oracle-gated `peakday.dss`. Decks `ld1`/`ld2` live.
+- **WPG.7 — CapControl `type=Follow` + `ControlSignal`** (FOLLOWCONTROL Sample arm, snapshot-clone
+  LoadShape). **Fixed a real Major (via audit):** the NIL-`ControlSignal` branch dropped Pascal's
+  `SolutionAbort:=True` — now routed through a new **first-class "both engines abort" harness path**
+  (`expect_solve_abort`/`run_and_compare_abort`) gated by `capcontrol_follow_noshape.dss`; `sample()`
+  is now `#[must_use]`. Deck `capcontrol_follow` live.
+- **WPG.2 — `SolveGeneralTime` (mode=Time)** + a monitor Save/flush-fidelity refactor
+  (`flushed_records` cursor; Pascal `Channel`/`dblHour` read only the flushed stream; `TODO(compat)`
+  `[0.0]` placeholder for dss-python's header-only `IMonitors.Channel`). **Ported a KNOWN unported
+  corpus-used option in-step: `Set LoadShapeClass=`** (`ActiveLoadShapeClass`; Load/Gen/Storage/PV
+  GENERALTIME dispatch; `Load.pas:1056`/`Generator.pas:1129`/`Storage.pas:1318`/`PVsystem.pas:1174`) —
+  the root cause of the deck being non-discriminating. Decks `generaltime`/`_yearly`/`_duty` live.
+- **WP8.5b — Corpus property parity** (the addendum): oracle `all_properties` + `element_properties`
+  accessor + harness `compare_all_properties`/`SKIP_PROPS` (each exclusion proof-cited in
+  TOLERANCE_NOTES). **Found + fixed a real latent bug the live-model gate had missed for phases:
+  `RegControl.TapNum` rendered a stale `tap_snap`** (Pascal `Get_TapNum` reads the transformer's live
+  `PresentTap[TapWinding]`) — now resynced at the `refresh_vterminal_if_marked` choke point. Property
+  gate ON for asymmetric + controls + modes + solvable-feeders (169/178); comparator hardened to a
+  whole-string identity guard + case-exact value compare + a cursor-agreement transformer-skip gate.
+Merge note: WPG.3's `solve_ld1/ld2` lacked `save_all_monitors` (a no-op on their branch, real after
+WPG.2's flush refactor) — added at merge so LD1/LD2 monitors flush (else `[0.0]`); `solve_general_time`
+correctly stays flush-free. **Next: WP8.8 (Phase-8 exit sweep — marker/coverage/re-classify), then the
+explicit-request-only merge to `main`.**
 
 **Test-infra cleanup (2026-07-07):** the `tests/corpus/gaps/` staging family is
 **dissolved** — its 46 oracle-validated decks now live in their permanent
