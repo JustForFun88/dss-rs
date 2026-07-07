@@ -1654,6 +1654,18 @@ with different EOLs: `tools/corpus/vendor.py --force` produces a ~1544-file
 EOL-only diff — clean run pollution with `git restore tests/corpus` instead;
 re-vendor only deliberately.
 
+**DSS-Python corpus cross-check (`tools/corpus/dsspy_crosscheck.py` —
+2026-07-07):** diffs DSS-Python's own 206-case validation list
+(`.inputs/DSS-Python/tests/_settings.py::test_filenames`, extracted textually
+— importing that module binds a DSS engine) against our six classifier
+manifests → `tmp/dsspy_crosscheck.{json,md}`. Measured split: 133
+solvable_now / 59 skipped_unsupported / 8 needs_investigation / 5
+oracle_issue / 1 not_an_entry_point = **73 promotion candidates** (35
+unblock at WP8.6 BatchEdit alone); all 206 exist in the vendored corpus.
+`L!`-prefixed cases (55) are run line-by-line upstream with interactive
+commands filtered — recorded per case so promotion work doesn't naively
+`Compile` them.
+
 ---
 
 ## 7. Phase 7 — inherited deferrals & architecture in place
