@@ -2,34 +2,19 @@
  "comment": "Entry points using a class/command/mode the port lacks. Required tag: unsupported_class=.. | unsupported_command=.. | unsupported_mode=.. | missing_feature=..",
  "cases": [
   {
-   "path": "Test/AutoTrans/Auto1bus.dss",
-   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
-   "note": "Test/AutoTrans/Auto1bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not found.\", \"Command \\\""
-  },
-  {
-   "path": "Test/AutoTrans/Auto3bus.dss",
-   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
-   "note": "Test/AutoTrans/Auto3bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not found.\", \"Command \\\""
-  },
-  {
    "path": "Test/AutoTrans/AutoAuto.dss",
    "tag": "unsupported_class=autotrans",
    "note": "Test/AutoTrans/AutoAuto.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"autotrans\\\" not found.\", \"Unknown parameter \\\"wdg\\\" (value \\\"1\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"conn\\\" (value \\\"s\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"kV\\\" (value \\\"345.0\\\") "
   },
   {
    "path": "Test/CapControlFollow.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Command \"BatchEdit\" is not ported yet."
+   "tag": "unsupported_property=CapControl.ControlSignal",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks. Rust engine error: \"CapControl.cap1ctrl.ControlSignal: this property is not ported yet (Phase 3 slice)\" -> the CapControl then samples with no monitored element set and the solve aborts."
   },
   {
    "path": "Test/Dynamic_Kundur.dss",
    "tag": "unsupported_command=var",
    "note": "Test/Dynamic_Kundur.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Unknown solution mode. (not ported in"
-  },
-  {
-   "path": "Test/REACTORTest.DSS",
-   "tag": "unsupported_command=Dump,Show",
-   "note": "Test/REACTORTest.DSS: Rust engine errors after compile: [\"Command \\\"Dump\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
   },
   {
    "path": "Test/ReverseTD21RelayTest.DSS",
@@ -62,79 +47,9 @@
    "note": "Unknown parameter \"CPU\" for Set Command"
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\"]"
-  },
-  {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss",
    "tag": "unsupported_command=SetkVBase",
    "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is "
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Command \"MakeBusList\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Command \"GISCoords\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"GISCoords\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"Command \\\"GISCoords\\\" is not ported yet.\", \"Command \\\"MakeBusList\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"GISCoords\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS: Rust engine errors after compile: [\"Command \\\"MakeBusList\\\" is not ported yet.\", \"Command \\\"GISCoords\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss: Rust engine errors after compile: [\"Command \\\"GISCoords\\\" is not ported yet.\", \"Command \\\"MakeBusList\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Command \"MakeBusList\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Command \"GISCoords\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Command \"MakeBusList\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "unsupported_command=GISCoords,MakeBusList",
-   "note": "Command \"GISCoords\" is not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
-   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not"
-  },
-  {
-   "path": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss",
-   "tag": "unsupported_class=fault; unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss: Rust engine errors after compile: [\"Command \\\"Export\\\" is not ported yet.\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"fault\\\" not found.\", \"Command \\\"Export\\\" is not ported yet.\", \"Edit Command: Object Type \\\"fault\\\" not"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
@@ -143,8 +58,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",
-   "tag": "unsupported_command=Export,Uuids",
-   "note": "Command \"Uuids\" is not ported yet."
+   "tag": "unsupported_feature=Export-CIM100",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): Uuids/Export Uuids (WP8.6) no longer blocks. Rust engine error: \"Export \\\"CIM100\\\" is not ported yet (Phase 8).\" \u2014 the CIM XML exporter itself (GAPS_PLAN WPG.18) is a separate, larger unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
@@ -153,23 +68,23 @@
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
-   "tag": "unsupported_class=Fault,relay; unsupported_command=BatchEdit,Close,Show,var",
-   "note": "Command \"Close\" is not ported yet."
+   "tag": "unsupported_command=var",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Show no longer block (all ported); Fault/relay classes are also ported (stale tag). Remaining blocker: Command \"var\" is not ported yet (inline @-variable substitution), which cascades into \"Invalid inline math entry\" errors."
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
-   "tag": "unsupported_class=Fault,relay; unsupported_command=BatchEdit,Close,Show,var",
-   "note": "Command \"Close\" is not ported yet."
+   "tag": "unsupported_command=var",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): same as 1_1.dss \u2014 BatchEdit/Close/Show/Fault/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
-   "tag": "unsupported_class=relay; unsupported_command=BatchEdit,Close,Open,Show,var",
-   "note": "Command \"Close\" is not ported yet."
+   "tag": "unsupported_command=var",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Open/Show/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
-   "tag": "unsupported_class=Fault,Relay,relay; unsupported_command=BatchEdit,Close,Show,var",
-   "note": "Command \"Close\" is not ported yet."
+   "tag": "unsupported_command=var",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Show/Fault/Relay/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
@@ -208,28 +123,28 @@
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "tag": "unsupported_class=DynamicExp; unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS: Rust engine errors after compile: [\"Command \\\"BatchEdit\\\" is not ported yet.\", \"New Command: Object Type \\\"DynamicExp\\\" not found.\", \"Unknown parameter \\\"expression\\\" (value \\\"it dt = 1 0.61059E-3 / ( -0.2301"
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
@@ -288,53 +203,53 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck compiles; blocked by BatchEdit (WP8.6) and the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)' and the solve aborts loudly (no silent fallback)."
+   "tag": "deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
@@ -343,18 +258,18 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Run_8500Node_GFMDaily.dss: Rust engine errors after compile: file-backed numeric arrays (File=) not supported; Command BatchEdit not ported; InvControl.stoctrl mode=7 combi=0 (GFM) deferred to WP7.7."
+   "tag": "unsupported_feature=file-backed-arrays; deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Run_8500Node_GFMDailySmallerPV.dss: Rust engine errors after compile: file-backed numeric arrays (File=) not supported; Command BatchEdit not ported; InvControl.stoctrl mode=7 combi=0 (GFM) deferred to WP7.7."
+   "tag": "unsupported_feature=file-backed-arrays; deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
-   "tag": "unsupported_command=BatchEdit; deferred=gfm-WP7.7",
-   "note": "Run_8500Node_GFMSnap.dss: Rust engine errors after compile: file-backed numeric arrays (File=) not supported; Command BatchEdit not ported; InvControl.stoctrl mode=7 combi=0 (GFM) deferred to WP7.7."
+   "tag": "unsupported_feature=file-backed-arrays; deferred=gfm-WP7.7",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
@@ -372,89 +287,19 @@
    "note": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss: Rust engine errors after compile: [\"Command \\\"AddBusMarker\\\" is not ported yet.\"]"
   },
   {
-   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss",
-   "tag": "unsupported_command=Dump,Show",
-   "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss: Rust engine errors after compile: [\"Command \\\"Dump\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss",
-   "tag": "unsupported_command=SetBusXY",
-   "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" i"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss",
-   "tag": "unsupported_command=SetBusXY",
-   "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBu"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss",
-   "tag": "unsupported_command=SetBusXY",
-   "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\"]"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss",
-   "tag": "unsupported_command=SetBusXY",
-   "note": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss: Rust engine errors after compile: [\"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\", \"Command \\\"SetBusXY\\\" is not ported yet.\"]"
-  },
-  {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
    "tag": "unsupported_command=CloseDI; unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck runs to completion (daily, hour=24, converged, 197 solves); blocked by file-backed LoadShape arrays and CloseDI (the old unsupported_command=Plot was stale too - Plot is a silent no-op)."
   },
   {
-   "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
-   "tag": "unsupported_command=CloseDI,Export,MakeBusList,Wait; unsupported_option=DIVerbose,DemandInterval,Overloadreport,Voltexceptionreport",
-   "note": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). This deck also hit the (now fixed) Monitor mode=7 port bug that misclassified Storage as a plain PC element (\"Storage.sto is not a storage device!\" + a cascading singular-Y abort); post-fix it runs the full yearly sim (hour=8760, converged, 9311 solves, 16.8s release). Blocked by MakeBusList, Wait, CloseDI, Export monitors, and the demand-interval Set options."
-  },
-  {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Set option \\\"SeasonRating\\\" is not ported yet.\", \"Set option \\\"SeasonSignal\\\" is not po"
+   "tag": "unsupported_feature=file-backed-arrays; unsupported_option=SeasonRating,SeasonSignal",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks. Remaining blockers: file-backed numeric arrays (File=) and the Set SeasonRating/SeasonSignal options, none ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
-   "tag": "unsupported_command=BatchEdit,CloseDI; unsupported_option=DIVerbose,DemandInterval,Overloadreport,SeasonRating,SeasonSignal; unsupported_feature=file-backed-arrays",
-   "note": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). This deck also hit the (now fixed) Monitor mode=7 port bug (\"Storage.storageol is not a storage device!\" + a cascading singular-Y abort); post-fix it runs the full yearly sim (hour=8760, converged). Blocked by file-backed arrays, BatchEdit, CloseDI, and the SeasonRating/SeasonSignal + demand-interval Set options."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (8.7s debug / 0.5s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (14.5s debug / 0.9s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (6.1s debug, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (7.7s debug / 0.5s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (10.8s debug / 0.5s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (21.7s debug / 0.8s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (27.9s debug / 1.8s release, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
-   "tag": "unsupported_command=BatchEdit,Export",
-   "note": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss: Storage + StorageController are ported (WP7.4) \u2014 the old unsupported_class=Storage tag was stale. Deck compiles and the 24h daily solve completes and converges on the Rust engine (11.6s debug, probed 2026-07-03); blocked by BatchEdit (WP8.6) and Export monitors/eventlog. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
+   "tag": "unsupported_feature=file-backed-arrays; unsupported_option=SeasonRating,SeasonSignal",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/CloseDI no longer block. Remaining blockers: file-backed numeric arrays (File=) and the Set SeasonRating/SeasonSignal options, none ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
@@ -478,8 +323,8 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
-   "tag": "unsupported_command=BatchEdit",
-   "note": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"File=\\\") are not supported yet\", \"Command \\\"BatchEdit\\\" is not ported yet.\", \"Set option \\\"Overloadreport\\\" is not ported yet.\", \"Set option \\\"Voltexceptionreport\\\" is not porte"
+   "tag": "unsupported_feature=file-backed-arrays; unsupported_command=Fileedit",
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks. Remaining blockers: file-backed numeric arrays (File=) and the unported Fileedit command."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",

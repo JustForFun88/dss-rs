@@ -92,6 +92,11 @@
    "n_steps": 1
   },
   {
+   "path": "Test/REACTORTest.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Test/ReactorConfigs.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -167,12 +172,27 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -668,6 +688,31 @@
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss",
    "kind": "feeder",
    "n_steps": 1
   },
