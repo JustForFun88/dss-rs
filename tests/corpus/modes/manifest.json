@@ -67,7 +67,8 @@
      ]
     }
    ],
-   "pending": false
+   "pending": false,
+   "wp": "WPG.1"
   },
   {
    "path": "generaltime.dss",
