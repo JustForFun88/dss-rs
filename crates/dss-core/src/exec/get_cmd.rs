@@ -207,6 +207,12 @@ impl Dss {
                     append_result(&mut result, &(default_base_freq.round() as i64).to_string())
                 }
                 opt::NEGLECT_LOAD_Y => append_result(&mut result, yes_no(ckt.neglect_load_y)),
+                opt::LOAD_SHAPE_CLASS => append_result(
+                    &mut result,
+                    &enums
+                        .get(enums.load_shape_class)
+                        .ordinal_to_string(ckt.active_load_shape_class),
+                ),
                 opt::MIN_ITERATIONS => {
                     append_result(&mut result, &ckt.solution.min_iterations.to_string())
                 }

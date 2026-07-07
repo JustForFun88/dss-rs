@@ -74,6 +74,14 @@ impl SolveMode {
 pub const POWERFLOW: i32 = 1;
 pub const ADMITTANCE: i32 = 2;
 
+/// Load-shape class codes (`DSSGlobals.pas`): the class the GENERALTIME /
+/// DYNAMICMODE dispatch picks (`Circuit.ActiveLoadShapeClass`, `Set
+/// LoadShapeClass=`). `USENONE` (-1) = not set → `ShapeFactor = 1+j1`.
+pub const USEDAILY: i32 = 0;
+pub const USEYEARLY: i32 = 1;
+pub const USEDUTY: i32 = 2;
+pub const USENONE: i32 = -1;
+
 /// Algorithm codes.
 pub const NORMALSOLVE: i32 = 0;
 pub const NEWTONSOLVE: i32 = 1;
@@ -372,6 +380,7 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         is_dynamic_model: s.is_dynamic_model,
         load_model: s.load_model,
         mode: s.mode,
+        active_load_shape_class: ckt.active_load_shape_class,
         load_multiplier: ckt.load_multiplier,
         gen_multiplier: ckt.gen_multiplier,
         generator_dispatch_reference: ckt.generator_dispatch_reference,

@@ -1,6 +1,21 @@
 ! GAPS deck: SolveMode=Time (Pascal SolveGeneralTime) — deterministic, no RNG.
-! Exercises: per-step DefaultHourMult, SolveSnap, FinishTimeStep
-! (monitor+meter SampleAll, EndOfTimeStepCleanup incl. Storage update, IncrementTime).
+! Exercises: per-step SolveSnap, FinishTimeStep (monitor+meter SampleAll,
+! EndOfTimeStepCleanup incl. Storage SOC update, then a TRAILING IncrementTime).
+!
+! Feature-discriminating design (WPG.2 audit follow-up):
+!  * `Set LoadShapeClass=Daily` makes the loads follow day8 per hour (Pascal
+!    GENERALTIME consults Circuit.ActiveLoadShapeClass; USENONE would freeze
+!    them at nominal — the degenerate case). So each step's load power VARIES,
+!    and because SolveGeneralTime increments time at the END of the step, the
+!    checkpoint after step i reflects HOUR i's multiplier. A buggy leading
+!    IncrementTime (increment-at-start, copy-pasted from SolveDaily) would
+!    sample hour i+1 instead -> a different per-step voltage/power trajectory,
+!    caught by the live compare. The increment ORDER is thus pinned.
+!  * The battery starts at 80% (headroom above its 20% reserve) so %stored
+!    genuinely evolves across the run and transitions Discharging->Idling when
+!    it hits the reserve floor, exercising EndOfTimeStepCleanup (Storage.Update)
+!    — the manifest probes Storage.batt %stored/state per step.
+! The harness drives the 8 solves (no trailing Solve): steps sample hours 0..7.
 Clear
 New Circuit.gaps_time basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
 New Loadshape.day8 npts=8 interval=1 mult=(0.40 0.55 0.70 0.90 1.00 0.95 0.80 0.60)
@@ -8,11 +23,11 @@ New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0
 New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
 New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=day8
 New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.92 model=2 daily=day8
-New Storage.batt bus1=b2 phases=3 kv=12.47 kwrated=250 kwhrated=1000 %stored=50 state=discharging %discharge=40 dispmode=default
+New Storage.batt bus1=b2 phases=3 kv=12.47 kwrated=250 kwhrated=1000 %stored=80 state=discharging %discharge=40 dispmode=default
 New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
 New Monitor.m_batt element=Storage.batt terminal=1 mode=1 ppolar=no
 New EnergyMeter.em element=Line.l1 terminal=1
 Set voltagebases=[12.47]
 Calcvoltagebases
-Set mode=Time stepsize=15m number=8
-Solve
+Set LoadShapeClass=Daily
+Set mode=Time stepsize=1h number=1

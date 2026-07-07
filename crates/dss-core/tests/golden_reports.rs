@@ -4050,6 +4050,19 @@ fn dump_monitor_matches_oracle() {
     run_deck_dump_exact("dump_monitor");
 }
 
+/// `Dump monitor.m1 debug` after a `mode=Time` (SolveGeneralTime) run — the
+/// one solve mode that never calls `MonitorClass.SaveAll`, so the dump shows a
+/// **non-empty** `// Bufptr=56`/`// Buffer=` block: four buffered records
+/// (`Set LoadShapeClass=Daily` makes the load follow `d4`, so each record's
+/// V/I differ). Byte-pins the port's pending-slice render
+/// (`mon_buffer[flushed_records*stride..]`, WPG.2) — an off-by-one in the
+/// cursor would drop/duplicate a record and mismatch. Complements
+/// `dump_monitor_matches_oracle`, which only reaches the empty-buffer case.
+#[test]
+fn dump_monitor_montime_matches_oracle() {
+    run_deck_dump_exact("dump_monitor_montime");
+}
+
 /// `Dump energymeter.em1 debug` — `TEnergyMeterObj.DumpProperties`: generic
 /// props then Complete's `Registers` block + the `Branch List:` zone-tree walk
 /// (`Circuit Element =`/`   Shunt Element =`).

@@ -1,0 +1,19 @@
+{
+  "report": "monitor.m1 debug",
+  "fixture": "montime",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.montime basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new line.l1 bus1=src bus2=b1 phases=3 r1=0.3 x1=0.9 r0=0.9 x0=2.7 c1=3 c0=1.5 length=1 units=km",
+    "new loadshape.d4 npts=4 interval=1 mult=(0.5 0.75 1.0 0.8)",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=600 pf=0.95 model=1 daily=d4",
+    "new monitor.m1 element=line.l1 terminal=1 mode=0",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set LoadShapeClass=Daily",
+    "Set mode=Time stepsize=1h number=4",
+    "solve"
+  ]
+}

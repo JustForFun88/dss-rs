@@ -80,6 +80,10 @@ pub struct SysCtx {
     /// `Solution.LoadModel`: POWERFLOW (1) or ADMITTANCE (2).
     pub load_model: i32,
     pub mode: SolveMode,
+    /// `Circuit.ActiveLoadShapeClass` (`Set LoadShapeClass=`): the class the
+    /// GENERALTIME / DYNAMICMODE nominal dispatch consults (`USENONE`=-1 /
+    /// `USEDAILY`=0 / `USEYEARLY`=1 / `USEDUTY`=2).
+    pub active_load_shape_class: i32,
     /// `Circuit.LoadMultiplier`.
     pub load_multiplier: f64,
     /// `Circuit.GenMultiplier`.

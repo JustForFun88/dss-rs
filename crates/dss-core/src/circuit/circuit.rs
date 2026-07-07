@@ -165,6 +165,12 @@ pub struct Circuit {
     /// from the default shape each step (consumed by generator dispatch, which
     /// is Phase 6+; kept faithfully nonetheless).
     pub default_hour_mult: Complex64,
+    /// `ActiveLoadShapeClass` (`Set LoadShapeClass=`, Circuit.pas:252): the one
+    /// load-shape class the GENERALTIME (`mode=Time`) and DYNAMICMODE dispatches
+    /// consult (`USENONE`=-1 / `USEDAILY`=0 / `USEYEARLY`=1 / `USEDUTY`=2).
+    /// Defaults to `USENONE` ("signify not set") — every load/gen/DER then holds
+    /// `ShapeFactor = 1+j1` in those modes until the option selects a class.
+    pub active_load_shape_class: i32,
     /// `PriceSignal` ($/MWh) and the `PriceCurveObj` that drives it in the
     /// time-series modes (`Set pricecurve=`). The shape is snapshot-cloned at
     /// `Set` time exactly like the Load/VSource shape refs (STATUS §1c WP5.3).
@@ -274,7 +280,8 @@ impl Circuit {
             // FPC zero-initializes the field; the first time-series step
             // overwrites it from the default shape.
             default_hour_mult: Complex64::ZERO,
-            price_signal: 25.0, // $25/MWH
+            active_load_shape_class: crate::solution::solution::USENONE, // "signify not set"
+            price_signal: 25.0,                                          // $25/MWH
             price_curve_obj: None,
             default_daily_shape_obj: None,
             default_yearly_shape_obj: None,

@@ -5,7 +5,7 @@
 use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000, sqrt3};
 
 use super::{Generator, LOADMODE, PRICEMODE, prop};
@@ -162,8 +162,15 @@ impl Generator {
                         f
                     }
                     SolveMode::Time | SolveMode::Dynamic => {
-                        // GENERALTIME / DYNAMICMODE: one load-shape class.
-                        // ActiveLoadShapeClass is `USENONE` by default → 1+j1.
+                        // GENERALTIME / DYNAMICMODE: the one class
+                        // `ActiveLoadShapeClass` selects (`Set LoadShapeClass=`);
+                        // `USENONE` (the default) leaves ShapeFactor at 1+j1.
+                        match sys.active_load_shape_class {
+                            USEDAILY => self.calc_daily_mult(sys.dbl_hour),
+                            USEYEARLY => self.calc_yearly_mult(sys.dbl_hour),
+                            USEDUTY => self.calc_duty_mult(sys.dbl_hour),
+                            _ => {} // USENONE
+                        }
                         sys.gen_multiplier
                     }
                     SolveMode::AutoAdd => 1.0,
