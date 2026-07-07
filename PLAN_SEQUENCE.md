@@ -2,7 +2,8 @@
 
 One page answering "which plan runs after which." `PORTING_PLAN.md` stays authoritative for
 the porting phases themselves; this file orders the *documents*, including everything after
-final acceptance. Order confirmed by the user 2026-07-06.
+final acceptance. Order confirmed by the user 2026-07-06; UPGRADE_PLAN inserted as
+post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-landed).
 
 ```
 ── PORTING (pre-acceptance) ────────────────────────────────────────────────────────
@@ -10,14 +11,27 @@ final acceptance. Order confirmed by the user 2026-07-06.
  2. GAPS_PLAN.md              WPG.* long tail (incl. WPG.16 GIC, WPG.18 CIM XML) —
                               closes the remaining PORTING_PLAN Phase-9 scope
  ═ FINAL ACCEPTANCE (PORTING_PLAN §6) ═
-── POST-ACCEPTANCE (refactor & improvement era) ────────────────────────────────────
- 3. DE_PASCALIZE_PLAN.md      Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
+── POST-ACCEPTANCE (upgrade, then refactor & improvement era) ──────────────────────
+ 3. UPGRADE_PLAN.md           Rung 1 (WP-U1.*: dss_capi 0.15.x / r4088-line parity,
+                              spec = .inputs/dss_capi_with_git@0.15.x, oracle capi015)
+                              then Rung 2 (WP-U2.*: OpenDSS 11.0.0.1 / r4133 parity,
+                              spec = Delphi diff, oracle oddie:r4133). Its WP-U0 test
+                              infra (branch upgrade-test-infra: per-case `oracle`
+                              manifest field, capi015 engine, iteration policy ≤) is
+                              ALREADY LANDED (2026-07-07) so parallel porting branches
+                              inherit it. Runs FIRST post-acceptance: freshest porting
+                              context, avoids double-touching code DE_PASCALIZE would
+                              refactor, and lets Stage F pin r4133-parity (not r3723).
+ 4. DE_PASCALIZE_PLAN.md      Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
                               proven by the still-stable goldens), then Stage F —
                               the `oracle-parity` feature split (absorbs the
-                              TODO(compat) sweep; creates the two CI lanes)
- 4. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
+                              TODO(compat) sweep; creates the two CI lanes; parity
+                              target = r4133 per UPGRADE_PLAN §5)
+ 5. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
                               needs Stage F), WP-R2 resonance analysis, WP-R3 diagnostics
- 5. MULTITHREADING_PLAN.md    M0–M4 (actor mode, intra-solve rayon, faer parallelism) —
+                              (UPGRADE_PLAN §1.3-1 already grants target-rev cases the
+                              iterations-≤ policy WP-R1 needs)
+ 6. MULTITHREADING_PLAN.md    M0–M4 (actor mode, intra-solve rayon, faer parallelism) —
                               last, per PORTING_PLAN; M3 needs DE_PASCALIZE R2 arenas,
                               M3c needs Stage F
 ```
@@ -71,6 +85,10 @@ Tier map at a glance (full tables live in each plan; the audit tier always appli
   tables: mostly `sonnet-high+` (deliberately Sonnet-executable, pre-validated decks),
   with `opus-medium+` on the non-mechanical spots (WP8.5 step 5, WP8.7; the numeric
   WPGs 4/5/6/9/10/12/15/16) and `opus-high+` on WPG.13.
+- **`UPGRADE_PLAN` §3** carries the per-WP three-column table (exec / audit-code /
+  audit-tests): `opus-high+` on WP-U1.7 (NCIM) and WP-U1.8 (WindGen/WTG3),
+  `opus-medium+` on U1.1/U1.3/U1.4/U2.2/U2.3/U2.6, `sonnet-high+` on the rest;
+  audits `opus-high+` everywhere.
 
 Supporting documents (not stages — referenced throughout):
 - `CLAUDE.md` — conventions + the green gate (gets its two-lane update at Stage F).
@@ -78,11 +96,12 @@ Supporting documents (not stages — referenced throughout):
 - `CORPUS_TEST_PLAN.md`, `CONTROL_COVERAGE_PLAN.md`, `tests/TOLERANCE_NOTES.md` — test
   infrastructure, woven through all stages.
 - `tools/opendss/README.md` — the **official-EPRI-binary oracle** (Oddie bridge,
-  r3723/r4088/r4133; added 2026-07-07, opt-in, gates nothing). Infrastructure for a
-  **future UPGRADE plan** — porting newer upstream OpenDSS behavior (r4088/r4133) after
-  final acceptance; its `ab_compare.py` r3723↔r4088↔r4133 inventory is that plan's
-  scoping input. The upgrade plan is not yet written and slots after final acceptance,
-  ordered against DE_PASCALIZE/RESONANCE/MULTITHREADING when drafted.
+  r3723/r4088/r4133; added 2026-07-07). Two roles since UPGRADE_PLAN WP-U0: the
+  opt-in inventory channel (`ab_compare.py`, `corpus_live_opendss`) AND the
+  mandatory gate's target-rev cases (manifest `oracle` field) — the Oddie venv +
+  `bin/` are `cargo test` prerequisites now.
+- `docs/upgrade/delta_*.md` — the three revision-delta inventories (0.14.5→0.15.x,
+  r3723→r4088, r4088→r4133; surveyed 2026-07-07) — UPGRADE_PLAN's scoping input.
 - `PHASE4..7_PLAN.md`, `docs/phase-records/` — completed phases (historical).
 
 Key cross-plan dependencies (why the order is what it is):

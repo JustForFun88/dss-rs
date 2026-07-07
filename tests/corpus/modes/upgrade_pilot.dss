@@ -1,0 +1,28 @@
+// UPGRADE_PLAN.md WP-U0 pilot — proves the per-case target-rev oracle
+// machinery end-to-end: this case live-compares against the OFFICIAL EPRI
+// OpenDSS r4133 (v11.0.0.1 "Charlottesville") binary via the Oddie bridge
+// instead of the pinned dss_capi oracle (manifest `oracle: "r4133"`), under
+// the relaxed iteration policy (Rust <= oracle). The deck is deliberately
+// revision-INSENSITIVE — plain vsource + delta/wye transformer + line +
+// unbalanced loads, snapshot, no controls, no shapes, no reports — so it
+// passes both before and after any upstream delta is ported; its job is to
+// keep the multi-oracle plumbing (capi015/oddie engines, ping pin checks,
+// iteration policy) exercised by every `cargo test` run.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upgrade_pilot basekv=115 pu=1.02 angle=0 phases=3 bus1=src
+~ mvasc3=15000 mvasc1=16000
+
+New transformer.tsub phases=3 windings=2 buses=[src mv] conns=[delta wye]
+~ kvs=[115 12.47] kvas=[10000 10000] xhl=8 %loadloss=0.5
+
+New line.l1 phases=3 bus1=mv bus2=b1 r1=0.12 x1=0.4 r0=0.35 x0=1.1
+~ c1=3 c0=1.5 length=2 units=km
+
+! Unbalanced excitation (keeps the compare orientation-sensitive).
+New load.lbal bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=3200 pf=0.92
+New load.l1ph bus1=b1.2 phases=1 conn=wye model=1 kv=7.2 kw=450 pf=0.88
+
+Set voltagebases=[115 12.47]
+calcv

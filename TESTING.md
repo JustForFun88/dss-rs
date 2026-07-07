@@ -68,6 +68,21 @@ fallback), and the WP named in its `wp` field flips the flag when it ports the
 feature (GAPS_PLAN.md §3.1). Multi-file cases live in a subfolder named after
 the deck (e.g. `modes/shape_binfiles/`).
 
+A case with an **`oracle`** field (UPGRADE_PLAN.md target-rev gating) is
+live-compared against **that** engine instead of the pinned capi oracle:
+`"capi015"` = the dss_capi 0.15.x-line oracle (dss-python 0.16.0b2 from the
+Oddie venv, backend 0.15.0b4 / OpenDSS r4103), `"r3723"|"r4088"|"r4133"` = an
+official EPRI `OpenDSSDirect.dll` via the Oddie bridge. For such a case the
+iteration policy relaxes to **Rust ≤ oracle** (exact equality stays mandatory
+against the pinned 0.14.5 oracle); everything else (voltages, Y,
+currents/powers, discrete state, tolerances) uses the same shared comparators,
+never weakened. An upgrade WP flips a case's `oracle` in the **same commit**
+that ports the newer upstream behavior the case covers. The
+`modes/upgrade_pilot.dss` case keeps this machinery permanently exercised,
+which makes the Oddie venv + `tools/opendss/bin/` binaries a **mandatory**
+`cargo test` prerequisite (like the pinned oracle itself; setup in
+`tools/opendss/README.md`).
+
 ## Environment variables
 
 | var | consumer | meaning |
