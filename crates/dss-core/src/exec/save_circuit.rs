@@ -609,9 +609,12 @@ impl Dss {
             crate::util::float_to_str(self.default_base_freq)
         ));
 
+        // Pascal writes `'New Circuit.' + Name` where `TNamedObject.Get_Name`
+        // returns the lowercase-normalized `LocalName` (`Circuit.pas:386`) —
+        // NOT `CaseName`; the oracle emits e.g. `New Circuit.ieee13nodeckt`.
         let (name, positive_sequence, duplicates, long_line) = match self.circuit.as_ref() {
             Some(ckt) => (
-                ckt.case_name.clone(),
+                ckt.name.clone(),
                 ckt.positive_sequence,
                 ckt.duplicates_allowed,
                 ckt.long_line_correction,
