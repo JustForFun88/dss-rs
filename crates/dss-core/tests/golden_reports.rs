@@ -617,6 +617,28 @@ fn export_buscoords_matches_oracle() {
     run_feeder_export("export_buscoords", &policy);
 }
 
+/// `Interpolate` (Pascal `DoInterpolateCmd` → `InterpolateCoordinates` +
+/// `CalcBusCoordinates`, WP8.6), gated via `Export BusCoords`: the fixture
+/// deck (`tools/golden/report_decks/interp.dss`, replayed from the meta) gives
+/// only the anchors src/b1/b5/c2 coordinates via `SetBusXY`; `interpolate`
+/// must fill b2/b3/b4/c1 by walking each zone end to the two nearest
+/// coordinate-defined anchors and spacing evenly (`Xinc=(X1-X2)/LineCount`).
+/// The values pin the ZONE-END ORDER too (the oracle interpolates the c2 end
+/// first, so b2/b3 land on the c2→b1 segment). Pure f64 anchor arithmetic —
+/// byte-identical, exact equality.
+#[test]
+fn export_buscoords_interp_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_export("export_buscoords_interp", &policy);
+}
+
 /// `Export NodeNames` (Pascal `ExportNodeNames`): `BusName.NodeNum` per line,
 /// pure text (compared case-insensitively).
 #[test]

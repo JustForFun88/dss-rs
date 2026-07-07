@@ -171,6 +171,8 @@ pub(crate) mod cmd {
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
     pub const BUSCOORDS: usize = 58;
+    pub const MAKE_BUS_LIST: usize = 59;
+    pub const INTERPOLATE: usize = 62;
     pub const ALIGN_FILE: usize = 63;
     pub const DI_PLOT: usize = 69;
     pub const COMPARE_CASES: usize = 70;
@@ -181,8 +183,11 @@ pub(crate) mod cmd {
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
     pub const REDUCE: usize = 61;
+    pub const SET_BUS_XY: usize = 91;
+    pub const BATCH_EDIT: usize = 95;
     pub const RELCALC: usize = 100;
     pub const VAR: usize = 101;
+    pub const GIS_COORDS: usize = 118;
     pub const CLEAR_ALL: usize = 119;
     pub const COMHELP: usize = 120;
 }

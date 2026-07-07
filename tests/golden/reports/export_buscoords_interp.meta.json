@@ -1,0 +1,31 @@
+{
+  "report": "buscoords",
+  "fixture": "itp",
+  "suffix": "EXP_BUSCOORDS.csv",
+  "deck": [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.itp basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.lfeed bus1=src bus2=b1 linecode=lc length=0.4 units=km",
+    "new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.5 units=km",
+    "new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.5 units=km",
+    "new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.5 units=km",
+    "new line.l4 bus1=b4 bus2=b5 linecode=lc length=0.5 units=km",
+    "new line.lc1 bus1=b3 bus2=c1 linecode=lc length=0.3 units=km",
+    "new line.lc2 bus1=c1 bus2=c2 linecode=lc length=0.3 units=km",
+    "new load.ld5 bus1=b5 phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.92",
+    "new load.ldc bus1=c2 phases=3 conn=wye model=1 kv=12.47 kw=200 pf=0.95",
+    "new energymeter.em element=line.lfeed terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "setbusxy bus=src x=0 y=0",
+    "setbusxy bus=b1 x=100 y=0",
+    "setbusxy bus=b5 x=500 y=0",
+    "setbusxy bus=c2 x=300 y=220",
+    "Set maxiterations=100",
+    "solve",
+    "interpolate"
+  ]
+}

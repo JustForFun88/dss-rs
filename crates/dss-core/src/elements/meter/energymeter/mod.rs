@@ -453,6 +453,17 @@ impl EnergyMeter {
     pub fn has_branch_list(&self) -> bool {
         self.branch_list.is_some()
     }
+    /// Move the branch tree out for a zone walk that needs the element store
+    /// borrowed alongside it (the `solution::meters` free-function pattern —
+    /// e.g. `InterpolateCoordinates`); pair with [`Self::put_branch_list`].
+    /// `None` == Pascal `BranchList = NIL` (`CheckBranchList` fails).
+    pub(crate) fn take_branch_list(&mut self) -> Option<CktTree> {
+        self.branch_list.take()
+    }
+    /// Restore the branch tree taken by [`Self::take_branch_list`].
+    pub(crate) fn put_branch_list(&mut self, tree: CktTree) {
+        self.branch_list = Some(tree);
+    }
     /// Pascal `BranchList` — the built zone tree (`None` == `BranchList = NIL`).
     /// Read-only for the zone-tree reports (`Show Loops`/`Show Zone`), which walk
     /// it via [`Self::sequence_list`] + [`Self::sequence_nodes`].
