@@ -89,6 +89,22 @@ fn get_price_variable_interval_interpolates() {
 }
 
 #[test]
+fn price_walks_curve_by_1_based_index() {
+    // Pascal `Price(i)` (`PriceShape.pas:517`, no `dec(i)` — `PriceValues` is
+    // already 1-based): used by `SolveLD1`/`SolveLD2`
+    // (`ckt.PriceCurveObj.Price(N)`).
+    let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), ("price", "2 4 6 8")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(obj.price(1), 2.0);
+    assert_eq!(obj.price(2), 4.0);
+    assert_eq!(obj.price(3), 6.0);
+    assert_eq!(obj.price(4), 8.0);
+    // Out of range (both sides): 0.0, no panic.
+    assert_eq!(obj.price(0), 0.0);
+    assert_eq!(obj.price(5), 0.0);
+}
+
+#[test]
 fn make_like_copies() {
     let (cls, base, errs) = edited(&[("npts", "3"), ("interval", "2"), ("price", "11 22 33")]);
     assert!(errs.is_empty(), "{errs:?}");

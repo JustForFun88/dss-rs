@@ -134,7 +134,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.3"
   },
   {
@@ -145,7 +145,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.3"
   },
   {

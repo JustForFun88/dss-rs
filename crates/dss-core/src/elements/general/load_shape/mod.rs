@@ -182,6 +182,13 @@ impl LoadShapeObj {
         self.use_actual
     }
 
+    /// Pascal `NumPoints`: the number of points in the curve, read directly
+    /// (not through the property getter) by `SolveLD1`/`SolveLD2`
+    /// (`ckt.LoadDurCurveObj.NumPoints`).
+    pub fn num_points(&self) -> i32 {
+        self.num_points
+    }
+
     /// Pascal `MaxP` / `MaxQ`: the peak active power and its coincident reactive
     /// power, set by `SetMaxPandQ` (used by the `UseActual` `SetkWkvar` path).
     pub fn max_p(&self) -> f64 {

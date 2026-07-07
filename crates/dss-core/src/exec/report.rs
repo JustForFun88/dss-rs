@@ -568,22 +568,23 @@ impl Dss {
     fn export_registers(&mut self, explicit: &str, kind: RegKind) {
         let (label, default_name, multi_prefix, header_names, rows) =
             self.gather_register_rows(kind);
-        let (year, hour, case) = {
+        let (year, hour, case, ldcurve) = {
             let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
             (
                 ckt.solution.year,
                 ckt.solution.int_hour,
                 ckt.case_name.clone(),
+                // `NameIfNotNil(LoadDurCurveObj)`.
+                ckt.load_dur_curve_obj
+                    .as_ref()
+                    .map(|s| s.data().name().to_string())
+                    .unwrap_or_default(),
             )
         };
-        // `NameIfNotNil(LoadDurCurveObj)`: the LoadDuration solve mode /
-        // `Set LoadDurCurve=` is not modeled (kept deferred), so the curve is
-        // always nil here and the column is empty — faithful for every non-LD deck.
-        let ldcurve = "";
 
         // Pascal `AnsiLowerCase(Copy(FileNm, 1, 2)) = '/m'` (the multi-file switch).
         if explicit.to_lowercase().starts_with("/m") {
-            self.write_register_multi(multi_prefix, label, year, ldcurve, hour, &rows);
+            self.write_register_multi(multi_prefix, label, year, &ldcurve, hour, &rows);
         } else {
             self.write_register_single(
                 explicit,
@@ -592,7 +593,7 @@ impl Dss {
                 &header_names,
                 &case,
                 year,
-                ldcurve,
+                &ldcurve,
                 hour,
                 &rows,
             );
