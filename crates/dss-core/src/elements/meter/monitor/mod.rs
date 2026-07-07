@@ -90,12 +90,26 @@ pub struct Monitor {
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
 
-    /// In-memory sample buffer (Pascal `MonBuffer` / `MonitorStream` merged: we
-    /// never spill to disk, so one growing `Vec<f32>` holds all samples). Each
-    /// record is `[hour, sec, ch1..ch_record_size]`.
+    /// In-memory sample buffer (Pascal `MonBuffer` / `MonitorStream` merged into
+    /// one growing `Vec<f32>`: we never spill to disk, so nothing is ever
+    /// physically discarded). Each record is `[hour, sec, ch1..ch_record_size]`.
+    /// `TakeSample` always appends here (Pascal `AddDblToBuffer` into
+    /// `MonBuffer`); [`Self::flushed_records`] tracks how many leading records
+    /// are additionally visible via `Channel`/`dblHour` (Pascal `Save`/
+    /// `SaveAll` copying `MonBuffer` into `MonitorStream`, which is the only
+    /// thing `Monitors_Get_Channel`/`Monitors_Get_ByteStream` ever reads —
+    /// oracle-probed, `SolveGeneralTime` never calls `SaveAll`, so its
+    /// `Channel()` output stays stuck at whatever was last flushed).
     mon_buffer: Vec<f32>,
     record_size: usize,
     sample_count: i32,
+    /// Pascal `MonitorStream` size in whole records (not modeled as a separate
+    /// byte stream: `mon_buffer[..flushed_records*stride]` IS the flushed
+    /// portion). Advances to `sample_count` on [`Self::save`]. The Pascal
+    /// `BufferSize=1024`-double auto-flush-on-overflow (`AddDblToBuffer`,
+    /// `Monitor.pas:1596`) is not modeled — no ported deck samples anywhere
+    /// near 1024/`(record_size+2)` records between two `Save`s.
+    flushed_records: usize,
     header: Vec<String>,
     valid_monitor: bool,
     hour: i32,
@@ -143,6 +157,7 @@ impl Monitor {
             mon_buffer: Vec::new(),
             record_size: 0,
             sample_count: 0,
+            flushed_records: 0,
             header: Vec::new(),
             valid_monitor: false,
             hour: 0,
@@ -161,33 +176,69 @@ impl Monitor {
     pub fn num_channels(&self) -> usize {
         self.record_size
     }
-    /// `Channel(i)` (1-based): the i-th recorded value across all samples.
+    /// `Channel(i)` (1-based): the i-th recorded value across every **flushed**
+    /// sample (Pascal `Monitors_Get_Channel`/`Monitors.Channel` read
+    /// `MonitorStream`, not the live `SampleCount` — a sample taken since the
+    /// last `Save`/`SaveAll` is invisible here; see [`Self::flushed_records`]).
+    ///
+    /// TODO(compat): when nothing has been flushed yet (`flushed_records ==
+    /// 0`), dss-python's `IMonitors.Channel` (not the raw C-API — the Python
+    /// wrapper itself, `IMonitors.py`) special-cases an all-header
+    /// `MonitorStream` (byte size `== 272`, oracle-probed) into a **one**-
+    /// element `[0.0]` placeholder rather than an empty array; reproduced
+    /// here for oracle parity, since that is what a live comparison actually
+    /// observes. Clean fix (report an honest empty/absent channel) would need
+    /// its own gate on the raw C-API instead of dss-python's convenience
+    /// wrapper.
     pub fn channel(&self, i: usize) -> Vec<f32> {
         if i < 1 || i > self.record_size {
             return Vec::new();
         }
+        if self.flushed_records == 0 {
+            return vec![0.0];
+        }
         let stride = self.record_size + 2;
-        (0..self.sample_count as usize)
+        (0..self.flushed_records)
             .map(|s| self.mon_buffer[s * stride + 2 + (i - 1)])
             .collect()
     }
-    /// `dblHour`: the per-sample hour values (record slot 0).
+    /// `dblHour`: the per-sample hour values (record slot 0), **flushed**
+    /// samples only — see [`Self::channel`].
     pub fn dbl_hour(&self) -> Vec<f64> {
         let stride = self.record_size + 2;
-        (0..self.sample_count as usize)
+        (0..self.flushed_records)
             .map(|s| self.mon_buffer[s * stride] as f64)
             .collect()
+    }
+
+    /// Pascal `TMonitorObj.Save` (`Meters/Monitor.pas:1118`): flush the pending
+    /// buffer into `MonitorStream` — here, advance the flush cursor to
+    /// `sample_count` so `channel`/`dbl_hour` see every sample taken so far.
+    /// Called per-monitor by `TDSSMonitor.SaveAll` (`solution/monitors.rs`
+    /// `save_all_monitors`), which every ported ordinary solve mode invokes at
+    /// its natural end **except** `SolveGeneralTime` (deliberately, "roll your
+    /// own") and `SolveFaultStudy` (which never samples monitors at all).
+    pub fn save(&mut self) {
+        self.flushed_records = self.sample_count as usize;
     }
 
     /// Pascal `TMonitorObj.TranslateToCSV` (`Meters/Monitor.pas:1690`): serialize
     /// the in-memory sample buffer to the monitor CSV text. Line 1 is the header
     /// (`Header.CommaText`); each subsequent line is `hr:0:0, s:0:5` followed by
-    /// `, %-.6g` per recorded channel (`RecordSize` values). The Pascal `Save`
-    /// (flush the pending buffer) + `CloseMonitorStream` are no-ops here: every
-    /// sample is appended straight into `mon_buffer` (no separate pending buffer /
-    /// disk spill), so the buffer is already complete. The `Show`/`FireOffEditor`
-    /// leg is the GUI no-op; `GlobalResult` is set by the caller (`export.rs`).
-    pub fn to_csv(&self) -> String {
+    /// `, %-.6g` per recorded channel (`RecordSize` values).
+    ///
+    /// Pascal's own first statement is `Save;` (Monitor.pas:1713) — so
+    /// `Export`/`Show Monitor` **flushes** the pending buffer as a side effect,
+    /// after which a subsequent `Monitors.Channel`/`dblHour` read returns the
+    /// full data. Reproduced via `self.save()` here (`&mut self`). It matters
+    /// only in `mode=Time`, whose loop never calls `SaveAll`
+    /// (`flushed_records` can be 0 at export time); every ordinary solve mode
+    /// already flushed, so the call is idempotent there. The `Show`/
+    /// `FireOffEditor` leg is the GUI no-op; `GlobalResult` is set by the
+    /// caller (`export.rs`). The body itself iterates every sample taken so
+    /// far (`sample_count`), independent of the flush cursor.
+    pub fn to_csv(&mut self) -> String {
+        self.save(); // Pascal `Save;` — flush pending, so Channel() reads full data next
         let mut out = String::new();
         out.push_str(&crate::util::comma_text(&self.header));
         out.push('\n');
@@ -207,5 +258,59 @@ impl Monitor {
             out.push('\n');
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Monitor;
+
+    /// Build a monitor with `n` synthetic 1-channel records staged in
+    /// `mon_buffer` but NOT flushed (`flushed_records = 0`) — the `mode=Time`
+    /// state: `TakeSample` appended to `MonBuffer`, but `SolveGeneralTime` never
+    /// called `MonitorClass.SaveAll`.
+    fn staged_monitor(n: usize) -> Monitor {
+        let mut m = Monitor::new("m");
+        m.record_size = 1; // one data channel -> stride 3 (hour, sec, ch1)
+        m.sample_count = n as i32;
+        for s in 0..n {
+            m.mon_buffer.push(s as f32); // hour
+            m.mon_buffer.push(0.0); // sec
+            m.mon_buffer.push((10 + s) as f32); // ch1 value
+        }
+        m.header = vec!["hour".into(), "t(sec)".into(), "V1".into()];
+        m
+    }
+
+    /// Pascal `Monitors_Get_Channel` reads `MonitorStream` (the flushed data),
+    /// not the live `SampleCount`: before any `Save`/`SaveAll`, `Channel` sees
+    /// nothing. dss-python's `IMonitors.Channel` then reports the all-header
+    /// stream as a one-element `[0.0]` placeholder (reproduced for oracle
+    /// parity). After `save()` the full history is visible.
+    #[test]
+    fn channel_reflects_flush_state() {
+        let mut m = staged_monitor(4);
+        // Unflushed: the dss-python 272-byte-stream placeholder.
+        assert_eq!(m.channel(1), vec![0.0]);
+        assert_eq!(m.dbl_hour(), Vec::<f64>::new());
+        m.save();
+        assert_eq!(m.channel(1), vec![10.0, 11.0, 12.0, 13.0]);
+        assert_eq!(m.dbl_hour(), vec![0.0, 1.0, 2.0, 3.0]);
+    }
+
+    /// Pascal `TranslateToCSV` runs `Save;` first (Monitor.pas:1713), so
+    /// `Export`/`Show Monitor` **flushes** as a side effect: a subsequent
+    /// `Channel` read returns the full data even in `mode=Time` (MINOR 1). The
+    /// CSV body itself always covers every sample regardless of the cursor.
+    #[test]
+    fn to_csv_flushes_like_pascal_save() {
+        let mut m = staged_monitor(3);
+        assert_eq!(m.channel(1), vec![0.0]); // unflushed before export
+        let csv = m.to_csv();
+        // Body carries all three samples (values 10/11/12).
+        assert_eq!(csv.lines().count(), 4); // header + 3 rows
+        assert!(csv.contains("10") && csv.contains("11") && csv.contains("12"));
+        // Side effect: now flushed, so Channel sees the whole history.
+        assert_eq!(m.channel(1), vec![10.0, 11.0, 12.0]);
     }
 }

@@ -49,6 +49,7 @@ impl EnumRegistry {
             random_mode: solution.random_mode,
             default_load_model: solution.default_load_model,
             ckt_model: solution.ckt_model,
+            load_shape_class: solution.load_shape_class,
             core_type: pd.core_type,
             lead_lag: pd.lead_lag,
             reg_control_phase: control.reg_control_phase,

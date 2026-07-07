@@ -7,23 +7,24 @@
 //! the monitor's actual per-mode record size, an upstream quirk faithfully
 //! reproduced, `Monitor.pas:1841`).
 //!
-//! NOT_PORTED (audit-code, 2026-07-06): Pascal `BufferSize` is a **fixed**
-//! constant `1024` (`Monitor.pas:478`, never doubled/grown), and `MonBuffer`
-//! gets **flushed to `MonitorStream` and `BufPtr` reset to `0`** two ways:
-//! mid-accumulation once `BufPtr = BufferSize` (`AddDblToBuffer`, `Monitor.pas:
-//! 1125-1127`) and — the far more common trigger — unconditionally at the end
-//! of every multi-step solve (`TDSSMonitor.SaveAll`, called from every
-//! `SolveDaily`/`SolveYearly`/… loop in `SolutionAlgs.pas` right after
-//! `MonitorClass.SampleAll`). So a *solved* monitor's `// Bufptr=`/
-//! `// Buffer=` dump reads only whatever accumulated **after** the last flush
-//! — in practice, after any ordinary `solve`, that's always empty (see
-//! [`render_buffer`]'s doc for the direct oracle confirmation). The port's
-//! `mon_buffer: Vec<f32>` never flushes (`mod.rs` module doc) and keeps the
-//! **whole** sample history instead, so `Dump monitor.<x> debug` on a solved,
-//! sampled monitor would diverge from the oracle — untested, since no gate
-//! fixture dumps a monitor after sampling it (the `dump_monitor` golden pins
-//! only the pre-solve empty-buffer case). `// BufferSize=1024` itself is
-//! always correct (the constant, not a running capacity).
+//! Pascal `BufferSize` is a **fixed** constant `1024` (`Monitor.pas:478`,
+//! never doubled/grown, so `// BufferSize=1024` is always correct — not a
+//! running capacity). `MonBuffer` gets **flushed to `MonitorStream` and
+//! `BufPtr` reset to `0`** two ways: mid-accumulation once `BufPtr =
+//! BufferSize` (`AddDblToBuffer`, `Monitor.pas:1125-1127` — not modeled, see
+//! `mod.rs`'s `flushed_records` doc) and — the far more common trigger —
+//! unconditionally at the end of every multi-step solve (`TDSSMonitor.
+//! SaveAll`, called from every `SolveDaily`/`SolveYearly`/… loop in
+//! `SolutionAlgs.pas` right after `MonitorClass.SampleAll`, **except**
+//! `SolveGeneralTime`/`SolveFaultStudy` — WPG.2 oracle probe). So a *solved*
+//! monitor's `// Bufptr=`/`// Buffer=` dump reads only whatever accumulated
+//! **after** the last flush — in practice, after any ordinary `solve`, that's
+//! empty (see [`render_buffer`]'s doc for the direct oracle confirmation),
+//! but genuinely non-empty after a `SolveGeneralTime` step (no gate fixture
+//! dumps a monitor mid-`mode=Time` run; the `dump_monitor` golden pins only
+//! the pre-solve empty-buffer case). The port renders `mon_buffer`'s tail past
+//! `flushed_records` (the genuine Pascal-fidelity pending slice), not the
+//! whole sample history.
 //!
 //! **`BaseFrequency=%.1g` quirk (probe-proven, 2026-07-06):** the oracle
 //! renders a base frequency of 60 as plain `60`, not the C-style 1-sig-fig
@@ -58,9 +59,14 @@ impl Monitor {
             "// BaseFrequency={}\n",
             crate::report::format::g(self.med.cd.base_frequency, 15)
         ));
-        out.push_str(&format!("// Bufptr={}\n", self.mon_buffer.len()));
+        // Pending slice: everything sampled since the last flush (Pascal
+        // `MonBuffer[1..BufPtr]`) — `mon_buffer` holds flushed + pending
+        // records back to back, `flushed_records` marks the boundary.
+        let stride = 2 + self.record_size;
+        let pending = &self.mon_buffer[self.flushed_records * stride..];
+        out.push_str(&format!("// Bufptr={}\n", pending.len()));
         out.push_str("// Buffer=\n");
-        out.push_str(&render_buffer(&self.mon_buffer, 2 + self.med.cd.nconds * 4));
+        out.push_str(&render_buffer(pending, 2 + self.med.cd.nconds * 4));
     }
 }
 
@@ -70,16 +76,21 @@ impl Monitor {
 /// size — an upstream quirk, faithfully reproduced), plus the unconditional
 /// trailing newline after the loop.
 ///
-/// **Oracle-unreachable, pinned here instead of by a golden:** every solve
-/// algorithm that calls `MonitorClass.SampleAll` also calls
-/// `MonitorClass.SaveAll` at the end of the same procedure
-/// (`SolutionAlgs.pas`, e.g. `:139`/`:155` for `SolveDaily`), and
-/// `TMonitorObj.Save` unconditionally resets `BufPtr := 0` (`Monitor.pas:
-/// 1127`) — so by the time a script can issue `Dump`, a sampled monitor's
-/// buffer has already been flushed and is empty (probe-confirmed: a 3-step
-/// `solve mode=daily` still dumps `// Bufptr=0`). A non-empty buffer is
-/// real, reachable Pascal state (mid-`TakeSample`, between individual solve
-/// steps) that the executive can never observe from script — pin the
+/// **Empty for every currently-gated fixture, pinned here instead of by a
+/// golden:** every *ordinary* solve algorithm that calls
+/// `MonitorClass.SampleAll` also calls `MonitorClass.SaveAll` at the end of
+/// the same procedure (`SolutionAlgs.pas`, e.g. `:139`/`:155` for
+/// `SolveDaily`), and `TMonitorObj.Save` unconditionally resets `BufPtr := 0`
+/// (`Monitor.pas:1127`) — so by the time a script can issue `Dump`, a sampled
+/// monitor's buffer has already been flushed and is empty (probe-confirmed: a
+/// 3-step `solve mode=daily` still dumps `// Bufptr=0`). `SolveGeneralTime`
+/// (`mode=Time`) is the one ported exception — it never calls `SaveAll`
+/// (WPG.2 oracle probe), so `Dump` mid-run genuinely observes a non-empty
+/// pending buffer there; no gate fixture currently dumps a monitor in that
+/// mode, so this case is documented rather than golden-pinned too. A
+/// non-empty buffer is otherwise real, reachable Pascal state (mid-
+/// `TakeSample`, between individual solve steps) that the executive can never
+/// observe from script — pin the
 /// rendering rule directly instead (`tests::` below).
 fn render_buffer(buf: &[f32], wrap: usize) -> String {
     let mut out = String::new();
