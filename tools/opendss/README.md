@@ -38,15 +38,20 @@ impossible.
 ```
 python tools/opendss/vendor_binaries.py            # if bin/ is not populated
 python -m venv tools/opendss/.venv                 # python >= 3.11
-tools/opendss/.venv/Scripts/pip install dss-python==0.16.0b2
+tools/opendss/.venv/Scripts/pip install --find-links tools/opendss/wheels ^
+    dss-python==0.16.0b2 dss-python-backend==0.15.0b4 pandas xmldiff
 tools/opendss/.venv/Scripts/python tools/opendss/smoke.py
 ```
 
+The two **beta** packages are vendored as wheels in `wheels/` (checksums in
+`wheels/SHA256SUMS`) — `--find-links` takes them from there, so the setup
+does not depend on the pre-releases staying on PyPI; stable deps (numpy,
+cffi, typing_extensions, pandas, xmldiff) come from PyPI as usual.
+
 Pins: `PIN_OPENDSS.txt` (venv contents) + `revisions.json` (`expect_version`
 per revision — discovered and verified by `smoke.py`; the server refuses an
-empty pin). Fallback if 0.16.0b2 ever leaves PyPI: `pip install
-dss-python-backend==0.15.0b4 "numpy>=2,<3" "typing_extensions>=4.5,<5"` then
-`pip install --no-deps .inputs/DSS-Python` (that checkout IS the 0.16.0b2 tag).
+empty pin). Extra fallback: `.inputs/DSS-Python` checkout IS the 0.16.0b2
+tag (pure-Python part only; the backend wheel is the compiled piece).
 
 `smoke.py` also proves per revision that EPRI's CSC export (which always
 factors first — `InitAndGetYparams`, DYMatrix.pas) is solution-neutral:
@@ -97,6 +102,13 @@ differences remain.
 
 **3. Smoke** — after re-vendoring or bumping pins:
 `tools/opendss/.venv/Scripts/python tools/opendss/smoke.py`.
+
+**4. DSS-Python broad-surface validation** (`dsspy_validation/`, vendored
+from DSS-Python `fastdss`, BSD-3) — full-API-state dumps (~40 collections per
+case, 206 upstream-curated cases) zipped per engine and diffed offline;
+complements `ab_compare.py`'s per-solve electrical diff. **Its `capi` side is
+dss_capi 0.15.0b4, not the pinned 0.14.5 oracle — inventory only.** See
+`dsspy_validation/README.md`; end every sweep with `git status tests/corpus`.
 
 ## Environment variables
 
