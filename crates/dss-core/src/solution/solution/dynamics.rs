@@ -54,13 +54,23 @@ fn integrate_pc_states(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// twice — predictor (`IterationFlag = NewTimeStep`) and corrector
 /// (`IterationFlag = SameTimeStep`) — samples the monitors, and runs the
 /// end-of-step cleanup. `SolutionInitialized` is forced `true` so the inner
-/// power flow does not re-initialise per step.
+/// power flow does not re-initialise per step. The `finally`'s
+/// `MonitorClass.SaveAll()` runs unconditionally (even on an early
+/// `Err`/aborted step) — see `mod.rs`'s `flushed_records` doc for why this
+/// now matters (WPG.2: `SolveGeneralTime` is the one mode that never flushes).
 pub(super) fn solve_dynamic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // If we're in dynamics mode, no need to re-initialize.
     ckt.solution.solution_initialized = true;
     // Needed for energy meters and storage devices.
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0;
 
+    let result = solve_dynamic_body(ckt, env);
+    crate::solution::monitors::save_all_monitors(ckt, env);
+    result
+}
+
+/// The `SolveDynamic` stepping loop (the Pascal `try` body).
+fn solve_dynamic_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             continue;
@@ -85,7 +95,5 @@ pub(super) fn solve_dynamic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResul
         crate::solution::monitors::sample_all_monitors(ckt, env, false); // all monitors take a sample
         end_of_time_step_cleanup(ckt, env);
     }
-    // Pascal `MonitorClass.SaveAll()` flushes each monitor's temp stream; this
-    // port keeps the sample buffer in memory, so there is nothing to flush.
     Ok(())
 }

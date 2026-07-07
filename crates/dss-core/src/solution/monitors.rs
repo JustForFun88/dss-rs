@@ -67,6 +67,27 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
     }
 }
 
+/// Pascal `TDSSMonitor.SaveAll` (`Meters/Monitor.pas:422`): flush every
+/// enabled monitor's pending buffer (`TMonitorObj.Save`) — no mode filter
+/// (unlike `SampleAll`, which skips mode-5 monitors). Called by every ported
+/// ordinary solve mode at its natural end (`SolveDaily`/`SolveYearly`/
+/// `SolveDuty`/`SolveDynamic`/`SolveHarmonic`/`SolveHarmonicT`) — deliberately
+/// **not** called by `SolveGeneralTime` ("roll your own", WPG.2) or
+/// `SolveFaultStudy` (never samples monitors at all).
+pub(crate) fn save_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
+    for mon_ref in ckt.monitors.clone() {
+        let m = env
+            .store
+            .obj_mut(mon_ref)
+            .as_any_mut()
+            .downcast_mut::<Monitor>()
+            .expect("ckt.monitors holds Monitor objects");
+        if m.med.cd.enabled {
+            m.save();
+        }
+    }
+}
+
 /// Pascal `TDSSMonitor.ResetAll`: clear every enabled monitor's buffer and
 /// rebuild its header. `IsHarmonicModel` selects the time-column labels
 /// (`Freq`/`Harmonic` vs `hour`/`t(sec)`), so entering harmonics mode (the
