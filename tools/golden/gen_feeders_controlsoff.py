@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TST_ROOT = REPO_ROOT / ".inputs" / "electricdss-tst" / "Version8" / "Distrib" / "IEEETestCases"
+TST_ROOT = REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / "Version8" / "Distrib" / "IEEETestCases"
 VARIANT_DIR = REPO_ROOT / "tests" / "golden" / "feeders_controlsoff"
 OUT = REPO_ROOT / "tests" / "golden" / "feeders_controlsoff.json"
 SCHEMA = 1
