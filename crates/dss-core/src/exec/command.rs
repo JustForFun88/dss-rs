@@ -153,6 +153,17 @@ impl Dss {
             // not reproduced here (no corpus deck reaches it; Visualize stays a
             // documented no-op per §2.5).
             cmd::PLOT | cmd::VISUALIZE => {}
+            cmd::BATCH_EDIT => self.do_batch_edit_cmd(),
+            // Pascal `ExecCommands.pas` `ord(Cmd.MakeBusList)`:
+            // `if BusNameRedefined then ReprocessBusDefs` — nothing else.
+            cmd::MAKE_BUS_LIST => self.do_make_bus_list_cmd(),
+            // Pascal `ExecCommands.pas` `ord(Cmd.GISCoords)`: "Do nothing here
+            // on DSS C-API. Just ignore it silently so files saved with EPRI's
+            // version can be loaded more easily." (OpenDSS-GIS is out of the
+            // DSS-Extensions scope.)
+            cmd::GIS_COORDS => {}
+            cmd::SET_BUS_XY => self.do_set_bus_xy_cmd(),
+            cmd::INTERPOLATE => self.do_interpolate_cmd(),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_initialized = false;
@@ -174,8 +185,12 @@ impl Dss {
         let param_name = self.parser.next_param(&self.vars).to_lowercase();
         let param = self.parser.make_string(&self.vars);
         if !param_name.is_empty() && !crate::util::compare_text_shortest_eq(&param_name, "object") {
-            self.errors
-                .push("object=Class.Name expected as first parameter in command.".to_string());
+            // Pascal error 240: the `%s` argument is `CRLF + Parser.CmdString`
+            // (`sLineBreak`, rendered LF here like every other output line).
+            self.errors.push(format!(
+                "object=Class.Name expected as first parameter in command. \n{}",
+                self.parser.cmd_string()
+            ));
             return (String::new(), String::new());
         }
         parse_object_class_and_name(&mut self.parser, &self.vars, &param)
@@ -260,6 +275,57 @@ impl Dss {
         self.active_class = Some(ci);
         if self.classes[ci].set_active(&obj_name) {
             self.edit_active();
+        }
+    }
+
+    /// Pascal `DoBatchEditCmd` (`ExecHelper.pas:292`):
+    /// `BatchEdit class.pattern editstring` — replay the trailing edit string
+    /// against every object of the class whose NAME matches the regex pattern
+    /// **case-insensitively and unanchored** (`TRegExpr` `ModifierI` + `Exec`
+    /// = search anywhere in the name). The parser position at the start of the
+    /// edit string is remembered and rewound for each match, exactly like the
+    /// Pascal `Params := Parser.Position` / `Parser.Position := Params` dance.
+    /// The command always returns 0 silently — there is no count message.
+    fn do_batch_edit_cmd(&mut self) {
+        let (obj_class, pattern) = self.get_obj_class_and_name();
+        if obj_class.eq_ignore_ascii_case("circuit") {
+            return; // Do nothing
+        }
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+            // Pascal error 267 (the `%s` is `CRLF + Parser.CmdString`; LF here,
+            // same rendering as error 240 in `get_obj_class_and_name`).
+            self.errors.push(format!(
+                "BatchEdit Command: Object Type \"{obj_class}\" not found. \n{}",
+                self.parser.cmd_string()
+            ));
+            return;
+        };
+        self.active_class = Some(ci); // DSS.LastClassReferenced / ActiveDSSClass
+        // `Params := DSS.Parser.Position` — the edit string starts here.
+        let params_pos = self.parser.position();
+        let re = match regex::RegexBuilder::new(&pattern)
+            .case_insensitive(true) // TRegExpr `ModifierI := TRUE`
+            .build()
+        {
+            Ok(re) => re,
+            Err(e) => {
+                // TRegExpr raises `ERegExpr` on a bad pattern, surfaced as an
+                // engine error by the executive's exception handler; the exact
+                // upstream text is FPC-internal, so record the regex error.
+                self.errors.push(format!("BatchEdit Command: {e}"));
+                return;
+            }
+        };
+        // `First`/`Next`: walk the class list in creation order; every visited
+        // object becomes the active one (matching or not), the edit runs only
+        // on a regex match.
+        for oi in 0..self.classes[ci].objects.len() {
+            self.classes[ci].active = Some(oi);
+            let name = self.classes[ci].objects[oi].data().name().to_string();
+            if re.is_match(&name) {
+                self.parser.set_position(params_pos);
+                self.edit_active();
+            }
         }
     }
 

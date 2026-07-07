@@ -9,12 +9,14 @@ use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::traits::{ElemRef, ElemStore};
 
 pub mod demand_interval;
+mod interpolate;
 mod reliability;
 mod sampling;
 mod zones;
 
 pub use demand_interval::EmDiState;
 pub(crate) use demand_interval::{close_all_di_files, open_all_di_files};
+pub(crate) use interpolate::interpolate_coordinates;
 pub(crate) use reliability::calc_all_reliability_indices;
 pub(crate) use sampling::{allocate_loads, reset_all_meters, take_sample_all};
 pub(crate) use zones::do_reset_meter_zones;

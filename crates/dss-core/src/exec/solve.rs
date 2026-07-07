@@ -417,6 +417,147 @@ impl Dss {
         }
     }
 
+    /// Pascal `ExecCommands.pas` `ord(Cmd.MakeBusList)`: `with ActiveCircuit do
+    /// if BusNameRedefined then ReprocessBusDefs` — nothing else.
+    pub(super) fn do_make_bus_list_cmd(&mut self) {
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        if ckt.bus_name_redefined {
+            let mut store = ClassStore { classes };
+            ckt.reprocess_bus_defs(&mut store, aux_parser, vars, errors);
+        }
+    }
+
+    /// Pascal `DoSetBusXYCmd` (`ExecHelper.pas:4716`): `SetBusXY bus=… x=… y=…`.
+    /// Ported loop-for-loop: the bus lookup + coordinate write happens after
+    /// **every** parameter (so a positional `SetBusXY b1 10 20` writes the bus
+    /// three times, the last with the full X/Y), and an unknown bus logs error
+    /// 28722 once per remaining parameter, exactly like the Pascal loop.
+    pub(super) fn do_set_bus_xy_cmd(&mut self) {
+        // Pascal `SetBusXYCommands := TCommandList.Create(['Bus', 'x', 'y'])`.
+        let commands = CommandList::new(["Bus", "x", "y"]);
+        let mut param_name = self.parser.next_param(&self.vars);
+        let mut param = self.parser.make_string(&self.vars);
+        let mut param_pointer = 0usize;
+        let mut bus_name = String::new();
+        let mut xval = 0.0;
+        let mut yval = 0.0;
+        while !param.is_empty() {
+            if param_name.is_empty() {
+                param_pointer += 1;
+            } else {
+                param_pointer = commands.get_command(&param_name).map_or(0, |i| i + 1);
+            }
+            match param_pointer {
+                1 => bus_name = param.clone(),
+                // Pascal `DblValue`; a malformed number parses as 0 through the
+                // same `make_double` the parser uses elsewhere.
+                2 => xval = self.parser.make_double(&self.vars).unwrap_or(0.0),
+                3 => yval = self.parser.make_double(&self.vars).unwrap_or(0.0),
+                _ => self
+                    .errors
+                    .push(format!("Error: Unknown Parameter on command line: {param}")),
+            }
+            let ckt = self.circuit.as_mut().expect("gated in command()");
+            match ckt.bus_list.find(&bus_name) {
+                Some(ib) => {
+                    let bus = &mut ckt.buses[ib];
+                    bus.x = xval;
+                    bus.y = yval;
+                    bus.coord_defined = true;
+                }
+                // Pascal error 28722.
+                None => self
+                    .errors
+                    .push(format!("Error: Bus \"{bus_name}\" not found.")),
+            }
+            param_name = self.parser.next_param(&self.vars);
+            param = self.parser.make_string(&self.vars);
+        }
+    }
+
+    /// Pascal `DoInterpolateCmd` (`ExecHelper.pas:3106`): interpolate bus
+    /// coordinates in meter zones. Clears `Flg.Checked` on every circuit
+    /// element, then runs `InterpolateCoordinates` on every enabled meter
+    /// (empty param → `'A'`) or on the named meter (disabled → error 283,
+    /// missing → error 277).
+    pub(super) fn do_interpolate_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let mut param = self.parser.make_string(&self.vars).to_uppercase();
+
+        let meter_ci = self.class_by_name.get("energymeter").copied();
+
+        // Resolve the named meter before splitting the borrows (Pascal
+        // `MeterClass.SetActive(Param)` — sets the class's active object).
+        if param.is_empty() {
+            param = "A".to_string();
+        }
+        let named: Option<Result<usize, ()>> = if param.starts_with('A') {
+            None
+        } else {
+            let Some(ci) = meter_ci else {
+                return; // `ClassNames.Find('energymeter')` cannot miss here
+            };
+            if self.classes[ci].set_active(&param) {
+                Some(Ok(self.classes[ci].active.expect("set_active sets it")))
+            } else {
+                Some(Err(()))
+            }
+        };
+
+        let Dss {
+            classes,
+            circuit,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        let mut store = ClassStore { classes };
+
+        // Initialize the Checked flag for all circuit elements.
+        let refs: Vec<ElemRef> = ckt.ckt_elements.clone();
+        for r in refs {
+            store
+                .ckt_elem_mut(r)
+                .cd_mut()
+                .flags
+                .exclude(crate::elements::ckt::ElemFlags::CHECKED);
+        }
+
+        match named {
+            None => {
+                // 'A': every enabled meter, circuit meter-list order.
+                let meters: Vec<ElemRef> = ckt.energy_meters.clone();
+                for r in meters {
+                    if store.ckt_elem(r).cd().enabled {
+                        crate::solution::meters::interpolate_coordinates(
+                            r, ckt, &mut store, errors,
+                        );
+                    }
+                }
+            }
+            Some(Ok(idx)) => {
+                let ci = meter_ci.expect("named branch requires the class");
+                let r = ElemRef { cls: ci, idx };
+                if store.ckt_elem(r).cd().enabled {
+                    crate::solution::meters::interpolate_coordinates(r, ckt, &mut store, errors);
+                } else {
+                    // Pascal error 283 (Param is the uppercased name).
+                    errors.push(format!("EnergyMeter \"{param}\" is disabled."));
+                }
+            }
+            // Pascal error 277.
+            Some(Err(())) => errors.push(format!("EnergyMeter \"{param}\" not found.")),
+        }
+    }
+
     /// Pascal `DoRedirect` (`Redirect`/`Compile`): run a script file line by
     /// line, handling `/* ... */` block comments exactly like the original
     /// (`/*` only recognized at the start of a line; `*/` anywhere in one).

@@ -7,6 +7,7 @@ edition = "2024"
 dss-parser = { path = "../dss-parser" }
 dss-sparse = { path = "../dss-sparse" }
 num-complex.workspace = true
+regex.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

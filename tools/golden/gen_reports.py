@@ -2217,6 +2217,66 @@ def gen_save_decks(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+# --- WP8.6 step 4: Interpolate, gated via `export buscoords` -----------------
+# The pre-validated fixture deck (tools/golden/report_decks/interp.dss, see its
+# header + the report_decks README): an EnergyMeter zone where only the anchor
+# buses src/b1/b5/c2 carry coordinates (SetBusXY); `interpolate` fills b2/b3/b4
+# evenly between b1 and b5 and c1 between c2 and b3
+# (TEnergyMeterObj.InterpolateCoordinates + CalcBusCoordinates). The golden is
+# the `export buscoords` CSV afterwards — pure f64 anchor arithmetic on both
+# engines, byte-exact.
+
+
+def load_report_deck(name: str) -> list[str]:
+    """Read a fixture deck from tools/golden/report_decks (the single source),
+    dropping comments, blank lines, and the leading `clear` (the runner issues
+    its own). The filtered command list goes into the golden `.meta.json`,
+    which both engines replay."""
+    p = Path(__file__).resolve().parent / "report_decks" / name
+    deck = []
+    for raw in p.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.lower() == "clear":
+            continue
+        deck.append(line)
+    return deck
+
+
+def gen_interp(d) -> None:
+    """Capture the oracle's `export buscoords` after `interpolate` (WP8.6)."""
+    deck = load_report_deck("interp.dss")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+    try:
+        d.Text.Command = "clear"
+        for c in deck:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        d.Text.Command = "export buscoords"
+        produced = Path(d.Text.Result)  # GlobalResult = produced path
+        content = produced.read_text()  # universal newlines -> LF
+        (OUT_DIR / "export_buscoords_interp.txt").write_text(content, newline="\n")
+        meta = {
+            "report": "buscoords",
+            "fixture": case,
+            "suffix": "EXP_BUSCOORDS.csv",
+            "deck": deck,
+        }
+        (OUT_DIR / "export_buscoords_interp.meta.json").write_text(
+            json.dumps(meta, indent=2) + "\n", newline="\n"
+        )
+        print(
+            f"wrote export_buscoords_interp.txt ({len(content)} bytes), "
+            f"{content.count(chr(10))} lines"
+        )
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -2264,6 +2324,7 @@ def main() -> None:
     gen_reliability_multimeter(d)
     gen_dump_decks(d)
     gen_save_decks(d)
+    gen_interp(d)
 
 
 if __name__ == "__main__":
