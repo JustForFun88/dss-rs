@@ -174,11 +174,13 @@ pub fn comma_text(items: &[String]) -> String {
 /// a value just below a decimal half-boundary can round up where a correctly
 /// rounded `%.Ng` rounds down (oracle-probed: `loadshape.default`'s computed
 /// `FMean` = 0.82582833333333349745… → 17 digits `…33350` → prints
-/// `0.825828333333334`, where correct 15-digit rounding gives `…333`; cross-
-/// checked on a 20 024-value random+tie-band battery, 0 mismatches). The
-/// byte-exact Dump/Save goldens pin these bytes; the clean fix (correctly
-/// rounded formatting) lands with the post-acceptance compat sweep + golden
-/// regeneration.
+/// `0.825828333333334`, where correct 15-digit rounding gives `…333`). The
+/// whole pipeline is pinned bit-exact against the real FPC 3.2.2 RTL by the
+/// committed battery `tests/golden/fmt_battery.csv` — 13 198 values × 7
+/// render forms, 0 mismatches (`crates/dss-core/tests/fmt_battery.rs`;
+/// generator: `tools/fpc/fmt_battery/`) — plus the byte-exact Dump/Save
+/// goldens; the clean fix (correctly rounded formatting) lands with the
+/// post-acceptance compat sweep + golden regeneration.
 pub fn fmt_g(v: f64, sig: usize) -> String {
     // `FloatToStrFIntl`: `If (Precision = -1) Or (Precision > maxdigits) Then
     // Precision := maxdigits` (= 15 without FPC_HAS_TYPE_EXTENDED), then
