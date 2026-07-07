@@ -124,9 +124,15 @@ struct Oracle {
     server: PathBuf,
     /// Extra environment for the spawned server (engine selector). Empty for
     /// the pinned capi oracle; `Oracle::opendss` sets `DSS_ORACLE_ENGINE=oddie`
-    /// + `DSS_OPENDSS_REV` to drive an official EPRI `OpenDSSDirect.dll`.
+    /// plus `DSS_OPENDSS_REV` to drive an official EPRI `OpenDSSDirect.dll`;
+    /// `Oracle::capi015` sets `DSS_ORACLE_ENGINE=capi015` (the 0.15.x line).
     envs: Vec<(&'static str, String)>,
 }
+
+/// Legal manifest `oracle` values for target-rev cases (UPGRADE_PLAN.md):
+/// the dss_capi 0.15.x-line oracle plus the three vendored EPRI revisions
+/// (tools/opendss/revisions.json). `None`/absent = the pinned capi oracle.
+const ORACLE_SPECS: &[&str] = &["capi015", "r3723", "r4088", "r4133"];
 
 impl Oracle {
     fn server_path() -> PathBuf {
@@ -153,7 +159,12 @@ impl Oracle {
         Oracle {
             python,
             server: Self::server_path(),
-            envs: Vec::new(),
+            // Pin the engine selector EXPLICITLY (audit WP-U0): the spawned
+            // server inherits the parent environment, so an ambient
+            // `DSS_ORACLE_ENGINE=capi015|oddie` left over from a target-rev
+            // shell must never re-bind the DEFAULT oracle — default cases are
+            // the exact-iteration 0.14.5 contract (UPGRADE_PLAN §1.1).
+            envs: vec![("DSS_ORACLE_ENGINE", "capi".to_string())],
         }
     }
 
@@ -166,7 +177,36 @@ impl Oracle {
     /// capi oracle's interpreter — a wrong env must fail loudly, not silently
     /// compare against the wrong engine (the server re-asserts its own pin too).
     fn opendss(rev: &str) -> Oracle {
-        let python = std::env::var("DSS_OPENDSS_PYTHON").unwrap_or_else(|_| {
+        Oracle {
+            python: Self::oddie_venv_python(),
+            server: Self::server_path(),
+            envs: vec![
+                ("DSS_ORACLE_ENGINE", "oddie".to_string()),
+                ("DSS_OPENDSS_REV", rev.to_string()),
+            ],
+        }
+    }
+
+    /// The dss_capi **0.15.x-line** oracle (UPGRADE_PLAN.md): dss-python
+    /// 0.16.0b2 (fastdss) from the same separate Oddie venv, driving its own
+    /// bundled dss_capi 0.15.0b4 backend (OpenDSS SVN r4103, the 0.15.x/r4088
+    /// line). Same server, same protocol, same captures — the scriptable
+    /// r4088-line oracle for target-rev cases (`oracle: "capi015"`).
+    fn capi015() -> Oracle {
+        Oracle {
+            python: Self::oddie_venv_python(),
+            server: Self::server_path(),
+            envs: vec![("DSS_ORACLE_ENGINE", "capi015".to_string())],
+        }
+    }
+
+    /// The separate Oddie-venv interpreter (dss-python 0.16.0b2,
+    /// tools/opendss/PIN_OPENDSS.txt): `DSS_OPENDSS_PYTHON`, defaulting to
+    /// `tools/opendss/.venv/Scripts/python.exe`. Never falls back to the pinned
+    /// capi oracle's interpreter — a wrong env must fail loudly, not silently
+    /// compare against the wrong engine (the server re-asserts its own pin too).
+    fn oddie_venv_python() -> String {
+        std::env::var("DSS_OPENDSS_PYTHON").unwrap_or_else(|_| {
             let venv: PathBuf = [
                 env!("CARGO_MANIFEST_DIR"),
                 "..",
@@ -186,14 +226,36 @@ impl Oracle {
                 venv.display()
             );
             venv.to_string_lossy().into_owned()
-        });
-        Oracle {
-            python,
-            server: Self::server_path(),
-            envs: vec![
-                ("DSS_ORACLE_ENGINE", "oddie".to_string()),
-                ("DSS_OPENDSS_REV", rev.to_string()),
-            ],
+        })
+    }
+
+    /// Construct **and ping-verify** the oracle a case's manifest `oracle`
+    /// spec names (UPGRADE_PLAN.md target-rev gating): `None` = the pinned
+    /// dss-python 0.15.7 / dss_capi 0.14.5 oracle, `"capi015"` = the
+    /// 0.15.x-line oracle, `"r3723"|"r4088"|"r4133"` = an official EPRI
+    /// binary via Oddie. An unknown spec fails loudly — a typo must never
+    /// silently compare against the default engine.
+    fn for_spec(spec: Option<&str>) -> Oracle {
+        match spec {
+            None => {
+                let o = Oracle::new();
+                o.ping();
+                o
+            }
+            Some("capi015") => {
+                let o = Oracle::capi015();
+                o.ping_capi015();
+                o
+            }
+            Some(rev) if ORACLE_SPECS.contains(&rev) => {
+                let o = Oracle::opendss(rev);
+                o.ping_engine(Some(rev));
+                o
+            }
+            Some(other) => panic!(
+                "unknown manifest oracle spec {other:?} — expected one of {ORACLE_SPECS:?} \
+                 (tools/opendss/README.md, UPGRADE_PLAN.md)"
+            ),
         }
     }
 
@@ -304,12 +366,45 @@ impl Oracle {
                 Some(rev),
                 "oracle answered for the wrong revision: {oracle}"
             );
+        } else {
+            // Positive identity for the DEFAULT oracle too (audit WP-U0): the
+            // pinned 0.14.5 engine must not turn out to be an Oddie/capi015
+            // binding that slipped in via environment — assert the marker
+            // flags are ABSENT, mirroring the target-rev assertions above.
+            for flag in ["oddie", "capi015"] {
+                assert_ne!(
+                    oracle.get(flag).and_then(|v| v.as_bool()),
+                    Some(true),
+                    "default oracle answered as a `{flag}` engine: {oracle} \
+                     (the pinned 0.14.5 oracle is required — check \
+                     DSS_ORACLE_PYTHON/DSS_ORACLE_ENGINE)"
+                );
+            }
         }
         oracle
             .get("engine")
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string()
+    }
+
+    /// Ping + assert the answering engine IS the dss_capi 0.15.x-line oracle
+    /// (`oracle.capi015 == true`) — so a lost env var can never silently
+    /// compare against the pinned 0.14.5 oracle instead.
+    fn ping_capi015(&self) {
+        let r = self.call(&json!({"cmd": "ping"}));
+        assert!(r.ok, "oracle ping failed: {:?}", r.error);
+        let oracle = r
+            .result
+            .as_ref()
+            .and_then(|v| v.get("oracle"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            oracle.get("capi015").and_then(|v| v.as_bool()),
+            Some(true),
+            "oracle is not the capi015 (dss_capi 0.15.x-line) engine: {oracle}"
+        );
     }
 
     /// Run one case and return the oracle's per-step model.
@@ -540,10 +635,33 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
                 ckt.solution.dbl_hour,
                 cp.dbl_hour
             );
-            assert_eq!(
-                ckt.solution.iteration, cp.iterations,
-                "{ctx}: iteration count differs"
-            );
+            // Iteration policy (UPGRADE_PLAN.md): exact vs the pinned 0.14.5
+            // oracle (the 1:1-port contract); for a target-rev case
+            // (`oracle` set) the port may converge in FEWER iterations —
+            // never more — because post-RESONANCE refinement legitimately
+            // shortens the fixed point while the newer engines don't. A
+            // strict `<` before RESONANCE lands is still suspicious, so it
+            // is printed loudly for the run log.
+            if c.oracle.is_none() {
+                assert_eq!(
+                    ckt.solution.iteration, cp.iterations,
+                    "{ctx}: iteration count differs"
+                );
+            } else {
+                assert!(
+                    ckt.solution.iteration <= cp.iterations,
+                    "{ctx}: Rust used MORE iterations than the target oracle ({} > {})",
+                    ckt.solution.iteration,
+                    cp.iterations
+                );
+                if ckt.solution.iteration < cp.iterations {
+                    eprintln!(
+                        "{ctx}: NOTE Rust converged in {} iterations vs the target \
+                         oracle's {} (allowed: <=; investigate if unexpected)",
+                        ckt.solution.iteration, cp.iterations
+                    );
+                }
+            }
             let names: Vec<String> = (1..=ckt.num_nodes).map(|j| ckt.node_name(j)).collect();
             assert_eq!(names, oc.node_order, "{ctx}: node order differs");
 
@@ -721,6 +839,14 @@ struct SolvableCase {
     /// `WP8.*` → PHASE8_PLAN.md). Mandatory while `pending` is true.
     #[serde(default)]
     wp: Option<String>,
+    /// Target oracle for this case's live compare (UPGRADE_PLAN.md): absent =
+    /// the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle; `"capi015"` =
+    /// the dss_capi 0.15.x-line oracle; `"r3723"|"r4088"|"r4133"` = an
+    /// official EPRI `OpenDSSDirect.dll` via the Oddie bridge. An upgrade WP
+    /// flips this in the SAME commit that ports the newer upstream behavior
+    /// the case covers; the iteration policy relaxes to `Rust <= oracle`.
+    #[serde(default)]
+    oracle: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -736,6 +862,23 @@ fn load_solvable() -> Vec<SolvableCase> {
     let m: SolvableManifest =
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
     m.cases
+}
+
+/// Oracle-free structural guard (parity with `family_manifest_is_complete`,
+/// audit WP-U0): a typo'd `oracle` spec in `solvable_now.json` must fail fast
+/// in a structural test, not only at compare time inside `Oracle::for_spec`.
+#[test]
+fn solvable_now_oracle_specs_are_valid() {
+    for c in load_solvable() {
+        if let Some(spec) = &c.oracle {
+            assert!(
+                ORACLE_SPECS.contains(&spec.as_str()),
+                "{}: unknown oracle spec {spec:?} — expected one of {ORACLE_SPECS:?} \
+                 (UPGRADE_PLAN.md target-rev gating)",
+                c.path
+            );
+        }
+    }
 }
 
 /// Always-on (no oracle) depth guard: the live gate's *breadth* is checked by
@@ -770,18 +913,34 @@ fn solvable_now_has_multistep_depth() {
     );
 }
 
+/// Lazily-built pool of oracles keyed by the case's `oracle` manifest spec,
+/// so a run mixing pinned-capi and target-rev cases spawns + ping-verifies
+/// each engine binding exactly once (UPGRADE_PLAN.md).
+struct OraclePool(BTreeMap<String, Oracle>);
+
+impl OraclePool {
+    fn new() -> OraclePool {
+        OraclePool(BTreeMap::new())
+    }
+
+    fn get(&mut self, spec: Option<&str>) -> &Oracle {
+        self.0
+            .entry(spec.unwrap_or("capi").to_string())
+            .or_insert_with(|| Oracle::for_spec(spec))
+    }
+}
+
 #[test]
 fn corpus_live_solvable_cases_match_oracle() {
-    let oracle = Oracle::new();
-    oracle.ping();
     let cases = load_solvable();
     if cases.is_empty() {
         eprintln!("corpus_live: solvable_now is empty — nothing to compare yet");
         return;
     }
+    let mut pool = OraclePool::new();
     for c in &cases {
         let abs = corpus_file(&c.path);
-        run_and_compare(&oracle, &c.path, &abs, c);
+        run_and_compare(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
     }
     eprintln!(
         "corpus_live: {} solvable case(s) matched the oracle",
@@ -910,6 +1069,17 @@ fn family_manifest_is_complete(fam: &Family) {
                 c.path
             );
         }
+        if let Some(spec) = &c.oracle {
+            // Fail structurally (oracle-free) on a typo'd spec — before any
+            // engine is spawned. (A pending case MAY set `oracle`: it declares
+            // its full future compare spec up front, family convention.)
+            assert!(
+                ORACLE_SPECS.contains(&spec.as_str()),
+                "{}: unknown oracle spec {spec:?} — expected one of {ORACLE_SPECS:?} \
+                 (UPGRADE_PLAN.md target-rev gating)",
+                c.path
+            );
+        }
         (fam.check_case)(c);
     }
 }
@@ -927,11 +1097,10 @@ fn family_cases_match_oracle(fam: &Family) {
     }
     let live: Vec<&SolvableCase> = cases.iter().filter(|c| !c.pending).collect();
     if !live.is_empty() {
-        let oracle = Oracle::new();
-        oracle.ping();
+        let mut pool = OraclePool::new();
         for c in &live {
             let abs = family_file(fam.name, &c.path);
-            run_and_compare(&oracle, &c.path, &abs, c);
+            run_and_compare(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
         }
     }
     eprintln!(
@@ -1207,6 +1376,10 @@ const MODES_REQUIRED: &[&str] = &[
     "reduce_keeplist.dss",
     "reduce_remove.dss",
     "midi_reduce.dss",
+    // UPGRADE_PLAN.md WP-U0: the target-rev oracle machinery pilot (compares
+    // against the official EPRI r4133 binary; keeps the multi-oracle plumbing
+    // exercised by every cargo test).
+    "upgrade_pilot.dss",
 ];
 
 /// Every modes case must name selected_elements: the live compare (once the
@@ -1457,9 +1630,18 @@ fn corpus_live_opendss() {
 
     // Same case universe as the mandatory gate, labeled by source manifest.
     // Pending family cases are excluded: the feature is unported on the Rust
-    // side, so there is nothing to A/B against EPRI yet.
+    // side, so there is nothing to A/B against EPRI yet. Target-rev cases
+    // (`oracle` set, UPGRADE_PLAN.md) are excluded too: the Rust side
+    // deliberately implements a DIFFERENT revision's behavior, and their
+    // gating already happens in the mandatory gate against their own target
+    // oracle — sweeping them here would only manufacture divergence noise.
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
+    let mut target_rev_excluded: Vec<String> = Vec::new();
     for c in load_solvable() {
+        if c.oracle.is_some() {
+            target_rev_excluded.push(format!("solvable_now:{}", c.path));
+            continue;
+        }
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
     }
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
@@ -1467,9 +1649,30 @@ fn corpus_live_opendss() {
             if c.pending {
                 continue;
             }
+            if c.oracle.is_some() {
+                target_rev_excluded.push(format!("{}:{}", fam.name, c.path));
+                continue;
+            }
             let abs = family_file(fam.name, &c.path);
             universe.push((format!("{}:{}", fam.name, c.path), abs, c));
         }
+    }
+    if !target_rev_excluded.is_empty() {
+        eprintln!(
+            "opendss {rev}: {} target-rev case(s) excluded \
+             (gated in the mandatory gate against their own `oracle` target)",
+            target_rev_excluded.len()
+        );
+    }
+    // As WPs flip cases to target revs the swept universe shrinks; an EMPTY
+    // sweep would make ASSERT mode pass vacuously — flag it loudly (the
+    // report below also records the exclusions, so the artifact is honest).
+    if universe.is_empty() {
+        eprintln!(
+            "opendss {rev}: WARNING swept universe is EMPTY ({} case(s) excluded as \
+             target-rev) — the sweep is vacuous; rely on the mandatory gate",
+            target_rev_excluded.len()
+        );
     }
 
     let catalog = load_known_diffs();
@@ -1566,6 +1769,10 @@ fn corpus_live_opendss() {
             .iter()
             .map(|(id, n)| serde_json::json!({ "id": id, "hits": n }))
             .collect::<Vec<_>>(),
+        // Target-rev cases removed from this sweep (gated in the mandatory
+        // gate against their own `oracle` target) — recorded so the artifact
+        // explains its own shrunken `total` (audit WP-U0).
+        "target_rev_excluded": target_rev_excluded,
     });
     let rp: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
         .iter()

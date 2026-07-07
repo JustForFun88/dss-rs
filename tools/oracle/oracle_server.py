@@ -347,6 +347,12 @@ def make_engine():
 
     - "capi" (default) — the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle,
       exactly as before (`gc.check_pin()` + the `dss.DSS` singleton);
+    - "capi015" — the dss_capi 0.15.x-line oracle: dss-python 0.16.0b2 (fastdss)
+      from the SAME separate venv the Oddie bridge uses (pinned in
+      tools/opendss/PIN_OPENDSS.txt), driving its own bundled dss_capi
+      0.15.0b4 backend (based on OpenDSS SVN r4103 — the 0.15.x/r4088 line).
+      This is the scriptable r4088-line oracle for the UPGRADE_PLAN target-rev
+      gates; `ping` echoes `{"capi015": true}` so the caller can verify.
     - "oddie" — an OFFICIAL EPRI `OpenDSSDirect.dll` loaded by absolute path
       through the AltDSS Oddie bridge (dss-python 0.16.0b2 `IOddieDSS`, the
       separate venv pinned in tools/opendss/PIN_OPENDSS.txt). The revision
@@ -361,8 +367,30 @@ def make_engine():
         from dss import DSS as d
 
         return d, oracle
+    if engine == "capi015":
+        import dss
+
+        pin = _read_pin_opendss()
+        if dss.__version__ != pin["dss-python"]:
+            sys.exit(
+                f"dss-python {dss.__version__} != pinned {pin['dss-python']} "
+                "(tools/opendss/PIN_OPENDSS.txt — is DSS_ORACLE_PYTHON the Oddie venv?)"
+            )
+        from dss import DSS as d
+
+        ver = str(d.Version)
+        backend = pin.get("dss-python-backend", "")
+        if not backend:
+            sys.exit("PIN_OPENDSS.txt has no dss-python-backend pin (no silent pass)")
+        if backend not in ver:
+            sys.exit(f"engine {ver!r} does not contain pinned backend {backend!r}")
+        # fastdss getYSparse() drops the `factor` argument (same as Oddie).
+        gc._get_y_sparse = _oddie_get_y_sparse
+        return d, {"engine": ver, "capi015": True}
     if engine != "oddie":
-        sys.exit(f"unknown DSS_ORACLE_ENGINE={engine!r} (expected 'capi' or 'oddie')")
+        sys.exit(
+            f"unknown DSS_ORACLE_ENGINE={engine!r} (expected 'capi', 'capi015' or 'oddie')"
+        )
 
     import dss
 

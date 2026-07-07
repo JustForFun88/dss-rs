@@ -1,10 +1,13 @@
-# Official EPRI OpenDSS oracle (Oddie bridge) — opt-in test infrastructure
+# Official EPRI OpenDSS oracle (Oddie bridge) — inventory channel + target-rev gates
 
 Compares the Rust port (and the pinned dss_capi oracle) against **original EPRI
 OpenDSS binaries** — three revisions, loaded side by side, no COM registration.
-The mandatory `cargo test` gate is **untouched**: everything here is opt-in,
-for inventorying upstream behavior changes ahead of porting them (r4088 =
-dss_capi 0.15.x base, r4133 = latest release 11.0.0.1).
+Two consumers: the **opt-in inventory channel** (workflows 1/2/4 below —
+divergence reports, never failures) and, since UPGRADE_PLAN.md WP-U0, the
+**mandatory gate's target-rev cases** (workflow 3b — a manifest case with an
+`oracle` field is live-compared against the named engine, so this venv +
+`bin/` are now `cargo test` prerequisites; `r4088` = dss_capi 0.15.x base,
+`r4133` = latest release 11.0.0.1).
 
 ## How it works
 
@@ -107,6 +110,20 @@ remain.
 **3. Smoke** — after re-vendoring or bumping pins:
 `tools/opendss/.venv/Scripts/python tools/opendss/smoke.py`.
 
+**3b. Target-rev gating (UPGRADE_PLAN.md) — MANDATORY-gate usage of this
+channel.** A corpus/family manifest case may set `"oracle": "capi015" |
+"r3723" | "r4088" | "r4133"`: the mandatory live gate then compares that case
+against **that** engine instead of the pinned capi oracle, with the iteration
+policy relaxed to *Rust ≤ oracle* (all other comparators/tolerances shared,
+never weakened). `capi015` is the dss_capi **0.15.x-line** oracle — dss-python
+0.16.0b2 from this same venv driving its bundled 0.15.0b4 backend (OpenDSS SVN
+r4103) — the scriptable r4088-line oracle. An upgrade WP flips a case's
+`oracle` in the same commit that ports the newer upstream behavior; the case
+is then automatically excluded from the `corpus_live_opendss` inventory sweep
+(its gating moved to the mandatory gate). `modes/upgrade_pilot.dss` keeps the
+machinery exercised, making this venv + `bin/` a mandatory `cargo test`
+prerequisite.
+
 **4. DSS-Python broad-surface validation** (`dsspy_validation/`, vendored
 from DSS-Python `fastdss`, BSD-3) — full-API-state dumps (~40 collections per
 case, 206 upstream-curated cases) zipped per engine and diffed offline;
@@ -118,7 +135,7 @@ dss_capi 0.15.0b4, not the pinned 0.14.5 oracle — inventory only.** See
 
 | var | consumer | meaning |
 |---|---|---|
-| `DSS_ORACLE_ENGINE` | oracle_server.py | `capi` (default, pinned 0.15.7) or `oddie` |
+| `DSS_ORACLE_ENGINE` | oracle_server.py | `capi` (default, pinned 0.15.7), `capi015` (0.15.x line, this venv) or `oddie` |
 | `DSS_OPENDSS_REV` | oracle_server.py | `r3723`/`r4088`/`r4133` → revisions.json lookup |
 | `DSS_OPENDSS_DLL` / `DSS_OPENDSS_EXPECT` | oracle_server.py | direct DLL path override (+ optional version substring) |
 | `DSS_OPENDSS_PYTHON` | corpus_live.rs, ab_compare.py | Oddie-venv interpreter (default `tools/opendss/.venv/Scripts/python.exe`) |
