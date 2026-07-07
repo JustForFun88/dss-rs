@@ -108,6 +108,36 @@ def capture_probes(d, probes: list) -> list:
     return out
 
 
+def capture_all_properties(d, ckt) -> list:
+    """WP8.5b: EVERY circuit element's EVERY property value, as an ordered
+    `[[prop, str(Val)]]` list over the class's `AllPropertyNames` (property-index
+    order is the contract compared against the Rust `?`-surface).
+
+    Read exactly like `capture_probes`: the `? element.prop` executive query
+    (not `ActiveCktElement.Properties(p).Val`), which backs the same
+    `GetPropertyValue` path AND — the WPG.1 harness bug — activates the object
+    for BOTH `DSS_OBJECT` and `TDSSCktElement` classes, whereas `SetActiveElement`
+    silently no-ops for a terminal-less `DSS_OBJECT`. `AllElementNames` is only
+    circuit elements, but `? name.Like` (a read that activates the object without
+    needing to know a property name yet; the exact trick `gen_props.py` uses)
+    keeps the enumeration on the identical WPG.1-safe path so the property-name
+    list read matches the value reads. Runs AFTER `capture_all_elements`, so the
+    established element read order is preserved."""
+    out = []
+    for name in ckt.AllElementNames:
+        # Activate via the query path, then read the class property-name list off
+        # the now-active DSS object (ActiveDSSElement, not ActiveCktElement —
+        # covers DSS_OBJECT classes too).
+        d.Text.Command = f"? {name}.Like"
+        prop_names = list(ckt.ActiveDSSElement.AllPropertyNames)
+        props = []
+        for p in prop_names:
+            d.Text.Command = f"? {name}.{p}"
+            props.append([p, str(d.Text.Result)])
+        out.append({"element": name, "props": props})
+    return out
+
+
 def capture_variables(ckt, names: list) -> list:
     """PC-element state variables (`AllVariableNames`/`AllVariableValues`) —
     the live f64 state read (CLAUDE.md: the f32 monitor channel hides it)."""
@@ -242,6 +272,10 @@ def run_case(d, req: dict) -> dict:
     variables = req.get("variables") or []
     want_eventlog = bool(req.get("eventlog", False))
     want_ctrlqueue = bool(req.get("ctrlqueue", False))
+    # WP8.5b corpus property parity: the full per-element property dump. Opt-in
+    # (heavy: elements x props x steps queries) — the Rust property gate and the
+    # env-gated `corpus_live_properties` pilot force it.
+    want_all_props = bool(req.get("all_properties", False))
     # Monitors/meters are compared only for cases that deliberately define them in
     # deterministic modes (the daily IEEE13 case). Capturing every master's
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
@@ -303,6 +337,12 @@ def run_case(d, req: dict) -> dict:
                             [str(s) for s in sol.EventLog] if want_eventlog else []
                         ),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
+                        # WP8.5b: read LAST, after every established capture above,
+                        # so the property sweep's `?` queries never perturb any
+                        # other read's active-element state.
+                        "all_properties": (
+                            capture_all_properties(d, ckt) if want_all_props else []
+                        ),
                     }
                 )
             bad = [i for i, cp in enumerate(checkpoints) if not cp["converged"]]

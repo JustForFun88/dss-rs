@@ -45,10 +45,10 @@ use std::time::{Duration, Instant};
 
 use dss_core::exec::Dss;
 use harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, VariablesCap, YFingerprint, YMat, YPrim,
-    compare_ctrlqueue, compare_discrete, compare_element, compare_eventlog, compare_fingerprint,
-    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
-    compare_variables, compare_yprim, tol_for,
+    ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
+    YMat, YPrim, compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element,
+    compare_eventlog, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
+    compare_probe, compare_system_y, compare_variables, compare_yprim, tol_for,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -111,6 +111,11 @@ struct Checkpoint {
     eventlog: Vec<String>,
     #[serde(default)]
     ctrlqueue: Vec<String>,
+    /// WP8.5b: every element's full property dump — present only when the case
+    /// opts in via `compare_all_properties` (or the `corpus_live_properties`
+    /// pilot forces it). Empty otherwise.
+    #[serde(default)]
+    all_properties: Vec<PropsCap>,
 }
 
 /// A handle to the pinned oracle. Each call spawns a fresh `oracle_server.py`
@@ -426,6 +431,7 @@ impl Oracle {
             "variables": c.compare_variables,
             "eventlog": c.compare_eventlog,
             "ctrlqueue": c.compare_ctrlqueue,
+            "all_properties": c.compare_all_properties,
         });
         let r = self.call(&req);
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
@@ -779,6 +785,18 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
         if c.compare_ctrlqueue {
             compare_ctrlqueue(&dss, &cp.ctrlqueue, &ctx);
         }
+
+        // WP8.5b corpus property parity: every element's every property value,
+        // Rust `?`-surface vs oracle `Properties(p).Val`. Additive block AFTER
+        // the probes — off unless the case opts in (`compare_all_properties`).
+        if c.compare_all_properties {
+            assert!(
+                !cp.all_properties.is_empty(),
+                "{ctx}: compare_all_properties set but the oracle returned no \
+                 property dump (all_properties request not honored?)"
+            );
+            compare_all_properties(&mut dss, &cp.all_properties, &tol, &ctx);
+        }
     }
 }
 
@@ -829,6 +847,12 @@ struct SolvableCase {
     compare_eventlog: bool,
     #[serde(default)]
     compare_ctrlqueue: bool,
+    /// WP8.5b corpus property parity: compare EVERY element's EVERY property
+    /// value (Rust `?`-surface vs oracle `Properties(p).Val`) per step, on top
+    /// of the full-model compare. Off by default (heavy); flipped `true` only on
+    /// families proven fully clean by the `corpus_live_properties` pilot triage.
+    #[serde(default)]
+    compare_all_properties: bool,
     /// The feature this case covers is not ported yet (GAPS_PLAN.md §2.3/§3.1):
     /// the family gate asserts the Rust engine errors loudly instead of
     /// live-comparing. The WP in `wp` flips this to `false` when it ports the
@@ -938,12 +962,29 @@ fn corpus_live_solvable_cases_match_oracle() {
         return;
     }
     let mut pool = OraclePool::new();
+    let mut props_gated = 0usize;
     for c in &cases {
         let abs = corpus_file(&c.path);
-        run_and_compare(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
+        // WP8.5b: gate every element's every property value (Rust `?`-surface vs
+        // oracle `Properties(p).Val`) on the vendored corpus too — the pinned-capi
+        // `feeder`/`micro`-kind decks, which the `corpus_live_properties` pilot
+        // proved clean under triage. The heavy `large`-kind decks (8500-Node /
+        // ckt5 / EPRI / IEEE123 / ADiakoptics / 4Bus-YYD) stay OFF: their
+        // per-element property dump (thousands of elements × ~50 props) is too
+        // slow for the mandatory gate — the pilot sweeps them instead. Target-rev
+        // cases stay off too (a different engine revision renders property strings
+        // differently — the known bracket/echo class, gated only vs pinned capi).
+        // `kind`/`oracle` are explicit greppable tags — a coverage inventory, not
+        // a silent skip.
+        let mut cc = c.clone();
+        if cc.oracle.is_none() && cc.kind != "large" {
+            cc.compare_all_properties = true;
+            props_gated += 1;
+        }
+        run_and_compare(pool.get(cc.oracle.as_deref()), &cc.path, &abs, &cc);
     }
     eprintln!(
-        "corpus_live: {} solvable case(s) matched the oracle",
+        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full property parity)",
         cases.len()
     );
 }
@@ -978,6 +1019,14 @@ struct Family {
     /// Per-family structural invariant, applied to every case (pending cases
     /// declare their full future compare spec up front).
     check_case: fn(&SolvableCase),
+    /// WP8.5b: gate EVERY element's EVERY property value (Rust `?`-surface vs
+    /// oracle `Properties(p).Val`) on every live case in this family, on top of
+    /// the full-model compare. Flipped `true` only after the
+    /// `corpus_live_properties` pilot proved the whole family clean under triage
+    /// (`harness::SKIP_PROPS` documents the comparability exclusions). A family
+    /// with any unresolved property finding stays `false` (surfaced, never
+    /// silent).
+    compare_all_properties: bool,
 }
 
 fn family_dir(name: &str) -> PathBuf {
@@ -1100,7 +1149,14 @@ fn family_cases_match_oracle(fam: &Family) {
         let mut pool = OraclePool::new();
         for c in &live {
             let abs = family_file(fam.name, &c.path);
-            run_and_compare(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
+            // WP8.5b: force the family-wide property-parity flag on the live
+            // case (the manifest entries don't carry it — it's a family-level
+            // decision after the pilot triage). Only vs the pinned capi oracle:
+            // a target-rev case (capi015/EPRI) renders property strings
+            // differently (the bracket/echo class), so never property-gate it.
+            let mut cc = (*c).clone();
+            cc.compare_all_properties |= fam.compare_all_properties && cc.oracle.is_none();
+            run_and_compare(pool.get(cc.oracle.as_deref()), &cc.path, &abs, &cc);
         }
     }
     eprintln!(
@@ -1220,6 +1276,10 @@ const ASYMMETRIC: Family = Family {
     name: "asymmetric",
     required: ASYMMETRIC_REQUIRED,
     check_case: check_asymmetric_case,
+    // WP8.5b: property parity ON — the `corpus_live_properties` pilot proved
+    // every live asymmetric deck clean under triage (SKIP_PROPS documents the
+    // DoubleSymMatrix-UB / transformer-cursor exclusions).
+    compare_all_properties: true,
 };
 
 #[test]
@@ -1325,6 +1385,11 @@ const CONTROLS: Family = Family {
     name: "controls",
     required: CONTROLS_REQUIRED,
     check_case: check_controls_case,
+    // WP8.5b: property parity ON — the pilot proved every live controls deck
+    // clean under triage (SKIP_PROPS documents the reliability-UB FaultRate/
+    // pctperm + transformer-cursor exclusions; RegControl.TapNum was a real
+    // port bug this WP fixed, not a skip).
+    compare_all_properties: true,
 };
 
 #[test]
@@ -1398,6 +1463,9 @@ const MODES: Family = Family {
     name: "modes",
     required: MODES_REQUIRED,
     check_case: check_modes_case,
+    // Every modes deck is `pending: true` (feature unported) — nothing is
+    // live-compared, so property parity is moot until the porting WP flips it.
+    compare_all_properties: false,
 };
 
 #[test]
@@ -1512,6 +1580,158 @@ fn corpus_live_classify() {
         "classify: {} solvable, {} failed (of {total}); report -> {}",
         solvable.len(),
         failures.len(),
+        rp.display()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// WP8.5b Phase A pilot (report-first): sweep the pinned-capi solvable_now +
+// asymmetric + controls universe with the full property dump forced, compare
+// EVERY element's EVERY property value (Rust `?`-surface vs oracle
+// `Properties(p).Val`), and write `tmp/props_report.json` — the triage
+// artifact. Opt-in via DSS_LIVE_PROPS=1; DSS_LIVE_PROPS_MAX=<n> caps the sweep
+// to the first n attempted cases (subset scoping — the report records covered
+// vs subset-skipped, never a silent truncation).
+// ---------------------------------------------------------------------------
+
+fn props_pilot_enabled() -> bool {
+    std::env::var("DSS_LIVE_PROPS")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+#[test]
+fn corpus_live_properties() {
+    if !props_pilot_enabled() {
+        eprintln!("SKIPPED props: set DSS_LIVE_PROPS=1 to sweep all-property parity");
+        return;
+    }
+    let oracle = Oracle::new();
+    oracle.ping();
+
+    // Pinned-capi, non-pending cases from the three property-relevant sources
+    // (target-rev cases excluded — they gate a different engine's behavior). The
+    // fast Phase-B priority families (asymmetric + controls) sweep FIRST so a
+    // capped run covers them fully; the vendored solvable_now feeders follow.
+    let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
+    for fam in [&ASYMMETRIC, &CONTROLS] {
+        for c in load_family(fam.name) {
+            if c.pending || c.oracle.is_some() {
+                continue;
+            }
+            let abs = family_file(fam.name, &c.path);
+            universe.push((format!("{}:{}", fam.name, c.path), abs, c));
+        }
+    }
+    for c in load_solvable() {
+        if c.oracle.is_some() {
+            continue;
+        }
+        universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
+    }
+
+    let cap = std::env::var("DSS_LIVE_PROPS_MAX")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok());
+    let total = universe.len();
+
+    let mut covered: Vec<String> = Vec::new();
+    let mut subset_skipped: Vec<String> = Vec::new();
+    let mut failures: Vec<(String, String)> = Vec::new();
+    let mut sweep_elems = 0usize; // Σ elements × steps
+    let mut sweep_cmps = 0usize; // Σ element × prop × step value comparisons
+
+    for (i, (label, abs, c)) in universe.iter().enumerate() {
+        if let Some(cap) = cap
+            && covered.len() + failures.len() >= cap
+        {
+            subset_skipped.push(label.clone());
+            continue;
+        }
+        let mut case = c.clone();
+        case.compare_all_properties = true;
+        let oref = &oracle;
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = CorpusGuard::new(abs);
+            let oc = oref.run_case(abs, &case);
+            let tol = tol_for(&case.kind);
+            let mut dss = Dss::new();
+            dss.command("clear");
+            dss.command(&format!("compile \"{abs}\""));
+            for p in &case.post {
+                dss.command(p);
+            }
+            assert!(
+                dss.errors().is_empty(),
+                "Rust compile errors: {:?}",
+                dss.errors()
+            );
+            let mut elems = 0usize;
+            let mut cmps = 0usize;
+            for cp in &oc.checkpoints {
+                dss.command("solve");
+                assert!(
+                    dss.errors().is_empty(),
+                    "Rust solve errors: {:?}",
+                    dss.errors()
+                );
+                assert!(cp.converged, "oracle non-convergence");
+                elems += cp.all_properties.len();
+                cmps += cp
+                    .all_properties
+                    .iter()
+                    .map(|p| p.props.len())
+                    .sum::<usize>();
+                compare_all_properties(&mut dss, &cp.all_properties, &tol, label);
+            }
+            (elems, cmps)
+        }));
+        match res {
+            Ok((e, cm)) => {
+                covered.push(label.clone());
+                sweep_elems += e;
+                sweep_cmps += cm;
+            }
+            Err(e) => failures.push((label.clone(), panic_msg(e))),
+        }
+        if (i + 1) % 10 == 0 {
+            eprintln!("props: {}/{total} swept", i + 1);
+        }
+    }
+
+    covered.sort();
+    subset_skipped.sort();
+    failures.sort();
+    let report = serde_json::json!({
+        "total": total,
+        "covered_count": covered.len(),
+        "failed_count": failures.len(),
+        "subset_skipped_count": subset_skipped.len(),
+        "sweep_elements_x_steps": sweep_elems,
+        "sweep_value_comparisons": sweep_cmps,
+        "covered": covered,
+        "subset_skipped": subset_skipped,
+        "failures": failures
+            .iter()
+            .map(|(pth, r)| serde_json::json!({
+                "path": pth,
+                "reason": r.chars().take(600).collect::<String>(),
+            }))
+            .collect::<Vec<_>>(),
+    });
+    let rp: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
+        .iter()
+        .collect::<PathBuf>()
+        .join("props_report.json");
+    let _ = std::fs::create_dir_all(rp.parent().unwrap());
+    std::fs::write(&rp, serde_json::to_string_pretty(&report).unwrap())
+        .unwrap_or_else(|e| panic!("write {}: {e}", rp.display()));
+    eprintln!(
+        "props: {} covered, {} failed, {} subset-skipped (of {total}); \
+         {sweep_elems} element-steps × props = {sweep_cmps} value comparisons; report -> {}",
+        covered.len(),
+        failures.len(),
+        subset_skipped.len(),
         rp.display()
     );
 }
@@ -1637,11 +1857,17 @@ fn corpus_live_opendss() {
     // oracle — sweeping them here would only manufacture divergence noise.
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     let mut target_rev_excluded: Vec<String> = Vec::new();
+    // WP8.5b: never request the full property dump on the EPRI A/B channel — its
+    // property-format differences (bracket/echo class) would drown the inventory
+    // in known non-divergences; property parity is gated only against the pinned
+    // capi oracle (tools/oracle/README notes this). One flip per case.
     for c in load_solvable() {
         if c.oracle.is_some() {
             target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
+        let mut c = c;
+        c.compare_all_properties = false;
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
     }
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
@@ -1654,6 +1880,8 @@ fn corpus_live_opendss() {
                 continue;
             }
             let abs = family_file(fam.name, &c.path);
+            let mut c = c;
+            c.compare_all_properties = false;
             universe.push((format!("{}:{}", fam.name, c.path), abs, c));
         }
     }

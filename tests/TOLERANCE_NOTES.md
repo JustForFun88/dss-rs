@@ -286,6 +286,61 @@ only for cases that sample them in deterministic modes (`check_meters_monitors` 
 `solvable_now.json`) — an unsampled monitor returns a phantom channel from the
 pinned oracle, an artifact, not an engine gap.
 
+## WP8.5b property parity (`harness::compare_all_properties` / `SKIP_PROPS`)
+
+The corpus property-parity gate compares **every** element's **every** property
+value — the Rust `?`-surface (`Dss::element_properties`:
+`refresh_vterminal_if_marked` + `ClassProps::get_value`) vs the pinned oracle's
+`Properties(p).Val` (read via `? name.prop`) — property-name lists equal in order,
+each value by numeric skeleton at the case tolerance. `SKIP_PROPS` excludes a
+`(class, prop)` from the **value** compare (the name is still order-checked). Each
+is a proven **comparability exclusion**, never a tolerance loosening — the property
+is genuinely non-comparable, not merely loose:
+
+- **`Capacitor.CMatrix`, `Reactor.RMatrix`, `Reactor.XMatrix`, `Fault.GMatrix`**
+  (`DoubleSymMatrixProperty`) — the dss_capi getter reads **uninitialized memory**
+  (the same bug the `TODO(compat)` at `obj/props/class_props/value.rs` reproduces
+  by rendering a deterministic zero matrix). The live oracle returns
+  **process-dependent garbage** (denormals ~1e-310 in one run, huge ~1e123 in
+  another — proven nondeterministic). Oracle UB → not reproduced (CLAUDE.md rule),
+  so not comparable.
+- **`Transformer.WdgCurrents`** — renders `mag, (angle)` phasor pairs. A winding
+  whose current is ~1e-12 A (a numerically-zero internal/neutral current, e.g. the
+  delta/wye tertiary) has an **undefined angle**: both engines agree the magnitude
+  is ≈0 (matches within the abs floor), but its angle is faer-vs-KLU cancellation
+  noise (the same class the export comparator gates via `GateSpec::PrevCol`). The
+  magnitudes and all non-degenerate winding angles match; only the zero-magnitude
+  angle diverges. The winding currents' physics is gated by the model compare
+  (terminal currents / YPrim).
+- **`Transformer.Wdg` + the per-winding SINGULAR forms** (`Bus`, `Conn`, `kV`,
+  `kVA`, `Tap`, `%R`, `RNeut`, `XNeut`, `MaxTap`, `MinTap`, `NumTaps`, `RDCOhms`)
+  — `Wdg` is the transient `ActiveWinding` edit-cursor (which winding a subsequent
+  `~ tap=` applies to); the singular forms render `windings[ActiveWinding]`'s
+  value. The oracle's own live capture mutates the cursor: `gc.capture_discrete`
+  walks `Transformers.Wdg = i` over every winding (to read taps) **before** the
+  property sweep, leaving it at `NumWindings`. So these reflect the harness read
+  order, not the deck's parse result — for the 3-winding `t3w` (ends `wdg=2`) Rust
+  reads winding 2, the oracle winding 3. Proven: in isolation both engines render
+  the deck's `wdg=2`; only the post-`capture_discrete` sweep reads 3. The **stable
+  array forms** (`Buses`, `Conns`, `kVs`, `kVAs`, `Taps`) carry the identical
+  per-winding data un-contaminated and are compared, so bus/conn/kV/kVA/tap
+  rendering is still gated. (2-winding transformers don't diverge: the array-form
+  parse and the capture both leave ActiveWinding at `NumWindings = 2`.)
+- **`Capacitor.FaultRate` / `Capacitor.pctperm` / `Reactor.FaultRate` /
+  `Reactor.pctperm`** — reliability inputs. In a **metered** deck the oracle reads
+  these **uninitialized** on shunt PD elements (Capacitor/Reactor): proven
+  nondeterministic across processes (`7.54e-312` vs `1.38e-311` on the same deck),
+  present already at compile time. Rust keeps the correct defaults (FaultRate
+  `0.0005`, pctperm `100`). Oracle UB → not reproduced. The **same** properties on
+  Line/Transformer are clean and stay compared (31 lines + 6 transformers in
+  `midi_controls`), so the `Double`-property render path is still gated.
+
+A real port bug this gate caught and fixed (not a skip): **`RegControl.TapNum`**
+rendered the cached `tap_snap` while Pascal `Get_TapNum` (`RegControl.pas`) reads
+the controlled transformer's **live** `PresentTap[TapWinding]`; the `&self` getter
+now resyncs the snapshot from the live transformer at the read choke point
+(`Dss::refresh_vterminal_if_marked`).
+
 ## `TODO(compat)`
 
 Tolerances absorb f64/ULP differences only. Deliberately-reproduced upstream
