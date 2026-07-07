@@ -77,6 +77,11 @@ pinned oracle and compares the full model live. The pinned dss-python oracle
 it `corpus_live_solvable_cases_match_oracle` fails rather than skipping. New tests
 read feeders from that vendored corpus, never from `.inputs/` at runtime.
 
+**`TESTING.md`** is the map of the whole test infrastructure — the layers (unit
+/ golden / live oracle / corpus hygiene / opt-in EPRI channel), the env-var
+knobs, and the procedures (regenerate goldens, add a corpus deck, triage an
+EPRI divergence). Read it to find where a given kind of test lives.
+
 ## Conventions
 
 - **Module layout:** keep files focused; when a module grows large or mixes
