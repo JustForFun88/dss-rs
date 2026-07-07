@@ -119,9 +119,21 @@ impl DssObject for LoadShapeObj {
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         let stored = store_array(value);
         match idx {
-            MULT | PMULT => self.p_mult = stored,
-            HOUR => self.hour = stored,
-            QMULT => self.q_mult = stored,
+            // Pascal runs `UseFloat64` before loading `dP`/`dH`/`dQ`
+            // (`LoadShape.pas:767/779/804`): a `Mult=`/`Hour=`/`QMult=` edit
+            // ends single-precision storage.
+            MULT | PMULT => {
+                self.use_float64();
+                self.p_mult = stored;
+            }
+            HOUR => {
+                self.use_float64();
+                self.hour = stored;
+            }
+            QMULT => {
+                self.use_float64();
+                self.q_mult = stored;
+            }
             _ => unreachable!("LoadShape has no array property {idx}"),
         }
     }
@@ -199,6 +211,13 @@ impl DssObject for LoadShapeObj {
                     .push(FileLoad::text(PQCSVFILE, self.pqcsvfile.clone()));
             }
             QMAX => self.max_q_specified = true,
+            // Pascal `LoadShape.pas:745-747`: enabling memory mapping forces
+            // the data back to f64 (MMF itself is not ported).
+            MEMORYMAPPING => {
+                if self.use_mmf {
+                    self.use_float64();
+                }
+            }
             // Interval and Hour are mutually exclusive specs.
             INTERVAL => self.data.clear_seq(HOUR),
             HOUR => {
@@ -232,6 +251,10 @@ impl DssObject for LoadShapeObj {
         } else {
             o.hour.clone()
         };
+        // Pascal `LoadShape.pas:887-913`: single-precision storage is copied
+        // as singles (the widened views above already hold identical values).
+        self.s_p = o.s_p.clone();
+        self.s_h = o.s_h.clone();
         self.use_actual = o.use_actual;
         self.use_mmf = o.use_mmf;
         self.base_p = o.base_p;

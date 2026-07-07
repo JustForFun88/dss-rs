@@ -533,3 +533,96 @@ fn sng_and_dbl_file_missing_records_error() {
         );
     }
 }
+
+/// FPC probe battery for the single-precision storage paths (Pascal
+/// `sP`/`sH`): every expected value below is the exact bit pattern produced
+/// by an FPC 3.2.2 x86_64 probe replicating the Pascal expressions
+/// (`tools/fpc/single_prec_probe.pas`, run 2026-07-07) — the same compiler/
+/// RTL the pinned oracle's dss_capi backend is built with.
+#[test]
+#[allow(clippy::approx_constant)] // 3.14159… is the probe's Hr input, not a PI use
+fn sng_single_storage_matches_fpc_bit_exact() {
+    let sh: [f32; 4] = [0.1f64 as f32, 2.3f64 as f32, 4.7f64 as f32, 8.9f64 as f32];
+    let sp: [f32; 4] = [
+        (1.0f64 / 3.0) as f32,
+        0.123456789f64 as f32,
+        0.777777777f64 as f32,
+        0.999999999f64 as f32,
+    ];
+    let mut pairs = Vec::new();
+    for (h, p) in sh.iter().zip(sp.iter()) {
+        pairs.extend_from_slice(&h.to_le_bytes());
+        pairs.extend_from_slice(&p.to_le_bytes());
+    }
+
+    // Variable interval: single storage live, interpolation + curve stats.
+    let (_, mut obj, errs) = edited(&[("npts", "4"), ("interval", "0")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    obj.read_sng_file(&pairs);
+    assert!(obj.s_p.is_some() && obj.s_h.is_some(), "float32 path taken");
+    let m = obj.get_mult_at_hour(3.14159265358979);
+    assert_eq!(
+        m.re.to_bits(),
+        0x3FD695F8134B71D8,
+        "GetMultAtHourSingle mixed-precision interpolation (got {:016X})",
+        m.re.to_bits()
+    );
+    assert_eq!(
+        obj.mean().to_bits(),
+        0x3FE355E8807CF518,
+        "CurveMeanAndStdDevSingle mean"
+    );
+    assert_eq!(
+        obj.std_dev().to_bits(),
+        0x3FD60240860CE49D,
+        "CurveMeanAndStdDevSingle stddev"
+    );
+
+    // Fixed interval: RCD single stats (S is an f32 accumulator; FPC's
+    // Sqrt(Single) overload rounds the result to f32).
+    let mut bare = Vec::new();
+    for p in sp.iter() {
+        bare.extend_from_slice(&p.to_le_bytes());
+    }
+    let (_, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_some() && obj.s_h.is_none());
+    assert_eq!(
+        obj.mean().to_bits(),
+        0x3FE1E06526000000,
+        "RCDMeanAndStdDevSingle mean"
+    );
+    assert_eq!(
+        obj.std_dev().to_bits(),
+        0x3FD9ADD3C0000000,
+        "RCDMeanAndStdDevSingle stddev"
+    );
+}
+
+/// Pascal `UseFloat64` call sites: a later `QMult=`/`Mult=`/`Hour=` edit (or
+/// `MemoryMapping=yes`) ends single storage; the widened f64 view keeps the
+/// f32-quantized values so property renders are unchanged.
+#[test]
+fn sng_single_storage_transitions_to_f64_on_edits() {
+    let bare: Vec<u8> = [0.25f32, 0.5, 0.75]
+        .iter()
+        .flat_map(|p| p.to_le_bytes())
+        .collect();
+
+    let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_some());
+    let before = get(&cls, &obj, "Mult");
+
+    // QMult= runs UseFloat64 first (LoadShape.pas:804): singles dropped, the
+    // P view unchanged.
+    obj.set_f64_array(super::prop::QMULT, vec![1.0, 1.0, 1.0]);
+    assert!(obj.s_p.is_none(), "QMult= must end single storage");
+    assert_eq!(get(&cls, &obj, "Mult"), before);
+
+    // A fresh SngFile read with QMult set takes the float64 path.
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_none(), "float64 path with QMult set");
+    assert_eq!(get(&cls, &obj, "Mult"), before);
+}

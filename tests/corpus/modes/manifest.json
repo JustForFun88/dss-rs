@@ -45,9 +45,28 @@
      ]
     },
     {
+     "element": "Loadshape.ls_sng0i",
+     "props": [
+      "npts",
+      "interval",
+      "hour",
+      "mult",
+      "mean",
+      "stddev"
+     ]
+    },
+    {
      "element": "Tshape.t_sng",
      "props": [
       "npts",
+      "temp"
+     ]
+    },
+    {
+     "element": "Tshape.t_sng0",
+     "props": [
+      "npts",
+      "hour",
       "temp"
      ]
     },
@@ -65,10 +84,27 @@
       "year",
       "mult"
      ]
+    },
+    {
+     "element": "GrowthShape.g_csvf",
+     "props": [
+      "npts",
+      "year",
+      "mult"
+     ]
+    },
+    {
+     "element": "GrowthShape.g_sng",
+     "props": [
+      "npts",
+      "year",
+      "mult"
+     ]
     }
    ],
    "pending": false,
-   "wp": "WPG.1"
+   "wp": "WPG.1",
+   "notes": "WPG.1 audit follow-up: ls_sng0i pins the single-precision interpolation + Mean/StdDev single stats; t_sng0 the ScalarShapeCore pair branch; g_csvf fractional CSV years (DoCSVFile ignores RoundA); g_sng the Sng-side year rounding."
   },
   {
    "path": "generaltime.dss",
