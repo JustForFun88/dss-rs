@@ -231,6 +231,21 @@ fn save_forms_structural_file_set() {
         dss.errors()
     );
     let nodes_before = dss.circuit().expect("circuit").num_nodes;
+    // Numeric round-trip for the SaveZone/feeder path (this is the only gate
+    // deck with a meter zone): a snapshot-mode warm solve before the save is
+    // compared against the same solve of the emitted tree below — a
+    // zone-serialization bug that still parses (wrong load kW/pf, wrong cap
+    // kvar, a mis-derived control) shows up here as a voltage diff even
+    // though the file set and node count stay right.
+    dss.command("set mode=snap");
+    dss.command("solve");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "pre-save snap-solve errors: {:?}",
+        dss.errors()
+    );
+    let (pre, pre_iter) = snapshot(&dss);
     dss.command(&format!(
         "save circuit dir=\"{}\"",
         out.to_string_lossy().replace('\\', "/")
@@ -282,6 +297,39 @@ fn save_forms_structural_file_set() {
         nodes_before, nodes_after,
         "node count changed across feeder-tree round-trip"
     );
+
+    // Snapshot voltage round-trip (the emitted Master carries no solve mode →
+    // snapshot by default; warm solve on both sides).
+    dss.command("solve");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "post-save snap-solve errors: {:?}",
+        dss.errors()
+    );
+    let (post, post_iter) = snapshot(&dss);
+    assert_eq!(
+        pre_iter, post_iter,
+        "warm snap-solve iteration count changed"
+    );
+    let post_map: std::collections::HashMap<&str, (f64, f64)> = post
+        .iter()
+        .map(|(n, re, im)| (n.as_str(), (*re, *im)))
+        .collect();
+    assert_eq!(pre.len(), post.len(), "node set size changed");
+    for (name, re, im) in &pre {
+        let (pre_re, pre_im) = (*re, *im);
+        let Some(&(post_re, post_im)) = post_map.get(name.as_str()) else {
+            panic!("node {name} missing after feeder-tree round-trip");
+        };
+        let mag = (pre_re * pre_re + pre_im * pre_im).sqrt().max(1e-9);
+        let d = ((pre_re - post_re).powi(2) + (pre_im - post_im).powi(2)).sqrt();
+        assert!(
+            d / mag <= 1e-6,
+            "node {name}: |dV|/|V| = {:.3e} > 1e-6 across feeder-tree round-trip",
+            d / mag
+        );
+    }
 
     std::fs::remove_dir_all(&out).ok();
 }
