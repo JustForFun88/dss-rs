@@ -10,13 +10,18 @@
     "reason), first match wins, and per-entry hit counts are reported so dead",
     "entries surface and get pruned as upstream deltas are ported.",
     "NEVER consulted by the mandatory gate or its tolerances.",
+    "Entry kinds (`kind`, default 'diff'): 'diff' = the case runs on the listed",
+    "revs but legitimately diverges (matched on the failure reason); 'skip' =",
+    "the case is not expected to run/converge on the listed revs at all — the",
+    "EPRI channel skips the comparison up front (matched on `case_contains`",
+    "only; `reason_contains` unused) and reports it under `known_skipped`.",
     "Optional `ab_contains` overrides `reason_contains` when matching",
     "ab_compare.py issue strings (different wording than the Rust panics);",
     "entries without it and without a matching Rust-shaped phrase simply never",
     "reclassify there. Modeled on DSS-Python tests/compare_outputs.py",
     "KNOWN_COM_DIFF (BSD-3), translated to our first-failure-reason match shape."
   ],
-  "version": 1,
+  "version": 2,
   "entries": [
     {
       "id": "epri-invcontrol-maxiter",

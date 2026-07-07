@@ -1353,29 +1353,43 @@ fn corpus_live_classify() {
 // for the upstream-porting work, not failures. Default = report mode
 // (tmp/opendss_report_<rev>.json, same catch_unwind pattern as the classifier).
 //
-// Triaged divergences live in tools/opendss/known_diffs.json (modeled on
+// Triaged divergences live in tests/corpus/known_diffs.json (modeled on
 // DSS-Python's KNOWN_COM_DIFF, translated to our first-failure-reason shape):
-// each entry matches (case label substring, all-of reason substrings) for the
-// given revisions and MUST explain its cause. The report partitions diverged
-// into known/new with per-entry hit counts (dead entries surface for pruning);
-// DSS_LIVE_OPENDSS_ASSERT=1 fails only on NEW divergences (intended for r3723,
-// whose 82 divergences are fully cataloged). Caveat: run_and_compare stops at
-// the first divergence per case, so a "known" first divergence masks any later
-// one in the same case — accepted for an inventory channel; entries retire as
-// upstream deltas get ported, re-exposing what was behind them. The shared
-// comparators/tolerances are reused as-is — never weakened for this gate.
+// each `diff` entry matches (case label substring, all-of reason substrings)
+// for the given revisions and MUST explain its cause; a `skip` entry marks a
+// case that is not expected to run/converge on those revisions at all and is
+// skipped up front (reported under `known_skipped`). The report partitions
+// diverged into known/new with per-entry hit counts (dead entries surface for
+// pruning); DSS_LIVE_OPENDSS_ASSERT=1 fails only on NEW divergences (intended
+// for r3723, whose 82 divergences are fully cataloged). Caveat:
+// run_and_compare stops at the first divergence per case, so a "known" first
+// divergence masks any later one in the same case — accepted for an inventory
+// channel; entries retire as upstream deltas get ported, re-exposing what was
+// behind them. The shared comparators/tolerances are reused as-is — never
+// weakened for this gate.
 // ---------------------------------------------------------------------------
 
-/// One triaged divergence class from `tools/opendss/known_diffs.json`.
+/// One triaged entry from `tests/corpus/known_diffs.json`. `kind` partitions
+/// the catalog: `"diff"` (default) = the case runs but legitimately diverges
+/// (matched on the failure reason); `"skip"` = the case is not expected to
+/// run/converge on the listed revs at all (matched on `case_contains` only,
+/// skipped up front and reported under `known_skipped`).
 #[derive(serde::Deserialize)]
 struct KnownDiff {
     id: String,
+    #[serde(default = "default_diff_kind")]
+    kind: String,
     revs: Vec<String>,
     case_contains: String,
+    #[serde(default)]
     reason_contains: Vec<String>,
     cause: String,
     #[allow(dead_code)]
     source: String,
+}
+
+fn default_diff_kind() -> String {
+    "diff".to_string()
 }
 
 fn load_known_diffs() -> Vec<KnownDiff> {
@@ -1383,8 +1397,8 @@ fn load_known_diffs() -> Vec<KnownDiff> {
         env!("CARGO_MANIFEST_DIR"),
         "..",
         "..",
-        "tools",
-        "opendss",
+        "tests",
+        "corpus",
         "known_diffs.json",
     ]
     .iter()
@@ -1399,11 +1413,25 @@ fn load_known_diffs() -> Vec<KnownDiff> {
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
     for e in &cat.entries {
         assert!(
-            !e.cause.trim().is_empty() && !e.reason_contains.is_empty(),
-            "known_diffs.json entry {:?}: `cause` and `reason_contains` are mandatory \
+            !e.cause.trim().is_empty(),
+            "known_diffs.json entry {:?}: `cause` is mandatory \
              (triage inventory, not a mute button)",
             e.id
         );
+        match e.kind.as_str() {
+            "diff" => assert!(
+                !e.reason_contains.is_empty(),
+                "known_diffs.json entry {:?}: a `diff` entry needs `reason_contains`",
+                e.id
+            ),
+            "skip" => assert!(
+                !e.case_contains.is_empty(),
+                "known_diffs.json entry {:?}: a `skip` entry needs a non-empty \
+                 `case_contains` (it matches on the case alone)",
+                e.id
+            ),
+            k => panic!("known_diffs.json entry {:?}: unknown kind {k:?}", e.id),
+        }
     }
     cat.entries
 }
@@ -1444,10 +1472,23 @@ fn corpus_live_opendss() {
         }
     }
 
+    let catalog = load_known_diffs();
+    let mut hits: Vec<(String, usize)> = catalog.iter().map(|e| (e.id.clone(), 0)).collect();
+
     let mut matched: Vec<String> = Vec::new();
     let mut diverged: Vec<(String, String)> = Vec::new();
+    let mut skipped: Vec<(String, String)> = Vec::new(); // label, entry id
     let total = universe.len();
     for (i, (label, abs, c)) in universe.iter().enumerate() {
+        // `skip` entries match on the case alone (the case is not expected to
+        // run/converge on this revision) — never attempted, reported apart.
+        if let Some(pos) = catalog.iter().position(|e| {
+            e.kind == "skip" && e.revs.iter().any(|r| r == &rev) && label.contains(&e.case_contains)
+        }) {
+            hits[pos].1 += 1;
+            skipped.push((label.clone(), catalog[pos].id.clone()));
+            continue;
+        }
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_and_compare(&oracle, label, abs, c);
         }));
@@ -1462,16 +1503,16 @@ fn corpus_live_opendss() {
 
     matched.sort();
     diverged.sort();
+    skipped.sort();
 
     // Partition against the triage catalog: first matching entry (by file
     // order) wins; unmatched divergences are NEW and fail assert mode.
-    let catalog = load_known_diffs();
-    let mut hits: Vec<(String, usize)> = catalog.iter().map(|e| (e.id.clone(), 0)).collect();
     let mut known: Vec<(String, String, String)> = Vec::new(); // label, reason, entry id
     let mut fresh: Vec<(String, String)> = Vec::new();
     for (label, reason) in &diverged {
         let hit = catalog.iter().position(|e| {
-            e.revs.iter().any(|r| r == &rev)
+            e.kind == "diff"
+                && e.revs.iter().any(|r| r == &rev)
                 && label.contains(&e.case_contains)
                 && e.reason_contains.iter().all(|s| reason.contains(s))
         });
@@ -1517,6 +1558,10 @@ fn corpus_live_opendss() {
                 "reason": trunc(r),
             }))
             .collect::<Vec<_>>(),
+        "known_skipped": skipped
+            .iter()
+            .map(|(label, id)| serde_json::json!({ "path": label, "known": id }))
+            .collect::<Vec<_>>(),
         "known_hits": hits
             .iter()
             .map(|(id, n)| serde_json::json!({ "id": id, "hits": n }))
@@ -1530,16 +1575,18 @@ fn corpus_live_opendss() {
     std::fs::write(&rp, serde_json::to_string_pretty(&report).unwrap())
         .unwrap_or_else(|e| panic!("write {}: {e}", rp.display()));
     eprintln!(
-        "opendss {rev}: {} matched, {} known-diverged, {} NEW (of {total}); report -> {}",
+        "opendss {rev}: {} matched, {} known-diverged, {} known-skipped, {} NEW (of {total}); \
+         report -> {}",
         matched.len(),
         known.len(),
+        skipped.len(),
         fresh.len(),
         rp.display()
     );
     if assert_mode && !fresh.is_empty() {
         panic!(
             "opendss {rev}: {} NEW divergence(s) from the EPRI engine not covered by \
-             tools/opendss/known_diffs.json (DSS_LIVE_OPENDSS_ASSERT=1); see {}",
+             tests/corpus/known_diffs.json (DSS_LIVE_OPENDSS_ASSERT=1); see {}",
             fresh.len(),
             rp.display()
         );

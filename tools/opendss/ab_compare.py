@@ -362,9 +362,11 @@ def diff_case(a: dict, b: dict, tol: argparse.Namespace) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Known-differences catalog (tools/opendss/known_diffs.json) — optional
+# Known-differences catalog (tests/corpus/known_diffs.json) — optional
 # reclassification of divergences already triaged as legitimate engine
-# differences (dss_capi-vs-EPRI). Matching mirrors corpus_live_opendss:
+# differences (dss_capi-vs-EPRI). `kind: "skip"` entries mark cases not
+# expected to run/converge on a participating revision: they are skipped up
+# front (status `known_skipped`). Matching mirrors corpus_live_opendss:
 # substring on (case path, issue text); `ab_contains` overrides
 # `reason_contains` because this tool's issue wording differs from the Rust
 # panics. Purely a report-level relabel — tolerances are untouched.
@@ -377,7 +379,25 @@ def load_known_diffs(path: Path) -> list[dict]:
         if not str(e.get("cause", "")).strip():
             sys.exit(f"{path}: entry {e.get('id')!r} lacks a `cause` — "
                      "triage inventory, not a mute button")
+        kind = e.get("kind", "diff")
+        if kind == "skip":
+            if not e.get("case_contains"):
+                sys.exit(f"{path}: skip entry {e.get('id')!r} needs a non-empty "
+                         "`case_contains` (it matches on the case alone)")
+        elif kind != "diff":
+            sys.exit(f"{path}: entry {e.get('id')!r} has unknown kind {kind!r}")
     return entries
+
+
+def skip_hit(rel: str, entries: list[dict], revs: set[str]) -> dict | None:
+    """First `skip` entry matching this case for a participating revision."""
+    return next(
+        (e for e in entries
+         if e.get("kind", "diff") == "skip"
+         and set(e["revs"]) & revs
+         and e["case_contains"] in rel),
+        None,
+    )
 
 
 def participating_revs(*specs: str) -> set[str]:
@@ -388,9 +408,11 @@ def apply_known_diffs(rec: dict, entries: list[dict], revs: set[str]) -> None:
     """Relabel rec.status in place when every issue matches a catalog entry."""
 
     def matches(e: dict, text: str) -> bool:
-        subs = e.get("ab_contains") or e["reason_contains"]
+        subs = e.get("ab_contains") or e.get("reason_contains") or []
         return (
-            bool(set(e["revs"]) & revs)
+            e.get("kind", "diff") == "diff"
+            and bool(subs)
+            and bool(set(e["revs"]) & revs)
             and e["case_contains"] in rec["path"]
             and all(s in text for s in subs)
         )
@@ -450,8 +472,9 @@ def main() -> None:
         "--known-diffs",
         type=Path,
         default=None,
-        help="triage catalog (tools/opendss/known_diffs.json): cases whose every "
-        "issue matches an entry are relabeled known_diverged",
+        help="triage catalog (tests/corpus/known_diffs.json): cases whose every "
+        "issue matches an entry are relabeled known_diverged; `skip` entries "
+        "are not run at all (known_skipped)",
     )
     args = ap.parse_args()
     known_entries = load_known_diffs(args.known_diffs) if args.known_diffs else []
@@ -474,6 +497,17 @@ def main() -> None:
     results = []
     try:
         for i, (rel, abs_path, c) in enumerate(cases):
+            if known_entries and (hit := skip_hit(rel, known_entries, known_revs)):
+                rec = {
+                    "path": rel,
+                    "status": "known_skipped",
+                    "known": [hit["id"]],
+                    "first_divergence": "",
+                }
+                results.append(rec)
+                print(f"[{i + 1}/{len(cases)}] {rec['status']:9} {rel}",
+                      file=sys.stderr)
+                continue
             req = build_request(abs_path, c, args.full_csc)
             ra, err_a = ea.run_case(req)  # sequential: guards must not interleave
             rb, err_b = eb.run_case(req)
@@ -531,7 +565,8 @@ def main() -> None:
     md_path.write_text("\n".join(lines) + "\n", newline="\n")
     print(f"report: {out_path}\nsummary: {md_path}", file=sys.stderr)
     ok = ("match",) if not known_entries else (
-        "match", "known_diverged", "known_error_a", "known_error_b"
+        "match", "known_diverged", "known_error_a", "known_error_b",
+        "known_skipped",
     )
     sys.exit(0 if all(r["status"] in ok for r in results) else 3)
 
