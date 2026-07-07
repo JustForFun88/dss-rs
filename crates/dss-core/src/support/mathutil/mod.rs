@@ -246,6 +246,64 @@ pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
     (mean, (s / (n - 1.0)).sqrt())
 }
 
+/// Sample mean and standard deviation over **single-precision** data (Pascal
+/// `RCDMeanAndStdDevSingle`, `Shared/mathutil.pas:336`): `Mean` accumulates in
+/// f64 over the widened `Single` values, but `S` is a **`Single` accumulator**
+/// (each `S := S + Sqr(...)` rounds to f32), the `S / (Ndata-1)` quotient is
+/// an f32 division, and FPC resolves `Sqrt(Single)` to the **Single overload**
+/// (result rounded to f32 before widening into the `Double` out-param). Every
+/// rounding step verified bit-exact against an FPC 3.2.2 x86_64 probe
+/// (ppcrossx64; `tools/fpc/single_prec_probe.pas`).
+pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
+    // TODO(compat): single-point "standard deviation" equals the point itself
+    // (see mean_and_std_dev).
+    if data.len() == 1 {
+        return (f64::from(data[0]), f64::from(data[0]));
+    }
+    let n = data.len() as f64;
+    let mean = data.iter().map(|&d| f64::from(d)).sum::<f64>() / n;
+    let mut s = 0.0f32;
+    for &d in data {
+        let diff = mean - f64::from(d);
+        s = (f64::from(s) + diff * diff) as f32;
+    }
+    let q = (f64::from(s) / (n - 1.0)) as f32;
+    (mean, f64::from((f64::from(q)).sqrt() as f32))
+}
+
+/// Trapezoid-integrated mean/std-dev over **single-precision** data (Pascal
+/// `CurveMeanAndStdDevSingle`, `Shared/mathutil.pas:390`). The mean's term is
+/// computed **entirely in f32** — FPC types the `0.5` literal `Single` in this
+/// all-`Single` product, so `0.5 * (pY[i]+pY[i+1]) * (pX[i+1]-pX[i])` rounds
+/// at every step — accumulated in f64 and divided by the **f32** span. The
+/// std-dev pass mixes f64 (`dy1`/`dy2` are `Double` locals, promoting `0.5`
+/// and the product) with the f32 `dx`/span. Verified bit-exact against the
+/// FPC probe (`tools/fpc/single_prec_probe.pas`).
+pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
+    let n = y.len();
+    debug_assert_eq!(x.len(), n);
+    // TODO(compat): single-point "standard deviation" equals the point itself
+    // (see mean_and_std_dev).
+    if n == 1 {
+        return (f64::from(y[0]), f64::from(y[0]));
+    }
+    let mut s = 0.0f64;
+    for i in 0..n - 1 {
+        let term = 0.5f32 * (y[i] + y[i + 1]) * (x[i + 1] - x[i]);
+        s += f64::from(term);
+    }
+    let span = f64::from(x[n - 1] - x[0]);
+    let mean = s / span;
+
+    let mut s = 0.0f64;
+    for i in 0..n - 1 {
+        let dy1 = f64::from(y[i]) - mean;
+        let dy2 = f64::from(y[i + 1]) - mean;
+        s += 0.5 * (dy1 * dy1 + dy2 * dy2) * f64::from(x[i + 1] - x[i]);
+    }
+    (mean, (s / span).sqrt())
+}
+
 /// Trapezoid-integrated mean and standard deviation of a curve y(x)
 /// (Pascal `CurveMeanAndStdDev`).
 pub fn curve_mean_and_std_dev(y: &[f64], x: &[f64]) -> (f64, f64) {

@@ -13,13 +13,18 @@
 //! (text or raw bytes per [`FileLoad::binary`]). `Interval = 0` reads
 //! `(hour, value)` pairs; `Interval <> 0` reads a bare value stream (Pascal
 //! `TLoadShapeObj.ReadCSVFile`/`ReadSngFile`/`ReadDblFile`/`Read2ColCSVFile`,
-//! `LoadShape.pas`). Single-precision *storage* (`sP`/`sH`/`sQ`, Pascal's
-//! "take the opportunity to use float32 data" branch when no `QMult` is set
-//! yet) is not modeled separately — a binary read always widens into the f64
-//! `p_mult`/`hour` arrays, which is bit-identical to the single-precision path
-//! for every corpus case (index/exact-point lookups only; no case interpolates
-//! a single-precision-only curve, the one place the two paths could diverge in
-//! rounding). Memory-mapped files (`MemoryMapping`) are not ported (no corpus
+//! `LoadShape.pas`). Single-precision *storage* (`sP`/`sH`, Pascal's "take
+//! the opportunity to use float32 data" branch when no `QMult` is set yet) IS
+//! modeled: `read_sng_file` keeps the authoritative f32 arrays (`s_p`/`s_h`)
+//! and the lookup/statistics/normalize paths reproduce Pascal's
+//! single-precision arithmetic bit-exactly (FPC probe:
+//! `tools/fpc/single_prec_probe.pas`); `p_mult`/`hour` then hold the widened
+//! f64 *view* the property getters/`SetMaxPandQ` read (values identical —
+//! Pascal widens on every such read too). `sQ` is script-unreachable (the
+//! float32 branch requires `dQ = NIL`, and any later `QMult=` edit runs
+//! `UseFloat64` first) and is not modeled — greppable:
+//! NOT_PORTED(LoadShape `sQ` single storage — API-only, unreachable from
+//! script). Memory-mapped files (`MemoryMapping`) are not ported (no corpus
 //! case needs them); `MemoryMapping=yes` stores the flag but the lookup never
 //! takes the MMF path.
 //!
@@ -90,12 +95,23 @@ pub struct LoadShapeObj {
     num_points: i32,
     /// Fixed interval in hours; `0.0` means variable interval (use `hour`).
     interval: f64,
-    /// Active-power multipliers (Pascal `dP`). `None` = NIL pointer.
+    /// Active-power multipliers (Pascal `dP`). `None` = NIL pointer. While
+    /// single storage is live (`s_p` is `Some`) this holds the **widened f64
+    /// view** of `s_p` (identical values; Pascal widens on every dP-shaped
+    /// read of single data too).
     p_mult: Option<Vec<f64>>,
     /// Reactive-power multipliers (Pascal `dQ`); `None` falls back to `p_mult`.
     q_mult: Option<Vec<f64>>,
     /// Hour values for variable interval (Pascal `dH`); `None` = even spacing.
+    /// Widened view of `s_h` while single storage is live.
     hour: Option<Vec<f64>>,
+    /// Pascal `sP`: the authoritative single-precision multipliers, taken by
+    /// `ReadSngFile` when no `QMult` is set (`LoadShape.pas:1116-1143`).
+    /// `Some` ⇔ the Pascal pointer is assigned; the lookup, statistics and
+    /// normalize paths then run Pascal's single-precision arithmetic.
+    s_p: Option<Vec<f32>>,
+    /// Pascal `sH`: single-precision hours (variable interval only).
+    s_h: Option<Vec<f32>>,
     /// Mean / std-dev (Pascal `FMean`/`FStdDev`); lazily computed unless set.
     f_mean: f64,
     f_std_dev: f64,
@@ -138,6 +154,8 @@ impl LoadShapeObj {
             p_mult: None,
             q_mult: None,
             hour: None,
+            s_p: None,
+            s_h: None,
             f_mean: 0.0,
             f_std_dev: 0.0,
             std_dev_calculated: false,

@@ -158,10 +158,13 @@ impl GrowthShapeObj {
         y.round_ties_even()
     }
 
-    /// Pascal `Common/Utilities.pas` `DoCSVFile` as called from
-    /// `TGrowthShapeObj.PropertySideEffects` (`OnlyLoadB = False`, `RoundA =
-    /// True`): every row is `year, mult`. Reads at most `Npts` rows, shrinks
-    /// `Npts` to the count actually read, then rounds the year column.
+    /// Pascal `Common/Utilities.pas` `DoCSVFile` (`:2258-2312`) as called from
+    /// `TGrowthShapeObj.PropertySideEffects` (`OnlyLoadB = False`): every row
+    /// is `year, mult`. Reads at most `Npts` rows and shrinks `Npts` to the
+    /// count actually read. The `RoundA = True` argument is **dead** in
+    /// `DoCSVFile` — only `DoSngFile`/`DoDblFile` implement the rounding loop
+    /// — so fractional years from a CSV are kept verbatim (oracle-proven:
+    /// `2000.6, 2005.4, 2010.7` stays fractional via CSV, rounds via SngFile).
     pub(super) fn read_csv_file(&mut self, content: &str) {
         let npts = self.npts.max(0) as usize;
         let mut year = vec![0.0; npts];
@@ -186,9 +189,6 @@ impl GrowthShapeObj {
 
         year.truncate(i);
         mult.truncate(i);
-        for y in &mut year {
-            *y = Self::round_year(*y);
-        }
         self.npts = i as i32;
         self.year = Some(year);
         self.multiplier = Some(mult);

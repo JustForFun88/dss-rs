@@ -74,12 +74,16 @@ fn file_props_queue_a_deferred_load() {
 }
 
 #[test]
-fn read_csv_file_rounds_year_and_shrinks_npts() {
+fn read_csv_file_keeps_fractional_years_and_shrinks_npts() {
+    // Pascal `DoCSVFile` ignores its `RoundA` argument (the rounding loop
+    // exists only in `DoSngFile`/`DoDblFile`) — oracle-proven 2026-07-07:
+    // a CSV of `2000.6, 2005.4, 2010.7` reports `year = [2000.6 2005.4
+    // 2010.7]` while the same values via SngFile round to `[2001 2005 2011]`.
     let (cls, mut obj, _) = edited(&[("npts", "5")]);
     obj.read_csv_file("1999.4, 1.10\n2000.6, 1.07\n2001, 1.05\n");
     obj.end_edit();
     assert_eq!(get(&cls, &obj, "NPts"), "3");
-    assert_eq!(get(&cls, &obj, "Year"), "[ 1999 2001 2001]");
+    assert_eq!(get(&cls, &obj, "Year"), "[ 1999.4 2000.6 2001]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 1.1 1.07 1.05]");
 }
 

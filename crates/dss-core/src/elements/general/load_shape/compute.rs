@@ -1,7 +1,10 @@
 //! The `LoadShape` numeric core: the `GetMultAtHour` lookup, `Normalize`,
 //! `SetMaxPandQ`, the lazy mean/std-dev, and the `ReadCSVFile` parser.
 
-use crate::support::mathutil::{curve_mean_and_std_dev, mean_and_std_dev};
+use crate::support::mathutil::{
+    curve_mean_and_std_dev, curve_mean_and_std_dev_single, mean_and_std_dev,
+    mean_and_std_dev_single,
+};
 use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
@@ -18,12 +21,44 @@ impl LoadShapeObj {
         if self.use_actual { 0.0 } else { real_part }
     }
 
+    /// Pascal `TLoadShapeObj.UseFloat32` (`LoadShape.pas:2158`): convert the
+    /// f64 arrays to single-precision storage. Only call site (as in Pascal's
+    /// script-reachable surface) is `read_sng_file` with `QMult` unset, so
+    /// `q_mult` is `None` here by construction. The f64 fields keep the
+    /// widened *view* of the quantized singles (Pascal frees `dH`/`dP` and
+    /// widens `sH`/`sP` on every dP-shaped read; identical values).
+    fn use_float32(&mut self) {
+        debug_assert!(self.q_mult.is_none(), "float32 path requires dQ = NIL");
+        if let Some(h) = self.hour.take() {
+            let sh: Vec<f32> = h.iter().map(|&v| v as f32).collect();
+            self.hour = Some(sh.iter().map(|&v| f64::from(v)).collect());
+            self.s_h = Some(sh);
+        }
+        if let Some(p) = self.p_mult.take() {
+            let sp: Vec<f32> = p.iter().map(|&v| v as f32).collect();
+            self.p_mult = Some(sp.iter().map(|&v| f64::from(v)).collect());
+            self.s_p = Some(sp);
+        }
+    }
+
+    /// Pascal `TLoadShapeObj.UseFloat64` (`LoadShape.pas:2200`): widen single
+    /// storage back to f64 and free the singles. The f64 views already hold
+    /// exactly the widened values, so this just drops the f32 authority.
+    pub(super) fn use_float64(&mut self) {
+        self.s_p = None;
+        self.s_h = None;
+    }
+
     /// Pascal `TLoadShapeObj.GetMultAtHour`: the (P, Q) multiplier nearest the
     /// requested hour. Returns `(1, 1)` for an empty curve; repeats the curve
     /// past its last point. Ported verbatim for the double-precision,
-    /// non-memory-mapped path (the only one the corpus uses); single arrays and
-    /// MMF are out of scope.
+    /// non-memory-mapped path; single-precision storage dispatches to
+    /// [`Self::get_mult_at_hour_single`] first, exactly like the Pascal
+    /// `if Assigned(sP)` head. MMF is out of scope.
     pub fn get_mult_at_hour(&mut self, hr: f64) -> Complex64 {
+        if self.s_p.is_some() {
+            return self.get_mult_at_hour_single(hr);
+        }
         let npts = self.n();
         if npts == 0 {
             return Complex64::new(1.0, 1.0); // default for an empty curve
@@ -154,6 +189,114 @@ impl LoadShapeObj {
         Complex64::new(re, im)
     }
 
+    /// Pascal `TLoadShapeObj.GetMultAtHourSingle` (`LoadShape.pas:2248-2360`),
+    /// the single-precision twin of `GetMultAtHour` (`Stride` = 1: external
+    /// memory is API-only, not ported). Reads are f32 widened on use; the
+    /// variable-interval interpolation reproduces FPC's mixed precision — the
+    /// same-type `Single` differences round to f32 before the f64 divide /
+    /// multiply (verified bit-exact by `tools/fpc/single_prec_probe.pas`).
+    /// `sQ` is script-unreachable, so the Q side follows `Set_Result_im`
+    /// everywhere except the Edge walk, where Pascal starts from `Result := 0`
+    /// and only overwrites `im` when `dQ <> NIL` (never here) — `im` stays 0.
+    fn get_mult_at_hour_single(&mut self, hr: f64) -> Complex64 {
+        let npts = self.n();
+        if npts == 0 {
+            return Complex64::new(1.0, 1.0); // default for an empty curve
+        }
+        let Some(p) = self.s_p.as_ref() else {
+            return Complex64::new(1.0, 1.0);
+        };
+        if p.is_empty() {
+            return Complex64::new(1.0, 1.0);
+        }
+
+        if npts == 1 {
+            let re = f64::from(p[0]);
+            return Complex64::new(re, self.result_im(re));
+        }
+
+        // --- Fixed (even) interval ---
+        if self.interval > 0.0 {
+            // TODO(compat): FPC `Round` = ties-to-even (see the f64 twin).
+            let mut i = if self.interpolation == INTERP_EDGE {
+                (hr / self.interval).floor() as i64
+            } else {
+                (hr / self.interval).round_ties_even() as i64
+            };
+            let np = npts as i64;
+            if i > np {
+                i %= np; // wrap around using remainder
+            }
+            if i == 0 {
+                i = np;
+            }
+            i -= 1;
+            let re = f64::from(p[i as usize]);
+            return Complex64::new(re, self.result_im(re));
+        }
+
+        // --- Variable interval (single-precision hour array) ---
+        let mut hr = hr;
+        let h = match self.s_h.as_ref() {
+            Some(h) if h.len() >= npts => h.clone(),
+            _ => return Complex64::new(1.0, 1.0), // degenerate; see f64 twin
+        };
+        let p = p.clone();
+
+        // Normalize Hr into the first cycle (mixed f64 over widened singles).
+        let last_h = f64::from(h[npts - 1]);
+        if hr > last_h && last_h != 0.0 {
+            hr -= (hr / last_h).trunc() * last_h;
+        }
+
+        if f64::from(h[self.last_value_accessed.min(npts - 1)]) > hr {
+            self.last_value_accessed = 0; // start over from the beginning
+        }
+
+        for i in self.last_value_accessed..npts {
+            if (f64::from(h[i]) - hr).abs() < 0.00001 {
+                let re = f64::from(p[i]);
+                self.last_value_accessed = i;
+                return Complex64::new(re, self.result_im(re));
+            }
+            if f64::from(h[i]) > hr {
+                if self.interpolation == INTERP_EDGE {
+                    // Edge: `Result := 0`, hold the last point at or before
+                    // Hr; `im` is only written when `dQ <> NIL` (never in
+                    // single mode) so it stays 0.
+                    let mut re = 0.0;
+                    for k in 0..npts {
+                        if f64::from(h[k]) <= hr {
+                            re = f64::from(p[k]);
+                        } else {
+                            break;
+                        }
+                    }
+                    return Complex64::new(re, 0.0);
+                }
+                // Avg: linear interpolation; i == 0 underflow is the same
+                // upstream UB the f64 twin guards (first point returned).
+                if i == 0 {
+                    let re = f64::from(p[0]);
+                    return Complex64::new(re, self.result_im(re));
+                }
+                self.last_value_accessed = i - 1;
+                let prev = i - 1;
+                // FPC mixed precision: the same-type Single differences round
+                // to f32; the divide/multiply then run in f64 (probe-proven).
+                let dh = f64::from(h[i] - h[prev]);
+                let dp = f64::from(p[i] - p[prev]);
+                let re = f64::from(p[prev]) + (hr - f64::from(h[prev])) / dh * dp;
+                return Complex64::new(re, self.result_im(re));
+            }
+        }
+
+        // Fell through the loop: use the last interior value.
+        self.last_value_accessed = npts - 2;
+        let re = f64::from(p[self.last_value_accessed]);
+        Complex64::new(re, self.result_im(re))
+    }
+
     /// Pascal `iMaxAbsArrayValue` − 1: 0-based index of the largest-magnitude
     /// element over the first `npts` entries, or `None` for an empty array.
     fn i_max_abs(a: &[f64], npts: usize) -> Option<usize> {
@@ -198,13 +341,41 @@ impl LoadShapeObj {
         let npts = self.n();
         let base_p = self.base_p;
         let base_q = self.base_q;
-        if let Some(p) = self.p_mult.as_mut() {
-            Self::do_normalize(p, npts, base_p);
-        }
-        if let Some(q) = self.q_mult.as_mut() {
-            Self::do_normalize(q, npts, base_q);
+        if let Some(sp) = self.s_p.as_mut() {
+            // Pascal `DoNormalizeSingle`: `MaxMult` is a Double built from
+            // widened singles; each `Multipliers[i] / MaxMult` runs in f64 and
+            // rounds back to f32 on store. (`sQ` is script-unreachable.)
+            Self::do_normalize_single(sp, npts, base_p);
+            self.p_mult = Some(sp.iter().map(|&v| f64::from(v)).collect());
+        } else {
+            if let Some(p) = self.p_mult.as_mut() {
+                Self::do_normalize(p, npts, base_p);
+            }
+            if let Some(q) = self.q_mult.as_mut() {
+                Self::do_normalize(q, npts, base_q);
+            }
         }
         self.use_actual = false;
+    }
+
+    /// Inner `DoNormalizeSingle` (see [`Self::normalize`]).
+    fn do_normalize_single(mult: &mut [f32], npts: usize, mut max_mult: f64) {
+        let n = npts.min(mult.len());
+        if n == 0 {
+            return;
+        }
+        if max_mult <= 0.0 {
+            max_mult = f64::from(mult[0]).abs();
+            for &v in &mult[1..n] {
+                max_mult = max_mult.max(f64::from(v).abs());
+            }
+        }
+        if max_mult == 0.0 {
+            max_mult = 1.0; // avoid divide by zero
+        }
+        for v in &mut mult[..n] {
+            *v = (f64::from(*v) / max_mult) as f32;
+        }
     }
 
     /// Inner `DoNormalize`: divide by `max_mult` (or the array's own peak
@@ -246,6 +417,22 @@ impl LoadShapeObj {
     /// mean and std-dev of the P multipliers, even-interval (`RCDMeanAndStdDev`)
     /// or trapezoid-integrated over `hour` (`CurveMeanAndStdDev`).
     fn calc_mean_std(&self) -> (f64, f64) {
+        // Pascal's `else` (dP = NIL) branch: single-precision statistics over
+        // `sP`/`sH` (`LoadShape.pas:1711-1716`).
+        if let Some(sp) = self.s_p.as_ref() {
+            let n = self.n().min(sp.len());
+            if n == 0 {
+                return (self.f_mean, self.f_std_dev);
+            }
+            return if self.interval > 0.0 {
+                mean_and_std_dev_single(&sp[..n])
+            } else {
+                match self.s_h.as_ref() {
+                    Some(sh) if sh.len() >= n => curve_mean_and_std_dev_single(&sp[..n], &sh[..n]),
+                    _ => mean_and_std_dev_single(&sp[..n]),
+                }
+            };
+        }
         let Some(p) = self.p_mult.as_ref() else {
             return (self.f_mean, self.f_std_dev);
         };
@@ -374,26 +561,60 @@ impl LoadShapeObj {
         self.num_points = i as i32;
     }
 
-    /// Pascal `TLoadShapeObj.ReadSngFile` (little-endian `f32` stream). For a
-    /// variable interval (`Interval = 0`) each point is an `(hour, mult)` pair;
-    /// otherwise a bare `mult` stream. Reads at most `NumPoints` points and
-    /// shrinks `NumPoints` to the count actually read.
+    /// Pascal `TLoadShapeObj.ReadSngFile` (little-endian `f32` stream,
+    /// `LoadShape.pas:1082-1180`). For a variable interval (`Interval = 0`)
+    /// each point is an `(hour, mult)` pair; otherwise a bare `mult` stream.
     ///
-    /// Pascal keeps two code paths here — a "float32" path taken when `QMult`
-    /// is not yet set (stores into `sP`/`sH`, single precision throughout) and
-    /// a "float64" path taken once `QMult` is set (stores into `dP`/`dH`
-    /// directly, widening each `Single` read on assignment). Both read the
-    /// identical bytes; they differ only in a rare edge case (a *truncated*
-    /// variable-interval file on the float32 path skips the `NumPoints` shrink
-    /// Pascal applies everywhere else) that no corpus deck exercises. This port
-    /// always widens straight into the f64 `p_mult`/`hour` arrays and always
-    /// shrinks `NumPoints` to the count read (the float64 path's behavior),
-    /// bit-identical to the float32 path for every non-truncated read (the
-    /// widen is a lossless `f32 -> f64` cast either way, and no corpus curve
-    /// interpolates a single-precision-only shape — the one place float32 vs.
-    /// float64 *arithmetic* could diverge).
+    /// Two Pascal paths, both ported: with `QMult` unset (`dQ = NIL`) the
+    /// **float32 path** runs `UseFloat32` and stores into `sP`/`sH` — single
+    /// precision stays authoritative for the lookup/statistics/normalize; once
+    /// `QMult` is set the **float64 path** stores into `dP`/`dH`, widening each
+    /// `Single` on assignment, and shrinks `NumPoints` to the count read.
+    /// One deliberate divergence — greppable:
+    /// NOT_PORTED(LoadShape float32 truncated-pair shrink): Pascal's float32
+    /// `Interval=0` loop (`:1129-1134`) breaks on a short read **without**
+    /// shrinking `NumPoints`, leaving the tail of `sH`/`sP` as uninitialized
+    /// heap (`ReallocMem` does not zero) — nondeterministic upstream UB, NOT
+    /// reproduced per the CLAUDE.md rule; the port shrinks like the float64
+    /// path, so a truncated file yields the defined prefix instead of garbage.
     pub(super) fn read_sng_file(&mut self, content: &[u8]) {
         let npts = self.n();
+        if self.q_mult.is_none() {
+            // Float32 path: "Take the opportunity to use float32 data".
+            self.use_float32();
+            if self.interval == 0.0 {
+                let mut sh = Vec::with_capacity(npts);
+                let mut sp = Vec::with_capacity(npts);
+                let mut off = 0usize;
+                while sh.len() < npts && off + 8 <= content.len() {
+                    sh.push(f32::from_le_bytes(
+                        content[off..off + 4].try_into().unwrap(),
+                    ));
+                    sp.push(f32::from_le_bytes(
+                        content[off + 4..off + 8].try_into().unwrap(),
+                    ));
+                    off += 8;
+                }
+                self.num_points = sh.len() as i32;
+                self.hour = store_array(sh.iter().map(|&v| f64::from(v)).collect());
+                self.p_mult = store_array(sp.iter().map(|&v| f64::from(v)).collect());
+                self.s_h = if sh.is_empty() { None } else { Some(sh) };
+                self.s_p = if sp.is_empty() { None } else { Some(sp) };
+            } else {
+                let n = (content.len() / 4).min(npts);
+                let sp: Vec<f32> = content[..n * 4]
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+                    .collect();
+                self.num_points = n as i32;
+                self.p_mult = store_array(sp.iter().map(|&v| f64::from(v)).collect());
+                self.s_p = if sp.is_empty() { None } else { Some(sp) };
+            }
+            return;
+        }
+
+        // Float64 path (QMult already set): widen each Single on assignment.
+        self.use_float64();
         if self.interval == 0.0 {
             let mut h = Vec::with_capacity(npts);
             let mut p = Vec::with_capacity(npts);
