@@ -233,7 +233,7 @@
     "Reactor.rx"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.8",
    "note": "Harmonics case: the second Solve sweeps harmonics 1/5/7 (3 monitor samples). Feature-sensitive probe-proven: removing rcurve/lcurve shifts the harmonic monitor channels ~0.6%."
   },
