@@ -1167,6 +1167,14 @@
    "wp": "WPG.7"
   },
   {
+   "path": "capcontrol_follow_noshape.dss",
+   "kind": "micro",
+   "pending": false,
+   "expect_solve_abort": "Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
+   "wp": "WPG.7",
+   "note": "Malformed input: type=Follow CapControl with no ControlSignal. Pascal CapControl.pas Sample (l.1153-1158) sets DSS.SolutionAbort:=True; the pinned oracle raises #10362 at solve. Both engines abort; the Rust port sets solution_abort + surfaces the same message (WPG.7 audit follow-up)."
+  },
+  {
    "path": "invcontrol_expmodel.dss",
    "kind": "micro",
    "n_steps": 8,

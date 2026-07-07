@@ -835,6 +835,16 @@ struct SolvableCase {
     /// feature.
     #[serde(default)]
     pending: bool,
+    /// This deck aborts the solve on BOTH engines — a malformed input the port
+    /// reproduces as Pascal `DSS.SolutionAbort` (e.g. CapControl `type=Follow`
+    /// with no `ControlSignal`). It is not a per-step live compare (the oracle
+    /// *raises* at solve, so `run_and_compare`'s checkpoint capture cannot run):
+    /// the value is the error substring BOTH engines must produce — the oracle
+    /// raising it at solve, the Rust engine setting `solution_abort` and
+    /// surfacing it. Mutually exclusive with `pending` and the normal compare;
+    /// gated by [`run_and_compare_abort`].
+    #[serde(default)]
+    expect_solve_abort: Option<String>,
     /// Work package that ports this case's feature (`WPG.*` → GAPS_PLAN.md,
     /// `WP8.*` → PHASE8_PLAN.md). Mandatory while `pending` is true.
     #[serde(default)]
@@ -1085,29 +1095,118 @@ fn family_manifest_is_complete(fam: &Family) {
 }
 
 /// The family live gate: pending cases must error loudly on the Rust engine
-/// (oracle-free); everything else runs the full live compare.
+/// (oracle-free); `expect_solve_abort` cases must abort the solve on BOTH
+/// engines; everything else runs the full per-step live compare.
 fn family_cases_match_oracle(fam: &Family) {
     let cases = load_family(fam.name);
     assert!(!cases.is_empty(), "{} manifest must not be empty", fam.name);
+    for c in &cases {
+        assert!(
+            !(c.pending && c.expect_solve_abort.is_some()),
+            "{}:{}: `pending` and `expect_solve_abort` are mutually exclusive",
+            fam.name,
+            c.path
+        );
+    }
     let mut pending = 0usize;
     for c in cases.iter().filter(|c| c.pending) {
         let abs = family_file(fam.name, &c.path);
         assert_pending_errors_loudly(&format!("{}:{}", fam.name, c.path), &abs, c);
         pending += 1;
     }
-    let live: Vec<&SolvableCase> = cases.iter().filter(|c| !c.pending).collect();
-    if !live.is_empty() {
+    let aborts: Vec<&SolvableCase> = cases
+        .iter()
+        .filter(|c| !c.pending && c.expect_solve_abort.is_some())
+        .collect();
+    let live: Vec<&SolvableCase> = cases
+        .iter()
+        .filter(|c| !c.pending && c.expect_solve_abort.is_none())
+        .collect();
+    if !aborts.is_empty() || !live.is_empty() {
         let mut pool = OraclePool::new();
+        for c in &aborts {
+            let abs = family_file(fam.name, &c.path);
+            run_and_compare_abort(
+                pool.get(c.oracle.as_deref()),
+                &format!("{}:{}", fam.name, c.path),
+                &abs,
+                c,
+            );
+        }
         for c in &live {
             let abs = family_file(fam.name, &c.path);
             run_and_compare(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
         }
     }
     eprintln!(
-        "{} live gate: {} deck(s) matched the oracle, {} pending deck(s) errored loudly",
+        "{} live gate: {} deck(s) matched the oracle, {} abort deck(s) aborted both engines, \
+         {} pending deck(s) errored loudly",
         fam.name,
         live.len(),
+        aborts.len(),
         pending
+    );
+}
+
+/// Gate a deck that BOTH engines abort at solve (a malformed input the port
+/// reproduces as Pascal `DSS.SolutionAbort`; see `SolvableCase::expect_solve_abort`).
+/// Not a per-step compare — the oracle *raises* at solve, so there is no solved
+/// state to line up. Instead: prove the ORACLE aborts at solve with the expected
+/// message, and the RUST engine sets `solution_abort` and surfaces the same
+/// message. Both engines are consulted live (no golden).
+fn run_and_compare_abort(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
+    let expected = c
+        .expect_solve_abort
+        .as_deref()
+        .expect("abort case has expect_solve_abort");
+    let _guard = CorpusGuard::new(case_path);
+
+    // Oracle side: the "run" request drives `Compile` (which executes the deck's
+    // own `Solve`); the pinned dss-python raises a `DSSException` on the aborting
+    // solve, which the oracle server reports as `ok:false` carrying the message.
+    let req = json!({
+        "cmd": "run",
+        "case_path": case_path,
+        "post": c.post,
+        "n_steps": c.n_steps,
+        "selected_elements": c.selected_elements,
+        "full_csc": true,
+        "check_meters_monitors": false,
+        "probes": [],
+        "variables": [],
+        "eventlog": false,
+        "ctrlqueue": false,
+    });
+    let resp = oracle.call(&req);
+    assert!(
+        !resp.ok,
+        "{label}: oracle did NOT abort the solve (expected an abort containing {expected:?})"
+    );
+    let oracle_err = resp.error.unwrap_or_default();
+    assert!(
+        oracle_err.contains(expected),
+        "{label}: oracle abort message {oracle_err:?} does not contain {expected:?}"
+    );
+
+    // Rust side: compile the same deck (its trailing `Solve` runs the daily
+    // loop); the FOLLOW-without-ControlSignal path sets `solution_abort` and
+    // surfaces the message, and the daily loop then freezes on the remaining
+    // steps. Assert both, mirroring `line_singular_matrix_aborts_solve`.
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{case_path}\""));
+    for cmd in &c.post {
+        dss.command(cmd);
+    }
+    assert!(
+        dss.circuit().is_some_and(|ckt| ckt.solution.solution_abort),
+        "{label}: Rust engine did NOT set solution_abort — the malformed input must abort \
+         the solve like the oracle (message: {expected:?})"
+    );
+    assert!(
+        dss.errors().iter().any(|e| e.contains(expected)),
+        "{label}: Rust engine did not surface {expected:?}: {:?}",
+        dss.errors()
     );
 }
 
@@ -1307,8 +1406,13 @@ const CONTROLS_REQUIRED: &[&str] = &[
 /// Every controls case must exercise at least one element-specific channel
 /// (probes / variables / eventlog / ctrlqueue / meters+monitors) on top of the
 /// full-model compare — a controls case without state comparison would miss
-/// this gate's whole point.
+/// this gate's whole point. An `expect_solve_abort` case is exempt: it has no
+/// solved state to probe, and its stronger contract (both engines abort the
+/// solve with the same message) is verified by [`run_and_compare_abort`].
 fn check_controls_case(c: &SolvableCase) {
+    if c.expect_solve_abort.is_some() {
+        return;
+    }
     assert!(
         !c.probes.is_empty()
             || !c.compare_variables.is_empty()

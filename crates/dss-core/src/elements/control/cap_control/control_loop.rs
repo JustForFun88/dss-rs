@@ -109,12 +109,19 @@ impl CapControl {
     /// control queue. `cap` is the controlled capacitor; `mon` the monitored
     /// element (they differ except for Time/Follow control, where `mon` is the
     /// capacitor and is not read). Ported top-to-bottom.
+    ///
+    /// Returns `true` when the sample raised the equivalent of Pascal's
+    /// `DSS.SolutionAbort := True` (the FOLLOWCONTROL-with-no-ControlSignal
+    /// path). `CtrlCtx` has no direct abort channel — like `reset_with`
+    /// returning "raise SystemYChanged", the dispatcher lifts this to
+    /// `ckt.solution.solution_abort` after the borrow of the control ends.
+    #[must_use]
     pub(crate) fn sample(
         &mut self,
         cap: &mut dyn ControlledCapacitor,
         mon: &mut dyn CktElement,
         ctx: &mut CtrlCtx,
-    ) {
+    ) -> bool {
         // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
         self.present_state = if cap.is_closed() {
             CTRL_CLOSE
@@ -307,17 +314,19 @@ impl CapControl {
                 }
                 ctrl_type::FOLLOW => {
                     // Pascal `Sample`'s FOLLOWCONTROL arm (`CapControl.pas`
-                    // l.1151-1169). `ctrlSignalShape = NIL` aborts the whole
-                    // `Sample` call (`DoSimpleMsg`; `SolutionAbort := TRUE`;
-                    // `Exit`) — mirrored with an early `return` that also skips
-                    // this control's arm/disarm block below, exactly like the
-                    // Pascal `Exit`.
+                    // l.1151-1169). `ctrlSignalShape = NIL` does
+                    // `DoSimpleMsg(...,10362)`, **`DSS.SolutionAbort := TRUE`**,
+                    // then `Exit`. We reproduce all three: queue the message,
+                    // `return true` so the dispatcher sets `solution_abort` (the
+                    // solve then freezes — the daily/duty/yearly loops skip every
+                    // remaining step on `solution_abort`), and the early return
+                    // skips this control's arm/disarm block, exactly like `Exit`.
                     let Some(shape) = self.ctrl_signal_shape.as_mut() else {
                         ctx.errors.push(format!(
                             "CapControl.{}: Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
                             self.ccd.cd.obj.name()
                         ));
-                        return;
+                        return true;
                     };
 
                     // `nextState := ctrlSignalShape.GetMultAtHour(dblHour).re`:
@@ -394,6 +403,9 @@ impl CapControl {
                 );
             }
         }
+
+        // No abort raised (only the FOLLOW-without-ControlSignal path aborts).
+        false
     }
 
     /// Pascal `Sample`'s `TIMECONTROL` branch (factored out for readability):
