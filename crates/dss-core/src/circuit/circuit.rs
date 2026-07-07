@@ -66,6 +66,10 @@ pub enum ElemKind {
 pub struct Circuit {
     /// Lowercased circuit name.
     pub name: String,
+    /// `TNamedObject.pUuid` (`TDSSCircuit` is a named object): lazily-created
+    /// UUID slot — random v4 on first read; preloaded by the `Uuids` command
+    /// and read by `DefaultCircuitUUIDs` (WP8.6 step 6).
+    pub uuid: Option<crate::cim::Uuid>,
     pub case_name: String,
     /// Bus name list; index aligns with `buses` (0-based).
     pub bus_list: HashList,
@@ -215,6 +219,7 @@ impl Circuit {
     pub fn new(name: &str, default_base_freq: f64) -> Self {
         Self {
             name: name.to_lowercase(),
+            uuid: None,
             case_name: name.to_string(),
             bus_list: HashList::new(),
             buses: Vec::new(),

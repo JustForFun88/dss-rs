@@ -8,3 +8,7 @@ regex = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# UUID v4 generation for the CIM UUID plumbing (Pascal `NamedObject.CreateUUID4`,
+# PHASE8_PLAN WP8.6 step 6). Random v4s are never oracle-pinnable; the goldens
+# preload every UUID via the `Uuids` command.
+uuid = { version = "1", features = ["v4"] }

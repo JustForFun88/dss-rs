@@ -4302,6 +4302,182 @@ fn query_wdgcurrents_refreshes_vterminal() {
     );
 }
 
+// --- WP8.6 step 5: the Distribute command ---
+
+/// Meta for a `Distribute` golden: the exact command line, the produced bare
+/// filename (`GlobalResult`), and the fixture deck.
+#[derive(Debug, Deserialize)]
+struct DistribMeta {
+    command: String,
+    file: String,
+    deck: Vec<String>,
+}
+
+/// Drive one `Distribute` golden (PHASE8_PLAN §WP8.6 step 5): replay the deck,
+/// route output into a scratch dir (`Distribute` writes its script relative to
+/// the engine cwd), issue the command, and compare the produced DSS script
+/// against the oracle capture with the **numeric-token** `compare_export`
+/// policy: `=` is turned into a separator on both sides so each `kW=…` value
+/// parses as a number (exact equality — pure f64 arithmetic on identical
+/// inputs rendered by the same `%g` rules) while the `generator.DG_%d` /
+/// `bus1=` name tokens stay text-compared. Also pins `GlobalResult` +
+/// `@lastfile` = the bare produced filename.
+fn run_deck_distribute(stem: &str) {
+    let dir = reports_dir();
+    let meta: DistribMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&meta.command);
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+    // `DSS.GlobalResult := Fname` + the finally's `SetLastResultFile(Fname)` —
+    // both the BARE filename, not a full path (`Utilities.pas`
+    // makeDistributedGenerators; oracle-probed).
+    assert_eq!(dss.result(), meta.file, "{stem}: GlobalResult");
+    assert_eq!(dss.last_result_file(), meta.file, "{stem}: @lastfile");
+    let produced = scratch.join(&meta.file);
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("{stem}: read produced {}: {e}", produced.display()));
+
+    // Numeric-token compare: `name=value` cells split into (text, number).
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 2, // the two `! …` comment lines (the blank line is dropped)
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    compare_export(
+        &oracle.replace('=', " "),
+        &rust.replace('=', " "),
+        &policy,
+        stem,
+    );
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `Distribute kw=1500 pf=0.95` (the default `How=Proportional`): one
+/// `generator.DG_%d` per enabled load, `kW·kWBase/ΣkWBase` — the three
+/// enabled loads have three different kW-base specs (kW/PF, xfkva·allocation
+/// factor, kwh·cfactor), so the weights are all distinct; the disabled load
+/// must NOT appear.
+#[test]
+fn distrib_proportional_matches_oracle() {
+    run_deck_distribute("distrib_proportional");
+}
+
+/// `Distribute kw=1200 how=Uniform pf=0.9`: `kW / Count` each, where `Count`
+/// is the FULL Load element count — the disabled load counts in the divisor
+/// (1200/4 = 300, probe-proven `Utilities.pas:1349`) but emits no row.
+#[test]
+fn distrib_uniform_matches_oracle() {
+    run_deck_distribute("distrib_uniform");
+}
+
+/// `Distribute kw=900 how=Skip skip=1 pf=0.85` (`WriteEveryOtherGenerators`):
+/// every 2nd enabled load — only `DG_2` here — with `kW·kWBase/ΣkWBase` over
+/// the selected set (= all 900 kW on the one selected load) and the writer's
+/// trailing-space `kW=%-g ` cell (`Utilities.pas:1473`).
+#[test]
+fn distrib_skip_matches_oracle() {
+    run_deck_distribute("distrib_skip");
+}
+
+/// `Distribute kw=750 what=Load file=Explicit.dss`: `what=L…` → `load.DL_%d`
+/// rows AND the output is unconditionally renamed to `DistLoads.dss` — the
+/// explicit `file=` is overridden (probe-proven, `ExecHelper.pas:3814`).
+#[test]
+fn distrib_load_matches_oracle() {
+    run_deck_distribute("distrib_load");
+}
+
+// --- WP8.6 step 6: Uuids + `Export Uuids` ---
+
+/// The absolute `tools/golden/report_decks` dir — the `@FIXTURES@` token in a
+/// golden meta deck resolves to it on both engines (`gen_reports.py` resolves
+/// the same way before replaying on the oracle).
+fn fixtures_dir() -> PathBuf {
+    [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tools",
+        "golden",
+        "report_decks",
+    ]
+    .iter()
+    .collect()
+}
+
+/// `Export Uuids` (Pascal `ExportUuids`) after a `Uuids file=` preload:
+/// byte-exact. The fixture CSV preloads a UUID for the circuit, every bus,
+/// every ckt element, the library linecode AND the three hashed keys
+/// `DefaultCircuitUUIDs` auto-creates (`Station=Station=1` etc.) — any object
+/// left out would get a random v4 (`NamedObject.pas` `CreateUUID4`), which can
+/// never be oracle-pinned. Also pins the probe-proven quirk: `GlobalResult`
+/// stays EMPTY after `export uuids` (unlike every other export; the oracle
+/// capture asserted the same on its side).
+#[test]
+fn export_uuids_matches_oracle() {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join("export_uuids.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    assert_eq!(meta.report, "uuids");
+    let oracle = {
+        let p = dir.join("export_uuids.txt");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+    // Forward slashes; no canonicalize (its `\\?\` prefix breaks the parser).
+    let fixtures = fixtures_dir().to_string_lossy().replace('\\', "/");
+
+    let scratch = scratch_dir("export_uuids");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(&c.replace("@FIXTURES@", &fixtures));
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("export uuids");
+    assert!(dss.errors().is_empty(), "export_uuids: {:?}", dss.errors());
+    // The probe-proven quirk: `ExportUuids` never sets `GlobalResult`.
+    assert_eq!(
+        dss.result(),
+        "",
+        "export uuids must leave GlobalResult empty"
+    );
+
+    let produced = dss.last_result_file();
+    let want = format!("{}_{}", meta.fixture, meta.suffix).to_lowercase();
+    assert!(
+        produced.to_lowercase().ends_with(&want),
+        "export_uuids: unexpected produced path {produced:?} (want …{want})"
+    );
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    assert_show_bytes_eq(&oracle, &rust, "export_uuids");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// `? indmach012.m1.pf` is `""` even AFTER a solve — pins the empirical oracle
 /// probe (2026-07-05). Pascal registers `pf` as `[SilentReadOnly, ReadByFunction]`
 /// but never assigns its `PropertyOffset` (stays `-1`), so `GetObjPropertyValue`'s

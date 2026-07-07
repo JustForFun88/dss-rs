@@ -293,6 +293,7 @@ impl Dss {
             last_result_file: String::new(),
             in_redirect: false,
             redirect_abort: false,
+            cim: crate::cim::CimExporter::default(),
         };
         dss.create_default_dss_items();
         dss

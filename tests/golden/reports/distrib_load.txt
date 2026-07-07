@@ -1,0 +1,6 @@
+! Created with Distribute Command:
+! Distribute kW=750 PF=1 How=Proportional Skip=1  file=DistLoads.dss  what=Loads
+
+new load.DL_1  bus1=b2 phases=3 kV=12.47 kW=597.887464292832 PF=1 model=1
+new load.DL_2  bus1=b1.1 phases=1 kV=7.2 kW=108.516574769149 PF=1 model=1
+new load.DL_3  bus1=b1.2 phases=1 kV=7.2 kW=43.595960938019 PF=1 model=1

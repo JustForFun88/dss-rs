@@ -11,6 +11,7 @@ mod common;
 mod allocation;
 mod autoadd;
 mod controls;
+mod distribute_uuids;
 mod dynamics;
 mod energymeter_registers;
 mod energymeter_zones;

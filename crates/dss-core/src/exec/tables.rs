@@ -178,6 +178,8 @@ pub(crate) mod cmd {
     pub const COMPARE_CASES: usize = 70;
     pub const YEARLY_CURVES: usize = 71;
     pub const CD: usize = 72;
+    pub const DISTRIBUTE: usize = 68;
+    pub const UUIDS: usize = 86;
     pub const VISUALIZE: usize = 73;
     pub const CLOSE_DI: usize = 74;
     pub const DOSCMD: usize = 75;

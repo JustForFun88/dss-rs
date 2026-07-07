@@ -14,6 +14,9 @@ use crate::support::cmatrix::CMatrix;
 pub struct Bus {
     /// Lowercased bus name (`TNamedObject` reuse).
     pub name: String,
+    /// `TNamedObject.pUuid`: lazily-created UUID slot — random v4 on first
+    /// read; preloaded by the `Uuids` command (WP8.6 step 6).
+    pub uuid: Option<crate::cim::Uuid>,
     /// User node numbers on this bus (`Nodes`).
     pub nodes: Vec<i32>,
     /// Global node reference per local node (`RefNo`).
@@ -65,6 +68,7 @@ impl Bus {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into().to_lowercase(),
+            uuid: None,
             nodes: Vec::new(),
             ref_no: Vec::new(),
             vbus: Vec::new(),
