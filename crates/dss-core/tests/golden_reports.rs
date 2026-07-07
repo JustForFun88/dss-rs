@@ -4082,6 +4082,173 @@ fn dump_capacitor_steps_matches_oracle() {
     );
 }
 
+// --- WP8.5 step 4: the `Save` forms (Pascal `DoSaveCmd`) ---
+
+/// Replay the `save_forms` deck **fresh** (Pascal `Flg.HasBeenSaved` persists
+/// across `save` commands within a session — a second `save load` writes 0
+/// records and deletes the file, probe-proven 2026-07-07, so each golden is a
+/// first-save capture), issue the meta's full `save …` command, and return
+/// `(oracle golden, Rust produced text, engine, scratch dir)`. Unlike `Dump`,
+/// the produced file is read by its probe-proven fixed name (`meta.suffix`):
+/// the meters branch sets `GlobalResult` to the RELATIVE `MTR_<name>.csv` (not
+/// an openable path), `save voltages` sets only `GlobalResult` (never
+/// `LastResultFile`), and `save <class>` the final `SaveFile` — each pinned by
+/// its own test.
+fn produce_deck_save(stem: &str) -> (String, String, Dss, PathBuf) {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&meta.report); // the full `save …` command
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = scratch.join(&meta.suffix);
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("{stem}: read produced {}: {e}", produced.display()));
+    (oracle, rust, dss, scratch)
+}
+
+/// `save` (the empty/`meters` default branch): every Monitor `Save` (an
+/// in-memory stream flush — NO file, probe-proven; the fixture's mon1 must
+/// produce nothing) + every EnergyMeter `SaveRegisters` → `MTR_em1.csv` with
+/// the `Year, 0,` header and all 67 `"<RegName>",<value :0:0>` rounded-integer
+/// register lines. Byte-exact; `GlobalResult`/`LastResultFile` = the RELATIVE
+/// CSV name (`EnergyMeter.pas:1249-1251`, probe-proven).
+#[test]
+fn save_meters_mtr_matches_oracle_exact() {
+    let (oracle, rust, dss, scratch) = produce_deck_save("save_mtr");
+    assert_eq!(dss.last_result_file(), "MTR_em1.csv");
+    assert_eq!(dss.result(), "MTR_em1.csv");
+    // Pascal `TMonitorObj.Save` writes no file: the meter CSV must be the
+    // scratch dir's only save product for the bare `save`.
+    let mon_files: Vec<_> = std::fs::read_dir(&scratch)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.to_lowercase().contains("mon"))
+        .collect();
+    assert!(mon_files.is_empty(), "monitor Save wrote {mon_files:?}");
+    assert_show_bytes_eq(&oracle, &rust, "save_mtr");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `save voltages` (`Solution.SaveVoltages`, `Solution.pas:2277-2315`):
+/// `<case>_SavedVoltages.txt`, per node `<bus>, <nodenum>, <|V| %-.7g>,
+/// <angle %-.7g>`; `GlobalResult` = the full path. Exact-equality
+/// `compare_export` (`rel = 0`): the 7-sig magnitudes/angles parse
+/// value-identical to the oracle capture on this 3-bus deck.
+#[test]
+fn save_voltages_matches_oracle() {
+    let (oracle, rust, dss, scratch) = produce_deck_save("save_voltages");
+    assert!(
+        dss.result().ends_with("svf_SavedVoltages.txt"),
+        "GlobalResult must be the produced path, got {:?}",
+        dss.result()
+    );
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    compare_export(&oracle, &rust, &policy, "save_voltages");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `save load` (`WriteClassFile`, `Utilities.pas:1134-1210`): a file literally
+/// named `load` (the bare class name, NO `.dss` extension — probe-proven), one
+/// `New "Load.<name>" <Prop>=<value> …` line per load carrying ONLY the
+/// explicitly-set properties in set order (`SaveWrite`). Exact token compare
+/// (`compare_export` whitespace tokenization, `rel = 0` — every `Name=value`
+/// token must match verbatim). Also pins the `Flg.HasBeenSaved` persistence:
+/// a second `save load` in the same session writes 0 records and DELETES the
+/// file (`Utilities.pas:1191-1198`, probe-proven 2026-07-07).
+#[test]
+fn save_class_load_matches_oracle() {
+    let (oracle, rust, mut dss, scratch) = produce_deck_save("save_class_load");
+    assert!(
+        dss.last_result_file().ends_with("load"),
+        "GlobalResult must be the final SaveFile, got {:?}",
+        dss.last_result_file()
+    );
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    compare_export(&oracle, &rust, &policy, "save_class_load");
+
+    // Second `save load`: every Load is already `HasBeenSaved` → 0 records →
+    // the file is deleted and nothing is listed.
+    let produced = scratch.join("load");
+    assert!(produced.is_file(), "first save must leave the file");
+    dss.command("save load");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(
+        !produced.exists(),
+        "second `save load` must delete the 0-record file (HasBeenSaved)"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// A **disabled** load saves as `… Enabled=No ENABLED=NO` — BOTH forms: the
+/// `Enabled` property is explicitly set (so `SaveWrite` prints it in set order)
+/// AND `WriteDSSObject` appends its own ` ENABLED=NO` for any disabled
+/// CktElement (`Utilities.pas:1229-1231`). Also pins `PF=0.88`: setting `kW`
+/// marks `PF` as set via the load-spec side effects, so the never-typed default
+/// PF is serialized too. The pinned string is the oracle's exact bytes
+/// (probe 2026-07-07, `save load` over these four loads).
+#[test]
+fn save_class_disabled_load_writes_enabled_no() {
+    let deck = [
+        "clear",
+        "Set DefaultBaseFrequency=60",
+        "new circuit.svfd basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new load.ld1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.92",
+        "new load.ld3 bus1=b2 phases=3 kv=12.47 kw=50 enabled=no",
+        "new load.ld4 bus1=b2 phases=3 kv=12.47 kw=60",
+        "load.ld4.enabled=no",
+    ];
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    let scratch = scratch_dir("save_disabled");
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("save load");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let produced = scratch.join("load");
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("read {}: {e}", produced.display()));
+    assert_eq!(
+        rust,
+        "New \"Load.ld1\" Bus1=b1 Phases=3 Conn=wye Model=1 kV=12.47 kW=400 PF=0.92\n\
+         New \"Load.ld3\" Bus1=b2 Phases=3 kV=12.47 kW=50 PF=0.88 Enabled=No ENABLED=NO\n\
+         New \"Load.ld4\" Bus1=b2 Phases=3 kV=12.47 kW=60 PF=0.88 Enabled=No ENABLED=NO\n"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// `? transformer.t1.wdgcurrents` after a solve must equal the oracle's live
 /// recompute — pins the `do_query_cmd` Vterminal refresh (audit-code follow-up).
 /// Pascal `GetAllWindingCurrents` reloads Vterminal from the solution internally;

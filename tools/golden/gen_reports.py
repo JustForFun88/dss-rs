@@ -2143,6 +2143,80 @@ def gen_dump_decks(d) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+# --- WP8.5 step 4: the `Save` forms (Pascal `DoSaveCmd`) ---
+# `tools/golden/report_decks/save_forms.dss` (see its header comment): a 4-step
+# daily deck with a sampled EnergyMeter + Monitor, so `save` (the meters default
+# branch) writes real `MTR_em1.csv` registers, `save voltages` a solved
+# `svf_SavedVoltages.txt`, and `save load` two explicitly-set-props load lines.
+SAVE_FORMS_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.svf basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new loadshape.day npts=4 interval=1",
+    "~ mult=(0.6 0.9 1.0 0.7)",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new line.l2 bus1=b1 bus2=b2 linecode=lc length=0.7 units=km",
+    "new load.ld1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.92",
+    "~ daily=day",
+    "new load.ld2 bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.95",
+    "~ daily=day",
+    "new capacitor.c2 bus1=b2 phases=3 kvar=150 kv=12.47",
+    "new monitor.mon1 element=line.l1 terminal=1 mode=1",
+    "new energymeter.em1 element=line.l1 terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "set mode=daily stepsize=1h number=4",
+    "solve",
+]
+
+# (stem, full save command, produced filename). Each stem replays the deck
+# FRESH: `Flg.HasBeenSaved` persists across `save` commands within a session
+# (probe-proven 2026-07-07: a second `save load` writes 0 records and DELETES
+# the file), so goldens must be first-save captures. `save` sets `GlobalResult`
+# to the RELATIVE `MTR_<name>.csv`; `save load`'s default filename is the bare
+# class name with NO extension; `save voltages` names `<case>_SavedVoltages.txt`
+# — all probe-proven, so the produced file is read by its fixed name.
+SAVE_DECKS = [
+    ("save_mtr", "save", "MTR_em1.csv"),
+    ("save_voltages", "save voltages", "svf_SavedVoltages.txt"),
+    ("save_class_load", "save load", "load"),
+]
+
+
+def gen_save_decks(d) -> None:
+    """Capture the oracle's `Save` outputs on the save_forms deck (WP8.5 step 4)."""
+    d.AllowEditor = False
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for stem, command, produced_name in SAVE_DECKS:
+        tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+        try:
+            d.Text.Command = "clear"
+            for c in SAVE_FORMS_DECK:
+                d.Text.Command = c
+            case = d.ActiveCircuit.Name
+            d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+            d.Text.Command = command
+            produced = Path(tmp) / produced_name
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": command,
+                "fixture": case,
+                "suffix": produced_name,
+                "deck": SAVE_FORMS_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes)")
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -2189,6 +2263,7 @@ def main() -> None:
     gen_di_overloads_1ph(d)
     gen_reliability_multimeter(d)
     gen_dump_decks(d)
+    gen_save_decks(d)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,28 @@
+{
+  "report": "save load",
+  "fixture": "svf",
+  "suffix": "load",
+  "deck": [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.svf basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new loadshape.day npts=4 interval=1",
+    "~ mult=(0.6 0.9 1.0 0.7)",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new line.l2 bus1=b1 bus2=b2 linecode=lc length=0.7 units=km",
+    "new load.ld1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.92",
+    "~ daily=day",
+    "new load.ld2 bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.95",
+    "~ daily=day",
+    "new capacitor.c2 bus1=b2 phases=3 kvar=150 kv=12.47",
+    "new monitor.mon1 element=line.l1 terminal=1 mode=1",
+    "new energymeter.em1 element=line.l1 terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "set mode=daily stepsize=1h number=4",
+    "solve"
+  ]
+}

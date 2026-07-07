@@ -1727,12 +1727,239 @@ impl Dss {
         }
     }
 
-    /// Pascal `DoSaveCmd` (`ExecHelper.pas`): `Save circuit` / `Save <class>` /
-    /// `Save meters`/`Save voltages`. WP8.5 — scoped `NOT_PORTED` until then
-    /// (the `Save` corpus decks are in `skipped_unsupported`).
+    /// Pascal `DoSaveCmd` (`Executive/ExecHelper.pas:744-842`): parse the
+    /// `SaveCommands` table `[class, file, dir, keepdisabled]`
+    /// (positional-or-named; `keepdisabled` is parsed but IGNORED upstream —
+    /// `:780`, its ordinal falls into the empty `else`), then dispatch on
+    /// `ObjClass` by `CompareTextShortest` prefix, in Pascal order:
+    ///
+    /// 1. empty or `meters` → [`Dss::save_meters_cmd`] (Monitor `Save` flush +
+    ///    EnergyMeter `SaveRegisters`), then Exit.
+    /// 2. `circuit` → `Circuit.Save(SaveDir)` — NOT_PORTED(WP8.5 step 5).
+    /// 3. `voltages` → [`Dss::save_voltages_cmd`], then Exit.
+    /// 4. any class name → `WriteClassFile`: default filename is the **bare
+    ///    class name, no `.dss` extension** (probe-proven: `save load` writes a
+    ///    file literally named `load`); `SaveDir` (default `OutputDirectory`) is
+    ///    always non-empty, so the file lands at `SaveDir + PathDelim +
+    ///    SaveFile` (mkdir with err 247 when the dir is missing). The tail then
+    ///    sets `LastResultFile`/`GlobalResult` to the final `SaveFile` — even
+    ///    for an **unknown class**, which is otherwise silently ignored (no
+    ///    error; `GlobalResult` = the raw `file=` value or empty, probe-proven
+    ///    2026-07-07). Pascal's string concat doubles the path delimiter there
+    ///    (`OutputDirectory` already ends with one — `…\\load`); the port joins
+    ///    paths normally (path-equivalent, same file).
     pub(crate) fn do_save_cmd(&mut self) {
-        self.errors
-            .push("Save is not ported yet (Phase 8 WP8.5).".to_string());
+        // Pascal `ExecCommands.pas` `SaveCommands := TCommandList.Create(...)`
+        // (built once at startup there; construction is cheap and pure here).
+        let save_commands = CommandList::new(["class", "file", "dir", "keepdisabled"]);
+        let mut obj_class = String::new();
+        let mut save_file = String::new();
+        // `SaveDir := DSS.OutputDirectory` — the default; `None` = that default
+        // (an explicit `dir=` resolves against `current_dir`, the process cwd).
+        let mut save_dir: Option<String> = None;
+
+        let mut param_pointer = 0usize;
+        let mut param_name = self.parser.next_param(&self.vars);
+        let mut param = self.parser.make_string(&self.vars);
+        while !param.is_empty() {
+            if param_name.is_empty() {
+                param_pointer += 1;
+            } else {
+                param_pointer = save_commands
+                    .get_command(&param_name)
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+            }
+            match param_pointer {
+                1 => obj_class = param.clone(),
+                2 => save_file = param.clone(),
+                3 => save_dir = Some(param.clone()),
+                // 4 (`keepdisabled`) parsed-and-ignored; 0 (unknown name) ignored.
+                _ => {}
+            }
+            param_name = self.parser.next_param(&self.vars);
+            param = self.parser.make_string(&self.vars);
+        }
+
+        use crate::util::compare_text_shortest_eq as short;
+        // (An empty `ObjClass` also matches `short(_, "meters")` via the
+        // empty-string quirk; the explicit test mirrors the Pascal condition.)
+        if obj_class.is_empty() || short(&obj_class, "meters") {
+            self.save_meters_cmd();
+            return;
+        }
+        if short(&obj_class, "circuit") {
+            // NOT_PORTED(WP8.5 step 5): `Circuit.Save(SaveDir)` — the
+            // whole-circuit multi-file save + round-trip gate.
+            self.errors
+                .push("Save circuit is not ported yet (Phase 8 WP8.5 step 5).".to_string());
+            return;
+        }
+        if short(&obj_class, "voltages") {
+            self.save_voltages_cmd();
+            return;
+        }
+
+        // Assume ObjClass names a DSS class (`GetDSSClassPtr`); an unknown class
+        // silently writes nothing (no Pascal error — probe-proven).
+        let mut final_file = save_file.clone();
+        if let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) {
+            if save_file.is_empty() {
+                save_file = obj_class.clone(); // bare class name, NO extension
+            }
+            let dir_path: PathBuf = match &save_dir {
+                None => self.output_directory.clone(),
+                Some(d) => self.current_dir.join(d),
+            };
+            if !dir_path.is_dir() {
+                // Pascal `mkDir` (single level), err 247 on failure — then falls
+                // through to `WriteClassFile` regardless.
+                if let Err(e) = std::fs::create_dir(&dir_path) {
+                    self.errors.push(format!(
+                        "Error making Directory: \"{}\". {e}",
+                        dir_path.display()
+                    ));
+                }
+            }
+            let path = dir_path.join(&save_file);
+            self.write_class_file(ci, &path);
+            final_file = path.to_string_lossy().into_owned();
+        }
+        // Pascal tail (`:840-841`): `SetLastResultFile` + `GlobalResult`, run for
+        // known and unknown classes alike.
+        self.vars.add("@lastfile", &final_file);
+        self.last_result_file = final_file.clone();
+        self.last_result = final_file;
+    }
+
+    /// The `Save`/`Save meters` branch (Pascal `DoSaveCmd:790-810`): for every
+    /// Monitor, `pMon.Save`; for every EnergyMeter, `pMtr.SaveRegisters`.
+    ///
+    /// `TMonitorObj.Save` (`Meters/Monitor.pas:1118-1127`) flushes the pending
+    /// `MonBuffer` into the monitor's **in-memory** `MonitorStream` and resets
+    /// `BufPtr` — it writes NO file (probe-proven 2026-07-07: `save` produces
+    /// only the `MTR_*.csv` meter files). The Rust [`Monitor`] appends every
+    /// sample directly into its single `mon_buffer` (Pascal's `MonBuffer` +
+    /// `MonitorStream` merged — see `elements/meter/monitor/mod.rs`), so there
+    /// is no pending buffer to flush and the monitor half is a structural no-op.
+    ///
+    /// `TEnergyMeterObj.SaveRegisters` (`EnergyMeter.pas:1235-1269`) writes
+    /// `<OutputDir>MTR_<name>.csv` and sets `GlobalResult`/`LastResultFile` to
+    /// the **relative** CSV name (each meter overwrites the previous — the last
+    /// one wins); err 526 on an open failure (which skips only that meter).
+    ///
+    /// [`Monitor`]: crate::elements::meter::monitor::Monitor
+    fn save_meters_cmd(&mut self) {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return;
+        };
+        let year = ckt.solution.year;
+        let meters = ckt.energy_meters.clone();
+        for r in meters {
+            let obj = &self.classes[r.cls].objects[r.idx];
+            let Some(em) = obj
+                .as_any()
+                .downcast_ref::<crate::elements::meter::EnergyMeter>()
+            else {
+                continue;
+            };
+            let csv_name = format!("MTR_{}.csv", obj.data().name());
+            let text = em.save_registers_text(year);
+            let path = self.output_directory.join(&csv_name);
+            match std::fs::write(&path, text) {
+                Ok(()) => {
+                    // Pascal: `DSS.GlobalResult := CSVName` + `SetLastResultFile
+                    // (DSS, CSVName)` — both the RELATIVE name.
+                    self.vars.add("@lastfile", &csv_name);
+                    self.last_result_file = csv_name.clone();
+                    self.last_result = csv_name;
+                }
+                Err(e) => {
+                    self.errors
+                        .push(format!("Error opening Meter File \"{csv_name}\": {e}"));
+                }
+            }
+        }
+    }
+
+    /// Pascal `TSolutionObj.SaveVoltages` (`Common/Solution.pas:2277-2315`), the
+    /// `Save voltages` branch: `<OutputDir><CircuitName_>SavedVoltages.txt`, one
+    /// line per node — `<bus>, <nodenum>, <|V| %-.7g>, <angle %-.7g>` in raw bus
+    /// / node storage order. Err 488 on an open failure; the Pascal `finally`
+    /// sets `GlobalResult` to the full path **even then** (no `LastResultFile`).
+    fn save_voltages_cmd(&mut self) {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return;
+        };
+        let node_v = &ckt.solution.node_v;
+        let mut out = String::new();
+        for i in 0..ckt.buses.len() {
+            let bus = &ckt.buses[i];
+            let bus_name = ckt.bus_list.name(i).unwrap_or("");
+            for j in 0..bus.num_nodes_this_bus() {
+                // Pascal reads `NodeV[RefNo[j]]` unconditionally; an unsolved
+                // circuit's unallocated read is UB upstream — not reproduced
+                // (safe default 0, CLAUDE.md known-bug rule).
+                let v = node_v
+                    .get(bus.get_ref(j))
+                    .copied()
+                    .unwrap_or(num_complex::Complex64::ZERO);
+                out.push_str(&format!(
+                    "{bus_name}, {}, {}, {}\n",
+                    bus.get_num(j),
+                    crate::report::format::g(v.norm(), 7),
+                    crate::report::format::g(crate::support::complexutil::cdang(v), 7),
+                ));
+            }
+        }
+        let case = ckt.case_name.clone();
+        let path = self
+            .output_directory
+            .join(format!("{case}_SavedVoltages.txt"));
+        if let Err(e) = std::fs::write(&path, out) {
+            self.errors
+                .push(format!("Error opening Saved Voltages File: {e}"));
+        }
+        // Pascal `finally` (`Solution.pas:2311`): GlobalResult = the full path,
+        // set on success and failure alike.
+        self.last_result = path.to_string_lossy().into_owned();
+    }
+
+    /// Pascal `WriteClassFile` (`Common/Utilities.pas:1134-1210`), the
+    /// standalone (`circF = NIL`) `saveFlags = []` form `DoSaveCmd` calls with
+    /// `IsCktElement = FALSE`: create the file (err 718 on failure — objects
+    /// stay unmarked, like the Pascal `try` that never reaches the loop), write
+    /// every not-yet-saved object via the [`crate::report::save::save`]
+    /// serializer, and **delete a 0-record file** (`:1191-1198` — Pascal
+    /// `fmCreate`s first, so a pre-existing file of the same name is gone either
+    /// way; probe-proven by the second `save load` of a session). An empty class
+    /// writes nothing at all (`ElementCount = 0` exits before the file opens).
+    /// The `SavedFileList.Add` on success feeds `Circuit.Save`'s Master-file
+    /// Redirect list — WP8.5 step 5 (nothing consumes it on this path).
+    fn write_class_file(&mut self, ci: usize, path: &Path) {
+        if self.classes[ci].objects.is_empty() {
+            return;
+        }
+        // (The pre-count over `excludeDefault` (`:1155-1163`) is dormant with
+        // `saveFlags = []`: it equals `ElementCount`, checked above.)
+        let mut f = match std::fs::File::create(path) {
+            Ok(f) => f,
+            Err(e) => {
+                self.errors.push(format!("WriteClassFile Error: {e}"));
+                return;
+            }
+        };
+        let Dss { classes, enums, .. } = self;
+        let (text, nrecords) =
+            crate::report::save::save::class_file_text(&mut classes[ci], enums, false);
+        use std::io::Write;
+        if let Err(e) = f.write_all(text.as_bytes()) {
+            self.errors.push(format!("WriteClassFile Error: {e}"));
+        }
+        drop(f);
+        if nrecords == 0 {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     /// Pascal `DoPropertyDump` (the `Dump` command, `ExecHelper.pas:1194`):

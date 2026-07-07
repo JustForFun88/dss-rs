@@ -26,6 +26,13 @@ pub struct DssObjData {
     /// engine error sink). The executive drains these right after the edit
     /// loop, so the message ordering within a command is preserved.
     deferred_errors: Vec<String>,
+    /// Pascal `Flg.HasBeenSaved`: set by `WriteDSSObject` when the Save
+    /// serializer writes this object out, so a later `WriteClassFile` in the
+    /// same session skips it. Persists across `Save` commands exactly like the
+    /// Pascal flag (probe-proven 2026-07-07: a second `save load` writes 0
+    /// records and deletes the file); only `Circuit.Save` clears them all
+    /// (WP8.5 step 5).
+    has_been_saved: bool,
 }
 
 impl DssObjData {
@@ -34,7 +41,19 @@ impl DssObjData {
             name: name.into(),
             prp_sequence: vec![0; num_props + 1],
             deferred_errors: Vec::new(),
+            has_been_saved: false,
         }
+    }
+
+    /// Pascal `Flg.HasBeenSaved in obj.Flags` (the `WriteClassFile` skip).
+    pub fn has_been_saved(&self) -> bool {
+        self.has_been_saved
+    }
+
+    /// Pascal `Include(obj.Flags, Flg.HasBeenSaved)` / the `Circuit.Save`
+    /// `Exclude` reset (WP8.5 step 5).
+    pub fn set_has_been_saved(&mut self, saved: bool) {
+        self.has_been_saved = saved;
     }
 
     /// Queue a `DoSimpleMsg`-style message from inside a property hook; the
