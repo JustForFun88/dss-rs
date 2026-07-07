@@ -112,6 +112,13 @@ impl Dss {
         // Resolve `dir` relative to the current DSS dir when not absolute
         // (Pascal `Dir := SaveDir + Dir` in the non-`ALLOW_CHANGE_DIR` path —
         // the C-API-portable choice that keeps the process cwd fixed).
+        // Deliberate narrowing (recorded by audit): Pascal `:2481-2508`
+        // additionally drive-prefixes a bare-root `\foo`/`/foo` with
+        // `ExtractFileDrive(SaveDir)` and keeps a drive-relative `C:foo`
+        // literal; `Path::is_absolute()` treats all three as relative and
+        // joins them to `current_dir`. Only those unusual `dir=` spellings
+        // differ; the command default and every gate deck pass an absolute
+        // or plainly-relative dir.
         let target: PathBuf = {
             let p = Path::new(dir);
             if p.is_absolute() {
@@ -136,6 +143,13 @@ impl Dss {
         self.current_dir = target.clone();
 
         let flags = SaveFlags::empty();
+
+        // Pascal chains every sub-step through `Success` and, on any failure,
+        // reports err 434 with GlobalResult = the error text instead of the
+        // "saved" string (`Circuit.pas:2590-2648`). The sub-writers here push
+        // into `self.errors` on a write failure, so "Success" = no new errors
+        // appeared during the body.
+        let errors_before = self.errors.len();
 
         // `DSS.SavedFileList.Clear` — tracks every file saved, in write order.
         let mut saved_files: Vec<PathBuf> = Vec::new();
@@ -177,6 +191,13 @@ impl Dss {
         // Return to the original directory (Pascal `:2652`).
         self.current_dir = saved_dir;
 
+        if self.errors.len() > errors_before {
+            // Pascal `if Success then … else DoSimpleMsg('Error attempting to
+            // save circuit …', 434)` — GlobalResult carries the failure, not
+            // the "saved" string.
+            self.last_result = self.errors[errors_before].clone();
+            return;
+        }
         // Pascal `GlobalResult := 'Circuit saved in directory: "<CurrentDSSDir>"'`
         // — `CurrentDSSDir` carries a trailing path delimiter upstream.
         let sep = std::path::MAIN_SEPARATOR;

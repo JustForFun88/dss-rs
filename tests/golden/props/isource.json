@@ -132,6 +132,30 @@
     "Enabled": "Yes",
     "Like": ""
    }
+  },
+  {
+   "name": "isource_bus2_clobbered_by_bus1",
+   "commands": [
+    "New Isource.i1 bus2=b2 bus1=b1 phases=3 amps=10"
+   ],
+   "target": "Isource.i1",
+   "properties": {
+    "Bus1": "b1",
+    "Amps": "10",
+    "Angle": "0",
+    "Frequency": "60",
+    "Phases": "3",
+    "ScanType": "Positive",
+    "Sequence": "Positive",
+    "Yearly": "",
+    "Daily": "",
+    "Duty": "",
+    "Bus2": "b1.0.0.0",
+    "Spectrum": "default",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
   }
  ]
 }

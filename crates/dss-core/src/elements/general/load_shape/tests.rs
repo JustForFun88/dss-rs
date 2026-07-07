@@ -626,3 +626,41 @@ fn sng_single_storage_transitions_to_f64_on_edits() {
     assert!(obj.s_p.is_none(), "float64 path with QMult set");
     assert_eq!(get(&cls, &obj, "Mult"), before);
 }
+
+/// Pascal runs `UseFloat64` at the head of `ReadCSVFile`/`Read2ColCSVFile`/
+/// `ReadDblFile` (LoadShape.pas:1044/:970/:1220): a later non-sng read must
+/// end single storage, or a stale `sP` from an earlier `sngfile=` would keep
+/// winning the lookup (audit follow-up regression pin).
+#[test]
+fn csv_after_sng_ends_single_storage() {
+    let bare: Vec<u8> = [0.25f32, 0.5, 0.75]
+        .iter()
+        .flat_map(|p| p.to_le_bytes())
+        .collect();
+    let (_, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_some());
+    obj.read_csv_file("2\n4\n8\n");
+    assert!(obj.s_p.is_none(), "CSV read must end single storage");
+    assert_eq!(
+        obj.get_mult_at_hour(1.0).re,
+        2.0,
+        "lookup must use CSV data"
+    );
+
+    let (_, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    let dbl: Vec<u8> = [3.0f64, 5.0, 7.0]
+        .iter()
+        .flat_map(|p| p.to_le_bytes())
+        .collect();
+    obj.read_dbl_file(&dbl);
+    assert!(obj.s_p.is_none(), "DblFile read must end single storage");
+    assert_eq!(obj.get_mult_at_hour(1.0).re, 3.0);
+
+    let (_, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    obj.read_pq_csv_file("1, 0.5\n2, 1\n3, 1.5\n");
+    assert!(obj.s_p.is_none(), "PQCSVFile read must end single storage");
+    assert_eq!(obj.get_mult_at_hour(1.0).re, 1.0);
+}

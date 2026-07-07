@@ -252,9 +252,14 @@ impl DssObject for LoadShapeObj {
             o.hour.clone()
         };
         // Pascal `LoadShape.pas:887-913`: single-precision storage is copied
-        // as singles (the widened views above already hold identical values).
+        // as singles (the widened views above already hold identical values);
+        // like `dH`, `sH` is dropped for a fixed interval.
         self.s_p = o.s_p.clone();
-        self.s_h = o.s_h.clone();
+        self.s_h = if self.interval > 0.0 {
+            None
+        } else {
+            o.s_h.clone()
+        };
         self.use_actual = o.use_actual;
         self.use_mmf = o.use_mmf;
         self.base_p = o.base_p;

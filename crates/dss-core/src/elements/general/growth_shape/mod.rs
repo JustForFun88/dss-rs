@@ -12,8 +12,10 @@
 //! `DoCSVFile`/`DoSngFile`/`DoDblFile` (`OnlyLoadB = False`: every row is
 //! always a `(year, mult)` pair, unlike LoadShape/TShape/PriceShape's
 //! fixed-interval bare-value branch — GrowthShape has no `Interval` concept)
-//! with `RoundA = True` (the year column is rounded on read, same as the
-//! direct `Year=` array property's [`PropFlags::APPLY_ROUND`]).
+//! with `RoundA = True` — a **dead argument** in `DoCSVFile` (the rounding
+//! loop exists only in `DoSngFile`/`DoDblFile`), so a CSV keeps fractional
+//! years verbatim while the binary readers round them on read (the direct
+//! `Year=` array property rounds via [`PropFlags::APPLY_ROUND`]).
 
 #[cfg(test)]
 mod tests;
@@ -195,7 +197,9 @@ impl GrowthShapeObj {
     }
 
     /// Pascal `Common/Utilities.pas` `DoSngFile` (little-endian `f32` stream),
-    /// same `(year, mult)` row / `RoundA` semantics as [`Self::read_csv_file`].
+    /// same `(year, mult)` row layout as [`Self::read_csv_file`] — but unlike
+    /// the CSV reader this one DOES round the year column (`RoundA` is live in
+    /// `DoSngFile`/`DoDblFile`, dead in `DoCSVFile`).
     pub(super) fn read_sng_file(&mut self, content: &[u8]) {
         let npts = self.npts.max(0) as usize;
         let mut year = Vec::with_capacity(npts);
