@@ -166,6 +166,8 @@ impl Dss {
             cmd::GIS_COORDS => {}
             cmd::SET_BUS_XY => self.do_set_bus_xy_cmd(),
             cmd::INTERPOLATE => self.do_interpolate_cmd(),
+            // Pascal `DoRemoveCmd` (ExecHelper.pas:4939) → `DoRemoveBranches`.
+            cmd::REMOVE => self.do_remove_cmd(),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_initialized = false;
@@ -509,7 +511,7 @@ impl Dss {
     /// Pascal `AddObject`: create the object (or make the existing one
     /// active for `DSS_OBJECT` classes), register circuit elements with the
     /// circuit, and edit the rest of the line.
-    fn add_object(&mut self, obj_class: &str, name: &str) {
+    pub(super) fn add_object(&mut self, obj_class: &str, name: &str) {
         let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
             self.errors.push(format!(
                 "New Command: Object Type \"{obj_class}\" not found."
@@ -687,7 +689,7 @@ impl Dss {
     /// `ActiveCircuit.BusNameRedefined`/`Solution.SystemYChanged` directly
     /// from the property setters; nothing reads them mid-edit, so polling
     /// after the edit is equivalent).
-    fn edit_active(&mut self) {
+    pub(super) fn edit_active(&mut self) {
         let Some(ci) = self.active_class else {
             self.errors
                 .push("There is no active element to edit.".to_string());

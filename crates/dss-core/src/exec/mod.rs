@@ -52,6 +52,7 @@ mod construct;
 mod distribute;
 mod get_cmd;
 mod helpers;
+mod reduce;
 pub(crate) mod registry;
 mod report;
 mod save_circuit;

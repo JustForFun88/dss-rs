@@ -201,6 +201,60 @@ pub(crate) fn do_auto_add_bus_list(
     }
 }
 
+/// Pascal `TExecHelper.DoKeeperBusList` (ExecHelper.pas l.2035): set the `Keep`
+/// flag on buses named in the `Set KeepList=` argument — either an inline
+/// bus-name list or the `File=name` form (one bus name per line, resolved
+/// against the data path). **Cumulative** (unlike `AutoBusList`, it never
+/// clears): to clear, use `Reset Keeplist`. Unknown bus names are silently
+/// skipped (`BusList.Find` returns 0).
+pub(crate) fn do_keeper_bus_list(
+    aux_parser: &mut Parser,
+    vars: &ParserVars,
+    current_dir: &Path,
+    s: &str,
+    ckt: &mut Circuit,
+    errors: &mut Vec<String>,
+) {
+    let mark = |ckt: &mut Circuit, name: &str| {
+        if let Some(idx) = ckt.bus_list.find(&name.to_lowercase()) {
+            ckt.buses[idx].keep = true;
+        }
+    };
+
+    aux_parser.set_cmd_string(s);
+    let parm_name = aux_parser.next_param(vars);
+    let mut param = aux_parser.make_string(vars);
+
+    if parm_name.eq_ignore_ascii_case("file") {
+        // Load the list from a file (one bus name per line).
+        let path = current_dir.join(&param);
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                for line in content.lines() {
+                    aux_parser.set_cmd_string(line);
+                    aux_parser.next_param(vars);
+                    let p = aux_parser.make_string(vars);
+                    if !p.is_empty() {
+                        mark(ckt, &p);
+                    }
+                }
+            }
+            // Pascal `DoSimpleMsg('Error trying to read bus list file "%s": %s',
+            // [param, E.message], 269)`.
+            Err(e) => errors.push(format!(
+                "Error trying to read bus list file \"{param}\": {e}"
+            )),
+        }
+    } else {
+        // Parse bus names off the inline array list.
+        while !param.is_empty() {
+            mark(ckt, &param);
+            aux_parser.next_param(vars);
+            param = aux_parser.make_string(vars);
+        }
+    }
+}
+
 /// Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049): parse the
 /// `Set ReduceOption=` value into a [`crate::circuit::ReductionStrategy`]. The
 /// first character (case-insensitive) selects the mode; an `S` is

@@ -133,20 +133,54 @@ fn reduce_marks_cap_and_reactor_buses() {
     assert!(keep("b2"), "shunt reactor bus should be a keeper");
 }
 
-/// `Reduce` with a meter present passes the precondition but the zone
-/// reduction (`Line.MergeWith`) is NOT_PORTED — the documented deferral.
+/// `Reduce` with a metered feeder runs the zone reduction (WP8.7): the DEFAULT
+/// strategy merges an un-loaded in-line bus out (`Line.MergeWith` SERIES —
+/// child renamed `Other.Name~Name`, parent disabled), and the node count drops.
+/// No deferral error is emitted.
 #[test]
-fn reduce_command_with_meter_deferred() {
+fn reduce_command_merges_inline_lines() {
     let mut dss = Dss::new();
     dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
-    dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
-    dss.command("New energymeter.m1 element=line.l1 terminal=1");
+    dss.command("New line.lfeed bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+    dss.command("New line.l1 bus1=b1 bus2=b2 length=1 r1=0.3 x1=0.6");
+    dss.command("New line.l2 bus1=b2 bus2=b3 length=1 r1=0.3 x1=0.6");
+    dss.command("New load.ld3 bus1=b3 phases=3 kv=12.47 kw=300 pf=0.95");
+    dss.command("New energymeter.m1 element=line.lfeed terminal=1");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let nodes_before = dss.circuit().unwrap().num_nodes;
+
     dss.command("reduce");
+    dss.command("Solve");
     assert!(
-        dss.errors()
-            .iter()
-            .any(|e| e.contains("reduction is not ported")),
+        !dss.errors().iter().any(|e| e.contains("not ported")),
         "{:?}",
         dss.errors()
+    );
+
+    {
+        let ckt = dss.circuit().unwrap();
+        // b2 (un-loaded, single in-line child) was eliminated → node count drops.
+        assert!(
+            ckt.num_nodes < nodes_before,
+            "reduction should have dropped nodes ({} !< {nodes_before})",
+            ckt.num_nodes
+        );
+        assert!(
+            ckt.buses.iter().all(|b| !b.name.eq_ignore_ascii_case("b2")),
+            "bus b2 should be eliminated by the l1+l2 merge"
+        );
+    }
+    // The l1/l2 merge disabled the parent (l1) and produced a merged line
+    // named l1~l2 (child renamed) — observable via the `?` property query.
+    dss.command("? line.l1.enabled");
+    assert_eq!(dss.result(), "No", "the parent line l1 should be disabled");
+    dss.command("? line.l1~l2.enabled");
+    assert_eq!(
+        dss.result(),
+        "Yes",
+        "the merged line l1~l2 should be enabled"
     );
 }

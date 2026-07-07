@@ -246,9 +246,8 @@ impl Dss {
     /// precondition, the `'A'`(ll)-vs-named-meter dispatch, and the error-262
     /// "EnergyMeter not found". The reduction *work itself* —
     /// `EnergyMeter.ReduceZone` dispatching `ReduceAlgs.pas`
-    /// (`DoReduceDefault`/`DoReduceShortLines`/…) → `TLineObj.MergeWith` — is
-    /// NOT_PORTED (the 210-line line merge is unported), so a resolved meter
-    /// records a deferral instead of reducing its zone.
+    /// (`DoReduceDefault`/`DoReduceShortLines`/…) → `TLineObj.MergeWith`
+    /// (WP8.7, `exec/reduce.rs`).
     pub(super) fn do_reduce_cmd(&mut self) {
         // Pascal reads the next parm and uppercases it (`AnsiUpperCase`).
         self.parser.next_param(&self.vars);
@@ -280,43 +279,46 @@ impl Dss {
         }
 
         if param.starts_with('A') {
-            // All meters → ReduceZone on each (NOT_PORTED).
-            self.errors.push(Self::reduce_deferred_msg());
+            // All meters → ReduceZone on each.
+            let meters = self
+                .circuit
+                .as_ref()
+                .expect("gated in command()")
+                .energy_meters
+                .clone();
+            for r in meters {
+                self.reduce_zone(r);
+            }
             return;
         }
 
         // Named meter: resolve it (Pascal `MeterClass.SetActive(Param)`); a
-        // miss is error 262, a hit would `ReduceZone` (NOT_PORTED → deferral).
+        // miss is error 262.
         let found = {
             let Dss {
                 classes, circuit, ..
             } = self;
             let ckt = circuit.as_ref().expect("gated in command()");
             let store = ClassStore { classes };
-            ckt.energy_meters.iter().any(|&r| {
-                store
-                    .ckt_elem(r)
-                    .cd()
-                    .obj
-                    .name()
-                    .eq_ignore_ascii_case(&param)
-            })
+            ckt.energy_meters
+                .iter()
+                .find(|&&r| {
+                    store
+                        .ckt_elem(r)
+                        .cd()
+                        .obj
+                        .name()
+                        .eq_ignore_ascii_case(&param)
+                })
+                .copied()
         };
-        if found {
-            self.errors.push(Self::reduce_deferred_msg());
+        if let Some(r) = found {
+            self.reduce_zone(r);
         } else {
             // Pascal error 262 (echoes the uppercased name).
             self.errors
                 .push(format!("EnergyMeter \"{param}\" not found."));
         }
-    }
-
-    /// The NOT_PORTED deferral logged when a `Reduce` would otherwise call
-    /// `EnergyMeter.ReduceZone` (see [`Self::do_reduce_cmd`]).
-    fn reduce_deferred_msg() -> String {
-        "Reduce: circuit reduction is not ported yet (the zone line-merge \
-         requires Line.MergeWith — deferred to a later phase)."
-            .to_string()
     }
 
     /// Pascal `DoSetVoltageBases` (the `CalcVoltageBases` command).

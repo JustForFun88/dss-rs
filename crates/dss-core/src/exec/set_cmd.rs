@@ -330,8 +330,12 @@ impl Dss {
                         &mut ckt.auto_add_bus_list,
                         errors,
                     ),
-                    // Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049). The
-                    // strategy is stored; the reduction itself is NOT_PORTED.
+                    // Pascal `DoKeeperBusList` (ExecHelper.pas l.2035): mark
+                    // KeepList buses (cumulative) so reduction won't eliminate them.
+                    opt::KEEP_LIST => {
+                        do_keeper_bus_list(aux_parser, vars, current_dir, &param, ckt, errors)
+                    }
+                    // Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049).
                     opt::REDUCE_OPTION => set_reduce_strategy(ckt, &param, errors),
                     opt::KEEP_LOAD => ckt.reduce_laterals_keep_load = interpret_yes_no(&param),
                     opt::ZMAG => {

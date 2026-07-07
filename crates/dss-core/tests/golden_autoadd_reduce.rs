@@ -7,11 +7,15 @@
 //!   - `Set ueregs=(10 abc 13)` -> `[10, 0, 0]` + a logged conversion error
 //!     (oracle #303), the audit-hardened `parseIntArray` behavior;
 //!   - `13.7 -> 14` decimal rounding;
-//!   - `Reduce` #1890 (no meter) and #262 (named meter missing, uppercased).
+//!   - `Reduce` #1890 (no meter) and #262 (named meter missing, uppercased);
+//!   - (WP8.7) a metered feeder solved → `Reduce` (DEFAULT strategy) →
+//!     re-solved: the oracle-captured post-reduce node count and surviving-bus
+//!     voltage magnitudes, the observable proof the reduced model is
+//!     electrically equivalent (the tight full-model comparison lives in the
+//!     always-on `corpus_live` modes gate; this pins a self-contained scenario).
 //!
-//! `Bus.Keep` (`MarkCapandReactorBuses`) and the reduction work itself are not
-//! exposed by the dss-python COM API, so they stay pinned by the `exec` unit
-//! tests; this gate covers everything the oracle *does* expose.
+//! `Bus.Keep` (`MarkCapandReactorBuses`) is not exposed by the dss-python COM
+//! API, so it stays pinned by the `exec` unit tests.
 
 use std::path::PathBuf;
 
@@ -36,12 +40,29 @@ struct Scenario {
     /// Substring the Rust port must surface in its error log; `None` means the
     /// scenario must run clean.
     error_contains: Option<String>,
+    /// Post-reduce re-solve probes (WP8.7): the oracle-captured circuit-wide
+    /// node count and surviving-bus voltage magnitudes. Absent on the `Get`-echo
+    /// scenarios.
+    #[serde(default)]
+    probes: Option<Probes>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GetExpect {
     query: String,
     result: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Probes {
+    num_nodes: usize,
+    bus_vmags: Vec<BusVmag>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BusVmag {
+    bus: String,
+    vmag: f64,
 }
 
 fn load_golden() -> Golden {
@@ -96,12 +117,44 @@ fn run_scenario(sc: &Scenario) {
             g.query
         );
     }
+
+    if let Some(p) = &sc.probes {
+        let ckt = dss
+            .circuit()
+            .unwrap_or_else(|| panic!("{}: no circuit after reduce", sc.name));
+        // Post-reduce node count is the primary observable of the reduction
+        // (the eliminated bus's nodes disappear) — must match the oracle exactly.
+        assert_eq!(
+            ckt.num_nodes, p.num_nodes,
+            "{}: post-reduce NumNodes {} != oracle {}",
+            sc.name, ckt.num_nodes, p.num_nodes
+        );
+        // Each surviving bus re-solves to the oracle operating point (the reduced
+        // model is electrically equivalent). Node-1 magnitude, faer-vs-KLU floor.
+        for bv in &p.bus_vmags {
+            let idx = ckt
+                .bus_list
+                .find(&bv.bus.to_lowercase())
+                .unwrap_or_else(|| panic!("{}: bus {} not found post-reduce", sc.name, bv.bus));
+            let bus = &ckt.buses[idx];
+            let node_ref = bus.ref_no[0];
+            let vmag = ckt.solution.node_v[node_ref].norm();
+            let rel = (vmag - bv.vmag).abs() / bv.vmag.abs().max(1.0);
+            assert!(
+                rel <= 1e-6,
+                "{}: bus {} Vmag {vmag} != oracle {} (rel {rel:.2e})",
+                sc.name,
+                bv.bus,
+                bv.vmag
+            );
+        }
+    }
 }
 
 #[test]
 fn autoadd_reduce_surface_matches_oracle() {
     let golden = load_golden();
-    assert_eq!(golden.scenarios.len(), 10, "expected 10 scenarios");
+    assert_eq!(golden.scenarios.len(), 11, "expected 11 scenarios");
     for sc in &golden.scenarios {
         run_scenario(sc);
     }
