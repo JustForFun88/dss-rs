@@ -4,14 +4,140 @@
 //! does not expose directly (Create defaults, the inverter clamp branches,
 //! `ComputePanelPower`, the YEQ derivation).
 
+use crate::elements::general::load_shape::{self, LoadShapeObj};
+use crate::elements::general::temp_shape::{self, TShapeObj};
 use crate::elements::pc::generator::default_recalc_ctx;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce};
 use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::obj::dss_enum::EnumRegistry;
+use crate::obj::props::PropEngine;
+use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
+use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
 use super::*;
+
+/// Build a `LoadShapeObj` (mult curve) through its real property engine.
+fn build_shape(mult: &str) -> LoadShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = load_shape::class_props(&enums);
+    let mut obj = LoadShapeObj::new("s");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
+}
+
+/// Build a `TShapeObj` (temperature curve) through its real property engine.
+fn build_tshape(temp: &str) -> TShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = temp_shape::class_props(&enums);
+    let mut obj = TShapeObj::new("t");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("temp", temp)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    obj
+}
+
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..default_recalc_ctx()
+    }
+}
+
+/// Pascal `SetNominalPVSystem` GENERALTIME arm (PVsystem.pas:1174): under
+/// `ActiveLoadShapeClass` (`Set LoadShapeClass=`) the class picks BOTH the mult
+/// curve (`ShapeFactor`) AND the temperature curve (`TShapeValue`) — the two
+/// travel together, so a swap that mixed them (e.g. yearly mult + daily temp)
+/// is caught. Three distinct mult curves (hr 2: daily→0.6, yearly→0.7,
+/// duty→0.5) and three distinct temp curves (yearly = daily+1, duty = daily+2);
+/// default `USENONE` leaves ShapeFactor 1+j1 and the temperature at the fixed
+/// `f_temperature` (25).
+#[test]
+fn time_loadshapeclass_selects_matching_mult_and_temperature() {
+    let mut pv = PVSystem::new("pv1");
+    pv.base.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    pv.base.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    pv.base.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+    pv.daily_t_shape_obj = Some(build_tshape("10 20 30 40"));
+    pv.yearly_t_shape_obj = Some(build_tshape("11 21 31 41"));
+    pv.duty_t_shape_obj = Some(build_tshape("12 22 32 42"));
+
+    // The daily temp at hr 2 (whatever the wrap index): the yearly/duty curves
+    // are that +1 / +2, so we assert relative to it to stay index-agnostic.
+    pv.set_nominal_der_output(&time_class_ctx(crate::solution::USEDAILY, 2.0));
+    let daily_temp = pv.t_shape_value;
+    assert!((pv.base.shape_factor.re - 0.6).abs() < 1e-9);
+
+    pv.set_nominal_der_output(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (pv.base.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - (daily_temp + 1.0)).abs() < 1e-9,
+        "yearly temp {} != daily+1 {}",
+        pv.t_shape_value,
+        daily_temp + 1.0
+    );
+
+    pv.set_nominal_der_output(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (pv.base.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - (daily_temp + 2.0)).abs() < 1e-9,
+        "duty temp {} != daily+2 {}",
+        pv.t_shape_value,
+        daily_temp + 2.0
+    );
+
+    pv.set_nominal_der_output(&time_class_ctx(USENONE, 2.0));
+    assert!(
+        (pv.base.shape_factor.re - 1.0).abs() < 1e-9,
+        "none mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - pv.f_temperature).abs() < 1e-9,
+        "none temp {} != f_temperature {}",
+        pv.t_shape_value,
+        pv.f_temperature
+    );
+}
 
 /// The harmonic-mode YPrim is the Thevenin admittance behind `%R`/`%X`
 /// (`Yeq := 1/(Rthev + j·Xthev)`, then `Y.im /= h`) that `InitHarmonics` sets —

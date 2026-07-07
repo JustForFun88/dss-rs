@@ -510,6 +510,15 @@ impl Dss {
                             ckt.solution.set_frequency(v, ckt.fundamental);
                         }
                     }
+                    opt::LOAD_SHAPE_CLASS => {
+                        // Pascal `ExecOptions.pas:628`: `Set LoadShapeClass=` sets
+                        // `Circuit.ActiveLoadShapeClass` — the one shape class the
+                        // GENERALTIME/DYNAMICMODE nominal dispatch consults.
+                        match enums.get(enums.load_shape_class).string_to_ordinal(&param) {
+                            Ok(v) => ckt.active_load_shape_class = v,
+                            Err(e) => errors.push(e.to_string()),
+                        }
+                    }
                     opt::EARTH_MODEL => {
                         // Pascal `ExecOptions.pas:630`: `Set EarthModel=` sets the
                         // context default copied into each new `TLineObj.FEarthModel`.

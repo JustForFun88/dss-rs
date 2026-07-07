@@ -51,8 +51,18 @@ pub(crate) fn initialize_for_harmonics(ckt: &mut Circuit, env: &mut SolveEnv) ->
 /// Pascal `SolveHarmonic` (`SolutionAlgs.pas` l.1011): sweep the harmonic
 /// frequency list, capturing the fundamental first. Each frequency forces a Y
 /// rebuild (via `Set_Frequency`), and every non-fundamental frequency is solved
-/// directly and sampled into the monitors.
+/// directly and sampled into the monitors. The `finally`'s `MonitorClass.
+/// SaveAll()` runs unconditionally — including the early "saved results do not
+/// match" exit, since a Pascal `Exit` inside `try` still runs `finally` (WPG.2:
+/// `mod.rs`'s `flushed_records` doc explains why this now matters).
 pub(super) fn solve_harmonic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    let result = solve_harmonic_body(ckt, env);
+    crate::solution::monitors::save_all_monitors(ckt, env);
+    result
+}
+
+/// The `SolveHarmonic` frequency sweep (the Pascal `try` body).
+fn solve_harmonic_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // Last solution was something other than fundamental: reset to it and reload
     // the saved fundamental voltages (Pascal `RetrieveSavedVoltages`).
     if ckt.solution.frequency != ckt.fundamental {
@@ -78,16 +88,25 @@ pub(super) fn solve_harmonic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResu
             // Storage devices are assumed to stay the same (no time variation).
         }
     }
-    // Pascal `MonitorClass.SaveAll()` flushes the per-monitor temp stream; this
-    // port keeps the sample buffer in memory, so there is nothing to flush.
     Ok(())
 }
 
 /// Pascal `SolveHarmonicT` (`SolutionAlgs.pas` l.1097): sequential-time
 /// harmonics — one fundamental power-flow step, then the harmonic sweep, with
-/// `EndOfTimeStepCleanup` per frequency and a final `IncrementTime`.
+/// `EndOfTimeStepCleanup` per frequency and a final `IncrementTime`. The
+/// `finally`'s `MonitorClass.SaveAll()` runs unconditionally, on every exit
+/// path (WPG.2: `mod.rs`'s `flushed_records` doc explains why this now
+/// matters). `interval_hrs` is set outside the wrapped body — Pascal sets it
+/// before the `try`, so it is not part of the guaranteed-`finally` region.
 pub(super) fn solve_harmonic_t(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.interval_hrs = ckt.solution.h / 3600.0; // for energy meters / storage
+    let result = solve_harmonic_t_body(ckt, env);
+    crate::solution::monitors::save_all_monitors(ckt, env);
+    result
+}
+
+/// The `SolveHarmonicT` body (the Pascal `try` block).
+fn solve_harmonic_t_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     if ckt.solution.solution_abort {
         return Ok(());
     }

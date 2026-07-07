@@ -7,7 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 use super::{
@@ -514,9 +514,18 @@ impl Storage {
                     SolveMode::Snapshot => {} // present kW/kvar; no state check
                     SolveMode::Daily => self.calc_daily_mult(sys.dbl_hour, sys),
                     SolveMode::Yearly => self.calc_yearly_mult(sys.dbl_hour, sys),
-                    // GENERALTIME: one load-shape class. ActiveLoadShapeClass is
-                    // USENONE by default → shape stays 1+j1 (matches Generator).
-                    SolveMode::Time | SolveMode::Dynamic => {}
+                    // GENERALTIME: the one class `ActiveLoadShapeClass` selects
+                    // (`Set LoadShapeClass=`); `USENONE` leaves shape at 1+j1.
+                    // (Pascal Storage's DYNAMICMODE arm is a documented no-op —
+                    // and dynamics is guarded out above anyway — so it is NOT
+                    // folded in here, unlike Load/Generator.)
+                    SolveMode::Time => match sys.active_load_shape_class {
+                        USEDAILY => self.calc_daily_mult(sys.dbl_hour, sys),
+                        USEYEARLY => self.calc_yearly_mult(sys.dbl_hour, sys),
+                        USEDUTY => self.calc_duty_mult(sys.dbl_hour, sys),
+                        _ => {} // USENONE
+                    },
+                    SolveMode::Dynamic => {}
                     SolveMode::Monte2
                     | SolveMode::Monte3
                     | SolveMode::LD1

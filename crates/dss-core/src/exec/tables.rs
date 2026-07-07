@@ -393,6 +393,7 @@ pub(crate) mod opt {
     pub const OVERLOAD_REPORT: usize = 68;
     pub const VOLT_EXCEPTION_REPORT: usize = 69;
     pub const SAMPLE_ENERGY_METERS: usize = 109;
+    pub const LOAD_SHAPE_CLASS: usize = 80;
     pub const EARTH_MODEL: usize = 81;
     pub const NUM_ALLOC_ITERATIONS: usize = 72;
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;

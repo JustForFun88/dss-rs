@@ -35,6 +35,41 @@ fn time_options_round_trip_matches_oracle() {
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
 }
 
+/// WPG.2: `Set`/`Get LoadShapeClass=` round trip + the `LoadShapeClassEnum`
+/// abbreviation behaviour (min_match=1), all transcribed from the pinned
+/// oracle (dss-python 0.15.7). Note `d`/`D` are AMBIGUOUS (Daily vs Duty) and
+/// the enum falls back to its DefaultValue `None`, while the 2-char `da`/`du`
+/// disambiguate and the unique first letters `n`/`y` resolve at one char.
+#[test]
+fn loadshapeclass_set_get_round_trip_matches_oracle() {
+    let query = |dss: &mut Dss, what: &str| -> String {
+        dss.command(&format!("get {what}"));
+        dss.result().to_string()
+    };
+    let mut dss = Dss::new();
+    dss.command("new circuit.lsc basekv=12.47 bus1=b1 phases=3");
+    // Default (unset) is None.
+    assert_eq!(query(&mut dss, "loadshapeclass"), "None");
+    for (set, get) in [
+        ("None", "None"),
+        ("Daily", "Daily"),
+        ("Yearly", "Yearly"),
+        ("Duty", "Duty"),
+        ("n", "None"),
+        ("y", "Yearly"),
+        ("da", "Daily"),
+        ("du", "Duty"),
+        ("d", "None"), // ambiguous 1-char -> DefaultValue
+        ("D", "None"), // case-insensitive, still ambiguous
+        ("YEAR", "Yearly"),
+        ("dut", "Duty"),
+    ] {
+        dss.command(&format!("set loadshapeclass={set}"));
+        assert!(dss.errors().is_empty(), "set {set}: {:?}", dss.errors());
+        assert_eq!(query(&mut dss, "loadshapeclass"), get, "set {set}");
+    }
+}
+
 /// WP5.8: a daily-mode solve steps the clock through `number` steps.
 #[test]
 fn daily_mode_advances_the_clock_and_solves() {

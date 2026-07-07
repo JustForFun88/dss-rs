@@ -2042,6 +2042,29 @@ DUMP3_DECK = [
     "solve",
 ]
 
+# WPG.2: a `mode=Time` (SolveGeneralTime) monitor dump. SolveGeneralTime is the
+# one solve mode that never calls `MonitorClass.SaveAll`, so at dump time the
+# monitor's `MonBuffer` still holds every sample taken (BufPtr != 0) — the
+# NON-empty `// Bufptr=`/`// Buffer=` case the ordinary (snapshot/daily) dump
+# fixtures can never reach (they flush). `Set LoadShapeClass=Daily` makes the
+# load follow `d4`, so the four buffered records carry DIFFERENT V/I per step —
+# an off-by-one in the port's `flushed_records*stride` pending slice would drop
+# or duplicate a record and mismatch byte-for-byte.
+DUMP_MONTIME_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.montime basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new line.l1 bus1=src bus2=b1 phases=3 r1=0.3 x1=0.9 r0=0.9 x0=2.7 c1=3 c0=1.5 length=1 units=km",
+    "new loadshape.d4 npts=4 interval=1 mult=(0.5 0.75 1.0 0.8)",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=600 pf=0.95 model=1 daily=d4",
+    "new monitor.m1 element=line.l1 terminal=1 mode=0",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set LoadShapeClass=Daily",
+    "Set mode=Time stepsize=1h number=4",
+    "solve",
+]
+
 # `tools/golden/report_decks/dump_capacitor.dss`: the Capacitor override,
 # isolated because of the proven upstream ASLR-garbage bug in `CMatrix`/
 # `FaultRate`/`pctPerm` (see the mask below).
@@ -2108,6 +2131,7 @@ DUMP_DECKS = [
     ("dump_upfc", DUMP3_DECK, "upfc.u1 debug"),
     ("dump_regcontrol", DUMP3_DECK, "regcontrol.rc1 debug"),
     ("dump_monitor", DUMP3_DECK, "monitor.mon1 debug"),
+    ("dump_monitor_montime", DUMP_MONTIME_DECK, "monitor.m1 debug"),
     ("dump_energymeter", DUMP3_DECK, "energymeter.em1 debug"),
     ("dump_spectrum", DUMP3_DECK, "spectrum.sp5 debug"),
     ("dump_fault", DUMP3_DECK, "fault.f1 debug"),
