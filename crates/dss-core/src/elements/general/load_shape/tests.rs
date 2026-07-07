@@ -205,6 +205,47 @@ fn get_mult_at_hour_use_actual_zero_q() {
 }
 
 #[test]
+fn mult_walks_fixed_interval_curve_and_present_interval_is_fixed() {
+    // Pascal `Mult(i)` (1-based, `LoadShape.pas:1756`): dP[i-1] in range, else 0.
+    // Used by `SolveLD1`/`SolveLD2` (`ckt.LoadDurCurveObj.Mult(N)`).
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "1.00 0.85 0.60 0.35"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(obj.mult(1), 1.00);
+    assert_eq!(obj.mult(2), 0.85);
+    assert_eq!(obj.mult(3), 0.60);
+    assert_eq!(obj.mult(4), 0.35);
+    // Out of range (both sides): 0.0, no panic.
+    assert_eq!(obj.mult(0), 0.0);
+    assert_eq!(obj.mult(5), 0.0);
+    // `PresentInterval` (`Get_Interval`) returns the fixed Interval
+    // unconditionally — walking Mult does not change it.
+    assert_eq!(obj.present_interval(), 1.0);
+}
+
+#[test]
+fn mult_walks_variable_interval_curve_and_present_interval_tracks_the_gap() {
+    // Pascal `Get_Interval` (`LoadShape.pas:1724`): `LastValueAccessed > 1`
+    // (0-based here) gates the `dH[lva] - dH[lva-1]` gap; `0.0` before that.
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "3"),
+        ("interval", "0"),
+        ("hour", "1 2 4"),
+        ("mult", "10 20 40"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(obj.mult(1), 10.0);
+    assert_eq!(obj.present_interval(), 0.0); // LastValueAccessed = 0, not > 1
+    assert_eq!(obj.mult(2), 20.0);
+    assert_eq!(obj.present_interval(), 0.0); // LastValueAccessed = 1, still not > 1
+    assert_eq!(obj.mult(3), 40.0);
+    assert_eq!(obj.present_interval(), 2.0); // LastValueAccessed = 2 → hour[2]-hour[1]
+}
+
+#[test]
 fn make_like_copies_and_recomputes() {
     let (cls, base, errs) = edited(&[
         ("npts", "3"),

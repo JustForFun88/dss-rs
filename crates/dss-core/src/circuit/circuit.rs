@@ -175,6 +175,12 @@ pub struct Circuit {
     /// `Set defaultyearly=` replace them (again by snapshot clone).
     pub default_daily_shape_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
     pub default_yearly_shape_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
+    /// `LoadDurCurveObj` (Circuit.pas): the load-duration curve `Set LDCurve=`
+    /// resolves, driving `SolveLD1`/`SolveLD2` (`SolutionAlgs.pas`). `NIL`
+    /// (`None`) until set; both solve modes then raise the exact Pascal
+    /// `_(...)` error (#470/#471) and no-op. Snapshot-cloned at `Set` time,
+    /// exactly like the other LoadShape refs above.
+    pub load_dur_curve_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
 
     pub normal_min_volts: f64,
     pub normal_max_volts: f64,
@@ -278,6 +284,7 @@ impl Circuit {
             price_curve_obj: None,
             default_daily_shape_obj: None,
             default_yearly_shape_obj: None,
+            load_dur_curve_obj: None,
             normal_min_volts: 0.95,
             normal_max_volts: 1.05,
             emerg_min_volts: 0.90,

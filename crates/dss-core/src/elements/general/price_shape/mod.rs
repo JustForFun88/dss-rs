@@ -71,6 +71,12 @@ impl PriceShapeObj {
     pub fn get_price(&mut self, hr: f64) -> f64 {
         self.core.get_value_at_hour(hr)
     }
+
+    /// Pascal `TPriceShapeObj.Price(i)`: the price at 1-based curve index `i`
+    /// (`SolveLD1`/`SolveLD2`'s `ckt.PriceCurveObj.Price(N)`).
+    pub fn price(&mut self, i: i32) -> f64 {
+        self.core.value_at(i)
+    }
 }
 
 impl DssObject for PriceShapeObj {

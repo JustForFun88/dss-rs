@@ -358,6 +358,7 @@ pub(crate) mod opt {
     pub const NORMVMAXPU: usize = 22;
     pub const EMERGVMINPU: usize = 23;
     pub const EMERGVMAXPU: usize = 24;
+    pub const LDCURVE: usize = 27;
     pub const PCT_GROWTH: usize = 28;
     pub const GEN_KW: usize = 29;
     pub const GEN_PF: usize = 30;

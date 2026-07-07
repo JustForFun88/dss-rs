@@ -297,6 +297,55 @@ impl LoadShapeObj {
         Complex64::new(re, self.result_im(re))
     }
 
+    /// Pascal `TLoadShapeObj.Mult(i)` (`LoadShape.pas:1756`): the P multiplier
+    /// at 1-based index `i`, updating `LastValueAccessed` (this struct's hunt
+    /// cache is already 0-based, matching Pascal's `dec(i)` before indexing) —
+    /// used by `SolveLD1`/`SolveLD2` to walk the load-duration curve. MMF is
+    /// out of scope (module doc); the f64/f32 storage split needs no branch
+    /// here because `p_mult` already holds the widened f32 view whenever
+    /// single-precision storage is authoritative, covering both of Pascal's
+    /// `dP <> nil` / `else sP` arms with one read.
+    pub fn mult(&mut self, i: i32) -> f64 {
+        let idx = i - 1;
+        let npts = self.n();
+        if idx < 0 || (idx as usize) >= npts {
+            return 0.0;
+        }
+        let off = idx as usize;
+        let re = self
+            .p_mult
+            .as_ref()
+            .and_then(|p| p.get(off))
+            .copied()
+            .unwrap_or(0.0);
+        self.last_value_accessed = off;
+        re
+    }
+
+    /// Pascal `TLoadShapeObj.PresentInterval` / `Get_Interval`
+    /// (`LoadShape.pas:1724`): the fixed `Interval` if set, else the gap
+    /// between the last two `Mult`-walked variable-interval hour points
+    /// (`0.0` before at least two points have been walked). Consumed by
+    /// `SolveLD1`/`SolveLD2` (`ckt.LoadDurCurveObj.PresentInterval`).
+    pub fn present_interval(&self) -> f64 {
+        if self.interval > 0.0 {
+            return self.interval;
+        }
+        if self.last_value_accessed <= 1 {
+            return 0.0;
+        }
+        let Some(h) = self.hour.as_ref() else {
+            return 0.0;
+        };
+        match (
+            h.get(self.last_value_accessed),
+            h.get(self.last_value_accessed - 1),
+        ) {
+            (Some(&hi), Some(&hprev)) => hi - hprev,
+            _ => 0.0,
+        }
+    }
+
     /// Pascal `iMaxAbsArrayValue` − 1: 0-based index of the largest-magnitude
     /// element over the first `npts` entries, or `None` for an empty array.
     fn i_max_abs(a: &[f64], npts: usize) -> Option<usize> {
