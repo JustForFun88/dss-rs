@@ -30,4 +30,25 @@ every copied file (paths relative to `tests/corpus/`); verify with
 `sha256sum -c SHA256SUMS` from this directory.
 
 Every `.dss` file here is accounted for in exactly one manifest under
-`tests/corpus/manifests/` � enforced by `corpus_manifest.rs`.
+`tests/corpus/manifests/` — enforced by `corpus_manifest.rs`.
+
+## Synthetic deck families (siblings of the vendored tree)
+
+Besides the vendored `electricdss-tst/` mirror, three **hand-written /
+generated** deck families live here, each with its own `manifest.json` and a
+`<family>_manifest_is_complete` + `<family>_cases_match_oracle` gate pair in
+`crates/dss-core/tests/corpus_live.rs`:
+
+- `asymmetric/` — static/snapshot element coverage in deliberately
+  asymmetric configurations (the transposed-YPrim-stamp class);
+- `controls/` — control / protection / metering elements with per-step state
+  channels (probes, event log, control queue, meters/monitors);
+- `modes/` — solve modes, solution algorithms, input formats, executive
+  verbs (Monte Carlo, load-duration, Time, AutoAdd, Newton, binary/CSV
+  shapes, harmonics-mode decks, BatchEdit, Reduce).
+
+A case with `pending: true` covers a feature the port does not implement yet
+(GAPS_PLAN.md §3.1): the gate asserts the Rust engine errors **loudly** on it;
+the WP named in its `wp` field flips the flag when it ports the feature. A
+case needing more than one file lives in a subfolder named after the deck
+(e.g. `modes/shape_binfiles/`).

@@ -418,7 +418,7 @@ def daily_deck(variant: str, extra: list[str], fixed_taps: bool = True) -> str:
     return "\n".join(parts) + "\n"
 
 
-def gaps_midi_deck(
+def pending_midi_deck(
     variant: str,
     src: list[str],
     extra: list[str],
@@ -426,13 +426,13 @@ def gaps_midi_deck(
     vbases: str,
     solves: list[str],
 ) -> str:
-    """A SELF-DRIVING midi deck for the tests/corpus/gaps staging family
+    """A SELF-DRIVING midi deck for a pending (unported-feature) case
     (unported-element coverage on the shared scaffold; GAPS_PLAN.md 1b).
-    Unlike the asymmetric/controls families, gaps decks issue their own
+    Unlike the harness-driven family decks, pending decks issue their own
     Solve commands. `vbases` lists the voltage bases (the scaffold FOOTER is
     not used so decks with extra voltage levels, e.g. the 69 kV AutoTrans
-    spur, can declare them). On graduation (pending -> false) the deck moves
-    to its permanent family and is re-cut to that family's drive convention."""
+    spur, can declare them). The WP that ports the feature (pending -> false)
+    re-cuts the deck to its family's drive convention."""
     parts = [
         *scaffold(variant, src, fixed_taps=True, daily=daily),
         *extra,
@@ -953,36 +953,50 @@ REDUCE_EXTRA = [
 
 REDUCE_SOLVES = ["Solve", "set reduceoption=default", "reduce", "Solve"]
 
-GAPS_MIDI_DECKS = {
-    "midi_isource_asym": lambda: gaps_midi_deck(
+# Destination family per pending midi deck (GAPS_PLAN.md section 3.1 rule:
+# static snapshot -> asymmetric, time-series/control -> controls, executive
+# verbs -> modes).
+PENDING_MIDI_FAMILY = {
+    "midi_isource_asym": "asymmetric",
+    "midi_isource": "controls",
+    "midi_isource_both": "controls",
+    "midi_autotrans_asym": "asymmetric",
+    "midi_autotrans": "controls",
+    "midi_autotrans_both": "controls",
+    "midi_batchedit": "modes",
+    "midi_reduce": "modes",
+}
+
+PENDING_MIDI_DECKS = {
+    "midi_isource_asym": lambda: pending_midi_deck(
         "isource-snapshot(gaps)", SRC_STD, ISOURCE_STATIC,
         daily=False, vbases=MIDI_VBASES, solves=SNAP,
     ),
-    "midi_isource": lambda: gaps_midi_deck(
+    "midi_isource": lambda: pending_midi_deck(
         "isource-daily(gaps)", SRC_STD, ISOURCE_DAILY,
         daily=True, vbases=MIDI_VBASES, solves=DAILY8,
     ),
-    "midi_isource_both": lambda: gaps_midi_deck(
+    "midi_isource_both": lambda: pending_midi_deck(
         "isource-snap+daily(gaps)", SRC_STD, ISOURCE_DAILY,
         daily=True, vbases=MIDI_VBASES, solves=SNAP + DAILY8,
     ),
-    "midi_autotrans_asym": lambda: gaps_midi_deck(
+    "midi_autotrans_asym": lambda: pending_midi_deck(
         "autotrans-snapshot(gaps)", SRC_STD, AUTOTRANS_STATIC,
         daily=False, vbases=AT_VBASES, solves=SNAP,
     ),
-    "midi_autotrans": lambda: gaps_midi_deck(
+    "midi_autotrans": lambda: pending_midi_deck(
         "autotrans-regdaily(gaps)", SRC_STD, AUTOTRANS_DAILY,
         daily=True, vbases=AT_VBASES, solves=DAILY8,
     ),
-    "midi_autotrans_both": lambda: gaps_midi_deck(
+    "midi_autotrans_both": lambda: pending_midi_deck(
         "autotrans-snap+regdaily(gaps)", SRC_STD, AUTOTRANS_DAILY,
         daily=True, vbases=AT_VBASES, solves=SNAP + DAILY8,
     ),
-    "midi_batchedit": lambda: gaps_midi_deck(
+    "midi_batchedit": lambda: pending_midi_deck(
         "batchedit-snapshot(gaps)", SRC_STD, BATCHEDIT_EXTRA,
         daily=False, vbases=MIDI_VBASES, solves=SNAP,
     ),
-    "midi_reduce": lambda: gaps_midi_deck(
+    "midi_reduce": lambda: pending_midi_deck(
         "reduce-default(gaps)", SRC_STD, REDUCE_EXTRA,
         daily=False, vbases=MIDI_VBASES, solves=REDUCE_SOLVES,
     ),
@@ -999,8 +1013,9 @@ def main() -> None:
         targets[REPO / "tests" / "corpus" / "asymmetric" / f"{name}.dss"] = build()
     for name, build in CONTROLS_DECKS.items():
         targets[REPO / "tests" / "corpus" / "controls" / f"{name}.dss"] = build()
-    for name, build in GAPS_MIDI_DECKS.items():
-        targets[REPO / "tests" / "corpus" / "gaps" / f"{name}.dss"] = build()
+    for name, build in PENDING_MIDI_DECKS.items():
+        fam = PENDING_MIDI_FAMILY[name]
+        targets[REPO / "tests" / "corpus" / fam / f"{name}.dss"] = build()
     for path, text in targets.items():
         path.write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {path.relative_to(REPO)} ({len(text.splitlines())} lines)")

@@ -1,5 +1,5 @@
 {
- "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors).",
+ "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
    "path": "regcontrol_sym.dss",
@@ -1145,6 +1145,267 @@
      ]
     }
    ]
+  },
+  {
+   "path": "capcontrol_follow.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Capacitor.c1",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "pending": true,
+   "wp": "WPG.7"
+  },
+  {
+   "path": "invcontrol_expmodel.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "PVSystem.pv",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.9",
+   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven)."
+  },
+  {
+   "path": "invcontrol_storage_vw.dss",
+   "kind": "micro",
+   "n_steps": 6,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state",
+      "kw"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.10"
+  },
+  {
+   "path": "invcontrol_storage_vv_vw.dss",
+   "kind": "micro",
+   "n_steps": 6,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state",
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.10"
+  },
+  {
+   "path": "storagecontroller_seasonal.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "pending": true,
+   "wp": "WPG.11",
+   "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'."
+  },
+  {
+   "path": "isource_daily.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "autotrans_reg.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "RegControl.rat",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "AutoTrans.at",
+     "props": [
+      "taps",
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "pending": true,
+   "wp": "WPG.15",
+   "note": "RegControl drives the AutoTrans COMMON (wye) winding via the Pascal Transf_Or_AutoTrans proxy. Oracle 2026-07-05: 10 tap-change events over the 8 hours, final tapnum=5."
+  },
+  {
+   "path": "isource_both.dss",
+   "kind": "micro",
+   "n_steps": 9,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.14",
+   "note": "Snapshot Solve then the daily run in one session - cross-mode state-leak coverage."
+  },
+  {
+   "path": "midi_isource.dss",
+   "kind": "midi",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "midi_isource_both.dss",
+   "kind": "midi",
+   "n_steps": 9,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": true,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "autotrans_both.dss",
+   "kind": "micro",
+   "n_steps": 9,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "RegControl.rat",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "AutoTrans.at",
+     "props": [
+      "taps",
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "pending": true,
+   "wp": "WPG.15",
+   "note": "Snapshot Solve then the RegControl daily run in one session (12 tap events, final tapnum=5 on the oracle) - cross-mode state-leak coverage."
+  },
+  {
+   "path": "midi_autotrans.dss",
+   "kind": "midi",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "RegControl.rat",
+     "props": [
+      "tapnum"
+     ]
+    },
+    {
+     "element": "AutoTrans.at",
+     "props": [
+      "taps",
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "pending": true,
+   "wp": "WPG.15",
+   "note": "Control-active at midi scale on the oracle: 10 tap events, final tapnum=11."
+  },
+  {
+   "path": "midi_autotrans_both.dss",
+   "kind": "midi",
+   "n_steps": 9,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "RegControl.rat",
+     "props": [
+      "tapnum"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "pending": true,
+   "wp": "WPG.15"
   }
  ]
 }

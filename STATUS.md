@@ -7,7 +7,23 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-06 — **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
+Last updated: 2026-07-07.
+
+**Test-infra cleanup (2026-07-07):** the `tests/corpus/gaps/` staging family is
+**dissolved** — its 46 oracle-validated decks now live in their permanent
+families (`asymmetric/` +9, `controls/` +13, the new `modes/` family: 24 solve-
+mode/algorithm/input-format/executive-verb decks) with `pending: true` in the
+family manifests, and the **pending loud-error gate is implemented**
+(`corpus_live.rs::assert_pending_errors_loudly`, run by the shared
+`family_cases_match_oracle` machinery that replaced the copy-pasted
+asymmetric/controls runners; all 46 pending decks proven to error loudly,
+2026-07-07). Graduation is now a manifest **flag-flip**, not a file move
+(GAPS_PLAN §3.1 reworked; PHASE8_PLAN WP8.6/8.7 paths synced). Deck bytes
+untouched. Multi-file cases live in a deck-named subfolder
+(`modes/shape_binfiles/`); `gen_gaps_binshapes.py` → `tools/decks/
+gen_shape_fixtures.py`.
+
+**Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
 gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)
 IN PROGRESS — Dump steps 1–3a COMPLETE + audited, gate-green** (single-object

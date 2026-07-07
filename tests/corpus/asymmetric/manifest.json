@@ -1,5 +1,5 @@
 {
- "comment": "Synthetic asymmetric decks (see corpus_live.rs 'Asymmetric synthetic decks' section): every stamping element + combinations in deliberately asymmetric configurations, live-compared against the pinned oracle by asymmetric_cases_match_oracle. selected_elements = the elements whose YPrim blocks are compared directly (the transposed-stamp catch). kind uses the same tolerance classes as solvable_now (micro|feeder|large).",
+ "comment": "Synthetic asymmetric decks (see corpus_live.rs 'Asymmetric synthetic decks' section): every stamping element + combinations in deliberately asymmetric configurations, live-compared against the pinned oracle by asymmetric_cases_match_oracle. selected_elements = the elements whose YPrim blocks are compared directly (the transposed-stamp catch). kind uses the same tolerance classes as solvable_now (micro|feeder|large). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
    "path": "vsource_asym.dss",
@@ -275,6 +275,152 @@
    "selected_elements": [
     "*"
    ]
+  },
+  {
+   "path": "isource_snap.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": true,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "autotrans_snap.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "AutoTrans.t1",
+     "props": [
+      "wdgcurrents",
+      "buses",
+      "kVAs"
+     ]
+    },
+    {
+     "element": "AutoTrans.t2",
+     "props": [
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "pending": true,
+   "wp": "WPG.15",
+   "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family."
+  },
+  {
+   "path": "autotrans_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": true,
+   "wp": "WPG.15",
+   "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch)."
+  },
+  {
+   "path": "gicline_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": true,
+   "wp": "WPG.16"
+  },
+  {
+   "path": "gictransformer_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": true,
+   "wp": "WPG.16"
+  },
+  {
+   "path": "gicsource_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Line.seg12",
+     "props": [
+      "bus2"
+     ]
+    },
+    {
+     "element": "Line.seg23",
+     "props": [
+      "bus2"
+     ]
+    }
+   ],
+   "pending": true,
+   "wp": "WPG.16",
+   "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12)."
+  },
+  {
+   "path": "midi_isource_asym.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": true,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "midi_autotrans_asym.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "AutoTrans.at",
+     "props": [
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "pending": true,
+   "wp": "WPG.15"
+  },
+  {
+   "path": "gic_midi.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Line.seg45",
+     "props": [
+      "bus2"
+     ]
+    },
+    {
+     "element": "Line.seg56",
+     "props": [
+      "bus2"
+     ]
+    }
+   ],
+   "pending": true,
+   "wp": "WPG.16",
+   "note": "All three GIC classes chained on a 6-substation 345 kV ring (33 nodes); the bus2 probes pin the GICsource splices. No async/both variants: the GIC classes have no shape reference or time-varying drive upstream."
   }
  ]
 }
