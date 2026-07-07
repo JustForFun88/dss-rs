@@ -1,5 +1,5 @@
 {
- "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[].",
+ "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[]. WP8.5b property parity (every element's every property, Rust ?-surface vs oracle Properties(p).Val): gated automatically for pinned-capi feeder/micro-kind decks; the heavy large-kind decks (8500-Node/ckt5/EPRI/IEEE123/ADiakoptics/4Bus-YYD) and target-rev cases stay OFF in the mandatory gate (too slow / different-engine property format) and are swept by the DSS_LIVE_PROPS=1 corpus_live_properties pilot, which proved the whole corpus clean. Comparability exclusions: tests/harness SKIP_PROPS + TOLERANCE_NOTES.md.",
  "cases": [
   {
    "path": "Test/BundleDemo.DSS",
