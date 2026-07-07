@@ -36,6 +36,15 @@
      ]
     },
     {
+     "element": "Loadshape.ls_sng0",
+     "props": [
+      "npts",
+      "interval",
+      "hour",
+      "mult"
+     ]
+    },
+    {
      "element": "Tshape.t_sng",
      "props": [
       "npts",
@@ -58,8 +67,7 @@
      ]
     }
    ],
-   "pending": true,
-   "wp": "WPG.1"
+   "pending": false
   },
   {
    "path": "generaltime.dss",

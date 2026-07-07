@@ -229,31 +229,93 @@ fn make_like_copies_and_recomputes() {
 }
 
 #[test]
-fn binary_file_props_are_not_ported() {
-    // CSVFile is now ported; SngFile/DblFile/PQCSVFile stay NOT_PORTED.
-    let enums = EnumRegistry::new();
-    let cls = class_props(&enums);
-    for name in ["sngfile", "dblfile", "pqcsvfile"] {
-        let mut obj = LoadShapeObj::new("d");
-        let mut parser = Parser::new();
-        let vars = ParserVars::new();
-        let mut errors = Vec::new();
-        let idx = cls.property_index(name).unwrap();
-        let mut eng = PropEngine {
-            parser: &mut parser,
-            vars: &vars,
-            enums: &enums,
-            errors: &mut errors,
-            foreign: None,
-        };
-        let err = cls
-            .edit_property(&mut obj, idx, "shape.bin", &mut eng)
-            .unwrap_err();
-        assert!(
-            err.to_string().to_lowercase().contains("not ported"),
-            "{name}: {err}"
-        );
+fn binary_and_pq_file_props_queue_a_file_load() {
+    // WPG.1: SngFile/DblFile/PQCSVFile are ported (deferred FileLoad, like
+    // CSVFile); SngFile/DblFile queue a *binary* load, PQCSVFile a text one.
+    for (name, prop, binary) in [
+        ("sngfile", prop::SNGFILE, true),
+        ("dblfile", prop::DBLFILE, true),
+        ("pqcsvfile", prop::PQCSVFILE, false),
+    ] {
+        let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), (name, "s.bin")]);
+        assert!(errs.is_empty(), "{name}: {errs:?}");
+        let loads = obj.take_file_loads();
+        assert_eq!(loads.len(), 1, "{name}");
+        assert_eq!(loads[0].prop, prop, "{name}");
+        assert_eq!(loads[0].filename, "s.bin", "{name}");
+        assert_eq!(loads[0].binary, binary, "{name}");
     }
+}
+
+#[test]
+fn read_sng_file_fixed_interval() {
+    // 4 x f32 P multipliers, little-endian (Pascal `ReadSngFile`). Values are
+    // exactly representable in f32 so the f32->f64 widen round-trips exactly.
+    let (cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1")]);
+    let mut bytes = Vec::new();
+    for v in [0.25f32, 0.5, 0.75, 1.0] {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.read_sng_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "NPts"), "4");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.25 0.5 0.75 1]");
+}
+
+#[test]
+fn read_sng_file_variable_interval_pairs_and_shrinks() {
+    // (hour, mult) f32 pairs; a short final pair is dropped and NumPoints
+    // shrinks to the count actually read (Pascal `NumPoints := i`).
+    let (cls, mut obj, _) = edited(&[("npts", "5"), ("interval", "0")]);
+    let mut bytes = Vec::new();
+    for (h, m) in [(0.0f32, 0.25f32), (1.0, 0.5), (2.0, 0.75)] {
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&m.to_le_bytes());
+    }
+    obj.read_sng_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "NPts"), "3");
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 1 2]");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.25 0.5 0.75]");
+}
+
+#[test]
+fn read_dbl_file_fixed_and_variable_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    let mut bytes = Vec::new();
+    for v in [0.3f64, 0.5, 0.9] {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.read_dbl_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9]");
+
+    let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
+    let mut bytes = Vec::new();
+    for (h, m) in [(0.0f64, 0.4f64), (2.0, 0.8)] {
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&m.to_le_bytes());
+    }
+    obj.read_dbl_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 2]");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.4 0.8]");
+}
+
+#[test]
+fn read_pq_csv_file_fixed_and_variable_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_pq_csv_file("0.3, 0.2\n0.5, 0.4\n0.9, 0.7\n");
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9]");
+    assert_eq!(get(&cls, &obj, "QMult"), "[ 0.2 0.4 0.7]");
+
+    let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
+    obj.read_pq_csv_file("0, 0.3, 0.2\n1, 0.5, 0.4\n");
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 1]");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5]");
+    assert_eq!(get(&cls, &obj, "QMult"), "[ 0.2 0.4]");
 }
 
 #[test]
@@ -357,4 +419,117 @@ fn csvfile_missing_records_error() {
         "expected a 613-style error, got {:?}",
         dss.errors()
     );
+}
+
+/// Full path through the executive for the binary readers (WPG.1): a temp
+/// `.sng`/`.dbl` file resolved relative to the script's current directory,
+/// read as raw bytes and parsed (Pascal `ReadSngFile`/`ReadDblFile`). Values
+/// are transcribed from the pinned oracle (dss-python 0.15.7).
+#[test]
+fn sng_and_dbl_file_through_executive_match_oracle() {
+    use crate::exec::Dss;
+
+    let dir = std::env::temp_dir().join(format!(
+        "dss_ls_bin_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mult = [0.4f32, 0.55, 0.75, 0.95, 1.0, 0.9, 0.7, 0.5];
+    let sng8 = dir.join("ls8.sng");
+    let mut sng_bytes = Vec::new();
+    for v in mult {
+        sng_bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    std::fs::write(&sng8, &sng_bytes).unwrap();
+
+    let dbl8 = dir.join("ls8.dbl");
+    let mut dbl_bytes = Vec::new();
+    for v in mult {
+        dbl_bytes.extend_from_slice(&(v as f64).to_le_bytes());
+    }
+    std::fs::write(&dbl8, &dbl_bytes).unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command(&format!(
+        "New LoadShape.s npts=8 interval=1 sngfile=\"{}\"",
+        sng8.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.s.npts");
+    assert_eq!(dss.result(), "8");
+    dss.command("? LoadShape.s.mult");
+    // Oracle: [ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1
+    // 0.899999976158142 0.699999988079071 0.5] (f32->f64 widen, not the
+    // literal decimal).
+    assert_eq!(
+        dss.result(),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1 \
+         0.899999976158142 0.699999988079071 0.5]"
+    );
+
+    dss.command(&format!(
+        "New LoadShape.d npts=8 interval=1 dblfile=\"{}\"",
+        dbl8.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.d.mult");
+    assert_eq!(
+        dss.result(),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1 \
+         0.899999976158142 0.699999988079071 0.5]"
+    );
+
+    // Interval=0 variant: (hour, mult) f32 pairs, hours 0..7 (Pascal's
+    // "Interval = 0" branch of ReadSngFile).
+    let sng8v = dir.join("ls8v.sng");
+    let mut sngv_bytes = Vec::new();
+    for (h, m) in mult.iter().enumerate() {
+        sngv_bytes.extend_from_slice(&(h as f32).to_le_bytes());
+        sngv_bytes.extend_from_slice(&m.to_le_bytes());
+    }
+    std::fs::write(&sng8v, &sngv_bytes).unwrap();
+    dss.command(&format!(
+        "New LoadShape.s0 npts=8 interval=0 sngfile=\"{}\"",
+        sng8v.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.s0.hour");
+    assert_eq!(dss.result(), "[ 0 1 2 3 4 5 6 7]");
+    dss.command("? LoadShape.s0.mult");
+    assert_eq!(
+        dss.result(),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1 \
+         0.899999976158142 0.699999988079071 0.5]"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A missing SngFile/DblFile is Pascal error 615/617 (recorded, edit
+/// continues) — same generic executive open-error message as CSVFile.
+#[test]
+fn sng_and_dbl_file_missing_records_error() {
+    use crate::exec::Dss;
+    for prop in ["sngfile", "dblfile"] {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.p");
+        dss.command(&format!(
+            "New LoadShape.d npts=6 interval=1 {prop}=does_not_exist_42.bin"
+        ));
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Error opening file")),
+            "{prop}: expected an open-error, got {:?}",
+            dss.errors()
+        );
+    }
 }

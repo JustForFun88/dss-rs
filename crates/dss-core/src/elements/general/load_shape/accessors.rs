@@ -142,11 +142,28 @@ impl DssObject for LoadShapeObj {
         std::mem::take(&mut self.pending_file_loads)
     }
 
-    /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`). Other file kinds are
-    /// `NOT_PORTED`, so they never reach here.
+    /// Apply a resolved text file: `CSVFile` (Pascal `DoCSVFile`) or
+    /// `PQCSVFile` (Pascal `Do2ColCSVFile`).
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
-        if load.prop == CSVFILE {
-            self.read_csv_file(content);
+        match load.prop {
+            CSVFILE => self.read_csv_file(content),
+            PQCSVFILE => self.read_pq_csv_file(content),
+            _ => {}
+        }
+    }
+
+    /// Apply a resolved binary file: `SngFile` (Pascal `ReadSngFile`) or
+    /// `DblFile` (Pascal `ReadDblFile`).
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        _errors: &mut Vec<String>,
+    ) {
+        match load.prop {
+            SNGFILE => self.read_sng_file(content),
+            DBLFILE => self.read_dbl_file(content),
+            _ => {}
         }
     }
 
@@ -158,14 +175,28 @@ impl DssObject for LoadShapeObj {
             MULT | PMULT | QMULT => {
                 self.std_dev_calculated = false;
             }
-            // Pascal `DoCSVFile` runs here, but the hook can't reach the
-            // filesystem/current dir: queue the read for the executive.
+            // Pascal `DoCSVFile`/`DoSngFile`/`DoDblFile` run here, but the hook
+            // can't reach the filesystem/current dir: queue the read for the
+            // executive (Pascal `PropertySideEffects`, `LoadShape.pas:709-714`).
             CSVFILE => {
                 self.std_dev_calculated = false;
-                self.pending_file_loads.push(FileLoad {
-                    prop: CSVFILE,
-                    filename: self.csvfile.clone(),
-                });
+                self.pending_file_loads
+                    .push(FileLoad::text(CSVFILE, self.csvfile.clone()));
+            }
+            SNGFILE => {
+                self.std_dev_calculated = false;
+                self.pending_file_loads
+                    .push(FileLoad::binary(SNGFILE, self.sngfile.clone()));
+            }
+            DBLFILE => {
+                self.std_dev_calculated = false;
+                self.pending_file_loads
+                    .push(FileLoad::binary(DBLFILE, self.dblfile.clone()));
+            }
+            // Pascal `Do2ColCSVFile` (`PQCSVFile`, `LoadShape.pas:715-716`).
+            PQCSVFILE => {
+                self.pending_file_loads
+                    .push(FileLoad::text(PQCSVFILE, self.pqcsvfile.clone()));
             }
             QMAX => self.max_q_specified = true,
             // Interval and Hour are mutually exclusive specs.

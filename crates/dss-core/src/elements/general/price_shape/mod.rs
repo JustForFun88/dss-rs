@@ -11,9 +11,9 @@
 //! auto-clears `Interval` to 0 (a variable-interval curve) while setting a
 //! positive `Interval` drops the hour array.
 //!
-//! `CSVFile` is read via the deferred [`FileLoad`] path; `SngFile`/`DblFile`
-//! (binary input) and `Action=DblSave/SngSave` (binary output) stay
-//! `NOT_PORTED`.
+//! `CSVFile`/`SngFile`/`DblFile` are all read via the deferred [`FileLoad`]
+//! path (WPG.1 for the binary pair); `Action=DblSave/SngSave` (binary output)
+//! stays `NOT_PORTED`.
 
 #[cfg(test)]
 mod tests;
@@ -35,12 +35,10 @@ define_properties! {
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     8  SNGFILE   => PropDef::string("SngFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     9  DBLFILE   => PropDef::string("DblFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     10 SINTERVAL => PropDef::double("SInterval")
         .scale(1.0 / 3600.0)
@@ -178,6 +176,20 @@ impl DssObject for PriceShapeObj {
         }
     }
 
+    /// Apply a resolved `SngFile`/`DblFile` (Pascal `DoSngFile`/`DoDblFile`).
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        _errors: &mut Vec<String>,
+    ) {
+        match load.prop {
+            SNGFILE => self.core.read_sng_file(content),
+            DBLFILE => self.core.read_dbl_file(content),
+            _ => {}
+        }
+    }
+
     /// Pascal `TPriceShapeObj.PropertySideEffects`.
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         match idx {
@@ -185,10 +197,21 @@ impl DssObject for PriceShapeObj {
             PRICE => self.core.std_dev_calculated = false,
             CSVFILE => {
                 self.core.std_dev_calculated = false;
-                self.core.pending_file_loads.push(FileLoad {
-                    prop: CSVFILE,
-                    filename: self.core.csvfile.clone(),
-                });
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::text(CSVFILE, self.core.csvfile.clone()));
+            }
+            SNGFILE => {
+                self.core.std_dev_calculated = false;
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::binary(SNGFILE, self.core.sngfile.clone()));
+            }
+            DBLFILE => {
+                self.core.std_dev_calculated = false;
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::binary(DBLFILE, self.core.dblfile.clone()));
             }
             // `ord(interval): if Interval > 0.0 then ReallocMem(Hours, 0)`.
             INTERVAL => {

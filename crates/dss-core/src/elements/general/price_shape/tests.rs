@@ -101,30 +101,43 @@ fn make_like_copies() {
 }
 
 #[test]
-fn binary_file_props_are_not_ported() {
-    let enums = EnumRegistry::new();
-    let cls = class_props(&enums);
+fn binary_file_props_queue_a_binary_file_load() {
+    // WPG.1: SngFile/DblFile are ported (deferred FileLoad, like CSVFile).
     for name in ["sngfile", "dblfile"] {
-        let mut obj = PriceShapeObj::new("d");
-        let mut parser = Parser::new();
-        let vars = ParserVars::new();
-        let mut errors = Vec::new();
-        let idx = cls.property_index(name).unwrap();
-        let mut eng = PropEngine {
-            parser: &mut parser,
-            vars: &vars,
-            enums: &enums,
-            errors: &mut errors,
-            foreign: None,
-        };
-        let err = cls
-            .edit_property(&mut obj, idx, "shape.bin", &mut eng)
-            .unwrap_err();
-        assert!(
-            err.to_string().to_lowercase().contains("not ported"),
-            "{name}: {err}"
-        );
+        let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), (name, "p.bin")]);
+        assert!(errs.is_empty(), "{name}: {errs:?}");
+        let loads = obj.take_file_loads();
+        assert_eq!(loads.len(), 1, "{name}");
+        assert_eq!(loads[0].filename, "p.bin", "{name}");
+        assert!(loads[0].binary, "{name}");
     }
+}
+
+#[test]
+fn read_sng_file_fixed_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1")]);
+    let mut bytes = Vec::new();
+    for v in [32.0f32, 30.5, 41.0, 55.5] {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.core.read_sng_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "NPts"), "4");
+    assert_eq!(get(&cls, &obj, "Price"), "[ 32 30.5 41 55.5]");
+}
+
+#[test]
+fn read_dbl_file_variable_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
+    let mut bytes = Vec::new();
+    for (h, v) in [(0.0f64, 32.0f64), (3.0, 55.5)] {
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.core.read_dbl_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 3]");
+    assert_eq!(get(&cls, &obj, "Price"), "[ 32 55.5]");
 }
 
 #[test]

@@ -87,19 +87,24 @@ def capture_all_elements(ckt) -> list:
     return out
 
 
-def capture_probes(ckt, probes: list) -> list:
+def capture_probes(d, probes: list) -> list:
     """Element-specific state via the generic property surface: for each
-    `{element, props: [...]}` spec, `Properties(p).Val` of the active element —
-    the same value string the Rust `?` query renders (CONTROL_COVERAGE_PLAN.md).
-    Compared by the harness with a numeric skeleton (numbers by value, text
-    case-insensitively), so display-format drift is not load-bearing here."""
+    `{element, props: [...]}` spec, the `? element.prop` executive query
+    (CONTROL_COVERAGE_PLAN.md) — the same value string the Rust `?` query
+    renders, and the same read path `GetPropertyValue` backs `Properties(p).Val`
+    with for a `TDSSCktElement`. Routed through the query (not
+    `ActiveCktElement.Properties(p).Val`) because `SetActiveElement` only finds
+    `TDSSCktElement`s: it silently no-ops (returns -1, active element
+    unchanged) for a `DSS_OBJECT` class with no terminals — LoadShape/TShape/
+    PriceShape/GrowthShape/… (WPG.1) — which would otherwise read back
+    whatever CktElement happened to be active. Verified bit-identical to
+    `Properties(p).Val` for a CktElement probe."""
     out = []
     for spec in probes:
         name = spec["element"]
-        ckt.SetActiveElement(name)
-        el = ckt.ActiveCktElement
         for p in spec.get("props") or []:
-            out.append({"element": name, "prop": p, "value": str(el.Properties(p).Val)})
+            d.Text.Command = f"? {name}.{p}"
+            out.append({"element": name, "prop": p, "value": str(d.Text.Result)})
     return out
 
 
@@ -292,7 +297,7 @@ def run_case(d, req: dict) -> dict:
                         "capacitors": disc["capacitors"],
                         "monitors": capture_all_monitors(ckt) if check_mm else [],
                         "meters": capture_all_meters(ckt) if check_mm else [],
-                        "probes": capture_probes(ckt, probes),
+                        "probes": capture_probes(d, probes),
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (
                             [str(s) for s in sol.EventLog] if want_eventlog else []

@@ -1021,10 +1021,18 @@ impl Dss {
         let file_loads = objects[oi].take_file_loads();
         for fl in &file_loads {
             let path = current_dir.join(&fl.filename);
-            match std::fs::read_to_string(&path) {
-                Ok(content) => objects[oi].apply_file_load(fl, &content, errors),
-                // Pascal error 613.
-                Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+            if fl.binary {
+                match std::fs::read(&path) {
+                    Ok(bytes) => objects[oi].apply_binary_file_load(fl, &bytes, errors),
+                    // Pascal error 615/617 (SngFile/DblFile "Error opening file").
+                    Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+                }
+            } else {
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => objects[oi].apply_file_load(fl, &content, errors),
+                    // Pascal error 613/58613 (CSVFile/PQCSVFile "Error opening file").
+                    Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+                }
             }
         }
 

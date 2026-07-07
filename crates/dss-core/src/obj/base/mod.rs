@@ -215,9 +215,11 @@ impl RefAction {
 /// (e.g. a LoadShape `CSVFile`). The setter cannot reach the filesystem or the
 /// script's current directory, so it records the request; the executive
 /// resolves the path (relative to `current_dir`, like `Redirect`), reads the
-/// file, and hands the contents back via [`DssObject::apply_file_load`]. The
-/// object then parses the text with its own format rules. Nothing reads the
-/// object's data between the property set and the load, so the deferral is
+/// file, and hands the contents back via [`DssObject::apply_file_load`] (text)
+/// or [`DssObject::apply_binary_file_load`] (raw bytes, `binary: true` — the
+/// `SngFile`/`DblFile` little-endian f32/f64 streams, WPG.1). The object then
+/// parses the content with its own format rules. Nothing reads the object's
+/// data between the property set and the load, so the deferral is
 /// unobservable (the load still completes before `EndEdit`).
 #[derive(Debug, Clone)]
 pub struct FileLoad {
@@ -227,6 +229,29 @@ pub struct FileLoad {
     pub prop: usize,
     /// The filename exactly as written in the script (unresolved).
     pub filename: String,
+    /// `true` for a raw byte read (`SngFile`/`DblFile`, dispatched to
+    /// [`DssObject::apply_binary_file_load`]); `false` for a line-oriented text
+    /// read (`CSVFile`/`PQCSVFile`, dispatched to [`DssObject::apply_file_load`]).
+    pub binary: bool,
+}
+
+impl FileLoad {
+    /// A text (line-oriented, e.g. `CSVFile`) deferred load.
+    pub fn text(prop: usize, filename: impl Into<String>) -> Self {
+        Self {
+            prop,
+            filename: filename.into(),
+            binary: false,
+        }
+    }
+    /// A binary (raw byte stream, `SngFile`/`DblFile`) deferred load.
+    pub fn binary(prop: usize, filename: impl Into<String>) -> Self {
+        Self {
+            prop,
+            filename: filename.into(),
+            binary: true,
+        }
+    }
 }
 
 /// The typed field accessors the property engine calls, keyed by the 1-based
@@ -540,6 +565,17 @@ pub trait DssObject {
     /// queued [`FileLoad`]). The object parses `content` per its own format.
     /// Default: ignore.
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, errors: &mut Vec<String>) {
+        let _ = (load, content, errors);
+    }
+
+    /// The binary counterpart of [`Self::apply_file_load`] for a `FileLoad`
+    /// with `binary: true` (`SngFile`/`DblFile`). Default: ignore.
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        errors: &mut Vec<String>,
+    ) {
         let _ = (load, content, errors);
     }
 

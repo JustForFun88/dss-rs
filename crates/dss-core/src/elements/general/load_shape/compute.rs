@@ -327,4 +327,125 @@ impl LoadShapeObj {
         }
         self.num_points = i as i32;
     }
+
+    /// Pascal `TLoadShapeObj.Read2ColCSVFile` (`PQCSVFile`, double, non-MMF
+    /// path): each row is `P, Q` (or `hour, P, Q` when `Interval = 0`). Reads at
+    /// most `NumPoints` rows and shrinks `NumPoints` to the count actually read.
+    pub(super) fn read_pq_csv_file(&mut self, content: &str) {
+        let npts = self.n();
+        let variable = self.interval == 0.0;
+        let mut p = vec![0.0; npts];
+        let mut q = vec![0.0; npts];
+        let mut h = if variable {
+            vec![0.0; npts]
+        } else {
+            Vec::new()
+        };
+
+        let mut parser = Parser::new();
+        parser.set_auto_increment(false);
+        let vars = ParserVars::new();
+
+        let mut i = 0usize;
+        for line in content.lines() {
+            if i >= npts {
+                break;
+            }
+            parser.set_cmd_string(line);
+            if variable {
+                parser.next_param(&vars);
+                h[i] = parser.make_double(&vars).unwrap_or(0.0);
+            }
+            parser.next_param(&vars);
+            p[i] = parser.make_double(&vars).unwrap_or(0.0);
+            parser.next_param(&vars);
+            q[i] = parser.make_double(&vars).unwrap_or(0.0);
+            i += 1;
+        }
+
+        p.truncate(i);
+        q.truncate(i);
+        self.p_mult = store_array(p);
+        self.q_mult = store_array(q);
+        if variable {
+            h.truncate(i);
+            self.hour = store_array(h);
+        }
+        self.num_points = i as i32;
+    }
+
+    /// Pascal `TLoadShapeObj.ReadSngFile` (little-endian `f32` stream). For a
+    /// variable interval (`Interval = 0`) each point is an `(hour, mult)` pair;
+    /// otherwise a bare `mult` stream. Reads at most `NumPoints` points and
+    /// shrinks `NumPoints` to the count actually read.
+    ///
+    /// Pascal keeps two code paths here — a "float32" path taken when `QMult`
+    /// is not yet set (stores into `sP`/`sH`, single precision throughout) and
+    /// a "float64" path taken once `QMult` is set (stores into `dP`/`dH`
+    /// directly, widening each `Single` read on assignment). Both read the
+    /// identical bytes; they differ only in a rare edge case (a *truncated*
+    /// variable-interval file on the float32 path skips the `NumPoints` shrink
+    /// Pascal applies everywhere else) that no corpus deck exercises. This port
+    /// always widens straight into the f64 `p_mult`/`hour` arrays and always
+    /// shrinks `NumPoints` to the count read (the float64 path's behavior),
+    /// bit-identical to the float32 path for every non-truncated read (the
+    /// widen is a lossless `f32 -> f64` cast either way, and no corpus curve
+    /// interpolates a single-precision-only shape — the one place float32 vs.
+    /// float64 *arithmetic* could diverge).
+    pub(super) fn read_sng_file(&mut self, content: &[u8]) {
+        let npts = self.n();
+        if self.interval == 0.0 {
+            let mut h = Vec::with_capacity(npts);
+            let mut p = Vec::with_capacity(npts);
+            let mut off = 0usize;
+            while h.len() < npts && off + 8 <= content.len() {
+                let hr = f32::from_le_bytes(content[off..off + 4].try_into().unwrap());
+                let m = f32::from_le_bytes(content[off + 4..off + 8].try_into().unwrap());
+                h.push(hr as f64);
+                p.push(m as f64);
+                off += 8;
+            }
+            self.num_points = h.len() as i32;
+            self.hour = store_array(h);
+            self.p_mult = store_array(p);
+        } else {
+            let n = (content.len() / 4).min(npts);
+            let p: Vec<f64> = content[..n * 4]
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes(c.try_into().unwrap()) as f64)
+                .collect();
+            self.num_points = n as i32;
+            self.p_mult = store_array(p);
+        }
+    }
+
+    /// Pascal `TLoadShapeObj.ReadDblFile` (little-endian `f64` stream); same
+    /// row layout as [`Self::read_sng_file`] but always double precision (no
+    /// float32/float64 branch in Pascal here).
+    pub(super) fn read_dbl_file(&mut self, content: &[u8]) {
+        let npts = self.n();
+        if self.interval == 0.0 {
+            let mut h = Vec::with_capacity(npts);
+            let mut p = Vec::with_capacity(npts);
+            let mut off = 0usize;
+            while h.len() < npts && off + 16 <= content.len() {
+                let hr = f64::from_le_bytes(content[off..off + 8].try_into().unwrap());
+                let m = f64::from_le_bytes(content[off + 8..off + 16].try_into().unwrap());
+                h.push(hr);
+                p.push(m);
+                off += 16;
+            }
+            self.num_points = h.len() as i32;
+            self.hour = store_array(h);
+            self.p_mult = store_array(p);
+        } else {
+            let n = (content.len() / 8).min(npts);
+            let p: Vec<f64> = content[..n * 8]
+                .chunks_exact(8)
+                .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                .collect();
+            self.num_points = n as i32;
+            self.p_mult = store_array(p);
+        }
+    }
 }
