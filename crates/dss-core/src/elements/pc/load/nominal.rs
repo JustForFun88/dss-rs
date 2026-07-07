@@ -7,7 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 use super::{Connection, Load, LoadModel, LoadSpec, prop};
@@ -139,13 +139,18 @@ impl Load {
                 }
                 SolveMode::Time | SolveMode::Dynamic => {
                     // Pascal `GENERALTIME`/`DYNAMICMODE`: growth × load-multiplier
-                    // (unless Exempt), with the ShapeFactor taken from
-                    // `ActiveLoadShapeClass`. That class is `USENONE` by default
-                    // (not yet a ported setting — same assumption as
-                    // Generator/Storage/PVSystem), so `ShapeFactor` stays 1+j1.
+                    // (unless Exempt); the ShapeFactor comes from the one class
+                    // `ActiveLoadShapeClass` selects (`Set LoadShapeClass=`).
+                    // `USENONE` (the default) falls through, leaving 1+j1.
                     let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
+                    }
+                    match sys.active_load_shape_class {
+                        USEDAILY => self.calc_daily_mult(sys.dbl_hour),
+                        USEYEARLY => self.calc_yearly_mult(sys.dbl_hour),
+                        USEDUTY => self.calc_duty_mult(sys.dbl_hour),
+                        _ => {} // USENONE: ShapeFactor stays 1+j1
                     }
                     f
                 }

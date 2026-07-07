@@ -441,12 +441,14 @@ impl Dss {
         let mut last_path = String::new();
         for r in targets {
             let (mon_name, content) = {
-                let obj = &self.classes[r.cls].objects[r.idx];
+                let obj = &mut self.classes[r.cls].objects[r.idx];
+                let name = obj.data().name().to_string();
                 let mon = obj
-                    .as_any()
-                    .downcast_ref::<crate::elements::meter::monitor::Monitor>()
+                    .as_any_mut()
+                    .downcast_mut::<crate::elements::meter::monitor::Monitor>()
                     .expect("ckt.monitors holds Monitor objects");
-                (obj.data().name().to_string(), mon.to_csv())
+                // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`), hence &mut.
+                (name, mon.to_csv())
             };
             let default_name = format!("Mon_{mon_name}_1.csv");
             let path = crate::report::output::export_path(
@@ -476,32 +478,29 @@ impl Dss {
             self.errors.push("Monitor Name Not Specified.".to_string());
             return;
         }
-        let (mon_name, content, case) = {
-            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
-            let found = ckt.monitors.iter().copied().find(|&r| {
-                self.classes[r.cls].objects[r.idx]
-                    .data()
-                    .name()
-                    .eq_ignore_ascii_case(name)
-            });
-            match found {
-                Some(r) => {
-                    let obj = &self.classes[r.cls].objects[r.idx];
-                    let mon = obj
-                        .as_any()
-                        .downcast_ref::<crate::elements::meter::monitor::Monitor>()
-                        .expect("ckt.monitors holds Monitor objects");
-                    (
-                        obj.data().name().to_string(),
-                        mon.to_csv(),
-                        ckt.case_name.clone(),
-                    )
-                }
-                None => {
-                    // Pascal #248 `'Monitor "%s" not found. %s'`.
-                    self.errors.push(format!("Monitor \"{name}\" not found."));
-                    return;
-                }
+        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+        let case = ckt.case_name.clone();
+        let found = ckt.monitors.iter().copied().find(|&r| {
+            self.classes[r.cls].objects[r.idx]
+                .data()
+                .name()
+                .eq_ignore_ascii_case(name)
+        });
+        let (mon_name, content) = match found {
+            Some(r) => {
+                // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`), hence &mut.
+                let obj = &mut self.classes[r.cls].objects[r.idx];
+                let nm = obj.data().name().to_string();
+                let mon = obj
+                    .as_any_mut()
+                    .downcast_mut::<crate::elements::meter::monitor::Monitor>()
+                    .expect("ckt.monitors holds Monitor objects");
+                (nm, mon.to_csv())
+            }
+            None => {
+                // Pascal #248 `'Monitor "%s" not found. %s'`.
+                self.errors.push(format!("Monitor \"{name}\" not found."));
+                return;
             }
         };
         let circuit_name_ = format!("{case}_");

@@ -55,6 +55,8 @@ pub struct EnumRegistry {
     pub default_load_model: EnumId,
     /// 'Circuit Model' (`DSS.CktModelEnum`).
     pub ckt_model: EnumId,
+    /// 'Load Shape Class' (`DSS.LoadShapeClassEnum`, `Set LoadShapeClass=`).
+    pub load_shape_class: EnumId,
     /// 'Core Type' (`DSS.CoreTypeEnum`).
     pub core_type: EnumId,
     /// 'Phase Sequence' reused for transformer LeadLag (`DSS.LeadLagEnum`).

@@ -40,7 +40,8 @@ pub use power_flow::solve_zero_load_snapshot;
 pub use set_mode::set_mode;
 pub use state::{
     ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, MULTIRATE, NEWTONSOLVE, NORMALSOLVE,
-    POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, sys_ctx,
+    POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, USEDAILY, USEDUTY, USENONE,
+    USEYEARLY, sys_ctx,
 };
 
 pub(crate) use dynamics::calc_initial_machine_states;

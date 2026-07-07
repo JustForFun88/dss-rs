@@ -469,6 +469,7 @@ pub fn default_recalc_ctx() -> SysCtx {
         is_dynamic_model: false,
         load_model: crate::solution::POWERFLOW,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,

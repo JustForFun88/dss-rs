@@ -15,6 +15,7 @@ pub(super) struct SolutionEnums {
     pub(super) default_load_model: EnumId,
     pub(super) ckt_model: EnumId,
     pub(super) add_type: EnumId,
+    pub(super) load_shape_class: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> SolutionEnums {
@@ -143,6 +144,19 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> SolutionEnums
     );
     at.default_value = 2;
     let add_type = push(at);
+    // DSSClass.pas:1178 LoadShapeClassEnum (the `Set LoadShapeClass=` option,
+    // consulted by the GENERALTIME/DYNAMICMODE nominal dispatch). min_match=1,
+    // max_match=2; default USENONE.
+    let mut lsc = DssEnum::new(
+        "Load Shape Class",
+        true,
+        1,
+        2,
+        &["None", "Daily", "Yearly", "Duty"],
+        &[-1, 0, 1, 2],
+    );
+    lsc.default_value = -1;
+    let load_shape_class = push(lsc);
     SolutionEnums {
         scan_type,
         sequence,
@@ -153,5 +167,6 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> SolutionEnums
         default_load_model,
         ckt_model,
         add_type,
+        load_shape_class,
     }
 }
