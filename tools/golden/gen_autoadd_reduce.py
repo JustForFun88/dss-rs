@@ -103,6 +103,37 @@ SCENARIOS = [
         "gets": [],
         "error_contains": 'EnergyMeter "NOPE" not found.',
     },
+    # WP8.7: a metered feeder is solved, reduced (DEFAULT in-line series merge),
+    # then RE-SOLVED. The reduction collapses the un-loaded intermediate bus b2
+    # (l1+l2 merge). The `probes` capture the post-reduce circuit-wide node count
+    # and the surviving buses' node-1 voltage magnitudes — the observable proof
+    # that the reduced model still solves to the same operating point.
+    {
+        "name": "reduce-resolve-metered-feeder",
+        "commands": [
+            "clear",
+            "Set DefaultBaseFrequency=60",
+            "new circuit.rr basekv=12.47 pu=1.0 phases=3 bus1=src r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+            "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 units=km",
+            "new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km",
+            "new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km",
+            "new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km",
+            "new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.7 units=km",
+            "new capacitor.c3 bus1=b3 phases=3 kvar=150 kv=12.47",
+            "new load.ld4 bus1=b4 phases=3 conn=wye model=1 kv=12.47 kw=600 pf=0.92",
+            "new energymeter.em element=line.lfeed terminal=1",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "Set maxiterations=100",
+            "solve",
+            "set reduceoption=default",
+            "reduce",
+            "solve",
+        ],
+        "gets": [],
+        "error_contains": None,
+        "probe_buses": ["src", "b1", "b3", "b4"],
+    },
 ]
 
 
@@ -136,13 +167,26 @@ def run(sc):
         dss.Text.Command = "Get " + query
         gets.append({"query": query, "result": dss.Text.Result})
 
-    return {
+    out = {
         "name": sc["name"],
         "commands": sc["commands"],
         "gets": gets,
         "error_number": error_number,
         "error_contains": expected,
     }
+
+    # Post-reduce re-solve probes: the circuit-wide node count + each surviving
+    # bus's node-1 voltage magnitude (V). Captured only when the scenario asks.
+    if "probe_buses" in sc:
+        ckt = dss.ActiveCircuit
+        bus_vmags = []
+        for name in sc["probe_buses"]:
+            ckt.SetActiveBus(name)
+            vmag_angle = ckt.ActiveBus.VMagAngle  # [mag1, ang1, mag2, ang2, ...]
+            bus_vmags.append({"bus": name, "vmag": vmag_angle[0]})
+        out["probes"] = {"num_nodes": ckt.NumNodes, "bus_vmags": bus_vmags}
+
+    return out
 
 
 def main():

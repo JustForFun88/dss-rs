@@ -190,6 +190,7 @@ pub(crate) mod cmd {
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
     pub const REDUCE: usize = 61;
+    pub const REMOVE: usize = 107;
     pub const SET_BUS_XY: usize = 91;
     pub const BATCH_EDIT: usize = 95;
     pub const RELCALC: usize = 100;
@@ -396,6 +397,7 @@ pub(crate) mod opt {
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
     pub const NEGLECT_LOAD_Y: usize = 95;
     pub const MIN_ITERATIONS: usize = 110;
+    pub const KEEP_LIST: usize = 58;
     pub const REDUCE_OPTION: usize = 59;
     pub const KEEP_LOAD: usize = 112;
     pub const ZMAG: usize = 113;
