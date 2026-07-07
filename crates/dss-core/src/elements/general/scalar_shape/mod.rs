@@ -161,6 +161,27 @@ impl ScalarShapeCore {
         t[npts - 1]
     }
 
+    /// Pascal `TPriceShapeObj.Price(i)` (`PriceShape.pas:517`): the scalar
+    /// value at 1-based index `i`, updating `LastValueAccessed` (already
+    /// 1-based here, matching Pascal's own 1-based `PriceValues`/
+    /// `LastValueAccessed` convention — no `dec(i)` in the source) — used by
+    /// `SolveLD1`/`SolveLD2` to walk the price curve alongside the
+    /// load-duration curve (`ckt.PriceCurveObj.Price(N)`).
+    pub fn value_at(&mut self, i: i32) -> f64 {
+        if i <= 0 || i > self.num_points {
+            return 0.0;
+        }
+        let idx = (i - 1) as usize;
+        let v = self
+            .values
+            .as_ref()
+            .and_then(|t| t.get(idx))
+            .copied()
+            .unwrap_or(0.0);
+        self.last_value_accessed = i as usize;
+        v
+    }
+
     /// Pascal `CalcMeanandStdDev`: even-interval (`RCDMeanAndStdDev`) or
     /// trapezoid-integrated over `Hours` (`CurveMeanAndStdDev`). An empty curve
     /// keeps the stored (default 0) values.

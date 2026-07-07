@@ -377,6 +377,14 @@ impl Dss {
                             ckt.default_yearly_shape_obj = Some(shape);
                         }
                     }
+                    opt::LDCURVE => {
+                        // Pascal assigns `LoadShapeClass.Find`'s result (NIL
+                        // on miss) first (`ExecOptions.pas` ordinal 27).
+                        ckt.load_dur_curve_obj = find_load_shape(classes, &param);
+                        if ckt.load_dur_curve_obj.is_none() {
+                            errors.push("Load-Duration Curve not found.".to_string());
+                        }
+                    }
                     opt::CKT_MODEL => {
                         if let Some(v) = enum_ord(enums, enums.ckt_model, &param, errors) {
                             ckt.positive_sequence = v != 0;

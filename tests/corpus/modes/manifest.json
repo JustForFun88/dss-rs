@@ -134,7 +134,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.3"
   },
   {
@@ -145,8 +145,20 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.3"
+  },
+  {
+   "path": "peakday.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.3",
+   "note": "PeakDay Load daily-shape fix: the load current follows day8 exactly (|I1| = mult x 300A: 120/165/225/285/300/270/210/150) and PeakDay applies NO LoadMultiplier (peak 300A not 450A despite Set LoadMult=1.5). Feature-sensitive vs a flat shape (monitor channels + meter registers diverge); the missing-calc_daily_mult bug would sit flat at nominal. Oracle-validated (dss-python 0.15.7): bit-identical across two processes."
   },
   {
    "path": "monte1.dss",

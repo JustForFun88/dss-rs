@@ -177,3 +177,135 @@ fn solve_duty_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
     Ok(())
 }
+
+/// Pascal `_()` error text shared by `SolveLD1`/`SolveLD2` when
+/// `ckt.LoadDurCurveObj = NIL` (`SolutionAlgs.pas` l.567/652, errors #470/
+/// #471 — the numeric code is not modeled here, matching this crate's other
+/// `DoSimpleMsg` ports). Verbatim, including the mid-word capital in
+/// "perForm".
+const LDCURVE_NOT_DEFINED: &str =
+    "Load Duration Curve Not Defined (Set LDCurve=... command). Cannot perForm solution.";
+
+/// Pascal `SolveLD1` (`SolutionAlgs.pas` l.557): a daily outer loop
+/// (`NDaily = Round(24.0 / DynaVars.h * 3600.0)`) times a load-duration-curve
+/// inner loop (`ckt.LoadDurCurveObj.NumPoints` points), each point a `SolveSnap`.
+/// The `LoadDurCurveObj = NIL` guard sits INSIDE the Pascal `try`, so even that
+/// early exit still runs the `finally` (`MonitorClass.SaveAll` — a no-op here,
+/// see `solve_dynamic` — plus, if `SampleTheMeters`, `CloseAllDIFiles`);
+/// reproduced by always running the `finally` tail after [`solve_ld1_body`].
+pub(super) fn solve_ld1(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    let result = solve_ld1_body(ckt, env);
+    if ckt.solution.sample_the_meters {
+        crate::solution::meters::close_all_di_files(ckt, env.store, env.errors);
+    }
+    result
+}
+
+/// The `SolveLD1` stepping loop (the Pascal `try` body).
+fn solve_ld1_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    if ckt.load_dur_curve_obj.is_none() {
+        env.errors.push(LDCURVE_NOT_DEFINED.to_string());
+        return Ok(());
+    }
+    // Time must be set before entering this routine.
+    // TODO(compat): FPC `Round` is banker's rounding (ties-to-even); this
+    // index is always in i32 range, so `round_ties_even` reproduces it.
+    // Wiped with the other compat shims.
+    let ndaily = (24.0 / ckt.solution.h * 3600.0).round_ties_even() as i32;
+    if !ckt.em_di.di_files_are_open {
+        crate::solution::meters::open_all_di_files(ckt, env.store);
+    }
+    ckt.solution.int_hour = 0;
+    for _ in 1..=ndaily {
+        ckt.solution.increment_time();
+        let dbl_hour = ckt.solution.dbl_hour;
+        match ckt.default_daily_shape_obj.as_mut() {
+            Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
+            None => return Err("Default daily load shape not found.".to_string()),
+        }
+        if ckt.solution.solution_abort {
+            // Pascal `Break` (not the per-step `continue` Daily/Yearly/Duty
+            // use): once aborted, LD1 never re-enters the outer loop.
+            env.errors.push("Solution Aborted".to_string());
+            break;
+        }
+        let num_points = ckt
+            .load_dur_curve_obj
+            .as_ref()
+            .map(|c| c.num_points())
+            .unwrap_or(0);
+        for n in 1..=num_points {
+            if let Some(curve) = ckt.load_dur_curve_obj.as_mut() {
+                ckt.load_multiplier = curve.mult(n); // set WITH prop: matrix may rebuild
+                ckt.solution.interval_hrs = curve.present_interval();
+            }
+            if let Some(price) = ckt.price_curve_obj.as_mut() {
+                ckt.price_signal = price.price(n);
+            }
+            solve_snap(ckt, env)?;
+            let sample_meters = ckt.solution.sample_the_meters;
+            sample_all_monitors_and_meters(ckt, env, sample_meters);
+            end_of_time_step_cleanup(ckt, env);
+        }
+    }
+    Ok(())
+}
+
+/// Pascal `SolveLD2` (`SolutionAlgs.pas` l.642): time held fixed, sweep the
+/// load-duration curve once. Unlike `SolveLD1` the `LoadDurCurveObj = NIL`
+/// guard sits OUTSIDE the Pascal `try` — that early exit skips
+/// `DefaultHourMult`, `OpenAllDIFiles` and the `finally` tail entirely (no DI
+/// files were opened yet either), reproduced by returning before any of that
+/// runs. The mid-loop abort re-check `SolveLD1` has per outer step does not
+/// exist here: Pascal tests `SolutionAbort` exactly once, before the
+/// curve-point loop, never inside it — ported verbatim (a control-flow fact,
+/// not a numeric approximation, so no `TODO(compat)`).
+pub(super) fn solve_ld2(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    if ckt.load_dur_curve_obj.is_none() {
+        env.errors.push(LDCURVE_NOT_DEFINED.to_string());
+        return Ok(());
+    }
+    // Time must be set before entering this routine.
+    let dbl_hour = ckt.solution.dbl_hour;
+    match ckt.default_daily_shape_obj.as_mut() {
+        Some(shape) => ckt.default_hour_mult = shape.get_mult_at_hour(dbl_hour),
+        None => return Err("Default daily load shape not found.".to_string()),
+    }
+    if !ckt.em_di.di_files_are_open {
+        crate::solution::meters::open_all_di_files(ckt, env.store);
+    }
+    let result = solve_ld2_body(ckt, env);
+    if ckt.solution.sample_the_meters {
+        crate::solution::meters::close_all_di_files(ckt, env.store, env.errors);
+    }
+    result
+}
+
+/// The `SolveLD2` stepping loop (the Pascal `try` body).
+fn solve_ld2_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    if ckt.solution.solution_abort {
+        // Note the trailing period here — Pascal's LD2 abort text differs
+        // literally from LD1's ("Solution Aborted." vs "Solution Aborted").
+        env.errors.push("Solution Aborted.".to_string());
+        return Ok(());
+    }
+    let num_points = ckt
+        .load_dur_curve_obj
+        .as_ref()
+        .map(|c| c.num_points())
+        .unwrap_or(0);
+    for n in 1..=num_points {
+        if let Some(curve) = ckt.load_dur_curve_obj.as_mut() {
+            ckt.load_multiplier = curve.mult(n); // set WITH prop: matrix may rebuild
+            ckt.solution.interval_hrs = curve.present_interval();
+        }
+        if let Some(price) = ckt.price_curve_obj.as_mut() {
+            ckt.price_signal = price.price(n);
+        }
+        solve_snap(ckt, env)?;
+        let sample_meters = ckt.solution.sample_the_meters;
+        sample_all_monitors_and_meters(ckt, env, sample_meters);
+        end_of_time_step_cleanup(ckt, env);
+    }
+    Ok(())
+}

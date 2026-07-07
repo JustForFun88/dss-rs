@@ -149,11 +149,38 @@ impl Load {
                     }
                     f
                 }
-                // The remaining modes (MonteCarlo*/LoadDuration*/PeakDay/
-                // AutoAdd/...) are not reachable yet — the solve dispatcher only
-                // runs the modes above (plus Dynamic, handled above) — so they
-                // default to growth-only with a unit ShapeFactor, matching the
-                // Pascal trailing `else`. Wired in later phases as the modes land.
+                // Pascal groups Monte2/Monte3/LOADDURATION1/LOADDURATION2 in one
+                // case arm: growth × the load's own daily-shape lookup (via
+                // `CalcDailyMult`, exactly like `DAILYMODE`) × LoadMultiplier
+                // unless Exempt. Monte2/Monte3 are not reachable yet (WPG.4 —
+                // the solve dispatcher still errors loudly on them), but LD1/LD2
+                // are (WPG.3), so this arm is live.
+                SolveMode::Monte2 | SolveMode::Monte3 | SolveMode::LD1 | SolveMode::LD2 => {
+                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_daily_mult(sys.dbl_hour);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    f
+                }
+                // Pascal `PEAKDAY` (`Load.pas:1092`): growth × the load's own
+                // daily-shape lookup, with **no** `LoadMultiplier` — the peak
+                // kW is taken as given and only shaped by the daily curve and
+                // year growth (that omission is the whole point of PeakDay vs
+                // Daily). Kept a separate arm from Monte2/Monte3/LD1/LD2 above
+                // precisely because those apply `LoadMultiplier` and this must
+                // not. Every sibling PC element already routes PeakDay through
+                // its daily-mult; Load had silently fallen through to the
+                // growth-only catch-all (flat nominal kW) — the bug this fixes.
+                SolveMode::PeakDay => {
+                    let f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_daily_mult(sys.dbl_hour);
+                    f
+                }
+                // MonteCarlo1/AutoAdd/... are not reachable yet — the solve
+                // dispatcher still errors loudly on them — so they default to
+                // growth-only with a unit ShapeFactor, matching the Pascal
+                // trailing `else`; wired in later phases as those modes land.
                 _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };

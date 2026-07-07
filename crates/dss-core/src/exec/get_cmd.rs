@@ -154,6 +154,14 @@ impl Dss {
                         .map(|s| s.data().name().to_string())
                         .unwrap_or_default(),
                 ),
+                // `NameIfNotNil(LoadDurCurveObj)`.
+                opt::LDCURVE => append_result(
+                    &mut result,
+                    &ckt.load_dur_curve_obj
+                        .as_ref()
+                        .map(|s| s.data().name().to_string())
+                        .unwrap_or_default(),
+                ),
                 opt::CKT_MODEL => append_result(
                     &mut result,
                     &enums
