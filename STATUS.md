@@ -69,7 +69,8 @@ Already-semantic names kept as-is: `checkpoints/`, `props/`, `slice`,
 **Phase 8 IN PROGRESS** (`PHASE8_PLAN.md` —
 reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
 gate-green Phase-7 tip). **WP8.1–8.4 COMPLETE + audited.** **WP8.5 (Save/Dump)
-IN PROGRESS — Dump steps 1–3a COMPLETE + audited, gate-green** (single-object
+IN PROGRESS — Dump steps 1–3a COMPLETE + audited + Save step 4 COMPLETE
+(audit pending), gate-green** (single-object
 `Dump <class>.[name|*] [debug]`: the `report/save/dump.rs` generic base — the
 3-kind `TDSSObject`/`TDSSCktElement`/`TPCElement` chain — + `#903`/`#256` errors).
 **Dump step 2 (2026-07-05):** the **per-winding / matrix `DumpProperties`
@@ -236,11 +237,41 @@ extrapolations flagged (Monitor's `%.1g`→15-sig `BaseFrequency` render and the
 `Sec:0` frac-floor, both confirmed only at the one value the fixture exercises,
 `60`/`0.0`) — already honestly hedged in the code's own doc comments as
 probe-derived, not asserted as general FPC rules; no further action pending a
-fixture that exercises a different value. **next = Dump step 3b** (bare
+fixture that exercises a different value.
+**WP8.5 step 4 COMPLETE (2026-07-07), gate-green** (landed via a parallel
+worktree agent, merged by cherry-pick): `do_save_cmd` replaces the stub —
+the `SaveCommands` `[class,file,dir,keepdisabled]` positional-or-named parse
+(`keepdisabled` parsed+ignored, `ExecHelper.pas:780`), `CompareTextShortest`
+dispatch in Pascal order; `save circuit` stays a clearly-marked
+NOT_PORTED(WP8.5 step 5) stub. `save`/`save meters` = Monitor.Save as a
+**documented structural no-op** (the Rust monitor merges MonBuffer+
+MonitorStream into one Vec; probe-proven the oracle writes NO monitor file)
++ per-EnergyMeter `SaveRegisters` → `MTR_<name>.csv` (`Year, <year>,` header
++ `"<RegName>",<:0:0>` rows; GlobalResult = the RELATIVE csv name, err 526).
+`save voltages` = `Solution.SaveVoltages` (`%-.7g` |V|/angle, GlobalResult =
+full path even on write failure, err 488). `save <class>` = `WriteClassFile`
+(`Utilities.pas:1134-1210`: default filename = bare class name, NO
+extension; create-then-delete-on-0-records; err 718/247). NEW
+`report/save/save.rs` serializer pair shared with step 5: `WriteDSSObject`
+(`New "Class.name"` always-quoted + ` ENABLED=NO` for a disabled CktElement
++ `HasBeenSaved` mark) / `SaveWrite` (ONLY explicitly-set props in set order
+via `DssObjData::next_property_set`, `----` sentinel skip) /
+`CheckForBlanks`. `DssObjData` gained `has_been_saved` (persists across save
+commands — probe-proven a 2nd `save load` deletes the file; test-pinned).
+Load's PropDef display case corrected (oracle `AllPropertyNames` probe).
+Probe-pinned quirks: a disabled load serializes `… Enabled=No ENABLED=NO`
+(both the property and the WriteDSSObject suffix); Pascal doubles the path
+delimiter in GlobalResult (`…\\load`) — not reproduced, path-equivalent,
+documented. Goldens: `save_mtr` byte-exact (all 67 registers),
+`save_voltages` + `save_class_load` via `compare_export` at rel=0/abs=0
+(token-exact — no tolerance needed) over `save_forms.dss` via
+`gen_reports.py::gen_save_decks`.
+**next = Dump step 3b** (bare
 `dump`/`dump debug` whole-circuit + `dump solution` + the `commands`/
 `buslist`/`devicelist`/`alloc` aux files — the `DumpAllDSSCommands` gettext-
 catalog generator and the `THashList.DumpToFile` port are the two pieces of
-genuinely new machinery — per the refreshed PHASE8_PLAN §WP8.5).
+genuinely new machinery — per the refreshed PHASE8_PLAN §WP8.5; **in flight**
+in a parallel worktree agent) **+ step 5 (Save circuit + round-trip gate)**.
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/

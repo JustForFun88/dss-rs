@@ -31,4 +31,22 @@ impl EnergyMeter {
         out.push_str("Branch List:\n");
         out.push_str(cx.branch_list);
     }
+
+    /// Pascal `TEnergyMeterObj.SaveRegisters` (`Meters/EnergyMeter.pas:
+    /// 1235-1269`), the content side: header `Year, <year>,` then one line per
+    /// register — `"<RegName>",<value :0:0>` (FPC fixed-point, 0 decimals → the
+    /// rounded integer). The caller (`Dss::save_meters_cmd`) writes the text to
+    /// `<OutputDir>MTR_<name>.csv` and sets `GlobalResult` to the RELATIVE CSV
+    /// name (probe-proven 2026-07-07).
+    pub(crate) fn save_registers_text(&self, year: i32) -> String {
+        let mut s = format!("Year, {year},\n");
+        let names = self.register_names();
+        let regs = self.registers();
+        // Pascal `for i := 1 to NumEMregisters`: `RegisterNames[i-1]` /
+        // `Registers[i]` (a 1-based register array) — 0-based and parallel here.
+        for i in 0..names.len().min(regs.len()) {
+            s.push_str(&format!("\"{}\",{:.0}\n", names[i], regs[i]));
+        }
+        s
+    }
 }

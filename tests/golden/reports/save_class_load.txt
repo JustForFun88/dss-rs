@@ -1,0 +1,2 @@
+New "Load.ld1" Bus1=b1 Phases=3 Conn=wye Model=1 kV=12.47 kW=400 PF=0.92 Daily=day
+New "Load.ld2" Bus1=b2 Phases=3 Conn=wye Model=1 kV=12.47 kW=300 PF=0.95 Daily=day

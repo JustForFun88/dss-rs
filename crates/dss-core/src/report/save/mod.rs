@@ -10,3 +10,7 @@
 //! string-joining, not reinvented number formatting (PHASE8_PLAN §2.4).
 
 pub mod dump;
+// The plan-mandated path for the Save-side serializer is `report/save/save.rs`
+// (PHASE8_PLAN §WP8.5 step 4) — the inception is deliberate.
+#[allow(clippy::module_inception)]
+pub mod save;
