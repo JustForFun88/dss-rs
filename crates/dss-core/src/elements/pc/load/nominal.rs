@@ -163,18 +163,24 @@ impl Load {
                     }
                     f
                 }
+                // Pascal `PEAKDAY` (`Load.pas:1092`): growth × the load's own
+                // daily-shape lookup, with **no** `LoadMultiplier` — the peak
+                // kW is taken as given and only shaped by the daily curve and
+                // year growth (that omission is the whole point of PeakDay vs
+                // Daily). Kept a separate arm from Monte2/Monte3/LD1/LD2 above
+                // precisely because those apply `LoadMultiplier` and this must
+                // not. Every sibling PC element already routes PeakDay through
+                // its daily-mult; Load had silently fallen through to the
+                // growth-only catch-all (flat nominal kW) — the bug this fixes.
+                SolveMode::PeakDay => {
+                    let f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_daily_mult(sys.dbl_hour);
+                    f
+                }
                 // MonteCarlo1/AutoAdd/... are not reachable yet — the solve
                 // dispatcher still errors loudly on them — so they default to
                 // growth-only with a unit ShapeFactor, matching the Pascal
                 // trailing `else`; wired in later phases as those modes land.
-                // NOTE: `SolveMode::PeakDay` also falls through here even
-                // though its solve loop *is* wired (`solve_peak_day`,
-                // WPG.3-adjacent code) — Pascal's own PEAKDAY arm is
-                // `Factor := GrowthFactor(Year); CalcDailyMult(dblHour);` (no
-                // `CalcDailyMult` here, so PeakDay loads never pick up their
-                // daily shape). Pre-existing gap, out of this WP's scope
-                // (WPG.3 is LD1/LD2 only) and not currently corpus-gated —
-                // flagged for a future WP, not fixed here.
                 _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };
