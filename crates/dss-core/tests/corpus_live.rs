@@ -1176,11 +1176,62 @@ fn corpus_live_classify() {
 // intentionally differs from EPRI upstream (dss_capi docs/known_differences.md)
 // on top of Delphi-vs-FPC numeric drift — so divergences here are *inventory*
 // for the upstream-porting work, not failures. Default = report mode
-// (tmp/opendss_report_<rev>.json, same catch_unwind pattern as the classifier);
-// DSS_LIVE_OPENDSS_ASSERT=1 promotes any divergence to a test failure (intended
-// for r3723 once its report triages clean). The shared comparators/tolerances
-// are reused as-is — never weakened for this gate.
+// (tmp/opendss_report_<rev>.json, same catch_unwind pattern as the classifier).
+//
+// Triaged divergences live in tools/opendss/known_diffs.json (modeled on
+// DSS-Python's KNOWN_COM_DIFF, translated to our first-failure-reason shape):
+// each entry matches (case label substring, all-of reason substrings) for the
+// given revisions and MUST explain its cause. The report partitions diverged
+// into known/new with per-entry hit counts (dead entries surface for pruning);
+// DSS_LIVE_OPENDSS_ASSERT=1 fails only on NEW divergences (intended for r3723,
+// whose 82 divergences are fully cataloged). Caveat: run_and_compare stops at
+// the first divergence per case, so a "known" first divergence masks any later
+// one in the same case — accepted for an inventory channel; entries retire as
+// upstream deltas get ported, re-exposing what was behind them. The shared
+// comparators/tolerances are reused as-is — never weakened for this gate.
 // ---------------------------------------------------------------------------
+
+/// One triaged divergence class from `tools/opendss/known_diffs.json`.
+#[derive(serde::Deserialize)]
+struct KnownDiff {
+    id: String,
+    revs: Vec<String>,
+    case_contains: String,
+    reason_contains: Vec<String>,
+    cause: String,
+    #[allow(dead_code)]
+    source: String,
+}
+
+fn load_known_diffs() -> Vec<KnownDiff> {
+    let path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tools",
+        "opendss",
+        "known_diffs.json",
+    ]
+    .iter()
+    .collect();
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    #[derive(serde::Deserialize)]
+    struct Catalog {
+        entries: Vec<KnownDiff>,
+    }
+    let cat: Catalog =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+    for e in &cat.entries {
+        assert!(
+            !e.cause.trim().is_empty() && !e.reason_contains.is_empty(),
+            "known_diffs.json entry {:?}: `cause` and `reason_contains` are mandatory \
+             (triage inventory, not a mute button)",
+            e.id
+        );
+    }
+    cat.entries
+}
 
 #[test]
 fn corpus_live_opendss() {
@@ -1235,17 +1286,64 @@ fn corpus_live_opendss() {
 
     matched.sort();
     diverged.sort();
+
+    // Partition against the triage catalog: first matching entry (by file
+    // order) wins; unmatched divergences are NEW and fail assert mode.
+    let catalog = load_known_diffs();
+    let mut hits: Vec<(String, usize)> = catalog.iter().map(|e| (e.id.clone(), 0)).collect();
+    let mut known: Vec<(String, String, String)> = Vec::new(); // label, reason, entry id
+    let mut fresh: Vec<(String, String)> = Vec::new();
+    for (label, reason) in &diverged {
+        let hit = catalog.iter().position(|e| {
+            e.revs.iter().any(|r| r == &rev)
+                && label.contains(&e.case_contains)
+                && e.reason_contains.iter().all(|s| reason.contains(s))
+        });
+        match hit {
+            Some(i) => {
+                hits[i].1 += 1;
+                known.push((label.clone(), reason.clone(), catalog[i].id.clone()));
+            }
+            None => fresh.push((label.clone(), reason.clone())),
+        }
+    }
+    for (id, n) in &hits {
+        let applies = catalog
+            .iter()
+            .find(|e| &e.id == id)
+            .is_some_and(|e| e.revs.iter().any(|r| r == &rev));
+        if applies && *n == 0 {
+            eprintln!(
+                "opendss {rev}: WARNING known_diffs entry `{id}` had zero hits — \
+                 stale? prune it (or narrow its `revs`)"
+            );
+        }
+    }
+
+    let trunc = |r: &str| r.chars().take(400).collect::<String>();
     let report = serde_json::json!({
         "rev": rev,
         "engine": engine,
         "total": total,
         "matched": matched,
-        "diverged": diverged
+        "known_diverged": known
+            .iter()
+            .map(|(label, r, id)| serde_json::json!({
+                "path": label,
+                "known": id,
+                "reason": trunc(r),
+            }))
+            .collect::<Vec<_>>(),
+        "diverged_new": fresh
             .iter()
             .map(|(label, r)| serde_json::json!({
                 "path": label,
-                "reason": r.chars().take(400).collect::<String>(),
+                "reason": trunc(r),
             }))
+            .collect::<Vec<_>>(),
+        "known_hits": hits
+            .iter()
+            .map(|(id, n)| serde_json::json!({ "id": id, "hits": n }))
             .collect::<Vec<_>>(),
     });
     let rp: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
@@ -1256,16 +1354,17 @@ fn corpus_live_opendss() {
     std::fs::write(&rp, serde_json::to_string_pretty(&report).unwrap())
         .unwrap_or_else(|e| panic!("write {}: {e}", rp.display()));
     eprintln!(
-        "opendss {rev}: {} matched, {} diverged (of {total}); report -> {}",
+        "opendss {rev}: {} matched, {} known-diverged, {} NEW (of {total}); report -> {}",
         matched.len(),
-        diverged.len(),
+        known.len(),
+        fresh.len(),
         rp.display()
     );
-    if assert_mode && !diverged.is_empty() {
+    if assert_mode && !fresh.is_empty() {
         panic!(
-            "opendss {rev}: {} case(s) diverged from the EPRI engine \
-             (DSS_LIVE_OPENDSS_ASSERT=1); see {}",
-            diverged.len(),
+            "opendss {rev}: {} NEW divergence(s) from the EPRI engine not covered by \
+             tools/opendss/known_diffs.json (DSS_LIVE_OPENDSS_ASSERT=1); see {}",
+            fresh.len(),
             rp.display()
         );
     }

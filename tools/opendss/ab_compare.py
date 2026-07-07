@@ -355,9 +355,64 @@ def diff_case(a: dict, b: dict, tol: argparse.Namespace) -> dict:
     return {
         "status": "match" if not issues else "diverged",
         "first_divergence": issues[0] if issues else "",
+        "issues": issues,
         "metrics": metrics,
         "steps": steps,
     }
+
+
+# ---------------------------------------------------------------------------
+# Known-differences catalog (tools/opendss/known_diffs.json) — optional
+# reclassification of divergences already triaged as legitimate engine
+# differences (dss_capi-vs-EPRI). Matching mirrors corpus_live_opendss:
+# substring on (case path, issue text); `ab_contains` overrides
+# `reason_contains` because this tool's issue wording differs from the Rust
+# panics. Purely a report-level relabel — tolerances are untouched.
+# ---------------------------------------------------------------------------
+
+
+def load_known_diffs(path: Path) -> list[dict]:
+    entries = json.loads(path.read_text())["entries"]
+    for e in entries:
+        if not str(e.get("cause", "")).strip():
+            sys.exit(f"{path}: entry {e.get('id')!r} lacks a `cause` — "
+                     "triage inventory, not a mute button")
+    return entries
+
+
+def participating_revs(*specs: str) -> set[str]:
+    return {s.split(":", 1)[1] for s in specs if s.startswith("oddie:r")}
+
+
+def apply_known_diffs(rec: dict, entries: list[dict], revs: set[str]) -> None:
+    """Relabel rec.status in place when every issue matches a catalog entry."""
+
+    def matches(e: dict, text: str) -> bool:
+        subs = e.get("ab_contains") or e["reason_contains"]
+        return (
+            bool(set(e["revs"]) & revs)
+            and e["case_contains"] in rec["path"]
+            and all(s in text for s in subs)
+        )
+
+    if rec["status"] in ("error_a", "error_b"):
+        hit = next(
+            (e for e in entries if matches(e, rec["first_divergence"])), None
+        )
+        if hit:
+            rec["status"] = "known_" + rec["status"]
+            rec["known"] = [hit["id"]]
+        return
+    if rec["status"] != "diverged" or not rec.get("issues"):
+        return
+    ids = []
+    for issue in rec["issues"]:
+        hit = next((e for e in entries if matches(e, issue)), None)
+        if hit is None:
+            return  # at least one un-triaged issue -> stays "diverged"
+        ids.append(hit["id"])
+    rec["status"] = "known_diverged"
+    rec["known"] = sorted(set(ids))
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +446,16 @@ def main() -> None:
     ap.add_argument("--energy-rel", dest="energy_rel", type=float, default=1e-4)
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--md", type=Path, default=None)
+    ap.add_argument(
+        "--known-diffs",
+        type=Path,
+        default=None,
+        help="triage catalog (tools/opendss/known_diffs.json): cases whose every "
+        "issue matches an entry are relabeled known_diverged",
+    )
     args = ap.parse_args()
+    known_entries = load_known_diffs(args.known_diffs) if args.known_diffs else []
+    known_revs = participating_revs(args.a, args.b)
 
     manifests = args.manifest or [DEFAULT_MANIFEST]
     cases: list[tuple[str, str, dict]] = []
@@ -422,6 +486,8 @@ def main() -> None:
                 }
             else:
                 rec = {"path": rel, **diff_case(ra, rb, args)}
+            if known_entries:
+                apply_known_diffs(rec, known_entries, known_revs)
             results.append(rec)
             print(
                 f"[{i + 1}/{len(cases)}] {rec['status']:9} {rel}"
@@ -464,7 +530,10 @@ def main() -> None:
         lines.append(f"| `{r['path']}` | {r['status']} | {fd} |")
     md_path.write_text("\n".join(lines) + "\n", newline="\n")
     print(f"report: {out_path}\nsummary: {md_path}", file=sys.stderr)
-    sys.exit(0 if all(r["status"] == "match" for r in results) else 3)
+    ok = ("match",) if not known_entries else (
+        "match", "known_diverged", "known_error_a", "known_error_b"
+    )
+    sys.exit(0 if all(r["status"] in ok for r in results) else 3)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,113 @@
+{
+  "comment": [
+    "Known legitimate divergences between the Rust port (calibrated to dss_capi",
+    "0.14.5) and ORIGINAL EPRI OpenDSS engines, consumed by the opt-in EPRI",
+    "channel only: corpus_live_opendss partitions its report into known/new and",
+    "DSS_LIVE_OPENDSS_ASSERT=1 fails only on NEW divergences; ab_compare.py",
+    "--known-diffs reclassifies fully-matching cases as known_diverged.",
+    "This is a triage inventory, NOT a mute button: every entry carries a",
+    "non-empty `cause`, entries are matched by substring on (case label, panic",
+    "reason), first match wins, and per-entry hit counts are reported so dead",
+    "entries surface and get pruned as upstream deltas are ported.",
+    "NEVER consulted by the mandatory gate or its tolerances.",
+    "Optional `ab_contains` overrides `reason_contains` when matching",
+    "ab_compare.py issue strings (different wording than the Rust panics);",
+    "entries without it and without a matching Rust-shaped phrase simply never",
+    "reclassify there. Modeled on DSS-Python tests/compare_outputs.py",
+    "KNOWN_COM_DIFF (BSD-3), translated to our first-failure-reason match shape."
+  ],
+  "version": 1,
+  "entries": [
+    {
+      "id": "epri-invcontrol-maxiter",
+      "revs": ["r3723"],
+      "case_contains": "",
+      "reason_contains": ["Max Control Iterations Exceeded"],
+      "cause": "EPRI 9.8 InvControl fails to converge (hits MaxControlIter) on decks where dss_capi 0.14.5 and the port converge; dss_capi reworked InvControl convergence (cf. DSSCompatFlags.InvControl9611 toggle in DSS-Python).",
+      "source": "triage 2026-07 r3723 (19 cases, InvControl volt-var/VV_VW/DRC families + controls:invcontrol_vvvw_asym)"
+    },
+    {
+      "id": "epri-gendispatcher-propname",
+      "revs": ["r3723", "r4088", "r4133"],
+      "case_contains": "gendispatcher",
+      "reason_contains": ["Invalid property name"],
+      "cause": "GenDispatcher property set differs between EPRI and dss_capi (deck uses a dss_capi-accepted property name EPRI rejects with DSSException #34).",
+      "source": "triage 2026-07 r3723 (controls:gendispatcher.dss, controls:midi_gendispatcher.dss)"
+    },
+    {
+      "id": "invcontrol-fixpoint-drift",
+      "revs": ["r3723"],
+      "case_contains": "InvControl/",
+      "reason_contains": ["entry ", " differs"],
+      "ab_contains": ["element(s) over tol"],
+      "cause": "Small terminal/voltage deltas on InvControl decks: EPRI's Delphi InvControl and dss_capi's reworked one take different control-iteration trajectories and settle on slightly different fixpoints (same class as epri-invcontrol-maxiter, sub-failure severity).",
+      "source": "triage 2026-07 r3723 (25 volt-var/VV_VW/DRC '-2.dss' cases)"
+    },
+    {
+      "id": "iteration-count-delta",
+      "revs": ["r3723"],
+      "case_contains": "",
+      "reason_contains": ["iteration count differs"],
+      "ab_contains": ["iterations "],
+      "cause": "Solve/control iteration-count deltas: Delphi-vs-FPC last-ulp rounding shifts convergence-check outcomes, and dss_capi's reworked controls (InvControl et al.) iterate differently; states still match within tolerance when counts agree.",
+      "source": "triage 2026-07 r3723 (10 controls cases); README divergence classes"
+    },
+    {
+      "id": "monitor-header-whitespace",
+      "revs": ["r3723", "r4088", "r4133"],
+      "case_contains": "",
+      "reason_contains": ["header differs"],
+      "cause": "EPRI pads monitor header channel names with a leading space (' VAngle1'); dss_capi strips them.",
+      "source": "triage 2026-07 r3723 (8 controls cases); cf. DSS-Python compare_outputs.py string handling"
+    },
+    {
+      "id": "property-format-brackets",
+      "revs": ["r3723", "r4088", "r4133"],
+      "case_contains": "",
+      "reason_contains": ["probe ", "structure differs"],
+      "cause": "dss_capi's rewritten property system renders array-valued PropertyValue with brackets ('[ 1900 1500 2300]'); EPRI returns plain space-separated ('1900 1500 2300') — dss_capi docs/known_differences.md (property system rework).",
+      "source": "triage 2026-07 r3723 (4 sensor/swtcontrol probe cases)"
+    },
+    {
+      "id": "storage-kwhstored-drift",
+      "revs": ["r3723"],
+      "case_contains": "",
+      "reason_contains": ["probe Storage.", "kwhstored", "number 0 differs"],
+      "cause": "Storage kWhStored integral drifts by <5e-4 rel after StorageController dispatch steps (2207.9995 vs EPRI's exact 2208): dss_capi's Storage model revision accrues idling losses slightly differently.",
+      "source": "triage 2026-07 r3723 (3 storagectrl cases)"
+    },
+    {
+      "id": "injection-fpc-delphi-ulp",
+      "revs": ["r3723"],
+      "case_contains": "asymmetric:",
+      "reason_contains": ["injection currents", "differs"],
+      "cause": "Injection RHS entries ~1.4x above the calibrated faer-vs-KLU floor (3.9e-6 vs 2.8e-6 allowed) on IndMach-bearing asymmetric decks: Delphi-vs-FPC transcendental last-ulp drift amplified by the machine model — same class as the proven dSpeed cancellation floor, floor calibrated against FPC not Delphi.",
+      "source": "triage 2026-07 r3723 (4 asymmetric cases)"
+    },
+    {
+      "id": "meter-zonepce-count",
+      "revs": ["r3723"],
+      "case_contains": "",
+      "reason_contains": ["PCE count differs"],
+      "cause": "EPRI's EnergyMeter ZonePCE enumerates one more PCE than dss_capi on the same zone (off-by-one in membership, e.g. source-side element counted); dss_capi reworked zone bookkeeping.",
+      "source": "triage 2026-07 r3723 (3 energymeter cases, left=port right=EPRI: 4v5, 2v3, 25v26)"
+    },
+    {
+      "id": "eventlog-trailing-space",
+      "revs": ["r3723", "r4088", "r4133"],
+      "case_contains": "",
+      "reason_contains": ["event-log line", "structure differs"],
+      "ab_contains": ["eventlog differs"],
+      "cause": "EPRI writes a trailing space after relay event-log action text ('...LOCKED OUT '); dss_capi trims it.",
+      "source": "triage 2026-07 r3723 (3 relay cases)"
+    },
+    {
+      "id": "harmonics-yfingerprint-drift",
+      "revs": ["r3723"],
+      "case_contains": "IEEE_519",
+      "reason_contains": ["Y fingerprint"],
+      "cause": "Harmonics-mode system-Y trace.im off by 2.9e-5 (allowed 1.6e-5): Delphi-vs-FPC drift in harmonic load/source Y stamps summed over the whole trace; single case, magnitude consistent with transcendental last-ulp accumulation.",
+      "source": "triage 2026-07 r3723 (HarmonicsVariableLoad/IEEE_519.DSS)"
+    }
+  ]
+}

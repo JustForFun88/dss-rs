@@ -1638,11 +1638,23 @@ separate venv, `PIN_OPENDSS.txt`), reusing `oracle_server.py` unchanged via
 `DSS_ORACLE_ENGINE=oddie`. For inventorying upstream changes ahead of porting
 them; the mandatory gate is untouched. Workflows (see `tools/opendss/README.md`):
 `DSS_LIVE_OPENDSS=<rev> cargo test ... corpus_live_opendss` → report
-`tmp/opendss_report_<rev>.json` (r3723 baseline: 150 matched / 82 diverged of
-232 — divergence classes = dss_capi `known_differences`, monitor-header
-whitespace, property-value formats, iteration deltas); `ab_compare.py --a
-oddie:r3723 --b oddie:r4133` → upstream-change inventory (baseline: 109/168
-match; deltas in distance relays, harmonics, InvControl iteration behavior).
+`tmp/opendss_report_<rev>.json`, now partitioned against the triage catalog
+`tools/opendss/known_diffs.json` (2026-07-07, modeled on DSS-Python
+`KNOWN_COM_DIFF`; substring match on case label + first-failure reason, every
+entry states its cause, zero-hit entries warn). r3723: 150 matched / 82
+known-diverged / **0 new** of 232 — all 82 triaged into 11 classes (19 EPRI
+InvControl max-iter failures, 25 InvControl fixpoint drift, 10 iteration
+deltas, 8 monitor-header whitespace, 4 property-format brackets, 4
+injection FPC-vs-Delphi ulp, 3 storage kWhStored drift, 3 meter ZonePCE
+count, 3 event-log trailing space, 2 GenDispatcher prop-name, 1 harmonics
+Y-fingerprint) — so `DSS_LIVE_OPENDSS_ASSERT=1` (fails only on NEW) is green
+for r3723. Caveat: comparison stops at a case's first divergence — a known
+first divergence masks later ones in that case (accepted for inventory).
+`ab_compare.py --a oddie:r3723 --b oddie:r4133` → upstream-change inventory
+(baseline: 109/168 match; deltas in distance relays, harmonics, InvControl
+iteration behavior); `--known-diffs tools/opendss/known_diffs.json` relabels
+fully-triaged cases `known_diverged` (entries carry `ab_contains` where this
+tool's issue wording differs) and exits 0 when only known diffs remain.
 Two operational gotchas, both handled: (1) EPRI's Delphi `FireOffEditor`
 ShellExecutes the editor on every `Show`/`Export` with NO `NoFormsAllowed`
 check and Oddie can't set `AllowEditor` — a corpus sweep opened hundreds of
