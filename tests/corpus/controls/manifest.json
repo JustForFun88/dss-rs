@@ -1163,7 +1163,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.7"
   },
   {

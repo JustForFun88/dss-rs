@@ -5,6 +5,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -148,8 +149,9 @@ impl DssObject for CapControl {
             ELEMENT => self.monitored_full_name.clone(),
             CAPACITOR => self.controlled_name.clone(),
             VBUS => self.voverride_bus_name.clone(),
-            // NOT_PORTED user-model / control-signal slots dump as empty (NIL).
-            USERMODEL | USERDATA | CONTROLSIGNAL => String::new(),
+            CONTROLSIGNAL => self.control_signal_name.clone(),
+            // NOT_PORTED user-model slots dump as empty (NIL).
+            USERMODEL | USERDATA => String::new(),
             _ => unreachable!("CapControl has no string property {idx}"),
         }
     }
@@ -206,6 +208,15 @@ impl DssObject for CapControl {
                         self.mon_snap = None;
                     }
                 }
+            }
+            // `ctrlSignalShape` (`CapControl.pas` l.289): snapshot-clone the
+            // resolved LoadShapeObj (the `StorageController` Yearly/Daily/Duty
+            // pattern) — Pascal reads it live through a raw pointer, which
+            // `Sample` (running well after `EndEdit`) can no longer borrow.
+            CONTROLSIGNAL => {
+                self.control_signal_name = name;
+                self.ctrl_signal_shape =
+                    resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
             }
             _ => unreachable!("CapControl has no object-ref property {idx}"),
         }
@@ -313,6 +324,13 @@ impl DssObject for CapControl {
         self.monitored_full_name = other.monitored_full_name.clone();
         self.ctrl_snap = other.ctrl_snap.clone();
         self.mon_snap = other.mon_snap.clone();
+        // TODO(compat): Pascal `TCapControlObj.MakeLike` (`CapControl.pas`
+        // l.446-490) never copies `ctrlSignalShape`/its name — `Like` on a
+        // Follow-type CapControl silently drops the ControlSignal reference on
+        // the new object (every other reference/field is copied). Reproduced
+        // verbatim: `control_signal_name`/`ctrl_signal_shape` are deliberately
+        // left at their `new()` defaults here. Clean fix (post-1:1-port
+        // sweep): also copy them like `ctrl_snap`/`mon_snap` above.
 
         self.ccd.element_terminal = other.ccd.element_terminal;
         self.pt_ratio = other.pt_ratio;

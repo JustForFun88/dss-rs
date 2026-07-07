@@ -306,13 +306,39 @@ impl CapControl {
                     }
                 }
                 ctrl_type::FOLLOW => {
-                    // FOLLOWCONTROL needs ControlSignal (LoadShape), which is
-                    // NOT_PORTED (PHASE4 §WP4.7); Pascal aborts the solution when
-                    // it is unset, which is always the case here.
-                    ctx.errors.push(format!(
-                        "CapControl.{}: Type is set to \"Follow\", but no \"ControlSignal\" was provided. Aborting solution.",
-                        self.ccd.cd.obj.name()
-                    ));
+                    // Pascal `Sample`'s FOLLOWCONTROL arm (`CapControl.pas`
+                    // l.1151-1169). `ctrlSignalShape = NIL` aborts the whole
+                    // `Sample` call (`DoSimpleMsg`; `SolutionAbort := TRUE`;
+                    // `Exit`) — mirrored with an early `return` that also skips
+                    // this control's arm/disarm block below, exactly like the
+                    // Pascal `Exit`.
+                    let Some(shape) = self.ctrl_signal_shape.as_mut() else {
+                        ctx.errors.push(format!(
+                            "CapControl.{}: Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
+                            self.ccd.cd.obj.name()
+                        ));
+                        return;
+                    };
+
+                    // `nextState := ctrlSignalShape.GetMultAtHour(dblHour).re`:
+                    // nonzero means the signal wants the bank CLOSED, zero
+                    // wants it OPEN.
+                    let next_state = shape.get_mult_at_hour(ctx.dbl_hour).re;
+                    // `if not ((nextState <> 0) xor (PresentState = CTRL_OPEN))`
+                    // — an XNOR: switch exactly when the bank's present state
+                    // mismatches the signal's desired state.
+                    if (next_state != 0.0) == (self.present_state == CTRL_OPEN) {
+                        if self.present_state == CTRL_OPEN {
+                            self.set_pending_change(CTRL_CLOSE);
+                        } else {
+                            self.set_pending_change(CTRL_OPEN);
+                        }
+                        self.should_switch = true;
+                    }
+                    // No `else` in Pascal: unlike every other control type here,
+                    // a non-switching sample leaves `PendingChange` untouched
+                    // (not reset to `CTRL_NONE`) — faithfully mirrored by
+                    // simply not touching `pending_change` in that case.
                 }
                 _ => {}
             }
