@@ -5,7 +5,7 @@ use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
 use dss_parser::{Parser, ParserVars};
 
@@ -40,6 +40,40 @@ fn mode_ctx(mode: SolveMode, dbl_hour: f64) -> SysCtx {
         dbl_hour,
         ..default_recalc_ctx()
     }
+}
+
+/// `mode=Time` (GENERALTIME) with an explicit `ActiveLoadShapeClass`
+/// (`Set LoadShapeClass=`).
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..default_recalc_ctx()
+    }
+}
+
+/// A load carrying three DELIBERATELY-DISTINCT shapes so the GENERALTIME
+/// class-dispatch arm that fired is identifiable from `w_nominal` alone
+/// (at hr 2: daily→0.6, yearly→0.7, duty→0.5).
+fn load_with_three_shapes() -> Load {
+    let mut load = load_100kw_pf09();
+    load.daily_shape_obj = Some(build_shape(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "0.2 0.6 1.0 0.5"),
+    ]));
+    load.yearly_shape_obj = Some(build_shape(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "0.3 0.7 0.9 0.4"),
+    ]));
+    load.duty_shape_obj = Some(build_shape(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "0.1 0.5 0.8 0.6"),
+    ]));
+    load
 }
 
 /// A 100 kW / pf 0.9 three-phase load (the probed oracle scenario).
@@ -124,6 +158,51 @@ fn duty_mode_falls_back_to_daily_shape() {
     assert!(
         (load.w_nominal - 16666.667).abs() < 1e-2,
         "w {}",
+        load.w_nominal
+    );
+}
+
+/// Pascal `SetNominalLoad` GENERALTIME arm (Load.pas:1066): `Set
+/// LoadShapeClass=Yearly` (USEYEARLY) drives the load from the YEARLY curve.
+/// The three distinct curves make a copy-paste swap (`USEYEARLY =>
+/// CalcDailyMult`/`CalcDutyMult`) fail: at hr 2 the yearly mult is 0.7 →
+/// w = 1000·100·0.7/3 (daily 0.6 → 20000, duty 0.5 → 16666 would mismatch).
+#[test]
+fn time_loadshapeclass_yearly_uses_yearly_curve() {
+    let mut load = load_with_three_shapes();
+    load.set_nominal_load(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (load.w_nominal - 23333.333).abs() < 1e-2,
+        "w {} (expected the yearly 0.7 curve, not daily/duty)",
+        load.w_nominal
+    );
+}
+
+/// GENERALTIME arm (Load.pas:1068): `Set LoadShapeClass=Duty` (USEDUTY) drives
+/// the load from the DUTY curve (hr 2 → 0.5 → w = 1000·100·0.5/3).
+#[test]
+fn time_loadshapeclass_duty_uses_duty_curve() {
+    let mut load = load_with_three_shapes();
+    load.set_nominal_load(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (load.w_nominal - 16666.667).abs() < 1e-2,
+        "w {} (expected the duty 0.5 curve, not daily/yearly)",
+        load.w_nominal
+    );
+}
+
+/// GENERALTIME arm `else` (Load.pas:1071): the DEFAULT class `USENONE` leaves
+/// `ShapeFactor = 1+j1`, so even a fully-shaped load stays at nominal in
+/// `mode=Time` until `Set LoadShapeClass=` selects a class. (Re-pins the fact
+/// the original degenerate deck accidentally covered before it forced =Daily.)
+#[test]
+fn time_loadshapeclass_none_stays_at_nominal() {
+    let mut load = load_with_three_shapes();
+    load.set_nominal_load(&time_class_ctx(USENONE, 2.0));
+    // Nominal: w = 1000·100·1/3 = 33333.33 (no curve applied).
+    assert!(
+        (load.w_nominal - 33333.333).abs() < 1e-2,
+        "w {} (USENONE must ignore all three shapes)",
         load.w_nominal
     );
 }

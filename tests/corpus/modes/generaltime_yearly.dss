@@ -1,0 +1,25 @@
+! GAPS deck: SolveMode=Time (Pascal SolveGeneralTime) with LoadShapeClass=Yearly.
+! Companion to generaltime.dss (=Daily): gates the USEYEARLY arm of the
+! GENERALTIME nominal dispatch (Load.pas:1066). The loads carry ONLY a `yearly=`
+! shape (y8, deliberately DISTINCT from generaltime.dss's day8) and no daily —
+! so with LoadShapeClass=Yearly they follow y8, and a copy-paste swap to
+! calc_daily_mult (no daily -> 1+j1 flat) or calc_duty_mult (no duty falls back
+! to no daily -> flat) collapses the trajectory and fails the live compare.
+! The trailing IncrementTime order is pinned the same way as the Daily deck
+! (step i reflects HOUR i's multiplier). Battery starts at 80% (headroom) so
+! %stored evolves and transitions Discharging->Idling (EndOfTimeStepCleanup).
+Clear
+New Circuit.gt_yearly basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.y8 npts=8 interval=1 mult=(1.00 0.90 0.78 0.70 0.62 0.72 0.86 0.96)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 yearly=y8
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.92 model=2 yearly=y8
+New Storage.batt bus1=b2 phases=3 kv=12.47 kwrated=250 kwhrated=1000 %stored=80 state=discharging %discharge=40 dispmode=default
+New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
+New Monitor.m_batt element=Storage.batt terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set LoadShapeClass=Yearly
+Set mode=Time stepsize=1h number=1

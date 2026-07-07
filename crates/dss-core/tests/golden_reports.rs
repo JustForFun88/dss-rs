@@ -4054,10 +4054,14 @@ fn dump_monitor_matches_oracle() {
 /// one solve mode that never calls `MonitorClass.SaveAll`, so the dump shows a
 /// **non-empty** `// Bufptr=56`/`// Buffer=` block: four buffered records
 /// (`Set LoadShapeClass=Daily` makes the load follow `d4`, so each record's
-/// V/I differ). Byte-pins the port's pending-slice render
-/// (`mon_buffer[flushed_records*stride..]`, WPG.2) — an off-by-one in the
-/// cursor would drop/duplicate a record and mismatch. Complements
-/// `dump_monitor_matches_oracle`, which only reaches the empty-buffer case.
+/// V/I differ). Byte-pins the port's Complete-dump pending-render path itself,
+/// which `dump_monitor_matches_oracle` never reaches (that fixture flushes, so
+/// its buffer is empty). Concretely it catches: a premature flush (the block
+/// would be empty), a wrong record stride/layout (record count `Bufptr/stride`
+/// or the per-row wrap of `2 + Nconds*4` would shift), the `%.1f` value format,
+/// and the `// Bufptr=`/`// Hour=`/`// Sec=` header. (This case runs with
+/// `flushed_records = 0`, so it does NOT exercise a non-zero cursor offset —
+/// that arithmetic is pinned by the `channel_reflects_flush_state` unit test.)
 #[test]
 fn dump_monitor_montime_matches_oracle() {
     run_deck_dump_exact("dump_monitor_montime");
