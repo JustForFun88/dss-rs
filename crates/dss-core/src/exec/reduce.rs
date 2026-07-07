@@ -214,6 +214,25 @@ impl Dss {
             return false; // Can't merge
         }
 
+        // Pascal sets `YPrimInvalid := TRUE` unconditionally right after the
+        // phase guard (Line.pas:1653) — before any impedance work, so even a
+        // failed merge (no common bus) or the parallel-matrix no-op branch
+        // leaves self invalidated. That write goes through `Set_YprimInvalid`
+        // (`CktElement.pas:240`): enabled element ⇒ `SystemYChanged := TRUE`.
+        let enabled = {
+            let ce = self.classes[self_ref.cls].objects[self_ref.idx].as_ckt_element_mut();
+            match ce {
+                Some(ce) => {
+                    ce.cd_mut().yprim_invalid = true;
+                    ce.cd().enabled
+                }
+                None => false,
+            }
+        };
+        if enabled && let Some(ckt) = self.circuit.as_mut() {
+            ckt.solution.system_y_changed = true;
+        }
+
         let len_units_saved = this.length_units;
 
         // TotalLen (Line.pas:1658).
@@ -436,12 +455,17 @@ impl Dss {
         let Some(ckt) = self.circuit.as_ref() else {
             return;
         };
+        // Pascal replays a full `element=<NewLine.FullName>` property edit
+        // (`ParsePropertyValue`, Line.pas:1849) — not a bare pointer swap — so
+        // the control's stored ElementName string (what Save/Dump/`?` render)
+        // updates along with the monitored-element reference and any property
+        // side effects fire exactly like a user edit.
+        let new_full = self.red_full_name(new_ref);
         for cr in ckt.controls.clone() {
-            let obj = self.classes[cr.cls].objects[cr.idx].as_mut();
-            if let Some(ccd) = control_data_mut(obj)
-                && ccd.monitored_element == Some(old_ref)
-            {
-                ccd.monitored_element = Some(new_ref);
+            let monitored = control_data_mut(self.classes[cr.cls].objects[cr.idx].as_mut())
+                .and_then(|ccd| ccd.monitored_element);
+            if monitored == Some(old_ref) {
+                self.red_edit_elem(cr, &format!("element={new_full}"));
             }
         }
     }
@@ -490,9 +514,17 @@ impl Dss {
             if self.red_is_line(r) {
                 let present = tree.present.expect("present set after go_forward");
                 if tree.node(present).is_dangling {
-                    // Only access ToBusReference once (Pascal comment).
+                    // Only access ToBusReference once (Pascal comment); the
+                    // `if ToBusRef > 0` guard (`:111`) rejects an invalid
+                    // to-bus — mirrored by requiring a REAL bus index (a
+                    // `Some(NO_BUS)` sentinel must not fall through to the
+                    // keep-check, whose miss would disable the line).
                     let to_bus = tree.node_mut(present).next_to_bus_reference();
                     if let Some(bus) = to_bus
+                        && self
+                            .circuit
+                            .as_ref()
+                            .is_some_and(|c| c.buses.get(bus).is_some())
                         && !self.red_bus_keep(bus)
                     {
                         self.red_disable(r);
@@ -598,9 +630,23 @@ impl Dss {
             if to_keep {
                 return false; // check keeplist
             }
-            // Skip if the parent carries any capacitor/reactor shunt.
+            // Skip if the parent carries a capacitor/reactor shunt.
+            // TODO(compat): the upstream scan (`ReduceAlgs.pas:200-210`)
+            // checks ONLY the parent's FIRST shunt — it opens with
+            // `ParentNode.FirstShuntObject()` but advances with
+            // `PresentBranch.NextShuntObject()`, a cross-node cursor mix; the
+            // present node's `TDSSPointerList` cursor still sits at its LAST
+            // item from tree construction (`Add` sets `ActiveItem := Count`,
+            // `DSSPointerList.pas:66`), so the very first `Next` overflows and
+            // returns NIL (`:113-131`), ending the loop. Deterministic upstream
+            // bug reproduced 1:1: a cap/reactor at parent-shunt position ≥ 2
+            // does NOT block the merge. Clean fix (scan all parent shunts)
+            // lands with the post-acceptance compat sweep.
             let parent_shunts = tree.node(parent).shunts.clone();
-            if parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s)) {
+            if parent_shunts
+                .first()
+                .is_some_and(|&s| self.red_is_cap_or_reactor(s))
+            {
                 return false;
             }
             let line_elem2 = tree.node(parent).elem;
@@ -736,9 +782,15 @@ impl Dss {
                 if one_node {
                     // Eliminate the lateral starting with this branch.
                     let from_bus = tree.node(present).from_bus;
+                    // Pascal computes `BusName`/`HeadBasekV` only under
+                    // `ReduceLateralsKeepLoad` (`:478-495`); without it they
+                    // keep their defaults — the empty string and 1.0 — and the
+                    // shunt re-bus loop below still runs (`:505-513` is OUTSIDE
+                    // the KeepLoad block), editing every shunt to `Bus1= kV=1`.
                     let mut head_base_kv = 1.0f64;
-                    let mut bus_name = self.red_elem_bus(r, tree.node(present).from_terminal);
+                    let mut bus_name = String::new();
                     if keep_load {
+                        bus_name = self.red_elem_bus(r, tree.node(present).from_terminal);
                         // Ensure a node reference (default .1).
                         if !bus_name.contains('.') {
                             bus_name.push_str(".1");
@@ -752,11 +804,9 @@ impl Dss {
                         let p = tree.present.expect("present set");
                         let cur = tree.node(p).elem;
                         let shunts = tree.node(p).shunts.clone();
-                        if keep_load {
-                            for s in shunts {
-                                let cmd = format!("Bus1={bus_name} kV={} ", fmt6(head_base_kv));
-                                self.red_edit_elem(s, &cmd);
-                            }
+                        for s in shunts {
+                            let cmd = format!("Bus1={bus_name} kV={} ", fmt6(head_base_kv));
+                            self.red_edit_elem(s, &cmd);
                         }
                         self.red_disable(cur);
                         elem = tree.go_forward();
@@ -890,21 +940,27 @@ impl Dss {
     }
 
     /// Pascal head-bus kV base for the lateral removal (ReduceAlgs.pas:487):
-    /// the defined `kVBase`, else `|VBus[1]|·0.001` after `UpdateVBus`.
+    /// the defined `kVBase`, else `Solution.UpdateVBus` +
+    /// `Cabs(Bus.VBus[1])·0.001`. `UpdateVBus` (`Solution.pas:2377`) copies the
+    /// live `NodeV[RefNo[j]]` into `VBus` — but only for buses whose `VBus` is
+    /// allocated (fault study / `AllocateBusQuantities`); with `VBus = NIL`
+    /// (any plain power-flow run) the upstream `VBus[1]` read is a NIL
+    /// dereference — nondeterministic upstream UB, NOT reproduced (CLAUDE.md
+    /// rule). The port reads the live `NodeV[RefNo[1]]` directly, which is
+    /// exactly the refreshed-`VBus` value in the well-defined case.
     fn red_head_base_kv(&mut self, from_bus: usize) -> f64 {
-        let kv = self
-            .circuit
-            .as_ref()
-            .and_then(|c| c.buses.get(from_bus))
-            .map(|b| b.kv_base)
-            .unwrap_or(0.0);
-        if kv > 0.0 {
-            return kv;
+        let Some(ckt) = self.circuit.as_ref() else {
+            return 1.0;
+        };
+        let Some(bus) = ckt.buses.get(from_bus) else {
+            return 1.0;
+        };
+        if bus.kv_base > 0.0 {
+            return bus.kv_base;
         }
-        self.circuit
-            .as_ref()
-            .and_then(|c| c.buses.get(from_bus))
-            .and_then(|b| b.vbus.first())
+        bus.ref_no
+            .first()
+            .and_then(|&n| ckt.solution.node_v.get(n))
             .map(|v| v.norm() * 0.001)
             .unwrap_or(1.0)
     }
