@@ -115,28 +115,28 @@ pub mod prop {
 /// `TGenerator.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("bus1", 1),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kW"),
         PropDef::double("PF"),
         PropDef::double("kvar"),
-        PropDef::mapped_int_enum("model", enums.gen_model),
-        PropDef::double("Vminpu"),
-        PropDef::double("Vmaxpu"),
-        PropDef::object_ref_class("LoadShape", "yearly"),
-        PropDef::object_ref_class("LoadShape", "daily"),
-        PropDef::object_ref_class("LoadShape", "duty"),
-        PropDef::mapped_string_enum("dispmode", enums.gen_disp_mode),
-        PropDef::double("dispvalue"),
-        PropDef::mapped_string_enum("conn", enums.connection),
-        PropDef::mapped_string_enum("status", enums.gen_status),
-        PropDef::integer("class"),
+        PropDef::mapped_int_enum("Model", enums.gen_model),
+        PropDef::double("VMinpu"),
+        PropDef::double("VMaxpu"),
+        PropDef::object_ref_class("LoadShape", "Yearly"),
+        PropDef::object_ref_class("LoadShape", "Daily"),
+        PropDef::object_ref_class("LoadShape", "Duty"),
+        PropDef::mapped_string_enum("DispMode", enums.gen_disp_mode),
+        PropDef::double("DispValue"),
+        PropDef::mapped_string_enum("Conn", enums.connection),
+        PropDef::mapped_string_enum("Status", enums.gen_status),
+        PropDef::integer("Class"),
         PropDef::double("Vpu"),
-        PropDef::double("maxkvar"),
-        PropDef::double("minkvar"),
-        PropDef::double("pvfactor"),
-        PropDef::boolean("forceon"),
+        PropDef::double("Maxkvar"),
+        PropDef::double("Minkvar"),
+        PropDef::double("PVFactor"),
+        PropDef::boolean("ForceOn"),
         PropDef::double("kVA"),
         PropDef::double("MVA")
             .scale(1000.0)
@@ -153,7 +153,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string("ShaftModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("ShaftData").flags(PropFlags::NOT_PORTED),
         PropDef::double("DutyStart"),
-        PropDef::boolean("debugtrace"),
+        PropDef::boolean("DebugTrace"),
         PropDef::boolean("Balanced"),
         PropDef::double("XRdp"),
         PropDef::boolean("UseFuel"),
@@ -168,10 +168,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("DynamicExp", "DynamicEq"),
         PropDef::string_list("DynOut"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("Generator", defs, true)

@@ -76,28 +76,28 @@ pub fn class_props() -> ClassProps {
         // the side effects; they share no backing (distinct StringLists upstream).
         PropDef::string_list("PVSystemList"),
         // Vreg → FVregInit (IgnoreInvalid + NonNegative).
-        PropDef::double("Vreg").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("VReg").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
         // Slope → QVSlope (IgnoreInvalid + NonNegative + NonZero).
         PropDef::double("Slope")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         // VregTau (IgnoreInvalid + NonNegative; Pascal Units_s is JSON-only).
-        PropDef::double("VregTau").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
-        PropDef::double("Qbias"),
-        PropDef::double("VregMin").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
-        PropDef::double("VregMax").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
-        PropDef::double("QmaxLead")
+        PropDef::double("VRegTau").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("QBias"),
+        PropDef::double("VRegMin").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("VRegMax").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("QMaxLead")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("QmaxLag")
+        PropDef::double("QMaxLag")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::boolean("EventLog"),
         PropDef::double("DeltaQ_Factor"),
         PropDef::boolean("PreferQ"),
-        PropDef::double("Tresponse")
+        PropDef::double("TResponse")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::string_list("DERList"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("ExpControl", defs, true)

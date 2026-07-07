@@ -75,8 +75,8 @@ pub mod prop {
 /// `TIndMach012.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("bus1", 1),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kW"),
         // Pascal `pf` is `[SilentReadOnly, ReadByFunction]` → PowerFactor(Power[1]):
@@ -85,7 +85,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // GetObjPropertyValue guard skips the read function even on a solved
         // circuit (probe-proven; see SILENT_READ_ONLY).
         PropDef::double("PF").flags(PropFlags::SILENT_READ_ONLY),
-        PropDef::mapped_string_enum("conn", enums.connection),
+        PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double("kVA"),
         PropDef::double("H"),
         PropDef::double("D"),
@@ -98,15 +98,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Slip"),
         PropDef::double("MaxSlip"),
         PropDef::mapped_string_enum("SlipOption", enums.ind_mach_slip_option),
-        PropDef::object_ref_class("LoadShape", "yearly"),
-        PropDef::object_ref_class("LoadShape", "daily"),
-        PropDef::object_ref_class("LoadShape", "duty"),
-        PropDef::boolean("Debugtrace"),
+        PropDef::object_ref_class("LoadShape", "Yearly"),
+        PropDef::object_ref_class("LoadShape", "Daily"),
+        PropDef::object_ref_class("LoadShape", "Duty"),
+        PropDef::boolean("DebugTrace"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("IndMach012", defs, true)

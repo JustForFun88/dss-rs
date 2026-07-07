@@ -124,6 +124,10 @@ pub struct Dss {
     /// `DSS.CIMExporter`: the persistent hashed-UUID list state (WP8.6 step 6;
     /// GAPS_PLAN WPG.18 adds the CIM XML exporters on top).
     cim: crate::cim::CimExporter,
+    /// `DSS.DSSObjs`: every general (`DSS_OBJECT`) object in global creation
+    /// order — the list the whole-circuit `Dump` walks after `CktElements`
+    /// (Pascal `ExecHelper.pas:1373`; populated at `AddObject`, `:1899`).
+    dss_objs: Vec<ElemRef>,
 }
 
 impl Dss {
@@ -157,6 +161,13 @@ impl Dss {
     /// `GlobalResult`/`@lastfile`). Empty until the first `Show` writes a file.
     pub fn last_show_file(&self) -> &str {
         self.vars.get("@lastshowfile").unwrap_or("")
+    }
+
+    /// Read-only view of the registered class list (`DSS.DSSClassList`), for
+    /// the report formatters' coverage unit tests.
+    #[cfg(test)]
+    pub(crate) fn registered_classes(&self) -> &[DssClass] {
+        &self.classes
     }
 }
 

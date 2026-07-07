@@ -19,6 +19,7 @@
 
 pub mod export;
 pub mod format;
+pub mod help_catalog;
 pub mod output;
 pub mod save;
 pub mod show;

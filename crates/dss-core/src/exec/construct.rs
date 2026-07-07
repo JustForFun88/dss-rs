@@ -294,6 +294,7 @@ impl Dss {
             in_redirect: false,
             redirect_abort: false,
             cim: crate::cim::CimExporter::default(),
+            dss_objs: Vec::new(),
         };
         dss.create_default_dss_items();
         dss

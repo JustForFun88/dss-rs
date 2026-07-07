@@ -188,8 +188,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VSetPoint"),
         PropDef::mapped_int_enum("ControlModel", enums.invcontrol_model),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("InvControl", defs, true)

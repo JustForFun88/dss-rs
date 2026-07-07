@@ -9,6 +9,8 @@
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod thash_dump;
+
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]

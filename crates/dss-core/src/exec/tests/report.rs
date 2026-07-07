@@ -503,23 +503,29 @@ fn dump_generic_base_ordering() {
 
 /// `Dump <class>.<name>` error fidelity: an unknown class → Pascal `#903`
 /// (`SetObjectClass` fail); a known class + unknown object → `#256`
-/// (`Object … not found`); `dump` / `dump solution` / `dump debug` (whole-circuit
-/// forms) stay scoped for WP8.5 step 3.
+/// (`Object … not found`). `dump solution` (whole-circuit family, WP8.5 step
+/// 3b) succeeds and writes the `! OPTIONS` listing (byte fidelity is pinned by
+/// the `dump3_solution` golden).
 #[test]
 fn dump_single_object_errors() {
+    let dir = std::env::temp_dir().join("dss_dump_errors_test");
+    std::fs::create_dir_all(&dir).unwrap();
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
     // Errors accumulate across commands (only `clear` resets them), so check by
     // cumulative index.
     dss.command("dump badclass.foo"); // #903 SetObjectClass fail
     dss.command("dump reactor.foo"); // #256 known class, unknown object
-    dss.command("dump solution"); // step-3 scoped
+    dss.command("dump solution"); // Solution.DumpProperties — no error
     let e = dss.errors();
-    assert_eq!(e.len(), 3, "{e:?}");
+    assert_eq!(e.len(), 2, "{e:?}");
     assert!(e[0].contains("Object Class"), "#903 expected: {e:?}");
     assert!(
         e[1].contains("Object \"foo\" not found"),
         "#256 expected: {e:?}"
     );
-    assert!(e[2].contains("not ported yet"), "step-3 scoped: {e:?}");
+    let produced = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    assert!(produced.starts_with("! OPTIONS\n"), "{produced:?}");
+    std::fs::remove_dir_all(&dir).ok();
 }

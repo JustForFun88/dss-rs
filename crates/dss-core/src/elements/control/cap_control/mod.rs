@@ -111,8 +111,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // LoadShape references arrive in Phase 5 (WP5.1); `Follow` mode needs it.
         PropDef::object_ref("ControlSignal").flags(PropFlags::NOT_PORTED),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("CapControl", defs, true)

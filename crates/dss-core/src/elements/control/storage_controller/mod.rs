@@ -169,9 +169,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("LoadShape", "Duty"),
         PropDef::boolean("EventLog"),
         PropDef::integer("InhibitTime").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
-        PropDef::double("Tup").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("TUp").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
         PropDef::double("TFlat").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
-        PropDef::double("Tdn").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("TDn").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
         // Pascal DynamicDefault (recomputed from kWTarget in PropertySideEffects).
         PropDef::double("kWThreshold").flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::double("DispFactor"),
@@ -181,8 +181,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("SeasonTargets", prop::SEASONS),
         PropDef::double_array("SeasonTargetsLow", prop::SEASONS),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("StorageController", defs, true)

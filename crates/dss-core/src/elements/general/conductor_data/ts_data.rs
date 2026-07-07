@@ -18,23 +18,23 @@ define_properties! {
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
     7  DIACABLE  => PropDef::double("DiaCable")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-    8  RDC       => PropDef::double("Rdc")
+    8  RDC       => PropDef::double("RDC")
         .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
-    9  RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
-    10 RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
-    11 GMRAC     => PropDef::double("GMRac")
+    9  RAC       => PropDef::double("RAC").flags(PropFlags::DYNAMIC_DEFAULT);
+    10 RUNITS    => PropDef::mapped_string_enum("RUnits", enums.units);
+    11 GMRAC     => PropDef::double("GMRAC")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    12 GMRUNITS  => PropDef::mapped_string_enum("GMRunits", enums.units);
-    13 RADIUS    => PropDef::double("radius")
+    12 GMRUNITS  => PropDef::mapped_string_enum("GMRUnits", enums.units);
+    13 RADIUS    => PropDef::double("Radius")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    14 RADUNITS  => PropDef::mapped_string_enum("radunits", enums.units);
-    15 NORMAMPS  => PropDef::double("normamps").flags(PropFlags::DYNAMIC_DEFAULT);
-    16 EMERGAMPS => PropDef::double("emergamps").flags(PropFlags::DYNAMIC_DEFAULT);
-    17 DIAM      => PropDef::double("diam").scale(0.5)
+    14 RADUNITS  => PropDef::mapped_string_enum("RadUnits", enums.units);
+    15 NORMAMPS  => PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    16 EMERGAMPS => PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    17 DIAM      => PropDef::double("Diam").scale(0.5)
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::REDUNDANT);
     18 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     19 RATINGS   => PropDef::double_array("Ratings", SEASONS);
-    20 CAPRADIUS => PropDef::double("Capradius")
+    20 CAPRADIUS => PropDef::double("CapRadius")
         .flags(PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
 }
 

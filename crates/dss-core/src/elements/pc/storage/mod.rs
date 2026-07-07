@@ -153,10 +153,10 @@ pub mod prop {
 /// `TStorage.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("bus1", 1),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
-        PropDef::mapped_string_enum("conn", enums.connection),
+        PropDef::mapped_string_enum("Conn", enums.connection),
         // `kW`: read returns `kW_out` (the field), write goes through Set_kW
         // (sets the state + %Discharge/%Charge).
         PropDef::double("kW"),
@@ -207,14 +207,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("DischargeTrigger"),
         PropDef::double("ChargeTrigger"),
         PropDef::double("TimeChargeTrig"),
-        PropDef::integer("class"),
+        PropDef::integer("Class"),
         // User-written model DLLs are never ported (safe-Rust); stored + dumped
         // but setting one is a hard error.
         PropDef::string("DynaDLL").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("DynaData").flags(PropFlags::NOT_PORTED),
         PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
-        PropDef::boolean("debugtrace"),
+        PropDef::boolean("DebugTrace"),
         PropDef::double("kVDC").scale(1000.0),
         PropDef::double("Kp").scale(1.0 / 1000.0),
         PropDef::double("PITol").scale(1.0 / 100.0),
@@ -227,10 +227,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("AmpLimit").flags(PropFlags::NO_DEFAULT),
         PropDef::double("AmpLimitGain"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("Storage", defs, true)
