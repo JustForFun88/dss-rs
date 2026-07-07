@@ -115,7 +115,7 @@ row — auditors are spawned with an explicit model/effort override):
 | WP8.1–8.4 | — (✅ complete) | landed |
 | WP8.5 steps 3a, 3b, 4, 6 | `sonnet-high+` | mechanical ports: the pattern is established by the landed Dump steps 1–2, each item cites its Pascal unit:lines, gates are pre-wired (`dump3.dss`/`dump_capacitor.dss`/`save_forms.dss`) |
 | WP8.5 **step 5** (`Save circuit` + round-trip gate) | **`opus-medium+`** | the one non-mechanical WP8.5 piece: whole-circuit script emission + round-trip re-compile/re-solve debugging (failures surface as downstream voltage diffs, not local errors) |
-| WP8.6 (all steps) | `sonnet-high+` | each verb has a pre-validated deck (`tools/golden/phase8_decks/`, `tests/corpus/gaps/`) with oracle-pinned expectations; Uuids is a byte-exact golden recipe |
+| WP8.6 (all steps) | `sonnet-high+` | each verb has a pre-validated deck (`tools/golden/phase8_decks/`, `tests/corpus/modes/`) with oracle-pinned expectations; Uuids is a byte-exact golden recipe |
 | WP8.7 (ReduceAlgs + `MergeWith` + `Remove`) | **`opus-medium+`** | graph surgery on the meter-zone tree + numeric impedance merge (`TLineObj.MergeWith`); the staging manifests' oracle-verified post-reduce element lists are the binding spec; the 8 strategy decks catch wrong-shape results, but *why* a shape is wrong takes real debugging |
 | WP8.8 (phase exit) | `sonnet-high+` | marker sweep + coverage proof + re-classify, mechanical |
 
@@ -129,17 +129,14 @@ separate oracle processes and is feature-sensitive):
   ports a verb wires its deck into `tools/golden/gen_phase8.py` (deck text →
   the golden `.meta.json`, the single source both engines replay) and adds the
   `golden_phase8.rs` test.
-- **`tests/corpus/gaps/`** — 12 live staging decks with `pending: true` and
+- **`tests/corpus/modes/`** — 12 live decks with `pending: true` and
   `wp: "WP8.6"/"WP8.7"` (`batchedit`, `midi_batchedit`, the 8 `reduce_*`
   strategy decks, `reduce_remove`, `midi_reduce`); manifest notes record the
   oracle-verified post-reduce element lists (merged names `l1~l2`/`b1||b2`,
-  disabled partners, node counts). The WP that ports the verb flips `pending`,
-  proves the live compare green and graduates the decks per GAPS_PLAN §3.1.
-  If the `gaps_cases_match_oracle` runner (a GAPS_PLAN deliverable) has not
-  landed yet when WP8.6/8.7 execute, collapse the two steps into one: move the
-  decks straight into their permanent family (`tests/corpus/modes/`, created
-  on first use) and register them in that family's manifest + live runner
-  (clone the `asymmetric`/`controls` runner pattern in `corpus_live.rs`).
+  disabled partners, node counts). The family gate
+  (`modes_cases_match_oracle` in `corpus_live.rs`) asserts each pending deck
+  errors loudly today; the WP that ports the verb flips `pending: false` and
+  proves the live compare green (GAPS_PLAN §3.1).
 
 ## 1. Phase target and gate
 
@@ -689,12 +686,11 @@ Steps:
    the remainder once, run the class `Edit` per match). **There is NO count
    message** — the command always returns 0 silently; do not invent one.
    `TODO(compat)` only if a corpus pattern hits a TRegExpr-vs-`regex` flavor
-   gap (probe first). Gate: flip `tests/corpus/gaps` `batchedit.dss` +
+   gap (probe first). Gate: flip `tests/corpus/modes` `batchedit.dss` +
    `midi_batchedit.dss` to `pending:false` (expected: `LA` edits
    la1/la2/xla1 not lb1; `ld1` edits 11 loads; `^LD2$` exactly one), prove
-   the live compare green, graduate both decks (→ `tests/corpus/modes/`,
-   created here if this is the first graduation — GAPS_PLAN §3.1); migrate
-   the **39** `unsupported_command=BatchEdit` corpus decks.
+   the live compare green (GAPS_PLAN §3.1); migrate the **39**
+   `unsupported_command=BatchEdit` corpus decks.
 3. **MakeBusList + GISCoords** (`ExecCommands.pas:541-544`, `:639-644`):
    `MakeBusList` = `if BusNameRedefined { reprocess_bus_defs() }` — nothing
    else; `GISCoords` = documented no-op ("Do nothing here on DSS C-API").
@@ -826,7 +822,7 @@ Steps:
      recombined — don't invent it.
    Oracle-verified expectations to pin (from the pre-validated decks):
    `l1~l2` / `s1~s2` / `b1||b2` names, the partner disabled, node counts in
-   the `tests/corpus/gaps` manifest notes.
+   the `tests/corpus/modes` manifest notes.
 2. **The strategy procedures** (`ReduceAlgs.pas`; all early-exit when
    `BranchList = NIL`; `First()` then `GoForward()` so the head branch is
    always kept; `SERIESMERGE=TRUE`/`PARALLELMERGE=FALSE`):
@@ -876,11 +872,11 @@ Steps:
    array; each hit sets `Bus.Keep` (the flag `mark_cap_and_reactor_buses`
    already writes). **`Remove`** command: add the `cmd::` ordinal + handler
    → `DoRemoveBranches`.
-5. Gate: flip the ten `tests/corpus/gaps` Reduce cases (the nine
+5. Gate: flip the ten `tests/corpus/modes` Reduce cases (the nine
    `reduce_*.dss` + `midi_reduce.dss`) to `pending:false` (each manifest note records the oracle-verified
    outcome: merged names, disabled partners, node counts, the KeepList
    block, the skipped x2 pair, the `Load.eq_l2_b2` equivalent), prove the
-   live compare green at micro tolerance, graduate them (→ `modes/`);
+   live compare green at micro tolerance;
    extend `golden_autoadd_reduce.rs` with a post-`Reduce` re-solve on a
    metered feeder (branch/node counts + voltages vs the oracle); no corpus
    decks are Reduce-tagged (verified) — `COVERAGE.md` refresh only.
@@ -895,9 +891,9 @@ Steps:
    stand-ins flagged in STATUS) are settled here.
 2. Run `tools/cmd_coverage.py` to **prove tail coverage** of the corpus command/option
    set (PORTING_PLAN §Phase 8 deliverable); document the residual.
-3. Verify every `tests/corpus/gaps` case with `wp: "WP8.*"` is `pending:false`
-   and graduated (the WPG.* cases stay until GAPS_PLAN executes; WPG.17 owns
-   deleting the emptied dir). Verify `tools/golden/phase8_decks/` decks are all
+3. Verify every family-manifest case with `wp: "WP8.*"` is `pending:false`
+   (the WPG.* cases stay pending until GAPS_PLAN executes; WPG.17 owns the
+   final no-pending sweep). Verify `tools/golden/phase8_decks/` decks are all
    wired into `gen_phase8.py` (the dir then holds only the README + decks the
    metas reference).
 4. Re-run the full suite + the **always-on live corpus compare**; run a final

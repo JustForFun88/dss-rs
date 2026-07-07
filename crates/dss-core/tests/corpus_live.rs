@@ -15,6 +15,13 @@
 //! manifest and writes `tmp/classify_report.json` for
 //! `tools/corpus/apply_classify.py`.
 //!
+//! Besides the vendored corpus, three synthetic deck families under
+//! `tests/corpus/` run the same live mandate: `asymmetric/`, `controls/`, and
+//! `modes/` (shared machinery in the family section below). A family case
+//! marked `pending: true` covers a feature the port does not implement yet:
+//! the gate asserts the Rust engine errors loudly on it instead of
+//! live-comparing (GAPS_PLAN.md §2.3/§3.1).
+//!
 //! Scope: this gate compares the full assembled **electrical** model (the Y / V /
 //! current mandate, no exceptions) plus every element's powers and the discrete
 //! control state, for every case. Monitor channels and EnergyMeter
@@ -32,7 +39,7 @@ mod harness;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -704,6 +711,16 @@ struct SolvableCase {
     compare_eventlog: bool,
     #[serde(default)]
     compare_ctrlqueue: bool,
+    /// The feature this case covers is not ported yet (GAPS_PLAN.md §2.3/§3.1):
+    /// the family gate asserts the Rust engine errors loudly instead of
+    /// live-comparing. The WP in `wp` flips this to `false` when it ports the
+    /// feature.
+    #[serde(default)]
+    pending: bool,
+    /// Work package that ports this case's feature (`WPG.*` → GAPS_PLAN.md,
+    /// `WP8.*` → PHASE8_PLAN.md). Mandatory while `pending` is true.
+    #[serde(default)]
+    wp: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -773,10 +790,186 @@ fn corpus_live_solvable_cases_match_oracle() {
 }
 
 // ---------------------------------------------------------------------------
-// Asymmetric synthetic decks (tests/corpus/asymmetric/): per-element and
-// combination coverage of orientation-sensitive YPrim stamping. Motivated by the
-// Phase-4 `Reactor::stamp_series` bug (03c63f2): the series stamp's bottom-left
-// block was written at `(j+n, i)` instead of Pascal's `(i+n, j)` — identical for
+// Synthetic deck families (tests/corpus/{asymmetric,controls,modes}/): hand-
+// written / generated decks plus a family `manifest.json` of `SolvableCase`
+// entries, live-compared with the same full `run_and_compare` mandate as the
+// vendored corpus. Shared machinery below: a deck-dir ↔ manifest bijection
+// guard with a pinned per-family coverage floor, and the live gate itself.
+//
+// Pending discipline (GAPS_PLAN.md §2.3/§3.1): a case with `pending: true`
+// covers a feature the port does not implement yet. It is NOT live-compared;
+// the gate instead asserts the Rust engine errors LOUDLY on the deck (never a
+// silent fallback), so an accidental no-op path cannot hide the gap. The WP
+// named in the case's `wp` field flips `pending: false` in the same commit
+// that ports the feature and proves the live compare green.
+//
+// Multi-file cases live in a subfolder named after the deck with their
+// fixtures beside them (manifest path = "<deck>/<deck>.dss"), so deck
+// collection recurses.
+// ---------------------------------------------------------------------------
+
+/// One synthetic deck family under `tests/corpus/<name>/`.
+struct Family {
+    /// Directory name under `tests/corpus/`.
+    name: &'static str,
+    /// Pinned deck floor: removing a deck (even together with its manifest
+    /// entry) fails `*_manifest_is_complete` — mirrors the "no silent
+    /// omission" role of `corpus_manifest.rs` for the vendored corpus.
+    required: &'static [&'static str],
+    /// Per-family structural invariant, applied to every case (pending cases
+    /// declare their full future compare spec up front).
+    check_case: fn(&SolvableCase),
+}
+
+fn family_dir(name: &str) -> PathBuf {
+    [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        name,
+    ]
+    .iter()
+    .collect()
+}
+
+/// Absolute, forward-slashed path to a deck under `tests/corpus/<name>/`.
+fn family_file(name: &str, rel: &str) -> String {
+    let p = family_dir(name).join(rel);
+    assert!(p.is_file(), "{name} deck missing: {}", p.display());
+    p.to_string_lossy().replace('\\', "/")
+}
+
+fn load_family(name: &str) -> Vec<SolvableCase> {
+    let p = family_dir(name).join("manifest.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let m: SolvableManifest =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
+    m.cases
+}
+
+/// Recursively collect every `.dss` under `dir` as forward-slashed paths
+/// relative to `base` (multi-file cases keep their fixtures in a subfolder
+/// next to the deck).
+fn collect_family_decks(dir: &Path, base: &Path, out: &mut BTreeSet<String>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_dir() {
+            collect_family_decks(&p, base, out);
+        } else if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            out.insert(
+                p.strip_prefix(base)
+                    .expect("under base")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+}
+
+/// Oracle-free structural guard shared by the families: deck dir ↔ manifest
+/// bijection, the pinned coverage floor, `wp` present on every pending case,
+/// and the family's per-case invariant.
+fn family_manifest_is_complete(fam: &Family) {
+    let dir = family_dir(fam.name);
+    assert!(
+        dir.is_dir(),
+        "{} deck dir missing: {}",
+        fam.name,
+        dir.display()
+    );
+    let mut disk: BTreeSet<String> = BTreeSet::new();
+    collect_family_decks(&dir, &dir, &mut disk);
+    let cases = load_family(fam.name);
+    let manifested: BTreeSet<String> = cases.iter().map(|c| c.path.replace('\\', "/")).collect();
+    assert_eq!(
+        manifested.len(),
+        cases.len(),
+        "duplicate paths in {} manifest",
+        fam.name
+    );
+    assert_eq!(
+        disk, manifested,
+        "{} decks on disk and manifest entries must be a bijection \
+         (disk∖manifest = unclassified deck, manifest∖disk = ghost entry)",
+        fam.name
+    );
+    for req in fam.required {
+        assert!(
+            manifested.contains(*req),
+            "required {} deck missing: {req} (pinned coverage floor)",
+            fam.name
+        );
+    }
+    for c in &cases {
+        if c.pending {
+            assert!(
+                c.wp.is_some(),
+                "{}: pending case must name the WP that ports it (GAPS_PLAN.md §3.1)",
+                c.path
+            );
+        }
+        (fam.check_case)(c);
+    }
+}
+
+/// The family live gate: pending cases must error loudly on the Rust engine
+/// (oracle-free); everything else runs the full live compare.
+fn family_cases_match_oracle(fam: &Family) {
+    let cases = load_family(fam.name);
+    assert!(!cases.is_empty(), "{} manifest must not be empty", fam.name);
+    let mut pending = 0usize;
+    for c in cases.iter().filter(|c| c.pending) {
+        let abs = family_file(fam.name, &c.path);
+        assert_pending_errors_loudly(&format!("{}:{}", fam.name, c.path), &abs, c);
+        pending += 1;
+    }
+    let live: Vec<&SolvableCase> = cases.iter().filter(|c| !c.pending).collect();
+    if !live.is_empty() {
+        let oracle = Oracle::new();
+        oracle.ping();
+        for c in &live {
+            let abs = family_file(fam.name, &c.path);
+            run_and_compare(&oracle, &c.path, &abs, c);
+        }
+    }
+    eprintln!(
+        "{} live gate: {} deck(s) matched the oracle, {} pending deck(s) errored loudly",
+        fam.name,
+        live.len(),
+        pending
+    );
+}
+
+/// GAPS_PLAN.md §2.3 pending discipline. The staged decks are self-driving
+/// (each contains its own `Solve`), so one `compile` executes the whole
+/// scenario; the unported feature must surface as an engine error (NOT_PORTED
+/// / unknown mode / invalid property) — a clean run means a silent fallback
+/// path is masking the gap. The WP that ports the feature pins the exact
+/// behavior; this gate pins "loud".
+fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &SolvableCase) {
+    let _guard = CorpusGuard::new(case_path);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{case_path}\""));
+    for cmd in &c.post {
+        dss.command(cmd);
+    }
+    assert!(
+        !dss.errors().is_empty(),
+        "{label}: pending case (wp {}) ran with NO engine error — the unported \
+         feature fell back silently; if it is now ported, flip `pending: false` \
+         and prove the live compare green (GAPS_PLAN.md §3.1)",
+        c.wp.as_deref().unwrap_or("?"),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Asymmetric family (tests/corpus/asymmetric/): per-element and combination
+// coverage of orientation-sensitive YPrim stamping. Motivated by the Phase-4
+// `Reactor::stamp_series` bug (03c63f2): the series stamp's bottom-left block
+// was written at `(j+n, i)` instead of Pascal's `(i+n, j)` — identical for
 // every *symmetric* YPrim, wrong exactly when the element's Y is non-reciprocal
 // (sym-components `Z1 <> Z2`) or the excitation is unbalanced. No vendored corpus
 // case exercised that configuration, so the live gate never saw it. These decks
@@ -793,35 +986,11 @@ fn corpus_live_solvable_cases_match_oracle() {
 // CLAUDE.md "Known upstream bugs") makes the oracle's reported currents violate
 // KCL and mutate state on every read, so it is gated separately in
 // `exec/tests/vs_converter.rs` and must not enter a live full-model compare.
+//
+// The `pending: true` entries are static-snapshot decks for unported element
+// classes (Isource, AutoTrans, GICLine/GICTransformer/GICsource), absorbed
+// from the former `tests/corpus/gaps/` staging family.
 // ---------------------------------------------------------------------------
-
-fn asymmetric_dir() -> PathBuf {
-    [
-        env!("CARGO_MANIFEST_DIR"),
-        "..",
-        "..",
-        "tests",
-        "corpus",
-        "asymmetric",
-    ]
-    .iter()
-    .collect()
-}
-
-/// Absolute, forward-slashed path to a deck under `tests/corpus/asymmetric/`.
-fn asymmetric_file(rel: &str) -> String {
-    let p = asymmetric_dir().join(rel);
-    assert!(p.is_file(), "asymmetric deck missing: {}", p.display());
-    p.to_string_lossy().replace('\\', "/")
-}
-
-fn load_asymmetric() -> Vec<SolvableCase> {
-    let p = asymmetric_dir().join("manifest.json");
-    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
-    let m: SolvableManifest =
-        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
-    m.cases
-}
 
 /// The pinned element-coverage floor: one deck per stamping element class plus
 /// the combination decks. Removing a deck (even together with its manifest
@@ -855,106 +1024,60 @@ const ASYMMETRIC_REQUIRED: &[&str] = &[
     "midi_indmach_asym.dss",
     "midi_vccs_asym.dss",
     "midi_upfc_asym.dss",
+    // pending (unported element classes; wp fields name the porting WP)
+    "isource_snap.dss",
+    "midi_isource_asym.dss",
+    "autotrans_snap.dss",
+    "midi_autotrans_asym.dss",
+    "autotrans_gic.dss",
+    "gicline_gic.dss",
+    "gictransformer_gic.dss",
+    "gicsource_gic.dss",
+    "gic_midi.dss",
 ];
 
-/// Oracle-free structural guard: the asymmetric deck directory and its manifest
-/// are a bijection, the required per-element deck set is present, and every case
-/// compares at least one YPrim block (the direct transposed-stamp catch).
+/// Every asymmetric case must name selected_elements: the live YPrim compare
+/// is the direct transposed-stamp catch.
+fn check_asymmetric_case(c: &SolvableCase) {
+    assert!(
+        !c.selected_elements.is_empty(),
+        "{}: asymmetric case must name selected_elements (live YPrim compare \
+         is the direct transposed-stamp catch)",
+        c.path
+    );
+}
+
+const ASYMMETRIC: Family = Family {
+    name: "asymmetric",
+    required: ASYMMETRIC_REQUIRED,
+    check_case: check_asymmetric_case,
+};
+
 #[test]
 fn asymmetric_manifest_is_complete() {
-    let dir = asymmetric_dir();
-    assert!(
-        dir.is_dir(),
-        "asymmetric deck dir missing: {}",
-        dir.display()
-    );
-    let mut disk: BTreeSet<String> = BTreeSet::new();
-    for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
-        let p = entry.expect("dir entry").path();
-        if p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
-            disk.insert(p.file_name().unwrap().to_string_lossy().into_owned());
-        }
-    }
-    let cases = load_asymmetric();
-    let manifested: BTreeSet<String> = cases.iter().map(|c| c.path.clone()).collect();
-    assert_eq!(
-        manifested.len(),
-        cases.len(),
-        "duplicate paths in asymmetric manifest"
-    );
-    assert_eq!(
-        disk, manifested,
-        "asymmetric decks on disk and manifest entries must be a bijection \
-         (disk∖manifest = unclassified deck, manifest∖disk = ghost entry)"
-    );
-    for req in ASYMMETRIC_REQUIRED {
-        assert!(
-            manifested.contains(*req),
-            "required asymmetric deck missing: {req} (per-element coverage floor)"
-        );
-    }
-    for c in &cases {
-        assert!(
-            !c.selected_elements.is_empty(),
-            "{}: asymmetric case must name selected_elements (live YPrim compare \
-             is the direct transposed-stamp catch)",
-            c.path
-        );
-    }
+    family_manifest_is_complete(&ASYMMETRIC);
 }
 
 #[test]
 fn asymmetric_cases_match_oracle() {
-    let oracle = Oracle::new();
-    oracle.ping();
-    let cases = load_asymmetric();
-    assert!(!cases.is_empty(), "asymmetric manifest must not be empty");
-    for c in &cases {
-        let abs = asymmetric_file(&c.path);
-        run_and_compare(&oracle, &c.path, &abs, c);
-    }
-    eprintln!(
-        "asymmetric live gate: {} deck(s) matched the oracle",
-        cases.len()
-    );
+    family_cases_match_oracle(&ASYMMETRIC);
 }
 
 // ---------------------------------------------------------------------------
-// Controls live gate (tests/corpus/controls/, CONTROL_COVERAGE_PLAN.md):
+// Controls family (tests/corpus/controls/, CONTROL_COVERAGE_PLAN.md):
 // synthetic decks putting every control / protection / metering element class
 // (RegControl, CapControl, SwtControl, Relay, Fuse, Recloser, EnergyMeter,
 // Monitor, Sensor, InvControl, StorageController, GenDispatcher) through
 // symmetric, asymmetric, and combination scenarios, live-compared with the full
 // model mandate PLUS the element-specific state channels (property probes,
 // PC-element variables, event log, control queue) this file's runner wires.
+//
+// The `pending: true` entries are control / time-series decks for unported
+// features (CapControl follow mode, InvControl exponential model + Storage
+// volt-watt, StorageController seasonal targets, Isource/AutoTrans in daily
+// and combined modes), absorbed from the former `tests/corpus/gaps/` staging
+// family.
 // ---------------------------------------------------------------------------
-
-fn controls_dir() -> PathBuf {
-    [
-        env!("CARGO_MANIFEST_DIR"),
-        "..",
-        "..",
-        "tests",
-        "corpus",
-        "controls",
-    ]
-    .iter()
-    .collect()
-}
-
-fn controls_file(rel: &str) -> String {
-    let p = controls_dir().join(rel);
-    assert!(p.is_file(), "controls deck missing: {}", p.display());
-    p.to_string_lossy().replace('\\', "/")
-}
-
-fn load_controls() -> Vec<SolvableCase> {
-    let p = controls_dir().join("manifest.json");
-    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
-    let m: SolvableManifest =
-        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
-    m.cases
-}
 
 /// The pinned per-class deck floor (grows as CONTROL_COVERAGE_PLAN.md steps
 /// land). Removing a deck (even with its manifest entry) fails here.
@@ -996,70 +1119,122 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "midi_energymeter.dss",
     "midi_monitor.dss",
     "midi_sensor.dss",
+    // pending (unported control / time-series features; wp names the WP)
+    "capcontrol_follow.dss",
+    "invcontrol_expmodel.dss",
+    "invcontrol_storage_vw.dss",
+    "invcontrol_storage_vv_vw.dss",
+    "storagecontroller_seasonal.dss",
+    "isource_daily.dss",
+    "isource_both.dss",
+    "midi_isource.dss",
+    "midi_isource_both.dss",
+    "autotrans_reg.dss",
+    "autotrans_both.dss",
+    "midi_autotrans.dss",
+    "midi_autotrans_both.dss",
 ];
 
-/// Oracle-free structural guard: deck dir ↔ manifest bijection, the required
-/// deck floor, and every case must exercise at least one element-specific
-/// channel (probes / variables / eventlog / ctrlqueue / meters+monitors) on top
-/// of the full-model compare — a controls case without state comparison would
-/// miss this gate's whole point.
+/// Every controls case must exercise at least one element-specific channel
+/// (probes / variables / eventlog / ctrlqueue / meters+monitors) on top of the
+/// full-model compare — a controls case without state comparison would miss
+/// this gate's whole point.
+fn check_controls_case(c: &SolvableCase) {
+    assert!(
+        !c.probes.is_empty()
+            || !c.compare_variables.is_empty()
+            || c.compare_eventlog
+            || c.compare_ctrlqueue
+            || c.check_meters_monitors,
+        "{}: controls case must opt into at least one element-specific \
+         state channel (probes/variables/eventlog/ctrlqueue/meters)",
+        c.path
+    );
+}
+
+const CONTROLS: Family = Family {
+    name: "controls",
+    required: CONTROLS_REQUIRED,
+    check_case: check_controls_case,
+};
+
 #[test]
 fn controls_manifest_is_complete() {
-    let dir = controls_dir();
-    assert!(dir.is_dir(), "controls deck dir missing: {}", dir.display());
-    let mut disk: BTreeSet<String> = BTreeSet::new();
-    for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
-        let p = entry.expect("dir entry").path();
-        if p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
-            disk.insert(p.file_name().unwrap().to_string_lossy().into_owned());
-        }
-    }
-    let cases = load_controls();
-    let manifested: BTreeSet<String> = cases.iter().map(|c| c.path.clone()).collect();
-    assert_eq!(
-        manifested.len(),
-        cases.len(),
-        "duplicate paths in controls manifest"
-    );
-    assert_eq!(
-        disk, manifested,
-        "controls decks on disk and manifest entries must be a bijection \
-         (disk∖manifest = unclassified deck, manifest∖disk = ghost entry)"
-    );
-    for req in CONTROLS_REQUIRED {
-        assert!(
-            manifested.contains(*req),
-            "required controls deck missing: {req} (per-class coverage floor)"
-        );
-    }
-    for c in &cases {
-        assert!(
-            !c.probes.is_empty()
-                || !c.compare_variables.is_empty()
-                || c.compare_eventlog
-                || c.compare_ctrlqueue
-                || c.check_meters_monitors,
-            "{}: controls case must opt into at least one element-specific \
-             state channel (probes/variables/eventlog/ctrlqueue/meters)",
-            c.path
-        );
-    }
+    family_manifest_is_complete(&CONTROLS);
 }
 
 #[test]
 fn controls_cases_match_oracle() {
-    let oracle = Oracle::new();
-    oracle.ping();
-    let cases = load_controls();
-    assert!(!cases.is_empty(), "controls manifest must not be empty");
-    for c in &cases {
-        let abs = controls_file(&c.path);
-        run_and_compare(&oracle, &c.path, &abs, c);
-    }
-    eprintln!(
-        "controls live gate: {} deck(s) matched the oracle",
-        cases.len()
+    family_cases_match_oracle(&CONTROLS);
+}
+
+// ---------------------------------------------------------------------------
+// Modes family (tests/corpus/modes/): solve modes / solution algorithms /
+// input formats / executive verbs — `Set mode=Time|LD1|LD2|M1|M2|M3|MF|
+// AutoAdd`, `algorithm=Newton`, binary/CSV shape-file inputs, harmonic-curve
+// elements and harmonics-mode element decks, BatchEdit, Reduce. Absorbed from
+// the former `tests/corpus/gaps/` staging family (GAPS_PLAN.md §3.1): every
+// deck was oracle-validated at creation (two-process determinism + feature
+// sensitivity), and every case stays `pending: true` until the WP named in
+// its `wp` field ports the feature and flips the flag.
+// ---------------------------------------------------------------------------
+
+/// The pinned deck floor: one deck per solve mode / algorithm / input format /
+/// executive verb scenario. Removing a deck (even with its manifest entry)
+/// fails here.
+const MODES_REQUIRED: &[&str] = &[
+    "shape_binfiles/shape_binfiles.dss",
+    "generaltime.dss",
+    "ld1.dss",
+    "ld2.dss",
+    "monte1.dss",
+    "monte2.dss",
+    "monte3.dss",
+    "montefault.dss",
+    "autoadd.dss",
+    "newton.dss",
+    "reactor_rlcurve.dss",
+    "isource_harm.dss",
+    "batchedit.dss",
+    "midi_batchedit.dss",
+    "reduce_default.dss",
+    "reduce_shortlines.dss",
+    "reduce_dangling.dss",
+    "reduce_switches.dss",
+    "reduce_laterals.dss",
+    "reduce_mergeparallel.dss",
+    "reduce_breakloop.dss",
+    "reduce_keeplist.dss",
+    "reduce_remove.dss",
+    "midi_reduce.dss",
+];
+
+/// Every modes case must name selected_elements: the live compare (once the
+/// feature is ported) pins the full model, and the YPrim focus set keeps the
+/// per-element channel of that mandate explicit.
+fn check_modes_case(c: &SolvableCase) {
+    assert!(
+        !c.selected_elements.is_empty(),
+        "{}: modes case must name selected_elements (full-model live compare \
+         once the feature is ported)",
+        c.path
     );
+}
+
+const MODES: Family = Family {
+    name: "modes",
+    required: MODES_REQUIRED,
+    check_case: check_modes_case,
+};
+
+#[test]
+fn modes_manifest_is_complete() {
+    family_manifest_is_complete(&MODES);
+}
+
+#[test]
+fn modes_cases_match_oracle() {
+    family_cases_match_oracle(&MODES);
 }
 
 // ---------------------------------------------------------------------------
@@ -1253,19 +1428,20 @@ fn corpus_live_opendss() {
     eprintln!("opendss oracle ({rev}): {engine}");
 
     // Same case universe as the mandatory gate, labeled by source manifest.
+    // Pending family cases are excluded: the feature is unported on the Rust
+    // side, so there is nothing to A/B against EPRI yet.
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     for c in load_solvable() {
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
     }
-    for c in load_asymmetric() {
-        universe.push((
-            format!("asymmetric:{}", c.path),
-            asymmetric_file(&c.path),
-            c,
-        ));
-    }
-    for c in load_controls() {
-        universe.push((format!("controls:{}", c.path), controls_file(&c.path), c));
+    for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
+        for c in load_family(fam.name) {
+            if c.pending {
+                continue;
+            }
+            let abs = family_file(fam.name, &c.path);
+            universe.push((format!("{}:{}", fam.name, c.path), abs, c));
+        }
     }
 
     let mut matched: Vec<String> = Vec::new();

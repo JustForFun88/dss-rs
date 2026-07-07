@@ -32,9 +32,9 @@
 >    --all-targets -- -D warnings`; `cargo test --workspace` (runs **all**
 >    goldens + the always-on live corpus gates). No `#[ignore]`, no
 >    name-filter that could green on zero matches. For a WPG this includes
->    its exit criteria: the deck's `pending` flipped to `false`, the live
->    compare green at the family tolerance, the deck **graduated** to its
->    permanent family (§3.1). A red test blocks the commit.
+>    its exit criteria: the deck's `pending` flipped to `false` in its family
+>    manifest and the live compare green at the family tolerance (§3.1). A
+>    red test blocks the commit.
 > 2. **Update `STATUS.md`** (the §1 frontier + the GAPS record), **commit**
 >    (code + STATUS together).
 > 3. **`/audit-code` + `/audit-tests` in parallel** — two **fresh independent
@@ -102,10 +102,12 @@
 >    live-solve WPs. All design decisions are pre-made in the WP; the work is
 >    staged transcription.
 >
-> Every §1/§1b item ships a **validated synthesized deck** in the
-> `tests/corpus/gaps/` **staging family** (lifecycle in §3.1: a deck lives
-> there only while its feature is unported, then graduates to a permanent
-> family), and the porting work is packaged as independently-gated WPs (§4).
+> Every §1/§1b item ships a **validated synthesized deck**, committed directly
+> in its permanent corpus family (`tests/corpus/{asymmetric,controls,modes}/`)
+> with `pending: true` in the family manifest (lifecycle in §3.1: the family
+> gate asserts a pending deck errors loudly until its WP ports the feature and
+> flips the flag), and the porting work is packaged as independently-gated WPs
+> (§4).
 >
 > **When to execute.** After (or interleaved with) Phase 8 — every WP here is
 > independent of the Phase-8 report work except where a dependency is called
@@ -123,7 +125,8 @@
 ## 1. Inventory — every deferral that was blocked on a missing test
 
 Legend: **site** = where the deferral lives in the Rust tree today; **deck** =
-the synthesized deck in `tests/corpus/gaps/` (all oracle-validated, §3).
+the synthesized deck, committed `pending: true` in its permanent corpus family
+(all oracle-validated, §3; family placement per the §3.1 rule).
 
 | # | Feature | Deferred at | Site today | Deck | WP |
 |---|---|---|---|---|---|
@@ -159,7 +162,7 @@ wherever the mode exists upstream. The GIC classes have **no async/both
 variants**: none has a shape reference or any time-varying drive (their
 corpus usage is a 0.1 Hz quasi-DC snapshot).
 
-| Class | Pascal unit (lines) | Corpus decks blocked on it | Decks (`tests/corpus/gaps/`) | WP |
+| Class | Pascal unit (lines) | Corpus decks blocked on it | Decks (pending, in their §3.1 families) | WP |
 |---|---|---|---|---|
 | Isource | `PCElements/Isource.pas` (541) | `Examples/Microgrid/ISource/Master.DSS`, `Examples/Matlab/pst.dss`, `Examples/FreqScan/Run_Scan.dss` | micro: `isource_snap`, `isource_daily`, `isource_both`, `isource_harm`; midi: `midi_isource_asym`, `midi_isource`, `midi_isource_both` | WPG.14 |
 | AutoTrans | `PDElements/AutoTrans.pas` (2065) | `Test/AutoTrans/{Auto1bus,Auto3bus,AutoAuto}.dss` + the byte-identical `Version8/Distrib/Examples/AutoTrans/*` copies (AutoAuto needs the class; Auto1bus/3bus carry stale `fault` tags) | micro: `autotrans_snap`, `autotrans_reg`, `autotrans_both`, `autotrans_gic`; midi: `midi_autotrans_asym`, `midi_autotrans`, `midi_autotrans_both` | WPG.15 |
@@ -234,24 +237,24 @@ the gate pins the winner bus, the improvement figure, the appended
 
 ### 2.3 Gate machinery (reuse, don't invent)
 
-- **The decks are a live-gate family**, not goldens: `tests/corpus/gaps/` +
-  `manifest.json`, exactly like the sibling `asymmetric/` and `controls/`
-  families. The gate is a new **`gaps_cases_match_oracle`** section in
-  `crates/dss-core/tests/corpus_live.rs` (clone the `controls_cases_match_oracle`
-  machinery): full-model live compare per step plus the per-case opt-ins the
-  manifest already declares — `probes` (property values), `compare_eventlog`,
+- **The decks are live-gate family cases**, not goldens: each lives in its
+  permanent family (`tests/corpus/{asymmetric,controls,modes}/` + that
+  family's `manifest.json`) and is run by the shared family gate in
+  `crates/dss-core/tests/corpus_live.rs` (`family_cases_match_oracle`):
+  full-model live compare per step plus the per-case opt-ins the manifest
+  already declares — `probes` (property values), `compare_eventlog`,
   `compare_ctrlqueue`, `check_meters_monitors`. Tolerance classes per
   `tests/harness` `tol_for` / `tests/TOLERANCE_NOTES.md`; discrete state,
   event logs, iteration counts exact; **no new tolerance classes without
   empirical proof**.
-- **`pending` discipline (no silent skips):** every manifest case starts
-  `"pending": true`. The gaps test must treat a pending case as "the Rust
-  engine errors **loudly** on the unported feature" (assert the specific
-  `NOT_PORTED`/unknown-mode error — never a silent skip, never a silent
-  fallback), and a non-pending case as a full live compare. The WP that ports
-  a feature flips its cases to `pending: false` in the same commit, then
-  **graduates** the decks out of the staging family (§3.1). WPG.17
-  asserts no `pending: true` — and no deck — remains.
+- **`pending` discipline (no silent skips) — implemented:** every case starts
+  `"pending": true`. The family gate treats a pending case as "the Rust
+  engine errors **loudly** on the unported feature"
+  (`assert_pending_errors_loudly` in `corpus_live.rs` — never a silent skip,
+  never a silent fallback; the WP pins the exact error behavior), and a
+  non-pending case as a full live compare. The WP that ports a feature flips
+  its cases to `pending: false` in the same commit and proves the live
+  compare green (§3.1). WPG.17 asserts no `pending: true` remains.
 - **Per-deck sensitivity is already proven** (§3): removing the feature under
   test changes the oracle output, so a port that silently skips the feature
   cannot pass its live compare.
@@ -260,7 +263,7 @@ the gate pins the winner bus, the improvement figure, the appended
   `DSS_LIVE_CLASSIFY=1` + `tools/corpus/apply_classify.py`, migrate to
   `solvable_now`, update `tests/corpus/COVERAGE.md`.
 - Output hygiene: the live harness already redirects report/DI outputs away
-  from the corpus tree (the WP8.2 `CorpusGuard` mandate) — `tests/corpus/gaps/`
+  from the corpus tree (the WP8.2 `CorpusGuard` mandate) — the family dirs
   must stay pristine under `AutoAddLog`/DI-writing cases the same way.
 
 ### 2.4 Set-option surface this plan adds
@@ -275,10 +278,12 @@ buses when the list is empty — port that branch too).
 
 ## 3. The synthesized decks (committed, oracle-validated)
 
-Sixteen feature decks (§1) + eighteen element decks (§1b) at
-`tests/corpus/gaps/` with their `manifest.json` (+ 6 committed binary/CSV
-input fixtures, regenerate via `tools/corpus/gen_gaps_binshapes.py`; the
-`midi_*` element decks regenerate via `tools/decks/gen_midi_decks.py`).
+Sixteen feature decks (§1) + eighteen element decks (§1b), committed
+`pending: true` in their permanent families (`tests/corpus/{asymmetric,
+controls,modes}/manifest.json`; + 6 committed binary/CSV input fixtures in
+`tests/corpus/modes/shape_binfiles/`, regenerate via
+`tools/decks/gen_shape_fixtures.py`; the `midi_*` element decks regenerate via
+`tools/decks/gen_midi_decks.py`).
 Validation protocol, run 2026-07-05 against the pinned oracle (dss-python
 0.15.7):
 
@@ -330,27 +335,29 @@ compile + solve + converge, bit-identical across two oracle processes):
   `scan5` 1/5/7/11 merged with the load's `defaultload` 1/3/5/7/9/11/13
   spectrum) — 7 monitor samples on the oracle.
 
-### 3.1 Deck lifecycle — `gaps/` is a STAGING family, not a destination
+### 3.1 Deck lifecycle — `pending` is a FLAG, not a place
 
-"Gaps" describes a deck's *state*, not its nature: once the feature is
-ported there is no gap left, so the deck must not stay. The rule:
+(Reworked 2026-07-07: the former `tests/corpus/gaps/` staging directory is
+dissolved — decks now live in their permanent family from day one and
+"graduation" is a manifest flag-flip, not a file move.)
 
-- A deck lives in `tests/corpus/gaps/` **only while** its feature is
-  unported (`pending: true` — the loud-error gate).
-- The WP that ports the feature, in the same change: flips `pending: false`,
-  proves the live compare green, then **moves the deck + its manifest entry
-  to the permanent family** it belongs to (re-cutting the deck to that
-  family's drive convention where needed — gaps decks are self-driving,
-  the permanent families let the harness drive):
+- Every deck lives in the permanent family it belongs to, chosen by content:
   - static/snapshot element coverage → `tests/corpus/asymmetric/`;
   - control/time-series/both coverage → `tests/corpus/controls/`;
-  - solve-mode / algorithm / input-format decks (Monte, LD, Time, AutoAdd,
-    Newton, shape files, harmonic curves) → `tests/corpus/modes/` (created
-    at the first such graduation, same manifest shape as the siblings).
-  `midi_*` element decks also move their generator entry in
-  `tools/decks/gen_midi_decks.py` to the matching target directory.
-- WPG.17 (the exit sweep) asserts the staging family is **empty** and
-  deletes the directory.
+  - solve-mode / algorithm / input-format / executive-verb decks (Monte, LD,
+    Time, AutoAdd, Newton, shape files, harmonic curves and harmonics-mode
+    element decks, BatchEdit, Reduce) → `tests/corpus/modes/`.
+  Multi-file cases sit in a subfolder named after the deck (manifest path
+  `<deck>/<deck>.dss`), e.g. `modes/shape_binfiles/`.
+- While the feature is unported the case is `pending: true` in the family
+  manifest (with `wp` naming the porting WP): the family gate asserts the
+  Rust engine errors **loudly** on the deck instead of live-comparing.
+- The WP that ports the feature, in the same change: flips `pending: false`,
+  re-cuts the deck to the family's drive convention where needed (pending
+  decks are self-driving; the families let the harness drive), and proves
+  the live compare green. A red test blocks the commit.
+- WPG.17 (the exit sweep) asserts no `pending: true` remains in any family
+  manifest.
 
 ## 4. Work packages (independently gated; risk-ascending)
 
@@ -596,10 +603,10 @@ are oracle-troubled (`Master-unbal` non-convergent, `Run_RecloserSiting`
 1. Port the GFM voltage-source model (Storage first — the abort site
    `dispatch.rs:70` — then PVSystem, then the Generator GFM branch), the
    InvControl GFM/combi arms, the droop props.
-2. Synthesize a micro GFM deck (`tests/corpus/gaps/gfm_micro.dss` — Storage
-   GFM island + daily; author + oracle-validate it at WP open following §3's
-   protocol, add it to the manifest) as the targeted live case, since the
-   vendored corpus decks are large.
+2. Synthesize a micro GFM deck (`tests/corpus/controls/gfm_micro.dss` —
+   Storage GFM island + daily; author + oracle-validate it at WP open
+   following §3's protocol, add it to the controls manifest) as the targeted
+   live case, since the vendored corpus decks are large.
 3. After WP8.6 lands BatchEdit: migrate the GFM_IEEE123/GFL_IEEE123 family
    to `solvable_now` (live gate = the primary gate); COVERAGE.md.
 
@@ -661,10 +668,10 @@ Steps (in order; each cites the Pascal site to port loop-for-loop):
      `pending: false` — the live compare covers snapshot injection, the
      shape-driven daily run, the snapshot→daily transition (cross-mode
      state-leak), the harmonic spectrum sweep (7 frequencies, §3 note), and
-     all of it again at midi scale (94 nodes). Then graduate them per §3.1:
-     `isource_snap`/`midi_isource_asym` → `asymmetric/`, the rest →
-     `controls/` (`isource_harm` → `modes/` if the harmonics decks land
-     there — decide at the first graduation and stay consistent).
+     all of it again at midi scale (94 nodes). The decks already sit in
+     their §3.1 families (`isource_snap`/`midi_isource_asym` →
+     `asymmetric/`, `isource_harm` → `modes/`, the rest → `controls/`);
+     re-cut them to the family drive convention as needed.
    - Corpus: re-classify (`DSS_LIVE_CLASSIFY=1` + `tools/corpus/
      apply_classify.py`). Expected: `Microgrid/ISource/Master.DSS` advances
      but may stay blocked on `MakeBusList` (check whether it is ported by
@@ -758,9 +765,10 @@ Port these AutoTrans-specific overrides loop-for-loop, citing lines:
    `midi_autotrans.dss` and `midi_autotrans_both.dss` to `pending: false` —
    event logs equal (10/12/10 tap events, §3), `tapnum`/`taps`/`wdgcurrents`
    probes exact, the `both` decks pinning the snapshot→daily transition.
-   Then graduate all seven AutoTrans decks per §3.1 (`autotrans_snap`/
-   `autotrans_gic`/`midi_autotrans_asym` → `asymmetric/`, the reg/both
-   decks → `controls/`; move the generator entries).
+   The seven AutoTrans decks already sit in their §3.1 families
+   (`autotrans_snap`/`autotrans_gic`/`midi_autotrans_asym` → `asymmetric/`,
+   the reg/both decks → `controls/`); re-cut to the family drive convention
+   as needed.
 3. Corpus: re-classify. `AutoAuto.dss` (both copies) needs the class +
    `BatchEdit autotrans..*` (WP8.6) + exports; `Auto1bus`/`Auto3bus` build
    the same unit from **regular transformers** — their `unsupported_class=
@@ -836,8 +844,8 @@ Port in this order:
 6. Gates: flip the four GIC decks (`gicline_gic`, `gictransformer_gic`,
    `gicsource_gic`, the combined 33-node `gic_midi`) to `pending: false`
    (full live compare — the nets are linear, snapshot at 0.1 Hz);
-   `props_roundtrip` + dump goldens for the three classes; graduate the four
-   decks per §3.1 (static snapshots → `asymmetric/`); corpus: re-classify
+   `props_roundtrip` + dump goldens for the three classes (the four decks
+   already sit in `asymmetric/` per §3.1); corpus: re-classify
    `GICExample/GIC_Example.dss` (also uses `LatLongCoords` + `Show Current
    Elements` + `plot circuit` — plot is a headless no-op since WP8.1; check
    the other two, tag honestly, migrate if it solves).
@@ -1019,8 +1027,8 @@ the `autotrans_snap.dss` body) — then the first two feeder goldens:
   `1..24` guard range) — the existing `do_export_cmd` guard already covers
   it; don't add a second check.
 
-**STATUS/corpus:** no `tests/corpus/gaps/` decks — this WP is golden-gated
-(§2.3/§3.1 do not apply to it; WPG.17's staging-empty assert is unaffected).
+**STATUS/corpus:** no pending live-gate decks — this WP is golden-gated
+(§2.3/§3.1 do not apply to it; WPG.17's no-pending assert is unaffected).
 At close, re-check corpus tags for anything blocked on `export cim` (none
 known at authoring) and record the WP in STATUS §1 per the ritual.
 
@@ -1033,8 +1041,8 @@ known at authoring) and record the WP in STATUS §1 per the ritual.
    plan" list); no "test-absence" deferral survives anywhere in the tree,
    and the Rust registry diff vs `DSSClassDefs.pas` is **empty** (modulo the
    never-port list).
-2. The staging family is **empty** (§3.1: every deck graduated with its WP)
-   — delete `tests/corpus/gaps/` and its `corpus_live.rs` gate section.
+2. No `pending: true` remains in any family manifest (§3.1: every case
+   flipped with its WP) — `rg "\"pending\": true" tests/corpus` is empty.
 3. Full gate + live corpus run; COVERAGE.md refresh; STATUS.md record
    (§1-style); PORTING_PLAN.md cross-link ("GAPS_PLAN executed").
 4. Merge per the per-phase convention — only on explicit user request.
