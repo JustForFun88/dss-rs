@@ -202,75 +202,10 @@ def capture_all_meters(ckt) -> list:
 # the in-memory model, so those files are pure pollution of the vendored corpus.
 # Setting `DataPath` before `Compile` does NOT help — `Compile` resets it to the
 # case dir. So snapshot the case dir and restore it after each run instead.
-_RESTORE_MAX = 2 * 1024 * 1024  # buffer files up to 2 MiB for overwrite-restore
-
-
-class _CorpusGuard:
-    """Restore the case's directory after a run: delete any file the run
-    created, and rewrite any small pre-existing file it overwrote. Large files
-    (> `_RESTORE_MAX`) are not buffered — OpenDSS only writes small text reports,
-    never the multi-MiB data files (loadshape CSVs, etc.).
-
-    `_snapshot_ok` mirrors the Rust `CorpusGuard` (corpus_live.rs): if the
-    pre-run snapshot fails or is cut short, `__exit__` must not delete anything —
-    a truncated `names` set would classify pre-existing corpus files as
-    run-created and delete them (empirically demonstrated: a transient lock on
-    one file mid-snapshot used to abort the whole listing via the old
-    whole-loop `except OSError`, and the exit pass then deleted every corpus
-    file that sorted after it, `YgD-Test.dss` included). Per-file failures now
-    only skip that file's overwrite-restore buffer."""
-
-    def __init__(self, case_path: str):
-        self.dir = os.path.dirname(os.path.abspath(case_path))
-        self.names: set[str] = set()
-        self.buf: dict[str, bytes] = {}
-        self._snapshot_ok = False
-
-    def __enter__(self) -> "_CorpusGuard":
-        try:
-            listing = os.listdir(self.dir)
-        except OSError:
-            return self  # snapshot failed -> deletion stays disabled
-        for name in listing:
-            p = os.path.join(self.dir, name)
-            try:
-                if not os.path.isfile(p):
-                    continue
-                self.names.add(name)
-                if os.path.getsize(p) <= _RESTORE_MAX:
-                    with open(p, "rb") as fh:
-                        self.buf[name] = fh.read()
-            except OSError:
-                # Unreadable (e.g. transiently locked): it is still a
-                # pre-existing file — keep it in `names` so it is never
-                # deleted; only its overwrite-restore is unavailable.
-                self.names.add(name)
-        self._snapshot_ok = True
-        return self
-
-    def __exit__(self, *exc) -> bool:
-        if not self._snapshot_ok:
-            return False
-        try:
-            current = set(os.listdir(self.dir))
-        except OSError:
-            return False
-        for name in current - self.names:  # created by the run
-            try:
-                os.remove(os.path.join(self.dir, name))
-            except OSError:
-                pass
-        for name, data in self.buf.items():  # overwritten by the run
-            p = os.path.join(self.dir, name)
-            try:
-                with open(p, "rb") as fh:
-                    if fh.read() == data:
-                        continue
-                with open(p, "wb") as fh:
-                    fh.write(data)
-            except OSError:
-                pass
-        return False
+# Lifted move-only into corpus_guard.py (2026-07-07) so the DSS-Python
+# validation harness (tools/opendss/dsspy_validation/) shares the identical,
+# empirically-hardened implementation.
+from corpus_guard import CorpusGuard as _CorpusGuard  # noqa: E402
 
 
 # The pinned engine (dss_capi 0.14.5) has a per-process nondeterminism: on a

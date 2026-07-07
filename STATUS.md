@@ -1666,6 +1666,31 @@ with different EOLs: `tools/corpus/vendor.py --force` produces a ~1544-file
 EOL-only diff — clean run pollution with `git restore tests/corpus` instead;
 re-vendor only deliberately.
 
+**DSS-Python validation harness, vendored (`tools/opendss/dsspy_validation/`
+— 2026-07-07):** copy of DSS-Python `fastdss` `tests/`
+`_settings`/`save_outputs`/`compare_outputs` (BSD-3, attribution headers,
+local edits marked `# dss-rs:`): full-API-state dumps (~40 collections/case,
+206 upstream-curated cases, all present in our corpus) zipped per engine +
+offline tolerant diff (their `KNOWN_COM_DIFF` catalog kept as upstream) —
+broad-surface upstream inventory complementing `ab_compare.py`. Adaptations:
+corpus → vendored copy, engine spec `DSS_EXTENSIONS_TEST_ODDIE=oddie:<rev>`
+via `revisions.json` (+ expect_version hard check), COM branch dropped, our
+`RegistryUpdate=No`+`Editor=rundll32.exe` suppression, per-case `CorpusGuard`
+(lifted move-only into `tools/oracle/corpus_guard.py`, shared with
+oracle_server), results → `tmp/dsspy_validation/`, and `(Oddie)`-prefixed
+DSSException skips for API exports absent from older official DLLs (r3723
+lacks `Transformers_Get_LossesByType`, `StoragesI`, ...). **Its `capi` side
+is dss_capi 0.15.0b4 — NOT the pinned 0.14.5 oracle; inventory only, never
+feeds goldens/gate.** pandas+xmldiff pinned into the Oddie venv
+(`PIN_OPENDSS.txt`). Sweeps must end with `git status tests/corpus` (guard is
+non-recursive; a sweep-created *subdirectory* — 123Bus `Run_YearlySim` makes
+`16Nov2011/` — escapes it: `git clean -fd` that path). Full-sweep baseline
+2026-07-07: capi 199/206 captured, oddie:r3723 189/206 (its 19 misses = the
+`epri-invcontrol-maxiter` #485 class, 1:1 with known_diffs), compare
+processes 3885 zip entries. The two beta packages are vendored as wheels in
+`tools/opendss/wheels/` (+SHA256SUMS; offline `--find-links` install proven)
+— setup no longer depends on the pre-releases staying on PyPI.
+
 **DSS-Python corpus cross-check (`tools/corpus/dsspy_crosscheck.py` —
 2026-07-07):** diffs DSS-Python's own 206-case validation list
 (`.inputs/DSS-Python/tests/_settings.py::test_filenames`, extracted textually

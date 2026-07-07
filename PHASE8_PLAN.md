@@ -92,6 +92,9 @@ executive verbs (`BatchEdit`, `Interpolate`, `Distribute`, …), and the full
 5. **Save + Dump (WP8.5)** — 🚧 IN PROGRESS: Dump single-object forms + 6 leaf
    overrides landed; remaining = the 8 leaf overrides, the whole-circuit/aux
    Dump forms, all `Save` forms, the round-trip gate.
+   5b. **Corpus property parity (WP8.5b, addendum)** — exhaustive
+   per-element property-value comparison vs the pinned oracle (pilot
+   report → gate flags); executes after WP8.5 completes. See §WP8.5b.
 6. **Executive tail (WP8.6)** — BatchEdit, MakeBusList/GISCoords, SetBusXY +
    Interpolate, Distribute, Uuids + `Export Uuids`, `cmd_coverage.py`.
    Independent of the report infra — can be pulled earlier if convenient.
@@ -605,6 +608,49 @@ faithfully but only the empty-set path is reachable/gated):
 the two Dump-blocked decks (`Test/REACTORTest.DSS` — also unblocked by the
 step-1 Reactor work, tag refresh; `IEEE-TIA-LV Model/Split-Phase_IEEE_TIA`)
 + anything Save unblocks; `COVERAGE.md` refresh.
+
+---
+
+### WP8.5b — Corpus property parity (addendum, 2026-07-07) [after WP8.5]
+
+Closes the "properties are only spot-checked via opt-in `probes`" gap:
+every element's **every** property value, Rust `?`-surface
+(`refresh_vterminal_if_marked` + `ClassProps::get_value` — the byte-proven
+WP8.5 Dump path) vs pinned-oracle `Properties(p).Val`, corpus-wide.
+Executes **after WP8.5 completes** (steps 3b–5 finish property/Save-side
+rendering — sweeping earlier just re-discovers known WP8.5 TODOs); cited by
+the WP8.8 exit sweep. Design settled (plan `robust-stirring-engelbart`,
+approved 2026-07-07):
+
+1. Oracle (`tools/oracle/oracle_server.py`): opt-in request field
+   `"all_properties": true` → per checkpoint `capture_all_properties`:
+   per `AllElementNames` element, ordered `[[prop, str(Properties(p).Val)]]`
+   over `AllPropertyNames` (property-index order is contract); reads happen
+   after `capture_all_elements` (preserve established read order).
+2. Rust accessor (`exec/view.rs`, additive):
+   `element_properties(&mut self, full_name) -> Option<Vec<(String, String)>>`
+   — resolve like `do_query_cmd`, per index `refresh_vterminal_if_marked` +
+   `get_value` (the exact `?` path without executive round-trips).
+3. Harness (additive): `PropsCap` + `compare_all_properties` — property name
+   lists equal **in order** (case-insensitive; pins the property-table
+   shape), each value via the existing `assert_value_matches_tol`
+   (`compare_probe` semantics generalized). A documented `skip_props`
+   table keyed `(class, prop)` for provably non-comparable props (path
+   echoes etc.), each entry with proof cited in `tests/TOLERANCE_NOTES.md` —
+   comparability exclusion, never tolerance loosening.
+4. Phase A (pilot, report-first): env-gated `corpus_live_properties`
+   (`DSS_LIVE_PROPS=1`, classifier shape) over solvable_now + asymmetric +
+   controls with `all_properties` forced → `tmp/props_report.json`; triage
+   (port bug → fix; unported class → NOT_PORTED cross-ref; non-comparable →
+   skip_props+proof). Measure report size (8500-node class ≈ 1e4 els × ~50
+   props × steps).
+5. Phase B (gate): `#[serde(default)] compare_all_properties: bool` on
+   `SolvableCase`, threaded through `run_and_compare` (additive block after
+   probes); flip flags manifest-by-manifest (asymmetric + controls first,
+   then solvable_now in tag groups); heavy cases stay off with a manifest
+   note (coverage inventory, never silent). Suppress `all_properties` in
+   `corpus_live_opendss`'s requests (one line + README note) — the EPRI
+   channel would drown in the known `property-format-brackets` class.
 
 ---
 
