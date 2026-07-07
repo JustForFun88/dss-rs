@@ -432,16 +432,28 @@ fn export_faultstudy_snapshot_ysc_none_is_zeroed() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `Save` still records a scoped `NOT_PORTED` (WP8.5 step 2); `Dump`'s
-/// single-object form is ported (WP8.5 step 1) — its whole-circuit / `solution` /
-/// aux forms stay scoped for step 3.
+/// `Save circuit` is ported (WP8.5 step 5): it writes a re-compilable script
+/// tree (`Master.dss` + a file per class) with no error, and reports the
+/// directory in `GlobalResult`. (The full round-trip / structural gate lives in
+/// the `save_roundtrip.rs` integration test.)
 #[test]
-fn save_records_scoped_not_ported() {
+fn save_circuit_writes_master() {
+    let dir = std::env::temp_dir().join(format!("dss_save_min_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
-    dss.command("save circuit");
-    assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
-    assert!(dss.errors()[0].contains("Save"), "{:?}", dss.errors());
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        dir.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(dir.join("Master.dss").is_file(), "no Master.dss emitted");
+    assert!(
+        dss.result().contains("Circuit saved in directory"),
+        "GlobalResult: {:?}",
+        dss.result()
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// The **generic-base ordering** for the two `Dump` element kinds that have no

@@ -1800,10 +1800,14 @@ impl Dss {
             return;
         }
         if short(&obj_class, "circuit") {
-            // NOT_PORTED(WP8.5 step 5): `Circuit.Save(SaveDir)` — the
-            // whole-circuit multi-file save + round-trip gate.
-            self.errors
-                .push("Save circuit is not ported yet (Phase 8 WP8.5 step 5).".to_string());
+            // Pascal `DoSaveCmd:810`: `DSS.ActiveCircuit.Save(SaveDir)`. `SaveDir`
+            // defaults to `OutputDirectory` (Pascal `:761`); an explicit `dir=`
+            // resolves against `current_dir` inside [`Dss::do_save_circuit`].
+            let dir = match &save_dir {
+                None => self.output_directory.to_string_lossy().into_owned(),
+                Some(d) => d.clone(),
+            };
+            self.do_save_circuit(&dir);
             return;
         }
         if short(&obj_class, "voltages") {

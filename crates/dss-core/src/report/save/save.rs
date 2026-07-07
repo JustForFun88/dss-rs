@@ -69,7 +69,18 @@ pub fn write_dss_object(
     out.push('.');
     out.push_str(obj.data().name());
     out.push('"');
-    save_write(out, cx, &*obj);
+    // Pascal models `SaveWrite` as a virtual method; `TTransfObj` overrides it
+    // (the per-winding structure needs the array-property rewrite — see
+    // `elements/pd/transformer/save.rs`). Every other class uses the generic
+    // form. (More overrides are added here if/when a class needs one.)
+    if let Some(xf) = obj
+        .as_any()
+        .downcast_ref::<crate::elements::pd::transformer::Transformer>()
+    {
+        xf.save_write_body(out, cx);
+    } else {
+        save_write(out, cx, &*obj);
+    }
     if obj.as_ckt_element().is_some_and(|elem| !elem.cd().enabled) {
         out.push_str(" ENABLED=NO");
     }

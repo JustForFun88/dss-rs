@@ -54,6 +54,7 @@ mod get_cmd;
 mod helpers;
 pub(crate) mod registry;
 mod report;
+mod save_circuit;
 mod set_cmd;
 mod solve;
 mod tables;

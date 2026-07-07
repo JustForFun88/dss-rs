@@ -3,6 +3,19 @@
 
 use super::*;
 
+/// Pascal `get voltagebases` (`ExecOptions.pas`): the legal-voltage-base list
+/// rendered `(b1, b2, … , )` — each value `FloatToStr`-formatted, followed by
+/// `, `, closed with `)`. Shared by [`Dss::do_get_cmd`] and `Circuit.Save`'s
+/// `SaveVoltageBases` (WP8.5 step 5).
+pub(crate) fn voltage_bases_result(ckt: &Circuit) -> String {
+    let mut result = "(".to_string();
+    for v in &ckt.legal_voltage_bases {
+        result.push_str(&format!("{}, ", float_to_str(*v)));
+    }
+    result.push(')');
+    result
+}
+
 impl Dss {
     /// Pascal `DoGetCmd`: append the requested option values to
     /// `GlobalResult`, comma-separated.
@@ -105,11 +118,7 @@ impl Dss {
                 opt::LOSS_REGS => append_result(&mut result, &int_array_to_string(&ckt.loss_regs)),
                 opt::VOLTAGE_BASES => {
                     // Pascal builds `(b1, b2, ... , )` replacing GlobalResult.
-                    result = "(".to_string();
-                    for v in &ckt.legal_voltage_bases {
-                        result.push_str(&format!("{}, ", float_to_str(*v)));
-                    }
-                    result.push(')');
+                    result = voltage_bases_result(ckt);
                 }
                 opt::ALGORITHM => append_result(
                     &mut result,
