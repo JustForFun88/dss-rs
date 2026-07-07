@@ -1262,7 +1262,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.14"
   },
   {
@@ -1302,7 +1302,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.14",
    "note": "Snapshot Solve then the daily run in one session - cross-mode state-leak coverage."
   },
@@ -1314,7 +1314,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.14"
   },
   {
@@ -1325,7 +1325,7 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.14"
   },
   {

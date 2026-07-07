@@ -15,6 +15,12 @@
 //! **EnergyMeter**, **Spectrum**. Every Pascal `DumpProperties` override that
 //! exists in this port is now dispatched here — the only two NOT covered
 //! (`AutoTrans`, `GICLine`) are Phase-9-deferred, unported classes.
+//!
+//! WPG.14 adds one more dispatch entry, **Isource** — not a real Pascal
+//! override (`TIsourceObj` has none), but it needs one here anyway: it is
+//! `NON_PCPD_ELEM` like VSource, so the generic path's `is_pc` (driven by
+//! `Circuit.pc_elements` membership) can't select the `TPCElement` dump
+//! ordering it actually needs (see `elements/pc/isource/dump.rs`).
 
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::general::line_code::LineCodeObj;
@@ -23,6 +29,7 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::meter::EnergyMeter;
 use crate::elements::meter::monitor::Monitor;
+use crate::elements::pc::isource::Isource;
 use crate::elements::pc::upfc::Upfc;
 use crate::elements::pc::vsource::VSource;
 use crate::elements::pd::capacitor::Capacitor;
@@ -77,6 +84,12 @@ pub(super) fn dump_override(
     }
     if let Some(v) = any.downcast_ref::<VSource>() {
         v.dump_body(out, cx, complete);
+        return true;
+    }
+    // Not a real Pascal override (Isource has none) — see `isource/dump.rs`
+    // for why this dispatch is still needed.
+    if let Some(i) = any.downcast_ref::<Isource>() {
+        i.dump_body(out, cx, complete);
         return true;
     }
     if let Some(u) = any.downcast_ref::<Upfc>() {

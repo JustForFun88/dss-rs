@@ -2647,6 +2647,65 @@ SCENARIOS = [
             "New ExpControl.e1 like=base",
         ],
     },
+    # --- Isource (GAPS_PLAN WPG.14) -----------------------------------------
+    # The ideal current source. Defaults: Phases=3, Amps=0, Angle=0,
+    # Frequency=60 (BaseFrequency), ScanType=pos, Sequence=pos, Bus2 defaults
+    # to Bus1 stripped of nodes + one ".0" per phase (grounded-Y), Spectrum=
+    # "default" (TPCElement.DefaultGeneral — NOT "defaultvsource"/"defaultload").
+    {
+        "name": "isource_default",
+        "target": "Isource.i1",
+        "commands": ["New Isource.i1 bus1=b1"],
+    },
+    {
+        # Every own property explicit, on a 3-phase unit; Bus2 set AFTER Bus1
+        # on the same New command so the explicit value sticks (Isource's
+        # PropertySideEffects re-derives the grounded-Y default unconditionally
+        # whenever Bus1 is (re)set — see the port's TODO(compat) note).
+        "name": "isource_full",
+        "target": "Isource.i1",
+        "commands": [
+            "New Loadshape.ys1 npts=3 interval=1 mult=(1 2 3)",
+            "New Loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+            "New Loadshape.du1 npts=4 interval=0.25 mult=(0.1 0.2 0.3 0.4)",
+            "New Spectrum.sp1 numharm=2 harmonic=[1 3] %mag=[100 30] angle=[0 15]",
+            "New Isource.i1 bus1=b1 bus2=b2 phases=3 amps=25 angle=45 "
+            "frequency=55 scantype=zero sequence=neg yearly=ys1 daily=ds1 "
+            "duty=du1 spectrum=sp1",
+        ],
+    },
+    {
+        # 1-phase: FphaseShift=0 internally (not itself a property), and the
+        # default-Bus2 node-stripping keeps only the bus-name part before the
+        # first dot.
+        "name": "isource_1phase",
+        "target": "Isource.i1",
+        "commands": ["New Isource.i1 bus1=c1.1 phases=1 amps=12 angle=5"],
+    },
+    {
+        # Setting Daily (with no prior Yearly) mirrors it into Yearly too
+        # (Pascal: index 9 = Daily -> `if YearlyShapeObj = NIL then
+        # YearlyShapeObj := DailyShapeObj`).
+        "name": "isource_daily_defaults_yearly",
+        "target": "Isource.i1",
+        "commands": [
+            "New Loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+            "New Isource.i1 bus1=b1 daily=ds1",
+        ],
+    },
+    {
+        # MakeLike copies Amps/Angle/Frequency/ScanType/Sequence/the shape
+        # refs/Bus2Defined; the derived object's own Bus1/Bus2 come from its
+        # own New command, not the base.
+        "name": "isource_makelike",
+        "target": "Isource.i1",
+        "commands": [
+            "New Loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+            "New Isource.base bus1=b1 phases=1 amps=15 angle=10 frequency=55 "
+            "scantype=zero sequence=neg daily=ds1",
+            "New Isource.i1 like=base bus1=c1",
+        ],
+    },
 ]
 
 

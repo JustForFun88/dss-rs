@@ -36,7 +36,7 @@ pub(crate) use crate::elements::meter::energymeter;
 pub(crate) use crate::elements::meter::monitor;
 pub(crate) use crate::elements::meter::sensor;
 pub(crate) use crate::elements::pc::{
-    generator, ind_mach012, load, pvsystem, storage, upfc, vccs, vs_converter, vsource,
+    generator, ind_mach012, isource, load, pvsystem, storage, upfc, vccs, vs_converter, vsource,
 };
 pub(crate) use crate::elements::pd::{capacitor, fault, fuse, line, reactor, transformer};
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};

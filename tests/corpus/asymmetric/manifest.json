@@ -283,7 +283,7 @@
    "selected_elements": [
     "*"
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.14"
   },
   {
@@ -376,7 +376,7 @@
    "selected_elements": [
     "*"
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.14"
   },
   {
