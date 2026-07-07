@@ -121,7 +121,10 @@ false` and proves the live compare green against the declared target.
    Discipline: while RESONANCE has not landed, a strict `<` is *suspicious* —
    the gate prints it loudly, and the WP records each `<` case in STATUS with
    a one-line cause (a systematic `<` before RESONANCE is a bug until proven
-   otherwise, CLAUDE.md prove-it rules).
+   otherwise, CLAUDE.md prove-it rules). NB (audit WP-U0): libtest captures
+   stderr on passing tests, so the note is visible only under `--nocapture` —
+   an upgrade WP's ritual step 1 runs its touched live gates with
+   `--nocapture` and reads the notes before declaring the step done.
 2. **No byte-exact text/print-format gates against EPRI engines.** Delphi
    `Format`/`Str` differ from FPC in last-digit rendering; upgraded report
    behavior is gated with the WP8.1 `compare_export` **numeric-token**
@@ -379,7 +382,11 @@ switch**, §1.5: `gen_checkpoints.py` env-driven engine + `.meta.json`
 
 **Gate:** per-item targeted live cases + regenerated goldens; the
 `line_constants` golden family gets a capi015-regenerated Carson subset with
-provenance stamps; full gate green.
+provenance stamps; full gate green. The FIRST case this WP flips is by
+construction revision-*sensitive* (its observable differs between 0.14.5 and
+capi015), which closes the audit-WP-U0 note that the U0 pilot proves engine
+identity (ping) but not numeric routing — from here on, a routing regression
+fails on the numbers too.
 
 ### WP-U1.3 — InvControl cluster [7%]
 

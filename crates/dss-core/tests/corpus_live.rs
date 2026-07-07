@@ -159,7 +159,12 @@ impl Oracle {
         Oracle {
             python,
             server: Self::server_path(),
-            envs: Vec::new(),
+            // Pin the engine selector EXPLICITLY (audit WP-U0): the spawned
+            // server inherits the parent environment, so an ambient
+            // `DSS_ORACLE_ENGINE=capi015|oddie` left over from a target-rev
+            // shell must never re-bind the DEFAULT oracle — default cases are
+            // the exact-iteration 0.14.5 contract (UPGRADE_PLAN §1.1).
+            envs: vec![("DSS_ORACLE_ENGINE", "capi".to_string())],
         }
     }
 
@@ -361,6 +366,20 @@ impl Oracle {
                 Some(rev),
                 "oracle answered for the wrong revision: {oracle}"
             );
+        } else {
+            // Positive identity for the DEFAULT oracle too (audit WP-U0): the
+            // pinned 0.14.5 engine must not turn out to be an Oddie/capi015
+            // binding that slipped in via environment — assert the marker
+            // flags are ABSENT, mirroring the target-rev assertions above.
+            for flag in ["oddie", "capi015"] {
+                assert_ne!(
+                    oracle.get(flag).and_then(|v| v.as_bool()),
+                    Some(true),
+                    "default oracle answered as a `{flag}` engine: {oracle} \
+                     (the pinned 0.14.5 oracle is required — check \
+                     DSS_ORACLE_PYTHON/DSS_ORACLE_ENGINE)"
+                );
+            }
         }
         oracle
             .get("engine")
@@ -843,6 +862,23 @@ fn load_solvable() -> Vec<SolvableCase> {
     let m: SolvableManifest =
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
     m.cases
+}
+
+/// Oracle-free structural guard (parity with `family_manifest_is_complete`,
+/// audit WP-U0): a typo'd `oracle` spec in `solvable_now.json` must fail fast
+/// in a structural test, not only at compare time inside `Oracle::for_spec`.
+#[test]
+fn solvable_now_oracle_specs_are_valid() {
+    for c in load_solvable() {
+        if let Some(spec) = &c.oracle {
+            assert!(
+                ORACLE_SPECS.contains(&spec.as_str()),
+                "{}: unknown oracle spec {spec:?} — expected one of {ORACLE_SPECS:?} \
+                 (UPGRADE_PLAN.md target-rev gating)",
+                c.path
+            );
+        }
+    }
 }
 
 /// Always-on (no oracle) depth guard: the live gate's *breadth* is checked by
@@ -1600,10 +1636,10 @@ fn corpus_live_opendss() {
     // gating already happens in the mandatory gate against their own target
     // oracle — sweeping them here would only manufacture divergence noise.
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
-    let mut target_rev_excluded = 0usize;
+    let mut target_rev_excluded: Vec<String> = Vec::new();
     for c in load_solvable() {
         if c.oracle.is_some() {
-            target_rev_excluded += 1;
+            target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
@@ -1614,17 +1650,28 @@ fn corpus_live_opendss() {
                 continue;
             }
             if c.oracle.is_some() {
-                target_rev_excluded += 1;
+                target_rev_excluded.push(format!("{}:{}", fam.name, c.path));
                 continue;
             }
             let abs = family_file(fam.name, &c.path);
             universe.push((format!("{}:{}", fam.name, c.path), abs, c));
         }
     }
-    if target_rev_excluded > 0 {
+    if !target_rev_excluded.is_empty() {
         eprintln!(
-            "opendss {rev}: {target_rev_excluded} target-rev case(s) excluded \
-             (gated in the mandatory gate against their own `oracle` target)"
+            "opendss {rev}: {} target-rev case(s) excluded \
+             (gated in the mandatory gate against their own `oracle` target)",
+            target_rev_excluded.len()
+        );
+    }
+    // As WPs flip cases to target revs the swept universe shrinks; an EMPTY
+    // sweep would make ASSERT mode pass vacuously — flag it loudly (the
+    // report below also records the exclusions, so the artifact is honest).
+    if universe.is_empty() {
+        eprintln!(
+            "opendss {rev}: WARNING swept universe is EMPTY ({} case(s) excluded as \
+             target-rev) — the sweep is vacuous; rely on the mandatory gate",
+            target_rev_excluded.len()
         );
     }
 
@@ -1722,6 +1769,10 @@ fn corpus_live_opendss() {
             .iter()
             .map(|(id, n)| serde_json::json!({ "id": id, "hits": n }))
             .collect::<Vec<_>>(),
+        // Target-rev cases removed from this sweep (gated in the mandatory
+        // gate against their own `oracle` target) — recorded so the artifact
+        // explains its own shrunken `total` (audit WP-U0).
+        "target_rev_excluded": target_rev_excluded,
     });
     let rp: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
         .iter()
