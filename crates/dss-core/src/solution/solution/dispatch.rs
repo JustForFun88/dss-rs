@@ -12,8 +12,7 @@ use super::fault_study::solve_fault_study;
 use super::harmonics::{solve_harmonic, solve_harmonic_t};
 use super::power_flow::{solve_direct, solve_snap, solve_zero_load_snapshot};
 use super::time_series::{
-    solve_daily, solve_duty, solve_general_time, solve_ld1, solve_ld2, solve_peak_day,
-    solve_yearly,
+    solve_daily, solve_duty, solve_general_time, solve_ld1, solve_ld2, solve_peak_day, solve_yearly,
 };
 use super::{SolveEnv, SolveMode, SolveResult};
 
