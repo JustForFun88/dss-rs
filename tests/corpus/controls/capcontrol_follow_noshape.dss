@@ -1,0 +1,17 @@
+! GAPS deck (WPG.7 audit follow-up): CapControl type=Follow with NO
+! ControlSignal — the malformed-input abort path. Pascal `CapControl.pas`
+! Sample (FOLLOWCONTROL arm, l.1153-1158): a NIL ctrlSignalShape does
+! DoSimpleMsg(...,10362) + DSS.SolutionAbort := True + Exit, so the solve
+! aborts on the first control iteration and the daily loop freezes. The pinned
+! oracle raises `(#10362) ... Aborting solution.` at the first Solve.
+Clear
+New Circuit.gaps_ccfns basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.day8 npts=8 interval=3 mult=(0.40 0.55 0.75 0.95 1.00 0.90 0.70 0.50)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.90 model=1 daily=day8
+New Capacitor.c1 bus1=b1 phases=3 kvar=300 kv=12.47
+New CapControl.cc element=Line.l1 terminal=1 capacitor=c1 type=Follow eventlog=yes
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set mode=daily stepsize=1h number=24
+Solve
