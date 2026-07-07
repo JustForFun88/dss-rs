@@ -263,7 +263,9 @@ impl LoadShapeObj {
         }
     }
 
-    pub(super) fn mean(&self) -> f64 {
+    /// Pascal `TLoadShapeObj.Get_Mean` (lazy `CalcMeanandStdDev`); crate-wide
+    /// for the Solution dump's `Set %mean=` line (`Solution.pas:1814`).
+    pub(crate) fn mean(&self) -> f64 {
         if self.std_dev_calculated {
             self.f_mean
         } else {
@@ -271,7 +273,9 @@ impl LoadShapeObj {
         }
     }
 
-    pub(super) fn std_dev(&self) -> f64 {
+    /// Pascal `TLoadShapeObj.Get_StdDev`; crate-wide for the Solution dump's
+    /// `Set %stddev=` line (`Solution.pas:1815`).
+    pub(crate) fn std_dev(&self) -> f64 {
         if self.std_dev_calculated {
             self.f_std_dev
         } else {

@@ -2,12 +2,11 @@
 //! `DoPropertyDump`, `General/DSSObject.pas` `TDSSObject.DumpProperties`,
 //! `Common/CktElement.pas` `TDSSCktElement.DumpProperties`,
 //! `PCElements/PCElement.pas` `TPCElement.DumpProperties`, plus the 14 element/
-//! object leaf overrides (Solution dumped separately, WP8.5 step 3).
-//!
-//! WP8.5 **step 1** ported the generic base + the **Reactor** override; **step 2**
-//! adds Transformer/Line/LineCode/LineGeometry/XfmrCode. The 8 remaining overrides
-//! are TODO(WP8) in [`overrides`] (until each lands, its class dumps via the
-//! generic base).
+//! object leaf overrides ([`overrides`], WP8.5 steps 1–3a) and the aux forms
+//! (WP8.5 step 3b): [`solution`] (`Solution.DumpProperties`),
+//! [`circuit_debug`] (`Circuit.DebugDump`), [`commands`]
+//! (`DumpAllDSSCommands`) and [`allocation_factors`]; the hash-list dumps live
+//! in `support/hashlist/thash_dump.rs`.
 //!
 //! Pascal models this as a 4-level virtual method (`TDSSObject` →
 //! `TDSSCktElement` → `TPCElement` → leaf). Rust has no inheritance, so we
@@ -27,7 +26,43 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::ClassProps;
 use crate::report::format;
 
+pub(crate) mod circuit_debug;
+pub(crate) mod commands;
 mod overrides;
+pub(crate) mod solution;
+
+/// Pascal `DumpAllocationFactors` (`Utilities.pas:784-819`), the
+/// `Dump alloc…` file body: one line per load, but ONLY for the
+/// `ConnectedkVA_PF` (`Load.<name>.AllocationFactor=%-.5g`) and `kwh_PF`
+/// (`Load.<name>.CFactor=%-.5g`) spec types — every other `LoadSpecType`
+/// prints nothing (the Pascal `case` has no else; probe-proven: kW/PF loads
+/// are absent from the file).
+pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Circuit) -> String {
+    use crate::elements::pc::load::{Load, LoadSpec};
+    let mut s = String::new();
+    for &r in &ckt.loads {
+        let Some(load) = classes[r.cls].objects[r.idx]
+            .as_any()
+            .downcast_ref::<Load>()
+        else {
+            continue;
+        };
+        match load.load_spec_type {
+            LoadSpec::ConnectedKvaPf => s.push_str(&format!(
+                "Load.{}.AllocationFactor={}\n",
+                load.data().name(),
+                format::g(load.kva_allocation_factor, 5)
+            )),
+            LoadSpec::KwhPf => s.push_str(&format!(
+                "Load.{}.CFactor={}\n",
+                load.data().name(),
+                format::g(load.c_factor, 5)
+            )),
+            _ => {}
+        }
+    }
+    s
+}
 
 /// Context handed to every object dump: the object's class prop table, the enum
 /// registry (`ClassProps::get_value` needs it), the precomputed `(name, value)`

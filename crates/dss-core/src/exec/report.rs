@@ -1986,46 +1986,162 @@ impl Dss {
         }
     }
 
-    /// Pascal `DoPropertyDump` (the `Dump` command, `ExecHelper.pas:1194`):
+    /// Pascal `DoPropertyDump` (the `Dump` command, `ExecHelper.pas:1194-1396`):
     /// dump object properties (and, with `debug`, the Complete Y/terminal/state
     /// detail) as a `New "…"` + `~ prop=value` script to
-    /// `<OutputDir><CircuitName_>PropertyDump.txt`.
+    /// `<OutputDir><CircuitName_>PropertyDump.txt`, plus the aux keyword forms.
     ///
-    /// WP8.5 **step 1** ports the single-object forms `Dump <class>.<name> [debug]`
-    /// / `Dump <class>.* [debug]` (the `Dump reactor.* debug` corpus deck), with
-    /// the `#903`/`#256` errors. The whole-circuit forms — bare `Dump` /
-    /// `Dump debug` (all elements + `Circuit.DebugDump` header), `Dump solution`
-    /// (`Solution.DumpProperties`), and the aux `Dump commands`/`buslist`/
-    /// `devicelist`/`alloc` files — are TODO(WP8) step 3.
+    /// Keyword dispatch on the first param (exact `CompareText`, except
+    /// `alloc*` = first-5-chars): `commands` → `DumpAllDSSCommands`;
+    /// `buslist`/`devicelist` → the hash-list dumps; `alloc*` →
+    /// `DumpAllocationFactors`; `debug` → the whole-circuit dump with
+    /// Complete=TRUE (+ `Circuit.DebugDump` header); `solution` →
+    /// `Solution.DumpProperties` alone; anything else → the single-object form
+    /// `Dump <class>.[name|*] [debug]` (with the `#903`/`#256` errors); empty →
+    /// the whole-circuit dump. Every form sets `GlobalResult` to the produced
+    /// path (`DSS_CAPI`).
     pub(crate) fn do_dump_cmd(&mut self) {
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars);
-        let pl = param.to_lowercase();
 
-        // The whole-circuit / aux forms (TODO(WP8) step 3).
-        if param.is_empty()
-            || matches!(
-                pl.as_str(),
-                "commands" | "buslist" | "devicelist" | "solution" | "debug"
-            )
-            || pl.get(..5) == Some("alloc")
-        {
-            self.errors.push(
-                "Dump (whole-circuit / solution / aux forms) is not ported yet (Phase 8 WP8.5 step 3)."
-                    .to_string(),
-            );
-            return;
+        let mut debug_dump = false;
+        let mut is_solution = false;
+        if !param.is_empty() {
+            if param.eq_ignore_ascii_case("commands") {
+                // `DumpAllDSSCommands` (`Utilities.pas:821`): always
+                // `<OutputDir>DSSCommandsDump.txt` (no `CircuitName_` prefix).
+                let content = crate::report::save::dump::commands::dump_all_dss_commands(
+                    &self.classes,
+                    &self.class_by_name,
+                );
+                let path = self.output_directory.join("DSSCommandsDump.txt");
+                self.write_report(&path, &content);
+                return;
+            }
+
+            if param.eq_ignore_ascii_case("buslist") {
+                // `BusList.DumpToFile` — a `TAltHashList`, so the linear
+                // listing only (see `support/hashlist/thash_dump.rs`); err 255
+                // on open failure (the write error path of `write_report`).
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    crate::support::hashlist::thash_dump::alt_dump(ckt.bus_list.iter())
+                };
+                let path = self.output_directory.join("Bus_Hash_List.txt");
+                self.write_report(&path, &content);
+                return;
+            }
+
+            if param.eq_ignore_ascii_case("devicelist") {
+                // `DeviceList.DumpToFile` — a bucketed `THashList` (err 255).
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    crate::support::hashlist::thash_dump::device_hash_dump(ckt.device_list.iter())
+                };
+                let path = self.output_directory.join("Device_Hash_List.txt");
+                self.write_report(&path, &content);
+                return;
+            }
+
+            // `Copy(AnsiLowerCase(Param), 1, 5) = 'alloc'`.
+            if param
+                .get(..5)
+                .is_some_and(|p| p.eq_ignore_ascii_case("alloc"))
+            {
+                let content = {
+                    let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                    crate::report::save::dump::allocation_factors(&self.classes, ckt)
+                };
+                let path = self.output_directory.join("AllocationFactors.txt");
+                self.write_report(&path, &content);
+                return;
+            }
+
+            if param.eq_ignore_ascii_case("debug") {
+                debug_dump = true; // fall through to the whole-circuit dump
+            } else if param.eq_ignore_ascii_case("solution") {
+                is_solution = true;
+            } else {
+                self.dump_single_object(&param);
+                return;
+            }
         }
 
-        // Single object (Pascal `SingleObject := TRUE`): read the optional
-        // trailing `debug`, then resolve `Param` as `<class>.<name>`.
+        // Whole-circuit (`SingleObject=FALSE`) / `Dump solution`: one
+        // `<OutputDir><CircuitName_>PropertyDump.txt` (err 255 = the write
+        // error path).
+        let mut content = String::new();
+        if is_solution {
+            self.dump_solution_into(&mut content, /* complete = */ debug_dump);
+        } else {
+            if debug_dump {
+                // `Circuit.DebugDump` header. Pascal leaves the last device as
+                // `ActiveCktElement` (its loop sets it per device) — mirrored.
+                let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+                content.push_str(&crate::report::save::dump::circuit_debug::debug_dump(
+                    &self.classes,
+                    ckt,
+                ));
+                if let Some(&r) = ckt.ckt_elements.last() {
+                    self.active_ckt_element = Some((r.cls, r.idx));
+                }
+            }
+            // Every CktElement in creation order, then every general DSSObj,
+            // then the Solution options — all with Leaf=TRUE.
+            let ckt_elems = self
+                .circuit
+                .as_ref()
+                .expect("post-circuit dispatch")
+                .ckt_elements
+                .clone();
+            for r in ckt_elems {
+                self.dump_one_object(&mut content, r.cls, r.idx, debug_dump);
+            }
+            let dss_objs = self.dss_objs.clone();
+            for r in dss_objs {
+                self.dump_one_object(&mut content, r.cls, r.idx, debug_dump);
+            }
+            self.dump_solution_into(&mut content, debug_dump);
+        }
+
+        let case = self
+            .circuit
+            .as_ref()
+            .map(|c| c.case_name.clone())
+            .unwrap_or_default();
+        let path = self
+            .output_directory
+            .join(format!("{case}_PropertyDump.txt"));
+        self.write_report(&path, &content);
+    }
+
+    /// `Solution.DumpProperties(F, Complete, Leaf=TRUE)` — build the system Y
+    /// coordinates for the Complete tail, then render.
+    fn dump_solution_into(&mut self, out: &mut String, complete: bool) {
+        let y_csc = if complete { self.system_y_csc() } else { None };
+        let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+        crate::report::save::dump::solution::dump_solution_properties(
+            out,
+            ckt,
+            &self.enums,
+            complete,
+            /* leaf = */ true,
+            y_csc.as_ref(),
+        );
+    }
+
+    /// The single-object form `Dump <class>.[name|*] [debug]` (Pascal
+    /// `SingleObject := TRUE` path of `DoPropertyDump`).
+    fn dump_single_object(&mut self, param: &str) {
+        // Read the optional trailing `debug`, then resolve `Param` as
+        // `<class>.<name>`.
         self.parser.next_param(&self.vars);
         let param2 = self.parser.make_string(&self.vars);
         let complete = param2.eq_ignore_ascii_case("debug");
 
         let (obj_class, obj_name) = {
             let mut p = Parser::new();
-            crate::util::parse_object_class_and_name(&mut p, &self.vars, &param)
+            crate::util::parse_object_class_and_name(&mut p, &self.vars, param)
         };
         // Pascal `SetObjectClass`: an unknown (incl. empty) class logs #903 and
         // Exits with no file written (`dump all` takes this path — `all` parses as

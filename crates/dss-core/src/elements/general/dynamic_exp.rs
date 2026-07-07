@@ -28,7 +28,7 @@ define_properties! {
     class "DynamicExp", abbrev true, enums enums;
     1 NVARIABLES => PropDef::integer("NVariables").flags(PropFlags::SUPPRESS_JSON);
     2 VARNAMES   => PropDef::string_list("VarNames").flags(PropFlags::TRANSFORM_LOWERCASE);
-    3 VR         => PropDef::string("var")
+    3 VR         => PropDef::string("Var")
         .flags(PropFlags::TRANSFORM_LOWERCASE | PropFlags::SUPPRESS_JSON);
     4 VARIDX     => PropDef::integer("VarIdx").flags(PropFlags::SUPPRESS_JSON);
     5 EXPRESSION => PropDef::string("Expression");

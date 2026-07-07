@@ -45,8 +45,8 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::string_list("UPFCList"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("UPFCControl", defs, true)
@@ -89,7 +89,14 @@ pub struct UpfcControl {
 impl UpfcControl {
     /// Pascal `TUPFCControlObj.Create`.
     pub fn new(name: &str) -> Self {
-        let ccd = ControlElemData::new(name, prop::NUM_PROPS);
+        let mut ccd = ControlElemData::new(name, prop::NUM_PROPS);
+        // Pascal `TUPFCControlObj.Create` never sets a terminal shape, so the
+        // base `TDSSCktElement.Create` zeros stand (`FNphases := 0`,
+        // `CktElement.pas:187`) — unlike the other controls, which set
+        // phases/terms. Rust's `CktElementData::new` convenience default is 3;
+        // reset it so the Complete dump prints `! NPhases = 0` like the oracle
+        // (`dump3_debug` golden).
+        ccd.cd.nphases = 0;
         Self {
             ccd,
             upfc_name_list: Vec::new(),

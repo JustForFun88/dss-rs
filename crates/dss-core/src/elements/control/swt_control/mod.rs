@@ -79,8 +79,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Pascal BooleanActionProperty (DoReset); the getter is always 0.
         PropDef::boolean("Reset"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("SwtControl", defs, true)

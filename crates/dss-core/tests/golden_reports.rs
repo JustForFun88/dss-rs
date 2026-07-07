@@ -4408,6 +4408,72 @@ fn save_voltages_and_meterless_save_leave_last_result_file() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Bare `Dump` on the `dump3.dss` fixture (WP8.5 step 3b) — the whole-circuit
+/// form: every CktElement in creation order, then every general DSSObj
+/// (defaults + user objects, `DSS.DSSObjs` order), then
+/// `Solution.DumpProperties(Leaf=TRUE)`. Byte-exact; pins the property display
+/// names of every class in the deck plus the default LoadShape/GrowthShape/
+/// Spectrum/TCC_Curve library objects.
+#[test]
+fn dump3_bare_matches_oracle() {
+    run_deck_dump_exact("dump3_bare");
+}
+
+/// `Dump debug` — the whole-circuit form with Complete=TRUE: the
+/// `Circuit.DebugDump` bus/device/node-map header, per-element Y/terminal/
+/// variables blocks, and the Solution options followed by the factored
+/// system-Y compressed-column dump (`[%4d,%4d] = %12.5g + j%12.5g`).
+#[test]
+fn dump3_debug_matches_oracle() {
+    run_deck_dump_exact("dump3_debug");
+}
+
+/// `Dump solution` — `Solution.DumpProperties(F, Complete=FALSE, Leaf=TRUE)`
+/// alone: the full `Set …` option listing including the Leaf-gated lines
+/// (Mode/hour/sec/year/circuit/editor/allowduplicates/voltagebases).
+#[test]
+fn dump3_solution_matches_oracle() {
+    run_deck_dump_exact("dump3_solution");
+}
+
+/// `Dump buslist` — `BusList.DumpToFile`. `BusList` is a Pascal
+/// `TAltHashList`, whose dump is the `LINEAR LISTING...` section alone (the
+/// structural reason it has no bucket sections — a different class from the
+/// device list's `THashList`).
+#[test]
+fn dump3_buslist_matches_oracle() {
+    run_deck_dump_exact("dump3_buslist");
+}
+
+/// `Dump devicelist` — `THashList.DumpToFile`: byte-pins the `MakeHash`
+/// rotate-left-5 bucket layout (`Create(900)` → 30 lists), the per-bucket
+/// distribution + members, and the linear listing.
+#[test]
+fn dump3_devicelist_matches_oracle() {
+    run_deck_dump_exact("dump3_devicelist");
+}
+
+/// `Dump commands` — `DumpAllDSSCommands`: `[execcommands]`/`[execoptions]`
+/// over the executive name tables and one `[<Class>]` section per registered
+/// class in `DSSClassList` order, each line's help from the gettext catalog
+/// (`report/help_catalog.rs`, generated from the pinned wheel). The oracle
+/// golden was captured with the five NOT_PORTED class sections dropped
+/// (Isource/GICsource/AutoTrans/GICLine/GICTransformer — see
+/// `gen_reports.py::DUMP_COMMANDS_UNPORTED_SECTIONS`); everything else is
+/// byte-exact, pinning command/option/property names and help text.
+#[test]
+fn dump3_commands_matches_oracle() {
+    run_deck_dump_exact("dump3_commands");
+}
+
+/// `Dump alloc` — `DumpAllocationFactors`: `ConnectedkVA`-spec loads render
+/// `AllocationFactor=`, `kwh`-spec render `CFactor=`, every other spec type
+/// prints nothing (the deck's kW/PF loads must be absent).
+#[test]
+fn dump3_alloc_matches_oracle() {
+    run_deck_dump_exact("dump3_alloc");
+}
+
 /// `? transformer.t1.wdgcurrents` after a solve must equal the oracle's live
 /// recompute — pins the `do_query_cmd` Vterminal refresh (audit-code follow-up).
 /// Pascal `GetAllWindingCurrents` reloads Vterminal from the solution internally;

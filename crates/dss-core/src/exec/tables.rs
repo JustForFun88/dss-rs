@@ -7,7 +7,10 @@
 /// non-identifier spellings replaced exactly as the Pascal does (`vr`→`var`,
 /// `tilde`→`~`, `DoubleSlash`→`//`, `questionmark`→`?`, `SetOpt`→`Set`).
 /// Index `i` is ordinal `i + 1`. The `DSS_CAPI_PM`-only commands (NewActor,
-/// Wait, SolveAll) are appended because the oracle build defines that flag.
+/// Wait, SolveAll) are appended because the oracle build defines that flag;
+/// `Abort`/`Clone` close the list (125 names, oracle order, pinned byte-exact
+/// by the `dump commands` golden). Unmatched ordinals dispatch to
+/// `not_ported_command`.
 pub(crate) const EXEC_COMMANDS: &[&str] = &[
     "New",
     "Edit",
@@ -132,6 +135,8 @@ pub(crate) const EXEC_COMMANDS: &[&str] = &[
     "NewActor",
     "Wait",
     "SolveAll",
+    "Abort",
+    "Clone",
 ];
 
 /// `TExecCommand` ordinals the executive dispatches on.
@@ -317,6 +322,18 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     "EventLogDefault",
     "LongLineCorrection",
     "ShowReports",
+    // The `DSS_CAPI_PM` parallel-machine options (the oracle build defines that
+    // flag, so its name table — and therefore `Dump commands` — includes them).
+    // Unmatched ordinals fall to the "not ported yet" arms of `Set`/`Get`.
+    "NumCPUs",
+    "NumCores",
+    "NumActors",
+    "ActiveActor",
+    "CPU",
+    "ActorProgress",
+    "Parallel",
+    "ConcatenateReports",
+    "NUMANodes",
 ];
 
 /// `TExecOption` ordinals the executive implements.

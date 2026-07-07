@@ -64,24 +64,24 @@ pub mod prop {
 /// classes for uniform registration.)
 pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::bus("bus1", 1),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("prated"),
-        PropDef::double("vrated").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("ppct"),
-        PropDef::object_ref_class("XYcurve", "bp1"),
-        PropDef::object_ref_class("XYcurve", "bp2"),
-        PropDef::object_ref_class("XYcurve", "filter"),
-        PropDef::double("fsample").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::boolean("rmsmode"),
-        PropDef::double("imaxpu"),
-        PropDef::double("vrmstau"),
-        PropDef::double("irmstau"),
+        PropDef::bus("Bus1", 1),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("PRated"),
+        PropDef::double("VRated").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Ppct"),
+        PropDef::object_ref_class("XYcurve", "BP1"),
+        PropDef::object_ref_class("XYcurve", "BP2"),
+        PropDef::object_ref_class("XYcurve", "Filter"),
+        PropDef::double("FSample").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::boolean("RMSMode"),
+        PropDef::double("IMaxpu"),
+        PropDef::double("VRMSTau"),
+        PropDef::double("IRMSTau"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("VCCS", defs, true)

@@ -20,6 +20,16 @@ sit here, pre-validated.
 | `distrib.dss` | `distribute` Proportional/Uniform/Skip/what=Load | `how=Random` is RNG-carried upstream — never golden-gated |
 | `uuids.dss` + `uuids_pre.csv` | `uuids file=` + `export uuids` | preloads EVERY object incl. the 3 auto hashed keys; `@FIXTURES@` → this dir at replay |
 
+**Probe-proven (2026-07-07, WP8.5 step 3b):** `dump buslist` prints only the
+`LINEAR LISTING...` section while `dump devicelist` prints the full bucket
+dump — a *structural* difference, not an allocation quirk: `BusList` is a
+Pascal `TAltHashList` (linear-only `DumpToFile`) while `DeviceList` is the
+classic bucketed `THashList` (`Circuit.pas:107-109`; port in
+`support/hashlist/thash_dump.rs`). Also probe-proven: FPC renders floats via
+Grisu1 with a half-away-from-zero string re-round (`util::fmt_g` port; see the
+20k-value battery note there) — `loadshape.default`'s `Mean` prints
+`0.825828333333334` where correctly-rounded `%.15g` gives `…333`.
+
 **Probe-proven upstream garbage reads (do NOT chase as port bugs):** in this
 pinned dss_capi build, `DumpProperties` prints ASLR-dependent uninitialized
 memory (denormals ~1e-305, different every process) for **Capacitor**

@@ -538,6 +538,9 @@ impl Dss {
                 cls.name_to_idx.insert(obj.data().name().to_string(), idx);
                 cls.objects.push(obj);
                 cls.active = Some(idx);
+                // Pascal `DSS.DSSObjs.Add(Obj)` (`ExecHelper.pas:1899`): the
+                // global creation-order list the whole-circuit Dump walks.
+                self.dss_objs.push(ElemRef { cls: ci, idx });
             }
             self.edit_active();
             return;
@@ -607,6 +610,7 @@ impl Dss {
         // objects — an OOB panic / foreign-element read in `Show Yprim`).
         self.active_ckt_element = None;
         self.circuit = None;
+        self.dss_objs.clear();
         self.errors.clear();
         // Pascal `DoClearCmd` → `ClearAll` → recreate the default items.
         self.create_default_dss_items();

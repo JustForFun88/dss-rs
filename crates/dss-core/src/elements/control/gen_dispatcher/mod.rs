@@ -83,8 +83,8 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         // element count is the generator-name-list length (see `array_size`).
         PropDef::double_v_array("Weights"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("GenDispatcher", defs, true)

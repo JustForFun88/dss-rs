@@ -108,8 +108,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string_list("StorageList"),
         PropDef::double_v_array("StorageWeights"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("ESPVLControl", defs, true)

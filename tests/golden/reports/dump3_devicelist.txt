@@ -1,0 +1,125 @@
+Number of Hash Lists = 30, Number of Elements = 15
+
+Hash List Distribution
+List = 1, Number of elements = 0
+List = 2, Number of elements = 0
+List = 3, Number of elements = 1
+List = 4, Number of elements = 0
+List = 5, Number of elements = 0
+List = 6, Number of elements = 1
+List = 7, Number of elements = 0
+List = 8, Number of elements = 0
+List = 9, Number of elements = 0
+List = 10, Number of elements = 1
+List = 11, Number of elements = 0
+List = 12, Number of elements = 1
+List = 13, Number of elements = 0
+List = 14, Number of elements = 2
+List = 15, Number of elements = 0
+List = 16, Number of elements = 1
+List = 17, Number of elements = 0
+List = 18, Number of elements = 0
+List = 19, Number of elements = 0
+List = 20, Number of elements = 1
+List = 21, Number of elements = 0
+List = 22, Number of elements = 1
+List = 23, Number of elements = 0
+List = 24, Number of elements = 1
+List = 25, Number of elements = 0
+List = 26, Number of elements = 1
+List = 27, Number of elements = 1
+List = 28, Number of elements = 0
+List = 29, Number of elements = 0
+List = 30, Number of elements = 3
+
+List = 1, Number of elements = 0
+
+List = 2, Number of elements = 0
+
+List = 3, Number of elements = 1
+"ldx"  Idx= 8
+
+List = 4, Number of elements = 0
+
+List = 5, Number of elements = 0
+
+List = 6, Number of elements = 1
+"source"  Idx= 1
+
+List = 7, Number of elements = 0
+
+List = 8, Number of elements = 0
+
+List = 9, Number of elements = 0
+
+List = 10, Number of elements = 1
+"u1"  Idx= 13
+
+List = 11, Number of elements = 0
+
+List = 12, Number of elements = 1
+"ldc"  Idx= 9
+
+List = 13, Number of elements = 0
+
+List = 14, Number of elements = 2
+"f1"  Idx= 5
+"uc1"  Idx= 14
+
+List = 15, Number of elements = 0
+
+List = 16, Number of elements = 1
+"mon1"  Idx= 10
+
+List = 17, Number of elements = 0
+
+List = 18, Number of elements = 0
+
+List = 19, Number of elements = 0
+
+List = 20, Number of elements = 1
+"ldk"  Idx= 7
+
+List = 21, Number of elements = 0
+
+List = 22, Number of elements = 1
+"tr1"  Idx= 3
+
+List = 23, Number of elements = 0
+
+List = 24, Number of elements = 1
+"rc1"  Idx= 4
+
+List = 25, Number of elements = 0
+
+List = 26, Number of elements = 1
+"l1"  Idx= 2
+
+List = 27, Number of elements = 1
+"tup"  Idx= 12
+
+List = 28, Number of elements = 0
+
+List = 29, Number of elements = 0
+
+List = 30, Number of elements = 3
+"fg"  Idx= 6
+"em1"  Idx= 11
+"ldu"  Idx= 15
+
+LINEAR LISTING...
+  1 = "source"
+  2 = "l1"
+  3 = "tr1"
+  4 = "rc1"
+  5 = "f1"
+  6 = "fg"
+  7 = "ldk"
+  8 = "ldx"
+  9 = "ldc"
+ 10 = "mon1"
+ 11 = "em1"
+ 12 = "tup"
+ 13 = "u1"
+ 14 = "uc1"
+ 15 = "ldu"

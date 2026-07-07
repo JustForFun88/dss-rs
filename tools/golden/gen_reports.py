@@ -2094,6 +2094,23 @@ DUMP_DECKS = [
     ("dump_capacitor_steps", DUMP_CAP_DECK, "capacitor.cs1 debug"),
 ]
 
+# WP8.5 step 3b — the whole-circuit / aux Dump forms, all over the same
+# `dump3.dss` fixture: bare `dump` / `dump debug` (every CktElement + every
+# general DSSObj + the Solution options; debug adds the `Circuit.DebugDump`
+# header, the per-element Complete blocks and the system-Y dump),
+# `dump solution`, the two hash-list dumps, `DumpAllDSSCommands` and
+# `DumpAllocationFactors`. Every form sets `GlobalResult` to the produced
+# path, so the same capture loop applies. (stem, report, suffix).
+DUMP3_AUX = [
+    ("dump3_bare", "", "PropertyDump.txt"),
+    ("dump3_debug", "debug", "PropertyDump.txt"),
+    ("dump3_solution", "solution", "PropertyDump.txt"),
+    ("dump3_buslist", "buslist", "Bus_Hash_List.txt"),
+    ("dump3_devicelist", "devicelist", "Device_Hash_List.txt"),
+    ("dump3_commands", "commands", "DSSCommandsDump.txt"),
+    ("dump3_alloc", "alloc", "AllocationFactors.txt"),
+]
+
 # Line prefixes dropped from BOTH sides of `dump_capacitor_*` (probe-proven
 # ASLR-garbage — see the report_decks README and `investigations/`): the
 # oracle's captured golden never contains them (stripped at capture time
@@ -2101,14 +2118,45 @@ DUMP_DECKS = [
 # the byte-exact compare (`golden_reports.rs::run_deck_dump_exact_masked`).
 DUMP_CAPACITOR_GARBAGE_PREFIXES = ("~ CMatrix=(", "~ FaultRate=", "~ pctPerm=")
 
+# `[<ClassName>]` sections dropped from the `dump3_commands` golden at
+# capture: these classes are NOT_PORTED (Isource → GAPS_PLAN WPG.14, AutoTrans
+# → WPG.15, GICsource/GICLine/GICTransformer → WPG.16), so the Rust registry
+# — and therefore its byte-exact `Dump commands` output — has no section for
+# them yet. Prune this tuple (and regenerate) as each class lands; every
+# *ported* class's section stays byte-pinned (order, property names, help).
+DUMP_COMMANDS_UNPORTED_SECTIONS = (
+    "Isource",
+    "GICsource",
+    "AutoTrans",
+    "GICLine",
+    "GICTransformer",
+)
+
+
+def strip_unported_class_sections(content: str) -> str:
+    """Drop each `[<name>]` section in DUMP_COMMANDS_UNPORTED_SECTIONS (header
+    line through the line before the next `[` header)."""
+    out, skipping = [], False
+    for ln in content.splitlines(keepends=True):
+        if ln.startswith("["):
+            skipping = ln.rstrip("\r\n") in [
+                f"[{s}]" for s in DUMP_COMMANDS_UNPORTED_SECTIONS
+            ]
+        if not skipping:
+            out.append(ln)
+    return "".join(out)
+
 
 def gen_dump_decks(d) -> None:
     """Capture the oracle's `Dump` on the synthesized decks. `Dump` sets
-    `GlobalResult` to the produced `<case>_PropertyDump.txt`, so the Rust golden
-    (`golden_reports.rs`) reads `dss.last_result_file()`."""
+    `GlobalResult` to the produced file's path (`<case>_PropertyDump.txt` or
+    the aux-form fixed name), so the Rust golden (`golden_reports.rs`) reads
+    `dss.last_result_file()`."""
     d.AllowEditor = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for stem, deck, report in DUMP_DECKS:
+    all_decks = [(stem, deck, report, "PropertyDump.txt") for stem, deck, report in DUMP_DECKS]
+    all_decks += [(stem, DUMP3_DECK, report, suffix) for stem, report, suffix in DUMP3_AUX]
+    for stem, deck, report, suffix in all_decks:
         tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
         try:
             d.Text.Command = "clear"
@@ -2116,8 +2164,8 @@ def gen_dump_decks(d) -> None:
                 d.Text.Command = c
             case = d.ActiveCircuit.Name
             d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
-            d.Text.Command = f"dump {report}"
-            produced = Path(d.Text.Result)  # GlobalResult = PropertyDump path
+            d.Text.Command = f"dump {report}".rstrip()
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
             content = produced.read_text()
             if stem.startswith("dump_capacitor"):
                 lines = content.splitlines(keepends=True)
@@ -2127,11 +2175,13 @@ def gen_dump_decks(d) -> None:
                     if not ln.startswith(DUMP_CAPACITOR_GARBAGE_PREFIXES)
                 ]
                 content = "".join(lines)
+            if stem == "dump3_commands":
+                content = strip_unported_class_sections(content)
             (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
             meta = {
                 "report": report,
                 "fixture": case,
-                "suffix": "PropertyDump.txt",
+                "suffix": suffix,
                 "deck": deck,
             }
             (OUT_DIR / f"{stem}.meta.json").write_text(
