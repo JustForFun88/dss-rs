@@ -1463,9 +1463,15 @@ const MODES: Family = Family {
     name: "modes",
     required: MODES_REQUIRED,
     check_case: check_modes_case,
-    // Every modes deck is `pending: true` (feature unported) — nothing is
-    // live-compared, so property parity is moot until the porting WP flips it.
-    compare_all_properties: false,
+    // WP8.5b: property parity ON. Most modes decks are `pending: true` (feature
+    // unported → error loudly, never property-compared), but 14 are already live
+    // pinned-capi decks — `batchedit`/`midi_batchedit` (which EDIT properties),
+    // the 10 `reduce_*` (which render merged/removed-element properties),
+    // `shape_binfiles`, `isource_harm` — and the pilot proved every one clean, so
+    // they now property-compare (a rendering regression on an edited/reduced
+    // element is exactly what this catches). The `upgrade_pilot` target-rev case
+    // stays off via the `cc.oracle.is_none()` guard in `family_cases_match_oracle`.
+    compare_all_properties: true,
 };
 
 #[test]
@@ -1609,12 +1615,13 @@ fn corpus_live_properties() {
     let oracle = Oracle::new();
     oracle.ping();
 
-    // Pinned-capi, non-pending cases from the three property-relevant sources
+    // Pinned-capi, non-pending cases from every property-relevant source
     // (target-rev cases excluded — they gate a different engine's behavior). The
-    // fast Phase-B priority families (asymmetric + controls) sweep FIRST so a
-    // capped run covers them fully; the vendored solvable_now feeders follow.
+    // fast family decks (asymmetric + controls + the non-pending modes decks:
+    // batchedit / reduce_* / shape / isource_harm) sweep FIRST so a capped run
+    // covers them fully; the vendored solvable_now feeders follow.
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
-    for fam in [&ASYMMETRIC, &CONTROLS] {
+    for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
             if c.pending || c.oracle.is_some() {
                 continue;
