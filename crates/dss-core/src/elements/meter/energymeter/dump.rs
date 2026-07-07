@@ -43,9 +43,16 @@ impl EnergyMeter {
         let names = self.register_names();
         let regs = self.registers();
         // Pascal `for i := 1 to NumEMregisters`: `RegisterNames[i-1]` /
-        // `Registers[i]` (a 1-based register array) — 0-based and parallel here.
-        for i in 0..names.len().min(regs.len()) {
-            s.push_str(&format!("\"{}\",{:.0}\n", names[i], regs[i]));
+        // `Registers[i]` (a 1-based register array) — 0-based and parallel
+        // here. Direct indexing on purpose: Pascal always writes
+        // NumEMregisters lines, so a names/registers length mismatch is a
+        // port bug that must panic, not silently truncate.
+        for (i, name) in names.iter().enumerate() {
+            // FPC `Str(x:0:0)` (fixed-point, 0 decimals). Hedge: its rounding
+            // at an exact .5 tie is unverified against Rust's `{:.0}`
+            // half-to-even — probe-confirmed 2026-07-07 only at non-tie
+            // values; the byte-exact golden covers the pinned values only.
+            s.push_str(&format!("\"{}\",{:.0}\n", name, regs[i]));
         }
         s
     }

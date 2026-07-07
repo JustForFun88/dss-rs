@@ -2282,9 +2282,9 @@ def gen_interp(d) -> None:
 # and specs (kW/PF, xfkva+allocationfactor, kwh+cfactor) so the Proportional
 # weights differ per load, plus a disabled load (pins the enabled filter AND
 # Uniform's count — which includes disabled loads, probe-proven
-# `Utilities.pas:1349`). Four deterministic variants; `how=Random` is
-# RNG-carried upstream (`randomize`, `Utilities.pas:1400`) and never
-# golden-gated. The `what=Load` variant passes an explicit `file=` that the
+# `Utilities.pas:1349`). Five deterministic variants (incl. `mw=`, which is
+# `kW := value*1000`); `how=Random` is RNG-carried upstream (`randomize`,
+# `Utilities.pas:1400`) and never golden-gated. The `what=Load` variant passes an explicit `file=` that the
 # oracle overrides to `DistLoads.dss` (probe-proven). `Distribute` writes the
 # file relative to the engine cwd (= datapath) and sets `GlobalResult` to the
 # bare filename.
@@ -2311,11 +2311,14 @@ DISTRIB_VARIANTS = [
     ("distribute kw=1200 how=Uniform pf=0.9", "DistGenerators.dss", "distrib_uniform"),
     ("distribute kw=900 how=Skip skip=1 pf=0.85", "DistGenerators.dss", "distrib_skip"),
     ("distribute kw=750 what=Load file=Explicit.dss", "DistLoads.dss", "distrib_load"),
+    # MW= is `kW := value*1000` (`DoDistributeCmd` ordinal 6): mw=1.5 must
+    # reproduce the kw=1500 proportional output exactly.
+    ("distribute mw=1.5 pf=0.95", "DistGenerators.dss", "distrib_mw"),
 ]
 
 
 def gen_distribute(d) -> None:
-    """Capture the oracle's `Distribute` output scripts (four deterministic
+    """Capture the oracle's `Distribute` output scripts (five deterministic
     variants). Each runs in a fresh dir (the command refuses to overwrite an
     existing file — error 721); `Text.Result` (GlobalResult) is the bare
     produced filename, pinned into the meta."""

@@ -10,7 +10,10 @@ impl Dss {
     /// Pascal `TExecHelper.DoUuidsCmd` (`ExecHelper.pas:4465-4535`): read a
     /// comma-CSV of `<fullname>, <uuid>` lines and preload each object's UUID.
     /// Resets the CIM hashed-key list first (`StartUuidList`,
-    /// `ExecHelper.pas:4472` — even when the file turns out missing).
+    /// `ExecHelper.pas:4472` — even when the file turns out missing). A
+    /// malformed UUID at an assignment site aborts the whole command with
+    /// error 303 (see the loop below); a missing object / blank line is a
+    /// silent no-op.
     pub(crate) fn do_uuids_cmd(&mut self) {
         {
             let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
@@ -35,8 +38,21 @@ impl Dss {
         };
 
         // AuxParser with a comma delimiter (`DSS.AuxParser.Delimiters := ','`),
-        // restored by the Pascal `finally`.
+        // restored by the Pascal `finally` — which runs even when a malformed
+        // UUID aborts the command (below).
         self.aux_parser.set_delimiters(",");
+        // FPC `StringToUuid` raises `EConvertError` only at the two ASSIGNMENT
+        // sites — inside `AddHashedUuid` (`ExportCIMXML.pas:992`) and at
+        // `pName.UUID := StringToUuid(UuidVal)` (`ExecHelper.pas:4529`, reached
+        // only when the object was FOUND) — and the exception ABORTS the whole
+        // command: remaining lines are not processed and `ProcessCommand`'s
+        // except handler reports error 303 (`ExecCommands.pas:697-701`). A
+        // missing object or a blank line never reaches a parse → silent no-op
+        // (oracle-probed 2026-07-07).
+        let mut convert_error: Option<String> = None;
+        // FPC SysUtils `EConvertError` text for `StringToGUID` (the brace-wrap
+        // above runs BEFORE the parse, so the braced form appears here).
+        let econvert = |uuid_val: &str| format!("\"{uuid_val}\" is not a valid GUID value");
         for raw in content.lines() {
             let line = raw.trim_end_matches('\r');
             self.aux_parser.set_cmd_string(line);
@@ -49,29 +65,40 @@ impl Dss {
                 uuid_val = format!("{{{uuid_val}}}");
             }
             if name_val.contains('=') {
-                // A non-identified (CIM-only) object → the hashed-key list.
+                // A non-identified (CIM-only) object → the hashed-key list;
+                // `AddHashedUuid` parses inside, so a malformed UUID aborts
+                // here too (its `Err` carries the same `EConvertError` text).
                 if let Err(e) = self.cim.add_hashed_uuid(&name_val, &uuid_val) {
-                    self.errors.push(e);
+                    convert_error = Some(e);
+                    break;
                 }
                 continue;
             }
             // A descendant of TNamedObject: circuit / Bus.<name> / Class.<name>.
+            // Resolve the object FIRST — Pascal parses the UUID only when
+            // `pName <> NIL`, so an unknown object skips the parse entirely.
             let (dev_class, dev_name) =
                 parse_object_class_and_name(&mut self.aux_parser, &self.vars, &name_val);
-            let Some(u) = Uuid::parse(&uuid_val) else {
-                // FPC `StringToUuid` raises EConvertError; record-and-continue.
-                self.errors
-                    .push(format!("\"{uuid_val}\" is not a valid UUID value."));
-                continue;
-            };
             if dev_class.eq_ignore_ascii_case("circuit") {
                 if let Some(ckt) = self.circuit.as_mut() {
-                    ckt.uuid = Some(u);
+                    match Uuid::parse(&uuid_val) {
+                        Some(u) => ckt.uuid = Some(u),
+                        None => {
+                            convert_error = Some(econvert(&uuid_val));
+                            break;
+                        }
+                    }
                 }
             } else if dev_class.eq_ignore_ascii_case("Bus") {
                 let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
                 if let Some(idx) = ckt.bus_list.find(&dev_name) {
-                    ckt.buses[idx].uuid = Some(u);
+                    match Uuid::parse(&uuid_val) {
+                        Some(u) => ckt.buses[idx].uuid = Some(u),
+                        None => {
+                            convert_error = Some(econvert(&uuid_val));
+                            break;
+                        }
+                    }
                 }
             } else if let Some(&ci) = self.class_by_name.get(&dev_class.to_lowercase()) {
                 // Pascal sets `LastClassReferenced`/`ActiveDSSClass` as a side
@@ -79,12 +106,32 @@ impl Dss {
                 self.active_class = Some(ci);
                 if self.classes[ci].set_active(&dev_name) {
                     let oi = self.classes[ci].active.expect("just set active");
-                    self.classes[ci].objects[oi].data_mut().set_uuid(u);
+                    match Uuid::parse(&uuid_val) {
+                        Some(u) => self.classes[ci].objects[oi].data_mut().set_uuid(u),
+                        None => {
+                            convert_error = Some(econvert(&uuid_val));
+                            break;
+                        }
+                    }
                 }
             }
             // Unknown class / unknown object: pName stays NIL — silently skipped.
         }
+        // The Pascal local `finally` — runs on the abort path too.
         self.aux_parser.reset_delims();
+        if let Some(emsg) = convert_error {
+            // Pascal `ProcessCommand`'s except handler (`ExecCommands.pas:
+            // 697-701`): `DoErrorMsg(..., 303)` over the full command string.
+            // CRLF renders LF (the errors-240/267 convention, `exec/command.rs`);
+            // `cmd_string()` carries the trailing space `SetCmdString` appends.
+            self.errors.push(format!(
+                "Error 303 Reported From OpenDSS Intrinsic Function: \n\
+                 ProcessCommand: Exception Raised While Processing DSS Command: \n\
+                 {}\n\nError Description: \n{emsg}\n\nProbable Cause: \n\
+                 Error in command string or circuit data.",
+                self.parser.cmd_string()
+            ));
+        }
     }
 
     /// Pascal `TCIMExporter.DefaultCircuitUUIDs` (`ExportCIMXML.pas:1276`),

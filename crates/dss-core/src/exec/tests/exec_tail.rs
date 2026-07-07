@@ -52,6 +52,30 @@ fn batchedit_unknown_class_error_267() {
     );
 }
 
+/// The named-parameter form `batchedit object=load.LA kw=…` behaves exactly
+/// like the positional form (`GetObjClassAndName` accepts an `object=`
+/// prefix); a zero-match pattern is silent — no error, no load edited.
+#[test]
+fn batchedit_object_named_form_and_zero_match() {
+    let mut dss = dss_with_loads();
+    dss.command("batchedit object=load.LA kw=150");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "load.la1.kw"), "150");
+    assert_eq!(query(&mut dss, "load.la2.kw"), "150");
+    assert_eq!(query(&mut dss, "load.xla1.kw"), "150");
+    assert_eq!(query(&mut dss, "load.lb1.kw"), "100");
+
+    dss.command("batchedit load.zzz kw=1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    for name in ["la1", "la2", "xla1", "lb1"] {
+        assert_ne!(
+            query(&mut dss, &format!("load.{name}.kw")),
+            "1",
+            "load.{name} must not be edited by a zero-match pattern"
+        );
+    }
+}
+
 /// `batchedit circuit.…` is a documented silent no-op (Pascal "Do nothing").
 #[test]
 fn batchedit_circuit_class_is_noop() {
@@ -110,6 +134,61 @@ fn giscoords_is_silent_noop() {
     dss.command("giscoords 1 2");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     assert!(dss.result().is_empty());
+}
+
+/// The NAMED-meter happy path: `interpolate em` on the interp fixture deck
+/// (the `export_buscoords_interp` golden's deck, replayed inline) fills the
+/// same coordinates as that golden's bare `interpolate` — b2/b3/b4/c1 pinned
+/// from `tests/golden/reports/export_buscoords_interp.txt` (pure f64 anchor
+/// arithmetic, exact equality).
+#[test]
+fn interpolate_named_meter_fills_zone_coordinates() {
+    let mut dss = Dss::new();
+    for c in [
+        "Set DefaultBaseFrequency=60",
+        "new circuit.itp basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+        "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+        "~ units=km",
+        "new line.lfeed bus1=src bus2=b1 linecode=lc length=0.4 units=km",
+        "new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.5 units=km",
+        "new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.5 units=km",
+        "new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.5 units=km",
+        "new line.l4 bus1=b4 bus2=b5 linecode=lc length=0.5 units=km",
+        "new line.lc1 bus1=b3 bus2=c1 linecode=lc length=0.3 units=km",
+        "new line.lc2 bus1=c1 bus2=c2 linecode=lc length=0.3 units=km",
+        "new load.ld5 bus1=b5 phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.92",
+        "new load.ldc bus1=c2 phases=3 conn=wye model=1 kv=12.47 kw=200 pf=0.95",
+        "new energymeter.em element=line.lfeed terminal=1",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "setbusxy bus=src x=0 y=0",
+        "setbusxy bus=b1 x=100 y=0",
+        "setbusxy bus=b5 x=500 y=0",
+        "setbusxy bus=c2 x=300 y=220",
+        "Set maxiterations=100",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("interpolate em");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let ckt = dss.circuit.as_ref().expect("circuit");
+    for (name, x, y) in [
+        ("b2", 150.0, 55.0),
+        ("b3", 200.0, 110.0),
+        ("b4", 350.0, 55.0),
+        ("c1", 250.0, 165.0),
+    ] {
+        let ib = ckt
+            .bus_list
+            .find(name)
+            .unwrap_or_else(|| panic!("bus {name} in the bus list"));
+        let bus = &ckt.buses[ib];
+        assert!(bus.coord_defined, "{name} must be coord-filled");
+        assert_eq!((bus.x, bus.y), (x, y), "bus {name}");
+    }
 }
 
 /// `Interpolate <name>` on a missing meter is Pascal error 277 (the name is

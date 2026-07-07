@@ -266,12 +266,51 @@ documented. Goldens: `save_mtr` byte-exact (all 67 registers),
 `save_voltages` + `save_class_load` via `compare_export` at rel=0/abs=0
 (token-exact — no tolerance needed) over `save_forms.dss` via
 `gen_reports.py::gen_save_decks`.
+**WP8.6 steps 1–6 COMPLETE (2026-07-07), gate-green** (two parallel worktree
+agents, merged by cherry-pick; corpus migration = step 7 still pending, see
+below). Step 1: `tools/cmd_coverage.py` (stdlib-only; replicates
+`TCommandList` abbreviation matching over the vendored corpus vs the
+dispatched set). Dispatch: cmd ordinals MakeBusList=59, Interpolate=62,
+Distribute=68, Uuids=86, SetBusXY=91, BatchEdit=95, GISCoords=118 + arms.
+Step 2 BatchEdit (`do_batch_edit_cmd`): `regex` crate (workspace dep),
+case-insensitive UNANCHORED match, parser position saved/rewound per match
+exactly like Pascal, silent (no count message), error 240/267 with
+CRLF+CmdString; `tests/corpus/modes` `batchedit.dss`+`midi_batchedit.dss`
+flipped `pending:false`, live compare green. Step 3: MakeBusList =
+`if bus_name_redefined { reprocess_bus_defs }`; GISCoords = documented no-op.
+Step 4: SetBusXY (write-after-every-param, err 28721/28722) + Interpolate
+(`solution/meters/interpolate.rs`: `InterpolateCoordinates` +
+`CalcBusCoordinates` loop-for-loop; errs 277/283/529; the Pascal `buses[0]`
+OOB for a NO_BUS from-bus = safe `.get()` per the UB rule); golden
+`export_buscoords_interp` byte-exact (pins the oracle's zone-end order —
+c2 first). Step 5 Distribute (`exec/distribute.rs`): the four
+`Write*Generators` writers loop-for-loop, errs 721/722, `what=Load`
+unconditional `DistLoads.dss` rename, Uniform divides by the FULL load count
+incl. disabled (probe-proven `Utilities.pas:1349`), Skip's trailing space;
+`how=Random` ported with fresh entropy, never golden-gated; 4 goldens
+(Proportional/Uniform/Skip/Load) token-exact. Step 6 Uuids/Export Uuids:
+`exec/uuids_cmd.rs` (comma-CSV, err 242, brace-wrap, `=`-names →
+AddHashedUuid, circuit/Bus/Class dispatch, StartUuidList reset first) + NEW
+`crates/dss-core/src/cim/` seeding the WPG.18 storage shape (UuidHash/
+UuidList/UuidKeyList, StartUuidList/FreeUuidList/GetHashedUuid/AddHashedUuid/
+GetDevUuid/WriteHashedUUIDs, FPC braced-uppercase GUID render) + lazily-
+created v4 UUID slots on DssObjData/Bus/Circuit (`uuid` crate);
+`DoExportCmd` calls `DefaultCircuitUUIDs` on EVERY export keyword
+(`ExportOptions.pas:188`); `Export Uuids` (keyword 25) byte-exact golden
+incl. the 3 auto hashed keys; probe-proven `Text.Result` stays EMPTY after
+`export uuids` — reproduced. `cmd_coverage.py` corpus tail after this WP:
+15 unported commands (SetkVBase 158, Wait 30, var 20, _SolveDirect 11, …),
+11 unported options (TotalTime 40, LoadShapeClass 10, StepTime 10, …).
+**Six Opus audits (code+tests × step 4 / WP8.6-part1 / WP8.6-part2) ran on
+the pre-merge worktree commits** — findings settled below (§audit follow-up).
 **next = Dump step 3b** (bare
 `dump`/`dump debug` whole-circuit + `dump solution` + the `commands`/
 `buslist`/`devicelist`/`alloc` aux files — the `DumpAllDSSCommands` gettext-
 catalog generator and the `THashList.DumpToFile` port are the two pieces of
 genuinely new machinery — per the refreshed PHASE8_PLAN §WP8.5; **in flight**
-in a parallel worktree agent) **+ step 5 (Save circuit + round-trip gate)**.
+in a parallel worktree agent) **+ step 5 (Save circuit + round-trip gate) +
+WP8.6 step 7 (the classify/migrate pass — deferred until the in-flight Dump
+3b lands so one `DSS_LIVE_CLASSIFY=1` run covers everything)**.
 **WP8.4 (Show) steps 1–16
 gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
 Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/

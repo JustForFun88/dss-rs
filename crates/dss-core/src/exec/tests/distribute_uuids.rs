@@ -96,6 +96,110 @@ fn uuids_missing_file_errors_242() {
     );
 }
 
+/// Oracle-probed 2026-07-07: a `Bus.<missing>` row carrying a GARBAGE uuid
+/// and a blank interior line are SILENT no-ops — Pascal parses the UUID only
+/// at the assignment site (`pName <> NIL`), so a missing object never reaches
+/// `StringToUuid` — and later lines still apply.
+#[test]
+fn uuids_missing_object_and_blank_lines_are_silent() {
+    let dir = scratch("uuids_silent");
+    let csv = dir.join("pre.csv");
+    std::fs::write(
+        &csv,
+        "Bus.nosuch, garbage-not-a-uuid\n\
+         \n\
+         load.ld1, {00000000-0000-4000-8000-0000000000C1}\n",
+    )
+    .expect("write csv");
+    let mut dss = distrib_fixture();
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    dss.command(&format!(
+        "uuids file={}",
+        csv.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("export uuids silent.csv");
+    let out = std::fs::read_to_string(dir.join("silent.csv")).expect("export");
+    assert!(
+        out.contains("Load.ld1 {00000000-0000-4000-8000-0000000000C1}"),
+        "the line after the silent skips must be applied:\n{out}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A malformed UUID on an EXISTING object ABORTS the whole `Uuids` command:
+/// FPC `StringToUuid` raises `EConvertError` at the assignment, which
+/// propagates to `ProcessCommand`'s except handler = ONE error-303 report
+/// (`ExecCommands.pas:697-701`) — earlier lines stay applied, later lines are
+/// NOT processed. Message text oracle-pinned 2026-07-07 (the brace-wrap runs
+/// BEFORE the parse, so the braced form appears; FPC says "GUID value", no
+/// trailing period).
+#[test]
+fn uuids_malformed_uuid_on_existing_object_aborts_303() {
+    let dir = scratch("uuids_abort");
+    let csv = dir.join("pre.csv");
+    std::fs::write(
+        &csv,
+        "load.ld1, {00000000-0000-4000-8000-0000000000C1}\n\
+         line.l1, garbage-not-a-uuid\n\
+         load.ld2, {00000000-0000-4000-8000-000000004444}\n",
+    )
+    .expect("write csv");
+    let mut dss = distrib_fixture();
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    let cmd = format!("uuids file={}", csv.to_string_lossy().replace('\\', "/"));
+    dss.command(&cmd);
+    // CRLF renders LF (the errors-240/267 convention); the trailing space
+    // after the command comes from `SetCmdString`.
+    assert_eq!(
+        dss.errors(),
+        &[format!(
+            "Error 303 Reported From OpenDSS Intrinsic Function: \n\
+             ProcessCommand: Exception Raised While Processing DSS Command: \n\
+             {cmd} \n\nError Description: \n\
+             \"{{garbage-not-a-uuid}}\" is not a valid GUID value\n\n\
+             Probable Cause: \nError in command string or circuit data."
+        )]
+    );
+    dss.errors.clear();
+    dss.command("export uuids abort.csv");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let out = std::fs::read_to_string(dir.join("abort.csv")).expect("export");
+    assert!(
+        out.contains("Load.ld1 {00000000-0000-4000-8000-0000000000C1}"),
+        "the line BEFORE the abort must stay applied:\n{out}"
+    );
+    assert!(
+        !out.contains("000000004444"),
+        "the line AFTER the abort must NOT be applied:\n{out}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A BARE (unbraced) valid uuid on an existing object is wrapped in `{}`
+/// before the parse (`ExecHelper.pas:4497`) and applied — exported in the
+/// braced-UPPERCASE `GuidToString` form.
+#[test]
+fn uuids_braceless_value_applies_and_exports_braced() {
+    let dir = scratch("uuids_bare");
+    let csv = dir.join("pre.csv");
+    std::fs::write(&csv, "line.l1, 00000000-0000-4000-8000-0000000000b7\n").expect("write csv");
+    let mut dss = distrib_fixture();
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    dss.command(&format!(
+        "uuids file={}",
+        csv.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("export uuids bare.csv");
+    let out = std::fs::read_to_string(dir.join("bare.csv")).expect("export");
+    assert!(
+        out.contains("Line.l1 {00000000-0000-4000-8000-0000000000B7}"),
+        "bare uuid must apply and export braced-uppercase:\n{out}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// The hashed-key list persists across commands, `Uuids` resets it, and
 /// `Export Uuids` frees it: after `uuids file=` preloads `Station=Station=1`,
 /// the FIRST `export uuids` reports the preloaded value, and a SECOND one

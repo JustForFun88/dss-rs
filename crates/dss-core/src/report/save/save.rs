@@ -25,22 +25,6 @@ pub struct SaveCtx<'a> {
     pub enums: &'a EnumRegistry,
 }
 
-/// Pascal `CheckForBlanks` (`Utilities.pas:1212`): wrap the value in double
-/// quotes only when it contains a space AND does not already start with one of
-/// `(` `[` `{` `"` `'` (an array/matrix/quoted rendering is left as-is).
-pub fn check_for_blanks(s: &str) -> String {
-    if s.contains(' ')
-        && !matches!(
-            s.as_bytes().first(),
-            Some(b'(' | b'[' | b'{' | b'"' | b'\'')
-        )
-    {
-        format!("\"{s}\"")
-    } else {
-        s.to_string()
-    }
-}
-
 /// Pascal `TDSSObject.SaveWrite` (`DSSObject.pas:145-165`): append
 /// ` <Name>=<CheckForBlanks(value)>` for **only the explicitly-set properties,
 /// in the order they were actually set** (`GetNextPropertySet`), skipping empty
@@ -60,7 +44,9 @@ pub fn save_write(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject) {
             out.push(' ');
             out.push_str(cx.cls.property_name(i));
             out.push('=');
-            out.push_str(&check_for_blanks(s));
+            // Pascal `CheckForBlanks` (`Utilities.pas:1212`): quote a value
+            // containing spaces unless it starts with a quote/bracket char.
+            out.push_str(&crate::util::check_for_blanks(s));
         }
         iprop = obj.data().next_property_set(Some(i));
     }
