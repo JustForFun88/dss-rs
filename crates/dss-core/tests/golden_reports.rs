@@ -4271,6 +4271,143 @@ fn save_class_disabled_load_writes_enabled_no() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// The `TODO(compat)` GlobalResult delimiter parity of `do_save_cmd`: Pascal
+/// composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
+/// (`ExecHelper.pas:835-841`), so with the default `SaveDir = OutputDirectory`
+/// (already ending in a delimiter) the observable `GlobalResult` carries a
+/// DOUBLED one (`…\\load`), while an explicit `dir=` is the raw parameter
+/// (single — `sub1\load`) and the file lands under the mkdir'd subdir. An
+/// unknown class silently writes nothing but still runs the tail:
+/// `GlobalResult`/`LastResultFile` = the raw `file=` value or empty. All four
+/// forms oracle-probed 2026-07-07.
+#[test]
+fn save_class_global_result_pascal_delimiters() {
+    let sep = std::path::MAIN_SEPARATOR;
+    let deck = [
+        "clear",
+        "new circuit.svgr basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100 pf=0.92",
+    ];
+
+    // Bare form: doubled delimiter in GlobalResult; normalized file on disk.
+    let scratch = scratch_dir("save_delims_bare");
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("save load");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        dss.result(),
+        format!("{}{sep}{sep}load", scratch.display()),
+        "bare `save load` must carry the Pascal doubled delimiter"
+    );
+    assert_eq!(dss.last_result_file(), dss.result());
+    assert!(
+        scratch.join("load").is_file(),
+        "the normalized path must hold the file"
+    );
+
+    // Unknown class: silent, clears the result to '' (the Pascal tail runs).
+    dss.command("save nosuchclass");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(dss.result(), "");
+    assert_eq!(dss.last_result_file(), "");
+    // Unknown class + file=: the raw file value; nothing written.
+    dss.command("save nosuchclass file=xx.dss");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(dss.result(), "xx.dss");
+    assert_eq!(dss.last_result_file(), "xx.dss");
+    assert!(
+        !scratch.join("xx.dss").exists(),
+        "an unknown class must write nothing"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+
+    // dir= form: the raw relative dir, single delimiter; the file is created
+    // under the subdir (covers the mkDir path). Fresh engine —
+    // `Flg.HasBeenSaved` would otherwise 0-record a second save.
+    let scratch = scratch_dir("save_delims_dir");
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("save load dir=sub1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(dss.result(), format!("sub1{sep}load"));
+    assert_eq!(dss.last_result_file(), dss.result());
+    assert!(
+        scratch.join("sub1").join("load").is_file(),
+        "the file must land under the mkdir'd subdir"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// `save voltages` sets only `GlobalResult` — `LastResultFile` stays UNCHANGED
+/// (Pascal `SaveVoltages`'s `finally` sets `GlobalResult`, never
+/// `SetLastResultFile`); and a bare `save` on a METER-LESS circuit is a
+/// complete no-op — no error, no `MTR_*.csv`, `GlobalResult`/`LastResultFile`
+/// both untouched (the meters loop has nothing to write).
+#[test]
+fn save_voltages_and_meterless_save_leave_last_result_file() {
+    let scratch = scratch_dir("save_noop");
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.svnp basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new load.ld1 bus1=src phases=3 kv=12.47 kw=100 pf=0.92",
+        "set voltagebases=[12.47]",
+        "calcv",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    // Seed LastResultFile/GlobalResult with a real export.
+    dss.command("export voltages");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let seeded = dss.last_result_file().to_string();
+    assert!(!seeded.is_empty(), "the export must seed LastResultFile");
+
+    dss.command("save voltages");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(
+        dss.result().ends_with("svnp_SavedVoltages.txt"),
+        "GlobalResult must be the produced path, got {:?}",
+        dss.result()
+    );
+    assert_eq!(
+        dss.last_result_file(),
+        seeded,
+        "save voltages must not touch LastResultFile"
+    );
+
+    dss.command("save");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    // GlobalResult is cleared by the dispatcher for EVERY command
+    // (`DSS.GlobalResult := ''`); the meter-less save adds nothing to it.
+    assert_eq!(
+        dss.result(),
+        "",
+        "a meter-less bare `save` must set no GlobalResult"
+    );
+    assert_eq!(
+        dss.last_result_file(),
+        seeded,
+        "a meter-less bare `save` must not touch LastResultFile"
+    );
+    let mtr: Vec<_> = std::fs::read_dir(&scratch)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.to_uppercase().starts_with("MTR_"))
+        .collect();
+    assert!(mtr.is_empty(), "meter-less save wrote {mtr:?}");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// `? transformer.t1.wdgcurrents` after a solve must equal the oracle's live
 /// recompute — pins the `do_query_cmd` Vterminal refresh (audit-code follow-up).
 /// Pascal `GetAllWindingCurrents` reloads Vterminal from the solution internally;
@@ -4392,8 +4529,11 @@ fn distrib_uniform_matches_oracle() {
 
 /// `Distribute kw=900 how=Skip skip=1 pf=0.85` (`WriteEveryOtherGenerators`):
 /// every 2nd enabled load — only `DG_2` here — with `kW·kWBase/ΣkWBase` over
-/// the selected set (= all 900 kW on the one selected load) and the writer's
-/// trailing-space `kW=%-g ` cell (`Utilities.pas:1473`).
+/// the selected set (= all 900 kW on the one selected load). The Skip writer's
+/// trailing-space `kW=%-g ` cell (`Utilities.pas:1473`) is reproduced in the
+/// writer (`exec/distribute.rs::write_every_other`) and present in the golden
+/// bytes, but NOT pinned by this whitespace-tokenizing compare (the trailing
+/// space collapses during tokenization).
 #[test]
 fn distrib_skip_matches_oracle() {
     run_deck_distribute("distrib_skip");
@@ -4405,6 +4545,14 @@ fn distrib_skip_matches_oracle() {
 #[test]
 fn distrib_load_matches_oracle() {
     run_deck_distribute("distrib_load");
+}
+
+/// `Distribute mw=1.5 pf=0.95`: the `MW=` parameter is `kW := value*1000`
+/// (`DoDistributeCmd` ordinal 6), so the output equals the kw=1500
+/// proportional variant — kW=1500 distributed over the same weights.
+#[test]
+fn distrib_mw_matches_oracle() {
+    run_deck_distribute("distrib_mw");
 }
 
 // --- WP8.6 step 6: Uuids + `Export Uuids` ---

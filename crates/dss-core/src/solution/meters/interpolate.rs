@@ -131,8 +131,18 @@ fn calc_bus_coordinates(
         return; // Nothing to do!
     }
 
-    let (x1, y1) = (ckt.buses[first_coord_ref].x, ckt.buses[first_coord_ref].y);
-    let (x2, y2) = (ckt.buses[second_coord_ref].x, ckt.buses[second_coord_ref].y);
+    // Pascal reads `Buses^[FirstCoordRef]`/`[SecondCoordRef]` unguarded; a
+    // stale `first_coord_ref` from a prior iteration can be `NO_BUS`
+    // (`usize::MAX`, a from-terminal with no bus) — an OOB heap read upstream,
+    // never reproduced (CLAUDE.md UB rule): no-op instead.
+    let (Some(b1), Some(b2)) = (
+        ckt.buses.get(first_coord_ref),
+        ckt.buses.get(second_coord_ref),
+    ) else {
+        return;
+    };
+    let (x1, y1) = (b1.x, b1.y);
+    let (x2, y2) = (b2.x, b2.y);
     let xinc = (x1 - x2) / line_count as f64;
     let yinc = (y1 - y2) / line_count as f64;
 

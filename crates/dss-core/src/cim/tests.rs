@@ -78,5 +78,14 @@ fn hashed_list_add_get_persist_reset() {
 fn add_hashed_uuid_rejects_garbage() {
     let mut cim = CimExporter::default();
     cim.start_uuid_list(2);
-    assert!(cim.add_hashed_uuid("k=1", "{zz}").is_err());
+    // FPC SysUtils `EConvertError` text (no trailing period; "GUID", not
+    // "UUID") — `DoUuidsCmd` embeds it verbatim in the error-303 report.
+    assert_eq!(
+        cim.add_hashed_uuid("k=1", "{zz}").unwrap_err(),
+        "\"{zz}\" is not a valid GUID value"
+    );
+    // The failed add must mutate nothing: the key is not in the list.
+    let mut out = String::new();
+    cim.write_hashed_uuids(&mut out);
+    assert!(out.is_empty(), "failed add left state behind: {out}");
 }

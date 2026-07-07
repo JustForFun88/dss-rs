@@ -246,10 +246,15 @@ impl CimExporter {
 
     /// Pascal `TCIMExporter.AddHashedUuid` (`ExportCIMXML.pas:977`): insert or
     /// overwrite `key`'s UUID from its string form. `Err` where FPC's
-    /// `StringToUuid` raises `EConvertError` (an unparsable UUID).
+    /// `StringToUuid` raises `EConvertError` (message `"%s" is not a valid
+    /// GUID value`, FPC SysUtils) — the caller (`DoUuidsCmd`) ABORTS the
+    /// command on it. Pascal's new-key branch adds `key` to `UuidHash` before
+    /// the failing parse, leaving a poisoned slot behind the exception; that
+    /// exception-state garbage is not reproduced — the Rust parse runs first
+    /// and `Err` mutates nothing.
     pub fn add_hashed_uuid(&mut self, key: &str, uuid_val: &str) -> Result<(), String> {
         let u = Uuid::parse(uuid_val)
-            .ok_or_else(|| format!("\"{uuid_val}\" is not a valid UUID value."))?;
+            .ok_or_else(|| format!("\"{uuid_val}\" is not a valid GUID value"))?;
         let hash = self.uuid_hash.get_or_insert_with(HashList::new);
         match hash.find(key) {
             Some(r) => self.uuid_list[r] = u,

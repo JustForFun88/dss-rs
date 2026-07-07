@@ -1754,9 +1754,11 @@ impl Dss {
     ///    sets `LastResultFile`/`GlobalResult` to the final `SaveFile` — even
     ///    for an **unknown class**, which is otherwise silently ignored (no
     ///    error; `GlobalResult` = the raw `file=` value or empty, probe-proven
-    ///    2026-07-07). Pascal's string concat doubles the path delimiter there
-    ///    (`OutputDirectory` already ends with one — `…\\load`); the port joins
-    ///    paths normally (path-equivalent, same file).
+    ///    2026-07-07). Pascal's raw string concat doubles the path delimiter
+    ///    when `SaveDir` is the default `OutputDirectory` (which already ends
+    ///    with one — `…\\load`); reproduced for the observable
+    ///    `GlobalResult`/`LastResultFile` (`TODO(compat)` below) while the
+    ///    file I/O uses the normalized join (same file either way).
     pub(crate) fn do_save_cmd(&mut self) {
         // Pascal `ExecCommands.pas` `SaveCommands := TCommandList.Create(...)`
         // (built once at startup there; construction is cheap and pure here).
@@ -1832,7 +1834,20 @@ impl Dss {
             }
             let path = dir_path.join(&save_file);
             self.write_class_file(ci, &path);
-            final_file = path.to_string_lossy().into_owned();
+            // TODO(compat): Pascal composes `SaveFile := SaveDir + PathDelim +
+            // SaveFile` as raw STRINGS (`ExecHelper.pas:835-841`). With the
+            // default `SaveDir = OutputDirectory` — a string that already ends
+            // in a PathDelim — the observable `GlobalResult`/`LastResultFile`
+            // carries a DOUBLED delimiter (`…\\load`); an explicit `dir=` is
+            // the raw parameter, so a single one (`sub1\load`). Oracle-probed
+            // 2026-07-07. The file I/O above uses the normalized `path` (the
+            // same file either way; `output_directory` stores no trailing
+            // delimiter). Clean fix: a normalized path join here too.
+            let sep = std::path::MAIN_SEPARATOR;
+            final_file = match &save_dir {
+                None => format!("{}{sep}{sep}{save_file}", self.output_directory.display()),
+                Some(d) => format!("{d}{sep}{save_file}"),
+            };
         }
         // Pascal tail (`:840-841`): `SetLastResultFile` + `GlobalResult`, run for
         // known and unknown classes alike.
