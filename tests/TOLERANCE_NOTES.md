@@ -292,7 +292,11 @@ The corpus property-parity gate compares **every** element's **every** property
 value — the Rust `?`-surface (`Dss::element_properties`:
 `refresh_vterminal_if_marked` + `ClassProps::get_value`) vs the pinned oracle's
 `Properties(p).Val` (read via `? name.prop`) — property-name lists equal in order,
-each value by numeric skeleton at the case tolerance. `SKIP_PROPS` excludes a
+each value by numeric skeleton at the case tolerance. Values compare **case-exact**
+(no lowercasing): every DSS enum getter renders the Pascal-faithful case
+(`ordinal_to_string` returns the exact registry strings — `wye`/`delta` lowercase,
+`Variable`/`Fixed` capitalized, booleans `Yes`/`No`), so a case divergence is a
+real rendering regression, not a formatting artifact. `SKIP_PROPS` excludes a
 `(class, prop)` from the **value** compare (the name is still order-checked). Each
 is a proven **comparability exclusion**, never a tolerance loosening — the property
 is genuinely non-comparable, not merely loose:
@@ -313,19 +317,29 @@ is genuinely non-comparable, not merely loose:
   angle diverges. The winding currents' physics is gated by the model compare
   (terminal currents / YPrim).
 - **`Transformer.Wdg` + the per-winding SINGULAR forms** (`Bus`, `Conn`, `kV`,
-  `kVA`, `Tap`, `%R`, `RNeut`, `XNeut`, `MaxTap`, `MinTap`, `NumTaps`, `RDCOhms`)
-  — `Wdg` is the transient `ActiveWinding` edit-cursor (which winding a subsequent
+  `kVA`, `Tap`, `%R`, `RNeut`, `XNeut`, `MaxTap`, `MinTap`, `NumTaps`, `RDCOhms`
+  — `TRANSFORMER_CURSOR_PROPS`) — skipped **only when the two engines'
+  ActiveWinding cursors disagree** (`skip_transformer_cursor`, gated on the `Wdg`
+  value: Rust's from `element_properties`, the oracle's from the capture). `Wdg`
+  is the transient `ActiveWinding` edit-cursor (which winding a subsequent
   `~ tap=` applies to); the singular forms render `windings[ActiveWinding]`'s
-  value. The oracle's own live capture mutates the cursor: `gc.capture_discrete`
-  walks `Transformers.Wdg = i` over every winding (to read taps) **before** the
-  property sweep, leaving it at `NumWindings`. So these reflect the harness read
-  order, not the deck's parse result — for the 3-winding `t3w` (ends `wdg=2`) Rust
-  reads winding 2, the oracle winding 3. Proven: in isolation both engines render
-  the deck's `wdg=2`; only the post-`capture_discrete` sweep reads 3. The **stable
-  array forms** (`Buses`, `Conns`, `kVs`, `kVAs`, `Taps`) carry the identical
-  per-winding data un-contaminated and are compared, so bus/conn/kV/kVA/tap
-  rendering is still gated. (2-winding transformers don't diverge: the array-form
-  parse and the capture both leave ActiveWinding at `NumWindings = 2`.)
+  value, so the two engines compare validly only when both cursors point to the
+  same winding. The oracle's own live capture mutates the cursor:
+  `gc.capture_discrete` walks `Transformers.Wdg = i` over every winding (to read
+  taps) **before** the property sweep, forcing it to `NumWindings`. Rust keeps the
+  deck's trailing `wdg=` — usually **also** `NumWindings` (the array-form parse
+  lands there), so the cursors AGREE and every singular form is compared, incl.
+  `RDCOhms`. They disagree only when the deck ends on a non-last winding: the
+  3-winding `t3w` (ends `wdg=2`; oracle capture reads winding 3) and the 2-winding
+  `YgD-Test.tr1` (rewired `wdg=1`; capture reads winding 2). Proven for `t3w`: in
+  isolation both engines render the deck's `wdg=2`; only the post-`capture_discrete`
+  sweep reads 3. **Array-form backstops** (compared whenever cursors agree, and
+  independent of the cursor anyway): `Bus`→`Buses`, `Conn`→`Conns`, `kV`→`kVs`,
+  `kVA`→`kVAs`, `Tap`→`Taps`, `%R`→`%Rs`; `RNeut`/`XNeut` are also in the YPrim;
+  `MaxTap`/`MinTap`/`NumTaps` feed the now-live-gated `TapNum`. **`RDCOhms` has NO
+  array/other backstop**, so gating on cursor-agreement (rather than dropping it
+  outright) keeps a `RDCOhms` formula/scale regression caught on the overwhelming
+  majority of transformers (every deck where the cursors agree).
 - **`Capacitor.FaultRate` / `Capacitor.pctperm` / `Reactor.FaultRate` /
   `Reactor.pctperm`** — reliability inputs. In a **metered** deck the oracle reads
   these **uninitialized** on shunt PD elements (Capacitor/Reactor): proven

@@ -159,6 +159,18 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 /// Assert two value strings match: identical skeletons, numbers within
 /// `rel`/`abs` tolerance.
 pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+    // Byte-identical strings are always a pass — the WHOLE-string guard, so it
+    // fires only when the two sides are literally equal. This is the correct
+    // home for the machine-generated EPRI bus name `0x008e1248`, whose numeric
+    // token the skeleton scanner reads as `8e1248` = inf: identical strings
+    // must pass, but a per-number `(inf - inf)` is NaN and fails `<= allowed`.
+    // Crucially this does NOT accept two DIFFERENT strings whose tokens both
+    // overflow to inf (`…008e1248` vs `…018e1248`) — those fall through to the
+    // number compare below and correctly FAIL. Not a loosening: exactly-equal is
+    // the tightest possible match.
+    if actual == expected {
+        return;
+    }
     let (askel, anums) = numeric_skeleton(actual);
     let (eskel, enums) = numeric_skeleton(expected);
     assert_eq!(
@@ -172,17 +184,40 @@ pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64
     );
     for (i, (a, e)) in anums.iter().zip(&enums).enumerate() {
         let allowed = abs + rel * e.abs();
-        // Exact bit-equality (covers ±inf == ±inf) short-circuits the tolerance
-        // check: two identical value strings whose numeric substring overflows
-        // to inf — e.g. a machine-generated EPRI bus name `0x008e1248` that the
-        // skeleton scanner reads as `8e1248` = inf — must compare equal, but
-        // `(inf - inf).abs()` is NaN and fails `<= allowed`. Not a loosening:
-        // exactly-equal is the tightest possible match.
         assert!(
-            a == e || (a - e).abs() <= allowed,
+            (a - e).abs() <= allowed,
             "{ctx}: number {i} differs: actual {a} vs expected {e} \
              (from {actual:?} vs {expected:?})"
         );
+    }
+}
+
+#[cfg(test)]
+mod comparator_tests {
+    use super::assert_value_matches_tol;
+
+    /// Byte-identical strings pass even when a token overflows to inf; two
+    /// DISTINCT strings differing only in such a token FAIL (the per-number
+    /// `a == e` shortcut removed in the audit was too loose — it let
+    /// `…008e1248` and `…018e1248` compare equal because both parse to inf).
+    #[test]
+    fn value_match_identity_vs_distinct_inf_tokens() {
+        // Identical (incl. an inf-overflowing token) → pass.
+        assert_value_matches_tol("a_0x008e1248", "a_0x008e1248", 1e-6, 1e-6, "identity");
+        // Distinct strings whose tokens both overflow to inf → must FAIL.
+        let r = std::panic::catch_unwind(|| {
+            assert_value_matches_tol("a_0x008e1248", "a_0x018e1248", 1e-6, 1e-6, "distinct-inf");
+        });
+        assert!(
+            r.is_err(),
+            "distinct inf-token strings must NOT compare equal"
+        );
+        // Ordinary numeric tolerance still works.
+        assert_value_matches_tol("v=1.0000001", "v=1.0", 1e-5, 1e-9, "tol");
+        let bad = std::panic::catch_unwind(|| {
+            assert_value_matches_tol("v=2.0", "v=1.0", 1e-9, 1e-12, "toobig");
+        });
+        assert!(bad.is_err(), "out-of-tolerance numbers must FAIL");
     }
 }
 
@@ -750,28 +785,10 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     faer-vs-KLU noise (a cancellation floor). The magnitudes and the
     //     non-degenerate angles match; only the zero-magnitude angle diverges.
     ("Transformer", "WdgCurrents"),
-    // (c) Transformer ActiveWinding cursor + the per-winding SINGULAR getters
-    //     it indexes (`Bus`/`Conn`/`kV`/... = `windings[aw()]`). The oracle's own
-    //     capture (`gc.capture_discrete`'s `Transformers.Wdg=i` winding walk,
-    //     which runs before the property sweep) leaves ActiveWinding at
-    //     NumWindings, so these render the LAST winding regardless of the deck's
-    //     trailing `wdg=` (3-winding t3w ends `wdg=2`, so Rust reads winding 2,
-    //     the oracle winding 3). The stable ARRAY forms (`Buses`/`Conns`/`kVs`/
-    //     `kVAs`/`Taps`) carry the identical per-winding data un-contaminated and
-    //     ARE compared. No stable comparable value for the singular forms.
-    ("Transformer", "Wdg"),
-    ("Transformer", "Bus"),
-    ("Transformer", "Conn"),
-    ("Transformer", "kV"),
-    ("Transformer", "kVA"),
-    ("Transformer", "Tap"),
-    ("Transformer", "%R"),
-    ("Transformer", "RNeut"),
-    ("Transformer", "XNeut"),
-    ("Transformer", "MaxTap"),
-    ("Transformer", "MinTap"),
-    ("Transformer", "NumTaps"),
-    ("Transformer", "RDCOhms"),
+    // (c) The transformer ActiveWinding cursor group is NOT unconditionally
+    //     skipped — see [`TRANSFORMER_CURSOR_PROPS`], which skips it only on
+    //     3+-winding transformers (2-winding stays fully compared).
+    //
     // (d) Reliability inputs on shunt PD elements read uninitialized in the
     //     oracle inside a metered deck (nondeterministic across processes —
     //     proven UB). Rust keeps the correct defaults (FaultRate 0.0005,
@@ -787,6 +804,34 @@ fn skip_prop(class: &str, prop: &str) -> bool {
     SKIP_PROPS
         .iter()
         .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
+}
+
+/// Transformer per-winding SINGULAR getters that index the ActiveWinding cursor
+/// (`windings[aw()]`). Their value is `windings[ActiveWinding]`'s, so the two
+/// engines compare validly ONLY when both cursors point to the SAME winding. The
+/// oracle's own `gc.capture_discrete` `Transformers.Wdg=i` walk forces
+/// ActiveWinding to NumWindings before the sweep, while Rust keeps the deck's
+/// trailing `wdg=k` — usually also NumWindings (array-form parse), but not for a
+/// 3-winding `t3w` (ends `wdg=2`) or a 2-winding `YgD-Test.tr1` (rewired
+/// `wdg=1`). So the skip is gated on cursor DISAGREEMENT (not winding count):
+/// whenever the cursors match — the common case — every singular form is
+/// compared, including `RDCOhms`, which has NO array-form backstop (unlike
+/// `%R`→`%Rs`, bus/conn/kV/kVA/tap→array forms, RNeut/XNeut→YPrim, tap
+/// limits→the now-live-gated `TapNum`). See tests/TOLERANCE_NOTES.md.
+const TRANSFORMER_CURSOR_PROPS: &[&str] = &[
+    "Wdg", "Bus", "Conn", "kV", "kVA", "Tap", "%R", "RNeut", "XNeut", "MaxTap", "MinTap",
+    "NumTaps", "RDCOhms",
+];
+
+/// Whether property `prop` of the named transformer is cursor-contaminated and
+/// must be skipped — true only when the two engines' ActiveWinding cursors
+/// disagree (the singular forms then read different windings).
+fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> bool {
+    cursors_disagree
+        && class.eq_ignore_ascii_case("Transformer")
+        && TRANSFORMER_CURSOR_PROPS
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case(prop))
 }
 
 /// Compare EVERY property of EVERY captured element (WP8.5b): the property-NAME
@@ -810,6 +855,18 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
             actual.len(),
             pc.props.len()
         );
+        // Transformer cursor-skip gate (see [`skip_transformer_cursor`]): the
+        // singular per-winding forms compare only when both engines' ActiveWinding
+        // (the `Wdg` value) point to the same winding. Read Rust's from `actual`
+        // and the oracle's from the capture.
+        let cursor_of = |props: &[(String, String)]| -> Option<String> {
+            props
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case("Wdg"))
+                .map(|(_, v)| v.trim().to_string())
+        };
+        let cursors_disagree =
+            class.eq_ignore_ascii_case("Transformer") && cursor_of(&actual) != cursor_of(&pc.props);
         for (i, ((aname, aval), (ename, eval))) in actual.iter().zip(&pc.props).enumerate() {
             assert!(
                 aname.eq_ignore_ascii_case(ename),
@@ -817,12 +874,18 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
                  (property-index order is the contract)",
                 pc.element
             );
-            if skip_prop(class, ename) {
+            if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
                 continue;
             }
+            // Case-EXACT compare (no lowercasing): every DSS enum getter renders
+            // the Pascal-faithful case — `ordinal_to_string` returns the exact
+            // registry strings (`wye`/`delta` lowercase, `Variable`/`Fixed`
+            // capitalized, booleans `Yes`/`No`) that the oracle's `Val` emits, so
+            // a case divergence is a real rendering regression this gate must
+            // catch, not a formatting artifact to smooth over.
             assert_value_matches_tol(
-                &aval.to_lowercase(),
-                &eval.to_lowercase(),
+                aval,
+                eval,
                 tol.i_rel,
                 tol.i_abs,
                 &format!("{ctx}: {} property {ename}", pc.element),
