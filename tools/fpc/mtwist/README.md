@@ -1,43 +1,53 @@
 # FPC 3.2.2 RTL RNG probe (`mtwist_probe.pas`)
 
-Regeneration probe for the Rust port of the Free Pascal 3.2.2 RTL
+Regeneration + confirmation probe for the Rust port of the Free Pascal 3.2.2 RTL
 Mersenne-Twister RNG (`crates/dss-core/src/support/mathutil/rng.rs` `FpcRng`)
 and the `Gauss`/`QuasiLognormal` helpers (`support/mathutil` `gauss` /
 `quasi_log_normal`) that the Monte Carlo solve modes consume. It reproduces, on
 the **real FPC 3.2.2 RTL** (the same compiler/RTL the pinned oracle's dss_capi
 backend is built with), the exact fixed-seed sequences `rng.rs` pins.
 
-**Status: not yet captured in-repo.** The committed pins in `rng.rs` are
-**canonical MT19937 ground truth** (cross-verified against `mt19937ar.out` and
-CPython's MT19937, below). Equivalence to FPC rests on `FpcRng` being a 1:1
-transcription of the RTL `mtwist_*` source — this probe is the on-host path to
-*confirm* that empirically, but running it requires an FPC 3.2.2 toolchain that
-is not present in every worktree, so no FPC output has been captured here yet.
-Run it on such a host to turn the transcription argument into a captured pin.
+**Status: CAPTURED & CONFIRMED (2026-07-08).** Built with `ppcrossx64`
+(FPC 3.2.2 `x86_64-win64`) and run; **all 20 pins matched `rng.rs` bit-for-bit**
+— the 8 u32 (seed 12345), the seed-1 first draw (1791095845), the 8
+`Random:Double` bit patterns, the 4 `Gauss(0,1)`, the 2 `Gauss(2.5,0.5)`, and
+the 2 `QuasiLognormal(3.0)`. The captured output is committed as
+`fpc_output_x86_64_win64.txt`. So the pins are no longer "canonical-MT assumed
+== FPC"; they are captured-FPC-exact.
+
+The pins were *first* derived as canonical MT19937 ground truth (cross-verified
+against `mt19937ar.out` and CPython's MT19937 — both share this exact recurrence
++ tempering; the seed-1 = 1791095845 match is the canonical tell), which the
+FPC capture then confirmed.
 
 The RNG is **nondeterministic in the engine** (upstream `Shared/mathutil.pas`
 does `initialization Randomize;`, time-seeding per process), so no RNG-carried
 value can be golden- or oracle-pinned (GAPS_PLAN.md §2.1). The generator is
-therefore gated **only** by the Rust-only fixed-seed unit tests in `rng.rs`.
-This probe reproduces those exact expected sequences from a fixed `RandSeed`,
-so the pins are regenerable on any FPC 3.2.2 `x86_64-win64` host.
+therefore gated **only** by the Rust-only fixed-seed unit tests in `rng.rs`
+(+ the RNG-dispatch tests in `monte_carlo.rs`/`load`/`fault`); this probe backs
+those pins with real FPC output.
 
-The committed expected values were independently cross-verified against the
-canonical `mt19937ar.out` reference and CPython's MT19937 (both share this
-exact recurrence + tempering); this probe is the FPC-host regeneration path
-(to be run when an FPC host is available), mirroring the
-`tools/fpc/fmt_battery` discipline.
+## Self-contained
+
+The probe uses only the RTL `Random` for the MT core (identical to dss_capi),
+and copies `Gauss`/`QuasiLognormal` **verbatim** from
+`.inputs/dss_capi/src/Shared/mathutil.pas:292/:304` — so it compiles with **no
+dss_capi unit dependency**. The verbatim copy was confirmed bit-identical to the
+real `Mathutil` unit's output.
 
 ## Regeneration — manual only (same rule as all goldens)
 
-Requires FPC 3.2.2 with the x86_64-win64 cross-compiler (`ppcrossx64`):
+Requires FPC 3.2.2 with the x86_64-win64 cross-compiler (`ppcrossx64`).
+**The target arch matters:** `Gauss`/`QuasiLognormal` sum 12 `Random` draws in
+f64, so build **x86_64/SSE2** (matching the oracle's backend) — `i386-win32`
+(x87, 80-bit intermediates) would diverge on those doubles.
 
 ```
 ppcrossx64 -O2 mtwist_probe.pas
-./mtwist_probe.exe
+./mtwist_probe.exe          # compare against fpc_output_x86_64_win64.txt
 ```
 
 Each `Double` is printed as its raw 64-bit little-endian pattern (hex) so the
 comparison is bit-exact, matching the `f64::to_bits()` assertions in `rng.rs`.
-The `.exe`/`.o` are build artifacts — only `mtwist_probe.pas` and this README
-are committed.
+The `.exe`/`.o` are build artifacts — only `mtwist_probe.pas`,
+`fpc_output_x86_64_win64.txt`, and this README are committed.
