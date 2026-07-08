@@ -188,6 +188,24 @@ pub struct Circuit {
     /// exactly like the other LoadShape refs above.
     pub load_dur_curve_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
 
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`; GAPS_PLAN WPG.11). Pascal
+    /// declares this on `TDSSContext` (`DSSClass.pas`), not the circuit —
+    /// carried here instead because the engine models exactly one circuit and
+    /// every live-solve consumer (`StorageController.Get_DynamicTarget`,
+    /// `Export Capacity`) already reaches state through `Circuit`/`SysCtx`,
+    /// never `Dss`; threading a second, `Dss`-level copy through the whole
+    /// solve/dispatch call chain for two rarely-used globals isn't worth the
+    /// footprint. The one observable difference from the Pascal placement is
+    /// that `Clear` resets it here (Pascal's context-level flag would survive
+    /// a `Clear`/`New circuit` in the same process) — unreached by any corpus
+    /// case (every live-oracle case runs in its own fresh engine instance).
+    pub season_rating: bool,
+    /// `DSS.SeasonSignal` (`Set SeasonSignal=`): the `XYcurve` name whose
+    /// `GetYValue(Solution.DynaVars.intHour)` truncates to the season index
+    /// `Get_DynamicTarget` looks up — resolved by name fresh on every read
+    /// (see `StorageDispatchEnv::season_rating_idx`), never cached.
+    pub season_signal: String,
+
     pub normal_min_volts: f64,
     pub normal_max_volts: f64,
     pub emerg_min_volts: f64,
@@ -292,6 +310,8 @@ impl Circuit {
             default_daily_shape_obj: None,
             default_yearly_shape_obj: None,
             load_dur_curve_obj: None,
+            season_rating: false,
+            season_signal: String::new(),
             normal_min_volts: 0.95,
             normal_max_volts: 1.05,
             emerg_min_volts: 0.90,

@@ -22,11 +22,13 @@
 //! `SetFleetToExternal` + `SetAllFleetValues` that Pascal runs in
 //! `RecalcElementData` after the fleet build are deferred to that first build.
 //!
+//! The seasonal dynamic target (`Get_DynamicTarget`, `DSS.SeasonalRating` /
+//! `DSS.SeasonSignal` — `Set SeasonRating=`/`Set SeasonSignal=`, GAPS_PLAN
+//! WPG.11) is ported: [`StorageController::get_dynamic_target`] (`compute.rs`)
+//! + the [`StorageDispatchEnv::season_rating`]/[`StorageDispatchEnv::
+//! season_rating_idx`] call-site guards.
+//!
 //! **Deliberately NOT_PORTED:**
-//! - the seasonal-rating dynamic target (`Get_DynamicTarget`, `DSS.SeasonalRating`
-//!   / `DSS.SeasonSignal`) — the season-signal XYCurve infrastructure is not in
-//!   the engine; `CtrlTarget` always takes the non-seasonal `FkWTarget` /
-//!   `FkWTargetLow` branch (decks that set `SeasonalRating` error earlier).
 //! - `MakePosSequence` — positive-sequence reduction isn't supported yet.
 //! - the parse-time 37201 ("No unassigned Storage Elements") for a *Storage-less*
 //!   circuit: Pascal emits it in `RecalcElementData`; here the fleet resolves
@@ -466,4 +468,21 @@ pub(crate) trait StorageDispatchEnv {
     fn dbl_hour(&self) -> f64;
     /// `ActiveCircuit.Solution.Mode`.
     fn solve_mode(&self) -> SolveMode;
+
+    // --- seasonal targets (`Get_DynamicTarget`, StorageController.pas l.1020) ---
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`) — the call-site guard at
+    /// l.1099 (discharge)/l.1411 (charge): only when set does
+    /// `Get_DynamicTarget` run at all.
+    fn season_rating(&self) -> bool;
+    /// `Get_DynamicTarget`'s `RatingIdx` (l.1020-1032). `None` when
+    /// `DSS.SeasonSignal` is empty — `Result` stays `0` in Pascal, i.e. the
+    /// caller must NOT fall back to the non-seasonal target (see
+    /// [`StorageController::get_dynamic_target`]). `Some(trunc(XYcurve.
+    /// GetYValue(Solution.DynaVars.intHour)))` when the signal is set —
+    /// `Some(0)` if the named curve isn't registered (`RSignal = NIL`;
+    /// `RatingIdx` initializes to `0` and Pascal never reassigns it on a
+    /// miss). Mutates the curve's hunt cache (`GetYValue`'s
+    /// `LastValueAccessed` side effect) — a live, uncached lookup every call,
+    /// exactly like the Pascal `DSS.XYCurveClass.Find` here.
+    fn season_rating_idx(&mut self) -> Option<i32>;
 }

@@ -1,10 +1,21 @@
 ! GAPS deck: StorageController seasonal targets (Get_DynamicTarget) —
 ! deterministic. Seasons/SeasonTargets + Set SeasonRating=yes and a
 ! SeasonSignal XYcurve mapping intHour -> season index select the kW target.
+! The curve holds flat at Y=1 from hour 12 on (a 3rd point repeats the Y=1
+! ordinate) rather than extrapolating past it: the live-oracle harness issues
+! additional bare `solve` commands after this deck's own `Solve` (mode=daily
+! is sticky, so each extends the run another `number=24` hours), and an
+! unbounded linear extrapolation would eventually truncate to exactly
+! `Seasons` (2) — Pascal `Get_DynamicTarget`'s `RatingIdx <= Seasons` guard
+! (off-by-one; see StorageController.pas l.1033) then indexes SeasonTargets
+! one past its valid `0..Seasons-1` range, an upstream dynamic-array OOB read
+! that made the PINNED ORACLE itself hang at Max Control Iterations (#485)
+! reading garbage. Held flat, RatingIdx never leaves {0, 1} no matter how far
+! the harness re-drives.
 Clear
 New Circuit.gaps_scs basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
 New Loadshape.day8 npts=8 interval=3 mult=(0.40 0.55 0.75 0.95 1.00 0.90 0.70 0.50)
-New XYcurve.seasonsig npts=2 xarray=(0 12) yarray=(0 1)
+New XYcurve.seasonsig npts=3 xarray=(0 12 24) yarray=(0 1 1)
 New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
 New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.95 model=1 daily=day8
 New Storage.batt bus1=b1 phases=3 kv=12.47 kva=400 kwrated=350 kwhrated=1400 %stored=80 %reserve=20 state=idling dispmode=external
