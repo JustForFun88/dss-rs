@@ -47,6 +47,7 @@ pub(crate) use crate::solution::{SolveEnv, SolveMode, set_voltage_bases, solve};
 pub(crate) use crate::support::command_list::CommandList;
 pub(crate) use crate::util::{float_to_str, interpret_yes_no, parse_object_class_and_name};
 
+mod auto_add;
 mod command;
 mod construct;
 mod distribute;

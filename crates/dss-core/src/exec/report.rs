@@ -1641,8 +1641,8 @@ impl Dss {
             }
             // 1 `autoadded` (`ShowOptions.pas:146-150`): Pascal only `FireOffEditor`s
             // `AutoAddedGenerators.txt`/`AutoAddedCapacitors.txt` (written by the
-            // AutoAdd solve mode, deferred — WP7.9); `FireOffEditor` is a headless
-            // no-op. So arm 1 is a faithful silent no-op.
+            // AutoAdd solve mode, ported in WPG.5 — exec/auto_add.rs);
+            // `FireOffEditor` is a headless no-op, so arm 1 is a faithful silent no-op.
             1 => {}
             // 32 `QueryLog` (`ShowOptions.pas:427-428`): Pascal only
             // `FireOffEditor(QueryLogFileName)` — a headless no-op. Silent no-op.
