@@ -527,9 +527,19 @@ impl Relay {
     /// last operation (`td21_quiet <= 0`) — checks every phase / phase-phase loop
     /// against a half-reach directional characteristic, arming a definite-time trip
     /// on the closest in-reach loop. Runs only under dynamics (`DynaVars.h > 0`).
-    pub(super) fn td21_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) {
+    ///
+    /// Returns `true` when the coarse-time-step guard (error 388) fires: Pascal
+    /// `Relay.pas:1460` reports it via `DoErrorMsg`, which sets
+    /// `DSS.SolutionAbort := True` (`DSSGlobals.pas:265`) — the dispatch layer
+    /// lifts this into `Solution.SolutionAbort` so the run halts exactly where
+    /// the oracle does (the `Sample`-time analogue of CapControl's abort return).
+    pub(super) fn td21_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) -> bool {
         let (cond_offset, nphases) = self.mon_offset(mon);
         let dt = ctx.sys.dyna_h;
+        // Pascal `DoErrorMsg(...,388)` sets `SolutionAbort := True` but does NOT
+        // `Exit` — the logic falls through. We mirror: record the request, keep
+        // running, and return it so the dispatch layer aborts the solution.
+        let mut solution_abort = false;
         if dt > 0.0 {
             if dt > 1.0 / ctx.sys.frequency {
                 ctx.errors.push(format!(
@@ -537,6 +547,7 @@ impl Relay {
                      Reduce time step, or change type to Distance. (Error 388)",
                     self.ccd.cd.obj.name()
                 ));
+                solution_abort = true;
             }
             // Pascal `round(1/60/dt + 0.5)` (FPC banker's) — samples per ~one
             // 60 Hz cycle. The `1/60` is a hard-coded literal upstream (not
@@ -556,7 +567,7 @@ impl Relay {
         }
 
         if self.locked_out {
-            return;
+            return solution_abort;
         }
 
         // Fault detection: any monitored phase current above `PhaseTrip`.
@@ -596,7 +607,7 @@ impl Relay {
         // no corpus deck sets `stepsize <= 0`). `dt` defaults to 0.001, so this is
         // never hit in practice.
         if self.td21_pt < 1 {
-            return;
+            return solution_abort;
         }
         let stride = self.td21_stride as usize;
 
@@ -638,7 +649,7 @@ impl Relay {
         }
 
         if self.td21_quiet > 0 {
-            return; // within the post-start / post-operation quiet window
+            return solution_abort; // within the post-start / post-operation quiet window
         }
 
         // One cycle elapsed: run the differential distance sense.
@@ -741,6 +752,8 @@ impl Relay {
                 self.armed_for_close = false;
             }
         }
+
+        solution_abort
     }
 
     /// Pascal `TRelayObj.GetControlPower` — the net positive-sequence active

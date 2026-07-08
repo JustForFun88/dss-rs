@@ -26,6 +26,12 @@ pub struct DssObjData {
     /// engine error sink). The executive drains these right after the edit
     /// loop, so the message ordering within a command is preserved.
     deferred_errors: Vec<String>,
+    /// Set alongside a deferred message emitted via [`Self::push_error_abort`]
+    /// (the Pascal `DoErrorMsg` path, which sets `DSS.SolutionAbort := True` —
+    /// `DSSGlobals.pas:265`), as opposed to [`Self::push_error`] (the
+    /// `DoSimpleMsg` path, record-only). The executive lifts it into
+    /// `Solution.SolutionAbort` when it drains the deferred messages.
+    deferred_abort: bool,
     /// Pascal `Flg.HasBeenSaved`: set by `WriteDSSObject` when the Save
     /// serializer writes this object out, so a later `WriteClassFile` in the
     /// same session skips it. Persists across `Save` commands exactly like the
@@ -46,6 +52,7 @@ impl DssObjData {
             name: name.into(),
             prp_sequence: vec![0; num_props + 1],
             deferred_errors: Vec::new(),
+            deferred_abort: false,
             has_been_saved: false,
             uuid: None,
         }
@@ -79,9 +86,26 @@ impl DssObjData {
         self.deferred_errors.push(msg.into());
     }
 
+    /// Queue a `DoErrorMsg`-style message: record it like [`Self::push_error`]
+    /// **and** request a solution abort (Pascal `DoErrorMsg` sets
+    /// `DSS.SolutionAbort := True`, `DSSGlobals.pas:265`; `DoSimpleMsg` does
+    /// not). The executive lifts the flag via [`Self::take_abort`] when it
+    /// drains the deferred messages after the edit.
+    pub fn push_error_abort(&mut self, msg: impl Into<String>) {
+        self.deferred_errors.push(msg.into());
+        self.deferred_abort = true;
+    }
+
     /// Drain the queued messages (Pascal would have already logged them).
     pub fn take_errors(&mut self) -> Vec<String> {
         std::mem::take(&mut self.deferred_errors)
+    }
+
+    /// Take (and clear) the `DoErrorMsg` solution-abort request queued by
+    /// [`Self::push_error_abort`] — the executive lifts it into
+    /// `Solution.SolutionAbort` right after draining [`Self::take_errors`].
+    pub fn take_abort(&mut self) -> bool {
+        std::mem::take(&mut self.deferred_abort)
     }
 
     pub fn name(&self) -> &str {

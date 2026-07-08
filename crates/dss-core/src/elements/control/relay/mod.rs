@@ -543,10 +543,13 @@ impl Relay {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
             if self.monitored_element_terminal > mon.nterms as i32 {
-                // Pascal DoErrorMsg 384 then falls through (no Exit) — but the
-                // bus/CondOffset setup is skipped. We mirror: record + skip the
-                // bus set, still run the misc derived-value block below.
-                self.ccd.cd.obj.push_error(format!(
+                // Pascal `DoErrorMsg` 384 (Relay.pas:813) sets
+                // `SolutionAbort := True` then falls through (no Exit) — but the
+                // bus/CondOffset setup is skipped. We mirror: record + request
+                // the abort, skip the bus set, still run the misc block below.
+                // (Errors 385/386 below use `DoSimpleMsg` → record-only, no
+                // abort.)
+                self.ccd.cd.obj.push_error_abort(format!(
                     "Relay: \"{}\": Terminal no. \"{}\" does not exist. Re-specify terminal no. (Error 384)",
                     self.ccd.cd.obj.name(),
                     self.monitored_element_terminal
@@ -624,12 +627,16 @@ impl Relay {
     /// Pascal `TRelayObj.Sample`: refresh the live state from the controlled
     /// terminal, then dispatch to the sub-type sensing logic. `ctrl` is the
     /// controlled element, `mon` the monitored element (often the same object).
+    ///
+    /// Returns `true` if a sub-type requested a solution abort (only `TD21Logic`'s
+    /// coarse-time-step guard, error 388, does — Pascal `DoErrorMsg` →
+    /// `SolutionAbort`); the dispatch layer lifts it into `Solution.SolutionAbort`.
     pub(crate) fn sample(
         &mut self,
         ctrl: &mut dyn CktElement,
         mon: &mut dyn CktElement,
         ctx: &mut CtrlCtx,
-    ) {
+    ) -> bool {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
         // ControlledElement.ActiveTerminalIdx := ElementTerminal.
         if element_terminal <= ctrl.cd().nterms {
@@ -650,10 +657,12 @@ impl Relay {
             ctype::NEGVOLTAGE => self.neg_seq47_logic(mon, ctx),
             ctype::GENERIC => self.generic_logic(mon, ctx),
             ctype::DISTANCE => self.distance_logic(mon, ctx),
-            ctype::TD21 => self.td21_logic(mon, ctx),
+            // The only sub-type that can request a solution abort (error 388).
+            ctype::TD21 => return self.td21_logic(mon, ctx),
             ctype::DOC => self.directional_overcurrent_logic(mon, ctx),
             _ => {}
         }
+        false
     }
 
     /// Pascal `TPCElement.LookupVariable`: return the 1-based index of the first

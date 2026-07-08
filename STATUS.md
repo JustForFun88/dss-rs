@@ -32,13 +32,30 @@ state-flip's `system_y_changed` (the WP7.4 concern the old defer-note raised).
 `invcontrol_storage_vw.dss` + `invcontrol_storage_vv_vw.dss` flipped
 `pending:false` — controls live gate **46 matched / 4 pending** (per-step Storage
 P/Q/%stored/state + event log + meters/monitors + full model exact vs the pinned
-oracle; the VW curve bites −116.7 kW/ph → ~0 across the run). The two `tests.rs`
-pins were extended from "errors loudly" to the real dispatch, plus a new
-charging-CH-curve-selection unit test. No `TODO(compat)`/`NOT_PORTED` added; the
-yaxis-0 Storage `%Available` base is ported faithfully although no gate deck
-exercises it (all use the yaxis-1 default). Scope: only the `inv_control` module,
-the `dispatch.rs` env bridge, the `Storage::dckw` visibility, and the 2 controls
+oracle). The two `tests.rs` pins were extended from "errors loudly" to the real
+dispatch, plus a new charging-CH-curve-selection unit test. No
+`TODO(compat)`/`NOT_PORTED` added. Scope: only the `inv_control` module, the
+`dispatch.rs` env bridge, the `Storage::dckw` visibility, and the 2 controls
 manifest flags.
+
+**WPG.10 audit settlement (2026-07-08):** the two live decks were a **dead gate** —
+their source (`mvasc3=200`) + line held the storage bus at V≈0.998 pu, below the
+`vw` knee (x=1.05), so `CalcPVWcurve_limitpu` returned `PLimitVWpu=1.0` (flat
+region) and the battery discharged at FULL / then depleted to the 20% reserve and
+idled *regardless of the InvControl* (removing it reproduced the identical
+trajectory). The port code was **audited clean** — the gate, not the logic, was
+inert. Both decks **strengthened** so the volt-watt law genuinely bites (weak
+source `mvasc3=20` + resistive line `r1=2.0` + a 2 MW discharge lift the bus into
+the limiting region; battery sized so it never depletes over the 6 steps).
+Oracle-proven per GAPS §3 (two-process bit-identical + feature-sensitive
+WITH-vs-WITHOUT): **VW** settles at ~792 kW @ V≈1.038 pu (vs full 2000 kW @ 1.088
+WITHOUT); **VV_VW** at ~1306 kW + 657 kvar absorbed @ V≈1.022 pu (vs 2000 kW + 0
+kvar); %stored at step 6 diverges 61.9→35.1 (VW) / 50.5→35.1 (VV_VW) — far above
+the micro tolerance. The faithful port matches the oracle exactly (same fixpoint
+AND iteration count: 20 for VW, 36 for VV_VW). Minor coverage gap closed: the
+yaxis-0 `%Available` live-`DCkW` `Calc_PBase` branch and the `FVWStateRequested`
+curve-swap now have dedicated `inv_control/tests.rs` unit tests (the gate decks
+use the yaxis-1 default + no requested-flip).
 
 **GAPS round-2 (2026-07-08): five more GAPS ports (WPG.4/5/6/9/11) + four
 audit-fix worktrees, all merged to `phase-8-reporting` (HEAD `e82517b`); each
@@ -1577,13 +1594,34 @@ NewTimeStep`) iterations, and `DoPendingAction` sets the post-op `td21_quiet` wi
 (`Test/{,Reverse}TD21RelayTest.DSS` + the two `Version8/Distrib/Examples/DistanceRelays/`
 copies) `skipped_unsupported → solvable_now` (**178→182**, COVERAGE
 **53.1%→54.3%**) with `compare_eventlog: true`: all four pass the always-on live
-dynamics gate (`mode=dynamic stepsize=0.001 number=1200`) — event log (temporary-fault
-trip/clear + permanent-fault lockout sequence) **and** final state exact vs the pinned
-oracle (`corpus_live: 182 matched, 173 with full property parity`). No `TODO(compat)`
+dynamics gate (`mode=dynamic stepsize=0.001 number=1200`) — event log **and** final
+dynamic state exact vs the pinned oracle (`corpus_live: 182 matched, 173 with full
+property parity`). No `TODO(compat)`
 added; the one defensive divergence is a `td21_pt < 1` guard that skips the ring math
 when `dt <= 0` (Pascal would `mod 0`-crash; no deck sets `stepsize <= 0`). New relay
 unit tests: `lookup_variable_prefix_match`, Generic over/under/in-band + recalc-386,
 TD21 ring-alloc + forward-fault trip + reverse no-trip (relay lib tests 39→44).
+
+**WPG.12 audit settlement (2026-07-08).** (1) **Eventlog gating clarified** — the
+four migrated TD21 vendored decks do **not** set `eventlog=yes`, and Pascal gates
+the relay trip/reclose/lockout log lines on `ShowEventLog` (default FALSE), so
+`compare_eventlog` pins only the Fault APPLIED/CLEARED lines, **not** a relay
+trip/reclose/lockout sequence. That is not a regression escape: the TD21 trip +
+lockout is gated by the FULL-MODEL final dynamic-state (V/I/P) compare — a relay
+that fails to trip and lock out collapses the final voltages and fails the
+compare — with the fault-clear timing in the log as an indirect proxy. (2)
+**Swallowed-error fixed** — the TD21 coarse-time-step guard (error 388,
+`Relay.pas:1460`) and the out-of-range monitored-terminal check (error 384,
+`Relay.pas:813`) both go through Pascal `DoErrorMsg`, which sets
+`SolutionAbort := True` (`DSSGlobals.pas:265`); the port previously only recorded
+the message and solved on. Error 388 now returns an abort request up
+`Relay::sample` → the dispatch layer lifts it into `Solution.solution_abort` (the
+`Sample`-time analogue of CapControl's abort); error 384 sets a new
+`DssObjData::deferred_abort` (a `push_error_abort` = `DoErrorMsg` vs `push_error`
+= `DoSimpleMsg` distinction) that the executive lifts after `end_edit`. Errors
+385/386 use `DoSimpleMsg` (no abort) and stay record-only. New relay unit tests
+pin both aborts + the 385/386 non-abort; no vendored deck exercises a coarse
+step (all use `stepsize=0.001`), so the four TD21 decks are unaffected.
 
 | Phase | Scope | Status |
 |------|-------|--------|

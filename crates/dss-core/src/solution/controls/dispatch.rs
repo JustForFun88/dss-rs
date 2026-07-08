@@ -898,7 +898,10 @@ pub(super) fn dispatch_control(
                         let mon_elem = mon_clone
                             .as_ckt_element_mut()
                             .expect("controlled element is a circuit element");
-                        rel.sample(ctrl, mon_elem, &mut ctx);
+                        // A `TD21` relay on a coarse time step requests a
+                        // solution abort (error 388, Pascal `DoErrorMsg` →
+                        // `SolutionAbort`); lifted below like CapControl's.
+                        solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     } else {
                         let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
                         let rel = cobj
@@ -919,7 +922,10 @@ pub(super) fn dispatch_control(
                                 "Monitored element is not a circuit element",
                             ));
                         };
-                        rel.sample(ctrl, mon_elem, &mut ctx);
+                        // A `TD21` relay on a coarse time step requests a
+                        // solution abort (error 388, Pascal `DoErrorMsg` →
+                        // `SolutionAbort`); lifted below like CapControl's.
+                        solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     }
                 }
                 ControlOp::Action { code } => {
