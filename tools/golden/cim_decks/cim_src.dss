@@ -1,0 +1,12 @@
+// GAPS_PLAN WPG.18 Stage A gate deck: Vsource + buscoords, nothing else - the
+// smallest circuit that exercises the whole ExportCDPSM *scaffolding* (regions/
+// substation/feeder/location, the six OperationalLimitTypes, the BaseVoltage +
+// op-limit-set sweep over LegalVoltageBases, the bus -> TopologicalNode/
+// ConnectivityNode sweep, the swing-bus TopologicalIsland, the EnergySource
+// sweep, and the fixed LoadResponseCharacteristic catalog) without touching any
+// not-yet-ported class (Load/Line/Capacitor/Transformer/... all stay empty, so
+// every NOT_PORTED arm is a no-op - see cim/export.rs `not_ported_if_any`).
+New Circuit.cim_src basekv=12.47 bus1=sourcebus pu=1.0 phases=3
+Solve
+SetBusXY bus=sourcebus x=1000 y=2000
+Solve
