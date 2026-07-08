@@ -133,6 +133,10 @@ impl Dss {
             cmd::RELCALC => self.do_relcalc_cmd(),
             cmd::REDUCE => self.do_reduce_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
+            // Pascal `DoBusCoordsCmd(TRUE)` — the swap-XY (Lat/Lon) variant; the
+            // implementation is shared with BusCoords (WPG.16 wires the dispatch
+            // so the GICExample corpus deck's trailing `LatLongCoords` runs).
+            cmd::LATLONGCOORDS => self.do_bus_coords_cmd(true),
             cmd::EXPORT => self.do_export_cmd(),
             cmd::SAVE => self.do_save_cmd(),
             cmd::DUMP => self.do_dump_cmd(),
@@ -1051,6 +1055,27 @@ impl Dss {
             }
         }
 
+        // GICsource splices itself into a Line with the SAME NAME (Pascal
+        // `RecalcElementData` runs `LineClass.Find(Name)` then inserts a
+        // `GIC_<name>` bus and rewrites the Line's Bus2). The constructor/recalc
+        // have no store access, so resolve the Line by the GICsource's own name
+        // through the foreign view here and hand it — with the Line's present
+        // Bus2 — to the source; `end_edit` → `recalc` then decides whether to
+        // splice and queues the Line Bus2 rewrite as a deferred RefAction.
+        if objects[oi].as_any().is::<gic_source::GicSource>() {
+            let name = objects[oi].data().name().to_string();
+            let resolved = foreign.find("Line", &name).and_then(|(r, o)| {
+                o.as_ckt_element()
+                    .map(|e| (r, e.cd().get_bus(2).to_string()))
+            });
+            if let Some(gs) = objects[oi]
+                .as_any_mut()
+                .downcast_mut::<gic_source::GicSource>()
+            {
+                gs.set_resolved_line(resolved);
+            }
+        }
+
         // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it
@@ -1142,6 +1167,14 @@ impl Dss {
                         for (i, &c) in closed.iter().enumerate() {
                             cd.set_conductor_closed(*terminal, i + 1, c);
                         }
+                    }
+                }
+                // GICsource splice: rewrite the spliced Line's Bus2 to the
+                // inserted GIC_<name> bus (Pascal drives it through the Line's
+                // property path; the Bus2 side effect is a plain rename).
+                crate::obj::base::RefAction::SetElementBus { terminal, bus, .. } => {
+                    if let Some(elem) = tgt.as_ckt_element_mut() {
+                        elem.cd_mut().set_bus(*terminal, bus);
                     }
                 }
                 // OCP-device flags for the reliability sweep (Pascal

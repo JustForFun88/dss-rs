@@ -1,0 +1,179 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "gicline",
+ "scenarios": [
+  {
+   "name": "gicline_default",
+   "commands": [
+    "New GICLine.l1 bus1=b1 bus2=b2"
+   ],
+   "target": "GICLine.l1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b2",
+    "Volts": "113.323162579526",
+    "Angle": "0",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "R": "1",
+    "X": "0",
+    "C": "0",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gicline_volts",
+   "commands": [
+    "New GICLine.l1 bus1=b1 bus2=b2 phases=3 R=3.5 X=0.2 Volts=120 Angle=15"
+   ],
+   "target": "GICLine.l1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b2",
+    "Volts": "120",
+    "Angle": "15",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "R": "3.5",
+    "X": "0.2",
+    "C": "0",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gicline_geodesy",
+   "commands": [
+    "New GICLine.l1 bus1=b1 bus2=b2 R=2.8 EN=1.0 EE=1.0 Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605"
+   ],
+   "target": "GICLine.l1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b2",
+    "Volts": "113.323162579526",
+    "Angle": "0",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "R": "2.8",
+    "X": "0",
+    "C": "0",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gicline_cap",
+   "commands": [
+    "New GICLine.l1 bus1=b1 bus2=b2 R=3.1 C=32.0 Volts=80 Angle=0"
+   ],
+   "target": "GICLine.l1",
+   "properties": {
+    "Bus1": "b1",
+    "Bus2": "b2",
+    "Volts": "80",
+    "Angle": "0",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "R": "3.1",
+    "X": "0",
+    "C": "32",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gicline_1phase",
+   "commands": [
+    "New GICLine.l1 bus1=c1.1 phases=1 R=1.5 Volts=50"
+   ],
+   "target": "GICLine.l1",
+   "properties": {
+    "Bus1": "c1.1",
+    "Bus2": "c1",
+    "Volts": "50",
+    "Angle": "0",
+    "Frequency": "0.1",
+    "Phases": "1",
+    "R": "1.5",
+    "X": "0",
+    "C": "0",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gicline_makelike",
+   "commands": [
+    "New GICLine.base bus1=b1 bus2=b2 phases=3 R=2.5 X=0.3 C=5 EN=2.0 EE=1.5 Lat1=40 Lon1=-80 Lat2=41 Lon2=-79 Angle=15",
+    "New GICLine.l1 like=base bus1=c1"
+   ],
+   "target": "GICLine.l1",
+   "properties": {
+    "Bus1": "c1",
+    "Bus2": "c1",
+    "Volts": "113.323162579526",
+    "Angle": "15",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "R": "2.5",
+    "X": "0.3",
+    "C": "5",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}

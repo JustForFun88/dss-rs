@@ -29,6 +29,8 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::meter::EnergyMeter;
 use crate::elements::meter::monitor::Monitor;
+use crate::elements::pc::gic_line::GicLine;
+use crate::elements::pc::gic_source::GicSource;
 use crate::elements::pc::isource::Isource;
 use crate::elements::pc::upfc::Upfc;
 use crate::elements::pc::vsource::VSource;
@@ -95,6 +97,17 @@ pub(super) fn dump_override(
     // for why this dispatch is still needed.
     if let Some(i) = any.downcast_ref::<Isource>() {
         i.dump_body(out, cx, complete);
+        return true;
+    }
+    // Real Pascal override (GICLine.pas:627 — Z Matrix / VE / VN block).
+    if let Some(g) = any.downcast_ref::<GicLine>() {
+        g.dump_body(out, cx, complete);
+        return true;
+    }
+    // Not a real Pascal override (GICsource has none) — NON_PCPD like Isource,
+    // needs the TPCElement dump ordering (see `gic_source/dump.rs`).
+    if let Some(g) = any.downcast_ref::<GicSource>() {
+        g.dump_body(out, cx, complete);
         return true;
     }
     if let Some(u) = any.downcast_ref::<Upfc>() {
