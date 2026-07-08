@@ -133,6 +133,28 @@ pub fn circuit_node(buf: &mut String, prf: ProfileChoice, feeder_uuid: Uuid) {
     );
 }
 
+/// Pascal `TCIMExporterHelper.PhaseKindNode` (`ExportCIMXML.pas:1602`): a
+/// `<Root>.phase` reference into `SinglePhaseKind.<val>` (per-phase objects).
+pub fn phase_kind_node(buf: &mut String, prf: ProfileChoice, root: &str, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(r#"  <cim:{root}.phase rdf:resource="{CIM_NS}#SinglePhaseKind.{val}"/>"#),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.ShuntConnectionKindNode` (`ExportCIMXML.pas:1614`):
+/// `<Root>.phaseConnection` into `PhaseShuntConnectionKind.<val>` (D/Y/Yn/I).
+pub fn shunt_connection_kind_node(buf: &mut String, prf: ProfileChoice, root: &str, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:{root}.phaseConnection rdf:resource="{CIM_NS}#PhaseShuntConnectionKind.{val}"/>"#
+        ),
+    );
+}
+
 /// Pascal `TCIMExporterHelper.OpLimitDirectionEnum` (`ExportCIMXML.pas:1494`).
 pub fn op_limit_direction_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
     write_cim_ln(

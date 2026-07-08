@@ -122,3 +122,10 @@ fn run_case(circuit: &str) {
 fn cim_src() {
     run_case("cim_src");
 }
+
+/// Stage B: EnergyConsumer sweep + AttachLoadPhases/AttachSecondaryPhases +
+/// EnergyConnectionProfile (wye/delta/secondary loads + a daily-shape ECP).
+#[test]
+fn cim_load() {
+    run_case("cim_load");
+}
