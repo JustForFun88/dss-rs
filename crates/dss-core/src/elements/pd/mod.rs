@@ -4,6 +4,7 @@
 //!
 //! [`CktElement::get_currents`]: crate::elements::traits::CktElement::get_currents
 
+pub mod auto_trans;
 pub mod capacitor;
 pub mod fault;
 pub mod fuse;
@@ -12,6 +13,7 @@ pub mod reactor;
 pub mod transformer;
 pub mod winding;
 
+pub use auto_trans::AutoTrans;
 pub use capacitor::Capacitor;
 pub use fault::Fault;
 pub use fuse::Fuse;

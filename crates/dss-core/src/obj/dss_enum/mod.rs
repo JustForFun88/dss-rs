@@ -61,6 +61,9 @@ pub struct EnumRegistry {
     pub core_type: EnumId,
     /// 'Phase Sequence' reused for transformer LeadLag (`DSS.LeadLagEnum`).
     pub lead_lag: EnumId,
+    /// 'AutoTrans: Connection' (AutoTrans.pas `AutoTransConnectionEnum`; adds
+    /// `series` to wye/delta).
+    pub autotrans_connection: EnumId,
     /// 'RegControl: Phase Selection' (RegControl.pas `PhaseEnum`).
     pub reg_control_phase: EnumId,
     /// 'Monitored Phase' (`DSS.MonPhaseEnum`, CapControl PT/CT phase).

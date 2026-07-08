@@ -47,6 +47,7 @@ pub enum ElemKind {
     Line,
     Load,
     Transformer,
+    AutoTrans,
     Capacitor,
     Reactor,
     Fault,
@@ -91,6 +92,10 @@ pub struct Circuit {
     pub lines: Vec<ElemRef>,
     pub loads: Vec<ElemRef>,
     pub transformers: Vec<ElemRef>,
+    /// AutoTransformers (Pascal `AutoTransformers`): a *separate* list from
+    /// `transformers` (Pascal `AUTOTRANS_ELEMENT` → `AutoTransformers.Add`), on
+    /// `pd_elements` like any PD element.
+    pub auto_transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
     pub reactors: Vec<ElemRef>,
     /// Fault elements (`FAULTOBJECT or NON_PCPD_ELEM`): a YPrim that stamps into
@@ -273,6 +278,7 @@ impl Circuit {
             lines: Vec::new(),
             loads: Vec::new(),
             transformers: Vec::new(),
+            auto_transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
             reactors: Vec::new(),
             faults: Vec::new(),
@@ -376,6 +382,13 @@ impl Circuit {
             ElemKind::Transformer => {
                 self.pd_elements.push(r);
                 self.transformers.push(r);
+            }
+            // AutoTrans zones as a generic PD element (Pascal has no special
+            // EnergyMeter handling) and joins its own `AutoTransformers` list, NOT
+            // `transformers` (Pascal `AUTOTRANS_ELEMENT` → `AutoTransformers.Add`).
+            ElemKind::AutoTrans => {
+                self.pd_elements.push(r);
+                self.auto_transformers.push(r);
             }
             ElemKind::Capacitor => {
                 self.pd_elements.push(r);

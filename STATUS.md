@@ -9,6 +9,34 @@
 
 Last updated: 2026-07-08.
 
+**WPG.15 AutoTrans Stage A (2026-07-08): the class skeleton — props + dump +
+`RecalcElementData`/`CalcY_Terminal`, no solve.** New module
+`crates/dss-core/src/elements/pd/auto_trans/` (mod/windings/yterminal/accessors/
+dump/save/tests), cloned from the ported Transformer and adapted to the auto:
+**41 class props** (49 incl. the PDClass/CktElement tails + Like) in Pascal
+`TAutoTransProp` order (`AutoTrans.pas:364`) — `XHX/XHT/XXT` (trap_zero 7/35/30),
+a dedicated `AutoTransConnectionEnum {wye=0,delta=1,series=2}` (registered in
+`EnumRegistry`, aliases y/ln→wye, ll→delta, s→series), **no XfmrCode, no
+RNeut/XNeut**, `Core`/`RDCOhms` in the winding-definition section, and
+`WdgCurrents` carrying `READS_VTERMINAL`. `PropertySideEffects` (`:574`) force
+wdg1=Series/wdg2=Wye; `RecalcElementData` (`:919`) derives the series `kVSeries`
+VBase, `Rdc`, anti-float and Norm/EmergAmps (the default `RDCOhms=5.957…` /
+`NormAmps=6.194…` are oracle-exact); `CalcY_Terminal` (`:1856`, incl. the auto
+`ZCorrected`/`puXst`/`GICBuildYTerminal` corrections) is ported for the dump. The
+**solve path (`CalcYPrim`, the `SetNodeRef` node aliasing, the `GetCurrents`
+fold) is `NOT_PORTED` behind a loud error** (owner: Stage B) — a solve of an
+AutoTrans-bearing circuit aborts (the ymatrix builder lifts the queued error to
+`SolutionAbort`), so the 7 pending corpus decks stay red. Registered in
+`construct.rs` between IndMach012 and InvControl (Pascal DSSClassDefs.pas:270),
+with `ElemKind::AutoTrans` → `pd_elements` + a separate `auto_transformers` list
+(Pascal `AUTOTRANS_ELEMENT`, NOT `Transformers`) and `is_pd_element` recognition
+(meter zones + isolated report). **Gate A green:** `props_roundtrip`
+(`tests/golden/props/autotrans.json`, 6 scenarios) + byte-exact
+`dump_autotrans`/`dump_autotrans3` goldens + the `[AutoTrans]` section rejoined
+`dump3_commands` (unstripped) + 4 module unit tests; fmt/clippy/`cargo test
+--workspace` all green (13 corpus pending unchanged). Next: Stage B (the auto
+electrical model + flip the 3 asymmetric decks).
+
 **GAPS round-2 (2026-07-08): five more GAPS ports (WPG.4/5/6/9/11) + four
 audit-fix worktrees, all merged to `phase-8-reporting` (HEAD `e82517b`); each
 port had an opus `/audit-code` + `/audit-tests` pair and each fix an opus

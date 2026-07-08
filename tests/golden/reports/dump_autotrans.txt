@@ -1,0 +1,54 @@
+
+New "AutoTrans.t1"
+! ENABLED
+~ NumWindings=2
+~ phases=3
+~ Wdg=1 bus=h
+~ conn=Series
+~ kv=115
+~ kVA=40000
+~ tap=1
+~ %r=0.1
+~ Rdcohms=0.04590177
+~ Wdg=2 bus=mid
+~ conn=wye
+~ kv=34.5
+~ kVA=40000
+~ tap=1
+~ %r=0.1
+~ Rdcohms=0.008430938
+~ XHX=6.000
+~ XHT=35.000
+~ XXT=30.000
+~ Xscmatrix= "6.00 "
+~ NormMAxHkVA=44000
+~ EmergMAxHkVA=60000
+~ thermal=2.0
+~ n=0.8
+~ m=0.8
+~ flrise=65
+~ hsrise=15
+~ %loadloss=0
+~ %noloadloss=0
+~ NormHkVA=44000
+~ EmergHkVA=60000
+~ Sub=No
+~ MaxTap=1.1
+~ MinTap=0.9
+~ NumTaps=32
+~ SubName=
+~ %IMag=0
+~ ppm_Antifloat=1
+~ %Rs=[0.1, 0.1, ]
+~ Bank=
+~ XRConst=No
+~ LeadLag=Lag
+~ WdgCurrents=0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 
+~ NormAmps=315.570333470106
+~ EmergAmps=430.32318200469
+~ FaultRate=0.007
+~ pctPerm=0
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=

@@ -223,6 +223,15 @@ impl Dss {
                 |name| Box::new(ind_mach012::IndMach012::new(name)),
                 ElemKind::IndMach012,
             ),
+            // AutoTrans registers after IndMach012, before InvControl (Pascal
+            // DSSClassDefs.pas:270; the GICsource class between them, :267, is
+            // unported). Registration order does not affect node ordering, which
+            // follows element creation order.
+            DssClass::ckt_class(
+                auto_trans::class_props(&enums),
+                |name| Box::new(auto_trans::AutoTrans::new(name)),
+                ElemKind::AutoTrans,
+            ),
             // VSConverter (Pascal DSSClassDefs.pas VS_CONVERTER) — a power-flow
             // AC/DC bridge PC element; no node-order dependence (creation order).
             DssClass::ckt_class(

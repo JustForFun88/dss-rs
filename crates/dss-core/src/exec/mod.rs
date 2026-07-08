@@ -38,7 +38,9 @@ pub(crate) use crate::elements::meter::sensor;
 pub(crate) use crate::elements::pc::{
     generator, ind_mach012, isource, load, pvsystem, storage, upfc, vccs, vs_converter, vsource,
 };
-pub(crate) use crate::elements::pd::{capacitor, fault, fuse, line, reactor, transformer};
+pub(crate) use crate::elements::pd::{
+    auto_trans, capacitor, fault, fuse, line, reactor, transformer,
+};
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};

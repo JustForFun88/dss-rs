@@ -558,6 +558,63 @@ SCENARIOS = [
             "New Transformer.t6 like=base buses=(p2, s2)",
         ],
     },
+    # --- AutoTrans (WPG.15) ---
+    # The autotransformer: Series (conn=s, code 2)/Common (wye)/Delta-tertiary
+    # windings, the XHX/XHT/XXT reactance set, no XfmrCode, no RNeut/XNeut. The
+    # PropertySideEffects force winding 1 = Series and winding 2 = Wye; the
+    # RDCOhms default derives from the recalc'd series kVSeries VBase (probed
+    # 2026-07-08). No garbage-getter props (no CMatrix family), so no
+    # zero_garbage.
+    {
+        "name": "autotrans_default",
+        "target": "AutoTrans.a1",
+        "commands": ["New AutoTrans.a1"],
+    },
+    {
+        "name": "autotrans_2wdg",
+        "target": "AutoTrans.a2",
+        "commands": [
+            "New AutoTrans.a2 phases=3 windings=2 xhx=8.5 "
+            "buses=(h, x) conns=(s, w) kvs=(115, 69) kvas=(50000, 50000) %r=0.08",
+        ],
+    },
+    {
+        "name": "autotrans_3wdg",
+        "target": "AutoTrans.a3",
+        "commands": [
+            "New AutoTrans.a3 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
+            "%imag=0.0329 %noloadloss=0.02402 buses=(high, low, tert) "
+            "conns=(s, w, d) kvs=(345, 161, 13.8) kvas=(330000, 330000, 72000)",
+        ],
+    },
+    {
+        "name": "autotrans_wdg_seq",
+        "target": "AutoTrans.a4",
+        "commands": [
+            "New AutoTrans.a4 phases=3 windings=2",
+            "~ wdg=1 bus=high conn=s kV=115 kVA=40000 %r=0.10 "
+            "maxtap=1.10 mintap=0.90 numtaps=32",
+            "~ wdg=2 bus=low  conn=w kV=34.5 kVA=40000 %r=0.10 rdcohms=0.5",
+        ],
+    },
+    {
+        "name": "autotrans_xscarray",
+        "target": "AutoTrans.a5",
+        "commands": [
+            "New AutoTrans.a5 phases=3 windings=3 buses=(a, b, c) "
+            "conns=(s, w, d) kvs=(345, 161, 13.8) kvas=(330000, 330000, 72000) "
+            "xscarray=(7.23 24.45 28.45)",
+        ],
+    },
+    {
+        "name": "autotrans_makelike",
+        "target": "AutoTrans.a6",
+        "commands": [
+            "New AutoTrans.base phases=3 windings=2 buses=(h, x) conns=(s, w) "
+            "kvs=(115, 69) kvas=(40000, 40000) xhx=8.5 %r=0.08",
+            "New AutoTrans.a6 like=base buses=(h2, x2)",
+        ],
+    },
     # --- Capacitor (WP4.5) ---
     # NOTE: the oracle's `DoubleSymMatrixProperty` getter for `Capacitor.CMatrix`
     # reads uninitialized memory (it returns denormal garbage even when
