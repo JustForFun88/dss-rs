@@ -208,6 +208,21 @@ silently no-op. RNG-carried scenarios follow GAPS §2.1 unchanged (never a
 statistical gate). Record the validation transcript facts in the manifest
 `note`.
 
+## Source-integrity gate — ritual step 0 (before the model-tier check)
+
+The Pascal we port FROM — `.inputs/dss_capi` (186 `.pas` files), plus
+`.inputs/electricdss-tst` for oracle/live work — is the **specification**. Before doing
+anything, and re-checked continuously (not only at kickoff), confirm that folder exists
+and is non-empty. If it has vanished — missing or empty — at **any** point in the work,
+**STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
+"port" a source you cannot read. Tell the user the vendored source is gone and must be
+re-vendored, then wait. Reply exactly:
+**«Исходник порта (`.inputs/dss_capi`) отсутствует или пуст — работа остановлена. Восстанови
+vendored-исходник (re-vendor) и повтори команду.»**
+No spec → nothing to port; fabricating one from memory is a silent, unverifiable
+divergence — far worse than stopping. This gate runs **ahead of the tier/refuse check**
+(`PLAN_SEQUENCE.md` §Model-tier protocol).
+
 ## 2. Workflow — the per-step ritual (do every step, in order, without being told)
 
 0. **Tier check** (protocol: `PLAN_SEQUENCE.md` §Model-tier protocol). Look up
