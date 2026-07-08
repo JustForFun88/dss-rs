@@ -873,6 +873,67 @@ mod dispatch {
     }
 
     #[test]
+    fn drc_exponential_control_model_runs_pi_controller() {
+        // WPG.9: ControlModel=1 (Exponential) drives CalcDRC_vars's else branch (the
+        // TPICtrl PI controller over the *full* DeltaQ, InvControl.pas l.2804-2809)
+        // instead of the Linear QOldDRC-relative formula. Same absorb scenario as
+        // `drc_absorbs_on_rising_voltage` (V=1.05pu, window seeded at 1.0pu ->
+        // deltaV=+0.05 -> QDesireDRCpu=-2.5, clamped by Check_Qlimits to
+        // QDesireEndpu=-1.0), so the PI setpoint is the *unclamped-by-QOldDRC*
+        // product DeltaQ = -1.0*QHeadRoomNeg(600) = -600 every call (no dependence on
+        // QOldDRC), unlike Linear's -599. kDen/kNum are recomputed from
+        // |FdeltaQ_factor|=0.2 each call. Both filter taps start at 0 so the first
+        // `SolvePI` output is exactly 0 (a wrong q_desired_* field would coincide
+        // with this default); a second Sample+DoPendingAction call (repeat trigger:
+        // control_iter stays 1) exercises the delayed PI tap and pins the non-zero
+        // -600*kNum response — this is what catches a wrong DeltaQ or a dropped
+        // per-call kDen/kNum recompute.
+        let mut ic = drc_ic();
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0]
+            .f_drc_roll_avg_window
+            .add(7200.0, 3600.0, 2.0);
+        ic.do_pending_action(&mut env); // first PI step
+        let k_den = (-0.2_f64).exp();
+        let k_num = 1.0 - k_den;
+        {
+            let cv = &ic.ctrl_vars[0];
+            assert!(
+                (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+                "kDen = {}",
+                cv.pi_ctrl.k_den
+            );
+            assert!(
+                (cv.pi_ctrl.k_num - k_num).abs() < 1e-12,
+                "kNum = {}",
+                cv.pi_ctrl.k_num
+            );
+            assert_eq!(
+                cv.q_desired_drc, 0.0,
+                "QDesiredDRC first PI step = {}",
+                cv.q_desired_drc
+            );
+            assert!(
+                (cv.q_desire_drcpu - (-2.5)).abs() < 1e-9,
+                "QDesireDRCpu = {}",
+                cv.q_desire_drcpu
+            );
+        }
+        ic.sample(&mut env).unwrap(); // control_iter==1 -> re-triggers
+        ic.do_pending_action(&mut env); // second PI step
+        let cv = &ic.ctrl_vars[0];
+        let expected = -600.0 * k_num;
+        assert!(
+            (cv.q_desired_drc - expected).abs() < 1e-6,
+            "QDesiredDRC second PI step = {} expected {expected}",
+            cv.q_desired_drc
+        );
+        assert!((env.ders[0].requested_kvar - expected).abs() < 1e-6);
+    }
+
+    #[test]
     fn vv_drc_sums_curve_and_drc_q() {
         // CombiMode=VV_DRC at V = 1.01 pu (just above the deadband) with the window
         // seeded at 1.0 pu (deltaV = +0.01):
@@ -947,6 +1008,84 @@ mod dispatch {
             env.pushes
         );
         assert!(!env.pushes.is_empty());
+    }
+
+    #[test]
+    fn vv_drc_exponential_control_model_runs_pi_controller() {
+        // WPG.9: ControlModel=1 (Exponential) drives CalcVVDRC_vars's else branch
+        // (the TPICtrl PI controller over the *full* DeltaQ, InvControl.pas
+        // l.2840-2845). Same combi scenario as `vv_drc_sums_curve_and_drc_q`
+        // (V=1.01pu, window seeded at 1.0pu): QDesireVVpu=-0.125,
+        // QDesireDRCpu=-0.5, q_sum=-0.625 (unclamped) -> QDesireEndpu=-0.625, so the
+        // PI setpoint DeltaQ = -0.625*QHeadRoomNeg(600) = -375 every call (the full
+        // product, not decremented by QOldVVDRC). kDen/kNum recomputed from
+        // |FdeltaQ_factor|=0.2 each call; first PI step (zeroed taps) = 0. A second
+        // Sample+DoPendingAction call (control_iter stays 1 -> repeat trigger) pins
+        // the delayed-tap response -375*kNum, catching a wrong DeltaQ / wrong
+        // q_desired_* field / a dropped per-call kDen/kNum recompute.
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        ic.dbv_min = 1.0;
+        ic.dbv_max = 1.0;
+        ic.ar_gra_low_v = 50.0;
+        ic.ar_gra_hi_v = 50.0;
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.01, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0]
+            .f_drc_roll_avg_window
+            .add(7200.0, 3600.0, 2.0);
+        ic.do_pending_action(&mut env); // first PI step
+        let k_den = (-0.2_f64).exp();
+        let k_num = 1.0 - k_den;
+        {
+            let cv = &ic.ctrl_vars[0];
+            assert!(
+                (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+                "kDen = {}",
+                cv.pi_ctrl.k_den
+            );
+            assert!(
+                (cv.pi_ctrl.k_num - k_num).abs() < 1e-12,
+                "kNum = {}",
+                cv.pi_ctrl.k_num
+            );
+            assert_eq!(
+                cv.q_desired_vvdrc, 0.0,
+                "QDesiredVVDRC first PI step = {}",
+                cv.q_desired_vvdrc
+            );
+            assert!(
+                (cv.q_desire_vvpu - (-0.125)).abs() < 1e-9,
+                "QDesireVVpu = {}",
+                cv.q_desire_vvpu
+            );
+            assert!(
+                (cv.q_desire_drcpu - (-0.5)).abs() < 1e-9,
+                "QDesireDRCpu = {}",
+                cv.q_desire_drcpu
+            );
+        }
+        ic.sample(&mut env).unwrap(); // control_iter==1 -> re-triggers
+        ic.do_pending_action(&mut env); // second PI step
+        let cv = &ic.ctrl_vars[0];
+        let expected = -375.0 * k_num;
+        assert!(
+            (cv.q_desired_vvdrc - expected).abs() < 1e-6,
+            "QDesiredVVDRC second PI step = {} expected {expected}",
+            cv.q_desired_vvdrc
+        );
+        assert!((env.ders[0].requested_kvar - expected).abs() < 1e-6);
     }
 
     #[test]
@@ -1094,6 +1233,72 @@ mod dispatch {
             "Storage AVR iter-1 kvar = {}",
             env.ders[0].requested_kvar
         );
+    }
+
+    #[test]
+    fn avr_exponential_control_model_runs_pi_controller() {
+        // WPG.9: ControlModel=1 (Exponential) drives CalcAVR_vars's else branch (the
+        // TPICtrl PI controller over the *full* DeltaQ, InvControl.pas l.2746-2751),
+        // not the Linear literal-0.2-over-QOldAVR formula. Same iter1->iter2->iter3
+        // path as `avr_iter3_regulator_step_clamped_by_dqmax` (iter1 seeds
+        // QHeadRoom/2=300 kvar at v=1.009; the solve drops v to 1.0; iter2 estimates
+        // DQDV≈55.5556); iter3's regulator computes QDesireAVRpu=-0.1 (the DQmax
+        // clamp), so the PI setpoint DeltaQ = -0.1*QHeadRoomNeg(600) = -60. kDen/kNum
+        // recomputed from |FdeltaQ_factor|=0.2 each call; first PI step (zeroed taps)
+        // = 0. A second Sample+DoPendingAction call at iter3 re-triggers (the
+        // f_v_setpoint_limited/Qoutput mismatch keeps AVR firing) and exercises the
+        // delayed PI tap: the response to the *first* call's setpoint, -60*kNum —
+        // this is what catches a wrong DeltaQ / wrong q_desired_avr field / a dropped
+        // per-call kDen/kNum recompute.
+        let mut ic = avr_ic();
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.009, 200.0)]);
+        env.control_iter = 1;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 1
+        env.ders[0].vmag = 1.0 * env.ders[0].vbase;
+        env.control_iter = 2;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 2 → DQDV ≈ 55.5556
+        env.control_iter = 3;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 3, call #1 → first PI step
+        let k_den = (-0.2_f64).exp();
+        let k_num = 1.0 - k_den;
+        {
+            let cv = &ic.ctrl_vars[0];
+            assert!(
+                (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+                "kDen = {}",
+                cv.pi_ctrl.k_den
+            );
+            assert!(
+                (cv.pi_ctrl.k_num - k_num).abs() < 1e-12,
+                "kNum = {}",
+                cv.pi_ctrl.k_num
+            );
+            assert_eq!(
+                cv.q_desired_avr, 0.0,
+                "QDesiredAVR first PI step = {}",
+                cv.q_desired_avr
+            );
+            assert!(
+                (cv.q_desire_avrpu - (-0.1)).abs() < 1e-9,
+                "QDesireAVRpu = {} (expected the -DQmax clamp -0.1)",
+                cv.q_desire_avrpu
+            );
+        }
+        ic.sample(&mut env).unwrap(); // iter 3, call #2 → re-triggers
+        ic.do_pending_action(&mut env); // second PI step
+        let cv = &ic.ctrl_vars[0];
+        let expected = -60.0 * k_num;
+        assert!(
+            (cv.q_desired_avr - expected).abs() < 1e-6,
+            "QDesiredAVR second PI step = {} expected {expected}",
+            cv.q_desired_avr
+        );
+        assert!((env.ders[0].requested_kvar - expected).abs() < 1e-6);
     }
 
     /// A WATTPF control over a `wattpf_curve`, RefReactivePower=VARMAX.
