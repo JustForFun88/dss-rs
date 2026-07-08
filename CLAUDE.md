@@ -62,7 +62,7 @@ around them.
 - **Newton `Powers`/`Losses` stale `Iterminal`** — after `Set algorithm=Newton`,
   `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
   so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
-  current while `Currents` recompute fresh (`P ≠ V·conj(I)`). Deterministic,
+  current while `Currents` recompute fresh (`S ≠ V·conj(I)`). Deterministic,
   defined, not state-poisoning → reproduced (`TODO(compat)` in
   `exec/view.rs::snapshot_elements`); it is the only channel distinguishing
   Newton from the normal fixed-point on the `newton*` gates.
