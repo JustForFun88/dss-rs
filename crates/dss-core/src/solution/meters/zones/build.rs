@@ -11,6 +11,7 @@ use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
 use crate::elements::pc::pvsystem::PVSystem;
 use crate::elements::pc::storage::Storage;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
@@ -46,6 +47,7 @@ fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
     let any = store.obj(r).as_any();
     any.downcast_ref::<Line>().is_some()
         || any.downcast_ref::<Transformer>().is_some()
+        || any.downcast_ref::<AutoTrans>().is_some()
         || any.downcast_ref::<Capacitor>().is_some()
         || any.downcast_ref::<Reactor>().is_some()
 }

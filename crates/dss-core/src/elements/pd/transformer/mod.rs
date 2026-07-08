@@ -327,6 +327,10 @@ impl Transformer {
 /// voltage/current buffers are 0-based, length `nphases`/`yorder`.
 pub trait ControlledTransformer {
     fn name(&self) -> &str;
+    /// Pascal `FullName` (`Class.name`) — RegControl's Series-connection guard
+    /// message reports the controlled element's full name, so it names the
+    /// concrete class (`Transformer.x` or `AutoTrans.x`).
+    fn full_name(&self) -> String;
     fn n_phases(&self) -> usize;
     fn n_conds(&self) -> usize;
     fn y_order(&self) -> usize;
@@ -346,4 +350,23 @@ pub trait ControlledTransformer {
     fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]);
     /// `ControlledElement.GetCurrents(CBuffer)`.
     fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]);
+}
+
+/// View a [`DssObject`](crate::obj::base::DssObject) as a
+/// [`ControlledTransformer`] — the Pascal `TControlledTransformerObj` base,
+/// implemented by both `Transformer` and `AutoTrans` (the two members of
+/// RegControl's `Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`). Used
+/// by every surface that reaches the controlled transformer through a
+/// RegControl reference (`Export`/`Show Taps`, the live `TapNum` reads).
+pub fn as_controlled_transformer(
+    obj: &dyn crate::obj::base::DssObject,
+) -> Option<&dyn ControlledTransformer> {
+    let any = obj.as_any();
+    if let Some(t) = any.downcast_ref::<Transformer>() {
+        return Some(t);
+    }
+    if let Some(t) = any.downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>() {
+        return Some(t);
+    }
+    None
 }

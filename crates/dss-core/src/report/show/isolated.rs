@@ -8,6 +8,7 @@
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::{CktTree, build_active_bus_adjacency_lists};
 use crate::elements::ckt::ElemFlags;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
@@ -20,7 +21,11 @@ use crate::solution::topology::get_isolated_sub_area;
 /// Pascal `(DSSObjType and BASECLASSMASK) = PD_ELEMENT`.
 fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
     let any = store.obj(r).as_any();
-    any.is::<Line>() || any.is::<Transformer>() || any.is::<Capacitor>() || any.is::<Reactor>()
+    any.is::<Line>()
+        || any.is::<Transformer>()
+        || any.is::<AutoTrans>()
+        || any.is::<Capacitor>()
+        || any.is::<Reactor>()
 }
 
 /// Pascal `TDSSCktElement.FullName`.

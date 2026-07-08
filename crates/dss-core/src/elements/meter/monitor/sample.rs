@@ -3,6 +3,7 @@
 use num_complex::Complex64;
 
 use super::{MAGNITUDEMASK, MODEMASK, Monitor, MonitorSampleCtx, POSSEQONLYMASK, SEQUENCEMASK};
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::SysCtx;
@@ -74,11 +75,15 @@ impl Monitor {
                 }
             }
             2 => {
-                let tap = metered
-                    .as_any()
-                    .downcast_ref::<Transformer>()
-                    .map(|t| t.present_tap(self.med.metered_terminal as usize))
-                    .unwrap_or(0.0);
+                let w = self.med.metered_terminal as usize;
+                let any = metered.as_any();
+                let tap = if let Some(t) = any.downcast_ref::<Transformer>() {
+                    t.present_tap(w)
+                } else if let Some(at) = any.downcast_ref::<AutoTrans>() {
+                    at.present_tap(w)
+                } else {
+                    0.0
+                };
                 self.add_dbl(tap);
                 return;
             }

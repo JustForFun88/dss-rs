@@ -110,6 +110,9 @@ impl ControlledTransformer for Transformer {
     fn name(&self) -> &str {
         self.cd.obj.name()
     }
+    fn full_name(&self) -> String {
+        format!("Transformer.{}", self.cd.obj.name())
+    }
     fn n_phases(&self) -> usize {
         self.cd.nphases
     }

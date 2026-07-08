@@ -158,10 +158,23 @@ impl ClassProps {
                         // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
                         // (case-insensitive). On failure DoSimpleMsg 401 and the
                         // reference is left NIL, but the edit continues.
-                        let resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        let mut resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        // Pascal `TProxyClass` (RegControl `transformer=`): try the
+                        // second class when the first misses.
+                        if resolved.is_none()
+                            && let Some(class2) = pd.object_class2
+                        {
+                            resolved = eng.foreign.and_then(|f| f.find(class2, value));
+                        }
                         if resolved.is_none() && !value.is_empty() {
+                            // Pascal renders `cls.Name` — a `TProxyClass` is named
+                            // `(Class1|Class2)` (`TProxyClass.Create`).
+                            let cls_label = match pd.object_class2 {
+                                Some(class2) => format!("({class}|{class2})"),
+                                None => class.to_string(),
+                            };
                             eng.errors.push(format!(
-                                "{full}.{}: {class} object \"{value}\" not found.",
+                                "{full}.{}: {cls_label} object \"{value}\" not found.",
                                 pd.name
                             ));
                         }

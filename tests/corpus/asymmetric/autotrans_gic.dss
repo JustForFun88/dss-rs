@@ -3,6 +3,11 @@
 ! from 1/RdcOhms per winding, no inter-winding coupling, ppm float adder as
 ! conductance. RdcOhms left at its default 0.85*Rpu derivation for t1 and set
 ! explicitly for t2. Single snapshot at Set frequency=0.1.
+! The switch line ALSO pins the Line GIC branch (Pascal
+! TLineObj.ConvertZinvToPosSeqR, Line.pas:1297/2086): below 0.51 Hz the
+! series Zinv collapses to the diagonal positive-sequence resistance
+! (Zs-Zm, X dropped), so the r0<>r1 cross-phase coupling must vanish
+! from the Line YPrim.
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.gaps_autogic basekv=345.0 phases=3 mvasc3=2000000 2000000

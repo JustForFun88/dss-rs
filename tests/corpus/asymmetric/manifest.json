@@ -309,9 +309,9 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15",
-   "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family."
+   "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green."
   },
   {
    "path": "autotrans_gic.dss",
@@ -320,9 +320,9 @@
    "selected_elements": [
     "*"
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15",
-   "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch)."
+   "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green."
   },
   {
    "path": "gicline_gic.dss",
@@ -394,7 +394,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15"
   },
   {
