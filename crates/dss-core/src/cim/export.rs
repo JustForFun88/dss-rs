@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 
 use crate::circuit::Circuit;
+use crate::elements::control::CapControl;
 use crate::elements::general::conductor_data::{
     CableGeom, CnDataObj, ConductorGeom, TsDataObj, WireDataObj,
 };
@@ -24,7 +25,10 @@ use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::pc::VSource;
 use crate::elements::pc::load::{Connection, Load, LoadModel};
+use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
+use crate::elements::pd::reactor::Reactor;
+use crate::elements::traits::{CktElement, ElemRef};
 use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
 use crate::support::line_units::LineUnits;
@@ -47,6 +51,47 @@ const LOAD_DSS_OBJ_TYPE: i32 = 59;
 /// `PD_ELEMENT = 2` (`PDClass.pas:76`), so a Line's `DSSObjType` is `48 or 2 = 50`
 /// — the integer prefix of its `GetTermUuid` key (`"50=<name>=<seq>"`).
 const LINE_DSS_OBJ_TYPE: i32 = 50;
+
+/// Pascal `DSSClassDefs.pas`: `CAP_ELEMENT = 13*8 = 104`; `TPDClass.Create` ORs in
+/// `PD_ELEMENT = 2`, so a Capacitor's `DSSObjType` is `104 or 2 = 106` — the
+/// integer prefix of its `GetTermUuid` key (`"106=<name>=<seq>"`).
+const CAP_DSS_OBJ_TYPE: i32 = 106;
+
+/// Pascal `DSSClassDefs.pas`: `REACTOR_ELEMENT = 17*8 = 136`; `TPDClass.Create` ORs
+/// in `PD_ELEMENT = 2`, so a Reactor's `DSSObjType` is `136 or 2 = 138`.
+const REACTOR_DSS_OBJ_TYPE: i32 = 138;
+
+/// Pascal `ECapControlType` ordinals (`CapControl.pas:92`), the discriminant the
+/// CapControl→RegulatingControl arm switches on. `FOLLOWCONTROL = 5` and
+/// `USERCONTROL = 6` have no `RegulatingControlEnum` mode line in the Pascal
+/// `case` (`ExportCIMXML.pas:3762-3775`); the Rust `cap_control_type` enum never
+/// reaches `USERCONTROL` (no `"user"` string maps to it — safe Rust ports no
+/// user-model DLLs), so only 0..=5 are reachable here.
+const CAP_CTRL_CURRENT: i32 = 0;
+const CAP_CTRL_VOLTAGE: i32 = 1;
+const CAP_CTRL_KVAR: i32 = 2;
+const CAP_CTRL_TIME: i32 = 3;
+const CAP_CTRL_PF: i32 = 4;
+
+/// The Pascal `TDSSCktElement.DSSObjType` integer (`DSSClassDefs.pas`
+/// element-type constant OR the PD/PC/NON-PCPD category bits) for a circuit
+/// element's class, used as the `GetTermUuid` key prefix (`ExportCIMXML.pas:
+/// 1299`: `IntToStr(pElem.DSSObjType)`). The Rust port carries no runtime
+/// `DSSObjType` field (the per-object sweeps hard-code their own class constant),
+/// so a CapControl's *monitored* element — a generic circuit element resolved
+/// only at export time — is mapped from its class name here. Returns `None` for
+/// a class not yet covered so the caller can fire a loud error rather than emit a
+/// silently-wrong key (Stages E/F extend this table as their classes land).
+fn cktelem_dss_obj_type(class_name: &str) -> Option<i32> {
+    Some(match class_name.to_ascii_lowercase().as_str() {
+        "vsource" => VSOURCE_DSS_OBJ_TYPE,
+        "line" => LINE_DSS_OBJ_TYPE,
+        "load" => LOAD_DSS_OBJ_TYPE,
+        "capacitor" => CAP_DSS_OBJ_TYPE,
+        "reactor" => REACTOR_DSS_OBJ_TYPE,
+        _ => return None,
+    })
+}
 
 /// One entry of the Pascal `TCIMOpLimitObject` list (`ExportCIMXML.pas:65-71`,
 /// `806-821`): a per-current-rating `OperationalLimitSet` created on-the-fly by
@@ -351,6 +396,97 @@ fn attach_load_phases(
             p,
             q,
         );
+    }
+}
+
+/// Pascal `TCIMExporterHelper.AttachCapPhases` (`ExportCIMXML.pas:1703`): the
+/// per-phase `LinearShuntCompensatorPhase` breakdown for a **non-3-phase**
+/// capacitor (3-phase banks carry no phase objects). `sections` is the SSH
+/// `ShuntCompensator.sections` value (in-service step count) the caller already
+/// computed; `bus_spec0`/`bus_kvbase0` are the terminal-1 raw bus-spec and its
+/// bus base voltage (for `PhaseString`).
+#[allow(clippy::too_many_arguments)]
+fn attach_cap_phases(
+    buf: &mut String,
+    cim: &mut CimExporter,
+    cap_name: &str,
+    cap_uuid: Uuid,
+    geo_uuid: Uuid,
+    nphases: usize,
+    total_kvar: f64,
+    nom_kv: f64,
+    num_steps: i32,
+    connection: i32,
+    bus_spec0: &str,
+    bus_kvbase0: f64,
+    sections: f64,
+) {
+    if nphases == 3 {
+        return;
+    }
+    let bph = 0.001 * total_kvar / nom_kv / nom_kv / num_steps as f64 / nphases as f64;
+    // Pascal: `s := PhaseString(pCap, 1)`, overridden by `DeltaPhaseString` when
+    // the bank is delta-connected.
+    let s = if connection == 1 {
+        delta_phase_string(bus_spec0, nphases)
+    } else {
+        phase_string(bus_spec0, nphases, bus_kvbase0, true)
+    };
+    for phs in s.chars() {
+        let phs = phs.to_string();
+        let local_name = format!("{cap_name}_{phs}");
+        let phase_uuid = cim.get_dev_uuid(UuidChoice::CapPhase, &local_name, 1);
+        writer::start_instance(
+            buf,
+            ProfileChoice::Fun,
+            "LinearShuntCompensatorPhase",
+            phase_uuid,
+            &local_name,
+        );
+        writer::phase_kind_node(buf, ProfileChoice::Fun, "ShuntCompensatorPhase", &phs);
+        writer::double_node(
+            buf,
+            ProfileChoice::Ep,
+            "LinearShuntCompensatorPhase.bPerSection",
+            bph,
+        );
+        writer::double_node(
+            buf,
+            ProfileChoice::Ep,
+            "LinearShuntCompensatorPhase.gPerSection",
+            0.0,
+        );
+        writer::integer_node(
+            buf,
+            ProfileChoice::Ep,
+            "ShuntCompensatorPhase.normalSections",
+            num_steps as i64,
+        );
+        writer::integer_node(
+            buf,
+            ProfileChoice::Ep,
+            "ShuntCompensatorPhase.maximumSections",
+            num_steps as i64,
+        );
+        writer::double_node(
+            buf,
+            ProfileChoice::Ssh,
+            "ShuntCompensatorPhase.sections",
+            sections,
+        );
+        writer::ref_node(
+            buf,
+            ProfileChoice::Fun,
+            "ShuntCompensatorPhase.ShuntCompensator",
+            cap_uuid,
+        );
+        writer::ref_node(
+            buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::end_instance(buf, ProfileChoice::Fun, "LinearShuntCompensatorPhase");
     }
 }
 
@@ -2285,14 +2421,420 @@ pub(crate) fn export_cdpsm(
         );
     }
 
-    // ShuntCapacitors (`3684-3782`, incl. inline CapControl→RegulatingControl) —
+    // ShuntCapacitors (`3684-3731`) -> LinearShuntCompensator (+ AttachCapPhases) —
     // Stage D.
-    not_ported_if_any(
-        errors,
-        ckt.shunt_capacitors.len(),
-        "Capacitor (ShuntCompensator)",
-        "Stage D",
-    );
+    for &r in &ckt.shunt_capacitors.clone() {
+        struct CapSnap {
+            enabled: bool,
+            nphases: usize,
+            total_kvar: f64,
+            nom_kv: f64,
+            num_steps: i32,
+            connection: i32,
+            states: Vec<i32>,
+            name: String,
+            nterm: usize,
+            norm_amps: f64,
+            emerg_amps: f64,
+            bus_specs: Vec<String>,
+            bus_refs: Vec<usize>,
+        }
+        let snap = {
+            let obj = &classes[r.cls].objects[r.idx];
+            let Some(cap) = obj.as_any().downcast_ref::<Capacitor>() else {
+                continue;
+            };
+            CapSnap {
+                enabled: cap.cd.enabled,
+                nphases: cap.cd.nphases,
+                total_kvar: cap.total_kvar(),
+                nom_kv: cap.nom_kv(),
+                num_steps: cap.num_steps(),
+                connection: cap.connection(),
+                states: cap.states().to_vec(),
+                name: cap.cd.obj.name().to_string(),
+                nterm: cap.cd.nterms,
+                norm_amps: cap.norm_amps(),
+                emerg_amps: cap.emerg_amps(),
+                bus_specs: cap.cd.bus_names.clone(),
+                bus_refs: cap.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+            }
+        };
+        if !snap.enabled {
+            continue;
+        }
+        let cap_uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let bus_ref0 = snap.bus_refs[0];
+        let bus_kvbase0 = ckt.buses[bus_ref0].kv_base;
+
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "LinearShuntCompensator",
+            cap_uuid,
+            &snap.name,
+        );
+        writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+        // VbaseNode (`2124`): terminal-1 bus base × √3.
+        let vbase_uuid = cim.get_base_v_uuid(sqrt3 * bus_kvbase0);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Fun,
+            "ConductingEquipment.BaseVoltage",
+            vbase_uuid,
+        );
+
+        let val = 0.001 * snap.total_kvar / snap.nom_kv / snap.nom_kv / snap.num_steps as f64;
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "ShuntCompensator.nomU",
+            1000.0 * snap.nom_kv,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "LinearShuntCompensator.bPerSection",
+            val,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "LinearShuntCompensator.gPerSection",
+            0.0,
+        );
+
+        // Pascal `TCapacitorConnection.Wye = 0`.
+        if snap.connection == 0 {
+            writer::shunt_connection_kind_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "ShuntCompensator",
+                "Y",
+            );
+            // TODO(compat): Pascal hard-codes `grounded := TRUE` for wye banks
+            // (`3700`, "TODO - check bus 2").
+            writer::boolean_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "ShuntCompensator.grounded",
+                true,
+            );
+            writer::double_node(
+                &mut buf,
+                ProfileChoice::Ep,
+                "LinearShuntCompensator.b0PerSection",
+                val,
+            );
+        } else {
+            writer::shunt_connection_kind_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "ShuntCompensator",
+                "D",
+            );
+            // TODO(compat): the delta branch emits `grounded` under the
+            // `LinearShuntCompensator.` prefix while the wye branch uses
+            // `ShuntCompensator.` — an upstream inconsistency reproduced verbatim
+            // (`ExportCIMXML.pas:3706` vs `3700`).
+            writer::boolean_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "LinearShuntCompensator.grounded",
+                false,
+            );
+            writer::double_node(
+                &mut buf,
+                ProfileChoice::Ep,
+                "LinearShuntCompensator.b0PerSection",
+                0.0,
+            );
+        }
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "LinearShuntCompensator.g0PerSection",
+            0.0,
+        );
+        writer::integer_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "ShuntCompensator.normalSections",
+            snap.num_steps as i64,
+        );
+        writer::integer_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "ShuntCompensator.maximumSections",
+            snap.num_steps as i64,
+        );
+
+        // `aVRDelay` = the OnDelay of the last CapControl whose `This_Capacitor`
+        // is this bank (Pascal loops all CapControls, last match wins, `3714-3718`).
+        let mut avr_delay = 0.0;
+        for &cr in &ckt.controls {
+            if let Some(cc) = classes[cr.cls].objects[cr.idx]
+                .as_any()
+                .downcast_ref::<CapControl>()
+                && cc.controlled_element() == Some(r)
+            {
+                avr_delay = cc.on_delay_val();
+            }
+        }
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "ShuntCompensator.aVRDelay",
+            avr_delay,
+        );
+
+        // `sections` (SSH) = count of in-service steps (`States[i] > 0`).
+        let mut sections = 0.0;
+        for i in 1..=snap.num_steps.max(0) {
+            if snap.states[(i - 1) as usize] > 0 {
+                sections += 1.0;
+            }
+        }
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "ShuntCompensator.sections",
+            sections,
+        );
+
+        let geo_uuid = cim.get_dev_uuid(UuidChoice::CapLoc, &snap.name, 1);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "LinearShuntCompensator");
+
+        attach_cap_phases(
+            &mut buf,
+            cim,
+            &snap.name,
+            cap_uuid,
+            geo_uuid,
+            snap.nphases,
+            snap.total_kvar,
+            snap.nom_kv,
+            snap.num_steps,
+            snap.connection,
+            &snap.bus_specs[0],
+            bus_kvbase0,
+            sections,
+        );
+        write_terminals(
+            &mut buf,
+            ckt,
+            cim,
+            &mut op_limits,
+            &mut op_limit_idx,
+            CAP_DSS_OBJ_TYPE,
+            "Capacitor",
+            &snap.name,
+            cap_uuid,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            geo_uuid,
+            crs_uuid,
+            snap.norm_amps,
+            snap.emerg_amps,
+        );
+    }
+
+    // CapControls -> RegulatingControl (`3733-3781`) — Stage D.
+    for &cr in &ckt.controls.clone() {
+        struct CcSnap {
+            cc_name: String,
+            cap_ref: ElemRef,
+            cap_name: String,
+            mon_name: String,
+            mon_obj_type: Option<i32>,
+            mon_nphases: usize,
+            mon_bus_spec0: String,
+            mon_bus_kvbase0: f64,
+            element_terminal: i32,
+            pt_phase: i32,
+            control_type: i32,
+            on_value: f64,
+            off_value: f64,
+            pf_on: f64,
+            pf_off: f64,
+            ct_ratio: f64,
+            pt_ratio: f64,
+            enabled: bool,
+        }
+        let snap = {
+            let obj = &classes[cr.cls].objects[cr.idx];
+            let Some(cc) = obj.as_any().downcast_ref::<CapControl>() else {
+                continue;
+            };
+            let cap_ref = cc
+                .controlled_element()
+                .expect("CapControl.This_Capacitor set for a solved circuit");
+            let mon_ref = cc
+                .ccd
+                .monitored_element
+                .expect("CapControl.MonitoredElement set for a solved circuit");
+            let mon_obj = &classes[mon_ref.cls].objects[mon_ref.idx];
+            let mon_elem = mon_obj
+                .as_ckt_element()
+                .expect("CapControl monitored element is a circuit element");
+            let mon_cd = mon_elem.cd();
+            CcSnap {
+                cc_name: cc.ccd.cd.obj.name().to_string(),
+                cap_ref,
+                cap_name: classes[cap_ref.cls].objects[cap_ref.idx]
+                    .data()
+                    .name()
+                    .to_string(),
+                mon_name: mon_obj.data().name().to_string(),
+                mon_obj_type: cktelem_dss_obj_type(classes[mon_ref.cls].props.class_name()),
+                mon_nphases: mon_cd.nphases,
+                mon_bus_spec0: mon_cd.bus_names[0].clone(),
+                mon_bus_kvbase0: ckt.buses[mon_cd.terminals[0].bus_ref].kv_base,
+                element_terminal: cc.ccd.element_terminal,
+                pt_phase: cc.pt_phase(),
+                control_type: cc.control_type(),
+                on_value: cc.on_value(),
+                off_value: cc.off_value(),
+                pf_on: cc.pf_on_value(),
+                pf_off: cc.pf_off_value(),
+                ct_ratio: cc.ct_ratio_val(),
+                pt_ratio: cc.pt_ratio_val(),
+                enabled: cc.ccd.cd.enabled,
+            }
+        };
+        let Some(mon_obj_type) = snap.mon_obj_type else {
+            errors.push(
+                "Export CIM100: CapControl monitored-element class has no DSSObjType \
+                 mapping yet (GAPS_PLAN WPG.18 — extend cktelem_dss_obj_type)."
+                    .to_string(),
+            );
+            continue;
+        };
+        let cc_uuid = classes[cr.cls].objects[cr.idx].data_mut().uuid();
+        let cap_uuid = classes[snap.cap_ref.cls].objects[snap.cap_ref.idx]
+            .data_mut()
+            .uuid();
+
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "RegulatingControl",
+            cc_uuid,
+            &snap.cc_name,
+        );
+        // Location -> the controlled capacitor's location UUID (`3736`).
+        let cap_loc_uuid = cim.get_dev_uuid(UuidChoice::CapLoc, &snap.cap_name, 1);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            cap_loc_uuid,
+        );
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Fun,
+            "RegulatingControl.RegulatingCondEq",
+            cap_uuid,
+        );
+        // Terminal -> the monitored element's `ElementTerminal` (`3738-3739`).
+        let term_uuid = cim.get_term_uuid(mon_obj_type, &snap.mon_name, snap.element_terminal);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Fun,
+            "RegulatingControl.Terminal",
+            term_uuid,
+        );
+        // MonitoredPhaseNode from `FirstPhaseString(MonitoredElement, 1)` shifted
+        // by `PTPhase` (`3740-3744`). `FirstPhaseString` (`1391`) is the first
+        // letter of `PhaseString`, or `'A'` when empty.
+        let first = {
+            let s = phase_string(
+                &snap.mon_bus_spec0,
+                snap.mon_nphases,
+                snap.mon_bus_kvbase0,
+                true,
+            );
+            s.chars().next().unwrap_or('A')
+        };
+        let mon_phase = if snap.pt_phase > 0 {
+            (first as u8 + snap.pt_phase as u8 - 1) as char
+        } else {
+            first
+        };
+        writer::monitored_phase_node(&mut buf, ProfileChoice::Fun, &mon_phase.to_string());
+
+        // val / v1 / v2 by control type (`3745-3761`).
+        let mut val = 1.0;
+        let (v1, v2);
+        if snap.control_type == CAP_CTRL_PF {
+            v1 = snap.pf_on;
+            v2 = snap.pf_off;
+        } else {
+            v1 = snap.on_value;
+            v2 = snap.off_value;
+            if snap.control_type == CAP_CTRL_KVAR {
+                val = 1000.0;
+            }
+            if snap.control_type == CAP_CTRL_CURRENT {
+                val = snap.ct_ratio;
+            }
+            if snap.control_type == CAP_CTRL_VOLTAGE {
+                val = snap.pt_ratio;
+            }
+        }
+        // RegulatingControlEnum by control type (`3762-3775`); `FOLLOWCONTROL`
+        // (and the Rust-unreachable `USERCONTROL`) have no `.mode` arm.
+        match snap.control_type {
+            CAP_CTRL_CURRENT => {
+                writer::regulating_control_enum(&mut buf, ProfileChoice::Ep, "currentFlow")
+            }
+            CAP_CTRL_VOLTAGE => {
+                writer::regulating_control_enum(&mut buf, ProfileChoice::Ep, "voltage")
+            }
+            CAP_CTRL_KVAR => {
+                writer::regulating_control_enum(&mut buf, ProfileChoice::Ep, "reactivePower")
+            }
+            CAP_CTRL_TIME => {
+                writer::regulating_control_enum(&mut buf, ProfileChoice::Ep, "timeScheduled")
+            }
+            CAP_CTRL_PF => {
+                writer::regulating_control_enum(&mut buf, ProfileChoice::Ep, "powerFactor")
+            }
+            _ => {}
+        }
+        writer::boolean_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "RegulatingControl.discrete",
+            true,
+        );
+        writer::boolean_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "RegulatingControl.enabled",
+            snap.enabled,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "RegulatingControl.targetValue",
+            val * 0.5 * (v1 + v2),
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "RegulatingControl.targetDeadband",
+            val * (v2 - v1),
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "RegulatingControl");
+    }
 
     // Transformers + AutoTransformers + their banks (`3785-4197`) — Stage E.
     not_ported_if_any(
@@ -2316,13 +2858,113 @@ pub(crate) fn export_cdpsm(
         "Stage E",
     );
 
-    // Series reactors -> SeriesCompensator (`4274-4293`) — Stage D.
-    not_ported_if_any(
-        errors,
-        ckt.reactors.len(),
-        "Reactor (SeriesCompensator)",
-        "Stage D",
-    );
+    // Series reactors -> SeriesCompensator (`4274-4292`) — Stage D.
+    for &r in &ckt.reactors.clone() {
+        struct ReacSnap {
+            enabled: bool,
+            name: String,
+            nterm: usize,
+            z_re: f64,
+            z_im: f64,
+            norm_amps: f64,
+            emerg_amps: f64,
+            bus_specs: Vec<String>,
+            bus_refs: Vec<usize>,
+        }
+        let snap = {
+            let obj = &classes[r.cls].objects[r.idx];
+            let Some(reac) = obj.as_any().downcast_ref::<Reactor>() else {
+                continue;
+            };
+            let z = reac.z();
+            ReacSnap {
+                enabled: reac.cd.enabled,
+                name: reac.cd.obj.name().to_string(),
+                nterm: reac.cd.nterms,
+                z_re: z.re,
+                z_im: z.im,
+                norm_amps: reac.norm_amps(),
+                emerg_amps: reac.emerg_amps(),
+                bus_specs: reac.cd.bus_names.clone(),
+                bus_refs: reac.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+            }
+        };
+        if !snap.enabled {
+            continue;
+        }
+        let reac_uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let bus_ref0 = snap.bus_refs[0];
+
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "SeriesCompensator",
+            reac_uuid,
+            &snap.name,
+        );
+        writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+        // VbaseNode (`2124`): terminal-1 bus base × √3.
+        let vbase_uuid = cim.get_base_v_uuid(sqrt3 * ckt.buses[bus_ref0].kv_base);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Fun,
+            "ConductingEquipment.BaseVoltage",
+            vbase_uuid,
+        );
+        let geo_uuid = cim.get_dev_uuid(UuidChoice::ReacLoc, &snap.name, 1);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        // r0/x0 duplicate r/x (Pascal `pReac.Z.re`/`.im` for all four, `4285-4288`).
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "SeriesCompensator.r",
+            snap.z_re,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "SeriesCompensator.x",
+            snap.z_im,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "SeriesCompensator.r0",
+            snap.z_re,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "SeriesCompensator.x0",
+            snap.z_im,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "SeriesCompensator");
+        // Pascal leaves `AttachLinePhases` commented out for reactors (3-phase
+        // series reactors only, `ExportCIMXML.pas:4290`) — no phase objects.
+        write_terminals(
+            &mut buf,
+            ckt,
+            cim,
+            &mut op_limits,
+            &mut op_limit_idx,
+            REACTOR_DSS_OBJ_TYPE,
+            "Reactor",
+            &snap.name,
+            reac_uuid,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            geo_uuid,
+            crs_uuid,
+            snap.norm_amps,
+            snap.emerg_amps,
+        );
+    }
 
     // Lines/switches -> ACLineSegment/LoadBreakSwitch/Fuse/Breaker/Recloser
     // (`4294-4409`) — Stage C.

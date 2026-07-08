@@ -11,6 +11,42 @@ impl Capacitor {
         &self.fstates
     }
 
+    /// Pascal `TCapacitorObj.Totalkvar` (property, `Capacitor.pas:153` = `FTotalkvar`):
+    /// the bank's total kvar rating. Read-only accessor for the CIM export
+    /// (`LinearShuntCompensator.bPerSection`, GAPS_PLAN WPG.18 Stage D).
+    pub fn total_kvar(&self) -> f64 {
+        self.ftotalkvar
+    }
+
+    /// Pascal `TCapacitorObj.NomKV` (property, `Capacitor.pas:154` = `kvrating`):
+    /// the bank's nominal line-to-line kV. Read-only accessor for the CIM export.
+    pub fn nom_kv(&self) -> f64 {
+        self.kvrating
+    }
+
+    /// Pascal `TCapacitorObj.NumSteps` (property, `Capacitor.pas:151` = `FNumSteps`):
+    /// the switchable-step count. Read-only accessor for the CIM export.
+    pub fn num_steps(&self) -> i32 {
+        self.fnumsteps
+    }
+
+    /// Pascal `TCapacitorObj.Connection` (`FConnection`: `0` = Wye, `1` = Delta).
+    /// Read-only accessor for the CIM export (`ShuntConnectionKindNode`).
+    pub fn connection(&self) -> i32 {
+        self.connection
+    }
+
+    /// Pascal `TDSSCktElement.NormAmps`. Read-only accessor for the CIM export
+    /// (`WriteTerminals` operational limits).
+    pub fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+
+    /// Pascal `TDSSCktElement.EmergAmps`. Read-only accessor for the CIM export.
+    pub fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+
     /// Number of steps as `usize`.
     pub(super) fn n_steps(&self) -> usize {
         self.fnumsteps.max(0) as usize

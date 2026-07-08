@@ -1,0 +1,788 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- un-comment this line to enable validation
+-->
+<rdf:RDF xmlns:cim="http://iec.ch/TC57/CIM100#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<!--
+-->
+<cim:IEC61970CIMVersion rdf:about="urn:uuid:16EF3FCA-CAF9-4A8A-97C1-9913D5AE635E">
+  <cim:IEC61970CIMVersion.version>IEC61970CIM100</cim:IEC61970CIMVersion.version>
+  <cim:IEC61970CIMVersion.date>2019-04-01</cim:IEC61970CIMVersion.date>
+</cim:IEC61970CIMVersion>
+<cim:CoordinateSystem rdf:about="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20">
+  <cim:IdentifiedObject.mRID>0852E10A-7B3E-41BA-AF62-ABB59B312D20</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_CrsUrn</cim:IdentifiedObject.name>
+  <cim:CoordinateSystem.crsUrn>OpenDSSLocalBusCoordinates</cim:CoordinateSystem.crsUrn>
+</cim:CoordinateSystem>
+<cim:GeographicalRegion rdf:about="urn:uuid:051C5488-154B-4B44-B6A0-5AE7B50E49AA">
+  <cim:IdentifiedObject.mRID>051C5488-154B-4B44-B6A0-5AE7B50E49AA</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_Region</cim:IdentifiedObject.name>
+</cim:GeographicalRegion>
+<cim:SubGeographicalRegion rdf:about="urn:uuid:66125698-BCD4-4BD6-A026-CE9BA628D357">
+  <cim:IdentifiedObject.mRID>66125698-BCD4-4BD6-A026-CE9BA628D357</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_SubRegion</cim:IdentifiedObject.name>
+  <cim:SubGeographicalRegion.Region rdf:resource="urn:uuid:051C5488-154B-4B44-B6A0-5AE7B50E49AA"/>
+</cim:SubGeographicalRegion>
+<cim:Substation rdf:about="urn:uuid:3416E886-2742-4417-BF6A-8BD4B2ACD038">
+  <cim:IdentifiedObject.mRID>3416E886-2742-4417-BF6A-8BD4B2ACD038</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_Substation</cim:IdentifiedObject.name>
+  <cim:Substation.Region rdf:resource="urn:uuid:66125698-BCD4-4BD6-A026-CE9BA628D357"/>
+</cim:Substation>
+<cim:Location rdf:about="urn:uuid:9CC049D7-DC15-4A4A-822C-ECDAE3B100AF">
+  <cim:IdentifiedObject.mRID>9CC049D7-DC15-4A4A-822C-ECDAE3B100AF</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_Location</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:Feeder rdf:about="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038">
+  <cim:IdentifiedObject.mRID>C882CB9E-AD19-4EEC-8FAB-D9B79A240038</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt</cim:IdentifiedObject.name>
+  <cim:Feeder.NormalEnergizingSubstation rdf:resource="urn:uuid:3416E886-2742-4417-BF6A-8BD4B2ACD038"/>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:9CC049D7-DC15-4A4A-822C-ECDAE3B100AF"/>
+</cim:Feeder>
+<cim:OperationalLimitType rdf:about="urn:uuid:076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD">
+  <cim:IdentifiedObject.mRID>076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_NormAmpsType</cim:IdentifiedObject.name>
+  <cim:OperationalLimitType.acceptableDuration>5E9</cim:OperationalLimitType.acceptableDuration>
+  <cim:OperationalLimitType.direction rdf:resource="http://iec.ch/TC57/CIM100#OperationalLimitDirectionKind.absoluteValue"/>
+</cim:OperationalLimitType>
+<cim:OperationalLimitType rdf:about="urn:uuid:CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75">
+  <cim:IdentifiedObject.mRID>CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_EmergencyAmpsType</cim:IdentifiedObject.name>
+  <cim:OperationalLimitType.acceptableDuration>7200</cim:OperationalLimitType.acceptableDuration>
+  <cim:OperationalLimitType.direction rdf:resource="http://iec.ch/TC57/CIM100#OperationalLimitDirectionKind.absoluteValue"/>
+</cim:OperationalLimitType>
+<cim:OperationalLimitType rdf:about="urn:uuid:810BDE5D-64DD-437D-A243-EB985ED0F360">
+  <cim:IdentifiedObject.mRID>810BDE5D-64DD-437D-A243-EB985ED0F360</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_RangeAHiType</cim:IdentifiedObject.name>
+  <cim:OperationalLimitType.acceptableDuration>5E9</cim:OperationalLimitType.acceptableDuration>
+  <cim:OperationalLimitType.direction rdf:resource="http://iec.ch/TC57/CIM100#OperationalLimitDirectionKind.high"/>
+</cim:OperationalLimitType>
+<cim:OperationalLimitType rdf:about="urn:uuid:00DE71D8-52FA-413E-BBD8-854A36D45667">
+  <cim:IdentifiedObject.mRID>00DE71D8-52FA-413E-BBD8-854A36D45667</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_RangeALoType</cim:IdentifiedObject.name>
+  <cim:OperationalLimitType.acceptableDuration>5E9</cim:OperationalLimitType.acceptableDuration>
+  <cim:OperationalLimitType.direction rdf:resource="http://iec.ch/TC57/CIM100#OperationalLimitDirectionKind.low"/>
+</cim:OperationalLimitType>
+<cim:OperationalLimitType rdf:about="urn:uuid:D0E5CA92-A00D-4DC5-A0CB-6B848F72F905">
+  <cim:IdentifiedObject.mRID>D0E5CA92-A00D-4DC5-A0CB-6B848F72F905</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_RangeBHiType</cim:IdentifiedObject.name>
+  <cim:OperationalLimitType.acceptableDuration>86400</cim:OperationalLimitType.acceptableDuration>
+  <cim:OperationalLimitType.direction rdf:resource="http://iec.ch/TC57/CIM100#OperationalLimitDirectionKind.high"/>
+</cim:OperationalLimitType>
+<cim:OperationalLimitType rdf:about="urn:uuid:150B6C63-8051-481A-A1BC-3FCCDE389CF1">
+  <cim:IdentifiedObject.mRID>150B6C63-8051-481A-A1BC-3FCCDE389CF1</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_RangeBLoType</cim:IdentifiedObject.name>
+  <cim:OperationalLimitType.acceptableDuration>86400</cim:OperationalLimitType.acceptableDuration>
+  <cim:OperationalLimitType.direction rdf:resource="http://iec.ch/TC57/CIM100#OperationalLimitDirectionKind.low"/>
+</cim:OperationalLimitType>
+<cim:BaseVoltage rdf:about="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75">
+  <cim:IdentifiedObject.mRID>B45EA3C2-6936-4C85-88CA-682AFAA49F75</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>BaseV_4.1600</cim:IdentifiedObject.name>
+  <cim:BaseVoltage.nominalVoltage>4160</cim:BaseVoltage.nominalVoltage>
+</cim:BaseVoltage>
+<cim:OperationalLimitSet rdf:about="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB">
+  <cim:IdentifiedObject.mRID>F8872C14-CD2F-400C-BAFA-4514AA8421AB</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_4.1600</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:VoltageLimit rdf:about="urn:uuid:0CF1071D-AF4E-4775-9022-8B57045E9732">
+  <cim:IdentifiedObject.mRID>0CF1071D-AF4E-4775-9022-8B57045E9732</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_4.1600_RangeAHi</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:810BDE5D-64DD-437D-A243-EB985ED0F360"/>
+  <cim:VoltageLimit.value>4368</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:VoltageLimit rdf:about="urn:uuid:1EA004F9-D89A-4CD0-BBF6-56B3C4CED39E">
+  <cim:IdentifiedObject.mRID>1EA004F9-D89A-4CD0-BBF6-56B3C4CED39E</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_4.1600_RangeALo</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:00DE71D8-52FA-413E-BBD8-854A36D45667"/>
+  <cim:VoltageLimit.value>3952</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:VoltageLimit rdf:about="urn:uuid:1D54A62D-C9FA-4532-84D9-880B982D340E">
+  <cim:IdentifiedObject.mRID>1D54A62D-C9FA-4532-84D9-880B982D340E</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_4.1600_RangeBHi</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:D0E5CA92-A00D-4DC5-A0CB-6B848F72F905"/>
+  <cim:VoltageLimit.value>4402.6665</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:VoltageLimit rdf:about="urn:uuid:43592773-FB07-47D3-913A-C002AA8041C6">
+  <cim:IdentifiedObject.mRID>43592773-FB07-47D3-913A-C002AA8041C6</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_4.1600_RangeBLo</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:150B6C63-8051-481A-A1BC-3FCCDE389CF1"/>
+  <cim:VoltageLimit.value>3813.3335</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:BaseVoltage rdf:about="urn:uuid:9054AE67-606C-4852-99DB-6B64C6683BC8">
+  <cim:IdentifiedObject.mRID>9054AE67-606C-4852-99DB-6B64C6683BC8</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>BaseV_2.4000</cim:IdentifiedObject.name>
+  <cim:BaseVoltage.nominalVoltage>2400</cim:BaseVoltage.nominalVoltage>
+</cim:BaseVoltage>
+<cim:OperationalLimitSet rdf:about="urn:uuid:0CC98850-A6ED-4C64-B628-6F5F5AC554D6">
+  <cim:IdentifiedObject.mRID>0CC98850-A6ED-4C64-B628-6F5F5AC554D6</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_2.4000</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:VoltageLimit rdf:about="urn:uuid:F2FF392F-93FE-47F2-BB3F-F0A8395BB7F5">
+  <cim:IdentifiedObject.mRID>F2FF392F-93FE-47F2-BB3F-F0A8395BB7F5</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_2.4000_RangeAHi</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:0CC98850-A6ED-4C64-B628-6F5F5AC554D6"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:810BDE5D-64DD-437D-A243-EB985ED0F360"/>
+  <cim:VoltageLimit.value>2520</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:VoltageLimit rdf:about="urn:uuid:46170178-FB4E-48AD-8991-94D54BA78B94">
+  <cim:IdentifiedObject.mRID>46170178-FB4E-48AD-8991-94D54BA78B94</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_2.4000_RangeALo</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:0CC98850-A6ED-4C64-B628-6F5F5AC554D6"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:00DE71D8-52FA-413E-BBD8-854A36D45667"/>
+  <cim:VoltageLimit.value>2280</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:VoltageLimit rdf:about="urn:uuid:F4D2532D-AA30-4E6E-A57A-A17C0F26591B">
+  <cim:IdentifiedObject.mRID>F4D2532D-AA30-4E6E-A57A-A17C0F26591B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_2.4000_RangeBHi</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:0CC98850-A6ED-4C64-B628-6F5F5AC554D6"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:D0E5CA92-A00D-4DC5-A0CB-6B848F72F905"/>
+  <cim:VoltageLimit.value>2539.9999</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:VoltageLimit rdf:about="urn:uuid:25CB0014-0E52-400F-A6AF-69BDC9FA7CB6">
+  <cim:IdentifiedObject.mRID>25CB0014-0E52-400F-A6AF-69BDC9FA7CB6</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimV_2.4000_RangeBLo</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:0CC98850-A6ED-4C64-B628-6F5F5AC554D6"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:150B6C63-8051-481A-A1BC-3FCCDE389CF1"/>
+  <cim:VoltageLimit.value>2200.0001</cim:VoltageLimit.value>
+</cim:VoltageLimit>
+<cim:TopologicalNode rdf:about="urn:uuid:F91D9579-5E29-4EBC-8F40-7F4BE009DE97">
+  <cim:IdentifiedObject.mRID>F91D9579-5E29-4EBC-8F40-7F4BE009DE97</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>sourcebus</cim:IdentifiedObject.name>
+  <cim:TopologicalNode.TopologicalIsland rdf:resource="urn:uuid:C46116F5-8F89-4982-9313-25322F594AE4"/>
+</cim:TopologicalNode>
+<cim:ConnectivityNode rdf:about="urn:uuid:F78B632B-C0F2-4A63-B9D8-F7C70BA7E082">
+  <cim:IdentifiedObject.mRID>F78B632B-C0F2-4A63-B9D8-F7C70BA7E082</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>sourcebus</cim:IdentifiedObject.name>
+  <cim:ConnectivityNode.TopologicalNode rdf:resource="urn:uuid:F91D9579-5E29-4EBC-8F40-7F4BE009DE97"/>
+  <cim:ConnectivityNode.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:ConnectivityNode.ConnectivityNodeContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+</cim:ConnectivityNode>
+<cim:TopologicalNode rdf:about="urn:uuid:CF79F83E-EF1F-465B-A02F-7B3BCAF83F7D">
+  <cim:IdentifiedObject.mRID>CF79F83E-EF1F-465B-A02F-7B3BCAF83F7D</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>b1</cim:IdentifiedObject.name>
+  <cim:TopologicalNode.TopologicalIsland rdf:resource="urn:uuid:C46116F5-8F89-4982-9313-25322F594AE4"/>
+</cim:TopologicalNode>
+<cim:ConnectivityNode rdf:about="urn:uuid:6CEF0F39-C63C-4224-A04B-717D60923D29">
+  <cim:IdentifiedObject.mRID>6CEF0F39-C63C-4224-A04B-717D60923D29</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>b1</cim:IdentifiedObject.name>
+  <cim:ConnectivityNode.TopologicalNode rdf:resource="urn:uuid:CF79F83E-EF1F-465B-A02F-7B3BCAF83F7D"/>
+  <cim:ConnectivityNode.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:ConnectivityNode.ConnectivityNodeContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+</cim:ConnectivityNode>
+<cim:TopologicalNode rdf:about="urn:uuid:A88F3947-5816-4438-9499-9428BD23B43C">
+  <cim:IdentifiedObject.mRID>A88F3947-5816-4438-9499-9428BD23B43C</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>b2</cim:IdentifiedObject.name>
+  <cim:TopologicalNode.TopologicalIsland rdf:resource="urn:uuid:C46116F5-8F89-4982-9313-25322F594AE4"/>
+</cim:TopologicalNode>
+<cim:ConnectivityNode rdf:about="urn:uuid:AE111608-DCC6-4AA7-AC88-1731E046DD77">
+  <cim:IdentifiedObject.mRID>AE111608-DCC6-4AA7-AC88-1731E046DD77</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>b2</cim:IdentifiedObject.name>
+  <cim:ConnectivityNode.TopologicalNode rdf:resource="urn:uuid:A88F3947-5816-4438-9499-9428BD23B43C"/>
+  <cim:ConnectivityNode.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:ConnectivityNode.ConnectivityNodeContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+</cim:ConnectivityNode>
+<cim:TopologicalNode rdf:about="urn:uuid:63EAFD4B-62EC-457D-AB25-DBEA4E7D0770">
+  <cim:IdentifiedObject.mRID>63EAFD4B-62EC-457D-AB25-DBEA4E7D0770</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>b3</cim:IdentifiedObject.name>
+  <cim:TopologicalNode.TopologicalIsland rdf:resource="urn:uuid:C46116F5-8F89-4982-9313-25322F594AE4"/>
+</cim:TopologicalNode>
+<cim:ConnectivityNode rdf:about="urn:uuid:5E6DAF07-DDA8-4264-B8A2-64C611C07896">
+  <cim:IdentifiedObject.mRID>5E6DAF07-DDA8-4264-B8A2-64C611C07896</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>b3</cim:IdentifiedObject.name>
+  <cim:ConnectivityNode.TopologicalNode rdf:resource="urn:uuid:63EAFD4B-62EC-457D-AB25-DBEA4E7D0770"/>
+  <cim:ConnectivityNode.OperationalLimitSet rdf:resource="urn:uuid:F8872C14-CD2F-400C-BAFA-4514AA8421AB"/>
+  <cim:ConnectivityNode.ConnectivityNodeContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+</cim:ConnectivityNode>
+<cim:TopologicalIsland rdf:about="urn:uuid:C46116F5-8F89-4982-9313-25322F594AE4">
+  <cim:IdentifiedObject.mRID>C46116F5-8F89-4982-9313-25322F594AE4</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cim_shunt_Island</cim:IdentifiedObject.name>
+  <cim:TopologicalIsland.AngleRefTopologicalNode rdf:resource="urn:uuid:F91D9579-5E29-4EBC-8F40-7F4BE009DE97"/>
+</cim:TopologicalIsland>
+<cim:EnergySource rdf:about="urn:uuid:83F91AD1-3EFD-4705-80C7-739EC19B3093">
+  <cim:IdentifiedObject.mRID>83F91AD1-3EFD-4705-80C7-739EC19B3093</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>source</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:EnergySource.nominalVoltage>4160</cim:EnergySource.nominalVoltage>
+  <cim:EnergySource.voltageMagnitude>4160</cim:EnergySource.voltageMagnitude>
+  <cim:EnergySource.voltageAngle>0.52359878</cim:EnergySource.voltageAngle>
+  <cim:EnergySource.r>0.0020986123</cim:EnergySource.r>
+  <cim:EnergySource.x>0.008394449</cim:EnergySource.x>
+  <cim:EnergySource.r0>0.0023502063</cim:EnergySource.r0>
+  <cim:EnergySource.x0>0.0070506188</cim:EnergySource.x0>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:04024B08-FA1E-476B-A401-411AA8F69F14"/>
+</cim:EnergySource>
+<cim:Terminal rdf:about="urn:uuid:C854858B-673F-4948-ADA3-C39B72392D41">
+  <cim:IdentifiedObject.mRID>C854858B-673F-4948-ADA3-C39B72392D41</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>source_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:83F91AD1-3EFD-4705-80C7-739EC19B3093"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:F78B632B-C0F2-4A63-B9D8-F7C70BA7E082"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:04024B08-FA1E-476B-A401-411AA8F69F14">
+  <cim:IdentifiedObject.mRID>04024B08-FA1E-476B-A401-411AA8F69F14</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>source_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:AF27689D-8F27-4E9D-9DC5-D762F4D06A55">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:04024B08-FA1E-476B-A401-411AA8F69F14"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:LinearShuntCompensator rdf:about="urn:uuid:B8976EBA-2D6B-4B20-B82F-47CE79296F52">
+  <cim:IdentifiedObject.mRID>B8976EBA-2D6B-4B20-B82F-47CE79296F52</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_wye</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:ShuntCompensator.nomU>4160</cim:ShuntCompensator.nomU>
+  <cim:LinearShuntCompensator.bPerSection>0.034670858</cim:LinearShuntCompensator.bPerSection>
+  <cim:LinearShuntCompensator.gPerSection>0</cim:LinearShuntCompensator.gPerSection>
+  <cim:ShuntCompensator.phaseConnection rdf:resource="http://iec.ch/TC57/CIM100#PhaseShuntConnectionKind.Y"/>
+  <cim:ShuntCompensator.grounded>true</cim:ShuntCompensator.grounded>
+  <cim:LinearShuntCompensator.b0PerSection>0.034670858</cim:LinearShuntCompensator.b0PerSection>
+  <cim:LinearShuntCompensator.g0PerSection>0</cim:LinearShuntCompensator.g0PerSection>
+  <cim:ShuntCompensator.normalSections>1</cim:ShuntCompensator.normalSections>
+  <cim:ShuntCompensator.maximumSections>1</cim:ShuntCompensator.maximumSections>
+  <cim:ShuntCompensator.aVRDelay>15</cim:ShuntCompensator.aVRDelay>
+  <cim:ShuntCompensator.sections>1</cim:ShuntCompensator.sections>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:3974DD94-A9D8-4152-9018-642E3122A559"/>
+</cim:LinearShuntCompensator>
+<cim:Terminal rdf:about="urn:uuid:97B44F28-BAC5-4A8E-8D27-AF03F2A09449">
+  <cim:IdentifiedObject.mRID>97B44F28-BAC5-4A8E-8D27-AF03F2A09449</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_wye_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:B8976EBA-2D6B-4B20-B82F-47CE79296F52"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:6CEF0F39-C63C-4224-A04B-717D60923D29"/>
+  <cim:ACDCTerminal.OperationalLimitSet rdf:resource="urn:uuid:BF7DE96E-17FC-4BE1-A150-145703FD9A4F"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:3974DD94-A9D8-4152-9018-642E3122A559">
+  <cim:IdentifiedObject.mRID>3974DD94-A9D8-4152-9018-642E3122A559</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_wye_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:619AAE54-E18A-427D-AD55-D4723527352F">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:3974DD94-A9D8-4152-9018-642E3122A559"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:LinearShuntCompensator rdf:about="urn:uuid:FBFB125B-9B48-4AC5-B256-E7087D564A4C">
+  <cim:IdentifiedObject.mRID>FBFB125B-9B48-4AC5-B256-E7087D564A4C</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_delta</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:ShuntCompensator.nomU>4160</cim:ShuntCompensator.nomU>
+  <cim:LinearShuntCompensator.bPerSection>0.017335429</cim:LinearShuntCompensator.bPerSection>
+  <cim:LinearShuntCompensator.gPerSection>0</cim:LinearShuntCompensator.gPerSection>
+  <cim:ShuntCompensator.phaseConnection rdf:resource="http://iec.ch/TC57/CIM100#PhaseShuntConnectionKind.D"/>
+  <cim:LinearShuntCompensator.grounded>false</cim:LinearShuntCompensator.grounded>
+  <cim:LinearShuntCompensator.b0PerSection>0</cim:LinearShuntCompensator.b0PerSection>
+  <cim:LinearShuntCompensator.g0PerSection>0</cim:LinearShuntCompensator.g0PerSection>
+  <cim:ShuntCompensator.normalSections>1</cim:ShuntCompensator.normalSections>
+  <cim:ShuntCompensator.maximumSections>1</cim:ShuntCompensator.maximumSections>
+  <cim:ShuntCompensator.aVRDelay>10</cim:ShuntCompensator.aVRDelay>
+  <cim:ShuntCompensator.sections>0</cim:ShuntCompensator.sections>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:6FC26615-BBD5-41E9-9802-4D04F5E6668D"/>
+</cim:LinearShuntCompensator>
+<cim:Terminal rdf:about="urn:uuid:DC2B7161-9807-4F0C-8BEF-E1060B59DC8B">
+  <cim:IdentifiedObject.mRID>DC2B7161-9807-4F0C-8BEF-E1060B59DC8B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_delta_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:FBFB125B-9B48-4AC5-B256-E7087D564A4C"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:6CEF0F39-C63C-4224-A04B-717D60923D29"/>
+  <cim:ACDCTerminal.OperationalLimitSet rdf:resource="urn:uuid:C04DD9E6-6C99-4B62-B75B-2CAB73A3CF24"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:6FC26615-BBD5-41E9-9802-4D04F5E6668D">
+  <cim:IdentifiedObject.mRID>6FC26615-BBD5-41E9-9802-4D04F5E6668D</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_delta_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:172F868A-B64F-4B68-8561-A509D8255FFC">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:6FC26615-BBD5-41E9-9802-4D04F5E6668D"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:LinearShuntCompensator rdf:about="urn:uuid:6FAF4DAB-C183-4A4C-B723-2D8BE9533E0B">
+  <cim:IdentifiedObject.mRID>6FAF4DAB-C183-4A4C-B723-2D8BE9533E0B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_1ph</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:ShuntCompensator.nomU>2400</cim:ShuntCompensator.nomU>
+  <cim:LinearShuntCompensator.bPerSection>0.017361111</cim:LinearShuntCompensator.bPerSection>
+  <cim:LinearShuntCompensator.gPerSection>0</cim:LinearShuntCompensator.gPerSection>
+  <cim:ShuntCompensator.phaseConnection rdf:resource="http://iec.ch/TC57/CIM100#PhaseShuntConnectionKind.Y"/>
+  <cim:ShuntCompensator.grounded>true</cim:ShuntCompensator.grounded>
+  <cim:LinearShuntCompensator.b0PerSection>0.017361111</cim:LinearShuntCompensator.b0PerSection>
+  <cim:LinearShuntCompensator.g0PerSection>0</cim:LinearShuntCompensator.g0PerSection>
+  <cim:ShuntCompensator.normalSections>1</cim:ShuntCompensator.normalSections>
+  <cim:ShuntCompensator.maximumSections>1</cim:ShuntCompensator.maximumSections>
+  <cim:ShuntCompensator.aVRDelay>0</cim:ShuntCompensator.aVRDelay>
+  <cim:ShuntCompensator.sections>1</cim:ShuntCompensator.sections>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:4B149A6B-BA4C-4F3B-AC9C-DA5D99CF6954"/>
+</cim:LinearShuntCompensator>
+<cim:LinearShuntCompensatorPhase rdf:about="urn:uuid:58A70DAC-D050-44FD-838A-3B7063AE0EFA">
+  <cim:IdentifiedObject.mRID>58A70DAC-D050-44FD-838A-3B7063AE0EFA</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_1ph_A</cim:IdentifiedObject.name>
+  <cim:ShuntCompensatorPhase.phase rdf:resource="http://iec.ch/TC57/CIM100#SinglePhaseKind.A"/>
+  <cim:LinearShuntCompensatorPhase.bPerSection>0.017361111</cim:LinearShuntCompensatorPhase.bPerSection>
+  <cim:LinearShuntCompensatorPhase.gPerSection>0</cim:LinearShuntCompensatorPhase.gPerSection>
+  <cim:ShuntCompensatorPhase.normalSections>1</cim:ShuntCompensatorPhase.normalSections>
+  <cim:ShuntCompensatorPhase.maximumSections>1</cim:ShuntCompensatorPhase.maximumSections>
+  <cim:ShuntCompensatorPhase.sections>1</cim:ShuntCompensatorPhase.sections>
+  <cim:ShuntCompensatorPhase.ShuntCompensator rdf:resource="urn:uuid:6FAF4DAB-C183-4A4C-B723-2D8BE9533E0B"/>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:4B149A6B-BA4C-4F3B-AC9C-DA5D99CF6954"/>
+</cim:LinearShuntCompensatorPhase>
+<cim:Terminal rdf:about="urn:uuid:4CF69D54-B8A0-4835-B75F-8C09C7B6EE90">
+  <cim:IdentifiedObject.mRID>4CF69D54-B8A0-4835-B75F-8C09C7B6EE90</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_1ph_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:6FAF4DAB-C183-4A4C-B723-2D8BE9533E0B"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:5E6DAF07-DDA8-4264-B8A2-64C611C07896"/>
+  <cim:ACDCTerminal.OperationalLimitSet rdf:resource="urn:uuid:4F0932B8-44F1-43AB-854C-219EAA0F6799"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:4B149A6B-BA4C-4F3B-AC9C-DA5D99CF6954">
+  <cim:IdentifiedObject.mRID>4B149A6B-BA4C-4F3B-AC9C-DA5D99CF6954</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cap_1ph_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:2BA621B6-E8DD-4AE0-BB6C-6EF6785A8B8F">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:4B149A6B-BA4C-4F3B-AC9C-DA5D99CF6954"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:RegulatingControl rdf:about="urn:uuid:ECBDDFCF-2D2E-4E8F-AEA6-23395C393B77">
+  <cim:IdentifiedObject.mRID>ECBDDFCF-2D2E-4E8F-AEA6-23395C393B77</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cc_v</cim:IdentifiedObject.name>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:3974DD94-A9D8-4152-9018-642E3122A559"/>
+  <cim:RegulatingControl.RegulatingCondEq rdf:resource="urn:uuid:B8976EBA-2D6B-4B20-B82F-47CE79296F52"/>
+  <cim:RegulatingControl.Terminal rdf:resource="urn:uuid:678F0BD8-63DD-481D-A51A-3BCEBDB57D3C"/>
+  <cim:RegulatingControl.monitoredPhase rdf:resource="http://iec.ch/TC57/CIM100#PhaseCode.A"/>
+  <cim:RegulatingControl.mode rdf:resource="http://iec.ch/TC57/CIM100#RegulatingControlModeKind.voltage"/>
+  <cim:RegulatingControl.discrete>true</cim:RegulatingControl.discrete>
+  <cim:RegulatingControl.enabled>true</cim:RegulatingControl.enabled>
+  <cim:RegulatingControl.targetValue>2550</cim:RegulatingControl.targetValue>
+  <cim:RegulatingControl.targetDeadband>100</cim:RegulatingControl.targetDeadband>
+</cim:RegulatingControl>
+<cim:RegulatingControl rdf:about="urn:uuid:F2C21288-88D7-4E6F-917C-5E8C99503FE0">
+  <cim:IdentifiedObject.mRID>F2C21288-88D7-4E6F-917C-5E8C99503FE0</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>cc_i</cim:IdentifiedObject.name>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:6FC26615-BBD5-41E9-9802-4D04F5E6668D"/>
+  <cim:RegulatingControl.RegulatingCondEq rdf:resource="urn:uuid:FBFB125B-9B48-4AC5-B256-E7087D564A4C"/>
+  <cim:RegulatingControl.Terminal rdf:resource="urn:uuid:46823BDE-1550-4C76-86D1-7393B908042E"/>
+  <cim:RegulatingControl.monitoredPhase rdf:resource="http://iec.ch/TC57/CIM100#PhaseCode.A"/>
+  <cim:RegulatingControl.mode rdf:resource="http://iec.ch/TC57/CIM100#RegulatingControlModeKind.currentFlow"/>
+  <cim:RegulatingControl.discrete>true</cim:RegulatingControl.discrete>
+  <cim:RegulatingControl.enabled>true</cim:RegulatingControl.enabled>
+  <cim:RegulatingControl.targetValue>5000</cim:RegulatingControl.targetValue>
+  <cim:RegulatingControl.targetDeadband>-5000</cim:RegulatingControl.targetDeadband>
+</cim:RegulatingControl>
+<cim:SeriesCompensator rdf:about="urn:uuid:0DE7F631-BFDB-4813-8413-34C2B38EF64E">
+  <cim:IdentifiedObject.mRID>0DE7F631-BFDB-4813-8413-34C2B38EF64E</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>rx</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:B478B259-18ED-4BE9-A26B-9DF940E65F0A"/>
+  <cim:SeriesCompensator.r>0.5</cim:SeriesCompensator.r>
+  <cim:SeriesCompensator.x>2</cim:SeriesCompensator.x>
+  <cim:SeriesCompensator.r0>0.5</cim:SeriesCompensator.r0>
+  <cim:SeriesCompensator.x0>2</cim:SeriesCompensator.x0>
+</cim:SeriesCompensator>
+<cim:Terminal rdf:about="urn:uuid:5E671AA1-81C1-4CFB-8E04-CDBB0A4F9CFA">
+  <cim:IdentifiedObject.mRID>5E671AA1-81C1-4CFB-8E04-CDBB0A4F9CFA</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>rx_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:0DE7F631-BFDB-4813-8413-34C2B38EF64E"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:AE111608-DCC6-4AA7-AC88-1731E046DD77"/>
+  <cim:ACDCTerminal.OperationalLimitSet rdf:resource="urn:uuid:8E36B131-8126-45A8-88FE-C20845A61B9A"/>
+</cim:Terminal>
+<cim:Terminal rdf:about="urn:uuid:C1D74175-5F08-4E10-9325-4C54A9A35F53">
+  <cim:IdentifiedObject.mRID>C1D74175-5F08-4E10-9325-4C54A9A35F53</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>rx_T2</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:0DE7F631-BFDB-4813-8413-34C2B38EF64E"/>
+  <cim:ACDCTerminal.sequenceNumber>2</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:5E6DAF07-DDA8-4264-B8A2-64C611C07896"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:B478B259-18ED-4BE9-A26B-9DF940E65F0A">
+  <cim:IdentifiedObject.mRID>B478B259-18ED-4BE9-A26B-9DF940E65F0A</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>rx_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:00488D9F-5BFD-43EA-AEB3-20686B08F1AB">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:B478B259-18ED-4BE9-A26B-9DF940E65F0A"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:PositionPoint rdf:about="urn:uuid:BFE411A9-20EB-4DA1-AAB9-8795671351C1">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:B478B259-18ED-4BE9-A26B-9DF940E65F0A"/>
+  <cim:PositionPoint.sequenceNumber>2</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:ACLineSegment rdf:about="urn:uuid:50E5B57B-CF07-4552-9ED3-B8D53321F58D">
+  <cim:IdentifiedObject.mRID>50E5B57B-CF07-4552-9ED3-B8D53321F58D</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_main</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:Conductor.length>304.8</cim:Conductor.length>
+  <cim:ACLineSegment.PerLengthImpedance rdf:resource="urn:uuid:7FEE15EB-00A3-4536-B392-C7B7C124DA5E"/>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:BB267D67-075E-4F48-A4F4-324B306D674B"/>
+</cim:ACLineSegment>
+<cim:Terminal rdf:about="urn:uuid:678F0BD8-63DD-481D-A51A-3BCEBDB57D3C">
+  <cim:IdentifiedObject.mRID>678F0BD8-63DD-481D-A51A-3BCEBDB57D3C</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_main_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:50E5B57B-CF07-4552-9ED3-B8D53321F58D"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:F78B632B-C0F2-4A63-B9D8-F7C70BA7E082"/>
+  <cim:ACDCTerminal.OperationalLimitSet rdf:resource="urn:uuid:926E0166-F86F-40A0-B356-A3A0B84CB0ED"/>
+</cim:Terminal>
+<cim:Terminal rdf:about="urn:uuid:F46BC103-573D-4FA0-8E3C-0236A3F64C0A">
+  <cim:IdentifiedObject.mRID>F46BC103-573D-4FA0-8E3C-0236A3F64C0A</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_main_T2</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:50E5B57B-CF07-4552-9ED3-B8D53321F58D"/>
+  <cim:ACDCTerminal.sequenceNumber>2</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:6CEF0F39-C63C-4224-A04B-717D60923D29"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:BB267D67-075E-4F48-A4F4-324B306D674B">
+  <cim:IdentifiedObject.mRID>BB267D67-075E-4F48-A4F4-324B306D674B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_main_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:1A382397-2F41-447D-9DBE-17D39B282F93">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:BB267D67-075E-4F48-A4F4-324B306D674B"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:PositionPoint rdf:about="urn:uuid:B2DC860E-F329-4B80-9504-E953A47D6365">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:BB267D67-075E-4F48-A4F4-324B306D674B"/>
+  <cim:PositionPoint.sequenceNumber>2</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:ACLineSegment rdf:about="urn:uuid:D2ABAD8F-9B1C-4B43-84F5-D2CCB20F30FB">
+  <cim:IdentifiedObject.mRID>D2ABAD8F-9B1C-4B43-84F5-D2CCB20F30FB</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_br</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:Conductor.length>152.4</cim:Conductor.length>
+  <cim:ACLineSegment.PerLengthImpedance rdf:resource="urn:uuid:7FEE15EB-00A3-4536-B392-C7B7C124DA5E"/>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:D77ED73B-E96B-4C5D-B1A0-B3540D4EA81C"/>
+</cim:ACLineSegment>
+<cim:Terminal rdf:about="urn:uuid:46823BDE-1550-4C76-86D1-7393B908042E">
+  <cim:IdentifiedObject.mRID>46823BDE-1550-4C76-86D1-7393B908042E</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_br_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:D2ABAD8F-9B1C-4B43-84F5-D2CCB20F30FB"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:6CEF0F39-C63C-4224-A04B-717D60923D29"/>
+  <cim:ACDCTerminal.OperationalLimitSet rdf:resource="urn:uuid:926E0166-F86F-40A0-B356-A3A0B84CB0ED"/>
+</cim:Terminal>
+<cim:Terminal rdf:about="urn:uuid:B092D0B5-18F7-484D-ADC9-276147AD1DE3">
+  <cim:IdentifiedObject.mRID>B092D0B5-18F7-484D-ADC9-276147AD1DE3</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_br_T2</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:D2ABAD8F-9B1C-4B43-84F5-D2CCB20F30FB"/>
+  <cim:ACDCTerminal.sequenceNumber>2</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:AE111608-DCC6-4AA7-AC88-1731E046DD77"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:D77ED73B-E96B-4C5D-B1A0-B3540D4EA81C">
+  <cim:IdentifiedObject.mRID>D77ED73B-E96B-4C5D-B1A0-B3540D4EA81C</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>l_br_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:BE86489D-7C1C-4F47-A867-9412647572EC">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:D77ED73B-E96B-4C5D-B1A0-B3540D4EA81C"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:PositionPoint rdf:about="urn:uuid:8C2EA4E3-3DC4-477E-AAC9-8B6471CC567C">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:D77ED73B-E96B-4C5D-B1A0-B3540D4EA81C"/>
+  <cim:PositionPoint.sequenceNumber>2</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:088B6592-2480-4C94-B23A-10F551B64A2F">
+  <cim:IdentifiedObject.mRID>088B6592-2480-4C94-B23A-10F551B64A2F</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Constant kVA</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>false</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>0</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>0</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>100</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>0</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>0</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>100</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>0</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>0</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:D0F10C23-F8ED-4C95-A337-637BF1F5C0BF">
+  <cim:IdentifiedObject.mRID>D0F10C23-F8ED-4C95-A337-637BF1F5C0BF</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Constant Z</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>false</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>100</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>0</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>0</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>100</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>0</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>0</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>0</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>0</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:7C98173F-C13D-4315-AF7D-473362BFDED6">
+  <cim:IdentifiedObject.mRID>7C98173F-C13D-4315-AF7D-473362BFDED6</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Motor</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>false</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>0</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>0</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>100</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>100</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>0</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>0</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>0</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>0</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:05EDDD31-CA36-484D-9133-AF2284EFADA5">
+  <cim:IdentifiedObject.mRID>05EDDD31-CA36-484D-9133-AF2284EFADA5</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Mix Motor/Res</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>true</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>0</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>0</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>0</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>0</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>0</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>0</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>1</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>2</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:298360D7-4985-434A-B8C6-62F210491AD9">
+  <cim:IdentifiedObject.mRID>298360D7-4985-434A-B8C6-62F210491AD9</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Constant I</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>false</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>0</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>100</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>0</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>0</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>100</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>0</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>0</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>0</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:17029EB1-708D-479E-9CE4-2358575713D1">
+  <cim:IdentifiedObject.mRID>17029EB1-708D-479E-9CE4-2358575713D1</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Variable P, Fixed Q</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>false</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>0</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>0</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>100</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>0</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>0</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>100</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>0</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>0</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:LoadResponseCharacteristic rdf:about="urn:uuid:75EDCEF2-C374-4A5C-B8D6-39FE27861D09">
+  <cim:IdentifiedObject.mRID>75EDCEF2-C374-4A5C-B8D6-39FE27861D09</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Variable P, Fixed X</cim:IdentifiedObject.name>
+  <cim:LoadResponseCharacteristic.exponentModel>false</cim:LoadResponseCharacteristic.exponentModel>
+  <cim:LoadResponseCharacteristic.pConstantImpedance>0</cim:LoadResponseCharacteristic.pConstantImpedance>
+  <cim:LoadResponseCharacteristic.pConstantCurrent>0</cim:LoadResponseCharacteristic.pConstantCurrent>
+  <cim:LoadResponseCharacteristic.pConstantPower>100</cim:LoadResponseCharacteristic.pConstantPower>
+  <cim:LoadResponseCharacteristic.qConstantImpedance>100</cim:LoadResponseCharacteristic.qConstantImpedance>
+  <cim:LoadResponseCharacteristic.qConstantCurrent>0</cim:LoadResponseCharacteristic.qConstantCurrent>
+  <cim:LoadResponseCharacteristic.qConstantPower>0</cim:LoadResponseCharacteristic.qConstantPower>
+  <cim:LoadResponseCharacteristic.pVoltageExponent>0</cim:LoadResponseCharacteristic.pVoltageExponent>
+  <cim:LoadResponseCharacteristic.qVoltageExponent>0</cim:LoadResponseCharacteristic.qVoltageExponent>
+  <cim:LoadResponseCharacteristic.pFrequencyExponent>0</cim:LoadResponseCharacteristic.pFrequencyExponent>
+  <cim:LoadResponseCharacteristic.qFrequencyExponent>0</cim:LoadResponseCharacteristic.qFrequencyExponent>
+</cim:LoadResponseCharacteristic>
+<cim:EnergyConsumer rdf:about="urn:uuid:0D3C20C2-44C1-4A54-AA6A-F200BB53D904">
+  <cim:IdentifiedObject.mRID>0D3C20C2-44C1-4A54-AA6A-F200BB53D904</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b2</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:EnergyConsumer.LoadResponse rdf:resource="urn:uuid:088B6592-2480-4C94-B23A-10F551B64A2F"/>
+  <cim:EnergyConsumer.p>300000</cim:EnergyConsumer.p>
+  <cim:EnergyConsumer.q>150000</cim:EnergyConsumer.q>
+  <cim:EnergyConsumer.customerCount>1</cim:EnergyConsumer.customerCount>
+  <cim:EnergyConsumer.phaseConnection rdf:resource="http://iec.ch/TC57/CIM100#PhaseShuntConnectionKind.Y"/>
+  <cim:EnergyConsumer.grounded>true</cim:EnergyConsumer.grounded>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:7D27E361-05E6-441B-ADA9-9EBE792B80B7"/>
+</cim:EnergyConsumer>
+<cim:Terminal rdf:about="urn:uuid:E6DC8467-10C3-4731-8F46-DB1B6849EFAC">
+  <cim:IdentifiedObject.mRID>E6DC8467-10C3-4731-8F46-DB1B6849EFAC</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b2_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:0D3C20C2-44C1-4A54-AA6A-F200BB53D904"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:AE111608-DCC6-4AA7-AC88-1731E046DD77"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:7D27E361-05E6-441B-ADA9-9EBE792B80B7">
+  <cim:IdentifiedObject.mRID>7D27E361-05E6-441B-ADA9-9EBE792B80B7</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b2_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:80DAE439-4826-46C6-A067-256B1A19A842">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:7D27E361-05E6-441B-ADA9-9EBE792B80B7"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:EnergyConsumer rdf:about="urn:uuid:311D36BD-7B30-441F-A283-9BCFE4C1E40A">
+  <cim:IdentifiedObject.mRID>311D36BD-7B30-441F-A283-9BCFE4C1E40A</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b3</cim:IdentifiedObject.name>
+  <cim:Equipment.EquipmentContainer rdf:resource="urn:uuid:C882CB9E-AD19-4EEC-8FAB-D9B79A240038"/>
+  <cim:ConductingEquipment.BaseVoltage rdf:resource="urn:uuid:B45EA3C2-6936-4C85-88CA-682AFAA49F75"/>
+  <cim:EnergyConsumer.LoadResponse rdf:resource="urn:uuid:088B6592-2480-4C94-B23A-10F551B64A2F"/>
+  <cim:EnergyConsumer.p>80000</cim:EnergyConsumer.p>
+  <cim:EnergyConsumer.q>40000</cim:EnergyConsumer.q>
+  <cim:EnergyConsumer.customerCount>1</cim:EnergyConsumer.customerCount>
+  <cim:EnergyConsumer.phaseConnection rdf:resource="http://iec.ch/TC57/CIM100#PhaseShuntConnectionKind.Y"/>
+  <cim:EnergyConsumer.grounded>true</cim:EnergyConsumer.grounded>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:7AD59C73-4E91-4F21-A985-3CD6037DA0D4"/>
+</cim:EnergyConsumer>
+<cim:EnergyConsumerPhase rdf:about="urn:uuid:456F1B97-655B-4243-95BD-B6013D0DA48D">
+  <cim:IdentifiedObject.mRID>456F1B97-655B-4243-95BD-B6013D0DA48D</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b3_A</cim:IdentifiedObject.name>
+  <cim:EnergyConsumerPhase.phase rdf:resource="http://iec.ch/TC57/CIM100#SinglePhaseKind.A"/>
+  <cim:EnergyConsumerPhase.p>80000</cim:EnergyConsumerPhase.p>
+  <cim:EnergyConsumerPhase.q>40000</cim:EnergyConsumerPhase.q>
+  <cim:EnergyConsumerPhase.EnergyConsumer rdf:resource="urn:uuid:311D36BD-7B30-441F-A283-9BCFE4C1E40A"/>
+  <cim:PowerSystemResource.Location rdf:resource="urn:uuid:7AD59C73-4E91-4F21-A985-3CD6037DA0D4"/>
+</cim:EnergyConsumerPhase>
+<cim:Terminal rdf:about="urn:uuid:9714EE61-0A40-4E4B-A936-0D1CCF04AD11">
+  <cim:IdentifiedObject.mRID>9714EE61-0A40-4E4B-A936-0D1CCF04AD11</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b3_T1</cim:IdentifiedObject.name>
+  <cim:Terminal.ConductingEquipment rdf:resource="urn:uuid:311D36BD-7B30-441F-A283-9BCFE4C1E40A"/>
+  <cim:ACDCTerminal.sequenceNumber>1</cim:ACDCTerminal.sequenceNumber>
+  <cim:Terminal.ConnectivityNode rdf:resource="urn:uuid:5E6DAF07-DDA8-4264-B8A2-64C611C07896"/>
+</cim:Terminal>
+<cim:Location rdf:about="urn:uuid:7AD59C73-4E91-4F21-A985-3CD6037DA0D4">
+  <cim:IdentifiedObject.mRID>7AD59C73-4E91-4F21-A985-3CD6037DA0D4</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>load_b3_Loc</cim:IdentifiedObject.name>
+  <cim:Location.CoordinateSystem rdf:resource="urn:uuid:0852E10A-7B3E-41BA-AF62-ABB59B312D20"/>
+</cim:Location>
+<cim:PositionPoint rdf:about="urn:uuid:A3D22C1D-28A0-459C-8905-99DDDD02C726">
+  <cim:PositionPoint.Location rdf:resource="urn:uuid:7AD59C73-4E91-4F21-A985-3CD6037DA0D4"/>
+  <cim:PositionPoint.sequenceNumber>1</cim:PositionPoint.sequenceNumber>
+  <cim:PositionPoint.xPosition>0</cim:PositionPoint.xPosition>
+  <cim:PositionPoint.yPosition>0</cim:PositionPoint.yPosition>
+</cim:PositionPoint>
+<cim:PerLengthSequenceImpedance rdf:about="urn:uuid:7FEE15EB-00A3-4536-B392-C7B7C124DA5E">
+  <cim:IdentifiedObject.mRID>7FEE15EB-00A3-4536-B392-C7B7C124DA5E</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>lc1</cim:IdentifiedObject.name>
+  <cim:PerLengthSequenceImpedance.r>0.00032808399</cim:PerLengthSequenceImpedance.r>
+  <cim:PerLengthSequenceImpedance.x>0.00098425197</cim:PerLengthSequenceImpedance.x>
+  <cim:PerLengthSequenceImpedance.bch>3.7105425E-18</cim:PerLengthSequenceImpedance.bch>
+  <cim:PerLengthSequenceImpedance.gch>0</cim:PerLengthSequenceImpedance.gch>
+  <cim:PerLengthSequenceImpedance.r0>0.00065616798</cim:PerLengthSequenceImpedance.r0>
+  <cim:PerLengthSequenceImpedance.x0>0.0019685039</cim:PerLengthSequenceImpedance.x0>
+  <cim:PerLengthSequenceImpedance.b0ch>1.8552713E-18</cim:PerLengthSequenceImpedance.b0ch>
+  <cim:PerLengthSequenceImpedance.g0ch>0</cim:PerLengthSequenceImpedance.g0ch>
+</cim:PerLengthSequenceImpedance>
+<cim:OperationalLimitSet rdf:about="urn:uuid:BF7DE96E-17FC-4BE1-A150-145703FD9A4F">
+  <cim:IdentifiedObject.mRID>BF7DE96E-17FC-4BE1-A150-145703FD9A4F</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_112.4_149.9</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:CurrentLimit rdf:about="urn:uuid:6A53D109-0E29-4CEB-9BEC-996F8F5B8093">
+  <cim:IdentifiedObject.mRID>6A53D109-0E29-4CEB-9BEC-996F8F5B8093</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_112.4_149.9_Norm</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:BF7DE96E-17FC-4BE1-A150-145703FD9A4F"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD"/>
+  <cim:CurrentLimit.value>112.41676</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:CurrentLimit rdf:about="urn:uuid:47C632F2-1C09-45A0-91E9-1AF26C386FE8">
+  <cim:IdentifiedObject.mRID>47C632F2-1C09-45A0-91E9-1AF26C386FE8</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_112.4_149.9_Emerg</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:BF7DE96E-17FC-4BE1-A150-145703FD9A4F"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75"/>
+  <cim:CurrentLimit.value>149.88901</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:OperationalLimitSet rdf:about="urn:uuid:C04DD9E6-6C99-4B62-B75B-2CAB73A3CF24">
+  <cim:IdentifiedObject.mRID>C04DD9E6-6C99-4B62-B75B-2CAB73A3CF24</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_32.5_43.3</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:CurrentLimit rdf:about="urn:uuid:F7BD8299-17B5-4173-8D5D-E1A3B15375E9">
+  <cim:IdentifiedObject.mRID>F7BD8299-17B5-4173-8D5D-E1A3B15375E9</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_32.5_43.3_Norm</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:C04DD9E6-6C99-4B62-B75B-2CAB73A3CF24"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD"/>
+  <cim:CurrentLimit.value>32.451923</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:CurrentLimit rdf:about="urn:uuid:3DBCC804-8D3B-4917-B617-71C46A7B754E">
+  <cim:IdentifiedObject.mRID>3DBCC804-8D3B-4917-B617-71C46A7B754E</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_32.5_43.3_Emerg</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:C04DD9E6-6C99-4B62-B75B-2CAB73A3CF24"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75"/>
+  <cim:CurrentLimit.value>43.269231</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:OperationalLimitSet rdf:about="urn:uuid:4F0932B8-44F1-43AB-854C-219EAA0F6799">
+  <cim:IdentifiedObject.mRID>4F0932B8-44F1-43AB-854C-219EAA0F6799</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_56.3_75.0</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:CurrentLimit rdf:about="urn:uuid:0BDCE71E-546B-4C6A-959C-E74C99DA9405">
+  <cim:IdentifiedObject.mRID>0BDCE71E-546B-4C6A-959C-E74C99DA9405</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_56.3_75.0_Norm</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:4F0932B8-44F1-43AB-854C-219EAA0F6799"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD"/>
+  <cim:CurrentLimit.value>56.25</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:CurrentLimit rdf:about="urn:uuid:2BA22539-3100-47DD-AAE9-C064FA0E0B35">
+  <cim:IdentifiedObject.mRID>2BA22539-3100-47DD-AAE9-C064FA0E0B35</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_56.3_75.0_Emerg</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:4F0932B8-44F1-43AB-854C-219EAA0F6799"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75"/>
+  <cim:CurrentLimit.value>75</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:OperationalLimitSet rdf:about="urn:uuid:8E36B131-8126-45A8-88FE-C20845A61B9A">
+  <cim:IdentifiedObject.mRID>8E36B131-8126-45A8-88FE-C20845A61B9A</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_4.6_6.3</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:CurrentLimit rdf:about="urn:uuid:4AD499C1-580B-4DDB-8D3A-BD7325CBB047">
+  <cim:IdentifiedObject.mRID>4AD499C1-580B-4DDB-8D3A-BD7325CBB047</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_4.6_6.3_Norm</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:8E36B131-8126-45A8-88FE-C20845A61B9A"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD"/>
+  <cim:CurrentLimit.value>4.6299139</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:CurrentLimit rdf:about="urn:uuid:F05199E6-768E-453A-B00D-C1B6D7A58221">
+  <cim:IdentifiedObject.mRID>F05199E6-768E-453A-B00D-C1B6D7A58221</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_4.6_6.3_Emerg</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:8E36B131-8126-45A8-88FE-C20845A61B9A"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75"/>
+  <cim:CurrentLimit.value>6.2503838</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:OperationalLimitSet rdf:about="urn:uuid:926E0166-F86F-40A0-B356-A3A0B84CB0ED">
+  <cim:IdentifiedObject.mRID>926E0166-F86F-40A0-B356-A3A0B84CB0ED</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_400.0_600.0</cim:IdentifiedObject.name>
+</cim:OperationalLimitSet>
+<cim:CurrentLimit rdf:about="urn:uuid:5C7BD89F-2305-4038-B5F7-BF0292358EA7">
+  <cim:IdentifiedObject.mRID>5C7BD89F-2305-4038-B5F7-BF0292358EA7</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_400.0_600.0_Norm</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:926E0166-F86F-40A0-B356-A3A0B84CB0ED"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:076E8304-5ADE-4AD0-AAFF-A94FDF2E2ABD"/>
+  <cim:CurrentLimit.value>400</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+<cim:CurrentLimit rdf:about="urn:uuid:10A34BBE-FA12-4DAE-8A30-757EC9B1DCE3">
+  <cim:IdentifiedObject.mRID>10A34BBE-FA12-4DAE-8A30-757EC9B1DCE3</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>OpLimI_400.0_600.0_Emerg</cim:IdentifiedObject.name>
+  <cim:OperationalLimit.OperationalLimitSet rdf:resource="urn:uuid:926E0166-F86F-40A0-B356-A3A0B84CB0ED"/>
+  <cim:OperationalLimit.OperationalLimitType rdf:resource="urn:uuid:CB7E90EF-E06A-4CFB-BB91-97CA9DF3AF75"/>
+  <cim:CurrentLimit.value>600</cim:CurrentLimit.value>
+</cim:CurrentLimit>
+</rdf:RDF>
