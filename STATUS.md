@@ -9,6 +9,49 @@
 
 Last updated: 2026-07-08.
 
+**GAPS round-2 (2026-07-08): five more GAPS ports (WPG.4/5/6/9/11) + four
+audit-fix worktrees, all merged to `phase-8-reporting` (HEAD `3890145`); each
+port had an opus `/audit-code` + `/audit-tests` pair and each fix an opus
+audit-tests — full gate green after every merge (fmt/clippy/`cargo test
+--workspace`; live corpus: modes family now 0 pending, controls 6, asymmetric 7
+= 13 pending total). Every audit-code returned 0 correctness bugs across the 5
+ports; every audit-fix was opus-verified feature-sensitive via mutation
+trials.** Landed:
+- **WPG.6 — Newton (`DoNewtonSolution`)**: `Set algorithm=Newton` via the
+  current-injection loop; `newton.dss` + new `newton_feeder.dss` live-green
+  (exact iters — oracle-confirmed 2/3 — 1e-9 V/I). Surfaced + reproduced a proven
+  upstream quirk: post-Newton `Powers`/`Losses` read a one-step-stale `Iterminal`
+  (`P ≠ V·conj(I)`), `TODO(compat)` in `exec/view.rs::snapshot_elements`,
+  oracle-probe-proven (`investigations/newton_stale_iterminal_bug_report.md`;
+  CLAUDE.md bug index 4→5). It is the *only* Newton-vs-normal gate discriminator
+  (documented at the deck notes + a `GATE NOTE` at the TODO(compat)).
+- **WPG.4 — Monte Carlo M1/M2/M3/MF + FPC RNG**: FPC 3.2.2 RTL MT19937
+  (`support/mathutil/rng.rs`) + SolveMonte1/2/3/MonteFault; monte1/2/3/montefault
+  live-green under `random=none`. RNG pins **confirmed captured-FPC-exact** — an
+  `ppcrossx64` x86_64/SSE2 run reproduced all 20 pins bit-for-bit (`tools/fpc/
+  mtwist/`, self-contained probe + captured output; the earlier
+  "transcription-equivalence assumed" is closed). Audit-fix added 17 fixed-seed
+  RNG-dispatch tests (§2.1-compliant, externally-derived).
+- **WPG.5 — AutoAdd (`TAutoAdd.Solve`)**: capacity search + `UseAuxCurrents`/
+  `AddInAuxCurrents`; `autoadd.dss` live-green (winner b3, teardown-segfault
+  handled). Audit-fix added the CAPADD gate `autoadd_cap.dss` (winner b2 +
+  `Capacitor.cadd1` oracle-pinned) and tightened the improvement-figure floor
+  1e-4 → 1e-10 (measured faer-vs-KLU delta 1.66e-12).
+- **WPG.9 — InvControl `ControlModel=Exponential` (TPICtrl PI)** across
+  VV/AVR/DRC/VV_DRC; `invcontrol_expmodel.dss` live-green. Audit-fix unit-covered
+  the DRC/VV_DRC/AVR branches (only VOLTVAR was exercised).
+- **WPG.11 — StorageController seasonal targets + `Set SeasonRating/
+  SeasonSignal`**; `storagecontroller_seasonal.dss` live-green (fixed the deck's
+  unbounded XYcurve extrapolation that hung the oracle itself). Audit-fix
+  unit-covered the 3 `get_dynamic_target` fallbacks.
+- Accepted deviations (documented, not bugs): WPG.4 random-mode draw-count (§2.1
+  non-pinnable), WPG.5 `SetGeneratorDispRef`/`GlobalResult` (unreachable), WPG.11
+  season flags on `Circuit` vs `Dss` (unreachable Clear).
+Done GAPS WPGs now: 1,2,3,4,5,6,7,8,9,11,14. **Remaining: WPG.10 (InvControl
+VW/VV_VW Storage), WPG.12 (Relay TD21/Generic), WPG.13 (GFM), WPG.15 (AutoTrans),
+WPG.16 (GIC family), WPG.18 (CIM XML) + WPG.17 (exit sweep). Then WP8.8 phase
+exit + the explicit-request-only merge to `main`.**
+
 **Parallel WPG/WP8.5b round (2026-07-08): five isolated-worktree agents merged
 into `phase-8-reporting` (HEAD `de6f56c`), each with its own opus
 `/audit-code` + `/audit-tests` pair; full gate green after merge** (fmt/clippy/
