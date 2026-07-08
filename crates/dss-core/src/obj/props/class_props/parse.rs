@@ -158,7 +158,14 @@ impl ClassProps {
                         // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
                         // (case-insensitive). On failure DoSimpleMsg 401 and the
                         // reference is left NIL, but the edit continues.
-                        let resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        let mut resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        // Pascal `TProxyClass` (RegControl `transformer=`): try the
+                        // second class when the first misses.
+                        if resolved.is_none()
+                            && let Some(class2) = pd.object_class2
+                        {
+                            resolved = eng.foreign.and_then(|f| f.find(class2, value));
+                        }
                         if resolved.is_none() && !value.is_empty() {
                             eng.errors.push(format!(
                                 "{full}.{}: {class} object \"{value}\" not found.",

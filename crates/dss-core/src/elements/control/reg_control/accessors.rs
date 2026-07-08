@@ -6,6 +6,7 @@
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::RefSnapshot;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
@@ -201,18 +202,30 @@ impl DssObject for RegControl {
                 self.ccd.controlled_element = Some(r);
                 let elem = obj
                     .as_ckt_element()
-                    .expect("Transformer is a circuit element");
-                self.snapshot = Some(RefSnapshot::capture(
-                    format!("Transformer.{}", obj.data().name()),
-                    elem,
-                ));
-                let xf = obj
-                    .as_any()
-                    .downcast_ref::<Transformer>()
-                    .expect("transformer= resolves against the Transformer class");
-                self.tap_snap = (1..=xf.num_windings().max(0) as usize)
-                    .map(|i| xf.winding_tap_data(i))
-                    .collect();
+                    .expect("controlled element is a circuit element");
+                // `transformer=` resolves against either class (Pascal
+                // `Transf_Or_AutoTrans_ProxyClass`).
+                let name = obj.data().name();
+                let (full_name, tap_snap) =
+                    if let Some(xf) = obj.as_any().downcast_ref::<Transformer>() {
+                        (
+                            format!("Transformer.{name}"),
+                            (1..=xf.num_windings().max(0) as usize)
+                                .map(|i| xf.winding_tap_data(i))
+                                .collect(),
+                        )
+                    } else if let Some(at) = obj.as_any().downcast_ref::<AutoTrans>() {
+                        (
+                            format!("AutoTrans.{name}"),
+                            (1..=at.num_windings().max(0) as usize)
+                                .map(|i| at.winding_tap_data(i))
+                                .collect(),
+                        )
+                    } else {
+                        (format!("Transformer.{name}"), Vec::new())
+                    };
+                self.snapshot = Some(RefSnapshot::capture(full_name, elem));
+                self.tap_snap = tap_snap;
             }
             None => {
                 self.ccd.controlled_element = None;

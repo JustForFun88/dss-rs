@@ -6,6 +6,7 @@ use num_complex::Complex64;
 use super::Monitor;
 use crate::elements::ckt::CktElementData;
 use crate::elements::meter::meter_element::{MeteredKind, MeteredSnapshot};
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
@@ -221,6 +222,14 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
             (
                 MeteredKind::Transformer,
                 t.num_windings().max(0) as usize,
+                0,
+            )
+        } else if let Some(at) = obj.as_any().downcast_ref::<AutoTrans>() {
+            // Pascal Monitor mode 2/8/10 accepts AUTOTRANS_ELEMENT alongside
+            // XFMR_ELEMENT (Monitor.pas:542-543); the auto reports the same kind.
+            (
+                MeteredKind::Transformer,
+                at.num_windings().max(0) as usize,
                 0,
             )
         } else if let Some(c) = obj.as_any().downcast_ref::<Capacitor>() {

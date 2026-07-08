@@ -365,6 +365,46 @@ impl AutoTrans {
         }
     }
 
+    /// Pascal `TAutoTransObj.GetWindingVoltages` (`AutoTrans.pas:1604`): the
+    /// voltages across the `iWind` winding's phases into `vbuffer` (0-based,
+    /// length `nphases`). The Series arm subtracts `Vterminal[i + Fnconds]` (the
+    /// series winding straddles the H/X terminals). RegControl's control voltage.
+    pub(super) fn get_winding_voltages(
+        &mut self,
+        iwind: usize,
+        node_v: &[Complex64],
+        vbuffer: &mut [Complex64],
+    ) {
+        let nphases = self.cd.nphases;
+        if !self.cd.enabled || self.cd.node_ref.is_empty() || node_v.is_empty() {
+            return;
+        }
+        if iwind < 1 || iwind > self.num_windings.max(0) as usize {
+            for v in vbuffer.iter_mut().take(self.cd.nconds) {
+                *v = Complex64::ZERO;
+            }
+            return;
+        }
+        self.cd.compute_vterminal(node_v);
+        let vt = &self.cd.vterminal;
+        let nconds = self.cd.nconds;
+        let k = (iwind - 1) * nconds; // offset for winding (0-based)
+        let neut = nphases + k; // Pascal NeutTerm = Fnphases + k + 1 (1-based)
+        let conn = self.windings[iwind - 1].connection;
+        for i in 0..nphases {
+            match conn {
+                0 => vbuffer[i] = vt[i + k] - vt[neut], // Wye
+                1 => {
+                    // Delta: next phase in sequence (rotate_phases is 1-based).
+                    let ii = self.rotate_phases(i + 1) - 1;
+                    vbuffer[i] = vt[i + k] - vt[ii + k];
+                }
+                2 => vbuffer[i] = vt[i + k] - vt[i + nconds], // Series (winding 1)
+                _ => {}
+            }
+        }
+    }
+
     /// Pascal `TAutoTransObj.GetAllWindingCurrents` (`AutoTrans.pas:1523`):
     /// `Iterm = Y_Term · Vterm` phase-by-phase, length `2·nphases·NumWindings`.
     /// The Series arm reads the second node from `Vterminal[iphase + Fnphases]`

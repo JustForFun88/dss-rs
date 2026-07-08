@@ -327,6 +327,10 @@ impl Transformer {
 /// voltage/current buffers are 0-based, length `nphases`/`yorder`.
 pub trait ControlledTransformer {
     fn name(&self) -> &str;
+    /// Pascal `FullName` (`Class.name`) — RegControl's Series-connection guard
+    /// message reports the controlled element's full name, so it names the
+    /// concrete class (`Transformer.x` or `AutoTrans.x`).
+    fn full_name(&self) -> String;
     fn n_phases(&self) -> usize;
     fn n_conds(&self) -> usize;
     fn y_order(&self) -> usize;

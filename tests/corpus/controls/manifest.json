@@ -1297,7 +1297,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15",
    "note": "RegControl drives the AutoTrans COMMON (wye) winding via the Pascal Transf_Or_AutoTrans proxy. Oracle 2026-07-05: 10 tap-change events over the 8 hours, final tapnum=5."
   },
@@ -1360,7 +1360,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15",
    "note": "Snapshot Solve then the RegControl daily run in one session (12 tap events, final tapnum=5 on the oracle) - cross-mode state-leak coverage."
   },
@@ -1389,7 +1389,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15",
    "note": "Control-active at midi scale on the oracle: 10 tap events, final tapnum=11."
   },
@@ -1411,7 +1411,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.15"
   }
  ]
