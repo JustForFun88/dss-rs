@@ -43,9 +43,10 @@
 //! charge/discharge curve by `StorageState`/`FVWStateRequested`; the Storage
 //! `kWOut_Calc` requesting/limiting region does the actual biting.
 //!
-//! **NOT_PORTED / deferred (an explicit error, never a silent skip):** GFM →
-//! WP7.7. The Exponential `ControlModel` (the `TPICtrl` PI controller) is ported
-//! (WPG.9).
+//! **GFM** (mode=7, WPG.13): the grid-forming protective arm — `CheckAmpsLimit`
+//! (sets `dynVars.IComp`, driving the `DoGFM_Mode` `BaseV` shrink) / `CheckOLInverter`
+//! in `Sample`, the overload-drops-GFM path in `DoPendingAction`. The Exponential
+//! `ControlModel` (the `TPICtrl` PI controller) is ported (WPG.9).
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
@@ -58,7 +59,7 @@ use crate::util::fmt_g;
 
 use super::{
     AVR, CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
-    DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR,
+    DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, GFM, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR,
     NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_LPF, ROC_RISEFALL, VOLTVAR, VOLTWATT, VV_DRC,
     VV_VW, WATTPF, WATTVAR,
 };
@@ -270,6 +271,36 @@ pub(crate) trait InvDispatchEnv {
     /// re-solve must pick the request up); harmless/idempotent for the modes that do
     /// call `der_set_nominal` (the recompute from the same request is a no-op).
     fn set_loads_need_updating(&mut self);
+
+    // --- grid-forming (GFM) arm ---
+    /// `DERElem.GFM_Mode` — the DER is currently a grid-forming voltage source.
+    fn der_gfm_mode(&self, r: ElemRef) -> bool;
+    /// `TStorageObj.StorageState` (`FState`); for a PVSystem this is unused (the
+    /// GFM arm branches on `IsStorage` first).
+    fn der_storage_state(&self, r: ElemRef) -> i32;
+    /// `DERElem.dynVars.ILimit` — the GFM output-current limit (≤ 0 ⇒ no limit,
+    /// the overload path is taken instead of the amps limiter).
+    fn der_ilimit(&self, r: ElemRef) -> f64;
+    /// `DERElem.dynVars.ResetIBR` — the force-off flag (blocks the pending push).
+    fn der_reset_ibr(&self, r: ElemRef) -> bool;
+    /// `DERElem.CheckAmpsLimit()` — set the DER's `dynVars.IComp` and return
+    /// whether any phase is over the amps limit (Sample GFM arm, `ILimit > 0`).
+    fn der_check_amps_limit(&mut self, r: ElemRef) -> bool;
+    /// `DERElem.CheckOLInverter()` — whether any inverter phase is overloaded.
+    fn der_check_ol_inverter(&mut self, r: ElemRef) -> bool;
+    /// `DERElem.GFM_Mode := value` + `YprimInvalid := TRUE` (the DoPendingAction
+    /// overload path that drops the DER out of grid-forming mode).
+    fn der_set_gfm_mode(&mut self, r: ElemRef, value: bool);
+    /// `DERElem.dynVars.ResetIBR := value` (dynamics overload → take the IBR to
+    /// safety through the dynamics algorithm).
+    fn der_set_reset_ibr(&mut self, r: ElemRef, value: bool);
+    /// `TStorageObj.StorageState := 0; StateChanged := TRUE` — the overload path
+    /// that turns a burning storage off (non-dynamics, `ILimit ≤ 0`).
+    fn der_set_storage_state_off(&mut self, r: ElemRef);
+    /// `ActiveCircuit.Solution.IsDynamicModel` — the GFM overload path forces the
+    /// IBR to safety through the dynamics algorithm (dynamics) rather than turning
+    /// the DER off outright (non-dynamics).
+    fn is_dynamic_model(&self) -> bool;
 }
 
 /// Which mode-3 monitor state variable a `der_set_monitor_var` write targets.
@@ -498,8 +529,8 @@ impl InvControl {
             }
         } else {
             match self.control_mode {
-                NONE_MODE | VOLTVAR | VOLTWATT | DRC | WATTPF | WATTVAR | AVR => {}
-                _ => return Err(self.not_ported_mode()), // GFM → WP7.7
+                NONE_MODE | VOLTVAR | VOLTWATT | DRC | WATTPF | WATTVAR | AVR | GFM => {}
+                _ => return Err(self.not_ported_mode()),
             }
         }
         // Exponential ControlModel (WPG.9) runs the `TPICtrl` PI controller in the
@@ -552,6 +583,7 @@ impl InvControl {
                     WATTPF => self.sample_wattpf(i, env, snap, control_iter)?,
                     WATTVAR => self.sample_wattvar(i, env, snap, control_iter)?,
                     AVR => self.sample_avr(i, env, snap, control_iter)?,
+                    GFM => self.sample_gfm(i, env),
                     _ => {} // NONE_MODE: do nothing
                 }
             }
@@ -1079,6 +1111,67 @@ impl InvControl {
     /// `Calc_QHeadRoom` for every DER; `Calc_PBase` + `kW_out_desiredpu` (which only
     /// VW/VV_VW consume) run inside those branches, for both PVSystem and Storage.
     /// Ports VOLTVAR / VOLTWATT / VV_VW.
+    /// Pascal `Sample`'s `GFM` arm (InvControl.pas l.2276): the grid-forming
+    /// protective check. For a discharging Storage (or any PVSystem) run either
+    /// the amps limiter (`ILimit > 0`, sets `IComp` — drives the `DoGFM_Mode`
+    /// `BaseV` shrink) or the overload check, and queue a control action unless
+    /// the IBR is being reset. A non-grid-forming or idle/charging DER is skipped.
+    fn sample_gfm(&mut self, i: usize, env: &mut dyn InvDispatchEnv) {
+        let r = self.fleet[i];
+        if !env.der_gfm_mode(r) {
+            return;
+        }
+        // (not IsStorage) or (IsStorage and StorageState = STORE_DISCHARGING).
+        let active = env.der_is_pvsystem(r) || env.der_storage_state(r) == STORE_DISCHARGING;
+        let mut valid = if active {
+            if env.der_ilimit(r) > 0.0 {
+                env.der_check_amps_limit(r) // sets dynVars.IComp as a side effect
+            } else {
+                env.der_check_ol_inverter(r)
+            }
+        } else {
+            true
+        };
+        valid = valid && !env.der_reset_ibr(r);
+        if valid {
+            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
+            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+        }
+    }
+
+    /// Pascal `DoPendingAction`'s `GFM` arm (InvControl.pas l.1568): drop the DER
+    /// out of grid-forming mode when it is overloaded. With a valid `ILimit > 0`
+    /// amps limit this is a no-op (the amps limiter handles saturation); the
+    /// overload path only bites for `ILimit ≤ 0`. In dynamics the overload sets
+    /// `ResetIBR` (the dynamics algorithm takes the IBR to safety) instead of
+    /// turning the DER off.
+    fn do_pending_gfm(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
+        let r = self.fleet[k];
+        if !env.der_gfm_mode(r) {
+            return;
+        }
+        let is_dyn = env.is_dynamic_model();
+        let mut der_ol = false;
+        if !env.der_is_pvsystem(r) {
+            // Storage: with no amps limit, an overloaded (burning) unit turns off.
+            if env.der_ilimit(r) <= 0.0 && env.der_check_ol_inverter(r) {
+                if !is_dyn {
+                    der_ol = true;
+                    env.der_set_storage_state_off(r);
+                } else {
+                    env.der_set_reset_ibr(r, true);
+                }
+            }
+        } else if !is_dyn {
+            der_ol = env.der_check_ol_inverter(r);
+        } else if env.der_check_ol_inverter(r) {
+            env.der_set_reset_ibr(r, true);
+        }
+        if der_ol {
+            env.der_set_gfm_mode(r, false); // + YprimInvalid (handled in the env)
+        }
+    }
+
     pub(crate) fn do_pending_action(&mut self, env: &mut dyn InvDispatchEnv) {
         for k in 0..self.fleet.len() {
             // Calc_QHeadRoom (header; consumed by the var modes + VV_VW's VV part).
@@ -1123,6 +1216,11 @@ impl InvControl {
                 && pending == CHANGEVARLEVEL
             {
                 self.do_pending_avr(k, env);
+            } else if self.control_mode == GFM
+                && self.combi_mode == NONE_COMBMODE
+                && pending == CHANGEVARLEVEL
+            {
+                self.do_pending_gfm(k, env);
             }
 
             // Pascal `DoPendingAction` l.1605-1606 (end of every DER's loop body):

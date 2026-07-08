@@ -35,47 +35,22 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         return Ok(());
     }
 
-    // Grid-forming inverter mode (PVSystem `ControlMode=GFM`) is WP7.7
-    // (dynamics): `DoGFM_Mode`/`CalcGFMYprim` are not ported. Refuse the solve
-    // with an explicit error rather than silently running the regular PQ model,
-    // which would give plausible-but-wrong numbers (the deferral-is-never-a-
-    // silent-fallback convention). No gated case sets GFM.
-    for r in ckt.pv_systems.clone() {
-        let gfm_name = env
-            .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<PVSystem>()
-            .and_then(|pv| {
-                (pv.cd.enabled && pv.base.gfm_mode).then(|| pv.cd.obj.name().to_string())
-            });
-        if let Some(name) = gfm_name {
-            env.errors.push(format!(
-                "PVSystem.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7)."
-            ));
-            ckt.solution.solution_abort = true;
-            return Ok(());
-        }
-    }
-    // Same guard for Storage `ControlMode=GFM` (DoGFM_Mode/CalcGFMYprim: WP7.7).
-    for r in ckt.storages.clone() {
-        let gfm_name = env
-            .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Storage>()
-            .and_then(|st| {
-                (st.cd.enabled && st.base.gfm_mode).then(|| st.cd.obj.name().to_string())
-            });
-        if let Some(name) = gfm_name {
-            env.errors.push(format!(
-                "Storage.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7)."
-            ));
-            ckt.solution.solution_abort = true;
-            return Ok(());
-        }
+    // Grid-forming inverter mode is ported for the power-flow / time-series /
+    // direct / harmonic solves (WPG.13), but the **dynamics-mode** GFM branch
+    // (`DoDynamicMode`/`IntegrateStates` GFM) is still NOT_PORTED. `DoDynamicMode`
+    // pushes its "not ported" error into a per-element vec that the fixed-point
+    // injection loop drops, so a dynamics solve would silently inject a stale
+    // current — refuse it here with an explicit abort instead (the deferral-is-
+    // never-a-silent-fallback convention). Snapshot/daily/direct GFM is unaffected.
+    if ckt.solution.mode == SolveMode::Dynamic
+        && let Some(name) = first_enabled_gfm_der(ckt, env)
+    {
+        env.errors.push(format!(
+            "{name}: grid-forming inverter mode (ControlMode=GFM) dynamics is not \
+             ported yet (WPG.13 defers DoDynamicMode/IntegrateStates GFM)."
+        ));
+        ckt.solution.solution_abort = true;
+        return Ok(());
     }
 
     ckt.default_growth_factor = if ckt.solution.year == 0 {
@@ -119,6 +94,34 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         ckt.solution.solution_abort = true;
     }
     Ok(())
+}
+
+/// The `FullName` of the first enabled grid-forming PVSystem/Storage, or `None`.
+/// Used only to refuse a *dynamics* solve that would hit the NOT_PORTED
+/// dynamics-mode GFM branch.
+fn first_enabled_gfm_der(ckt: &Circuit, env: &SolveEnv) -> Option<String> {
+    for r in ckt.pv_systems.iter().chain(ckt.storages.iter()) {
+        let obj = env.store.obj(*r);
+        let gfm = obj
+            .as_any()
+            .downcast_ref::<PVSystem>()
+            .map(|pv| pv.cd.enabled && pv.base.gfm_mode)
+            .or_else(|| {
+                obj.as_any()
+                    .downcast_ref::<Storage>()
+                    .map(|st| st.cd.enabled && st.base.gfm_mode)
+            })
+            .unwrap_or(false);
+        if gfm {
+            let cls = if obj.as_any().is::<PVSystem>() {
+                "PVSystem"
+            } else {
+                "Storage"
+            };
+            return Some(format!("{cls}.{}", obj.data().name()));
+        }
+    }
+    None
 }
 
 /// Pascal `nearestBasekV`.

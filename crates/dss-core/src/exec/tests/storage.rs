@@ -58,12 +58,13 @@ fn storage_daily_run_depletes_soc() {
     assert_eq!(dss.result(), "Idling");
 }
 
-/// Grid-forming mode (`ControlMode=GFM`) is a settable property (it round-trips)
-/// but its solve behavior (`DoGFM_Mode`/`CalcGFMYprim`) is WP7.7. It must surface
-/// an explicit "not ported" error at solve time, never silently run the regular
-/// PQ model — the `NOT_PORTED`-deferral-is-never-a-silent-fallback convention.
+/// Grid-forming mode (`ControlMode=GFM`, WPG.13): the Storage becomes an internal
+/// balanced voltage source (`CalcGFMVoltage` at `BaseV`) behind its `CalcGFMYprim`
+/// short-circuit impedance, injecting with the sources. With no local load its
+/// internal voltage matches the grid, so it delivers ~0 kW and the bus sits at
+/// 1.0 pu — bit-matching the pinned oracle (converges in 2 iterations).
 #[test]
-fn storage_gfm_mode_errors_not_silent() {
+fn storage_gfm_mode_solves() {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("New circuit.t basekv=12.47 phases=3 bus1=src basefreq=60");
@@ -76,10 +77,45 @@ fn storage_gfm_mode_errors_not_silent() {
     dss.command("calcvoltagebases");
     dss.command("solve");
     assert!(
+        dss.errors().is_empty(),
+        "GFM solve must not error now that it is ported, got: {:?}",
+        dss.errors()
+    );
+    let ckt = dss.circuit().expect("circuit exists");
+    assert!(ckt.is_solved, "GFM circuit did not converge");
+}
+
+/// The **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM) is
+/// still NOT_PORTED (WPG.13). A `set mode=dynamics` solve over a grid-forming
+/// Storage must be refused with an explicit abort — never silently inject a stale
+/// current (the deferral-is-never-a-silent-fallback convention; the power-flow
+/// GFM above is ported and solves).
+#[test]
+fn storage_gfm_dynamics_aborts_loudly() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("New circuit.t basekv=4.16 phases=3 bus1=src basefreq=60");
+    dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
+    dss.command(
+        "New Storage.s1 bus1=b phases=3 conn=delta kV=4.16 kva=800 kWrated=800 \
+         kWhrated=6000 state=discharging %R=50 %X=50 kP=0.3 KVDC=0.7 PITol=0.1 \
+         ControlMode=GFM",
+    );
+    dss.command("set voltagebases=[4.16]");
+    dss.command("calcvoltagebases");
+    dss.command("solve"); // snapshot GFM: ported, solves
+    assert!(
+        dss.errors().is_empty(),
+        "snapshot GFM must solve: {:?}",
+        dss.errors()
+    );
+    dss.command("set mode=dynamics stepsize=0.001 number=1");
+    dss.command("solve"); // dynamics GFM: NOT_PORTED, must abort loudly
+    assert!(
         dss.errors()
             .iter()
-            .any(|e| e.contains("grid-forming") && e.contains("WP7.7")),
-        "GFM solve must emit the not-ported error, got: {:?}",
+            .any(|e| e.contains("grid-forming") && e.to_lowercase().contains("dynamics")),
+        "dynamics GFM must abort with an explicit not-ported error, got: {:?}",
         dss.errors()
     );
 }

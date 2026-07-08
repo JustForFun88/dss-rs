@@ -6,8 +6,9 @@
 //!
 //! Scope: the built-in shaft model (`DynamicEqObj = NIL`) and the external
 //! `DynamicExp` integration (`DynamicEqObj <> NIL`, WP7.7 step 3b). The
-//! user-written `UserModel`/`ShaftModel` DLLs and the grid-forming (GFM) inverter
-//! mode are NOT_PORTED (never / WP7.7 GFM step).
+//! user-written `UserModel`/`ShaftModel` DLLs are NOT_PORTED (never). The
+//! synchronous Generator has no grid-forming mode — GFM is an inverter-based
+//! (PVSystem/Storage) feature (`generator.pas` carries no GFM code, WPG.13).
 
 use num_complex::Complex64;
 

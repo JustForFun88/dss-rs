@@ -18,8 +18,8 @@ use crate::util::sqrt3;
 use super::PVSystem;
 
 impl PVSystem {
-    /// Pascal `CalcYPrimMatrix` (power-flow + harmonic paths). The grid-forming
-    /// (`CalcGFMYprim`) branch is WP7.7.
+    /// Pascal `CalcYPrimMatrix` (power-flow + harmonic paths). A grid-forming
+    /// PVSystem stamps the `CalcGFMYprim` short-circuit admittance instead (WPG.13).
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
         self.cd.yprim_freq = sys.frequency;
         let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
@@ -56,6 +56,19 @@ impl PVSystem {
                     }
                 }
             }
+            return;
+        }
+
+        // Grid-forming mode: the CalcGFMYprim short-circuit admittance replaces
+        // the whole YMatrix (Pascal `if GFM_Mode then ... CalcGFMYprim; Exit`).
+        // Unlike Storage, PVSystem has no charge/idle states, so it is always the
+        // active (generating) GFM impedance.
+        if self.base.gfm_mode {
+            self.base.dyn_vars.rated_kv_ll = self.kv_pvsystem_base; // PresentkV
+            self.base.dyn_vars.m_kva_rating = self.f_kva_rating;
+            let order = ymatrix.order();
+            let gfm = self.base.dyn_vars.calc_gfm_yprim(nphases, order);
+            ymatrix.copy_from(&gfm);
             return;
         }
 
@@ -257,15 +270,8 @@ impl PVSystem {
             return;
         }
         if self.base.gfm_mode {
-            // Pascal `if GFM_Mode then DoGFM_Mode(); Exit;` — DoGFM_Mode /
-            // CalcGFMYprim are WP7.7 (dynamics). Init InjCurrent from Yprim like
-            // the user-model path, then surface a clear unported error.
-            self.calc_yprim_contribution(node_v);
-            errors.push(format!(
-                "PVSystem.{}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7).",
-                self.cd.obj.name()
-            ));
+            // Pascal `if GFM_Mode then DoGFM_Mode(); Exit;`.
+            self.do_gfm_mode(node_v);
             return;
         }
         match self.base.voltage_model {
@@ -283,6 +289,90 @@ impl PVSystem {
             }
             _ => self.do_constant_pq(sys, node_v),
         }
+    }
+
+    /// Pascal `TPVsystemObj.CheckOLInverter` (PVsystem.pas): true if any inverter
+    /// phase current exceeds the per-phase panel-kW rating divided by `VBase`
+    /// (grid-forming overload check).
+    pub fn check_ol_inverter(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> bool {
+        if !self.base.gfm_mode {
+            return false;
+        }
+        self.compute_panel_power();
+        let nphases = self.cd.nphases;
+        let max_amps = ((self.panel_kw * 1000.0) / nphases as f64) / self.base.v_base;
+        // Pascal `ComputeIterminal()` (cache-aware) for PVSystem's CheckOLInverter.
+        self.compute_iterminal(sys, node_v);
+        (0..nphases).any(|i| self.cd.iterminal[i].norm() > max_amps)
+    }
+
+    /// Pascal `TInvBasedPCE.CheckAmpsLimit` (InvBasedPCE.pas l.182): the GFM amps
+    /// limiter — set `dynVars.IComp` to the largest per-phase apparent power
+    /// exceeding `ILimit·VBase` and return whether any phase exceeded it.
+    pub fn check_amps_limit(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> bool {
+        let nom_p = self.base.dyn_vars.i_limit * self.base.v_base;
+        if !self.base.gfm_mode {
+            return false;
+        }
+        // Pascal `GetCurrents(Iterminal)` — fresh currents into `Iterminal`.
+        self.refresh_iterminal(sys, node_v);
+        let nphases = self.cd.nphases;
+        self.base.dyn_vars.i_comp = 0.0;
+        let mut result = false;
+        for i in 0..nphases {
+            let phase_amps = self.cd.iterminal[i].norm();
+            let volts = node_v[self.cd.node_ref[i]].norm();
+            let phase_p = phase_amps * volts;
+            if phase_p > nom_p {
+                if phase_p > self.base.dyn_vars.i_comp {
+                    self.base.dyn_vars.i_comp = phase_p;
+                }
+                result = true;
+            }
+        }
+        result
+    }
+
+    /// Pascal `TPVsystemObj.DoGFM_Mode` (PVsystem.pas l.1077): the grid-forming
+    /// inverter as an internal balanced voltage source (`CalcGFMVoltage` at
+    /// `BaseV`) behind the `CalcGFMYprim` short-circuit impedance in `YPrim`.
+    /// Populates `Vgrid` from the present node voltage (used by the state-variable
+    /// readouts) — PVSystem does this in `DoGFM_Mode`, Storage does not. Then
+    /// `InjCurrent = YPrim · Vterminal(internal)`; `ITerminal` is left not updated.
+    fn do_gfm_mode(&mut self, node_v: &[Complex64]) {
+        // dynVars.BaseV := VBase; Discharging := TRUE (PVSystem always generating).
+        self.base.dyn_vars.base_v = self.base.v_base;
+        self.base.dyn_vars.discharging = true;
+
+        // Initialization just in case: size Vgrid and read the grid voltage.
+        let nphases = self.cd.nphases;
+        if self.base.dyn_vars.vgrid.len() < nphases {
+            self.base.dyn_vars.vgrid.resize(
+                nphases,
+                crate::support::complexutil::Polar { mag: 0.0, ang: 0.0 },
+            );
+        }
+        for i in 0..nphases {
+            self.base.dyn_vars.vgrid[i] =
+                crate::support::complexutil::c_to_polar(node_v[self.cd.node_ref[i]]);
+        }
+
+        if self.base.dyn_vars.i_comp > 0.0 {
+            let z_sys =
+                2.0 * (self.base.v_base * self.base.dyn_vars.i_limit) - self.base.dyn_vars.i_comp;
+            self.base.dyn_vars.base_v =
+                (z_sys / self.base.dyn_vars.i_limit) * self.base.dyn_vars.v_error;
+        }
+        self.base
+            .dyn_vars
+            .calc_gfm_voltage(nphases, &mut self.cd.vterminal);
+        // InjCurrent = YPrim · Vterminal (overwrites, like the source elements).
+        let cd = &mut self.cd;
+        if let Some(yprim) = &cd.yprim {
+            yprim.mv_mult(&mut cd.inj_current, &cd.vterminal);
+        }
+        // set_ITerminalUpdated(FALSE): force GetCurrents to recompute Iterminal.
+        self.cd.iterminal_updated = false;
     }
 
     /// Pascal `CalcInjCurrentArray`.

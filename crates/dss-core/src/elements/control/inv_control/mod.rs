@@ -57,6 +57,9 @@ pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
 // AVR=6 (active voltage regulation) — the 3-stage DQDV regulator, ported in step 2e-ii.
 pub(crate) const AVR: i32 = 6;
+// GFM=7 (grid-forming) — the amps-limit / overload protective arm over a
+// grid-forming DER (WPG.13).
+pub(crate) const GFM: i32 = 7;
 
 // Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
 pub(crate) const NONE_COMBMODE: i32 = 0;
