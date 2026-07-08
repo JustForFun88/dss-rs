@@ -172,6 +172,20 @@ impl Dss {
             // back to `DoNormalSolution`. The de-compat pass that takes the clean
             // fix above MUST add a replacement Newton-specific assertion, else those
             // two decks stop verifying that Newton dispatch is wired at all.
+            //
+            // REMOVAL is NOT the usual "apply fix + regenerate goldens" (PORTING_PLAN
+            // §6): this quirk is pinned by the ALWAYS-ON LIVE oracle (the corpus_live
+            // `modes` gate — there is no golden for `newton*`), and the pinned
+            // dss-python permanently reports the stale post-Newton Powers. So making
+            // Powers fresh would make Rust DIVERGE from the live oracle (~4e-4 kW) →
+            // gate red, unregenerable. Eliminating it is a de-compat DECISION, not a
+            // local edit: EITHER (a) bump the pinned oracle to an upstream rev that no
+            // longer exhibits it — but it is likely inherent to `DoNewtonSolution` +
+            // cache-aware `Get_Powers` and present in every OpenDSS rev, so check the
+            // EPRI channel first — OR (b) convert the `newton*` Powers/Losses compare
+            // to a documented live-gate exclusion (Rust intentionally more correct,
+            // the VSConverter "gate around" pattern) plus the replacement assertion
+            // above. See investigations/newton_stale_iterminal_bug_report.md.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.compute_iterminal(&sys, &node_v);
                 let cd = elem.cd();
