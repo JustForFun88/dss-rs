@@ -9,6 +9,31 @@
 
 Last updated: 2026-07-08.
 
+**WPG.15 AutoTrans Stage C (2026-07-08): RegControl + corpus — COMPLETE, live-green.**
+RegControl's `transformer=` now resolves against **both** classes (Pascal
+`Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`) via a new
+`PropDef::object_ref_two_classes` + a `parse.rs` second-class fallback; the
+control-loop dispatch (`solution/controls/dispatch.rs`) and `RegControl`'s
+`set_object_ref` accept either `Transformer` or `AutoTrans`. **AutoTrans
+implements `ControlledTransformer`** (tap accessors `present_tap`/`set_present_tap`
+(`:1432`)/`winding_tap_data`/`wdg_connection`/`base_voltage`, `GetWindingVoltages`
+Series arm (`:1604`), `power_into` reading the terminal's `TermNodeRef` since the
+`SetNodeRef` magic desyncs it from the flat `NodeRef`). Added a `full_name()` to
+the trait so the Series-connection guard (`RegControl.pas:1009`) reports the
+concrete class. **Monitor mode-2 tap monitor** now accepts AutoTrans alongside
+Transformer (`Monitor.pas:542-543`). The 4 controls decks
+(`autotrans_reg`/`autotrans_both`/`midi_autotrans`/`midi_autotrans_both`) flipped
+`pending:false`, **live-green** (event logs equal, `tapnum`/`taps`/`wdgcurrents`
+probes exact, the `both` decks pin the snapshot→daily transition). **Corpus
+re-classify:** all AutoTrans corpus decks now compile+solve (0 errors — AutoTrans
++ `BatchEdit` land it); `AutoAuto.dss` (both copies) moved
+`unsupported_class=autotrans` → `skipped_needs_investigation` (class ported; a
+near-ideal-source ~5e-9-rel node-V floor, same class as autotrans_snap — vendored,
+its short-circuit checks need `mvasc3=2e6`); Auto1bus/Auto3bus/AutoHLT stay (they
+build the unit from *regular* transformers, unchanged by WPG.15). COVERAGE.md
+refreshed (unsupported 73→71, needs_investigation 41→43). WPG.15 is now COMPLETE
+(A/B/C all merged-ready). fmt/clippy/`cargo test --workspace` green.
+
 **WPG.15 AutoTrans Stage B (2026-07-08): the auto electrical model — live-green.**
 Ported the solve path loop-for-loop: `CalcYPrim` (`AutoTrans.pas:1199` —
 `BuildYPrimComponent` for series+shunt, **no `AddNeutralToY`**); the `SetNodeRef`

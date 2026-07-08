@@ -87,7 +87,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Pascal resolves against a Transformer/AutoTrans proxy; AutoTrans is
         // not ported (Phase 6+), so the reference is Transformer-only here.
         // Pascal also flags `CheckForVar` + `Required` (both inert here).
-        PropDef::object_ref_class("Transformer", "Transformer"),
+        PropDef::object_ref_two_classes("Transformer", "AutoTrans", "Transformer"),
         PropDef::integer("Winding"),
         PropDef::double("VReg"),
         PropDef::double("Band"),

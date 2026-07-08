@@ -1,10 +1,12 @@
-//! Trait impls: `CktElement` (reliability/losses, the Stage-B-deferred YPrim
-//! build) and `DssObject` (typed property getters/setters, the per-winding
-//! struct arrays, `PropertySideEffects`, `MakeLike`).
+//! Trait impls: `CktElement` (reliability/losses, YPrim build), the
+//! `ControlledTransformer` RegControl surface, and `DssObject` (typed property
+//! getters/setters, the per-winding struct arrays, `PropertySideEffects`,
+//! `MakeLike`).
 
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::pd::transformer::ControlledTransformer;
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -177,6 +179,57 @@ impl CktElement for AutoTrans {
 
         self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
+    }
+}
+
+impl ControlledTransformer for AutoTrans {
+    fn name(&self) -> &str {
+        self.cd.obj.name()
+    }
+    fn full_name(&self) -> String {
+        format!("AutoTrans.{}", self.cd.obj.name())
+    }
+    fn n_phases(&self) -> usize {
+        self.cd.nphases
+    }
+    fn n_conds(&self) -> usize {
+        self.cd.nconds
+    }
+    fn y_order(&self) -> usize {
+        self.cd.yorder
+    }
+    fn wdg_connection(&self, term: usize) -> i32 {
+        AutoTrans::wdg_connection(self, term)
+    }
+    fn rotate_phases(&self, iphs: usize) -> usize {
+        self.rotate_phases_1based(iphs)
+    }
+    fn base_voltage(&self, term: usize) -> f64 {
+        AutoTrans::base_voltage(self, term)
+    }
+    fn present_tap(&self, w: usize) -> f64 {
+        AutoTrans::present_tap(self, w)
+    }
+    fn min_tap(&self, w: usize) -> f64 {
+        self.winding_tap_data(w).2
+    }
+    fn max_tap(&self, w: usize) -> f64 {
+        self.winding_tap_data(w).1
+    }
+    fn tap_increment(&self, w: usize) -> f64 {
+        self.winding_tap_data(w).3
+    }
+    fn set_present_tap(&mut self, w: usize, value: f64) -> bool {
+        AutoTrans::set_present_tap(self, w, value)
+    }
+    fn power_into_re(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> f64 {
+        self.power_into(term, node_v, sys).re
+    }
+    fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]) {
+        self.get_winding_voltages(term, node_v, vbuffer);
+    }
+    fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]) {
+        self.get_currents(sys, node_v, cbuffer);
     }
 }
 
@@ -578,6 +631,19 @@ impl DssObject for AutoTrans {
         self.xrconst = o.xrconst;
 
         self.xfmr_bank = o.xfmr_bank.clone();
+    }
+
+    /// Target side of RegControl's deferred `TapNum` write (Pascal `Set_TapNum`
+    /// pokes `tr.PresentTap[w]` directly).
+    fn apply_ref_action(&mut self, action: &crate::obj::base::RefAction) {
+        match action {
+            crate::obj::base::RefAction::SetTransformerTap { winding, tap, .. } => {
+                self.set_present_tap(*winding, *tap);
+            }
+            crate::obj::base::RefAction::SetSwitchClosed { .. }
+            | crate::obj::base::RefAction::SetConductorsClosed { .. }
+            | crate::obj::base::RefAction::SetOcpDevice { .. } => {}
+        }
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

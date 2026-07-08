@@ -26,9 +26,10 @@ use crate::elements::pc::generator::Generator;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{STORE_EXTERNALMODE, Storage};
 use crate::elements::pc::upfc::Upfc;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
-use crate::elements::pd::transformer::Transformer;
+use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
 use crate::solution::SolveMode;
 use crate::solution::control_queue::ControlQueue;
@@ -979,11 +980,20 @@ pub(super) fn dispatch_control(
                 .as_any_mut()
                 .downcast_mut::<RegControl>()
                 .expect("kind matched above");
-            let Some(tr) = tobj.as_any_mut().downcast_mut::<Transformer>() else {
+            // `transformer=` resolves against either class (Pascal proxy).
+            let tr: &mut dyn ControlledTransformer = if tobj.as_any().is::<Transformer>() {
+                tobj.as_any_mut()
+                    .downcast_mut::<Transformer>()
+                    .expect("is Transformer")
+            } else if tobj.as_any().is::<AutoTrans>() {
+                tobj.as_any_mut()
+                    .downcast_mut::<AutoTrans>()
+                    .expect("is AutoTrans")
+            } else {
                 return Err(abort(
                     ctx.errors,
                     &full_name,
-                    "Controlled element is not a Transformer",
+                    "Controlled element is not a Transformer or AutoTrans",
                 ));
             };
             match op {

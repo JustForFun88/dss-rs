@@ -135,6 +135,9 @@ impl ControlledTransformer for MockTransformer {
     fn name(&self) -> &str {
         &self.name
     }
+    fn full_name(&self) -> String {
+        format!("Transformer.{}", self.name)
+    }
     fn n_phases(&self) -> usize {
         self.nphases
     }

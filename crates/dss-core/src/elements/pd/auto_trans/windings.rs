@@ -18,6 +18,103 @@ impl AutoTrans {
         self.num_windings
     }
 
+    /// Pascal `Get_PresentTap` (1-based winding; 0 out of range) — the RegControl
+    /// tap driver.
+    pub fn present_tap(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].putap
+        } else {
+            0.0
+        }
+    }
+
+    /// `(PresentTap, MaxTap, MinTap, TapIncrement)` for 1-based winding `i`.
+    pub fn winding_tap_data(&self, i: usize) -> (f64, f64, f64, f64) {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            let w = &self.windings[i - 1];
+            (w.putap, w.max_tap, w.min_tap, w.tap_increment)
+        } else {
+            (0.0, 0.0, 0.0, 0.0)
+        }
+    }
+
+    /// Pascal `TAutoTransObj.Set_PresentTap` (`AutoTrans.pas:1432`): clamp to
+    /// Min/MaxTap and, only on a change, invalidate YPrim and recompute. Returns
+    /// whether YPrim was invalidated (RegControl raises `SystemYChanged`).
+    pub fn set_present_tap(&mut self, i: usize, value: f64) -> bool {
+        if i < 1 || i > self.num_windings.max(0) as usize {
+            return false;
+        }
+        let w = &self.windings[i - 1];
+        let v = value.clamp(w.min_tap, w.max_tap);
+        if v != w.putap {
+            self.windings[i - 1].putap = v;
+            self.cd.yprim_invalid = true;
+            self.recalc();
+            self.cd.enabled
+        } else {
+            false
+        }
+    }
+
+    /// Pascal `Get_WdgConnection(i)`: the 1-based winding's connection code
+    /// (0 = wye, 1 = delta, 2 = series). RegControl's regulated-bus path.
+    pub fn wdg_connection(&self, i: usize) -> i32 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].connection
+        } else {
+            0
+        }
+    }
+
+    /// Pascal `Get_BaseVoltage(i)`: the 1-based winding's `VBase`, falling back
+    /// to winding 1 when out of range.
+    pub fn base_voltage(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].vbase
+        } else {
+            self.windings[0].vbase
+        }
+    }
+
+    /// Pascal `RotatePhases` exposed for the RegControl delta/regulated-bus path
+    /// (1-based phase index).
+    pub fn rotate_phases_1based(&self, iphs: usize) -> usize {
+        self.rotate_phases(iphs)
+    }
+
+    /// Pascal `TDSSCktElement.Get_Power(idxTerm)` (watts+vars into terminal
+    /// `term`) — RegControl's reverse-power direction check. Sums over the
+    /// terminal's conductors using its **`TermNodeRef`** (`Get_Power` reads
+    /// `ActiveTerminal^.TermNodeRef`, which the auto's `SetNodeRef` magic
+    /// rewrites for terminal 2 — distinct from the flat `NodeRef`), ×3 under
+    /// positive sequence.
+    pub fn power_into(
+        &mut self,
+        term: usize,
+        node_v: &[num_complex::Complex64],
+        sys: &crate::elements::traits::SysCtx,
+    ) -> num_complex::Complex64 {
+        use crate::elements::traits::CktElement;
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return num_complex::Complex64::ZERO;
+        }
+        self.compute_iterminal(sys, node_v);
+        let nconds = self.cd.nconds;
+        let k = (term - 1) * nconds;
+        let tref = &self.cd.terminals[term - 1].term_node_ref;
+        let mut result = num_complex::Complex64::ZERO;
+        for (i, &n) in tref.iter().enumerate().take(nconds) {
+            if n > 0 {
+                result += node_v[n] * self.cd.iterminal[k + i].conj();
+            }
+        }
+        if sys.positive_sequence {
+            result *= 3.0;
+        }
+        result
+    }
+
     /// Pascal `TAutoTransObj.SetNumWindings`.
     pub(super) fn set_num_windings(&mut self, n: i32) {
         let prev = self.num_windings;

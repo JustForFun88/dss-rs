@@ -219,9 +219,9 @@ impl RegControl {
                         *vb = self.ccd.cd.vterminal[i] - self.ccd.cd.vterminal[ii];
                     }
                     _ => ctx.errors.push(format!(
-                        "{}: Series connection used in \"Transformer.{}\" has not been implemented or tested!",
+                        "RegControl.{}: Series connection used in \"{}\" has not been implemented or tested!",
                         self.ccd.cd.obj.name(),
-                        tr.name()
+                        tr.full_name()
                     )),
                 }
             }

@@ -34,6 +34,12 @@ pub struct PropDef {
     /// `Class.Name` and resolves against *any* circuit class
     /// (`GetCktElementIndex`).
     pub object_class: Option<&'static str>,
+    /// `PropertyOffset2` pointing at a Pascal `TProxyClass` over two classes
+    /// (RegControl's `Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`): the
+    /// *second* class to try when `object_class` misses, so `transformer=`
+    /// resolves against both `Transformer` and `AutoTrans`. `None` for the
+    /// single-class case.
+    pub object_class2: Option<&'static str>,
 }
 
 impl PropDef {
@@ -48,6 +54,7 @@ impl PropDef {
             enum_id: None,
             size_prop: 0,
             object_class: None,
+            object_class2: None,
         }
     }
 
@@ -154,6 +161,20 @@ impl PropDef {
     pub fn object_ref_class(class: &'static str, name: &'static str) -> Self {
         Self {
             object_class: Some(class),
+            ..Self::base(name, PropType::ObjectRef)
+        }
+    }
+    /// `DSSObjectReferenceProperty` resolved against a Pascal `TProxyClass` over
+    /// two classes (RegControl `transformer=` → `Transformer` | `AutoTrans`):
+    /// try `class` first, then `class2`.
+    pub fn object_ref_two_classes(
+        class: &'static str,
+        class2: &'static str,
+        name: &'static str,
+    ) -> Self {
+        Self {
+            object_class: Some(class),
+            object_class2: Some(class2),
             ..Self::base(name, PropType::ObjectRef)
         }
     }
