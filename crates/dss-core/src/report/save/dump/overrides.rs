@@ -32,6 +32,7 @@ use crate::elements::meter::monitor::Monitor;
 use crate::elements::pc::isource::Isource;
 use crate::elements::pc::upfc::Upfc;
 use crate::elements::pc::vsource::VSource;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fault::Fault;
 use crate::elements::pd::line::Line;
@@ -59,6 +60,10 @@ pub(super) fn dump_override(
         return true;
     }
     if let Some(t) = any.downcast_ref::<Transformer>() {
+        t.dump_body(out, cx, complete);
+        return true;
+    }
+    if let Some(t) = any.downcast_ref::<AutoTrans>() {
         t.dump_body(out, cx, complete);
         return true;
     }

@@ -9,6 +9,7 @@ pub(super) struct PdEnums {
     pub(super) line_type: EnumId,
     pub(super) core_type: EnumId,
     pub(super) lead_lag: EnumId,
+    pub(super) autotrans_connection: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PdEnums {
@@ -72,10 +73,26 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PdEnums {
         &["Lag", "Lead", "ANSI", "Euro"],
         &[0, 1, 0, 1],
     ));
+
+    // Pascal `AutoTransConnectionEnum` (AutoTrans.pas:320): adds `series` (2)
+    // to the wye/delta set. Aliases y/ln → wye, ll → delta, and `s`/`ser…`
+    // matches `series` by prefix. The capitalized display names (`Wye`/`Delta`/
+    // `Series`) are JSON-only in Pascal; OrdinalToString uses the lowercase
+    // first-array names (sequential 0/1/2), so `Conn` renders `series`.
+    let autotrans_connection = push(DssEnum::new(
+        "AutoTrans: Connection",
+        true,
+        1,
+        2,
+        &["wye", "delta", "series", "y", "ln", "ll"],
+        &[0, 1, 2, 0, 0, 1],
+    ));
+
     PdEnums {
         earth_model,
         line_type,
         core_type,
         lead_lag,
+        autotrans_connection,
     }
 }

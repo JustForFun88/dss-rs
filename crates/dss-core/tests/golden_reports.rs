@@ -3960,6 +3960,23 @@ fn dump_transformer_disabled_matches_oracle() {
     run_deck_dump_exact("dump_transformer_disabled");
 }
 
+/// `Dump autotrans.t1` (WPG.15 Stage A) — the AutoTrans `DumpProperties`
+/// per-winding block (`conn=Series`, the winding scalars as `%.7g`),
+/// `XHX`/`XHT`/`XXT` (no `X12`/`X13`/`X23`), the flat `Xscmatrix` and the
+/// generic tail. Bare (non-`debug`) + on buses isolated from the source, so the
+/// dump is solve-independent (the auto YPrim/solve path is Stage B).
+#[test]
+fn dump_autotrans_matches_oracle() {
+    run_deck_dump_exact("dump_autotrans");
+}
+
+/// `Dump autotrans.t3` (3-winding, delta tertiary) — the 3-winding Xscmatrix
+/// (three off-diagonals) and the wye/delta/Series `conn` render arms.
+#[test]
+fn dump_autotrans3_matches_oracle() {
+    run_deck_dump_exact("dump_autotrans3");
+}
+
 /// `Dump line.l1` — the `TLineObj.DumpProperties` sym-components path: the
 /// `%-.7g` sequence params + the `RMatrix`/`XMatrix`/`CMatrix` folded out of
 /// `Z`/`Yc`.

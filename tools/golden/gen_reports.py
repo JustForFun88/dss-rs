@@ -2108,9 +2108,34 @@ DUMP_ISRC_DECK = [
     "solve",
 ]
 
+# AutoTrans DumpProperties (WPG.15 Stage A): the bare `dump autotrans.<obj>`
+# form — the per-winding block (conn=Series, kv/kVA/tap/%r/Rdcohms as %.7g),
+# XHX/XHT/XXT (no X12/X13/X23), the flat Xscmatrix, and the generic tail. NO
+# solve (the auto YPrim/solve path is Stage B; DumpProperties is solve-
+# independent — ZB/Y_Term come from edit-time RecalcElementData). The elements
+# sit on buses ISOLATED from the source so the pre-solve `WdgCurrents` readout
+# is a deterministic zero on both engines (the source bus's initialized NodeV
+# would otherwise leak a tiny anti-float current into the oracle side only). A
+# 2-winding 115/34.5 and a 3-winding 345/161/13.8 (delta tertiary). The
+# debug/Complete form (ZB/Y_Terminal matrices) is added in Stage B once solve
+# works.
+DUMP_AT_DECK = [
+    "new circuit.dumpat basekv=115 bus1=src",
+    "new autotrans.t1 phases=3 windings=2 xhx=6 buses=[h mid] "
+    "conns=[s w] kvs=[115 34.5] kvas=[40000 40000] %loadloss=0.2",
+    "new autotrans.t3 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
+    "buses=[h3 low3 tert3] conns=[s w d] kvs=[345 161 13.8] "
+    "kvas=[330000 330000 72000] %imag=0.0329 %noloadloss=0.024",
+    # No `calcv`/`solve`: both build the system Y, and the auto YPrim path is
+    # Stage B (would abort here). DumpProperties is edit-time-only, so the dump
+    # is unchanged, and `WdgCurrents` stays a deterministic zero (no NodeV).
+]
+
 # (stem, deck, report). Each captures `<case>_PropertyDump.txt` (Dump sets
 # GlobalResult), read back by the Rust golden via `dss.last_result_file()`.
 DUMP_DECKS = [
+    ("dump_autotrans", DUMP_AT_DECK, "autotrans.t1"),
+    ("dump_autotrans3", DUMP_AT_DECK, "autotrans.t3"),
     ("dump_reactor", DUMP_R_DECK, "reactor.*"),
     ("dump_reactor_debug", DUMP_R_DECK, "reactor.* debug"),
     ("dump_reactor_symcomp", DUMP_SC_DECK, "reactor.rk debug"),
@@ -2175,7 +2200,6 @@ DUMP_CAPACITOR_GARBAGE_PREFIXES = ("~ CMatrix=(", "~ FaultRate=", "~ pctPerm=")
 # landed in WPG.14 and is pruned from this list.
 DUMP_COMMANDS_UNPORTED_SECTIONS = (
     "GICsource",
-    "AutoTrans",
     "GICLine",
     "GICTransformer",
 )
