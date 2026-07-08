@@ -143,6 +143,40 @@ pub fn phase_kind_node(buf: &mut String, prf: ProfileChoice, root: &str, val: &s
     );
 }
 
+/// Pascal `TCIMExporterHelper.PhaseSideNode` (`ExportCIMXML.pas:1608`): a
+/// `<Root>.phaseSide<Side>` reference into `SinglePhaseKind.<val>` (SwitchPhase).
+pub fn phase_side_node(buf: &mut String, prf: ProfileChoice, root: &str, side: i64, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:{root}.phaseSide{side} rdf:resource="{CIM_NS}#SinglePhaseKind.{val}"/>"#
+        ),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.ConductorUsageEnum` (`ExportCIMXML.pas:1452`):
+/// `<cim:WireSpacingInfo.usage rdf:resource="…#WireUsageKind.<val>"/>`.
+pub fn conductor_usage_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(r#"  <cim:WireSpacingInfo.usage rdf:resource="{CIM_NS}#WireUsageKind.{val}"/>"#),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.ConductorInsulationEnum` (`ExportCIMXML.pas:1446`):
+/// `<cim:WireInfo.insulationMaterial rdf:resource="…#WireInsulationKind.<val>"/>`.
+pub fn conductor_insulation_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:WireInfo.insulationMaterial rdf:resource="{CIM_NS}#WireInsulationKind.{val}"/>"#
+        ),
+    );
+}
+
 /// Pascal `TCIMExporterHelper.ShuntConnectionKindNode` (`ExportCIMXML.pas:1614`):
 /// `<Root>.phaseConnection` into `PhaseShuntConnectionKind.<val>` (D/Y/Yn/I).
 pub fn shunt_connection_kind_node(buf: &mut String, prf: ProfileChoice, root: &str, val: &str) {

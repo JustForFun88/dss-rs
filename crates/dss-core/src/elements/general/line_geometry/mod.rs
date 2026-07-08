@@ -236,4 +236,56 @@ impl LineGeometryObj {
     pub fn line_type(&self) -> i32 {
         self.fline_type
     }
+
+    /// Pascal `TLineGeometryObj.NWires` (`property NWires READ FNConds`,
+    /// LineGeometry.pas:166): the conductor count the CIM `WireSpacingInfo`
+    /// export iterates over. Read-only accessor for GAPS_PLAN WPG.18 Stage C.
+    pub fn nwires(&self) -> i32 {
+        self.fnconds
+    }
+
+    /// Pascal `Xcoord[i]` (`Get_FX`, LineGeometry.pas:161): per-conductor
+    /// horizontal coordinate (in each conductor's own `Units[i]`). 0-based slot
+    /// `i` is conductor `i+1`. Read-only accessor for WPG.18 Stage C.
+    pub fn fx(&self) -> &[f64] {
+        &self.fx
+    }
+
+    /// Pascal `Ycoord[i]` (`Get_FY`, LineGeometry.pas:162): per-conductor
+    /// vertical coordinate. Read-only accessor for WPG.18 Stage C.
+    pub fn fy(&self) -> &[f64] {
+        &self.fy
+    }
+
+    /// Pascal `Units[i]` (`Get_FUnits`, LineGeometry.pas:163): per-conductor
+    /// `LineUnits` code for the `fx`/`fy` coordinate. Read-only accessor for
+    /// WPG.18 Stage C.
+    pub fn funits(&self) -> &[i32] {
+        &self.funits
+    }
+
+    /// Pascal `PhaseChoice[i] = Overhead` (`Get_PhaseChoice`,
+    /// LineGeometry.pas:167/762): the CIM `WireSpacingInfo.isCable` flag reads
+    /// `PhaseChoice[1]` (first conductor). `i` is 1-based. Read-only accessor
+    /// for WPG.18 Stage C.
+    pub fn conductor_is_overhead(&self, i_one_based: usize) -> bool {
+        matches!(
+            self.fphase_choice.get(i_one_based.wrapping_sub(1)),
+            Some(ConductorChoice::Overhead)
+        )
+    }
+
+    /// Pascal `ConductorData[i]` (`Get_ConductorData`, LineGeometry.pas:746):
+    /// the per-conductor catalog object (`WireData`/`CNData`/`TSData`), or
+    /// `None` (Pascal NIL). `i` is 1-based. Read-only accessor for the WPG.18
+    /// Stage C `ACLineSegmentPhase.WireInfo` reference.
+    pub fn conductor(&self, i_one_based: usize) -> Option<&dyn DssObject> {
+        if i_one_based >= 1 && i_one_based <= self.fnconds as usize {
+            self.fwiredata
+                .get(i_one_based - 1)
+                .and_then(|o| o.as_deref())
+        } else {
+            None
+        }
+    }
 }
