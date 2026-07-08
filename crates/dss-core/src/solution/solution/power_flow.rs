@@ -136,7 +136,7 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 /// Pascal `TSolutionObj.SetGeneratorDispRef`: the global generator dispatch
 /// reference per solve mode (generator.pas LOADMODE/PRICEMODE compare their
 /// `DispValue` against it).
-fn set_generator_disp_ref(ckt: &mut Circuit) {
+pub(super) fn set_generator_disp_ref(ckt: &mut Circuit) {
     let lm = ckt.load_multiplier;
     let gf = ckt.default_growth_factor;
     let hm = ckt.default_hour_mult.re;
