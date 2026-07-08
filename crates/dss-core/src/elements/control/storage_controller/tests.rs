@@ -302,6 +302,11 @@ struct MockEnv {
     dyna_h: f64,
     dbl_hour: f64,
     mode: SolveMode,
+    /// `DSS.SeasonalRating` (default `false`, matching Pascal).
+    season_rating: bool,
+    /// The `Get_DynamicTarget` `RatingIdx` this mock hands back — `None`
+    /// models an empty `DSS.SeasonSignal`.
+    season_rating_idx: Option<i32>,
 }
 
 impl MockEnv {
@@ -319,6 +324,8 @@ impl MockEnv {
             dyna_h: 3600.0,
             dbl_hour: 0.0,
             mode: SolveMode::Daily,
+            season_rating: false,
+            season_rating_idx: None,
         }
     }
     fn idx(r: ElemRef) -> usize {
@@ -439,6 +446,12 @@ impl StorageDispatchEnv for MockEnv {
     }
     fn solve_mode(&self) -> SolveMode {
         self.mode
+    }
+    fn season_rating(&self) -> bool {
+        self.season_rating
+    }
+    fn season_rating_idx(&mut self) -> Option<i32> {
+        self.season_rating_idx
     }
 }
 

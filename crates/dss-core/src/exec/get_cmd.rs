@@ -134,6 +134,8 @@ impl Dss {
                 opt::REDUCE_OPTION => append_result(&mut result, &ckt.reduction_strategy_string),
                 opt::KEEP_LOAD => append_result(&mut result, yes_no(ckt.reduce_laterals_keep_load)),
                 opt::ZMAG => append_result(&mut result, &float_to_str(ckt.reduction_zmag)),
+                opt::SEASON_RATING => append_result(&mut result, yes_no(ckt.season_rating)),
+                opt::SEASON_SIGNAL => append_result(&mut result, &ckt.season_signal),
                 opt::CONTROL_MODE => append_result(
                     &mut result,
                     &enums
