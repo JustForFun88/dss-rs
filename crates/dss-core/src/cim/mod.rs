@@ -16,6 +16,9 @@
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod export;
+pub(crate) mod writer;
+
 use crate::support::hashlist::HashList;
 
 /// Pascal `TUuid` (an FPC `TGuid`). Stored as the canonical 16 bytes; rendered
@@ -43,6 +46,17 @@ impl Uuid {
     /// XXXXXXXXXXXX}`, uppercase hex (the form `Export Uuids` prints).
     pub fn to_dss_string(&self) -> String {
         format!("{{{}}}", self.0.hyphenated().to_string().to_uppercase())
+    }
+
+    /// Pascal `UUIDToCIMString` (`NamedObject.pas:64`): `GuidToString` (braced,
+    /// uppercase hex) with the outer braces stripped via `MidStr(s, 2,
+    /// Length(s) - 2)` — braces stripped, uppercase, **no** leading underscore
+    /// (oracle-probed 2026-07-09: `export cim100` emits
+    /// `rdf:about="urn:uuid:E8E12B16-A4C9-47D2-9498-5649B4A8BE25"`, never a
+    /// `_`-prefixed form). Every `rdf:about`/`rdf:resource`/`mRID` value in the
+    /// CIM XML export (WPG.18) is this form.
+    pub fn to_cim_string(&self) -> String {
+        self.0.hyphenated().to_string().to_uppercase()
     }
 }
 
@@ -273,6 +287,37 @@ impl CimExporter {
     pub fn get_dev_uuid(&mut self, which: UuidChoice, name: &str, seq: i32) -> Uuid {
         let key = format!("{}{}={}", which.key_prefix(), name, seq);
         self.get_hashed_uuid(&key)
+    }
+
+    /// Pascal `TCIMExporterHelper.GetTermUuid` (`ExportCIMXML.pas:1299`): the
+    /// hashed UUID for a circuit element's terminal, keyed by the element's
+    /// `DSSObjType` integer (not a string prefix — `IntToStr(pElem.DSSObjType)
+    /// + '=' + pElem.Name + '=' + IntToStr(Seq)`, oracle-probed 2026-07-09:
+    /// Vsource's `DSSObjType` is `SOURCE or NON_PCPD_ELEM` = 25, fixture key
+    /// `"25=source=1"`).
+    pub fn get_term_uuid(&mut self, dss_obj_type: i32, elem_name: &str, seq: i32) -> Uuid {
+        let key = format!("{dss_obj_type}={elem_name}={seq}");
+        self.get_hashed_uuid(&key)
+    }
+
+    /// Pascal `TCIMExporterHelper.GetBaseVUuid` (`ExportCIMXML.pas:1315`).
+    pub fn get_base_v_uuid(&mut self, val: f64) -> Uuid {
+        self.get_dev_uuid(UuidChoice::BaseV, &writer::base_v_name(val), 1)
+    }
+
+    /// Pascal `TCIMExporterHelper.GetOpLimVUuid` (`ExportCIMXML.pas:1325`).
+    pub fn get_op_lim_v_uuid(&mut self, val: f64) -> Uuid {
+        self.get_dev_uuid(UuidChoice::OpLimV, &writer::op_lim_v_name(val), 1)
+    }
+
+    /// Pascal `TCIMExporterHelper.GetOpLimIUuid` (`ExportCIMXML.pas:1335`).
+    /// Declared upstream but **never called** anywhere in `ExportCIMXML.pas`
+    /// (the one live call site, `WriteReferenceTerminals`, inlines
+    /// `GetDevUuid(OpLimI, LimitName, 0)` directly with `seq = 0`, not this
+    /// function's `seq = 1`) — ported for completeness per GAPS_PLAN WPG.18
+    /// decision 4, never exercised by the export flow.
+    pub fn get_op_lim_i_uuid(&mut self, norm: f64, emerg: f64) -> Uuid {
+        self.get_dev_uuid(UuidChoice::OpLimI, &writer::op_lim_i_name(norm, emerg), 1)
     }
 
     /// Pascal `TCIMExporter.WriteHashedUUIDs` (`ExportCIMXML.pas:1286`): one
