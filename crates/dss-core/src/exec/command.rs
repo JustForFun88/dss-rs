@@ -1080,6 +1080,17 @@ impl Dss {
         let deferred = objects[oi].data_mut().take_errors();
         errors.extend(deferred);
 
+        // A `DoErrorMsg`-class deferred message (e.g. Relay error 384, a
+        // monitored terminal out of range) sets `DSS.SolutionAbort := True` in
+        // Pascal; lift that request into the solution so the next solve halts.
+        // `take_abort` always runs (clears the per-object flag); `DoSimpleMsg`
+        // messages (errors 385/386) never set it.
+        if objects[oi].data_mut().take_abort()
+            && let Some(ckt) = circuit.as_mut()
+        {
+            ckt.solution.solution_abort = true;
+        }
+
         // Deferred cross-element writes (Pascal pokes the target through a
         // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
         // PresentTap; nothing reads the target in between, so applying after

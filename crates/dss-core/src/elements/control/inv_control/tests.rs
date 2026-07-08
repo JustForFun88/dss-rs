@@ -733,6 +733,99 @@ mod dispatch {
     }
 
     #[test]
+    fn voltwatt_storage_yaxis_available_reads_live_dckw() {
+        // WPG.10 coverage: VoltWattYAxis=0 (%Available) on a Storage takes the
+        // `Calc_PBase` branch that reads the LIVE `TStorageObj.DCkW` via
+        // `der_storage_dckw` — Pascal `Calc_PBase` sets FDCkW:=0 for a Storage and
+        // reads the DCkW property instead, so PBase = DCkW * EffFactor. The
+        // storage decks all use the default yaxis=1 (%Pmpp), so this path is
+        // otherwise uncovered. Distinct DCkW (800) vs FDCkWRated (600) makes the
+        // branch observable: yaxis=0 gives 720, yaxis=1 would give 600.
+        let mut ic = voltwatt_ic();
+        ic.set_i32(prop::VOLTWATT_YAXIS, 0); // %Available (PAVAILABLEPU)
+        let mut der = MockDer::new("pv", 1.05, 600.0);
+        der.is_storage = true; // discharging by default
+        der.storage_dckw = 800.0; // live TStorageObj.DCkW (!= FDCkWRated)
+        der.eff_factor = 0.9; // FEffFactor
+        der.pmpp = 600.0; // FDCkWRated — the yaxis=1 base, for contrast
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.f_eff_factor - 0.9).abs() < 1e-12,
+            "EffFactor = {}",
+            cv.f_eff_factor
+        );
+        // PBase = live DCkW * EffFactor = 800 * 0.9 = 720 (NOT FDCkWRated = 600).
+        assert!(
+            (cv.p_base - 720.0).abs() < 1e-9,
+            "PBase = {} (expected live DCkW*EffFactor = 720, not FDCkWRated = 600)",
+            cv.p_base
+        );
+    }
+
+    #[test]
+    fn voltwatt_storage_vw_state_requested_swaps_curves() {
+        // WPG.10 coverage: `CalcPVWcurve_limitpu`'s FVWStateRequested swap (Pascal
+        // InvControl.pas l.2960-2961 / 2969-2970). Once the VW function has
+        // requested a state flip, the curve selection SWAPS vs the normal pick: a
+        // DISCHARGING storage reads the CH curve, a CHARGING storage reads the
+        // discharge curve. Distinct flat curves make the pick observable: the
+        // discharge `vw` = 0.3 everywhere, the `vwch` = 0.7 everywhere.
+        let discharge_y = 0.3;
+        let charge_y = 0.7;
+        let vw = || {
+            crate::elements::general::xy_curve::XyCurveObj::from_points(
+                "vw",
+                &[0.5, 1.5],
+                &[discharge_y, discharge_y],
+            )
+        };
+        let vwch = || {
+            crate::elements::general::xy_curve::XyCurveObj::from_points(
+                "vwch",
+                &[0.5, 1.5],
+                &[charge_y, charge_y],
+            )
+        };
+
+        // Discharging + VWStateRequested → reads the CH curve (0.7), NOT vw (0.3).
+        let mut ic = voltwatt_ic();
+        ic.voltwatt_curve = Some(vw());
+        ic.voltwattch_curve = Some(vwch());
+        let mut der = MockDer::new("pv", 1.05, 600.0);
+        der.is_storage = true;
+        der.storage_state = crate::elements::pc::storage::STORE_DISCHARGING;
+        der.vw_state_requested = true;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        assert!(
+            (ic.ctrl_vars[0].p_limit_vw_pu - charge_y).abs() < 1e-9,
+            "discharging+VWStateRequested PLimitVWpu = {} (expected the swapped CH curve {charge_y})",
+            ic.ctrl_vars[0].p_limit_vw_pu
+        );
+
+        // Charging + VWStateRequested → reads the discharge curve (0.3), NOT CH (0.7).
+        let mut ic = voltwatt_ic();
+        ic.voltwatt_curve = Some(vw());
+        ic.voltwattch_curve = Some(vwch());
+        let mut der = MockDer::new("pv", 1.05, -300.0); // charging (kW < 0)
+        der.is_storage = true;
+        der.storage_state = crate::elements::pc::storage::STORE_CHARGING;
+        der.vw_state_requested = true;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        assert!(
+            (ic.ctrl_vars[0].p_limit_vw_pu - discharge_y).abs() < 1e-9,
+            "charging+VWStateRequested PLimitVWpu = {} (expected the swapped discharge curve {discharge_y})",
+            ic.ctrl_vars[0].p_limit_vw_pu
+        );
+    }
+
+    #[test]
     fn vv_vw_storage_dispatches_both() {
         // WPG.10: a discharging Storage in the VV_VW combi dispatches BOTH the
         // volt-watt kW limit and the volt-var kvar in one DoPendingAction (no

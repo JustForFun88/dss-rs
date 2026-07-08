@@ -895,6 +895,39 @@ fn generic_recalc_resolves_and_errors_on_missing_var() {
         errs.iter().any(|e| e.contains("386")),
         "expected error 386, got {errs:?}"
     );
+    // Error 386 uses `DoSimpleMsg` → record-only, NOT a solution abort.
+    assert!(
+        !r2.ccd.cd.obj.take_abort(),
+        "error 386 (DoSimpleMsg) must not request a solution abort"
+    );
+}
+
+/// `recalc` with a monitored terminal out of range records error 384 AND
+/// requests a solution abort: Pascal `DoErrorMsg` (`Relay.pas:813`) sets
+/// `SolutionAbort := True` (`DSSGlobals.pas:265`), unlike the `DoSimpleMsg`
+/// errors 385/386 (record-only). The executive lifts the queued flag into
+/// `Solution.SolutionAbort`.
+#[test]
+fn recalc_out_of_range_terminal_errors_384_and_requests_abort() {
+    let mut r = Relay::new("r384");
+    r.monitored_element_terminal = 5; // the monitored element has only 1 terminal
+    r.mon_snap = Some(RefSnapshot {
+        full_name: "Line.l1".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["b".into()],
+    });
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.recalc();
+    assert!(
+        r.ccd.cd.obj.take_abort(),
+        "error 384 (DoErrorMsg) must request a solution abort"
+    );
+    let errs = r.ccd.cd.obj.take_errors();
+    assert!(
+        errs.iter().any(|e| e.contains("384")),
+        "expected error 384, got {errs:?}"
+    );
 }
 
 // --- TD21 (differential time-distance, 21) ----------------------------------
@@ -928,6 +961,45 @@ fn td21_allocates_ring_buffer_on_first_sample() {
     assert_eq!(r.td21_stride, 6);
     assert_eq!(r.td21_h.len(), 17 * 6);
     assert_eq!(r.td21_quiet, 17); // 18, decremented once on this new-time-step
+}
+
+/// A TD21 relay sampled on a time step LARGER than one 60 Hz cycle (error 388)
+/// requests a solution abort: Pascal `DoErrorMsg` (`Relay.pas:1460`) sets
+/// `SolutionAbort := True` (`DSSGlobals.pas:265`). `Sample` returns the request;
+/// the dispatch layer lifts it into `Solution.SolutionAbort` so the run halts
+/// where the oracle halts (instead of solving on).
+#[test]
+fn td21_coarse_step_requests_solution_abort() {
+    let mut r = td21_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3];
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.02; // > 1/60 (one cycle ≈ 0.0167 s) → error 388
+    let abort = r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(abort, "coarse-step TD21 must request a solution abort");
+    assert!(
+        sc.errors.iter().any(|e| e.contains("388")),
+        "expected error 388, got {:?}",
+        sc.errors
+    );
+}
+
+/// The same relay on a fine step (`dt <= 1/60`) records no error and does NOT
+/// request an abort — the guard is a strict `>` (Pascal `dt > 1/Frequency`).
+#[test]
+fn td21_fine_step_does_not_request_abort() {
+    let mut r = td21_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3];
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.001; // << one cycle → no error 388
+    let abort = r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(!abort, "fine-step TD21 must not request an abort");
+    assert!(sc.errors.is_empty(), "unexpected errors: {:?}", sc.errors);
 }
 
 /// After a full pre-fault cycle (drains `td21_quiet`) the ring holds the
