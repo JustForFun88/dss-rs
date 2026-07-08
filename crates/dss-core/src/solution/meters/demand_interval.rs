@@ -771,11 +771,16 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
 }
 
 /// Pascal `TEnergyMeter.WriteOverloadReport` (l.3171): one `DI_Overloads` row
-/// per overloaded, non-shunt, enabled PD element. The seasonal-rating branch
-/// (`DSS.SeasonalRating` / `Set SeasonSignal=`) is not modeled engine-wide
-/// (false by default — the same deferral `export_capacity` documents), so the
-/// element's own `NormAmps`/`EmergAmps` always apply, exactly as upstream with
-/// the flag off.
+/// per overloaded, non-shunt, enabled PD element. `DSS.SeasonalRating`/
+/// `DSS.SeasonSignal` are now real engine globals (`Set SeasonRating=`/
+/// `Set SeasonSignal=`, GAPS_PLAN WPG.11), but this function's seasonal
+/// amp-rating override (restricted here to `ClassName = 'line'`, unlike
+/// `export_capacity`'s unrestricted one) is still NOT_PORTED — same
+/// reasoning as `export_capacity` documents (unverified by any corpus case;
+/// the state-mutating `DSS.SeasonalRating := FALSE`-on-miss read is not
+/// reproduced per CLAUDE.md's known-bug policy). The element's own
+/// `NormAmps`/`EmergAmps` always apply, exactly as upstream with the flag
+/// off.
 fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let node_v = ckt.solution.node_v.clone();
     let dbl_hour = ckt.solution.dbl_hour;

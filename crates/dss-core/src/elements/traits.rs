@@ -35,6 +35,16 @@ pub trait ElemStore {
     /// EnergyMeter manual `ZoneList` zone build.
     fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef>;
 
+    /// Pascal `<SomeClass>.Find(name)` reaching a *non-circuit* ("general",
+    /// `DSS_OBJECT`) class registered via `DssClass::dss_object` — e.g.
+    /// `XYcurve`. Unlike [`ElemStore::find_ckt_element`] this is **not**
+    /// restricted to circuit-element classes. Used by
+    /// `StorageController.Get_DynamicTarget`'s live, uncached
+    /// `DSS.XYCurveClass.Find(DSS.SeasonSignal)` (the season signal is a bare
+    /// `Set`-option string, not an object-ref property, so nothing can resolve
+    /// and cache the `ElemRef` up front at edit time).
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef>;
+
     /// Single mutable object view (for `as_any_mut` downcasts when only one
     /// element is touched, e.g. the model-3 generator DQDV sweep).
     fn obj_mut(&mut self, r: ElemRef) -> &mut dyn crate::obj::base::DssObject;
