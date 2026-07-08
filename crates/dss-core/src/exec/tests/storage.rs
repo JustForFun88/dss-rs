@@ -85,6 +85,41 @@ fn storage_gfm_mode_solves() {
     assert!(ckt.is_solved, "GFM circuit did not converge");
 }
 
+/// The **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM) is
+/// still NOT_PORTED (WPG.13). A `set mode=dynamics` solve over a grid-forming
+/// Storage must be refused with an explicit abort — never silently inject a stale
+/// current (the deferral-is-never-a-silent-fallback convention; the power-flow
+/// GFM above is ported and solves).
+#[test]
+fn storage_gfm_dynamics_aborts_loudly() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("New circuit.t basekv=4.16 phases=3 bus1=src basefreq=60");
+    dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
+    dss.command(
+        "New Storage.s1 bus1=b phases=3 conn=delta kV=4.16 kva=800 kWrated=800 \
+         kWhrated=6000 state=discharging %R=50 %X=50 kP=0.3 KVDC=0.7 PITol=0.1 \
+         ControlMode=GFM",
+    );
+    dss.command("set voltagebases=[4.16]");
+    dss.command("calcvoltagebases");
+    dss.command("solve"); // snapshot GFM: ported, solves
+    assert!(
+        dss.errors().is_empty(),
+        "snapshot GFM must solve: {:?}",
+        dss.errors()
+    );
+    dss.command("set mode=dynamics stepsize=0.001 number=1");
+    dss.command("solve"); // dynamics GFM: NOT_PORTED, must abort loudly
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("grid-forming") && e.to_lowercase().contains("dynamics")),
+        "dynamics GFM must abort with an explicit not-ported error, got: {:?}",
+        dss.errors()
+    );
+}
+
 /// A mode-3 (state-variable) monitor on a Storage must attach and solve cleanly:
 /// Pascal mode 3 validates `BASECLASSMASK = PC_ELEMENT` and Storage is a
 /// `TPCElement`, so the mode-3 check accepts `MeteredKind::Storage` alongside
