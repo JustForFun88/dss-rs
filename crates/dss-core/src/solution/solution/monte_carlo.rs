@@ -279,3 +279,226 @@ fn solve_monte_fault_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult 
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    //! Fixed-seed unit coverage for the RNG-DRIVEN dispatch that the gating
+    //! decks never exercise (every Monte deck runs `random=none`, the
+    //! deterministic 1.0 / unchanged path). Expected values are derived
+    //! **externally** from the RNG draw sequence pinned in
+    //! [`crate::support::mathutil`]`::rng` (the canonical MT19937 stream for seed
+    //! 12345, independently verified there against `mt19937ar.out` / CPython),
+    //! never captured from these functions' own output (GAPS_PLAN.md §2.1).
+
+    use super::*;
+    use crate::elements::general::load_shape::{self, LoadShapeObj};
+    use crate::elements::traits::ElemStore;
+    use crate::obj::base::DssObject;
+    use dss_parser::{Parser, ParserVars};
+
+    const SEED: u32 = 12345;
+    /// First `FpcRng::next_f64()` draw for seed 12345 (`rng.rs`
+    /// `f64_scaling_is_bit_exact`).
+    const D0_BITS: u64 = 0x3fedbf6a3c400000;
+    /// Second `next_f64()` draw for seed 12345 (`rng.rs`).
+    const D1_BITS: u64 = 0x3fec7c25bca00000;
+    /// First `Gauss(0,1)` result for seed 12345 (`rng.rs`
+    /// `gauss_matches_fpc_bit_exact`). `Gauss(0,1) = (Σ12 Random − 6.0)`
+    /// exactly (`·1.0`/`+0.0` are exact), so `Gauss(m,s) = G01·s + m` and
+    /// `QuasiLognormal(m) = exp(G01)·m` bit-for-bit.
+    const G01_0_BITS: u64 = 0x3fc62af569800000;
+
+    fn seeded_ckt() -> Circuit {
+        let mut ckt = Circuit::new("mc", 60.0);
+        ckt.rng.set_seed(SEED);
+        ckt
+    }
+
+    fn shape_with_mean_std(mean: f64, std_dev: f64) -> LoadShapeObj {
+        let mut s = LoadShapeObj::new("mc_shape");
+        s.set_f64(load_shape::prop::MEAN, mean);
+        s.set_f64(load_shape::prop::STDDEV, std_dev);
+        s
+    }
+
+    // --- draw_load_multiplier (SolveMonte2/SolveMonte3 LoadMultiplier draw) ---
+
+    #[test]
+    fn draw_load_multiplier_uniform_is_next_f64() {
+        let mut ckt = seeded_ckt();
+        ckt.load_multiplier = f64::NAN; // sentinel that MUST be overwritten
+        draw_load_multiplier(&mut ckt, UNIFORM, true);
+        assert_eq!(ckt.load_multiplier.to_bits(), D0_BITS);
+    }
+
+    #[test]
+    fn draw_load_multiplier_gaussian_uses_default_daily_shape_mean_std() {
+        let mut ckt = seeded_ckt();
+        ckt.default_daily_shape_obj = Some(shape_with_mean_std(0.75, 0.20));
+        draw_load_multiplier(&mut ckt, GAUSSIAN, true);
+        let expected = f64::from_bits(G01_0_BITS) * 0.20 + 0.75;
+        assert_eq!(ckt.load_multiplier, expected);
+    }
+
+    #[test]
+    fn draw_load_multiplier_lognormal_monte3_uses_shape_mean() {
+        let mut ckt = seeded_ckt();
+        ckt.default_daily_shape_obj = Some(shape_with_mean_std(2.0, 0.30));
+        draw_load_multiplier(&mut ckt, LOGNORMAL, /*allow_lognormal=*/ true);
+        let expected = f64::from_bits(G01_0_BITS).exp() * 2.0;
+        assert_eq!(ckt.load_multiplier, expected);
+    }
+
+    #[test]
+    fn draw_load_multiplier_monte2_has_no_lognormal_arm() {
+        // Monte2's `case Randomtype of` lacks a LOGNORMAL branch: LoadMultiplier
+        // is left unchanged and NO draw is consumed (distinct from Monte3).
+        let mut ckt = seeded_ckt();
+        ckt.default_daily_shape_obj = Some(shape_with_mean_std(2.0, 0.30));
+        ckt.load_multiplier = 42.0;
+        draw_load_multiplier(&mut ckt, LOGNORMAL, /*allow_lognormal=*/ false);
+        assert_eq!(ckt.load_multiplier, 42.0);
+        assert_eq!(
+            ckt.rng.next_f64().to_bits(),
+            D0_BITS,
+            "Monte2 LOGNORMAL must not consume a draw"
+        );
+    }
+
+    #[test]
+    fn draw_load_multiplier_none_leaves_unchanged_and_undrawn() {
+        let mut ckt = seeded_ckt();
+        ckt.load_multiplier = 42.0;
+        draw_load_multiplier(&mut ckt, 0 /* random=none */, true);
+        assert_eq!(ckt.load_multiplier, 42.0);
+        assert_eq!(
+            ckt.rng.next_f64().to_bits(),
+            D0_BITS,
+            "random=none must not consume a draw"
+        );
+    }
+
+    // --- pick_a_fault (SolveMonteFault PickAFault) ---
+
+    /// A test-only [`ElemStore`] backed by a flat `Vec<Fault>` indexed by
+    /// [`ElemRef::idx`]; only `obj`/`obj_mut` are reachable from `pick_a_fault`.
+    struct FaultStore {
+        faults: Vec<Fault>,
+    }
+
+    impl ElemStore for FaultStore {
+        fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
+            &mut self.faults[r.idx]
+        }
+        fn obj(&self, r: ElemRef) -> &dyn DssObject {
+            &self.faults[r.idx]
+        }
+        fn ckt_elem(&self, _r: ElemRef) -> &dyn CktElement {
+            unimplemented!()
+        }
+        fn ckt_elem_mut(&mut self, _r: ElemRef) -> &mut dyn CktElement {
+            unimplemented!()
+        }
+        fn find_ckt_element(&self, _full_name: &str) -> Option<ElemRef> {
+            None
+        }
+        fn find_general(&self, _class_name: &str, _obj_name: &str) -> Option<ElemRef> {
+            None
+        }
+        fn pair_mut(
+            &mut self,
+            _a: ElemRef,
+            _b: ElemRef,
+        ) -> (&mut dyn DssObject, &mut dyn DssObject) {
+            unimplemented!()
+        }
+        fn triple_mut(
+            &mut self,
+            _a: ElemRef,
+            _b: ElemRef,
+            _c: ElemRef,
+        ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
+            unimplemented!()
+        }
+    }
+
+    fn n_faults(n: usize) -> FaultStore {
+        let mut store = FaultStore {
+            faults: (0..n).map(|i| Fault::new(&format!("f{i}"))).collect(),
+        };
+        // Enable all up front so the "disable the rest" path is observable.
+        for f in &mut store.faults {
+            f.cd_mut().set_enabled(true);
+        }
+        store
+    }
+
+    #[test]
+    fn pick_a_fault_multi_selects_the_trunc_random_index() {
+        // N=3 faults, seed 12345. Each call draws once, then enables fault
+        //   whichone = min(Trunc(Random·3)+1, 3)   (Pascal PickAFault).
+        // Draws (rng.rs-pinned f64 for seed 12345):
+        //   d0 = 0.9296160866506398 → Trunc(2.7888)+1 = 3 → idx 2  (== N: top
+        //        boundary; the `.min(N)` clamp is defensive — Random<1 keeps
+        //        Trunc(Random·N) ≤ N−1 so raw ≤ N always — reproduced 1:1)
+        //   d1 = 0.8901547130662948 → Trunc(2.6705)+1 = 3 → idx 2
+        //   d2 = 0.3163755603600293 → Trunc(0.9491)+1 = 1 → idx 0
+        // montefault.dss has ONE fault (always idx 0), so this multi-fault index
+        // computation is otherwise uncovered.
+        let mut store = n_faults(3);
+        let mut ckt = Circuit::new("mc", 60.0);
+        ckt.rng.set_seed(SEED);
+        ckt.faults = (0..3).map(|idx| ElemRef { cls: 0, idx }).collect();
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+
+        for &want in &[2usize, 2, 0] {
+            let picked = {
+                let mut env = SolveEnv {
+                    store: &mut store,
+                    parser: &mut parser,
+                    vars: &vars,
+                    errors: &mut errors,
+                };
+                pick_a_fault(&mut ckt, &mut env).expect("one fault is enabled")
+            };
+            assert_eq!(picked.idx, want, "returned the enabled fault's ref");
+            for (i, f) in store.faults.iter().enumerate() {
+                assert_eq!(
+                    f.cd().enabled,
+                    i == want,
+                    "only fault #{want} may stay enabled"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pick_a_fault_single_is_always_first_but_consumes_a_draw() {
+        // The montefault.dss configuration: one fault, always idx 0 — yet the
+        // RNG draw is still consumed (GAPS_PLAN.md §2.1), so the stream advances.
+        let mut store = n_faults(1);
+        store.faults[0].cd_mut().set_enabled(false);
+        let mut ckt = Circuit::new("mc", 60.0);
+        ckt.rng.set_seed(SEED);
+        ckt.faults = vec![ElemRef { cls: 0, idx: 0 }];
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+
+        let picked = {
+            let mut env = SolveEnv {
+                store: &mut store,
+                parser: &mut parser,
+                vars: &vars,
+                errors: &mut errors,
+            };
+            pick_a_fault(&mut ckt, &mut env).expect("the one fault is enabled")
+        };
+        assert_eq!(picked.idx, 0);
+        assert!(store.faults[0].cd().enabled);
+        // Exactly one draw (d0) was consumed, so the next draw is d1.
+        assert_eq!(ckt.rng.next_f64().to_bits(), D1_BITS);
+    }
+}
