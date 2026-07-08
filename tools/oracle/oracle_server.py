@@ -276,6 +276,14 @@ def run_case(d, req: dict) -> dict:
     # (heavy: elements x props x steps queries) — the Rust property gate and the
     # env-gated `corpus_live_properties` pilot force it.
     want_all_props = bool(req.get("all_properties", False))
+    # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
+    # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
+    # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
+    # it. The AutoAdd solve segfaults dss-python AT PROCESS EXIT (GAPS_PLAN.md
+    # 2.2); this one-shot server has already flushed its JSON reply by then, so
+    # the crash never loses the capture.
+    want_global_result = bool(req.get("global_result", False))
+    want_autoadd_log = bool(req.get("autoadd_log", False))
     # Monitors/meters are compared only for cases that deliberately define them in
     # deterministic modes (the daily IEEE13 case). Capturing every master's
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
@@ -292,23 +300,29 @@ def run_case(d, req: dict) -> dict:
                 d.Text.Command = c
 
             ckt = d.ActiveCircuit
-            # `selected_elements=["*"]` -> every element's YPrim (small decks;
-            # the Rust side then asserts the returned name set covers ALL
-            # YPrim-bearing elements instead of the fixed count). Control /
-            # meter elements have no YPrim (the API returns a 1-float stub) —
-            # skip them, mirroring the Rust `element_yprim() == None`.
-            if selected == ["*"]:
-                sel = []
-                for nm in ckt.AllElementNames:
-                    ckt.SetActiveElement(nm)
-                    flat = ckt.ActiveCktElement.Yprim
-                    n = isqrt(len(flat) // 2) if flat is not None else 0
-                    if n > 0 and 2 * n * n == len(flat):
-                        sel.append(nm)
-            else:
-                sel = selected
             for _ in range(n_steps):
                 d.Text.Command = "solve"
+                # WPG.5: read GlobalResult right after the solve, before any
+                # `?`-query capture below overwrites `Text.Result`.
+                global_result = str(d.Text.Result) if want_global_result else ""
+                # `selected_elements=["*"]` -> every element's YPrim (small decks;
+                # the Rust side then asserts the returned name set covers ALL
+                # YPrim-bearing elements instead of the fixed count). Control /
+                # meter elements have no YPrim (the API returns a 1-float stub) —
+                # skip them, mirroring the Rust `element_yprim() == None`.
+                # Rebuilt AFTER each solve so a deck that adds an element during
+                # the solve (WPG.5 AutoAdd appends `Generator.Gadd1`) is covered;
+                # for every other deck the pre/post-solve element set is identical.
+                if selected == ["*"]:
+                    sel = []
+                    for nm in ckt.AllElementNames:
+                        ckt.SetActiveElement(nm)
+                        flat = ckt.ActiveCktElement.Yprim
+                        n = isqrt(len(flat) // 2) if flat is not None else 0
+                        if n > 0 and 2 * n * n == len(flat):
+                            sel.append(nm)
+                else:
+                    sel = selected
                 sol = ckt.Solution
                 if node_order is None:
                     node_order = list(ckt.YNodeOrder)
@@ -343,6 +357,7 @@ def run_case(d, req: dict) -> dict:
                         "all_properties": (
                             capture_all_properties(d, ckt) if want_all_props else []
                         ),
+                        "global_result": global_result,
                     }
                 )
             bad = [i for i, cp in enumerate(checkpoints) if not cp["converged"]]
@@ -354,7 +369,26 @@ def run_case(d, req: dict) -> dict:
                 f"misfire, see run_case doc / STATUS.md §1f); "
                 + ("recompiling in-process" if attempt < _RUN_ATTEMPTS else "returning as-is")
             )
-    return {"node_order": node_order, "n_steps": n_steps, "checkpoints": checkpoints}
+
+        # WPG.5: read the `<CircuitName_>AutoAddLog.csv` written to the case
+        # dir (OutputDirectory := <case dir> after Compile). Read inside the
+        # `_CorpusGuard` scope, before it removes the file on exit.
+        autoadd_log = None
+        if want_autoadd_log:
+            log_path = os.path.join(
+                os.path.dirname(os.path.abspath(case_path)),
+                f"{ckt.Name}_AutoAddLog.csv",
+            )
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
+                    autoadd_log = fh.read()
+
+    return {
+        "node_order": node_order,
+        "n_steps": n_steps,
+        "checkpoints": checkpoints,
+        "autoadd_log": autoadd_log,
+    }
 
 
 def _oddie_get_y_sparse(d):

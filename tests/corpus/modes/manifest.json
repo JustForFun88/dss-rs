@@ -263,9 +263,11 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.5",
-   "note": "Oracle segfaults at PROCESS EXIT after an AutoAdd solve (solve itself completes; Text.Result = 'b3, 0.0180069930672805', Generator.gadd1 appended, fingerprint bit-identical across runs). The oracle-side driver must capture everything before interpreter teardown; see GAPS_PLAN.md section 2.2."
+   "note": "WPG.5: AutoAdd capacity search. Oracle segfaults at PROCESS EXIT after the solve (solve completes; captured before teardown by the one-shot oracle subprocess, whose post-output exit code is ignored). Winner probe-pinned Text.Result=\"b3, 0.0180069930672805\"; Generator.gadd1 probe + final voltages + AutoAddLog compared. See GAPS_PLAN.md 2.2.",
+   "compare_global_result": true,
+   "compare_autoadd_log": true
   },
   {
    "path": "newton.dss",
