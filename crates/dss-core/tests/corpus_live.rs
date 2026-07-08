@@ -1531,6 +1531,7 @@ const MODES_REQUIRED: &[&str] = &[
     "montefault.dss",
     "autoadd.dss",
     "newton.dss",
+    "newton_feeder.dss",
     "reactor_rlcurve.dss",
     "isource_harm.dss",
     "batchedit.dss",

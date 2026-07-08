@@ -1,0 +1,22 @@
+! GAPS deck (WPG.6): a richer feeder re-solved under Set algorithm=Newton
+! (Pascal DoNewtonSolution). A 115/12.47 kV substation transformer feeds three
+! stressed constant-power loads (model=1) whose compensation currents drive the
+! current-injection Newton loop past the MinIterations floor (3 iterations on
+! the pinned oracle, vs 2 for the light newton.dss). The gate pins the converged
+! flag, the exact Newton iteration count, and node voltages.
+Clear
+New Circuit.gaps_newton_feeder basekv=115 phases=3 bus1=src mvasc3=3000 mvasc1=2500
+New Transformer.sub phases=3 windings=2 xhl=8
+~ wdg=1 bus=src conn=delta kv=115 kva=20000
+~ wdg=2 bus=hv   conn=wye   kv=12.47 kva=20000
+New Line.l1 bus1=hv bus2=b1 phases=3 r1=0.25 x1=0.80 r0=0.85 x0=2.5 c1=3.0 c0=1.6 length=3 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.32 x1=0.90 r0=0.95 x0=2.7 c1=3.0 c0=1.6 length=2 units=km
+New Line.l3 bus1=b2 bus2=b3 phases=3 r1=0.40 x1=1.05 r0=1.10 x0=3.0 c1=3.0 c0=1.6 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=5200 pf=0.90 model=1
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=4800 pf=0.88 model=1
+New Load.ld3 bus1=b3 phases=3 kv=12.47 kw=3600 pf=0.92 model=1
+New Load.ld4 bus1=b3 phases=1 kv=7.2   kw=900  pf=0.90 model=1
+Set voltagebases=[115, 12.47]
+Calcvoltagebases
+Set algorithm=Newton
+Solve
