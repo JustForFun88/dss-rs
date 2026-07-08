@@ -1,5 +1,15 @@
 # dss-rs — Pascal → Rust port of DSS C-API (OpenDSS engine)
 
+> **Ritual step 0 — source-integrity gate (every session, every plan, before anything
+> else — even before the model-tier check).** The Pascal at `.inputs/dss_capi` (186
+> `.pas` files) is the *spec*; oracle/live work also needs `.inputs/electricdss-tst`. If
+> the folder you port FROM is missing or empty at **any** point — startup or mid-task —
+> **STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
+> "port" a source you cannot read. Tell the user the vendored source is gone and must be
+> re-vendored, then wait. No spec → nothing to port; inventing one from memory is silent,
+> unverifiable fabrication — far worse than stopping. (Canonical placement: `PLAN_SEQUENCE.md`
+> §Model-tier protocol, ahead of the tier/refuse check — binding for every plan.)
+
 1:1 behavioral port of the Free Pascal "DSS C-API" engine (vendored at
 `.inputs/dss_capi`) to pure safe Rust. **Read `PORTING_PLAN.md` first** — it is the
 authoritative roadmap and encodes binding decisions:
@@ -88,6 +98,34 @@ read feeders from that vendored corpus, never from `.inputs/` at runtime.
 / golden / live oracle / corpus hygiene / opt-in EPRI channel), the env-var
 knobs, and the procedures (regenerate goldens, add a corpus deck, triage an
 EPRI divergence). Read it to find where a given kind of test lives.
+
+## Git worktrees — safe deletion (`.inputs`/`.venv` junction hazard)
+
+Parallel-agent worktrees live under `.claude/worktrees/`. Each one does **not**
+copy the gitignored `.inputs/` (vendored `dss_capi` + `electricdss-tst`) or
+`.venv/` — it holds Windows **directory junctions** pointing at main's real
+copies. `git worktree remove` and *any* recursive delete (`rm -rf`,
+`Remove-Item -Recurse`, `rmdir /s`) follow those junctions and delete the
+**shared target's contents in main**. This has already wiped main's `.inputs`
+once (recovery = a full re-vendor). Batching removals makes it worse: the loop
+empties the shared target on the first worktree, then keeps going.
+
+**Rule — never batch-remove worktrees; neutralize junctions first.** For each
+worktree, drop the junction *reparse points only* (never descend into them),
+then remove the worktree:
+
+1. List reparse points without following them:
+   `Get-ChildItem -LiteralPath <wt> -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
+2. Remove the **link only** — `$_.Delete()` on the `DirectoryInfo`
+   (or `cmd /c rmdir "<path>"` **without** `/s`). Both drop the junction and
+   leave the target untouched. Never use `Remove-Item -Recurse` / `rmdir /s` on
+   a junction — they recurse through it into main.
+3. Only now `git worktree remove --force <wt>`, then `git worktree prune`.
+
+After each removal verify the shared target survived — `(gci .inputs -Force |
+measure).Count` must be unchanged. Delete the merged per-agent branches
+(`worktree-agent-*`, `wf_*`, `wp*`, `wpg*`) separately with `git branch -D`;
+branch deletion never touches `.inputs`.
 
 ## Conventions
 
