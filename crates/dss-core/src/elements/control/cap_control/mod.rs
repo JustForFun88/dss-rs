@@ -225,6 +225,64 @@ impl CapControl {
         }
     }
 
+    /// Pascal `TCapControlObj.CapControlType` (`Capacitor.pas`... `CapControl.pas:194`
+    /// = `ControlType`: `ECapControlType` ordinal, 0=Current … 5=Follow).
+    /// Read-only accessor for the CIM export (`RegulatingControlEnum`, GAPS_PLAN
+    /// WPG.18 Stage D).
+    pub fn control_type(&self) -> i32 {
+        self.control_type
+    }
+
+    /// Pascal `TCapControlObj.PTPhase` (property `CapControl.pas:207` =
+    /// `ControlVars.FPTPhase`; "ALL"/avg/max/min are ≤ 0). Read-only accessor for
+    /// the CIM export (`MonitoredPhaseNode`).
+    pub fn pt_phase(&self) -> i32 {
+        self.fpt_phase
+    }
+
+    /// Pascal `TCapControlObj.PTRatioVal` (property `CapControl.pas:199` =
+    /// `ControlVars.PTratio`). Read-only accessor for the CIM export.
+    pub fn pt_ratio_val(&self) -> f64 {
+        self.pt_ratio
+    }
+
+    /// Pascal `TCapControlObj.CTRatioVal` (property `CapControl.pas:200` =
+    /// `ControlVars.CTratio`). Read-only accessor for the CIM export.
+    pub fn ct_ratio_val(&self) -> f64 {
+        self.ct_ratio
+    }
+
+    /// Pascal `TCapControlObj.OnValue` (property `CapControl.pas:195` =
+    /// `ControlVars.ON_Value`). Read-only accessor for the CIM export.
+    pub fn on_value(&self) -> f64 {
+        self.on_value
+    }
+
+    /// Pascal `TCapControlObj.OffValue` (property `CapControl.pas:196` =
+    /// `ControlVars.OFF_Value`). Read-only accessor for the CIM export.
+    pub fn off_value(&self) -> f64 {
+        self.off_value
+    }
+
+    /// Pascal `TCapControlObj.PFOnValue` (property `CapControl.pas:197` =
+    /// `ControlVars.PFON_Value`). Read-only accessor for the CIM export.
+    pub fn pf_on_value(&self) -> f64 {
+        self.pfon_value
+    }
+
+    /// Pascal `TCapControlObj.PFOffValue` (property `CapControl.pas:198` =
+    /// `ControlVars.PFOFF_Value`). Read-only accessor for the CIM export.
+    pub fn pf_off_value(&self) -> f64 {
+        self.pfoff_value
+    }
+
+    /// Pascal `TCapControlObj.OnDelayVal` (property `CapControl.pas:201` =
+    /// `ControlVars.OnDelay`). Read-only accessor for the CIM export
+    /// (`ShuntCompensator.aVRDelay`).
+    pub fn on_delay_val(&self) -> f64 {
+        self.on_delay
+    }
+
     /// Pascal `TCapControlObj.Reset` (the `Reset` action property). The
     /// `ControlledElement.Closed[0] := InitialState` restore needs the
     /// controlled capacitor, which the property setter cannot reach; it is

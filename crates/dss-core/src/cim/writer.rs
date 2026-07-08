@@ -189,6 +189,30 @@ pub fn shunt_connection_kind_node(buf: &mut String, prf: ProfileChoice, root: &s
     );
 }
 
+/// Pascal `TCIMExporterHelper.RegulatingControlEnum` (`ExportCIMXML.pas:1434`):
+/// `<cim:RegulatingControl.mode rdf:resource="…#RegulatingControlModeKind.<val>"/>`.
+pub fn regulating_control_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:RegulatingControl.mode rdf:resource="{CIM_NS}#RegulatingControlModeKind.{val}"/>"#
+        ),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.MonitoredPhaseNode` (`ExportCIMXML.pas:1488`):
+/// `<cim:RegulatingControl.monitoredPhase rdf:resource="…#PhaseCode.<val>"/>`.
+pub fn monitored_phase_node(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:RegulatingControl.monitoredPhase rdf:resource="{CIM_NS}#PhaseCode.{val}"/>"#
+        ),
+    );
+}
+
 /// Pascal `TCIMExporterHelper.OpLimitDirectionEnum` (`ExportCIMXML.pas:1494`).
 pub fn op_limit_direction_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
     write_cim_ln(
