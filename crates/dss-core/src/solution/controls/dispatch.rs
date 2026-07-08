@@ -1754,6 +1754,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 dckw_rated: pv.f_pmpp,        // FDCkWRated := Pmpp
                 pct_dckw_rated: pv.f_pu_pmpp, // FpctDCkWRated := puPmpp
                 eff_factor: pv.eff_factor,    // FEffFactor := PVSystemVars.EffFactor
+                storage_state: 0,             // n/a for a PVSystem
+                vw_state_requested: false,    // n/a for a PVSystem
             }
         } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
             DerSnap {
@@ -1773,14 +1775,16 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 current_kvar_limit_neg: st.base.current_kvar_limit_neg,
                 p_priority: st.p_priority,
                 pf_priority: st.pf_priority,
-                // volt-watt (Pascal UpdateDERParameters Storage branch). Used only
-                // by VOLTVAR for Storage (where they go unread); the Storage
-                // VOLTWATT/VV_VW dispatch is deferred (guarded at Sample), so the
-                // `FDCkW := 0.0` + live `TStorageObj.DCkW` split is not exercised.
-                dckw: 0.0,                       // FDCkW := 0.0 for Storage
-                dckw_rated: st.kw_rating,        // FDCkWRated := StorageVars.kWrating
+                // volt-watt (Pascal UpdateDERParameters Storage branch). `FDCkW` is
+                // 0 for Storage; `Calc_PBase`'s `%Available` base reads the live
+                // `TStorageObj.DCkW` (see `der_storage_dckw`). `StorageState` +
+                // `FVWStateRequested` drive `CalcPVWcurve_limitpu`'s curve pick.
+                dckw: 0.0,                                  // FDCkW := 0.0 for Storage
+                dckw_rated: st.kw_rating,                   // FDCkWRated := StorageVars.kWrating
                 pct_dckw_rated: st.pct_kw_rated, // FpctDCkWRated := StorageVars.pctkWrated
                 eff_factor: st.eff_factor,       // FEffFactor := Storagevars.EffFactor
+                storage_state: st.f_state,       // TStorageObj.StorageState (FState)
+                vw_state_requested: st.fvw_state_requested, // TStorageObj.FVWStateRequested
             }
         } else {
             panic!("InvControl fleet entry is not a PVSystem or Storage");
@@ -1976,6 +1980,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.present_kw()
         } else {
             0.0
+        }
+    }
+    fn der_storage_dckw(&mut self, r: ElemRef) -> f64 {
+        // Pascal `Get_DCkW` → `ComputeDCkW` (recomputes off the live terminal power).
+        let sys = self.sys;
+        let node_v = self.node_v;
+        let obj = self.store.obj_mut(r);
+        if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.dckw(sys, node_v)
+        } else {
+            0.0 // never reached for a PVSystem (Calc_PBase guards on the DER type)
         }
     }
     fn der_set_monitor_var(&mut self, r: ElemRef, kind: MonitorVar, value: f64) {

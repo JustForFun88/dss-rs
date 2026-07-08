@@ -120,8 +120,10 @@ impl Storage {
         }
     }
 
-    /// `DCkW` property (recomputes `ComputeDCkW`, like the Pascal `Get_DCkW`).
-    pub(super) fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+    /// `DCkW` property (recomputes `ComputeDCkW`, like the Pascal `Get_DCkW`). Used
+    /// by the InvControl Storage volt-watt `Calc_PBase` `%Available` base
+    /// (`InvDispEnv::der_storage_dckw`), hence `pub(crate)`.
+    pub(crate) fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         self.compute_dckw(sys, node_v);
         self.f_dckw
     }

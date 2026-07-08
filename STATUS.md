@@ -9,6 +9,37 @@
 
 Last updated: 2026-07-08.
 
+**WPG.10 — InvControl `mode=voltwatt` + `combimode=VV_VW` over Storage COMPLETE
+(2026-07-08), gate-green.** The Storage-typed volt-watt branches now dispatch
+instead of erroring (`guard_storage_vw` deleted). `Calc_PBase`
+(`InvControl.pas:2850`) gains the Storage `%Available` (yaxis 0) arm reading the
+*live* `TStorageObj.DCkW` (Pascal sets `FDCkW:=0` for Storage and reads the
+`DCkW` property; plumbed via a new `InvDispatchEnv::der_storage_dckw` →
+`Storage::dckw`, bumped `pub(super)`→`pub(crate)`) — yaxis 1/2/3 are identical
+to PVSystem. `CalcPVWcurve_limitpu` (`InvControl.pas:2950`) gains the Storage
+charge/discharge curve pick by `StorageState`+`FVWStateRequested` (discharging →
+`voltwatt_curve`; charging-with-CH → `voltwattCH_curve`; the requested-flip swaps
+them; idling / charging-no-CH → no limit `1.0`). `DoPendingAction`'s VOLTWATT
+(`:1376`) and VV_VW (`:1456`) Storage arms push `kWRequested`(+`kvarRequested`) +
+`SetNominalDEROutput`; the Storage `FVWOperation` reset compares `|presentkW|`
+(no `|PLimitVW|>0` guard) and the two Storage event strings are verbatim (note
+the `to ** kW=` / `to** kW=` comma/space quirks vs PVSystem — kept so the event
+log compares equal). The actual VW biting is the already-ported Storage
+`kWOut_Calc` (`storage/nominal.rs`) requesting/limiting region, driven by
+`VWmode`+`kWRequested`; `der_set_nominal` already propagates a Storage
+state-flip's `system_y_changed` (the WP7.4 concern the old defer-note raised).
+`DerSnap` carries `storage_state`/`vw_state_requested`. Decks
+`invcontrol_storage_vw.dss` + `invcontrol_storage_vv_vw.dss` flipped
+`pending:false` — controls live gate **46 matched / 4 pending** (per-step Storage
+P/Q/%stored/state + event log + meters/monitors + full model exact vs the pinned
+oracle; the VW curve bites −116.7 kW/ph → ~0 across the run). The two `tests.rs`
+pins were extended from "errors loudly" to the real dispatch, plus a new
+charging-CH-curve-selection unit test. No `TODO(compat)`/`NOT_PORTED` added; the
+yaxis-0 Storage `%Available` base is ported faithfully although no gate deck
+exercises it (all use the yaxis-1 default). Scope: only the `inv_control` module,
+the `dispatch.rs` env bridge, the `Storage::dckw` visibility, and the 2 controls
+manifest flags.
+
 **GAPS round-2 (2026-07-08): five more GAPS ports (WPG.4/5/6/9/11) + four
 audit-fix worktrees, all merged to `phase-8-reporting` (HEAD `e82517b`); each
 port had an opus `/audit-code` + `/audit-tests` pair and each fix an opus

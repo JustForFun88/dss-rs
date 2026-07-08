@@ -195,6 +195,10 @@ mod dispatch {
         panel_kw: f64,   // FDCkW
         /// The last `der_set_kw_requested` value (ideal readback for `der_present_kw`).
         requested_kw: f64,
+        // --- Storage volt-watt state (WPG.10; ignored when `!is_storage`) ---
+        storage_state: i32,       // TStorageObj.StorageState
+        vw_state_requested: bool, // TStorageObj.FVWStateRequested
+        storage_dckw: f64,        // TStorageObj.DCkW (Calc_PBase %Available base)
     }
     impl MockDer {
         fn new(name: &str, vpu: f64, present_kw: f64) -> Self {
@@ -219,6 +223,11 @@ mod dispatch {
                 eff_factor: 1.0,
                 panel_kw: present_kw,
                 requested_kw: present_kw,
+                // A discharging Storage by default (the common VW test scenario);
+                // ignored unless `is_storage` is set on the mock DER.
+                storage_state: crate::elements::pc::storage::STORE_DISCHARGING,
+                vw_state_requested: false,
+                storage_dckw: 0.0,
             }
         }
     }
@@ -307,6 +316,8 @@ mod dispatch {
                 dckw_rated: d.pmpp,
                 pct_dckw_rated: d.pu_pmpp,
                 eff_factor: d.eff_factor,
+                storage_state: d.storage_state,
+                vw_state_requested: d.vw_state_requested,
             }
         }
         fn der_is_pvsystem(&self, r: ElemRef) -> bool {
@@ -364,6 +375,9 @@ mod dispatch {
         fn der_present_kw(&self, r: ElemRef) -> f64 {
             // Ideal readback: the requested kW limit (the VW set-point).
             self.ders[Self::idx(r)].requested_kw
+        }
+        fn der_storage_dckw(&mut self, r: ElemRef) -> f64 {
+            self.ders[Self::idx(r)].storage_dckw
         }
         fn der_set_monitor_var(&mut self, _r: ElemRef, _kind: MonitorVar, _value: f64) {}
         fn push_change(&mut self, _delay: f64, code: i32) {
@@ -664,26 +678,71 @@ mod dispatch {
     }
 
     #[test]
-    fn voltwatt_storage_is_deferred_not_silent() {
-        // The Storage VOLTWATT/VV_VW dispatch is deferred with an explicit error
-        // (the YPrim-state-flip propagation gap; PVSystem volt-watt is ported).
+    fn voltwatt_storage_dispatches_kw() {
+        // WPG.10: a discharging Storage in VOLTWATT now dispatches (no NOT_PORTED).
+        // Discharging + not VWStateRequested reads the main `voltwatt_curve`, and
+        // yaxis=%Pmpp gives PBase = FDCkWRated = 600 — so the InvControl-side math
+        // equals the PVSystem case: V=1.05 → curve y=0.625, PLimitEndpu=0.625,
+        // CalcVoltWatt_watts (iter 1, requesting region) → PLimitVW=498.75. The
+        // set-point reaches the DER via `kWRequested`.
         let mut ic = voltwatt_ic();
         let mut der = MockDer::new("pv", 1.05, 600.0);
-        der.is_storage = true;
+        der.is_storage = true; // discharging by default
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap();
+        assert_eq!(env.pushes, vec![super::super::CHANGEWATTLEVEL]);
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
         assert!(
-            err.contains("Storage VOLTWATT/VV_VW"),
-            "expected a Storage VW NOT_PORTED error, got: {err}"
+            (cv.p_limit_vw_pu - 0.625).abs() < 1e-9,
+            "PLimitVWpu = {}",
+            cv.p_limit_vw_pu
+        );
+        assert!(
+            (cv.p_limit_vw - 498.75).abs() < 1e-9,
+            "PLimitVW = {} (expected 498.75)",
+            cv.p_limit_vw
+        );
+        assert!((env.ders[0].requested_kw - 498.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn voltwatt_storage_charging_selects_ch_curve() {
+        // WPG.10: the Storage-specific `CalcPVWcurve_limitpu` branch — a CHARGING
+        // Storage with a `voltwattCH_curve` (and no VWStateRequested flip) reads the
+        // CH curve, NOT the discharge `voltwatt_curve`. Distinct flat curves make the
+        // pick observable: CH y=0.5 everywhere vs the discharge curve's 0.625 at 1.05.
+        let mut ic = voltwatt_ic();
+        ic.voltwattch_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vwch",
+            &[0.5, 1.5],
+            &[0.5, 0.5],
+        ));
+        let mut der = MockDer::new("pv", 1.05, -300.0); // charging (kW < 0)
+        der.is_storage = true;
+        der.storage_state = crate::elements::pc::storage::STORE_CHARGING;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.p_limit_vw_pu - 0.5).abs() < 1e-9,
+            "PLimitVWpu = {} (expected the CH curve's 0.5, not 0.625)",
+            cv.p_limit_vw_pu
         );
     }
 
     #[test]
-    fn vv_vw_storage_is_deferred_not_silent() {
-        // Symmetry with the VOLTWATT case: a Storage in the VV_VW combi also errors
-        // (the shared `guard_storage_vw`), never silently dispatching.
+    fn vv_vw_storage_dispatches_both() {
+        // WPG.10: a discharging Storage in the VV_VW combi dispatches BOTH the
+        // volt-watt kW limit and the volt-var kvar in one DoPendingAction (no
+        // NOT_PORTED). Same curves/scenario as the PVSystem VV_VW test, so the
+        // set-points match: PLimitVW=498.75 (VW) and QDesiredVV=-75.8 (VV).
         let mut ic = InvControl::new("ic1");
         ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
         ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vw",
             &[1.0, 1.02, 1.1],
@@ -691,19 +750,29 @@ mod dispatch {
         ));
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
-            &[0.5, 1.0, 1.5],
-            &[1.0, 0.0, -1.0],
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
         ));
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut der = MockDer::new("pv", 1.05, 600.0);
-        der.is_storage = true;
+        der.is_storage = true; // discharging by default
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
         assert!(
-            err.contains("Storage VOLTWATT/VV_VW"),
-            "expected a Storage VV_VW NOT_PORTED error, got: {err}"
+            (cv.p_limit_vw - 498.75).abs() < 1e-9,
+            "PLimitVW = {} (expected 498.75)",
+            cv.p_limit_vw
         );
+        assert!(
+            (cv.q_desired_vv - (-75.8)).abs() < 1e-9,
+            "QDesiredVV = {} (expected -75.8)",
+            cv.q_desired_vv
+        );
+        assert!((env.ders[0].requested_kw - 498.75).abs() < 1e-9);
+        assert!((env.ders[0].requested_kvar - (-75.8)).abs() < 1e-9);
     }
 
     #[test]
