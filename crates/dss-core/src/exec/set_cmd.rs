@@ -343,6 +343,12 @@ impl Dss {
                             ckt.reduction_zmag = v;
                         }
                     }
+                    // Pascal `ExecOptions.pas:696/698` (GAPS_PLAN WPG.11): the
+                    // option is spelled `SeasonRating`, the global it sets is
+                    // `SeasonalRating` (probe-proven: `Set SeasonalRating` is
+                    // error #130, unknown parameter).
+                    opt::SEASON_RATING => ckt.season_rating = interpret_yes_no(&param),
+                    opt::SEASON_SIGNAL => ckt.season_signal = param.clone(),
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];

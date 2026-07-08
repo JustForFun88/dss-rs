@@ -403,5 +403,7 @@ pub(crate) mod opt {
     pub const REDUCE_OPTION: usize = 59;
     pub const KEEP_LOAD: usize = 112;
     pub const ZMAG: usize = 113;
+    pub const SEASON_RATING: usize = 114;
+    pub const SEASON_SIGNAL: usize = 115;
     pub const DATA_PATH: usize = 57;
 }

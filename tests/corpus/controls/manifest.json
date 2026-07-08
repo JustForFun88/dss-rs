@@ -1258,7 +1258,7 @@
     }
    ],
    "compare_eventlog": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.11",
    "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'."
   },

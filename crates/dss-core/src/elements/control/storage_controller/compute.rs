@@ -34,6 +34,49 @@ fn g6(v: f64) -> String {
 }
 
 impl StorageController {
+    /// Pascal `TStorageControllerObj.Get_DynamicTarget` (StorageController.pas
+    /// l.1020): the seasonal kW target. `t_high` selects `SeasonTargets`
+    /// (discharge, `THigh=1`) vs `SeasonTargetsLow` (charge, `THigh=0`). Callers
+    /// only invoke this under the `DSS.SeasonalRating` guard (l.1099/l.1411).
+    fn get_dynamic_target(&self, env: &mut dyn StorageDispatchEnv, t_high: bool) -> f64 {
+        let Some(rating_idx) = env.season_rating_idx() else {
+            // `DSS.SeasonSignal` empty: Pascal's `Result` stays its `0` init —
+            // NOT the non-seasonal `FkWTarget`/`FkWTargetLow` fallback.
+            return 0.0;
+        };
+        // Pascal `(RatingIdx <= Seasons) and (Seasons > 1)`. A `RatingIdx ==
+        // Seasons` (valid array length, one past the last `0..Seasons-1` slot)
+        // — or a negative `RatingIdx` off a signal curve that extrapolates
+        // below 0 — indexes `SeasonTargets`/`SeasonTargetsLow` out of bounds:
+        // an upstream dynamic-array OOB read (UB, not a deterministic bug —
+        // CLAUDE.md "UB ... not reproduced"). Rust falls back to the
+        // non-seasonal target instead of reproducing the OOB read.
+        if rating_idx > self.seasons || self.seasons <= 1 {
+            return if t_high {
+                self.f_kw_target
+            } else {
+                self.f_kw_target_low
+            };
+        }
+        let arr = if t_high {
+            &self.season_targets
+        } else {
+            &self.season_targets_low
+        };
+        match usize::try_from(rating_idx).ok().and_then(|i| arr.get(i)) {
+            Some(&v) => v,
+            None => {
+                if t_high {
+                    self.f_kw_target
+                } else {
+                    self.f_kw_target_low
+                }
+            }
+        }
+    }
+}
+
+impl StorageController {
     /// Pascal `TStorageControllerObj.RecalcElementData` (parse-time subset):
     /// validate the monitored element, attach the control's single terminal to
     /// the monitored terminal's bus, and compute the Schedule-mode ramp
@@ -479,9 +522,13 @@ impl StorageController {
             s = env.control_power(self.f_mon_phase, fnphases);
         }
 
-        // Seasonal targets (Get_DynamicTarget) are NOT_PORTED → the non-seasonal
-        // FkWTarget branch (DSS.SeasonalRating is always false here).
-        let ctrl_target = self.f_kw_target;
+        // Pascal `if DSS.SeasonalRating then CtrlTarget := Get_DynamicTarget(1)
+        // else CtrlTarget := FkWTarget` (l.1099).
+        let ctrl_target = if env.season_rating() {
+            self.get_dynamic_target(env, true)
+        } else {
+            self.f_kw_target
+        };
 
         let mut p_diff = match self.discharge_mode {
             MODE_FOLLOW => {
@@ -717,8 +764,13 @@ impl StorageController {
         let mut store_kw_changed = false;
         let mut skip_kw_charge = false;
 
-        // Seasonal targets NOT_PORTED → non-seasonal FkWTargetLow.
-        let ctrl_target = self.f_kw_target_low;
+        // Pascal `if DSS.SeasonalRating then CtrlTarget := Get_DynamicTarget(0)
+        // else CtrlTarget := FkWTargetLow` (l.1411).
+        let ctrl_target = if env.season_rating() {
+            self.get_dynamic_target(env, false)
+        } else {
+            self.f_kw_target_low
+        };
 
         let fnphases = self.ccd.cd.nphases;
         let mut p_diff;

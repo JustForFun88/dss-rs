@@ -331,6 +331,8 @@ pub(super) fn dispatch_control(
                 int_hour: *int_hour,
                 t: *t,
                 control_iter: *control_iteration,
+                season_rating: ckt.season_rating,
+                season_signal: ckt.season_signal.clone(),
             };
             match op {
                 ControlOp::Sample => sc.sample(&mut env),
@@ -1294,6 +1296,10 @@ struct StorageDispEnv<'a> {
     int_hour: i32,
     t: f64,
     control_iter: i32,
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`).
+    season_rating: bool,
+    /// `DSS.SeasonSignal` (`Set SeasonSignal=`).
+    season_signal: String,
 }
 
 impl StorageDispEnv<'_> {
@@ -1551,6 +1557,28 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     }
     fn solve_mode(&self) -> SolveMode {
         self.sys.mode
+    }
+    fn season_rating(&self) -> bool {
+        self.season_rating
+    }
+    fn season_rating_idx(&mut self) -> Option<i32> {
+        if self.season_signal.is_empty() {
+            return None;
+        }
+        // Pascal `RSignal := DSS.XYCurveClass.Find(DSS.SeasonSignal); if
+        // RSignal <> NIL then RatingIdx := trunc(RSignal.GetYValue(intHour))`
+        // — `RatingIdx` stays its `0` init on a miss.
+        let mut rating_idx = 0;
+        if let Some(r) = self.store.find_general("XYcurve", &self.season_signal)
+            && let Some(curve) = self
+                .store
+                .obj_mut(r)
+                .as_any_mut()
+                .downcast_mut::<crate::elements::general::xy_curve::XyCurveObj>()
+        {
+            rating_idx = curve.get_y_value(self.int_hour as f64).trunc() as i32;
+        }
+        Some(rating_idx)
     }
 }
 

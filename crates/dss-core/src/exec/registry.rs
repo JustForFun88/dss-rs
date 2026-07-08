@@ -107,6 +107,19 @@ impl ElemStore for ClassStore<'_> {
         None
     }
 
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef> {
+        let lower = obj_name.to_lowercase();
+        for (ci, class) in self.classes.iter().enumerate() {
+            if !class.props.class_name().eq_ignore_ascii_case(class_name) {
+                continue;
+            }
+            if let Some(&oi) = class.name_to_idx.get(&lower) {
+                return Some(ElemRef { cls: ci, idx: oi });
+            }
+        }
+        None
+    }
+
     fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
         self.classes[r.cls].objects[r.idx].as_mut()
     }
