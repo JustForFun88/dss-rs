@@ -36,18 +36,22 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     // Grid-forming inverter mode is ported for the power-flow / time-series /
-    // direct / harmonic solves (WPG.13), but the **dynamics-mode** GFM branch
-    // (`DoDynamicMode`/`IntegrateStates` GFM) is still NOT_PORTED. `DoDynamicMode`
-    // pushes its "not ported" error into a per-element vec that the fixed-point
-    // injection loop drops, so a dynamics solve would silently inject a stale
-    // current — refuse it here with an explicit abort instead (the deferral-is-
-    // never-a-silent-fallback convention). Snapshot/daily/direct GFM is unaffected.
-    if ckt.solution.mode == SolveMode::Dynamic
+    // direct / harmonic solves (WPG.13), but the GFM branch of the **dynamic
+    // model** (`DoDynamicMode`/`IntegrateStates` GFM) is still NOT_PORTED.
+    // `DoDynamicMode` pushes its "not ported" error into a per-element vec that
+    // the fixed-point injection loop drops, so any solve that runs the dynamic
+    // model would silently inject a stale current. `is_dynamic_model` is TRUE for
+    // Dynamic AND FaultStudy AND MonteFault (Pascal `Set_Mode`, Solution.pas
+    // l.2088-2094) — all three reach the `DoDynamicMode` GFM stub, so refuse
+    // every one with an explicit abort (the deferral-is-never-a-silent-fallback
+    // convention). Snapshot/daily/direct GFM is unaffected.
+    if ckt.solution.is_dynamic_model
         && let Some(name) = first_enabled_gfm_der(ckt, env)
     {
         env.errors.push(format!(
-            "{name}: grid-forming inverter mode (ControlMode=GFM) dynamics is not \
-             ported yet (WPG.13 defers DoDynamicMode/IntegrateStates GFM)."
+            "{name}: grid-forming inverter mode (ControlMode=GFM) is not ported \
+             for dynamics / fault-study solves (WPG.13 defers DoDynamicMode/\
+             IntegrateStates GFM)."
         ));
         ckt.solution.solution_abort = true;
         return Ok(());

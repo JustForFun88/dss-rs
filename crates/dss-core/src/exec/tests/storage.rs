@@ -120,6 +120,42 @@ fn storage_gfm_dynamics_aborts_loudly() {
     );
 }
 
+/// FaultStudy and MonteFault also set `is_dynamic_model` (Pascal `Set_Mode`,
+/// Solution.pas l.2088-2094), so they too reach the NOT_PORTED `DoDynamicMode`
+/// GFM stub. A GFM DER in either mode must abort loudly, never silently inject a
+/// stale current (batch-2 audit finding: the dynamics-only guard let these two
+/// modes fall through into the silent stub). Snapshot GFM stays solvable.
+#[test]
+fn storage_gfm_faultstudy_and_montefault_abort_loudly() {
+    // The Solution-Mode enum spells MonteFault "MF" (registry/solution.rs).
+    for mode in ["faultstudy", "MF number=1"] {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("New circuit.t basekv=4.16 phases=3 bus1=src basefreq=60");
+        dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
+        dss.command(
+            "New Storage.s1 bus1=b phases=3 conn=delta kV=4.16 kva=800 kWrated=800 \
+             kWhrated=6000 state=discharging %R=50 %X=50 kP=0.3 KVDC=0.7 PITol=0.1 \
+             ControlMode=GFM",
+        );
+        dss.command("set voltagebases=[4.16]");
+        dss.command("calcvoltagebases");
+        dss.command("solve"); // snapshot GFM: ported, solves
+        assert!(
+            dss.errors().is_empty(),
+            "snapshot GFM must solve (mode {mode}): {:?}",
+            dss.errors()
+        );
+        dss.command(&format!("set mode={mode}"));
+        dss.command("solve"); // runs the dynamic model -> GFM NOT_PORTED -> abort
+        assert!(
+            dss.errors().iter().any(|e| e.contains("grid-forming")),
+            "{mode} GFM must abort with an explicit not-ported error, got: {:?}",
+            dss.errors()
+        );
+    }
+}
+
 /// A mode-3 (state-variable) monitor on a Storage must attach and solve cleanly:
 /// Pascal mode 3 validates `BASECLASSMASK = PC_ELEMENT` and Storage is a
 /// `TPCElement`, so the mode-3 check accepts `MeteredKind::Storage` alongside
