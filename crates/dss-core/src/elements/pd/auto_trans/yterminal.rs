@@ -142,9 +142,19 @@ impl AutoTrans {
     /// corrections — the series diagonal scaled by `ZCorrected = ZBase·(1 +
     /// Vc/Vs)²` (Dommel 6.45) and the 3-winding `puXst` (Dommel 6.50).
     pub(super) fn calc_y_terminal(&mut self, freq_mult: f64) {
-        // Pascal checks `ActiveCircuit.Solution.Frequency < 0.51`; the absolute
-        // solution frequency is `FreqMult · BaseFrequency` (CalcYPrim derives
-        // `FreqMult := Solution.Frequency / BaseFrequency`).
+        // Pascal checks the global `ActiveCircuit.Solution.Frequency < 0.51`;
+        // we reconstruct it as `FreqMult · BaseFrequency` (CalcYPrim derives
+        // `FreqMult := Solution.Frequency / BaseFrequency`, so this is exact on
+        // the CalcYPrim path). Divergence (benign, audited 2026-07-09): the
+        // `RecalcElementData → calc_y_terminal(1.0)` path reconstructs
+        // `BaseFrequency`, not the true `Solution.Frequency`, so a recalc fired
+        // mid-solve at <0.51 Hz (e.g. a RegControl tap change during a GIC
+        // solve) would build the normal (reactive) branch here where Pascal
+        // builds the GIC branch. Never observable: CalcYPrim unconditionally
+        // rebuilds `Y_Term` before any solve/report read whenever
+        // `FreqMultiplier != y_terminal_freqmult` (0.1/60 ≠ 1.0), so the
+        // transient `Y_Term` is always overwritten. (The Line GIC port at
+        // `line/solve.rs` reads `sys.frequency` directly — the clean form.)
         if freq_mult * self.cd.base_frequency < 0.51 {
             self.gic_build_y_terminal();
             self.y_terminal_freqmult = freq_mult;

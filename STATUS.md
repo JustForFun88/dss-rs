@@ -7,7 +7,33 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-08.
+Last updated: 2026-07-09.
+
+**WPG.15 audit + settlement (2026-07-09), gate-green.** Independent opus audit
+(code xhigh + tests high) of the merged AutoTrans work: **port faithful 1:1**
+(SetNodeRef / CalcY_Terminal / GICBuildYTerminal / GetCurrents fold / Get_Losses
+AUTOTRANS special case / Line `ConvertZinvToPosSeqR` / RegControl proxy all
+verified loop-for-loop), **tests clean** (0 findings — all 7 decks are
+feature-sensitive via `selected_elements ["*"]` YPrim bijection). The audit
+**independently re-confirmed the deck integrity** flagged during the two-agent
+race: the `autotrans_gic` tampering is fully reversed (net diff vs the `18d88a7`
+original = one comment; the switch line + `mvasc3=2e6` are restored — pins both
+the Line-GIC branch and AutoTrans `GICBuildYTerminal`), and the `autotrans_snap`
+physical-source edit is a legitimate conditioning-floor fix (real non-zero
+winding currents, no tolerance loosened; `AutoAuto.dss` correctly moved to
+`needs_investigation` rather than edited). Two **minor, provably-masked**
+findings settled: (1) the `calc_y_terminal` GIC gate reconstructs
+`FreqMult·BaseFrequency` instead of the true `Solution.Frequency` — divergent
+only on a mid-solve `recalc(1.0)` at <0.51 Hz, always overwritten by CalcYPrim
+before any read → **documented in-code** as benign (not `TODO(compat)`; the Line
+port reads `sys.frequency` directly). (2) `winding_currents_result` uses
+`.norm()`/`.to_degrees()` vs the FPC `cabs`/`cdang` `TODO(compat)` helpers —
+**pre-existing, copied verbatim from Transformer** (`transformer/yterminal.rs`),
+masked by `%g`; a de-compat-pass follow-up for BOTH classes, not a WPG.15
+regression. Separately-noted pre-existing follow-up (Fable, out of WPG.15
+scope): `energymeter::capture_metered` doesn't count `Fault` as a PD element
+(Pascal `BASECLASSMASK` would). Full `cargo test --workspace` green on the
+merged head (`a408a30`, 32 binaries, 0 fail, live corpus incl.).
 
 **WPG.10 — InvControl `mode=voltwatt` + `combimode=VV_VW` over Storage COMPLETE
 (2026-07-08), gate-green.** The Storage-typed volt-watt branches now dispatch
