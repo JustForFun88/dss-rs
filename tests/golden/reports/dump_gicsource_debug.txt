@@ -1,0 +1,42 @@
+
+New "GICsource.seg"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 2
+! Yorder = 6
+! NodeRef = "15 16 17 18 19 20 "
+! Terminal Status: [C C C C C C ]
+! Terminal Bus Ref: [5 5 5 6 6 6 ]
+
+! YPrim (G matrix)
+!          10000 |             0 |             0 |        -10000 |             0 |             0 |
+!              0 |         10000 |             0 |             0 |        -10000 |             0 |
+!              0 |             0 |         10000 |             0 |             0 |        -10000 |
+!         -10000 |             0 |             0 |         10000 |             0 |             0 |
+!              0 |        -10000 |             0 |             0 |         10000 |             0 |
+!              0 |             0 |        -10000 |             0 |             0 |         10000 |
+! YPrim (B Matrix) = 
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+! VARIABLES
+~ Volts=110
+~ Angle=0
+~ Frequency=0.1
+~ Phases=3
+~ EN=1
+~ EE=1
+~ Lat1=33.613499
+~ Lon1=-87.373673
+~ Lat2=33.547885
+~ Lon2=-86.074605
+~ Spectrum=
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+

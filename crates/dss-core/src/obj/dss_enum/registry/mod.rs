@@ -53,6 +53,7 @@ impl EnumRegistry {
             core_type: pd.core_type,
             lead_lag: pd.lead_lag,
             autotrans_connection: pd.autotrans_connection,
+            gic_transformer_type: pd.gic_transformer_type,
             reg_control_phase: control.reg_control_phase,
             mon_phase: control.mon_phase,
             cap_control_type: control.cap_control_type,

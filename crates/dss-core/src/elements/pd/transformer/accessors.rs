@@ -590,12 +590,13 @@ impl DssObject for Transformer {
             crate::obj::base::RefAction::SetTransformerTap { winding, tap, .. } => {
                 self.set_present_tap(*winding, *tap);
             }
-            // `SetSwitchClosed`/`SetConductorsClosed`/`SetOcpDevice` are applied
-            // generically by the executive (they act on the CktElement base),
-            // never routed here.
+            // `SetSwitchClosed`/`SetConductorsClosed`/`SetOcpDevice`/
+            // `SetElementBus` are applied generically by the executive (they act
+            // on the CktElement base), never routed here.
             crate::obj::base::RefAction::SetSwitchClosed { .. }
             | crate::obj::base::RefAction::SetConductorsClosed { .. }
-            | crate::obj::base::RefAction::SetOcpDevice { .. } => {}
+            | crate::obj::base::RefAction::SetOcpDevice { .. }
+            | crate::obj::base::RefAction::SetElementBus { .. } => {}
         }
     }
 

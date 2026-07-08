@@ -64,6 +64,8 @@ pub struct EnumRegistry {
     /// 'AutoTrans: Connection' (AutoTrans.pas `AutoTransConnectionEnum`; adds
     /// `series` to wye/delta).
     pub autotrans_connection: EnumId,
+    /// 'GICTransformer: Type' (GICTransformer.pas `TypeEnum`; GSU/Auto/YY).
+    pub gic_transformer_type: EnumId,
     /// 'RegControl: Phase Selection' (RegControl.pas `PhaseEnum`).
     pub reg_control_phase: EnumId,
     /// 'Monitored Phase' (`DSS.MonPhaseEnum`, CapControl PT/CT phase).

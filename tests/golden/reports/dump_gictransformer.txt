@@ -1,0 +1,26 @@
+
+New "GICTransformer.tg2"
+~ BusH=b2
+~ BusNH=b2.4.4.4
+~ BusX=b2x
+~ BusNX=b2.4.4.4
+~ Phases=3
+~ Type=YY
+~ R1=0.2
+~ R2=0.1
+~ kVLL1=500
+~ kVLL2=138
+~ MVA=100
+~ VarCurve=
+~ %R1=0.008
+~ %R2=0.0525099768956102
+~ K=2.2
+~ NormAmps=0
+~ EmergAmps=0
+~ FaultRate=0
+~ pctPerm=100
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+! ENABLED

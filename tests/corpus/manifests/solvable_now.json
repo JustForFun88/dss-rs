@@ -1102,6 +1102,11 @@
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
+   "kind": "feeder",
+   "n_steps": 1
   }
  ]
 }

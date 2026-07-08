@@ -380,7 +380,7 @@ impl Dss {
     /// Pascal `DoBusCoordsCmd` (`ExecHelper.pas` l.2955): read a `bus, x, y`
     /// file (one bus per line, aux-parser delimiters) and set the coordinates
     /// on buses that exist; buses not in the circuit are silently ignored.
-    /// `swap_xy` is the `LatLongCoords` variant (unported command).
+    /// `swap_xy` is the `LatLongCoords` variant (wired at WPG.16).
     pub(super) fn do_bus_coords_cmd(&mut self, swap_xy: bool) {
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars);

@@ -1,0 +1,183 @@
+//! `RecalcElementData` (the Line splice), `CalcYPrim` (fixed series G),
+//! `GetVterminalForSource` / injection, and the `impl CktElement` for
+//! [`GicSource`].
+
+use num_complex::Complex64;
+
+use super::GicSource;
+use crate::elements::ckt::CktElementData;
+use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::traits::{CktElement, InjCtx, SysCtx};
+use crate::obj::base::RefAction;
+use crate::support::cmatrix::CMatrix;
+use crate::support::complexutil::pdeg_to_complex;
+use crate::util::EPSILON2;
+
+/// Pascal `CompareTextShortest('GIC_', LineBus2) = 0`: the (case-insensitive)
+/// leading-substring compare over the shorter of the two strings — true iff the
+/// Line's Bus2 already begins with the `GIC_` bus prefix (splice already done).
+fn line_bus2_is_gic(bus2: &str) -> bool {
+    let n = 4.min(bus2.len());
+    bus2[..n].eq_ignore_ascii_case(&"GIC_"[..n])
+}
+
+impl GicSource {
+    /// Pascal `TGICSourceObj.RecalcElementData` (GICsource.pas:326): splice a
+    /// `GIC_<name>` bus in front of the associated Line, then (unless specified)
+    /// compute the induced `Volts`.
+    pub(super) fn recalc(&mut self) {
+        if self.line_ref.is_none() {
+            // Pascal: `if pLineElem = NIL then ... DoSimpleMsg 333` (the executive
+            // already tried to resolve the Line through the foreign view).
+            if self.line_missing {
+                self.cd.obj.push_error(format!(
+                    "Line Object {} associated with GICsource.{} not found. \
+                     Make sure you define it first.",
+                    self.cd.obj.name(),
+                    self.cd.obj.name()
+                ));
+            }
+        } else {
+            let line_bus2 = self.line_bus2.clone();
+            // If LineBus2 already begins with GIC, don't insert the GIC bus.
+            if !line_bus2_is_gic(&line_bus2) {
+                // Define buses — inserting a new bus GIC_{Name}.
+                let gic_bus = format!("gic_{}", self.cd.obj.name());
+                self.cd.set_bus(1, &gic_bus);
+                self.cd.set_bus(2, &line_bus2);
+                // Redefine the Bus2 spec for the Line (through the property path;
+                // its Bus2 side effect is a plain rename).
+                if let Some(target) = self.line_ref {
+                    self.pending_actions.push(RefAction::SetElementBus {
+                        target,
+                        terminal: 2,
+                        bus: gic_bus,
+                    });
+                }
+            }
+            self.bus2_defined = true;
+            if !self.volts_specified {
+                self.volts = self.compute_vline();
+            }
+        }
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+
+    /// Pascal `TGICSourceObj.GetVterminalForSource` (GICsource.pas:403): a
+    /// zero-sequence source — every phase gets `pdegtocomplex(Vmag, Angle)`; the
+    /// magnitude is `Volts` only when the solution frequency matches
+    /// `SrcFrequency` (else the source is shorted).
+    fn get_vterminal_for_source(&mut self, sys: &SysCtx) {
+        let nphases = self.cd.nphases;
+        // If the solution frequency isn't the source frequency, source shorted.
+        let vmag = if (sys.frequency - self.src_frequency).abs() < EPSILON2 {
+            self.volts
+        } else {
+            0.0
+        };
+        for i in 0..nphases {
+            self.cd.vterminal[i] = pdeg_to_complex(vmag, self.angle); // all the same (zero seq)
+            self.cd.vterminal[i + nphases] = Complex64::ZERO;
+        }
+    }
+
+    /// Pascal `TGICSourceObj.GetInjCurrents` (GICsource.pas:457): fill
+    /// `self.cd.inj_current` from `[Yprim]·[Vsource; 0]` (the solve path).
+    fn get_inj_currents(&mut self, sys: &SysCtx) {
+        self.cd.inj_current = self.compute_inj_currents(sys);
+    }
+
+    /// Pascal `GetInjCurrents`, **returning** the injection; leaves
+    /// `self.cd.inj_current` untouched (the reporting `GetCurrents` uses the
+    /// `ComplexBuffer` scratch).
+    fn compute_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
+        self.get_vterminal_for_source(sys);
+        let mut inj = vec![Complex64::ZERO; self.cd.yorder];
+        if let Some(yprim) = &self.cd.yprim {
+            yprim.mv_mult(&mut inj, &self.cd.vterminal);
+        }
+        self.cd.iterminal_updated = false;
+        inj
+    }
+}
+
+impl CktElement for GicSource {
+    fn cd(&self) -> &CktElementData {
+        &self.cd
+    }
+    fn cd_mut(&mut self) -> &mut CktElementData {
+        &mut self.cd
+    }
+
+    fn recalc_element_data(&mut self, _sys: &SysCtx) {
+        self.recalc();
+    }
+
+    /// Pascal `TGICSourceObj.CalcYPrim` (GICsource.pas:361): a fixed 10000-mho
+    /// (0.0001 Ω) series conductance block — the source's own tiny impedance.
+    fn calc_yprim(&mut self, _sys: &SysCtx) {
+        let nphases = self.cd.nphases;
+        let yorder = self.cd.yorder;
+
+        let value = Complex64::new(10000.0, 0.0); // Assume 0.0001 ohms resistance
+        let neg = -value;
+        let mut yp_series = CMatrix::new(yorder);
+        for i in 0..nphases {
+            let j = i + nphases;
+            yp_series.set(i, i, value);
+            yp_series.set(j, j, value);
+            yp_series.set(i, j, neg);
+            yp_series.set(j, i, neg);
+        }
+
+        let mut yprim = CMatrix::new(yorder);
+        yprim.copy_from(&yp_series);
+        self.cd.yprim_series = Some(yp_series);
+        self.cd.yprim_shunt = None;
+        self.cd.yprim = Some(yprim);
+
+        // Account for open conductors.
+        self.cd.apply_yprim_open_conductor_calcs();
+        self.cd.yprim_invalid = false;
+    }
+
+    /// Pascal `TGICSourceObj.InjCurrents` + `TPCElement.InjCurrents`.
+    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
+        self.get_inj_currents(sys);
+        for i in 0..self.cd.yorder {
+            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
+        }
+    }
+
+    fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
+        self.spectrum_obj.as_ref()
+    }
+    fn harmonic_spectrum_name(&self) -> Option<&str> {
+        Some(&self.spectrum)
+    }
+    fn set_harmonic_spectrum(&mut self, spectrum: Option<SpectrumObj>) {
+        self.spectrum_obj = spectrum;
+    }
+
+    /// Pascal `GetSourceFrequency` (GICsource branch): the source's `SrcFrequency`.
+    fn source_frequency(&self) -> Option<f64> {
+        Some(self.src_frequency)
+    }
+
+    /// Pascal `TGICSourceObj.GetCurrents` (GICsource.pas:435): `Yprim·V(node)`
+    /// minus a freshly recomputed injection (into a local scratch).
+    #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
+    fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
+        let yorder = self.cd.yorder;
+        for i in 0..yorder {
+            self.cd.vterminal[i] = node_v[self.cd.node_ref[i]];
+        }
+        if let Some(yprim) = &self.cd.yprim {
+            yprim.mv_mult(curr, &self.cd.vterminal);
+        }
+        let inj = self.compute_inj_currents(sys);
+        for i in 0..yorder {
+            curr[i] -= inj[i];
+        }
+    }
+}

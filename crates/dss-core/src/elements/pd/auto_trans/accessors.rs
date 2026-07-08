@@ -642,7 +642,8 @@ impl DssObject for AutoTrans {
             }
             crate::obj::base::RefAction::SetSwitchClosed { .. }
             | crate::obj::base::RefAction::SetConductorsClosed { .. }
-            | crate::obj::base::RefAction::SetOcpDevice { .. } => {}
+            | crate::obj::base::RefAction::SetOcpDevice { .. }
+            | crate::obj::base::RefAction::SetElementBus { .. } => {}
         }
     }
 
