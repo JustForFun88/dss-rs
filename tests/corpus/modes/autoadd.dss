@@ -15,4 +15,5 @@ Calcvoltagebases
 Set addtype=generator genkw=300 genpf=1.0
 Set autobuslist=(b1, b2, b3)
 Set mode=AutoAdd
-Solve
+! Harness-driven (WPG.5): the family gate issues the single `solve` (n_steps=1),
+! so the AutoAdd capacity search runs exactly once — no trailing `Solve` here.

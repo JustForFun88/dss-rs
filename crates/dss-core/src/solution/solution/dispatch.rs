@@ -102,10 +102,13 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::Monte2 => solve_monte2(ckt, env),
         SolveMode::Monte3 => solve_monte3(ckt, env),
         SolveMode::MonteFault => solve_monte_fault(ckt, env),
+        // AutoAdd is intercepted at the executive layer (exec/auto_add.rs),
+        // before this dispatcher runs, because its winner instantiation
+        // re-enters the executive command path — it never reaches here.
         _ => {
-            // The remaining mode — AutoAdd — has no corpus deck yet (WPG.5), so
-            // it keeps the Pascal "Unknown solution mode." error (`TSolutionObj.
-            // Solve` else, #481) rather than a partial port.
+            // Any remaining/unported mode keeps the Pascal "Unknown solution
+            // mode." error (`TSolutionObj.Solve` else, #481) rather than a
+            // partial port.
             env.errors
                 .push("Unknown solution mode. (mode not ported — no corpus case)".to_string());
             Ok(())
