@@ -195,6 +195,49 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("InvControl", defs, true)
 }
 
+/// Pascal `TPICtrl` (`Shared/mathutil.pas` l.21) — the two-tap discrete PI
+/// controller InvControl runs for the Exponential `ControlModel`. `kNum`/`kDen`
+/// are recomputed from the object-level `FdeltaQ_factor` before every `SolvePI`
+/// call (InvControl.pas l.2706-2707); `Kp` is fixed at 1 in InvControl
+/// (`RecalcElementData`, l.2400), overriding the 0.02 mathutil default. `den`/`num`
+/// are the private filter history — persisted across `Sample` calls per DER.
+#[derive(Debug, Clone)]
+pub(crate) struct PICtrl {
+    /// `den`/`num: Array[0..1] of Double` — the two-tap filter state (private).
+    den: [f64; 2],
+    num: [f64; 2],
+    pub k_num: f64,
+    pub k_den: f64,
+    pub kp: f64,
+}
+
+impl Default for PICtrl {
+    /// Pascal `TPICtrl.Create` (mathutil.pas l.67): a rising 5-step function —
+    /// `kNum=0.8647`, `kDen=0.1353`, `Kp=0.02`, `den[1]=0`, `num[1]=0`. InvControl
+    /// overrides `Kp:=1` right after `Create` (see [`InvVars::new`]).
+    fn default() -> Self {
+        Self {
+            den: [0.0, 0.0],
+            num: [0.0, 0.0],
+            k_num: 0.8647,
+            k_den: 0.1353,
+            kp: 0.02,
+        }
+    }
+}
+
+impl PICtrl {
+    /// Pascal `TPICtrl.SolvePI` (mathutil.pas l.81) — one filter step: shift the
+    /// taps, load `SetPoint·Kp`, and return the new denominator tap.
+    pub(crate) fn solve_pi(&mut self, setpoint: f64) -> f64 {
+        self.num[0] = self.num[1];
+        self.num[1] = setpoint * self.kp;
+        self.den[0] = self.den[1];
+        self.den[1] = (self.num[0] * self.k_num) + (self.den[0] * self.k_den);
+        self.den[1]
+    }
+}
+
 /// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
 /// member). Carries the fields the WP7.5 **step 2b–2e-ii** dispatch (VOLTVAR /
 /// VOLTWATT / VV_VW / DRC / VV_DRC / WATTPF / WATTVAR / AVR) + the shared machinery
@@ -235,6 +278,10 @@ pub(crate) struct InvVars {
     pub delta_v_old: f64,
     /// `FVVOperation` — volt-var operating flag (-1 absorb / 1 inject / 0 none).
     pub f_vv_operation: f64,
+    /// `PICtrl` — the per-DER `TPICtrl` PI controller (Exponential `ControlModel`).
+    /// Shared by the VV / AVR / DRC / VV_DRC var-calc paths; its filter history
+    /// persists across `Sample` calls. Unused on the Linear path.
+    pub pi_ctrl: PICtrl,
 
     // --- DRC / VV_DRC reactive-power state (sub-step 2d) ---
     /// `QDesiredDRC` — the DRC kvar set-point pushed to the DER.
@@ -383,6 +430,12 @@ impl InvVars {
             f_active_vv_curve: 1,
             f_inverter_on: true,
             f_pending_change: CHANGE_NONE,
+            // Pascal `RecalcElementData` (InvControl.pas l.2399-2400) creates each
+            // DER's `TPICtrl` then overrides `Kp := 1`.
+            pi_ctrl: PICtrl {
+                kp: 1.0,
+                ..PICtrl::default()
+            },
             ..Default::default()
         }
     }

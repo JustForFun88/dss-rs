@@ -40,8 +40,8 @@
 //!
 //! **NOT_PORTED / deferred (each an explicit error, never a silent skip):** GFM →
 //! WP7.7, **Storage** in VOLTWATT/VV_VW (the YPrim-state-flip propagation gap;
-//! PVSystem volt-watt is ported), and the Exponential `ControlModel` (the `TPICtrl`
-//! PI controller → WP7.7).
+//! PVSystem volt-watt is ported). The Exponential `ControlModel` (the `TPICtrl` PI
+//! controller) is ported (WPG.9).
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
@@ -485,16 +485,9 @@ impl InvControl {
                 _ => return Err(self.not_ported_mode()), // GFM → WP7.7
             }
         }
-        // Exponential ControlModel runs the `TPICtrl` PI controller in
-        // `CalcVoltVar_vars` (WP7.7); reject it rather than silently freeze the
-        // var output (the deferral-is-never-a-silent-skip convention).
-        if self.ctrl_model != MODEL_LINEAR {
-            return Err(format!(
-                "InvControl.{}: Exponential ControlModel (the PICtrl PI controller) is not yet ported (WP7.7)",
-                self.ccd.cd.obj.name()
-            ));
-        }
-
+        // Exponential ControlModel (WPG.9) runs the `TPICtrl` PI controller in the
+        // VV / AVR / DRC / VV_DRC var-calc paths; VOLTWATT / WATTPF / WATTVAR are
+        // model-independent. Both models are ported — no reject here.
         let control_iter = env.control_iteration();
 
         for i in 0..self.fleet.len() {
@@ -2002,7 +1995,7 @@ impl InvControl {
     }
 
     /// Pascal `CalcVoltVar_vars(j)` — the convergence step → `QDesiredVV`. Linear
-    /// `ControlModel` only; Exponential (the `TPICtrl` PI controller) is NOT_PORTED.
+    /// `ControlModel`; the Exponential branch runs the `TPICtrl` PI controller (WPG.9).
     fn calc_voltvar_vars(&mut self, j: usize) {
         if self.ctrl_vars[j].flag_change_curve {
             // Stay at the present var output level.
@@ -2023,9 +2016,15 @@ impl InvControl {
             let cv = &mut self.ctrl_vars[j];
             cv.q_desired_vv = cv.q_old_vv + delta_q * cv.f_delta_q_factor;
         } else {
-            // Unreachable: the Exponential ControlModel (TPICtrl PI controller)
-            // is rejected in `Sample` (WP7.7); kept for structural parity.
-            self.ctrl_vars[j].q_desired_vv = self.ctrl_vars[j].q_old_vv;
+            // Exponential (Pascal `CalcVoltVar_vars` else, InvControl.pas
+            // l.2704-2708): the `TPICtrl` PI controller. `kDen`/`kNum` recomputed
+            // from the object-level `FdeltaQ_factor` each call; the *full* DeltaQ
+            // (not the increment over `QOldVV`) is the PI setpoint.
+            let k_den = (-self.delta_q_factor.abs()).exp();
+            let cv = &mut self.ctrl_vars[j];
+            cv.pi_ctrl.k_den = k_den;
+            cv.pi_ctrl.k_num = 1.0 - k_den;
+            cv.q_desired_vv = cv.pi_ctrl.solve_pi(delta_q);
         }
     }
 
@@ -2057,8 +2056,13 @@ impl InvControl {
             let cv = &mut self.ctrl_vars[j];
             cv.q_desired_drc = cv.q_old_drc + delta_q * cv.f_delta_q_factor;
         } else {
-            // Unreachable: Exponential PICtrl rejected at Sample (WP7.7).
-            self.ctrl_vars[j].q_desired_drc = self.ctrl_vars[j].q_old_drc;
+            // Exponential (Pascal `CalcDRC_vars` else, InvControl.pas l.2804-2809):
+            // the `TPICtrl` PI controller over the full DeltaQ.
+            let k_den = (-self.delta_q_factor.abs()).exp();
+            let cv = &mut self.ctrl_vars[j];
+            cv.pi_ctrl.k_den = k_den;
+            cv.pi_ctrl.k_num = 1.0 - k_den;
+            cv.q_desired_drc = cv.pi_ctrl.solve_pi(delta_q);
         }
     }
 
@@ -2079,8 +2083,13 @@ impl InvControl {
             let cv = &mut self.ctrl_vars[j];
             cv.q_desired_vvdrc = cv.q_old_vvdrc + delta_q * cv.f_delta_q_factor;
         } else {
-            // Unreachable: Exponential PICtrl rejected at Sample (WP7.7).
-            self.ctrl_vars[j].q_desired_vvdrc = self.ctrl_vars[j].q_old_vvdrc;
+            // Exponential (Pascal `CalcVVDRC_vars` else, InvControl.pas
+            // l.2840-2845): the `TPICtrl` PI controller over the full DeltaQ.
+            let k_den = (-self.delta_q_factor.abs()).exp();
+            let cv = &mut self.ctrl_vars[j];
+            cv.pi_ctrl.k_den = k_den;
+            cv.pi_ctrl.k_num = 1.0 - k_den;
+            cv.q_desired_vvdrc = cv.pi_ctrl.solve_pi(delta_q);
         }
     }
 
@@ -2179,9 +2188,9 @@ impl InvControl {
         cv.q_desire_avrpu = q_present_pu + dq;
     }
 
-    /// Pascal `CalcAVR_vars(j)` — the AVR convergence step → `QDesiredAVR`. Linear
-    /// `ControlModel` only (the hard-coded 0.2 step, **not** `FdeltaQFactor`);
-    /// Exponential (the `TPICtrl` PI controller) is rejected at `Sample` (WP7.7).
+    /// Pascal `CalcAVR_vars(j)` — the AVR convergence step → `QDesiredAVR`. The
+    /// Linear `ControlModel` uses the hard-coded 0.2 step (**not** `FdeltaQFactor`);
+    /// the Exponential branch runs the `TPICtrl` PI controller (WPG.9).
     fn calc_avr_vars(&mut self, j: usize) {
         let mut delta_q = {
             let cv = &self.ctrl_vars[j];
@@ -2200,8 +2209,13 @@ impl InvControl {
             let cv = &mut self.ctrl_vars[j];
             cv.q_desired_avr = cv.q_old_avr + 0.2 * delta_q;
         } else {
-            // Unreachable: Exponential PICtrl rejected at Sample (WP7.7).
-            self.ctrl_vars[j].q_desired_avr = self.ctrl_vars[j].q_old_avr;
+            // Exponential (Pascal `CalcAVR_vars` else, InvControl.pas
+            // l.2746-2751): the `TPICtrl` PI controller over the full DeltaQ.
+            let k_den = (-self.delta_q_factor.abs()).exp();
+            let cv = &mut self.ctrl_vars[j];
+            cv.pi_ctrl.k_den = k_den;
+            cv.pi_ctrl.k_num = 1.0 - k_den;
+            cv.q_desired_avr = cv.pi_ctrl.solve_pi(delta_q);
         }
     }
 

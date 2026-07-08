@@ -13,5 +13,6 @@ New InvControl.ic derlist=[pvsystem.pv] mode=voltvar vvc_curve1=vv voltage_curve
 Set voltagebases=[12.47]
 Calcvoltagebases
 Set maxcontroliter=200
-Set mode=daily stepsize=1h number=8
-Solve
+! Harness-driven daily loop (family convention): one step per `solve`, driven
+! `n_steps` times by the live gate — no trailing `Solve` here.
+Set mode=daily stepsize=1h number=1

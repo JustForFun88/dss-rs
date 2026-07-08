@@ -1185,15 +1185,14 @@
     {
      "element": "PVSystem.pv",
      "props": [
-      "kw",
       "kvar"
      ]
     }
    ],
    "compare_eventlog": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.9",
-   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven)."
+   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven). WPG.9 ports the TPICtrl PI controller (Exponential ControlModel) in the VV/AVR/DRC/VV_DRC var-calc paths; live-compared here (kvar probe = the controller-driven var output + event log; the full-model compare covers the PV's P/Q each step). PVSystem exposes no `kW` property (probe-proven: `? PVSystem.pv.kW` = 'Property Unknown' on both engines), so the var trajectory is observed via `kvar`."
   },
   {
    "path": "invcontrol_storage_vw.dss",
