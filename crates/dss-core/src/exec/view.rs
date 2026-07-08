@@ -146,18 +146,32 @@ impl Dss {
             let yorder = elem.cd().yorder;
             let mut currents = vec![0.0; 2 * yorder];
             let mut powers = vec![0.0; 2 * yorder];
+            // Powers (and Losses, below) model the oracle's `Get_Powers` /
+            // `Get_Losses`, which route through the cache-aware `ComputeIterminal`;
+            // Currents model the fresh `CktElement.Currents` (`GetCurrents`,
+            // `CAPI_CktElement.pas`). The two `Iterminal` read paths agree after
+            // every fixed-point / direct / harmonic solve — the cache is invalid
+            // here so `compute_iterminal` recomputes fresh at the present `NodeV`,
+            // and the single-frequency reasoning in the block comment above holds.
+            //
+            // TODO(compat): after a Newton solve they diverge. `DoNewtonSolution`'s
+            // final `SumAllCurrents` stamps `Iterminal` at the pre-final voltage
+            // guess `NodeV_{n-1}` (the `NodeV -= dV` update follows it), so the
+            // cache-aware path (Powers/Losses) returns a one-step-stale current
+            // while `GetCurrents` (Currents) recomputes at the converged `NodeV_n`
+            // — a deterministic upstream quirk (`Vsource.pas` `GetCurrents` reads
+            // `NodeV` directly, whereas `CktElement.pas` `Get_Powers`/`Get_Losses`
+            // reuse `ComputeIterminal`). Clean fix: recompute `Iterminal` at
+            // `NodeV_n` for all three reads.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.compute_iterminal(&sys, &node_v);
                 let cd = elem.cd();
                 for k in 0..yorder {
-                    let i = cd.iterminal[k];
-                    currents[2 * k] = i.re;
-                    currents[2 * k + 1] = i.im;
                     let n = cd.node_ref[k];
                     if n > 0 {
                         // S = V*conj(I) at the present (per-harmonic, in harmonics
                         // mode) solution frequency; see the block comment above.
-                        let mut s = node_v[n] * i.conj();
+                        let mut s = node_v[n] * cd.iterminal[k].conj();
                         if positive_seq {
                             // x3: balanced three-phase scaling of the single-phase
                             // power (Willems, "...What and Why?", sec. V.A, p. 3).
@@ -168,9 +182,20 @@ impl Dss {
                     }
                 }
             }
-            // The element's own losses path (`Get_Losses`) — compared as a
-            // separate channel from the per-conductor powers above.
+            // The element's own losses path (`Get_Losses`) — the same cache-aware
+            // `ComputeIterminal` (stale after Newton), read BEFORE the fresh
+            // currents refresh below so it reuses the powers-path cache.
             let loss = elem.losses(&sys, &node_v);
+            // Currents: fresh recompute from the converged `NodeV` (oracle
+            // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.
+            if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
+                elem.refresh_iterminal(&sys, &node_v);
+                let cd = elem.cd();
+                for k in 0..yorder {
+                    currents[2 * k] = cd.iterminal[k].re;
+                    currents[2 * k + 1] = cd.iterminal[k].im;
+                }
+            }
             let cd = elem.cd();
             let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
             out.push(ElementSnapshot {

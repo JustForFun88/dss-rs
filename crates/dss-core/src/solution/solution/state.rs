@@ -316,23 +316,44 @@ impl Solution {
         s.ok_or_else(|| "System Y matrix not built yet".to_string())
     }
 
-    /// Pascal `SolveSystem`: factor/solve `hY · NodeV[1..] = Currents[1..]`.
-    pub fn solve_system(&mut self) -> SolveResult {
-        let n = self.node_v.len() - 1;
+    /// Pascal `SolveSystem(V)`: factor/solve `hY · x[1..] = Currents[1..]` into
+    /// the caller buffer `out` (length `NumNodes`, 0-based; `out[k]` is global
+    /// node `k+1`). `DoNormalSolution` passes `NodeV`; `DoNewtonSolution` passes
+    /// the delta-V work array `dV`.
+    fn solve_system_into(&mut self, out: &mut [Complex64]) -> SolveResult {
         let b: Vec<Complex64> = self.currents[1..].to_vec();
-        let mut x = vec![Complex64::ZERO; n];
         let sparse = self.active_sparse()?;
         sparse.factor().map_err(|e| {
             format!(
                 "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
             )
         })?;
-        sparse.solve(&b, &mut x).map_err(|e| {
+        sparse.solve(&b, out).map_err(|e| {
             format!(
                 "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
             )
         })?;
+        Ok(())
+    }
+
+    /// Pascal `SolveSystem(NodeV)`: solve directly into the node-voltage array.
+    pub fn solve_system(&mut self) -> SolveResult {
+        let n = self.node_v.len() - 1;
+        let mut x = vec![Complex64::ZERO; n];
+        self.solve_system_into(&mut x)?;
         self.node_v[1..].copy_from_slice(&x);
+        Ok(())
+    }
+
+    /// Pascal `DoNewtonSolution`'s `SolveSystem(dV); NodeV[i] -= dV[i]`: solve
+    /// for the voltage delta into a scratch `dV` and subtract it from `NodeV`.
+    pub(super) fn solve_system_newton_step(&mut self) -> SolveResult {
+        let num_nodes = self.node_v.len() - 1;
+        let mut dv = vec![Complex64::ZERO; num_nodes];
+        self.solve_system_into(&mut dv)?;
+        for i in 1..=num_nodes {
+            self.node_v[i] -= dv[i - 1];
+        }
         Ok(())
     }
 

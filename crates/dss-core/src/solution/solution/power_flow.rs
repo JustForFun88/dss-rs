@@ -97,6 +97,70 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 }
 
+/// Pascal `TSolutionObj.SumAllCurrents`: every circuit element sums its
+/// terminal currents into the system `Currents` array (`TDSSCktElement.
+/// SumCurrents`: `ComputeIterminal`, then `Currents[NodeRef[i]] += Iterminal[i]`
+/// with `NodeRef=0` accumulating harmlessly into the ground slot). Primarily
+/// for the Newton iteration.
+fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let sol = &mut ckt.solution;
+    for &r in &ckt.ckt_elements {
+        let elem = env.store.ckt_elem_mut(r);
+        if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
+            continue;
+        }
+        elem.compute_iterminal(&sys, &sol.node_v);
+        let cd = elem.cd();
+        for i in 0..cd.yorder {
+            sol.currents[cd.node_ref[i]] += cd.iterminal[i];
+        }
+    }
+}
+
+/// Pascal `DoNewtonSolution`: the Newton iteration
+/// `Vn+1 = Vn - [Y]⁻¹·Termcurr`, driving the sum of terminal currents into
+/// every node to zero. `Termcurr` is `SumAllCurrents` (PD: `Yprim·V`; PC:
+/// the compensation currents). Same convergence/budget clause as
+/// `DoNormalSolution`: `(Converged and Iteration >= MinIterations) or
+/// Iteration >= MaxIterations`. The `dV` work array (`ReAllocMem(dV, NumNodes+1)`)
+/// is the per-step scratch inside `solve_system_newton_step`.
+fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    // ControlIteration == 1: update the load multipliers for this solution.
+    if ckt.solution.control_iteration == 1 {
+        get_pc_inj_curr(ckt, env);
+    }
+
+    ckt.solution.iteration = 0;
+    loop {
+        ckt.solution.iteration += 1;
+        // SumAllCurrents uses ITerminal, so force a recalc via a fresh count.
+        ckt.solution.solution_count += 1;
+
+        // Get sum of currents at all nodes for all devices.
+        ckt.solution.zero_inj_curr();
+        sum_all_currents(ckt, env);
+
+        // The current calc could change Yprim for some devices, so check.
+        if ckt.solution.system_y_changed {
+            build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
+        }
+        // UseAuxCurrents/AddInAuxCurrents(NEWTONSOLVE): AutoAdd only.
+
+        // Solve for the change in voltages and update the guess.
+        ckt.solution.solve_system_newton_step()?;
+        ckt.solution.loads_need_updating = false;
+
+        let num_nodes = ckt.num_nodes;
+        let converged = ckt.solution.converged(num_nodes);
+        if (converged && ckt.solution.iteration >= ckt.solution.min_iterations)
+            || ckt.solution.iteration >= ckt.solution.max_iterations
+        {
+            return Ok(());
+        }
+    }
+}
+
 /// Pascal `SolveYDirect`: solve with only source injections.
 fn solve_y_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.zero_inj_curr();
@@ -227,7 +291,7 @@ fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     match ckt.solution.algorithm {
-        NEWTONSOLVE => Err("Newton solution not ported (later phase)".to_string()),
+        NEWTONSOLVE => do_newton_solution(ckt, env),
         _ => do_normal_solution(ckt, env),
     }?;
 
