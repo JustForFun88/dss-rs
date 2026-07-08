@@ -239,7 +239,7 @@ fn sample_out_of_band_high_arms_a_downward_tap() {
     rc.ccd.cd.nphases = 1; // regulator senses one phase
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
 
     // boost_needed = (120-125)*1/100 = -0.05; /0.00625 = -8 → -0.05 pu.
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
@@ -257,7 +257,7 @@ fn sample_in_band_disarms_and_clears() {
     rc.control_action_handle = 999;
     let mut tr = MockTransformer::wye_2wdg(120.5); // within ±1.5 of 120
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(!rc.armed);
 }
@@ -269,7 +269,7 @@ fn ctrlstatic_action_applies_at_least_one_tap_and_marks_y() {
     rc.ccd.cd.nphases = 1;
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
 
     // CTRLSTATIC moves 70% of the pending change, at least one tap:
@@ -333,7 +333,7 @@ fn maxtapchange_zero_zeroes_pending_and_exits() {
     rc.set_pending_tap_change(0.5);
     let mut tr = MockTransformer::wye_2wdg(150.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(sc.queue.is_empty());
 }

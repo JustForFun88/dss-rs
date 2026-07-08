@@ -84,8 +84,8 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
-        // Pascal resolves against a Transformer/AutoTrans proxy; AutoTrans is
-        // not ported (Phase 6+), so the reference is Transformer-only here.
+        // Pascal `Transf_Or_AutoTrans_ProxyClass` (`RegControl.pas:264`):
+        // `transformer=` resolves against Transformer first, then AutoTrans.
         // Pascal also flags `CheckForVar` + `Required` (both inert here).
         PropDef::object_ref_two_classes("Transformer", "AutoTrans", "Transformer"),
         PropDef::integer("Winding"),
@@ -417,9 +417,10 @@ impl RegControl {
             }
         }
 
-        // The reference resolves against the Transformer class only, so the
-        // Pascal "Controlled Regulator Element is not a transformer" branch
-        // (error 123) is unreachable here.
+        // The reference resolves against the Transformer/AutoTrans proxy only
+        // (exactly the classes Pascal's XFMR/AUTOTRANS check accepts), so the
+        // "Controlled Regulator Element is not a transformer" branch (error
+        // 123) is unreachable here.
         if self.ccd.element_terminal > snap.nterms as i32 {
             self.ccd.cd.obj.push_error(format!(
                 "RegControl: \"{}\": Winding no. \"{}\" does not exist. Respecify Monitored Winding no. (Error 122)",

@@ -997,7 +997,14 @@ pub(super) fn dispatch_control(
                 ));
             };
             match op {
-                ControlOp::Sample => rc.sample(tr, &mut ctx),
+                ControlOp::Sample => {
+                    // A raised Pascal exception (the Series-connection guard,
+                    // `RegControl.pas:1009`) maps to `SampleControlDevices`'
+                    // (`Solution.pas:1974`) error-484 + "Solution aborted." path.
+                    if let Err(what) = rc.sample(tr, &mut ctx) {
+                        return Err(abort(ctx.errors, &full_name, &what));
+                    }
+                }
                 ControlOp::Action { code } => rc.do_pending_action(code, tr, &mut ctx),
                 ControlOp::Reset => rc.reset(),
             }

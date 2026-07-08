@@ -525,10 +525,11 @@ impl Dss {
             let num = rc
                 .controlled_ref()
                 .and_then(|tref| {
-                    self.classes[tref.cls].objects[tref.idx]
-                        .as_any()
-                        .downcast_ref::<transformer::Transformer>()
-                        .map(|tr| rc.tap_num_live(tr))
+                    // Either member of the Transformer/AutoTrans proxy.
+                    transformer::as_controlled_transformer(
+                        &*self.classes[tref.cls].objects[tref.idx],
+                    )
+                    .map(|tr| rc.tap_num_live(tr))
                 })
                 .unwrap_or_else(|| obj.get_i32(reg_control::prop::TAPNUM));
             out.push((obj.data().name().to_string(), num));

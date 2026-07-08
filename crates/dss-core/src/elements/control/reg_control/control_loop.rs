@@ -122,10 +122,19 @@ impl RegControl {
     /// Pascal `TRegControlObj.Sample` — sense the regulated voltage, optionally
     /// flip reverse/cogen mode, and (if out of band) compute `PendingTapChange`
     /// and arm an `ACTION_TAPCHANGE` on the control queue. Ported top-to-bottom.
-    pub(crate) fn sample(&mut self, tr: &mut dyn ControlledTransformer, ctx: &mut CtrlCtx) {
+    ///
+    /// `Err` carries a raised Pascal exception (the Series-connection guard,
+    /// `RegControl.pas:1009`); `SampleControlDevices` (`Solution.pas:1974`) wraps
+    /// it in error 484 and aborts the solution — the dispatch maps it to the
+    /// same `EControlProblem` path.
+    pub(crate) fn sample(
+        &mut self,
+        tr: &mut dyn ControlledTransformer,
+        ctx: &mut CtrlCtx,
+    ) -> Result<(), String> {
         if self.tap_limit_per_change == 0 {
             self.set_pending_tap_change(0.0);
-            return;
+            return Ok(());
         }
 
         // Always looking forward in cogen mode.
@@ -200,7 +209,7 @@ impl RegControl {
                             }
                         }
                     }
-                    return; // Done in any case if reverse-neutral specified.
+                    return Ok(()); // Done in any case if reverse-neutral specified.
                 }
             }
         }
@@ -218,11 +227,15 @@ impl RegControl {
                         let ii = tr.rotate_phases(i + 1) - 1;
                         *vb = self.ccd.cd.vterminal[i] - self.ccd.cd.vterminal[ii];
                     }
-                    _ => ctx.errors.push(format!(
-                        "RegControl.{}: Series connection used in \"{}\" has not been implemented or tested!",
-                        self.ccd.cd.obj.name(),
-                        tr.full_name()
-                    )),
+                    // Pascal raises on the first Series phase
+                    // (`RegControl.pas:1009`) — the exception aborts the solve.
+                    _ => {
+                        return Err(format!(
+                            "RegControl.{}: Series connection used in \"{}\" has not been implemented or tested!",
+                            self.ccd.cd.obj.name(),
+                            tr.full_name()
+                        ));
+                    }
                 }
             }
             self.get_control_voltage(&vbuffer, nphases, self.remote_pt_ratio)
@@ -333,6 +346,7 @@ impl RegControl {
                 self.control_action_handle = 0;
             }
         }
+        Ok(())
     }
 
     /// Pascal `TRegControlObj.DoPendingAction` — apply the armed action when its

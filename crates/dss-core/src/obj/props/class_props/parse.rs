@@ -167,8 +167,14 @@ impl ClassProps {
                             resolved = eng.foreign.and_then(|f| f.find(class2, value));
                         }
                         if resolved.is_none() && !value.is_empty() {
+                            // Pascal renders `cls.Name` — a `TProxyClass` is named
+                            // `(Class1|Class2)` (`TProxyClass.Create`).
+                            let cls_label = match pd.object_class2 {
+                                Some(class2) => format!("({class}|{class2})"),
+                                None => class.to_string(),
+                            };
                             eng.errors.push(format!(
-                                "{full}.{}: {class} object \"{value}\" not found.",
+                                "{full}.{}: {cls_label} object \"{value}\" not found.",
                                 pd.name
                             ));
                         }
