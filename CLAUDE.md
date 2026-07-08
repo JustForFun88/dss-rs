@@ -36,7 +36,7 @@ marked `TODO(compat):` with an explanation and the intended clean fix.
 
 ## Known upstream bugs (`investigations/`)
 
-Four proven dss_capi/OpenDSS engine bugs, each with a full report in
+Five proven dss_capi/OpenDSS engine bugs, each with a full report in
 `investigations/`. Check there before chasing a divergence in these areas. Rule:
 a *deterministic, defined* upstream bug is reproduced 1:1 (`TODO(compat)` +
 golden); UB or state-mutating-read bugs are NOT reproduced — document and gate
@@ -59,6 +59,13 @@ around them.
   Thevenin-DER (Generator/PVSystem/Storage) `Powers` order-dependent in harmonics
   mode. Not reproduced (Rust computes single-pass); golden capture reads `Powers`
   first (`tools/golden/gen_checkpoints.py::capture_element`).
+- **Newton `Powers`/`Losses` stale `Iterminal`** — after `Set algorithm=Newton`,
+  `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
+  so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
+  current while `Currents` recompute fresh (`P ≠ V·conj(I)`). Deterministic,
+  defined, not state-poisoning → reproduced (`TODO(compat)` in
+  `exec/view.rs::snapshot_elements`); it is the only channel distinguishing
+  Newton from the normal fixed-point on the `newton*` gates.
 
 ## Gate (must be green before any commit)
 
