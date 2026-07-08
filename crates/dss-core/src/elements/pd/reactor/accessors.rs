@@ -7,6 +7,26 @@ use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::{DssObjData, DssObject};
 
+impl Reactor {
+    /// Pascal `TReactorObj.Z` (the series impedance complex). Read-only accessor
+    /// for the CIM export (`SeriesCompensator.r`/`.x`/`.r0`/`.x0`, GAPS_PLAN
+    /// WPG.18 Stage D).
+    pub fn z(&self) -> Complex64 {
+        self.z
+    }
+
+    /// Pascal `TDSSCktElement.NormAmps`. Read-only accessor for the CIM export
+    /// (`WriteTerminals` operational limits).
+    pub fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+
+    /// Pascal `TDSSCktElement.EmergAmps`. Read-only accessor for the CIM export.
+    pub fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+}
+
 impl DssObject for Reactor {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
