@@ -711,7 +711,8 @@ impl Dss {
                 rc_obj
                     .as_any_mut()
                     .downcast_mut::<reg_control::RegControl>(),
-                tr_obj.as_any().downcast_ref::<transformer::Transformer>(),
+                // Either member of the Transformer/AutoTrans proxy.
+                transformer::as_controlled_transformer(&*tr_obj),
             ) {
                 rc.sync_tap_snap_from_live(tr);
             }
