@@ -270,6 +270,31 @@
    "compare_autoadd_log": true
   },
   {
+   "path": "autoadd_cap.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Capacitor.cadd1",
+     "props": [
+      "bus1",
+      "phases",
+      "kvar",
+      "kv"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.5",
+   "note": "WPG.5 audit (Major): the CAPADD (addtype=capacitor) branch of TAutoAdd.Solve — completely ungated until now (autoadd.dss covers only GENADD). Exercises the per-candidate Ycap shunt injection, the winner emission `New Capacitor.cadd1`, GetUniqueCapName, and the <case>_AutoAddedCapacitors.txt append. Oracle-validated (dss-python 0.15.7, two separate processes bit-identical): Text.Result=\"b2\" (CAPADD GlobalResult is the winner bus NAME only, no improvement figure — AutoAdd.pas l.560); Capacitor.cadd1 = bus1 b2 / 3ph / kvar 600 / kv 12.47; AutoAddLog rows b1/b2/b3 (b2 max weighted). Same PROCESS-EXIT segfault as autoadd.dss (captured before teardown). Feature-sensitive: if the CAPADD branch no-ops, no cadd1 is added (probe fails) and GlobalResult goes empty.",
+   "compare_global_result": true,
+   "compare_autoadd_log": true
+  },
+  {
    "path": "newton.dss",
    "kind": "micro",
    "n_steps": 1,
