@@ -8,6 +8,7 @@ use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
+use crate::support::mathutil::{FpcRng, gauss, quasi_log_normal};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 use super::{Connection, Load, LoadModel, LoadSpec, prop};
@@ -91,6 +92,28 @@ impl Load {
             self.cd.obj.clear_seq(PF);
             self.load_spec_type = LoadSpec::KwKvar;
         }
+    }
+
+    /// Pascal `TLoadObj.Randomize` (`Load.pas:899`): set `RandomMult` from the
+    /// solution's random type. `opt=0` (`Set random=none`) → `1.0` and draws
+    /// nothing; GAUSSIAN/UNIFORM/LOGNORMAL draw through the engine RNG (the
+    /// yearly shape's mean/std-dev when one is assigned, else `puMean`/
+    /// `puStdDev`). Called once per load per MonteCarlo1 case by `solve_monte1`.
+    pub fn randomize(&mut self, opt: i32, rng: &mut FpcRng) {
+        use crate::solution::{GAUSSIAN, LOGNORMAL, UNIFORM};
+        self.random_mult = match opt {
+            GAUSSIAN => match self.yearly_shape_obj.as_ref() {
+                Some(s) => gauss(s.mean(), s.std_dev(), || rng.next_f64()),
+                None => gauss(self.pu_mean, self.pu_std_dev, || rng.next_f64()),
+            },
+            UNIFORM => rng.next_f64(),
+            LOGNORMAL => match self.yearly_shape_obj.as_ref() {
+                Some(s) => quasi_log_normal(s.mean(), || rng.next_f64()),
+                None => quasi_log_normal(self.pu_mean, || rng.next_f64()),
+            },
+            // 0 (none) and any other value: RandomMult := 1.0.
+            _ => 1.0,
+        };
     }
 
     /// Pascal `SetNominalLoad`.
@@ -182,10 +205,30 @@ impl Load {
                     self.calc_daily_mult(sys.dbl_hour);
                     f
                 }
-                // MonteCarlo1/AutoAdd/... are not reachable yet — the solve
-                // dispatcher still errors loudly on them — so they default to
-                // growth-only with a unit ShapeFactor, matching the Pascal
-                // trailing `else`; wired in later phases as those modes land.
+                // Pascal `MONTECARLO1` (`Load.pas:1074`): `Factor := RandomMult *
+                // GrowthFactor(Year)` × `LoadMultiplier` (unless Exempt), with a
+                // **unit** ShapeFactor (no daily lookup). Upstream calls
+                // `Randomize(RandomType)` right here to (re)draw `RandomMult`;
+                // `solve_monte1` hoists that draw to the top of each case
+                // (`randomize_all_loads`), so this arm consumes the already-drawn
+                // `random_mult` — the net effect (a fresh draw feeding each M1
+                // SolveSnap) is identical, and the RNG stream is engine-global
+                // like FPC's RTL. Under `Set random=none` the draw is a no-op
+                // (`randomize` sets `RandomMult := 1.0`), so the whole arm reduces
+                // to growth × LoadMultiplier — the deterministic gated path
+                // (GAPS_PLAN.md §2.1).
+                SolveMode::Monte1 => {
+                    let mut f =
+                        self.random_mult * self.growth_factor(sys.year, sys.default_growth_factor);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    f
+                }
+                // AutoAdd/... are not reachable yet — the solve dispatcher still
+                // errors loudly on them — so they default to growth-only with a
+                // unit ShapeFactor, matching the Pascal trailing `else`; wired in
+                // later phases as those modes land.
                 _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };

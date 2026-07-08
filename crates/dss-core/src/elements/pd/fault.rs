@@ -21,9 +21,12 @@
 //! is `CTRLSTATIC`, so `CheckStatus` is a no-op and the fault (default `ONtime=0`,
 //! `Is_ON=true`) simply stamps its conductance.
 //!
-//! `Randomize` + the `RandomMult` jitter only act in `MONTEFAULT` solve mode,
-//! whose solve loop is deferred to WP7.9; until then `RandomMult` stays `1.0`
-//! (`CalcYPrim` forces it for every non-MonteFault mode) and the field is inert.
+//! `Randomize` + the `RandomMult` jitter only act in `MONTEFAULT` solve mode
+//! (`solve_monte_fault`, WPG.4): `PickAFault` enables one fault and
+//! `Fault.Randomize` re-draws its resistance from the engine RNG. `CalcYPrim`
+//! forces `RandomMult = 1.0` for every non-MonteFault mode, so the field is
+//! inert outside MF; under `Set random=none` `Randomize`'s `else` branch also
+//! sets it `1.0` (the deterministic gated path, GAPS_PLAN.md §2.1).
 
 mod dump;
 #[cfg(test)]
@@ -39,6 +42,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::event_log::EventLog;
 use crate::solution::solution::{EVENTDRIVEN, MULTIRATE, SolveMode, TIMEDRIVEN};
 use crate::support::cmatrix::CMatrix;
+use crate::support::mathutil::FpcRng;
 
 /// 1-based property ordinals (Pascal `TFaultProp` + the TPDClass/TCktElementClass
 /// tails appended by `inherited DefineProperties`).
@@ -232,6 +236,23 @@ impl Fault {
     /// the start of a solution and the `Reset Faults` command).
     pub fn reset(&mut self) {
         self.cleared = false;
+    }
+
+    /// Pascal `TFaultObj.Randomize` (`Fault.pas:395`): draw a fresh resistance
+    /// jitter `RandomMult` from the engine RNG per the solution random type, then
+    /// force a YPrim rebuild. GAUSSIAN → `Gauss(1.0, StdDev)`, UNIFORM →
+    /// `Random`, LOGNORMAL → `QuasiLognormal(1.0)`; the `else` (incl. `none=0`)
+    /// sets `1.0` (deterministic). Called once per MonteFault case by
+    /// `solve_monte_fault` on the fault `PickAFault` just enabled.
+    pub fn randomize(&mut self, random_type: i32, rng: &mut FpcRng) {
+        use crate::solution::{GAUSSIAN, LOGNORMAL, UNIFORM};
+        self.random_mult = match random_type {
+            GAUSSIAN => crate::support::mathutil::gauss(1.0, self.stddev, || rng.next_f64()),
+            UNIFORM => rng.next_f64(),
+            LOGNORMAL => crate::support::mathutil::quasi_log_normal(1.0, || rng.next_f64()),
+            _ => 1.0,
+        };
+        self.cd.yprim_invalid = true;
     }
 }
 
