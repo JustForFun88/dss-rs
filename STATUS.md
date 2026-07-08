@@ -1789,6 +1789,43 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 CIM Stage C (lines + switches + conductor catalog) COMPLETE, gate-green**
+(branch `worktree-agent-aa4705404a39d2918`, 2026-07-09; base reset from the stale
+toy-repo `d04fbd4` to `phase-8-reporting @ 253102f`, `.inputs` + `tools/opendss/.venv`
+junctions recreated — the known worktree-race traps). Replaced the seven Stage C
+`NOT_PORTED` arms (Line + LineCode/WireData/TSData/CNData/LineGeometry/LineSpacing)
+with the real ports (`Common/ExportCIMXML.pas:4294-4625`). **Line/switch sweep**
+(`4294-4408`): the ACLineSegment impedance-source cascade (LineCode →
+`ACLineSegment.PerLengthImpedance` ref; else Geometry/Spacing →
+`ACLineSegment.WireSpacingInfo` ref; else symmetric-3φ inline `r/x/bch/…` — with
+the reproduced upstream double-`b0ch` typo `4367`; else the on-the-fly `_PUZ`
+`PerLengthPhaseImpedance` + lower-triangular `PhaseImpedanceData`), the
+LoadBreakSwitch/Fuse/Breaker/Recloser branch via **ParseSwitchClass** (`451`,
+scanning `Circuit.controls`), **AttachLinePhases** (`1627`)/**AttachSwitchPhases**
+(`1661`) driven by ported **PhaseOrderString** (`548`). **LineCode catalog**
+(`4493-4547`): `PerLengthSequenceImpedance` (sym-3φ) / else `PerLengthPhaseImpedance`,
+with the `Units=UNITS_NONE` fix-up loop. **Conductor catalog**: `OverheadWireInfo`
+(**WriteWireData** `2277`), `TapeShieldCableInfo` (+**WriteCableData** `2232` +
+**WriteTapeData** `2250`), `ConcentricNeutralCableInfo` (+**WriteConcData** `2262`),
+`WireSpacingInfo` + `WirePosition` for both **LineGeometry** (`4575`) and
+**LineSpacing** (`4601`). CIM refs from a `Line` resolve the **master** catalog
+object's UUID by name (`class_obj_uuid`) — the `Line` carries only snapshot clones
+with their own un-preloaded UUID slots. New writer helpers `phase_side_node`/
+`conductor_usage_enum`/`conductor_insulation_enum`; new `LINE_DSS_OBJ_TYPE = 50`
+(`LINE_ELEMENT 48 | PD_ELEMENT 2`). Added read-only getters to `line_geometry/mod.rs`
+(`nwires`/`fx`/`fy`/`funits`/`conductor_is_overhead`/`conductor`, citing the Pascal
+`NWires`/`Xcoord`/`Ycoord`/`Units`/`PhaseChoice`/`ConductorData` accessors) — no
+behavior change. Gate deck `cim_lines.dss` (coded sym + coded matrix 3φ/1φ +
+sym-inline + matrix-inline PUZ + geometry + spacing + CN/TS cable lines + a Fuse
+switch, all from IEEE13-derived known-good data) → byte-exact golden
+`tests/golden/cim/cim_lines.xml` (1525 lines). All Stage C output derives from
+**input** data (catalog values, input matrices), never a Carson solve, so the golden
+is solver-independent (byte-exact regardless of faer-vs-KLU). Full `cargo test
+--workspace` green (861 unit + corpus_live 13/13; golden_cim 3/3). Remaining
+`NOT_PORTED` arms: Stage D (Capacitor/Reactor), Stage E (Transformer/AutoTrans/
+RegControl), Stage F (Generator/PVSystem/Storage/InvControl/ExpControl). **Next =
+Stage D** (shunt capacitors + series reactors).
+
 **WPG.18 CIM Stage B (loads) COMPLETE, gate-green** (branch
 `worktree-agent-a716de72c8222fb0c`, 2026-07-09; base reset from the stale toy-repo
 `d04fbd4` to `phase-8-reporting @ 879f39e`, `.inputs`/`.venv`/`tools/opendss/.venv`

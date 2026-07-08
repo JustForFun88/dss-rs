@@ -47,6 +47,7 @@ OUT_DIR = REPO_ROOT / "tests" / "golden" / "cim"
 CASES = [
     {"deck": "cim_src.dss", "circuit": "cim_src"},
     {"deck": "cim_load.dss", "circuit": "cim_load"},
+    {"deck": "cim_lines.dss", "circuit": "cim_lines"},
 ]
 
 

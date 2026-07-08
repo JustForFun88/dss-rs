@@ -16,10 +16,18 @@
 use std::collections::HashMap;
 
 use crate::circuit::Circuit;
+use crate::elements::general::conductor_data::{
+    CableGeom, CnDataObj, ConductorGeom, TsDataObj, WireDataObj,
+};
+use crate::elements::general::line_code::{LineCodeObj, prop as lc_prop};
+use crate::elements::general::line_geometry::LineGeometryObj;
+use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::pc::VSource;
 use crate::elements::pc::load::{Connection, Load, LoadModel};
+use crate::elements::pd::line::Line;
 use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
+use crate::support::line_units::LineUnits;
 
 use super::writer::{self, ProfileChoice};
 use super::{CimExporter, Uuid, UuidChoice};
@@ -34,6 +42,11 @@ const VSOURCE_DSS_OBJ_TYPE: i32 = 25;
 /// `PC_ELEMENT = 3` (`PCClass.pas:71`), so a Load's `DSSObjType` is `56 or 3 = 59`
 /// — the integer prefix of its `GetTermUuid` key (`"59=<name>=<seq>"`).
 const LOAD_DSS_OBJ_TYPE: i32 = 59;
+
+/// Pascal `DSSClassDefs.pas`: `LINE_ELEMENT = 6*8 = 48`; `TPDClass.Create` ORs in
+/// `PD_ELEMENT = 2` (`PDClass.pas:76`), so a Line's `DSSObjType` is `48 or 2 = 50`
+/// — the integer prefix of its `GetTermUuid` key (`"50=<name>=<seq>"`).
+const LINE_DSS_OBJ_TYPE: i32 = 50;
 
 /// One entry of the Pascal `TCIMOpLimitObject` list (`ExportCIMXML.pas:65-71`,
 /// `806-821`): a per-current-rating `OperationalLimitSet` created on-the-fly by
@@ -668,6 +681,980 @@ fn write_load_model(
         0.0,
     );
     writer::write_cim_ln(buf, ProfileChoice::Fun, "</cim:LoadResponseCharacteristic>");
+}
+
+/// The UUID of a **master** named catalog object (`Class.name`) from the class
+/// list — the CIM ref must point at the master the catalog sweep writes (whose
+/// UUID the fixture preloads by `Class.name`, `exec/uuids_cmd.rs`), never the
+/// snapshot clone a `Line` carries (its own separate, un-preloaded UUID slot).
+/// Names are stored lowercased; the clone's `name()` matches the master's.
+fn class_obj_uuid(classes: &mut [DssClass], class_name: &str, obj_name: &str) -> Option<Uuid> {
+    let ci = classes
+        .iter()
+        .position(|c| c.props.class_name().eq_ignore_ascii_case(class_name))?;
+    let oi = classes[ci]
+        .objects
+        .iter()
+        .position(|o| o.data().name().eq_ignore_ascii_case(obj_name))?;
+    Some(classes[ci].objects[oi].data_mut().uuid())
+}
+
+/// The catalog class name of a conductor snapshot (`WireData`/`CNData`/`TSData`),
+/// for resolving its master UUID (`Pascal FetchConductorData` returns the real
+/// typed object). `None` for any non-conductor object.
+fn conductor_class_name(cond: &dyn DssObject) -> Option<&'static str> {
+    let any = cond.as_any();
+    if any.is::<WireDataObj>() {
+        Some("WireData")
+    } else if any.is::<CnDataObj>() {
+        Some("CNData")
+    } else if any.is::<TsDataObj>() {
+        Some("TSData")
+    } else {
+        None
+    }
+}
+
+/// Pascal `TCIMExporterHelper.PhaseOrderString` (`ExportCIMXML.pas:548`): the
+/// ordered CIM phase letters for one terminal (the transposition variant used by
+/// `AttachLinePhases`/`AttachSwitchPhases`), from the raw bus-spec `.N` ordering.
+/// `phs` is the terminal's bus-spec string; `nphases`/`bus_kvbase` its element +
+/// bus. No dot ⇒ `ABC`.
+fn phase_order_string(phs: &str, nphases: usize, bus_kvbase: f64, allow_sec: bool) -> String {
+    let mut b_sec = false;
+    if allow_sec {
+        if nphases == 2 && bus_kvbase < 0.25 {
+            b_sec = true;
+        }
+        if nphases == 1 && bus_kvbase < 0.13 {
+            b_sec = true;
+        }
+    }
+    let Some(dot) = phs.find('.') else {
+        return "ABC".to_string();
+    };
+    let phs = &phs[dot + 1..];
+    if phs.contains('3') {
+        b_sec = false; // a three-phase secondary, not split-phase
+    }
+    if b_sec {
+        if phs.contains('1') {
+            let mut val = "s1".to_string();
+            if phs.contains('2') {
+                val.push('2');
+            }
+            return val;
+        }
+        if phs.contains('2') {
+            return "s2".to_string();
+        }
+        // Pascal leaves Result unset here (the compiler default '' ); mirror it.
+        return String::new();
+    }
+    if phs.contains("1.2.3") {
+        "ABC".to_string()
+    } else if phs.contains("1.3.2") {
+        "ACB".to_string()
+    } else if phs.contains("2.3.1") {
+        "BCA".to_string()
+    } else if phs.contains("2.1.3") {
+        "BAC".to_string()
+    } else if phs.contains("3.2.1") {
+        "CBA".to_string()
+    } else if phs.contains("3.1.2") {
+        "CAB".to_string()
+    } else if phs.contains("1.2") {
+        "AB".to_string()
+    } else if phs.contains("1.3") {
+        "AC".to_string()
+    } else if phs.contains("2.3") {
+        "BC".to_string()
+    } else if phs.contains("2.1") {
+        "BA".to_string()
+    } else if phs.contains("3.2") {
+        "CB".to_string()
+    } else if phs.contains("3.1") {
+        "CA".to_string()
+    } else if phs.contains('1') {
+        "A".to_string()
+    } else if phs.contains('2') {
+        "B".to_string()
+    } else {
+        "C".to_string()
+    }
+}
+
+/// Pascal `TCIMExporterHelper.ParseSwitchClass` (`ExportCIMXML.pas:451`): pick the
+/// CIM switch class + ratings from an attached protective device. Default
+/// `LoadBreakSwitch` (ratings = the line's NormAmps); a controlling **Fuse**
+/// (priority) → `Fuse` (rated = `RatedCurrent`, breaking = 0); else a **Relay** →
+/// `Breaker`; else a **Recloser** → `Recloser` (both keep the default ratings).
+/// Controls scanned in `Circuit.controls` (creation order — the same object set
+/// as Pascal's per-class `ActiveCircuit.Fuses/Relays/Reclosers` lists).
+fn parse_switch_class(
+    classes: &mut [DssClass],
+    ckt: &Circuit,
+    line_ref: crate::elements::traits::ElemRef,
+    line_norm_amps: f64,
+) -> (String, f64, f64) {
+    let controls_by_class = |class: &str| -> Option<f64> {
+        for &c in &ckt.controls {
+            if !classes[c.cls]
+                .props
+                .class_name()
+                .eq_ignore_ascii_case(class)
+            {
+                continue;
+            }
+            let ctrl = &classes[c.cls].objects[c.idx];
+            let controlled = ctrl.as_ckt_element().and_then(|e| e.controlled_element());
+            if controlled == Some(line_ref) {
+                // Return the Fuse RatedCurrent (prop 6); ignored for Relay/Recloser.
+                return Some(ctrl.get_f64(6));
+            }
+        }
+        None
+    };
+    if let Some(rated_current) = controls_by_class("Fuse") {
+        return ("Fuse".to_string(), rated_current, 0.0);
+    }
+    if controls_by_class("Relay").is_some() {
+        return ("Breaker".to_string(), line_norm_amps, line_norm_amps);
+    }
+    if controls_by_class("Recloser").is_some() {
+        return ("Recloser".to_string(), line_norm_amps, line_norm_amps);
+    }
+    (
+        "LoadBreakSwitch".to_string(),
+        line_norm_amps,
+        line_norm_amps,
+    )
+}
+
+/// Pascal `TCIMExporterHelper.WriteWireData` (`ExportCIMXML.pas:2277`). The
+/// `ConductorMaterialEnum` call is a no-op upstream (the writer is commented
+/// out, `ExportCIMXML.pas:1464`), so no material node is emitted. `class_name`
+/// is the object's `DSSClassName` (`WireData`/`CNData`/`TSData`), `norm_amps`
+/// its `NormAmps`.
+fn write_wire_data(
+    buf: &mut String,
+    class_name: &str,
+    name: &str,
+    geom: &ConductorGeom,
+    norm_amps: f64,
+) {
+    // DisplayName is never populated (no field), so the else branch always fires.
+    writer::string_node(
+        buf,
+        ProfileChoice::Cat,
+        "WireInfo.sizeDescription",
+        &format!("{class_name}_{name}"),
+    );
+    let v1 = LineUnits::from_code(geom.gmr_units).to_meters();
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.gmr", geom.gmr * v1);
+    let v1 = LineUnits::from_code(geom.radius_units).to_meters();
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.radius", geom.radius * v1);
+    let v1 = LineUnits::from_code(geom.res_units).to_per_meter();
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rDC20", geom.rdc * v1);
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rAC25", geom.rac * v1);
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rAC50", geom.rac * v1);
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rAC75", geom.rac * v1);
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "WireInfo.ratedCurrent",
+        norm_amps.max(0.0),
+    );
+    writer::integer_node(buf, ProfileChoice::Cat, "WireInfo.strandCount", 0);
+    writer::integer_node(buf, ProfileChoice::Cat, "WireInfo.coreStrandCount", 0);
+    writer::double_node(buf, ProfileChoice::Cat, "WireInfo.coreRadius", 0.0);
+}
+
+/// Pascal `TCIMExporterHelper.WriteCableData` (`ExportCIMXML.pas:2232`). The
+/// `CableOuterJacketEnum`/`CableConstructionEnum` calls are no-ops upstream
+/// (commented out). `eps_r`/`ins_layer`/`dia_ins`/`dia_cable` are the shared
+/// `TCableData` fields, `radius_units` the `RadiusUnits`.
+fn write_cable_data(
+    buf: &mut String,
+    radius_units: i32,
+    eps_r: f64,
+    ins_layer: f64,
+    dia_ins: f64,
+    dia_cable: f64,
+) {
+    let v1 = LineUnits::from_code(radius_units).to_meters();
+    writer::boolean_node(buf, ProfileChoice::Cat, "WireInfo.insulated", true);
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "WireInfo.insulationThickness",
+        v1 * ins_layer,
+    );
+    writer::conductor_insulation_enum(buf, ProfileChoice::Cat, "crosslinkedPolyethylene");
+    writer::boolean_node(buf, ProfileChoice::Cat, "CableInfo.isStrandFill", false);
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.diameterOverCore",
+        v1 * (dia_ins - 2.0 * ins_layer),
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.diameterOverInsulation",
+        v1 * dia_ins,
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.diameterOverJacket",
+        v1 * dia_cable,
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.nominalTemperature",
+        90.0,
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.relativePermittivity",
+        eps_r,
+    );
+}
+
+/// Pascal `TCIMExporterHelper.WriteTapeData` (`ExportCIMXML.pas:2250`). The
+/// `CableShieldMaterialEnum` call is a no-op upstream (commented out).
+fn write_tape_data(
+    buf: &mut String,
+    radius_units: i32,
+    dia_shield: f64,
+    tape_layer: f64,
+    tape_lap: f64,
+) {
+    let v1 = LineUnits::from_code(radius_units).to_meters();
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.diameterOverScreen",
+        v1 * (dia_shield - 2.0 * tape_layer),
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "TapeShieldCableInfo.tapeLap",
+        tape_lap,
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "TapeShieldCableInfo.tapeThickness",
+        v1 * tape_layer,
+    );
+    writer::boolean_node(buf, ProfileChoice::Cat, "CableInfo.sheathAsNeutral", true);
+}
+
+/// Pascal `TCIMExporterHelper.WriteConcData` (`ExportCIMXML.pas:2262`).
+#[allow(clippy::too_many_arguments)]
+fn write_conc_data(
+    buf: &mut String,
+    radius_units: i32,
+    res_units: i32,
+    dia_cable: f64,
+    dia_strand: f64,
+    gmr_strand: f64,
+    r_strand: f64,
+    k_strand: i32,
+) {
+    let v1 = LineUnits::from_code(radius_units).to_meters();
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "CableInfo.diameterOverScreen",
+        v1 * (dia_cable - 2.0 * dia_strand),
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "ConcentricNeutralCableInfo.diameterOverNeutral",
+        v1 * dia_cable,
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "ConcentricNeutralCableInfo.neutralStrandRadius",
+        v1 * 0.5 * dia_strand,
+    );
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "ConcentricNeutralCableInfo.neutralStrandGmr",
+        v1 * gmr_strand,
+    );
+    let v1 = LineUnits::from_code(res_units).to_per_meter();
+    writer::double_node(
+        buf,
+        ProfileChoice::Cat,
+        "ConcentricNeutralCableInfo.neutralStrandRDC20",
+        v1 * r_strand,
+    );
+    writer::integer_node(
+        buf,
+        ProfileChoice::Cat,
+        "ConcentricNeutralCableInfo.neutralStrandCount",
+        k_strand as i64,
+    );
+    writer::boolean_node(buf, ProfileChoice::Cat, "CableInfo.sheathAsNeutral", false);
+}
+
+/// One conductor slot for [`LineSnap`]: the master `(name, class)` a phase's
+/// `ACLineSegmentPhase.WireInfo` reference resolves through, or `None` (Pascal
+/// NIL `FetchConductorData`).
+type ConductorRef = Option<(String, &'static str)>;
+
+/// A `Line`'s CIM-relevant state, snapshotted so the class-list borrow is
+/// released before the master-UUID lookups (`class_obj_uuid`) run.
+struct LineSnap {
+    name: String,
+    uuid: Uuid,
+    is_switch: bool,
+    nphases: usize,
+    nterm: usize,
+    closed: bool,
+    sym_components_model: bool,
+    r1: f64,
+    x1: f64,
+    r0: f64,
+    x0: f64,
+    c1: f64,
+    c0: f64,
+    len: f64,
+    base_frequency: f64,
+    user_length_units: LineUnits,
+    line_code_units: LineUnits,
+    line_code_name: Option<String>,
+    geometry_name: Option<String>,
+    spacing_name: Option<String>,
+    z: Option<crate::support::cmatrix::CMatrix>,
+    yc: Option<crate::support::cmatrix::CMatrix>,
+    norm_amps: f64,
+    emerg_amps: f64,
+    num_cond_avail: i32,
+    conductor_refs: Vec<ConductorRef>,
+    bus_specs: Vec<String>,
+    bus_refs: Vec<usize>,
+    bus_kvbases: Vec<f64>,
+}
+
+/// Pascal `AttachLinePhases` (`ExportCIMXML.pas:1627`): the per-phase
+/// `ACLineSegmentPhase` breakdown (called for every line except balanced
+/// 3-phase symmetric-components). Each phase references its master `WireInfo`
+/// conductor when one exists (`i <= NumConductorsAvailable`).
+fn attach_line_phases(
+    buf: &mut String,
+    classes: &mut [DssClass],
+    cim: &mut CimExporter,
+    snap: &LineSnap,
+) {
+    let mut s = phase_order_string(&snap.bus_specs[0], snap.nphases, snap.bus_kvbases[0], true);
+    if snap.num_cond_avail as usize > s.chars().count() {
+        s.push('N'); // so we can specify the neutral conductor
+    }
+    let loc_uuid = cim.get_dev_uuid(UuidChoice::LineLoc, &snap.name, 1);
+    for (i0, ch) in s.chars().enumerate() {
+        let seq = i0 + 1;
+        let phs = match ch {
+            's' => continue,
+            '1' => "s1".to_string(),
+            '2' => "s2".to_string(),
+            c => c.to_string(),
+        };
+        let local_name = format!("{}_{}", snap.name, phs);
+        let phase_uuid = cim.get_dev_uuid(UuidChoice::LinePhase, &local_name, 1);
+        writer::start_instance(
+            buf,
+            ProfileChoice::Fun,
+            "ACLineSegmentPhase",
+            phase_uuid,
+            &local_name,
+        );
+        writer::phase_kind_node(buf, ProfileChoice::Fun, "ACLineSegmentPhase", &phs);
+        writer::integer_node(
+            buf,
+            ProfileChoice::Fun,
+            "ACLineSegmentPhase.sequenceNumber",
+            seq as i64,
+        );
+        if seq <= snap.num_cond_avail as usize
+            && let Some(Some((cond_name, cond_class))) = snap.conductor_refs.get(i0)
+            && let Some(wire_uuid) = class_obj_uuid(classes, cond_class, cond_name)
+        {
+            writer::write_cim_ln(
+                buf,
+                ProfileChoice::Cat,
+                &format!(
+                    r#"  <cim:ACLineSegmentPhase.WireInfo rdf:resource="urn:uuid:{}"/>"#,
+                    wire_uuid.to_cim_string()
+                ),
+            );
+        }
+        writer::ref_node(
+            buf,
+            ProfileChoice::Fun,
+            "ACLineSegmentPhase.ACLineSegment",
+            snap.uuid,
+        );
+        writer::ref_node(
+            buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            loc_uuid,
+        );
+        writer::end_instance(buf, ProfileChoice::Fun, "ACLineSegmentPhase");
+    }
+}
+
+/// Pascal `AttachSwitchPhases` (`ExportCIMXML.pas:1661`): the per-phase
+/// `SwitchPhase` breakdown supporting transpositions (skipped for a balanced
+/// 3-phase switch whose two terminals share the phase order).
+fn attach_switch_phases(buf: &mut String, cim: &mut CimExporter, snap: &LineSnap) {
+    let s1 = phase_order_string(&snap.bus_specs[0], snap.nphases, snap.bus_kvbases[0], true);
+    let s2 = phase_order_string(&snap.bus_specs[1], snap.nphases, snap.bus_kvbases[1], true);
+    if snap.nphases == 3 && s1.chars().count() == 3 && s1 == s2 {
+        return;
+    }
+    let loc_uuid = cim.get_dev_uuid(UuidChoice::LineLoc, &snap.name, 1);
+    let map = |c: char| -> String {
+        match c {
+            '1' => "s1".to_string(),
+            '2' => "s2".to_string(),
+            other => other.to_string(),
+        }
+    };
+    let s1c: Vec<char> = s1.chars().collect();
+    let s2c: Vec<char> = s2.chars().collect();
+    for i in 0..s1c.len() {
+        // Pascal walks `s2[i]` to Length(s1); a well-formed switch has equal
+        // phase-order lengths (same NPhases), so `s2c[i]` is in range — stop if
+        // not (an out-of-range Pascal read is undefined, not reproducible).
+        let (Some(&c1), Some(&c2)) = (s1c.get(i), s2c.get(i)) else {
+            break;
+        };
+        if c1 == 's' || c2 == 's' {
+            continue;
+        }
+        let phs1 = map(c1);
+        let phs2 = map(c2);
+        let local_name = format!("{}_{}", snap.name, phs1);
+        let phase_uuid = cim.get_dev_uuid(UuidChoice::LinePhase, &local_name, 1);
+        writer::start_instance(
+            buf,
+            ProfileChoice::Fun,
+            "SwitchPhase",
+            phase_uuid,
+            &local_name,
+        );
+        writer::boolean_node(buf, ProfileChoice::Ssh, "SwitchPhase.closed", snap.closed);
+        writer::boolean_node(
+            buf,
+            ProfileChoice::Fun,
+            "SwitchPhase.normalOpen",
+            !snap.closed,
+        );
+        writer::phase_side_node(buf, ProfileChoice::Fun, "SwitchPhase", 1, &phs1);
+        writer::phase_side_node(buf, ProfileChoice::Fun, "SwitchPhase", 2, &phs2);
+        writer::ref_node(buf, ProfileChoice::Fun, "SwitchPhase.Switch", snap.uuid);
+        writer::ref_node(
+            buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            loc_uuid,
+        );
+        writer::end_instance(buf, ProfileChoice::Fun, "SwitchPhase");
+    }
+}
+
+/// A catalog conductor's [`ConductorGeom`] plus its `NormAmps` (the base
+/// `TConductorData` current rating, not carried by `ConductorGeom`); `None` for
+/// a non-conductor object.
+fn conductor_geom_amps(o: &dyn DssObject) -> Option<(ConductorGeom, f64)> {
+    let any = o.as_any();
+    if let Some(w) = any.downcast_ref::<WireDataObj>() {
+        Some((w.geom(), w.amps().0))
+    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
+        Some((c.geom(), c.amps().0))
+    } else {
+        any.downcast_ref::<TsDataObj>()
+            .map(|t| (t.geom(), t.amps().0))
+    }
+}
+
+/// The index of the (case-insensitive) class in the class list, or `None`.
+fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
+    classes
+        .iter()
+        .position(|c| c.props.class_name().eq_ignore_ascii_case(name))
+}
+
+/// Pascal LineCode catalog sweep (`ExportCIMXML.pas:4493-4547`): a
+/// `PerLengthSequenceImpedance` (symmetric-components 3-phase) or a
+/// `PerLengthPhaseImpedance` + lower-triangular `PhaseImpedanceData` per
+/// LineCode. The `Units=UNITS_NONE` fix-up loop (`4495-4509`) adopts the units
+/// of the first enabled `Line` referencing this code (mutating `pLnCd.Units`).
+fn write_line_code_catalog(
+    buf: &mut String,
+    classes: &mut [DssClass],
+    cim: &mut CimExporter,
+    ckt: &Circuit,
+) {
+    let Some(ci) = class_index(classes, "linecode") else {
+        return;
+    };
+    let two_pi = 2.0 * std::f64::consts::PI;
+    let n = classes[ci].objects.len();
+    // Units fix-up (mutates in place, matching Pascal `4495-4509`).
+    for oi in 0..n {
+        let is_none = classes[ci].objects[oi]
+            .as_any()
+            .downcast_ref::<LineCodeObj>()
+            .map(|l| l.units() == 0)
+            .unwrap_or(false);
+        if !is_none {
+            continue;
+        }
+        let lc_name = classes[ci].objects[oi].data().name().to_string();
+        if let Some(code) = find_line_units_for_linecode(classes, ckt, &lc_name) {
+            classes[ci].objects[oi].set_i32(lc_prop::UNITS, code);
+        }
+    }
+    for oi in 0..n {
+        let uuid = classes[ci].objects[oi].data_mut().uuid();
+        let name = classes[ci].objects[oi].data().name().to_string();
+        let (units, sym, nph, r1, x1, r0, x0, c1, c0, basef, z, yc) = {
+            let Some(lc) = classes[ci].objects[oi]
+                .as_any()
+                .downcast_ref::<LineCodeObj>()
+            else {
+                continue;
+            };
+            (
+                lc.units(),
+                lc.sym_components_model(),
+                lc.nphases(),
+                lc.r1(),
+                lc.x1(),
+                lc.r0(),
+                lc.x0(),
+                lc.c1(),
+                lc.c0(),
+                lc.base_frequency(),
+                lc.z().cloned(),
+                lc.yc().cloned(),
+            )
+        };
+        let v1 = LineUnits::from_code(units).to_per_meter();
+        if sym && nph == 3 {
+            let v2 = 1.0e-9 * two_pi * basef; // nF -> mhos
+            writer::start_instance(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance",
+                uuid,
+                &name,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.r",
+                r1 * v1,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.x",
+                x1 * v1,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.bch",
+                c1 * v1 * v2,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.gch",
+                0.0,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.r0",
+                r0 * v1,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.x0",
+                x0 * v1,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.b0ch",
+                c0 * v1 * v2,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthSequenceImpedance.g0ch",
+                0.0,
+            );
+            writer::end_instance(buf, ProfileChoice::Ep, "PerLengthSequenceImpedance");
+        } else {
+            writer::start_instance(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthPhaseImpedance",
+                uuid,
+                &name,
+            );
+            writer::integer_node(
+                buf,
+                ProfileChoice::Ep,
+                "PerLengthPhaseImpedance.conductorCount",
+                nph as i64,
+            );
+            writer::end_instance(buf, ProfileChoice::Ep, "PerLengthPhaseImpedance");
+            let mut seq = 1;
+            for i in 1..=(nph.max(0) as usize) {
+                for j in 1..=i {
+                    let zdata_uuid = cim.get_dev_uuid(UuidChoice::ZData, &name, seq);
+                    writer::start_free_instance(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData",
+                        zdata_uuid,
+                    );
+                    writer::ref_node(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData.PhaseImpedance",
+                        uuid,
+                    );
+                    writer::integer_node(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData.row",
+                        i as i64,
+                    );
+                    writer::integer_node(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData.column",
+                        j as i64,
+                    );
+                    let zij = z.as_ref().map(|m| m.get(i - 1, j - 1)).unwrap_or_default();
+                    let ycij = yc.as_ref().map(|m| m.get(i - 1, j - 1)).unwrap_or_default();
+                    writer::double_node(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData.r",
+                        zij.re * v1,
+                    );
+                    writer::double_node(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData.x",
+                        zij.im * v1,
+                    );
+                    writer::double_node(
+                        buf,
+                        ProfileChoice::Ep,
+                        "PhaseImpedanceData.b",
+                        ycij.im * v1,
+                    );
+                    writer::end_instance(buf, ProfileChoice::Ep, "PhaseImpedanceData");
+                    seq += 1;
+                }
+            }
+        }
+    }
+}
+
+/// The `UserLengthUnits` code of the first enabled `Line` referencing `lc_name`
+/// (the LineCode units fix-up source, Pascal `4497-4508`).
+fn find_line_units_for_linecode(classes: &[DssClass], ckt: &Circuit, lc_name: &str) -> Option<i32> {
+    for &r in &ckt.lines {
+        let obj = &classes[r.cls].objects[r.idx];
+        if let Some(line) = obj.as_any().downcast_ref::<Line>()
+            && line.cd.enabled
+            && line.line_code_ref.is_some()
+            && line.line_code_name.eq_ignore_ascii_case(lc_name)
+        {
+            return Some(line.user_length_units.code());
+        }
+    }
+    None
+}
+
+/// Pascal WireData catalog sweep (`ExportCIMXML.pas:4549-4555`): one
+/// `OverheadWireInfo` per `WireData`.
+fn write_wire_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
+    let Some(ci) = class_index(classes, "wiredata") else {
+        return;
+    };
+    for oi in 0..classes[ci].objects.len() {
+        let uuid = classes[ci].objects[oi].data_mut().uuid();
+        let name = classes[ci].objects[oi].data().name().to_string();
+        let Some((geom, norm)) = conductor_geom_amps(&*classes[ci].objects[oi]) else {
+            continue;
+        };
+        writer::start_instance(buf, ProfileChoice::Cat, "OverheadWireInfo", uuid, &name);
+        write_wire_data(buf, "WireData", &name, &geom, norm);
+        writer::boolean_node(buf, ProfileChoice::Cat, "WireInfo.insulated", false);
+        writer::end_instance(buf, ProfileChoice::Cat, "OverheadWireInfo");
+    }
+}
+
+/// Pascal TSData catalog sweep (`ExportCIMXML.pas:4557-4564`): one
+/// `TapeShieldCableInfo` per `TSData`.
+fn write_ts_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
+    let Some(ci) = class_index(classes, "tsdata") else {
+        return;
+    };
+    for oi in 0..classes[ci].objects.len() {
+        let uuid = classes[ci].objects[oi].data_mut().uuid();
+        let name = classes[ci].objects[oi].data().name().to_string();
+        let Some((geom, norm)) = conductor_geom_amps(&*classes[ci].objects[oi]) else {
+            continue;
+        };
+        writer::start_instance(buf, ProfileChoice::Cat, "TapeShieldCableInfo", uuid, &name);
+        write_wire_data(buf, "TSData", &name, &geom, norm);
+        if let Some(CableGeom::Ts {
+            eps_r,
+            ins_layer,
+            dia_ins,
+            dia_cable,
+            dia_shield,
+            tape_layer,
+            tape_lap,
+        }) = &geom.cable
+        {
+            write_cable_data(
+                buf,
+                geom.radius_units,
+                *eps_r,
+                *ins_layer,
+                *dia_ins,
+                *dia_cable,
+            );
+            write_tape_data(buf, geom.radius_units, *dia_shield, *tape_layer, *tape_lap);
+        }
+        writer::end_instance(buf, ProfileChoice::Cat, "TapeShieldCableInfo");
+    }
+}
+
+/// Pascal CNData catalog sweep (`ExportCIMXML.pas:4566-4573`): one
+/// `ConcentricNeutralCableInfo` per `CNData`.
+fn write_cn_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
+    let Some(ci) = class_index(classes, "cndata") else {
+        return;
+    };
+    for oi in 0..classes[ci].objects.len() {
+        let uuid = classes[ci].objects[oi].data_mut().uuid();
+        let name = classes[ci].objects[oi].data().name().to_string();
+        let Some((geom, norm)) = conductor_geom_amps(&*classes[ci].objects[oi]) else {
+            continue;
+        };
+        writer::start_instance(
+            buf,
+            ProfileChoice::Cat,
+            "ConcentricNeutralCableInfo",
+            uuid,
+            &name,
+        );
+        write_wire_data(buf, "CNData", &name, &geom, norm);
+        if let Some(CableGeom::Cn {
+            eps_r,
+            ins_layer,
+            dia_ins,
+            dia_cable,
+            k_strand,
+            dia_strand,
+            gmr_strand,
+            r_strand,
+        }) = &geom.cable
+        {
+            write_cable_data(
+                buf,
+                geom.radius_units,
+                *eps_r,
+                *ins_layer,
+                *dia_ins,
+                *dia_cable,
+            );
+            write_conc_data(
+                buf,
+                geom.radius_units,
+                geom.res_units,
+                *dia_cable,
+                *dia_strand,
+                *gmr_strand,
+                *r_strand,
+                *k_strand,
+            );
+        }
+        writer::end_instance(buf, ProfileChoice::Cat, "ConcentricNeutralCableInfo");
+    }
+}
+
+/// Pascal LineGeometry catalog sweep (`ExportCIMXML.pas:4575-4599`): one
+/// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads the first
+/// conductor's `PhaseChoice`. Coordinates are per-conductor `Units[i]`.
+fn write_line_geometry_catalog(buf: &mut String, classes: &mut [DssClass], cim: &mut CimExporter) {
+    let Some(ci) = class_index(classes, "linegeometry") else {
+        return;
+    };
+    for oi in 0..classes[ci].objects.len() {
+        let uuid = classes[ci].objects[oi].data_mut().uuid();
+        let name = classes[ci].objects[oi].data().name().to_string();
+        let (nwires, is_overhead, xs, ys, us) = {
+            let Some(g) = classes[ci].objects[oi]
+                .as_any()
+                .downcast_ref::<LineGeometryObj>()
+            else {
+                continue;
+            };
+            (
+                g.nwires(),
+                g.conductor_is_overhead(1),
+                g.fx().to_vec(),
+                g.fy().to_vec(),
+                g.funits().to_vec(),
+            )
+        };
+        writer::start_instance(buf, ProfileChoice::Cat, "WireSpacingInfo", uuid, &name);
+        writer::conductor_usage_enum(buf, ProfileChoice::Cat, "distribution");
+        writer::integer_node(buf, ProfileChoice::Cat, "WireSpacingInfo.phaseWireCount", 1);
+        writer::double_node(
+            buf,
+            ProfileChoice::Cat,
+            "WireSpacingInfo.phaseWireSpacing",
+            0.0,
+        );
+        writer::boolean_node(
+            buf,
+            ProfileChoice::Cat,
+            "WireSpacingInfo.isCable",
+            !is_overhead,
+        );
+        writer::end_instance(buf, ProfileChoice::Cat, "WireSpacingInfo");
+        for i in 1..=(nwires.max(0) as usize) {
+            let wp_local = format!("WP_{name}_{i}");
+            let wp_uuid = cim.get_dev_uuid(UuidChoice::WirePos, &wp_local, 1); // 1 for pGeom
+            writer::start_instance(buf, ProfileChoice::Cat, "WirePosition", wp_uuid, &wp_local);
+            writer::ref_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.WireSpacingInfo",
+                uuid,
+            );
+            writer::integer_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.sequenceNumber",
+                i as i64,
+            );
+            let v1 = LineUnits::from_code(us[i - 1]).to_meters();
+            writer::double_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.xCoord",
+                xs[i - 1] * v1,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.yCoord",
+                ys[i - 1] * v1,
+            );
+            writer::end_instance(buf, ProfileChoice::Cat, "WirePosition");
+        }
+    }
+}
+
+/// Pascal LineSpacing catalog sweep (`ExportCIMXML.pas:4601-4625`): one
+/// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads
+/// `Ycoord[1] > 0`. The single `Units` applies to every coordinate. The
+/// `WirePosition` UUIDs are keyed with `seq = 2` (Pascal's "2 for pSpac").
+fn write_line_spacing_catalog(buf: &mut String, classes: &mut [DssClass], cim: &mut CimExporter) {
+    let Some(ci) = class_index(classes, "linespacing") else {
+        return;
+    };
+    for oi in 0..classes[ci].objects.len() {
+        let uuid = classes[ci].objects[oi].data_mut().uuid();
+        let name = classes[ci].objects[oi].data().name().to_string();
+        let (nwires, units, xs, ys) = {
+            let Some(s) = classes[ci].objects[oi]
+                .as_any()
+                .downcast_ref::<LineSpacingObj>()
+            else {
+                continue;
+            };
+            (
+                s.nwires(),
+                s.spacing_units(),
+                s.xcoord().to_vec(),
+                s.ycoord().to_vec(),
+            )
+        };
+        let v1 = LineUnits::from_code(units).to_meters();
+        writer::start_instance(buf, ProfileChoice::Cat, "WireSpacingInfo", uuid, &name);
+        writer::conductor_usage_enum(buf, ProfileChoice::Cat, "distribution");
+        writer::integer_node(buf, ProfileChoice::Cat, "WireSpacingInfo.phaseWireCount", 1);
+        writer::double_node(
+            buf,
+            ProfileChoice::Cat,
+            "WireSpacingInfo.phaseWireSpacing",
+            0.0,
+        );
+        // Pascal `if Ycoord[1] > 0.0 then isCable=FALSE else TRUE`.
+        let is_cable = ys.first().copied().unwrap_or(0.0) <= 0.0;
+        writer::boolean_node(buf, ProfileChoice::Cat, "WireSpacingInfo.isCable", is_cable);
+        writer::end_instance(buf, ProfileChoice::Cat, "WireSpacingInfo");
+        for i in 1..=(nwires.max(0) as usize) {
+            let wp_local = format!("WP_{name}_{i}");
+            let wp_uuid = cim.get_dev_uuid(UuidChoice::WirePos, &wp_local, 2); // 2 for pSpac
+            writer::start_instance(buf, ProfileChoice::Cat, "WirePosition", wp_uuid, &wp_local);
+            writer::ref_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.WireSpacingInfo",
+                uuid,
+            );
+            writer::integer_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.sequenceNumber",
+                i as i64,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.xCoord",
+                xs[i - 1] * v1,
+            );
+            writer::double_node(
+                buf,
+                ProfileChoice::Cat,
+                "WirePosition.yCoord",
+                ys[i - 1] * v1,
+            );
+            writer::end_instance(buf, ProfileChoice::Cat, "WirePosition");
+        }
+    }
 }
 
 /// Pascal `TCIMExporter.ExportCDPSM` (`ExportCIMXML.pas:3203`), combined mode
@@ -1339,12 +2326,379 @@ pub(crate) fn export_cdpsm(
 
     // Lines/switches -> ACLineSegment/LoadBreakSwitch/Fuse/Breaker/Recloser
     // (`4294-4409`) — Stage C.
-    not_ported_if_any(
-        errors,
-        ckt.lines.len(),
-        "Line (ACLineSegment/switch)",
-        "Stage C",
-    );
+    for &r in &ckt.lines.clone() {
+        let snap = {
+            let obj = &classes[r.cls].objects[r.idx];
+            let Some(line) = obj.as_any().downcast_ref::<Line>() else {
+                continue;
+            };
+            if !line.cd.enabled {
+                continue;
+            }
+            let bus_refs: Vec<usize> = line.cd.terminals.iter().map(|t| t.bus_ref).collect();
+            let bus_kvbases: Vec<f64> = bus_refs.iter().map(|&b| ckt.buses[b].kv_base).collect();
+            let has_line_code = line.line_code_ref.is_some();
+            let has_geometry = line.geometry_obj.is_some();
+            let spacing_specified =
+                line.line_spacing_obj.is_some() && !line.line_wire_data.is_empty();
+            // Pascal `NumConductorData` / `FetchConductorData` (Line.pas:2116).
+            let num_cond_avail = if spacing_specified {
+                line.line_spacing_obj
+                    .as_ref()
+                    .map(|s| s.nwires())
+                    .unwrap_or(0)
+            } else if let Some(g) = &line.geometry_obj {
+                g.nwires()
+            } else {
+                0
+            };
+            let mut conductor_refs: Vec<ConductorRef> = Vec::new();
+            for i in 1..=(num_cond_avail.max(0) as usize) {
+                let cond: Option<&dyn DssObject> = if spacing_specified {
+                    line.line_wire_data.get(i - 1).and_then(|o| o.as_deref())
+                } else if let Some(g) = &line.geometry_obj {
+                    g.conductor(i)
+                } else {
+                    None
+                };
+                conductor_refs.push(cond.and_then(|c| {
+                    conductor_class_name(c).map(|cls| (c.data().name().to_string(), cls))
+                }));
+            }
+            LineSnap {
+                name: line.cd.obj.name().to_string(),
+                uuid: Uuid::create_v4(), // replaced below with the object's UUID
+                is_switch: line.is_switch,
+                nphases: line.cd.nphases,
+                nterm: line.cd.nterms,
+                closed: line.cd.terminal_all_phases_closed(1),
+                sym_components_model: line.sym_components_model,
+                r1: line.r1,
+                x1: line.x1,
+                r0: line.r0,
+                x0: line.x0,
+                c1: line.c1,
+                c0: line.c0,
+                len: line.len,
+                base_frequency: line.cd.base_frequency,
+                user_length_units: line.user_length_units,
+                line_code_units: line.line_code_units,
+                line_code_name: has_line_code.then(|| line.line_code_name.clone()),
+                geometry_name: has_geometry.then(|| line.geometry_name.clone()),
+                spacing_name: spacing_specified
+                    .then(|| {
+                        line.line_spacing_obj
+                            .as_ref()
+                            .map(|s| s.data().name().to_string())
+                    })
+                    .flatten(),
+                z: line.z.clone(),
+                yc: line.yc.clone(),
+                norm_amps: line.norm_amps,
+                emerg_amps: line.emerg_amps,
+                num_cond_avail,
+                conductor_refs,
+                bus_specs: line.cd.bus_names.clone(),
+                bus_refs,
+                bus_kvbases,
+            }
+        };
+        let line_uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let mut snap = snap;
+        snap.uuid = line_uuid;
+
+        let v1 = snap.user_length_units.to_meters();
+        let geo_uuid = cim.get_dev_uuid(UuidChoice::LineLoc, &snap.name, 1);
+        let bus_ref0 = snap.bus_refs[0];
+        let vbase_uuid = cim.get_base_v_uuid(sqrt3 * ckt.buses[bus_ref0].kv_base);
+
+        if snap.is_switch {
+            let (swt_cls, rated_amps, breaking_amps) =
+                parse_switch_class(classes, ckt, r, snap.norm_amps);
+            writer::start_instance(
+                &mut buf,
+                ProfileChoice::Fun,
+                &swt_cls,
+                snap.uuid,
+                &snap.name,
+            );
+            writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+            writer::ref_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "ConductingEquipment.BaseVoltage",
+                vbase_uuid,
+            );
+            if breaking_amps > 0.0 {
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ProtectedSwitch.breakingCapacity",
+                    breaking_amps,
+                );
+            }
+            writer::double_node(
+                &mut buf,
+                ProfileChoice::Ep,
+                "Switch.ratedCurrent",
+                rated_amps,
+            );
+            // Disabled lines are skipped above, so the enabled branch always applies.
+            writer::boolean_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "Switch.normalOpen",
+                !snap.closed,
+            );
+            writer::boolean_node(&mut buf, ProfileChoice::Ssh, "Switch.open", !snap.closed);
+            writer::boolean_node(&mut buf, ProfileChoice::Fun, "Switch.retained", true);
+            writer::ref_node(
+                &mut buf,
+                ProfileChoice::Geo,
+                "PowerSystemResource.Location",
+                geo_uuid,
+            );
+            writer::end_instance(&mut buf, ProfileChoice::Fun, &swt_cls);
+            attach_switch_phases(&mut buf, cim, &snap);
+        } else {
+            let mut bval = false;
+            let mut puz_local = String::new();
+            let mut puz_uuid = None;
+            writer::start_instance(
+                &mut buf,
+                ProfileChoice::Fun,
+                "ACLineSegment",
+                snap.uuid,
+                &snap.name,
+            );
+            writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+            writer::ref_node(
+                &mut buf,
+                ProfileChoice::Fun,
+                "ConductingEquipment.BaseVoltage",
+                vbase_uuid,
+            );
+            if let Some(lc_name) = snap.line_code_name.clone() {
+                let mut vlen = v1;
+                if snap.user_length_units == LineUnits::None {
+                    vlen = snap.line_code_units.to_meters();
+                }
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Fun,
+                    "Conductor.length",
+                    snap.len * vlen,
+                );
+                if let Some(lc_uuid) = class_obj_uuid(classes, "LineCode", &lc_name) {
+                    writer::write_cim_ln(
+                        &mut buf,
+                        ProfileChoice::Ep,
+                        &format!(
+                            r#"  <cim:ACLineSegment.PerLengthImpedance rdf:resource="urn:uuid:{}"/>"#,
+                            lc_uuid.to_cim_string()
+                        ),
+                    );
+                }
+            } else if let Some(geom_name) = snap.geometry_name.clone() {
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Fun,
+                    "Conductor.length",
+                    snap.len * v1,
+                );
+                if let Some(geom_uuid) = class_obj_uuid(classes, "LineGeometry", &geom_name) {
+                    writer::write_cim_ln(
+                        &mut buf,
+                        ProfileChoice::Cat,
+                        &format!(
+                            r#"  <cim:ACLineSegment.WireSpacingInfo rdf:resource="urn:uuid:{}"/>"#,
+                            geom_uuid.to_cim_string()
+                        ),
+                    );
+                }
+            } else if let Some(sp_name) = snap.spacing_name.clone() {
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Fun,
+                    "Conductor.length",
+                    snap.len * v1,
+                );
+                if let Some(sp_uuid) = class_obj_uuid(classes, "LineSpacing", &sp_name) {
+                    writer::write_cim_ln(
+                        &mut buf,
+                        ProfileChoice::Cat,
+                        &format!(
+                            r#"  <cim:ACLineSegment.WireSpacingInfo rdf:resource="urn:uuid:{}"/>"#,
+                            sp_uuid.to_cim_string()
+                        ),
+                    );
+                }
+            } else if snap.sym_components_model && snap.nphases == 3 {
+                let val = 1.0e-9 * two_pi * snap.base_frequency; // nF -> mhos
+                writer::double_node(&mut buf, ProfileChoice::Fun, "Conductor.length", 1.0);
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ACLineSegment.r",
+                    snap.len * snap.r1,
+                );
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ACLineSegment.x",
+                    snap.len * snap.x1,
+                );
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ACLineSegment.bch",
+                    snap.len * snap.c1 * val,
+                );
+                writer::double_node(&mut buf, ProfileChoice::Ep, "ACLineSegment.gch", 0.0);
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ACLineSegment.r0",
+                    snap.len * snap.r0,
+                );
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ACLineSegment.x0",
+                    snap.len * snap.x0,
+                );
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "ACLineSegment.b0ch",
+                    snap.len * snap.c0 * val,
+                );
+                // TODO(compat): Pascal writes `ACLineSegment.b0ch` a second time,
+                // = 0.0 (`ExportCIMXML.pas:4367`, an upstream typo for `g0ch`);
+                // reproduced verbatim so the golden matches.
+                writer::double_node(&mut buf, ProfileChoice::Ep, "ACLineSegment.b0ch", 0.0);
+            } else {
+                bval = true;
+                puz_local = format!("{}_PUZ", snap.name);
+                let id = cim.get_dev_uuid(UuidChoice::PUZ, &snap.name, 1);
+                puz_uuid = Some(id);
+                writer::write_cim_ln(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    &format!(
+                        r#"  <cim:ACLineSegment.PerLengthImpedance rdf:resource="urn:uuid:{}"/>"#,
+                        id.to_cim_string()
+                    ),
+                );
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Fun,
+                    "Conductor.length",
+                    snap.len * v1,
+                );
+            }
+            writer::ref_node(
+                &mut buf,
+                ProfileChoice::Geo,
+                "PowerSystemResource.Location",
+                geo_uuid,
+            );
+            writer::end_instance(&mut buf, ProfileChoice::Fun, "ACLineSegment");
+            if !(snap.sym_components_model && snap.nphases == 3) {
+                attach_line_phases(&mut buf, classes, cim, &snap);
+            }
+            if bval {
+                let id = puz_uuid.expect("PUZ path sets puz_uuid");
+                writer::start_instance(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "PerLengthPhaseImpedance",
+                    id,
+                    &puz_local,
+                );
+                writer::integer_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "PerLengthPhaseImpedance.conductorCount",
+                    snap.nphases as i64,
+                );
+                writer::end_instance(&mut buf, ProfileChoice::Ep, "PerLengthPhaseImpedance");
+                let z = snap.z.as_ref();
+                let yc = snap.yc.as_ref();
+                let mut seq = 1;
+                for i in 1..=snap.nphases {
+                    for j in 1..=i {
+                        let zdata_uuid = cim.get_dev_uuid(UuidChoice::ZData, &puz_local, seq);
+                        writer::start_free_instance(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData",
+                            zdata_uuid,
+                        );
+                        writer::ref_node(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData.PhaseImpedance",
+                            id,
+                        );
+                        writer::integer_node(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData.row",
+                            i as i64,
+                        );
+                        writer::integer_node(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData.column",
+                            j as i64,
+                        );
+                        // Pascal divides by 1609.34 (hard-coded meters-per-mile).
+                        let zij = z.map(|m| m.get(i - 1, j - 1)).unwrap_or_default();
+                        let ycij = yc.map(|m| m.get(i - 1, j - 1)).unwrap_or_default();
+                        writer::double_node(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData.r",
+                            zij.re / 1609.34,
+                        );
+                        writer::double_node(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData.x",
+                            zij.im / 1609.34,
+                        );
+                        writer::double_node(
+                            &mut buf,
+                            ProfileChoice::Ep,
+                            "PhaseImpedanceData.b",
+                            ycij.im / 1609.34,
+                        );
+                        writer::end_instance(&mut buf, ProfileChoice::Ep, "PhaseImpedanceData");
+                        seq += 1;
+                    }
+                }
+            }
+        }
+        write_terminals(
+            &mut buf,
+            ckt,
+            cim,
+            &mut op_limits,
+            &mut op_limit_idx,
+            LINE_DSS_OBJ_TYPE,
+            "Line",
+            &snap.name,
+            snap.uuid,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            geo_uuid,
+            crs_uuid,
+            snap.norm_amps,
+            snap.emerg_amps,
+        );
+    }
 
     // The 7 fixed DSS-like load models (`4410-4447`) — Stage A, unconditional.
     let id1_const_kva = cim.get_dev_uuid(UuidChoice::LoadResp, "ConstkVA", 1);
@@ -1640,42 +2994,12 @@ pub(crate) fn export_cdpsm(
     }
 
     // Conductor/cable/geometry catalogs (`4493-4627`) — Stage C.
-    not_ported_if_any(
-        errors,
-        class_len(classes, "linecode"),
-        "LineCode (Per-Length impedance)",
-        "Stage C",
-    );
-    not_ported_if_any(
-        errors,
-        class_len(classes, "wiredata"),
-        "WireData (OverheadWireInfo)",
-        "Stage C",
-    );
-    not_ported_if_any(
-        errors,
-        class_len(classes, "tsdata"),
-        "TSData (TapeShieldCableInfo)",
-        "Stage C",
-    );
-    not_ported_if_any(
-        errors,
-        class_len(classes, "cndata"),
-        "CNData (ConcentricNeutralCableInfo)",
-        "Stage C",
-    );
-    not_ported_if_any(
-        errors,
-        class_len(classes, "linegeometry"),
-        "LineGeometry (WireSpacingInfo)",
-        "Stage C",
-    );
-    not_ported_if_any(
-        errors,
-        class_len(classes, "linespacing"),
-        "LineSpacing (WireSpacingInfo)",
-        "Stage C",
-    );
+    write_line_code_catalog(&mut buf, classes, cim, ckt);
+    write_wire_data_catalog(&mut buf, classes);
+    write_ts_data_catalog(&mut buf, classes);
+    write_cn_data_catalog(&mut buf, classes);
+    write_line_geometry_catalog(&mut buf, classes, cim);
+    write_line_spacing_catalog(&mut buf, classes, cim);
 
     // EnergyConnectionProfile sweep (`4628-4656`) — Stage B: one instance per
     // distinct DSS shape/spectrum profile, populated by `add_load_ecp` above
