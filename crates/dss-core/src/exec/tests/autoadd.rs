@@ -131,13 +131,13 @@ fn autoadd_solve_mode_adds_winner() {
     dss.command("? generator.gadd1.kw");
     assert_eq!(dss.result(), "300");
 
-    // GlobalResult is `<bus>, <improvement>` (GENADD form).
-    dss.command("solve mode=autoadd"); // second run: re-search with gadd1 present
-    let last = {
-        // re-read the winner of the FIRST run: capture it before the 2nd solve.
-        // (Here we simply assert the result of THIS solve is well-formed.)
-        dss.result().to_string()
-    };
+    // GlobalResult is `<bus>, <improvement>` (GENADD form). A second AutoAdd
+    // re-searches with gadd1 already present; this is a STRUCTURAL check that the
+    // second solve's GlobalResult is well-formed (`<bus>, <numeric figure>`). The
+    // exact numeric winner / improvement / log / voltages are pinned against the
+    // pinned oracle by `autoadd.dss` in `corpus_live.rs`, not here.
+    dss.command("solve mode=autoadd");
+    let last = dss.result().to_string();
     let (bus, figure) = last
         .split_once(", ")
         .unwrap_or_else(|| panic!("GlobalResult not `<bus>, <figure>`: {last:?}"));
