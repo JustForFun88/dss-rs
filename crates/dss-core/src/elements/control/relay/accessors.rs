@@ -279,11 +279,18 @@ impl DssObject for Relay {
                     let elem = obj
                         .as_ckt_element()
                         .expect("monitoredobj resolves against circuit classes");
+                    // Capture the monitored element's state-variable names for the
+                    // Generic relay's `LookupVariable` (recalc has no live element).
+                    // Non-PC elements expose none (`num_variables() == 0`).
+                    self.monitor_var_names = (1..=elem.num_variables())
+                        .map(|i| elem.variable_name(i))
+                        .collect();
                     self.mon_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
                 None => {
                     self.monitored_full_name = name;
                     self.ccd.monitored_element = None;
+                    self.monitor_var_names = Vec::new();
                     self.mon_snap = None;
                 }
             },
@@ -408,8 +415,12 @@ impl DssObject for Relay {
         self.pickup_volts47 = other.pickup_volts47;
         self.pct_pickup47 = other.pct_pickup47;
 
-        // Generic.
+        // Generic. (Pascal copies `MonitorVariable`; `MonitorVarIndex` is
+        // re-resolved in the new object's `recalc` — carry the name cache + index
+        // so a `like=` clone that does not re-specify `monitoredobj` still resolves.)
         self.monitor_variable = other.monitor_variable.clone();
+        self.monitor_var_index = other.monitor_var_index;
+        self.monitor_var_names = other.monitor_var_names.clone();
         self.over_trip = other.over_trip;
         self.under_trip = other.under_trip;
 

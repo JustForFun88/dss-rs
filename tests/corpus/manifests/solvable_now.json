@@ -27,6 +27,18 @@
    "n_steps": 1
   },
   {
+   "path": "Test/TD21RelayTest.DSS",
+   "kind": "feeder",
+   "n_steps": 1,
+   "compare_eventlog": true
+  },
+  {
+   "path": "Test/ReverseTD21RelayTest.DSS",
+   "kind": "feeder",
+   "n_steps": 1,
+   "compare_eventlog": true
+  },
+  {
    "path": "Test/IEEE13_Assets.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -220,6 +232,18 @@
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
+   "kind": "feeder",
+   "n_steps": 1,
+   "compare_eventlog": true
+  },
+  {
+   "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
+   "kind": "feeder",
+   "n_steps": 1,
+   "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
