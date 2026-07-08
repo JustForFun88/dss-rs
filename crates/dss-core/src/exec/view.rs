@@ -179,13 +179,15 @@ impl Dss {
             // dss-python permanently reports the stale post-Newton Powers. So making
             // Powers fresh would make Rust DIVERGE from the live oracle (~4e-4 kW) →
             // gate red, unregenerable. Eliminating it is a de-compat DECISION, not a
-            // local edit: EITHER (a) bump the pinned oracle to an upstream rev that no
-            // longer exhibits it — but it is likely inherent to `DoNewtonSolution` +
-            // cache-aware `Get_Powers` and present in every OpenDSS rev, so check the
-            // EPRI channel first — OR (b) convert the `newton*` Powers/Losses compare
-            // to a documented live-gate exclusion (Rust intentionally more correct,
-            // the VSConverter "gate around" pattern) plus the replacement assertion
-            // above. See investigations/newton_stale_iterminal_bug_report.md.
+            // local edit. Option (a) "bump the pinned oracle to a rev without the
+            // bug" is RULED OUT: the EPRI channel confirms the quirk is present in
+            // every vendored official rev incl. the latest — v9.8 (r3723), v10.2
+            // (r4088), v11.0 (r4133), all fingerprint 0.478 kVA, checked 2026-07-08.
+            // The remaining path (b): convert the `newton*` Powers/Losses compare to
+            // a documented live-gate exclusion (Rust intentionally more correct than
+            // the oracle, the VSConverter "gate around" pattern) plus the replacement
+            // Newton assertion above.
+            // See investigations/newton_stale_iterminal_bug_report.md.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.compute_iterminal(&sys, &node_v);
                 let cd = elem.cd();
