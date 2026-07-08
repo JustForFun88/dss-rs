@@ -295,6 +295,25 @@ pub trait CktElement {
         }
     }
 
+    /// Force a fresh `Iterminal` from the present `NodeV`, bypassing the
+    /// `SolutionCount` cache — the model of the CAPI `CktElement.Currents` read
+    /// path (`CAPI_CktElement.pas` `elem.GetCurrents`), which always recomputes
+    /// `Yprim·Vterminal (± inj)` rather than returning the solver's internal
+    /// `ComputeIterminal` cache. The two agree after every fixed-point solve
+    /// (the cache is invalid at read time, so `compute_iterminal` recomputes),
+    /// but `DoNewtonSolution`'s final `SumAllCurrents` stamps `Iterminal` at the
+    /// converged `SolutionCount` from the *pre-final* voltage guess `NodeV_{n-1}`
+    /// (the update `NodeV -= dV` follows it), so a plain `compute_iterminal`
+    /// would then return that one-step-stale current. Reporting reads use this
+    /// to match the oracle's fresh `GetCurrents`.
+    fn refresh_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let mut curr = vec![Complex64::ZERO; self.cd().yorder];
+        self.get_currents(sys, node_v, &mut curr);
+        let cd = self.cd_mut();
+        cd.iterminal.copy_from_slice(&curr);
+        cd.iterminal_solution_count = sys.solution_count;
+    }
+
     /// Pascal `TPDElement.IsShunt`: true for shunt-connected capacitors and
     /// reactors (`Circuit.Get_Losses` ignores shunt PD elements). The base
     /// class default is false.

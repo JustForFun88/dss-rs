@@ -274,8 +274,20 @@
    "selected_elements": [
     "*"
    ],
-   "pending": true,
-   "wp": "WPG.6"
+   "pending": false,
+   "wp": "WPG.6",
+   "note": "Set algorithm=Newton (Pascal DoNewtonSolution): the current-injection algorithm on the light 3-bus feeder. Oracle-validated (dss-python 0.15.7): converged, 2 iterations, bit-identical across two processes. The gate pins the converged flag, the exact Newton iteration count, and node voltages."
+  },
+  {
+   "path": "newton_feeder.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.6",
+   "note": "WPG.6 second Newton case: a 115/12.47 kV transformer feeder with stressed constant-power loads, re-solved under algorithm=Newton. Oracle-validated (dss-python 0.15.7): converged, 3 Newton iterations (past the MinIterations floor, exercising the loop body more than newton.dss), bit-identical across two processes."
   },
   {
    "path": "reactor_rlcurve.dss",
