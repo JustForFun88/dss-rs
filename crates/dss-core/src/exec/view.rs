@@ -163,6 +163,15 @@ impl Dss {
             // `NodeV` directly, whereas `CktElement.pas` `Get_Powers`/`Get_Losses`
             // reuse `ComputeIterminal`). Clean fix: recompute `Iterminal` at
             // `NodeV_n` for all three reads.
+            //
+            // GATE NOTE: this staleness is the ONLY feature-sensitive signal that
+            // distinguishes `algorithm=Newton` from the normal fixed-point on the
+            // `newton.dss` / `newton_feeder.dss` gates — both algorithms converge to
+            // the SAME voltages in the SAME iteration count, so only the Powers/
+            // Losses channel (this cache split) diverges when Newton silently falls
+            // back to `DoNormalSolution`. The de-compat pass that takes the clean
+            // fix above MUST add a replacement Newton-specific assertion, else those
+            // two decks stop verifying that Newton dispatch is wired at all.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.compute_iterminal(&sys, &node_v);
                 let cd = elem.cd();
