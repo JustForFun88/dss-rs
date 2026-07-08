@@ -5,8 +5,9 @@ use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
-use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
+use crate::solution::{GAUSSIAN, LOGNORMAL, SolveMode, UNIFORM, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
+use crate::support::mathutil::FpcRng;
 use dss_parser::{Parser, ParserVars};
 
 /// Build a populated `LoadShapeObj` through its real property engine (same
@@ -300,4 +301,88 @@ fn use_actual_daily_sets_kw_kvar_and_seeds_yearly() {
     );
     assert_eq!(load.load_spec_type, LoadSpec::KwKvar);
     assert!(load.yearly_shape_obj.is_some(), "yearly seeded from daily");
+}
+
+// --- TLoadObj.Randomize (the MonteCarlo1 per-load RandomMult draw) ---
+//
+// Fixed-seed coverage of the RNG-driven arms the gating decks never reach
+// (every Monte deck runs `random=none`). Expected values are derived
+// externally from the seed-12345 draw sequence pinned in
+// `support::mathutil::rng` — the canonical MT19937 stream verified there
+// against `mt19937ar.out` / CPython — never captured from `randomize` itself
+// (GAPS_PLAN.md §2.1). `Gauss(0,1) = Σ12 Random − 6.0` exactly, so
+// `Gauss(m,s) = G01·s + m` and `QuasiLognormal(m) = exp(G01)·m` bit-for-bit.
+
+/// First `next_f64()` draw for seed 12345 (`rng.rs`).
+const RND_D0_BITS: u64 = 0x3fedbf6a3c400000;
+/// First `Gauss(0,1)` result for seed 12345 (`rng.rs`).
+const RND_G01_0_BITS: u64 = 0x3fc62af569800000;
+
+#[test]
+fn randomize_uniform_draws_next_f64() {
+    let mut load = Load::new("lr");
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(UNIFORM, &mut rng);
+    assert_eq!(load.random_mult.to_bits(), RND_D0_BITS);
+}
+
+#[test]
+fn randomize_gaussian_no_yearly_uses_pu_mean_std() {
+    let mut load = Load::new("lr");
+    load.yearly_shape_obj = None;
+    load.pu_mean = 0.8;
+    load.pu_std_dev = 0.3;
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(GAUSSIAN, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS) * 0.3 + 0.8;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_gaussian_with_yearly_uses_shape_mean_std() {
+    // The yearly shape's mean/std-dev override pu_mean/pu_std_dev; the pu_*
+    // fields are set DIFFERENTLY so the test fails if the fallback is taken.
+    let mut load = Load::new("lr");
+    load.pu_mean = 0.8;
+    load.pu_std_dev = 0.3;
+    load.yearly_shape_obj = Some(build_shape(&[("mean", "0.75"), ("stddev", "0.20")]));
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(GAUSSIAN, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS) * 0.20 + 0.75;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_lognormal_no_yearly_uses_pu_mean() {
+    let mut load = Load::new("lr");
+    load.yearly_shape_obj = None;
+    load.pu_mean = 2.0;
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(LOGNORMAL, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS).exp() * 2.0;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_lognormal_with_yearly_uses_shape_mean() {
+    let mut load = Load::new("lr");
+    load.pu_mean = 2.0; // different from the shape mean below
+    load.yearly_shape_obj = Some(build_shape(&[("mean", "3.0"), ("stddev", "0.20")]));
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(LOGNORMAL, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS).exp() * 3.0;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_none_sets_one_and_draws_nothing() {
+    let mut load = Load::new("lr");
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(0, &mut rng);
+    assert_eq!(load.random_mult, 1.0);
+    assert_eq!(
+        rng.next_f64().to_bits(),
+        RND_D0_BITS,
+        "random=none must not consume a draw"
+    );
 }

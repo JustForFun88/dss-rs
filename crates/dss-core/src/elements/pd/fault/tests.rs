@@ -1,7 +1,8 @@
 use super::*;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::Dss;
-use crate::solution::SolveMode;
+use crate::solution::{GAUSSIAN, LOGNORMAL, SolveMode, UNIFORM};
+use crate::support::mathutil::FpcRng;
 
 fn test_sys() -> SysCtx {
     SysCtx {
@@ -239,5 +240,62 @@ fn temporary_fault_clears_below_minamps() {
         log.iter()
             .any(|s| s.contains("Element=Fault.f, Action=**CLEARED**")),
         "expected **CLEARED**; log = {log:?}"
+    );
+}
+
+// --- TFaultObj.Randomize (the MonteFault per-fault resistance jitter) ---
+//
+// Fixed-seed coverage of the RNG-driven arms the gating decks never reach
+// (montefault.dss runs `random=none`). Expected values are derived externally
+// from the seed-12345 draw sequence pinned in `support::mathutil::rng` — the
+// canonical MT19937 stream verified there against `mt19937ar.out` / CPython —
+// never captured from `randomize` itself (GAPS_PLAN.md §2.1). `Gauss(0,1) =
+// Σ12 Random − 6.0` exactly, so `Gauss(1,s) = G01·s + 1` and
+// `QuasiLognormal(1) = exp(G01)` bit-for-bit.
+
+/// First `next_f64()` draw for seed 12345 (`rng.rs`).
+const RND_D0_BITS: u64 = 0x3fedbf6a3c400000;
+/// First `Gauss(0,1)` result for seed 12345 (`rng.rs`).
+const RND_G01_0_BITS: u64 = 0x3fc62af569800000;
+
+#[test]
+fn randomize_uniform_draws_next_f64() {
+    let mut f = Fault::new("fx");
+    let mut rng = FpcRng::from_seed(12345);
+    f.randomize(UNIFORM, &mut rng);
+    assert_eq!(f.random_mult.to_bits(), RND_D0_BITS);
+    assert!(f.cd().yprim_invalid, "Randomize forces a YPrim rebuild");
+}
+
+#[test]
+fn randomize_gaussian_is_gauss_one_stddev() {
+    let mut f = Fault::new("fx");
+    f.stddev = 0.25;
+    let mut rng = FpcRng::from_seed(12345);
+    f.randomize(GAUSSIAN, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS) * 0.25 + 1.0;
+    assert_eq!(f.random_mult, expected);
+}
+
+#[test]
+fn randomize_lognormal_is_quasi_lognormal_one() {
+    let mut f = Fault::new("fx");
+    let mut rng = FpcRng::from_seed(12345);
+    f.randomize(LOGNORMAL, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS).exp(); // QuasiLognormal(1.0)
+    assert_eq!(f.random_mult, expected);
+}
+
+#[test]
+fn randomize_none_sets_one_and_draws_nothing() {
+    let mut f = Fault::new("fx");
+    f.stddev = 0.25;
+    let mut rng = FpcRng::from_seed(12345);
+    f.randomize(0, &mut rng);
+    assert_eq!(f.random_mult, 1.0);
+    assert_eq!(
+        rng.next_f64().to_bits(),
+        RND_D0_BITS,
+        "random=none must not consume a draw"
     );
 }

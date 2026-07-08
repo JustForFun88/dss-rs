@@ -8,10 +8,20 @@
 //! seeds it from the clock per process, any value that reaches the output through
 //! the RNG is nondeterministic across processes and **cannot** be oracle-pinned
 //! (GAPS_PLAN.md §2.1) — the generator is therefore gated only by the Rust-only
-//! fixed-seed unit tests in this file, whose expected sequences were verified
-//! against the canonical `mt19937ar.out` reference and CPython's MT19937 (both
-//! share this exact recurrence + tempering). The engine's [`FpcRng::randomize`]
-//! (time seed) reproduces the documented upstream nondeterminism.
+//! fixed-seed unit tests in this file.
+//!
+//! Provenance of those pins: the expected sequences are **canonical MT19937
+//! ground truth** — cross-verified against the canonical `mt19937ar.out`
+//! reference and CPython's MT19937. That FPC's RTL produces the *same* stream
+//! rests on this being a 1:1 transcription of its `mtwist_*` source (same
+//! `init_genrand` seeding, recurrence, tempering, and `Random:Double` scaling),
+//! **not** on a captured FPC run: the probe `tools/fpc/mtwist/mtwist_probe.pas`
+//! is committed to regenerate/confirm these exact values on a host with the FPC
+//! 3.2.2 `x86_64-win64` toolchain (`ppcrossx64`), but no such capture has been
+//! taken into the repo yet — the test names' "matches_fpc" is by
+//! transcription-equivalence, pending that on-host capture. The engine's
+//! [`FpcRng::randomize`] (time seed) reproduces the documented upstream
+//! nondeterminism.
 //!
 //! Bit-for-bit notes:
 //! - `random : extended` on the win64 build (Extended = Double) is
@@ -159,10 +169,13 @@ mod tests {
     use super::FpcRng;
 
     // Ground truth: the canonical MT19937 (`init_genrand`) sequence, verified
-    // against `mt19937ar.out` and CPython's MT19937 (see the FPC probe
-    // `tools/fpc/mtwist_probe.pas`, committed for regeneration on an FPC host).
-    // Expected doubles are compared bit-exactly (`f64::from_bits`), since the
-    // FPC path involves no transcendental up to and including `Gauss`.
+    // against `mt19937ar.out` and CPython's MT19937. FPC's RTL yields the same
+    // stream by 1:1 source transcription (see the module doc); the committed
+    // probe `tools/fpc/mtwist/mtwist_probe.pas` regenerates these values on an
+    // FPC 3.2.2 host, but that capture has not yet been taken into the repo —
+    // the `_fpc` in the test names is transcription-equivalence, not a captured
+    // FPC run. Expected doubles are compared bit-exactly (`f64::from_bits`),
+    // since the FPC path involves no transcendental up to and including `Gauss`.
 
     const SEED: u32 = 12345;
 
