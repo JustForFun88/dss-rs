@@ -39,6 +39,39 @@ impl CktElement for AutoTrans {
         self.emerg_amps
     }
 
+    /// Pascal `TDSSCktElement.Get_Losses` **AUTOTRANS_ELEMENT special case**
+    /// (`CktElement.pas:618`): sum complex power into only the *first* `Nphases`
+    /// conductors of each terminal and **skip the second-half** conductors
+    /// (`Inc(k, Nphases)`). The series winding's second node is aliased onto the
+    /// common winding's node and `GetCurrents` folds the series current into the
+    /// X terminal, so summing all `Yorder` conductors (the base path) would
+    /// double-count the series power (≈ V_X·conj(I_series), ~150 MW here). The
+    /// base `losses()` must NOT be used for the auto.
+    fn losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Complex64 {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return Complex64::ZERO;
+        }
+        self.compute_iterminal(sys, node_v);
+        let cd = self.cd();
+        let np = cd.nphases;
+        let mut result = Complex64::ZERO;
+        let mut k = 0usize;
+        for _ in 0..cd.nterms {
+            for _ in 0..np {
+                let n = cd.node_ref[k];
+                if n > 0 {
+                    result += node_v[n] * cd.iterminal[k].conj();
+                }
+                k += 1;
+            }
+            k += np; // skip the second-half (return) conductors of this terminal
+        }
+        if sys.positive_sequence {
+            result *= 3.0;
+        }
+        result
+    }
+
     /// Pascal `TAutoTransObj.GetLosses` (`AutoTrans.pas:1674`): no-load losses are
     /// the power into `Yprim_Shunt` from each terminal; load losses are the
     /// remainder of the total. Identical to the Transformer split.
@@ -65,26 +98,84 @@ impl CktElement for AutoTrans {
         (total, load, no_load)
     }
 
-    /// Pascal `TAutoTransObj.CalcYPrim`.
-    ///
-    /// **WPG.15 Stage A — NOT_PORTED (owner: WPG.15 Stage B).** The auto solve
-    /// path (`SetNodeRef` node aliasing, `BuildYPrimComponent`, the GIC-branch
-    /// selection and the `GetCurrents` series/common fold) is not yet wired.
-    /// Build a zero YPrim so the Y assembly and any current reads stay
-    /// well-defined, and push a loud error so a solve of an AutoTrans-bearing
-    /// circuit aborts (the ymatrix builder lifts queued `CalcYPrim` errors to
-    /// `SolutionAbort`) rather than silently producing wrong results.
+    /// Pascal `TDSSCktElement.SetNodeRef` override (`AutoTrans.pas:875`) — the
+    /// "Magic happens here": after the base copy, for terminal 2 with a Series
+    /// winding 1, alias the series winding's second node onto the common
+    /// winding's first (`NodeRef[Fnphases+i] := NodeRef[i+Fnconds]`), keeping the
+    /// flat array and terminal-2's `TermNodeRef` in sync (both writes are
+    /// reproduced 1:1 — `NodeRef` 1-based, `TermNodeRef` 0-based).
+    fn set_node_ref(&mut self, iterm: usize, node_ref_array: &[usize]) {
+        self.cd.set_node_ref(iterm, node_ref_array);
+        if iterm == 2 && self.windings[0].connection == 2 {
+            let np = self.cd.nphases;
+            let nconds = self.cd.nconds;
+            for i in 1..=np {
+                let src = self.cd.node_ref[nconds + i - 1];
+                self.cd.node_ref[np + i - 1] = src;
+                self.cd.terminals[iterm - 1].term_node_ref[np + i - 1] = src;
+            }
+        }
+    }
+
+    /// Pascal `TAutoTransObj.GetCurrents` override (`AutoTrans.pas:1663`): the
+    /// base PD current (`Iterminal = Yprim·Vterminal`), then **fold the series
+    /// (wdg 1) current into the X terminal** — `Curr[i+Fnconds] += Curr[i+
+    /// Fnphases]` — so the reported X-terminal current is the combined
+    /// series+common winding current.
+    fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
+        {
+            let cd = self.cd_mut();
+            if !cd.enabled || cd.node_ref.is_empty() {
+                curr.fill(Complex64::ZERO);
+                return;
+            }
+            cd.compute_vterminal(node_v);
+            match &cd.yprim {
+                Some(yprim) => yprim.mv_mult(curr, &cd.vterminal),
+                None => {
+                    curr.fill(Complex64::ZERO);
+                    return;
+                }
+            }
+        }
+        let np = self.cd.nphases;
+        let nconds = self.cd.nconds;
+        for i in 0..np {
+            curr[nconds + i] += curr[np + i];
+        }
+    }
+
+    /// Pascal `TAutoTransObj.CalcYPrim` (`AutoTrans.pas:1199`): rebuild `Y_Term`
+    /// at the solution frequency if it changed, stamp it (and `Y_Term_NL`) into
+    /// the series/shunt YPrim via `TermRef`, combine, then apply the
+    /// open-conductor corrections. Unlike the Transformer there is **no**
+    /// `AddNeutralToY` (the auto has no brought-out neutral impedance).
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let yorder = self.cd.yorder;
+        let nw = self.num_windings.max(0) as usize;
+        let np = self.cd.nphases;
+
+        let mut yp_series = CMatrix::new(yorder);
+        let mut yp_shunt = CMatrix::new(yorder);
+        let mut yprim = CMatrix::new(yorder);
+
         self.cd.yprim_freq = sys.frequency;
-        self.cd.yprim_series = Some(CMatrix::new(yorder));
-        self.cd.yprim_shunt = Some(CMatrix::new(yorder));
-        self.cd.yprim = Some(CMatrix::new(yorder));
-        self.cd.obj.push_error(format!(
-            "AutoTrans.{}: the autotransformer solve path is NOT_PORTED \
-             (WPG.15 Stage B); YPrim not built.",
-            self.cd.obj.name()
-        ));
+        let freq_mult = sys.frequency / self.cd.base_frequency;
+        if freq_mult != self.y_terminal_freqmult {
+            self.calc_y_terminal(freq_mult);
+        }
+
+        Self::build_yprim_component(&mut yp_series, &self.y_term, &self.term_ref, nw, np);
+        Self::build_yprim_component(&mut yp_shunt, &self.y_term_nl, &self.term_ref, nw, np);
+
+        yprim.copy_from(&yp_series);
+        yprim.add_from(&yp_shunt);
+
+        self.cd.yprim_series = Some(yp_series);
+        self.cd.yprim_shunt = Some(yp_shunt);
+        self.cd.yprim = Some(yprim);
+
+        self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
     }
 }
@@ -318,11 +409,7 @@ impl DssObject for AutoTrans {
 
     fn set_active_struct_bus(&mut self, value: &str) {
         let t = self.aw() + 1;
-        // Pascal `SetBus(iwdg, s)` override (winding-2 neutral defaulting,
-        // `AutoTrans.pas:721`) lands in WPG.15 Stage B; the rewrite branch fires
-        // only on an explicit non-zero neutral on winding 2 — no corpus deck
-        // hits it, and `process_bus_defs` already grounds the extra conductors.
-        self.cd.set_bus(t, value);
+        self.set_bus_auto(t, value);
     }
     fn get_active_struct_bus(&self) -> String {
         self.cd.get_bus(self.aw() + 1).to_string()
@@ -330,7 +417,7 @@ impl DssObject for AutoTrans {
     fn set_struct_buses(&mut self, values: &[Option<String>]) {
         for (i, v) in values.iter().enumerate() {
             if let Some(v) = v {
-                self.cd.set_bus(i + 1, v);
+                self.set_bus_auto(i + 1, v);
             }
         }
         self.active_winding = self.num_windings;

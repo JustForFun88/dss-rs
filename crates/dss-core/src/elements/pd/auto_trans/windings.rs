@@ -113,4 +113,49 @@ impl AutoTrans {
             }
         }
     }
+
+    /// Pascal `TAutoTransObj.SetBus` override (`AutoTrans.pas:721`): for winding
+    /// 2, default all the second-end conductors to one ground node so the common
+    /// winding's neutral ties together — unless the user gives an explicit
+    /// non-zero neutral, in which case every neutral conductor is tied to it. All
+    /// other windings pass through to the base. The winding buses carry numeric
+    /// node lists, so the node extraction is a self-contained parse (mirroring
+    /// `AuxParser.ParseAsBusName`); no corpus deck exercises the explicit-neutral
+    /// rewrite branch — the default case is identical to the base (the extra
+    /// conductors ground in `process_bus_defs`).
+    pub(super) fn set_bus_auto(&mut self, iwdg: usize, s: &str) {
+        if iwdg != 2 {
+            self.cd.set_bus(iwdg, s);
+            return;
+        }
+        let nphases = self.cd.nphases;
+        let nconds = self.cd.nconds;
+        // NNodes (1-based, slot 0 unused): phases 1..nphases, neutrals 0.
+        let mut nnodes = vec![0i32; nconds + 1];
+        for (i, slot) in nnodes.iter_mut().enumerate().take(nphases + 1).skip(1) {
+            *slot = i as i32;
+        }
+        // ParseAsBusName: the bus name is `busname.n1.n2.…`; overwrite the
+        // defaults with any explicit node integers.
+        let mut parts = s.split('.');
+        let bus_name = parts.next().unwrap_or("");
+        for (idx, tok) in parts.enumerate() {
+            if idx < nconds {
+                nnodes[idx + 1] = tok.parse().unwrap_or(0);
+            }
+        }
+        if nnodes[nphases + 1] > 0 {
+            // Reconstruct: phases as given, every neutral tied to nnodes[np+1].
+            let mut new_name = bus_name.to_string();
+            for slot in nnodes.iter().take(nphases + 1).skip(1) {
+                new_name.push_str(&format!(".{slot}"));
+            }
+            for _ in (nphases + 1)..=nconds {
+                new_name.push_str(&format!(".{}", nnodes[nphases + 1]));
+            }
+            self.cd.set_bus(iwdg, &new_name);
+        } else {
+            self.cd.set_bus(iwdg, s);
+        }
+    }
 }

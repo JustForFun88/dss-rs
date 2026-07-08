@@ -163,6 +163,16 @@ pub trait CktElement {
     /// `RecalcElementData` (abstract in the base class).
     fn recalc_element_data(&mut self, sys: &SysCtx);
 
+    /// Pascal `TDSSCktElement.SetNodeRef` (virtual): copy one terminal's node
+    /// refs into the flat array + terminal record. The base behavior is the
+    /// `CktElementData` method; `TAutoTransObj` overrides it to alias the series
+    /// winding's second node onto the common winding's first ("Magic happens
+    /// here", `AutoTrans.pas:875`). The circuit build path calls this (not
+    /// `cd_mut().set_node_ref`) so the override fires.
+    fn set_node_ref(&mut self, iterm: usize, node_ref_array: &[usize]) {
+        self.cd_mut().set_node_ref(iterm, node_ref_array);
+    }
+
     /// `CalcYPrim` (abstract): rebuild the primitive Y matrices.
     fn calc_yprim(&mut self, sys: &SysCtx);
 

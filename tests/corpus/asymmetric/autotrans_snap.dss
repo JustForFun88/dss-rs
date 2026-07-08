@@ -6,11 +6,18 @@
 ! 115/69 kV auto unit. Read-only WdgCurrents is probed by the manifest.
 Clear
 Set DefaultBaseFrequency=60
-New Circuit.gaps_auto basekv=345.0 phases=3 mvasc3=2000000 2000000
-New Line.line1 bus1=sourcebus bus2=high switch=yes r1=1e-6 r0=1e-6 x1=0 x0=0 c1=0 c0=0
+! The 330 MVA 345/161/13.8 YNad1 unit is fed from a physical 345 kV source
+! directly on its series winding (like the t2 spur below). The original deck
+! mirrored AutoAuto.dss's near-ideal source (mvasc3=2e6) through an r1=1e-6
+! switch, both copied for AutoAuto's short-circuit CHECKS; that made the
+! source/switch currents an ill-conditioned near-cancellation of the ~1e-8
+! convergence floor (proven: the AutoTrans YPrim + assembled system Y are
+! bit-exact to ~3e-13 -- only the near-ideal Vsource/switch currents blew up).
+! This deck does a load-flow, so a physical source keeps every quantity clean.
+New Circuit.gaps_auto basekv=345.0 phases=3 mvasc3=30000 25000
 ! The AutoAuto.dss 330 MVA 345/161/13.8 YNad1 unit.
 New AutoTrans.t1 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 %imag=0.0329 %noloadloss=0.02402
-~ wdg=1 bus=high conn=s kV=345.0 kVA=330000 %r=0.0493
+~ wdg=1 bus=sourcebus conn=s kV=345.0 kVA=330000 %r=0.0493
 ~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556
 ~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503
 New Load.l161 bus1=low phases=3 kv=161 kw=250000 pf=0.88 model=1

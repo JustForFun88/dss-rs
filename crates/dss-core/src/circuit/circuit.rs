@@ -546,7 +546,9 @@ impl Circuit {
                     .iter()
                     .map(|&n| n.max(0) as usize)
                     .collect();
-                elem.cd_mut().set_node_ref(iterm, &refs);
+                // Virtual dispatch: `TAutoTransObj.SetNodeRef` aliases the series
+                // winding's second node onto the common winding's first.
+                elem.set_node_ref(iterm, &refs);
             } else {
                 errors.push(format!(
                     "TDSSCircuit.AddBus: BusName for Object \"{}\" is null. Error in definition of object.",
