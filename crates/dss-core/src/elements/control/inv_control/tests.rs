@@ -490,17 +490,69 @@ mod dispatch {
     }
 
     #[test]
-    fn exponential_control_model_aborts_not_silently() {
-        // The Exponential ControlModel runs the (unported) PICtrl PI controller in
-        // CalcVoltVar_vars; Sample must reject it with an explicit error, never run
-        // the silent "stay put" branch (the deferral-is-never-a-silent-skip rule).
+    fn exponential_control_model_runs_pi_controller() {
+        // WPG.9: the Exponential ControlModel (`ControlModel=1`) runs the `TPICtrl`
+        // PI controller in `CalcVoltVar_vars` — `Sample` must NOT reject it, and it
+        // must NOT freeze the var output at the "stay put" level. Same V=1.05 absorb
+        // scenario as the Linear test: QDesireVVpu=-0.625, QHeadRoom(VARMAX)=600, so
+        // the PI setpoint DeltaQ = -0.625*600 = -375 (the *full* product — Exponential
+        // does not subtract QOldVV). `kDen`/`kNum` are recomputed from |FdeltaQ_factor|
+        // = 0.2 each call (InvControl.pas l.2706-2707). Both filter taps start at 0, so
+        // the first `SolvePI` output (den[1] = num[0]*kNum + den[0]*kDen) is exactly 0.
         let mut ic = voltvar_ic();
         ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap(); // ported — must not error
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        let k_den = (-0.2_f64).exp();
         assert!(
-            err.contains("Exponential ControlModel"),
-            "expected an Exponential NOT_PORTED error, got: {err}"
+            (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+            "kDen = {}",
+            cv.pi_ctrl.k_den
+        );
+        assert!(
+            (cv.pi_ctrl.k_num - (1.0 - k_den)).abs() < 1e-12,
+            "kNum = {}",
+            cv.pi_ctrl.k_num
+        );
+        // First PI step over the zeroed filter → exactly 0.0 (not the -1.0 stay-put
+        // value the old unreachable branch would have produced).
+        assert_eq!(
+            cv.q_desired_vv, 0.0,
+            "QDesiredVV first PI step = {}",
+            cv.q_desired_vv
+        );
+        assert_eq!(env.ders[0].requested_kvar, 0.0);
+    }
+
+    #[test]
+    fn pi_ctrl_solve_pi_two_step_sequence() {
+        // Direct pin of Pascal `TPICtrl.SolvePI` (mathutil.pas l.81) as InvControl
+        // drives it: Kp=1, kDen=exp(-|deltaQ_factor|), kNum=1-kDen recomputed each
+        // call. Feeding a constant setpoint s: step 1 → 0 (zeroed taps), step 2 →
+        // s*kNum, step 3 → s*kNum + s*kNum*kDen (the rising response).
+        let mut pi = super::PICtrl {
+            kp: 1.0,
+            ..super::PICtrl::default()
+        };
+        let k_den = (-0.4_f64).exp();
+        let k_num = 1.0 - k_den;
+        let s = -375.0;
+        pi.k_den = k_den;
+        pi.k_num = k_num;
+        let o1 = pi.solve_pi(s);
+        pi.k_den = k_den;
+        pi.k_num = k_num;
+        let o2 = pi.solve_pi(s);
+        pi.k_den = k_den;
+        pi.k_num = k_num;
+        let o3 = pi.solve_pi(s);
+        assert_eq!(o1, 0.0, "step 1 = {o1}");
+        assert!((o2 - s * k_num).abs() < 1e-9, "step 2 = {o2}");
+        assert!(
+            (o3 - (s * k_num + s * k_num * k_den)).abs() < 1e-9,
+            "step 3 = {o3}"
         );
     }
 
