@@ -370,11 +370,11 @@ pub(crate) struct InvVars {
     /// per step in `UpdateInvControl`).
     pub f_prior_q_desire_optionpu: f64,
     pub f_prior_p_limit_optionpu: f64,
-    /// `FDCkW` (PVSystem `PanelkW`), `FDCkWRated` (PVSystem `Pmpp`),
-    /// `FpctDCkWRated` (PVSystem `puPmpp`), `FEffFactor` — the volt-watt power-base
-    /// inputs, refreshed each Sample by `UpdateDERParameters`. PVSystem-only: the
-    /// Storage VOLTWATT/VV_VW dispatch is deferred (an explicit error, not a silent
-    /// skip), so the Storage `DCkW` path of `Calc_PBase` is not carried here.
+    /// `FDCkW` (PVSystem `PanelkW`; 0 for Storage), `FDCkWRated` (PVSystem `Pmpp` /
+    /// Storage `kWrating`), `FpctDCkWRated` (PVSystem `puPmpp` / Storage
+    /// `pctkWrated`), `FEffFactor` — the volt-watt power-base inputs, refreshed each
+    /// Sample by `UpdateDERParameters`. The Storage `%Available` base reads the live
+    /// `TStorageObj.DCkW` at `Calc_PBase` time instead of `f_dckw` (WPG.10).
     pub f_dckw: f64,
     pub f_dckw_rated: f64,
     pub f_pct_dckw_rated: f64,

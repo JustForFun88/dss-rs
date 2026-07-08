@@ -38,16 +38,21 @@
 //! `Check_Qlimits`/`Check_Plimits` clamp, wired into the VOLTVAR / DRC / VV_DRC /
 //! VOLTWATT / VV_VW `DoPendingAction` branches).
 //!
-//! **NOT_PORTED / deferred (each an explicit error, never a silent skip):** GFM →
-//! WP7.7, **Storage** in VOLTWATT/VV_VW (the YPrim-state-flip propagation gap;
-//! PVSystem volt-watt is ported). The Exponential `ControlModel` (the `TPICtrl` PI
-//! controller) is ported (WPG.9).
+//! **Storage** in VOLTWATT/VV_VW is ported (WPG.10): `Calc_PBase`'s `%Available`
+//! base reads the live `TStorageObj.DCkW`, and `CalcPVWcurve_limitpu` selects the
+//! charge/discharge curve by `StorageState`/`FVWStateRequested`; the Storage
+//! `kWOut_Calc` requesting/limiting region does the actual biting.
+//!
+//! **NOT_PORTED / deferred (an explicit error, never a silent skip):** GFM →
+//! WP7.7. The Exponential `ControlModel` (the `TPICtrl` PI controller) is ported
+//! (WPG.9).
 //!
 //! [`StorageController`]: crate::elements::control::storage_controller
 //! [`InvDispatchEnv`]: InvDispatchEnv
 
 use num_complex::Complex64;
 
+use crate::elements::pc::storage::{STORE_CHARGING, STORE_DISCHARGING};
 use crate::elements::traits::ElemRef;
 use crate::util::fmt_g;
 
@@ -127,18 +132,25 @@ pub(crate) struct DerSnap {
     /// `DERElem.GetPFPriority()` — the inverter PF-priority flag (distinct from
     /// `P_Priority`); read by `CalcQWPcurve_desiredpu` (WATTPF).
     pub pf_priority: bool,
-    // --- volt-watt fields (VOLTWATT / VV_VW; UpdateDERParameters + Calc_PBase).
-    // PVSystem-only: the Storage VOLTWATT/VV_VW dispatch is deferred (an explicit
-    // error in `sample_voltwatt`/`sample_vv_vw`), so the Storage-specific reads
-    // (`TStorageObj.DCkW`/`StorageState`/`FVWStateRequested`) are not plumbed here. ---
-    /// `FDCkW` — PVSystem `PanelkW`.
+    // --- volt-watt fields (VOLTWATT / VV_VW; UpdateDERParameters + Calc_PBase). ---
+    /// `FDCkW` — PVSystem `PanelkW`; `0.0` for a Storage (Pascal `FDCkW := 0.0`,
+    /// which uses the live `TStorageObj.DCkW` in `Calc_PBase` instead — see
+    /// [`InvDispatchEnv::der_storage_dckw`]).
     pub dckw: f64,
-    /// `FDCkWRated` — PVSystem `Pmpp`.
+    /// `FDCkWRated` — PVSystem `Pmpp` / Storage `kWrating`.
     pub dckw_rated: f64,
-    /// `FpctDCkWRated` — PVSystem `puPmpp`.
+    /// `FpctDCkWRated` — PVSystem `puPmpp` / Storage `pctkWrated`.
     pub pct_dckw_rated: f64,
     /// `FEffFactor` — the inverter efficiency factor.
     pub eff_factor: f64,
+    /// `TStorageObj.StorageState` (`STORE_CHARGING=-1` / `STORE_IDLING=0` /
+    /// `STORE_DISCHARGING=1`) — selects the charge/discharge volt-watt curve in
+    /// `CalcPVWcurve_limitpu`. Ignored for a PVSystem.
+    pub storage_state: i32,
+    /// `TStorageObj.FVWStateRequested` — the VW function requested a state flip on
+    /// the last control iteration; swaps the charge/discharge curve in
+    /// `CalcPVWcurve_limitpu`. Ignored for a PVSystem.
+    pub vw_state_requested: bool,
 }
 
 /// The executive surface `Sample`/`DoPendingAction`/`UpdateInvControl` need to
@@ -223,6 +235,11 @@ pub(crate) trait InvDispatchEnv {
     /// `DERElem.Get_PresentkW` (read back after `SetNominalDEROutput`, for the
     /// volt-watt event-log + the `FVWOperation` reset check).
     fn der_present_kw(&self, r: ElemRef) -> f64;
+    /// `TStorageObj.DCkW` (Pascal `Get_DCkW` → `ComputeDCkW`): the live DC-side kW,
+    /// the Storage `Calc_PBase` base for `VoltwattYAxis=0` (`%Available`). Only
+    /// reached by a Storage in VOLTWATT/VV_VW with that Y-axis; a PVSystem uses its
+    /// own `FDCkW` (snap `dckw`) and never calls this.
+    fn der_storage_dckw(&mut self, r: ElemRef) -> f64;
     /// `DERElem.SetNominalDEROutput()`.
     fn der_set_nominal(&mut self, r: ElemRef);
     /// `DERElem.Get_Presentkvar`.
@@ -607,7 +624,6 @@ impl InvControl {
         control_iter: i32,
     ) -> Result<(), String> {
         let r = self.fleet[i];
-        self.guard_storage_vw(snap)?;
 
         // Set_Variable(5, FVreg); Set_Variable(8, FVWOperation).
         let vreg = self.f_vreg;
@@ -653,7 +669,6 @@ impl InvControl {
         control_iter: i32,
     ) -> Result<(), String> {
         let r = self.fleet[i];
-        self.guard_storage_vw(snap)?;
 
         // Set_Variable(5, FVreg); (7, FVVOperation); (8, FVWOperation).
         let vreg = self.f_vreg;
@@ -1059,28 +1074,11 @@ impl InvControl {
         }
     }
 
-    /// The Storage VOLTWATT / VV_VW dispatch is **deferred** (not a silent skip):
-    /// the Storage-specific volt-watt machinery (`TStorageObj.DCkW`/`StorageState`/
-    /// `FVWStateRequested` curve selection) is unverified by any gate, and a Storage
-    /// state flip during InvControl dispatch would not propagate `system_y_changed`
-    /// through the per-element env (the WP7.4 YPrim-rebuild bug class). PVSystem
-    /// volt-watt is fully ported + gated. A Storage in VOLTWATT/VV_VW errors.
-    fn guard_storage_vw(&self, snap: DerSnap) -> Result<(), String> {
-        if snap.is_pvsystem {
-            Ok(())
-        } else {
-            Err(format!(
-                "InvControl.{}: Storage VOLTWATT/VV_VW dispatch is not yet ported (WP7.5; PVSystem volt-watt is ported)",
-                self.ccd.cd.obj.name()
-            ))
-        }
-    }
-
     /// Pascal `TInvControlObj.DoPendingAction` — dispatches per DER by the per-DER
     /// `FPendingChange` (the `Code` is ignored, matching Pascal). The header runs
     /// `Calc_QHeadRoom` for every DER; `Calc_PBase` + `kW_out_desiredpu` (which only
-    /// VW/VV_VW consume) run inside those branches (PVSystem-only, so the storage
-    /// `Calc_PBase` path is not reached). Ports VOLTVAR / VOLTWATT / VV_VW.
+    /// VW/VV_VW consume) run inside those branches, for both PVSystem and Storage.
+    /// Ports VOLTVAR / VOLTWATT / VV_VW.
     pub(crate) fn do_pending_action(&mut self, env: &mut dyn InvDispatchEnv) {
         for k in 0..self.fleet.len() {
             // Calc_QHeadRoom (header; consumed by the var modes + VV_VW's VV part).
@@ -1278,21 +1276,24 @@ impl InvControl {
         }
     }
 
-    /// Pascal `DoPendingAction`'s `VOLTWATT` branch (PVSystem; storage is guarded
-    /// out at `Sample`, so `Calc_PBase`/`CalcPVWcurve_limitpu` take the PVSystem path).
+    /// Pascal `DoPendingAction`'s `VOLTWATT` branch. `Calc_PBase` /
+    /// `CalcPVWcurve_limitpu` take the PVSystem or Storage path per the DER type;
+    /// the achieved-kW `FVWOperation` reset and the event-log string also differ
+    /// (Storage compares `|presentkW|` and has no `|PLimitVW|>0` guard — Pascal
+    /// l.1445/1450).
     fn do_pending_voltwatt(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
+        let snap = env.der_snap(r);
         env.der_set_vw_mode(r, true); // DERElem.VWmode := TRUE
 
-        // Header values VW consumes (Pascal computes these for every DER; here only
-        // the PVSystem VW path reaches them).
-        self.calc_pbase(k);
+        // Header values VW consumes.
+        self.calc_pbase(k, r, snap.is_pvsystem, env);
         self.ctrl_vars[k].kw_out_desiredpu =
             self.ctrl_vars[k].kw_out_desired / self.ctrl_vars[k].p_base;
 
         // Main process: the volt-watt curve kW limit, then the LPF/RF filter (if
         // active) and the kVA/pctPmpp clamp.
-        self.calc_pvw_curve_limitpu(k);
+        self.calc_pvw_curve_limitpu(k, snap);
         let p_limit_vw_pu = self.ctrl_vars[k].p_limit_vw_pu;
         self.apply_roc_plimit(k, p_limit_vw_pu, env);
 
@@ -1300,7 +1301,8 @@ impl InvControl {
         let control_iter = env.control_iteration();
         self.calc_voltwatt_watts(k, control_iter);
 
-        // Push the new kW to the DER and recompute its P/Q.
+        // Push the new kW to the DER and recompute its P/Q (for a Storage the
+        // kWRequested + VWmode drive `kWOut_Calc`'s requesting/limiting region).
         let p_limit_vw = self.ctrl_vars[k].p_limit_vw;
         env.der_set_kw_requested(r, p_limit_vw);
         env.der_set_nominal(r);
@@ -1310,37 +1312,58 @@ impl InvControl {
         cv.f_avgp_vpu_prior = cv.f_present_vpu;
         cv.p_old_vw_pu = p_limit_vw / p_base;
 
-        // FVWOperation reset flag + event log (Pascal reads presentkW after nominal):
-        // PVSystem guards on `abs(PLimitVW) > 0`.
+        // FVWOperation reset flag + event log (Pascal reads presentkW after nominal).
         let present_kw = env.der_present_kw(r);
-        if p_limit_vw.abs() > 0.0 && (present_kw - p_limit_vw).abs() / p_limit_vw > 0.0001 {
-            self.ctrl_vars[k].f_vw_operation = 0.0;
-        }
-        if self.ccd.show_event_log {
-            let der = env.der_full_name(r);
-            let msg = format!(
-                "**VOLTWATT mode set PVSystem kW output limit to **, kW= {}. Actual output is kW= {}.",
-                fmt_g(p_limit_vw, 5),
-                fmt_g(present_kw, 5)
-            );
-            env.append_event(&der, &msg);
+        if snap.is_pvsystem {
+            // PVSystem guards on `abs(PLimitVW) > 0` (Pascal l.1435).
+            if p_limit_vw.abs() > 0.0 && (present_kw - p_limit_vw).abs() / p_limit_vw > 0.0001 {
+                self.ctrl_vars[k].f_vw_operation = 0.0;
+            }
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                let msg = format!(
+                    "**VOLTWATT mode set PVSystem kW output limit to **, kW= {}. Actual output is kW= {}.",
+                    fmt_g(p_limit_vw, 5),
+                    fmt_g(present_kw, 5)
+                );
+                env.append_event(&der, &msg);
+            }
+        } else {
+            // Storage compares `|presentkW|` to PLimitVW, no `>0` guard (Pascal l.1445).
+            if (present_kw.abs() - p_limit_vw).abs() / p_limit_vw > 0.0001 {
+                self.ctrl_vars[k].f_vw_operation = 0.0;
+            }
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                // NB: Pascal l.1450 has NO comma after "to **" (unlike the PVSystem
+                // string) — kept verbatim so the event log compares equal.
+                let msg = format!(
+                    "**VOLTWATT mode set Storage kW output limit to ** kW= {}. Actual output is kW= {}.",
+                    fmt_g(p_limit_vw, 5),
+                    fmt_g(present_kw, 5)
+                );
+                env.append_event(&der, &msg);
+            }
         }
     }
 
-    /// Pascal `DoPendingAction`'s `VV_VW` combi branch (PVSystem; storage guarded
-    /// out at `Sample`). Runs the volt-watt P limit *and* the volt-var Q set-point.
+    /// Pascal `DoPendingAction`'s `VV_VW` combi branch. Runs the volt-watt P limit
+    /// *and* the volt-var Q set-point, for either DER type; `Calc_PBase` /
+    /// `CalcPVWcurve_limitpu` and the achieved-kW `FVWOperation`/event-log tail take
+    /// the PVSystem or Storage path per the DER (Pascal l.1511-1564).
     fn do_pending_vv_vw(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
+        let snap = env.der_snap(r);
         // DERElem.VWmode := TRUE; Varmode := VARMODEKVAR; VVmode := TRUE;
         env.der_set_modes(r, true, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
 
-        self.calc_pbase(k);
+        self.calc_pbase(k, r, snap.is_pvsystem, env);
         self.ctrl_vars[k].kw_out_desiredpu =
             self.ctrl_vars[k].kw_out_desired / self.ctrl_vars[k].p_base;
 
         // Main process: QDesireVVpu + PLimitVWpu, then per-function LPF/RF (if
         // active) and the Q and P clamps (Q first, then P — Pascal l.1463-1502).
-        self.calc_pvw_curve_limitpu(k);
+        self.calc_pvw_curve_limitpu(k, snap);
         self.calc_qvv_curve_desiredpu(k, env);
 
         let q_desire_vvpu = self.ctrl_vars[k].q_desire_vvpu;
@@ -1385,20 +1408,38 @@ impl InvControl {
             env.append_event(&der, &msg);
         }
 
-        // FVWOperation reset flag + the kW event log (PVSystem: no `abs(PLimitVW)>0`
-        // guard here, unlike pure VOLTWATT — verbatim Pascal l.1547).
+        // FVWOperation reset flag + the kW event log. Neither DER type has the
+        // `abs(PLimitVW)>0` guard here (unlike pure VOLTWATT). Storage compares
+        // `|presentkW|` and uses a distinct event string (Pascal l.1547 / l.1557).
         let present_kw = env.der_present_kw(r);
-        if (present_kw - p_limit_vw).abs() / p_limit_vw > 0.0001 {
-            self.ctrl_vars[k].f_vw_operation = 0.0;
-        }
-        if self.ccd.show_event_log {
-            let der = env.der_full_name(r);
-            let msg = format!(
-                "**VV_VW mode set PVSystem kW output limit to **, kW= {}. Actual output is kW= {}.",
-                fmt_g(p_limit_vw, 5),
-                fmt_g(present_kw, 5)
-            );
-            env.append_event(&der, &msg);
+        if snap.is_pvsystem {
+            if (present_kw - p_limit_vw).abs() / p_limit_vw > 0.0001 {
+                self.ctrl_vars[k].f_vw_operation = 0.0;
+            }
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                let msg = format!(
+                    "**VV_VW mode set PVSystem kW output limit to **, kW= {}. Actual output is kW= {}.",
+                    fmt_g(p_limit_vw, 5),
+                    fmt_g(present_kw, 5)
+                );
+                env.append_event(&der, &msg);
+            }
+        } else {
+            if (present_kw.abs() - p_limit_vw).abs() / p_limit_vw > 0.0001 {
+                self.ctrl_vars[k].f_vw_operation = 0.0;
+            }
+            if self.ccd.show_event_log {
+                let der = env.der_full_name(r);
+                // NB: Pascal l.1562 is "limit to** kW=" — no space before "**", no
+                // comma — kept verbatim so the event log compares equal.
+                let msg = format!(
+                    "**VV_VW mode set Storage kW output limit to** kW= {}. Actual output is kW= {}.",
+                    fmt_g(p_limit_vw, 5),
+                    fmt_g(present_kw, 5)
+                );
+                env.append_event(&der, &msg);
+            }
         }
     }
 
@@ -2403,14 +2444,29 @@ impl InvControl {
     }
 
     /// Pascal `Calc_PBase(j)` — the volt-watt power base from `VoltWattYAxis`
-    /// (0:=%Available `FDCkW·FEffFactor`, 1:=%Pmpp `FDCkWRated`, 2:=%PctPmpp
-    /// `FDCkWRated·FpctDCkWRated`, 3:=%kVArating `FkVARating`). PVSystem path only —
-    /// Storage VOLTWATT/VV_VW is guarded out at `Sample` (its `TStorageObj.DCkW`
-    /// yaxis-0 branch is not reached).
-    fn calc_pbase(&mut self, j: usize) {
+    /// (0:=%Available, 1:=%Pmpp `FDCkWRated`, 2:=%PctPmpp `FDCkWRated·FpctDCkWRated`,
+    /// 3:=%kVArating `FkVARating`). The `%Available` base differs by DER type: a
+    /// PVSystem uses `FDCkW·FEffFactor`, a Storage the *live* `TStorageObj.DCkW·
+    /// FEffFactor` (Pascal sets `FDCkW := 0` for Storage and reads the `DCkW`
+    /// property instead). yaxis 1/2/3 are identical for both types.
+    fn calc_pbase(
+        &mut self,
+        j: usize,
+        r: ElemRef,
+        is_pvsystem: bool,
+        env: &mut dyn InvDispatchEnv,
+    ) {
+        // Only the Storage %Available base needs the live DCkW (a fresh
+        // `ComputeDCkW`); fetch it lazily so no other path pays for it.
+        let storage_dckw = if !is_pvsystem && self.voltwatt_yaxis == 0 {
+            env.der_storage_dckw(r)
+        } else {
+            0.0
+        };
         let cv = &mut self.ctrl_vars[j];
         cv.p_base = match self.voltwatt_yaxis {
-            0 => cv.f_dckw * cv.f_eff_factor,
+            0 if is_pvsystem => cv.f_dckw * cv.f_eff_factor,
+            0 => storage_dckw * cv.f_eff_factor,
             1 => cv.f_dckw_rated,
             2 => cv.f_dckw_rated * cv.f_pct_dckw_rated,
             3 => cv.f_kva_rating,
@@ -2418,15 +2474,51 @@ impl InvControl {
         };
     }
 
-    /// Pascal `CalcPVWcurve_limitpu(j)` — the volt-watt curve lookup (PVSystem path:
-    /// `PLimitVWpu := Fvoltwatt_curve.GetYValue(FPresentVpu)`).
-    fn calc_pvw_curve_limitpu(&mut self, j: usize) {
+    /// Pascal `CalcPVWcurve_limitpu(j)` — the volt-watt curve lookup. A PVSystem
+    /// always reads `Fvoltwatt_curve`. A Storage selects by `StorageState` and
+    /// `FVWStateRequested`: discharging reads `Fvoltwatt_curve` (or `FvoltwattCH_curve`
+    /// once VW requested a flip); charging with a CH curve reads `FvoltwattCH_curve`
+    /// (or `Fvoltwatt_curve` once flipped); idling — or charging with no CH curve —
+    /// does not limit (`PLimitVWpu := 1.0`).
+    fn calc_pvw_curve_limitpu(&mut self, j: usize, snap: DerSnap) {
         let present_vpu = self.ctrl_vars[j].f_present_vpu;
-        let value = self
-            .voltwatt_curve
-            .as_mut()
-            .expect("voltwatt_curve checked at Sample")
-            .get_y_value(present_vpu);
+        let value = if snap.is_pvsystem {
+            self.voltwatt_curve
+                .as_mut()
+                .expect("voltwatt_curve checked at Sample")
+                .get_y_value(present_vpu)
+        } else {
+            match snap.storage_state {
+                STORE_DISCHARGING => {
+                    if snap.vw_state_requested {
+                        self.voltwattch_curve
+                            .as_mut()
+                            .expect("voltwattCH_curve (discharging + VWStateRequested)")
+                            .get_y_value(present_vpu)
+                    } else {
+                        self.voltwatt_curve
+                            .as_mut()
+                            .expect("voltwatt_curve checked at Sample")
+                            .get_y_value(present_vpu)
+                    }
+                }
+                STORE_CHARGING if self.voltwattch_curve.is_some() => {
+                    if snap.vw_state_requested {
+                        self.voltwatt_curve
+                            .as_mut()
+                            .expect("voltwatt_curve checked at Sample")
+                            .get_y_value(present_vpu)
+                    } else {
+                        self.voltwattch_curve
+                            .as_mut()
+                            .expect("voltwattCH_curve is_some checked above")
+                            .get_y_value(present_vpu)
+                    }
+                }
+                // Idling, or charging without a CH curve: don't limit.
+                _ => 1.0,
+            }
+        };
         self.ctrl_vars[j].p_limit_vw_pu = value;
     }
 

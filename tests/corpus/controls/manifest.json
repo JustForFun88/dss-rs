@@ -1213,7 +1213,7 @@
     }
    ],
    "compare_eventlog": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.10"
   },
   {
@@ -1236,7 +1236,7 @@
     }
    ],
    "compare_eventlog": true,
-   "pending": true,
+   "pending": false,
    "wp": "WPG.10"
   },
   {
