@@ -12,13 +12,14 @@
 //! - `47` (`NegVoltage`) — negative-sequence voltage, one-shot lockout.
 //! - `Distance` (21) — mho-style loop impedance reach.
 //! - `DOC` — directional overcurrent (the dominant corpus type).
-//! - `Generic` / `TD21` — **deferred to WP7.7**: they consume the dynamics
-//!   machinery this phase doesn't have yet (Generic reads a monitored PC
-//!   element's state `Variable[]`; TD21 needs `DynaVars.h`/`Frequency`/
-//!   `IterationFlag` + the per-cycle ring buffer). Their property surface is
-//!   fully ported (so `Type=Generic`/`TD21` parses + dumps); only the `Sample`
-//!   logic records a `NOT_PORTED` error if actually reached. See the dispatch in
-//!   [`Self::sample`].
+//! - `Generic` — reads a monitored PC element's state `Variable[MonitorVarIndex]`
+//!   and trips on an over/under bound (`OverTrip`/`UnderTrip`); the index is
+//!   resolved once in `recalc` via `LookupVariable`. See [`logic::Relay::generic_logic`].
+//! - `TD21` (WPG.12) — the differential time-distance relay: a per-cycle ring
+//!   buffer of terminal V/I (`DynaVars.h`/`Frequency`/`IterationFlag`, now
+//!   available) drives an incremental (pre-fault-referenced) distance reach. See
+//!   [`logic::Relay::td21_logic`]; the four `TD21RelayTest` corpus decks exercise
+//!   it live in dynamics mode.
 //!
 //! Joins the WP5.7 control sweep exactly like the Recloser (no new dispatch):
 //! `Sample` reads `Closed[0]` to refresh `FPresentState`, then runs the
@@ -277,6 +278,26 @@ pub struct Relay {
     dist_k0: Complex64,
     dist_reverse: bool,
 
+    // --- TD21 (time-distance) differential ring-buffer state (Pascal `td21_*`) ---
+    /// Present ring index into `td21_h` (Pascal `td21_i`, constructor −1).
+    td21_i: i32,
+    /// Index one cycle back = the oldest sample and next write slot (`td21_next`).
+    td21_next: i32,
+    /// Number of time samples held (`td21_pt`).
+    td21_pt: i32,
+    /// Length of one time sample in `td21_h` = `2·Nphases` (`td21_stride`).
+    td21_stride: i32,
+    /// Wait this many samples after an operation before sensing again (`td21_quiet`).
+    td21_quiet: i32,
+    /// VI history: `td21_pt` samples × `td21_stride` (V then I, per phase) (`td21_h`).
+    td21_h: Vec<Complex64>,
+    /// Reference (pre-fault) voltages, per phase (`td21_Uref`).
+    td21_uref: Vec<Complex64>,
+    /// Incremental voltages, per phase (`td21_dV`).
+    td21_dv: Vec<Complex64>,
+    /// Incremental currents, per phase (`td21_dI`).
+    td21_di: Vec<Complex64>,
+
     // --- Directional overcurrent (DOC) ---
     doc_tilt_angle_low: f64,
     doc_tilt_angle_high: f64,
@@ -288,8 +309,16 @@ pub struct Relay {
     doc_td_phase_inner: f64,
     doc_p1_blocking: bool,
 
-    // --- Generic (logic deferred to WP7.7) ---
+    // --- Generic (PC state-variable relay) ---
     monitor_variable: String,
+    /// `MonitorVarIndex` — the 1-based state-variable index resolved from
+    /// `MonitorVariable` against the monitored PC element (Pascal
+    /// `RecalcElementData`'s `LookupVariable`); < 1 = unresolved / not found.
+    monitor_var_index: i32,
+    /// The monitored element's state-variable names (1-based, stored 0-based),
+    /// captured when `monitoredobj=` resolves — `recalc` has no foreign-element
+    /// access, so `LookupVariable` matches `MonitorVariable` against this cache.
+    monitor_var_names: Vec<String>,
     over_trip: f64,
     under_trip: f64,
 
@@ -313,9 +342,6 @@ pub struct Relay {
 
     /// `DebugTrace` (no trace file is written; round-tripped only).
     debug_trace: bool,
-    /// Latch so the deferred Generic/TD21 `NOT_PORTED` error is recorded only
-    /// once per object (not once per control iteration).
-    not_ported_logged: bool,
 
     /// Deferred parse-time element forces (the `RecalcElementData` Closed[0] sync).
     pending_ref_actions: Vec<RefAction>,
@@ -381,6 +407,17 @@ impl Relay {
             dist_z0: Complex64::ZERO,
             dist_k0: Complex64::ZERO,
             dist_reverse: false,
+            // TD21 ring buffer: constructor `td21_i := -1`, everything else 0/NIL;
+            // (re)allocated on the first dynamics `Sample` (Pascal `TD21Logic`).
+            td21_i: -1,
+            td21_next: 0,
+            td21_pt: 0,
+            td21_stride: 0,
+            td21_quiet: 0,
+            td21_h: Vec::new(),
+            td21_uref: Vec::new(),
+            td21_dv: Vec::new(),
+            td21_di: Vec::new(),
             doc_tilt_angle_low: 90.0,
             doc_tilt_angle_high: 90.0,
             doc_trip_set_low: 0.0,
@@ -391,6 +428,8 @@ impl Relay {
             doc_td_phase_inner: 1.0,
             doc_p1_blocking: true,
             monitor_variable: String::new(),
+            monitor_var_index: 0,
+            monitor_var_names: Vec::new(),
             over_trip: 1.2,
             under_trip: 0.8,
             present_state: CTRL_CLOSE,
@@ -406,7 +445,6 @@ impl Relay {
             next_trip_time: -1.0,
             last_event_handle: 0,
             debug_trace: false,
-            not_ported_logged: false,
             pending_ref_actions: Vec::new(),
         }
     }
@@ -498,8 +536,9 @@ impl Relay {
     /// with the `Flg.HasOCPDevice`/`HasAutoOCPDevice` reliability flags
     /// (WP7.2 step 3, via [`Self::queue_ocp_flag`]).
     ///
-    /// **Deferred to WP7.7:** the `Generic` `LookupVariable` resolution (the
-    /// Generic logic itself is deferred).
+    /// For a `Generic` relay this also resolves `MonitorVarIndex` from
+    /// `MonitorVariable` via [`Self::lookup_variable`] against the monitored PC
+    /// element's state-variable names (captured at `monitoredobj=` resolution).
     fn recalc(&mut self) {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
@@ -520,6 +559,24 @@ impl Relay {
                     String::new() // Pascal GetBus(i) out of range yields ''
                 };
                 self.ccd.cd.set_bus(1, &bus);
+
+                // Pascal `RecalcElementData` Generic case: resolve the monitored
+                // PC element's state-variable index. Pascal also errors 385 when
+                // the monitored element is not a PC element; the port folds that
+                // into the 386 not-found path — a non-PC element exposes no
+                // variable names, so `LookupVariable` returns < 1 (no corpus deck
+                // exercises Generic relays; PC-ness is not available at recalc).
+                if self.control_type == ctype::GENERIC {
+                    self.monitor_var_index =
+                        Self::lookup_variable(&self.monitor_var_names, &self.monitor_variable);
+                    if self.monitor_var_index < 1 {
+                        self.ccd.cd.obj.push_error(format!(
+                            "Relay \"{}\": Monitor variable \"{}\" does not exist. (Error 386)",
+                            self.ccd.cd.obj.name(),
+                            self.monitor_variable
+                        ));
+                    }
+                }
             }
         }
 
@@ -591,39 +648,26 @@ impl Relay {
             ctype::REVPOWER => self.rev_power_logic(mon, ctx),
             ctype::NEGCURRENT => self.neg_seq46_logic(mon, ctx),
             ctype::NEGVOLTAGE => self.neg_seq47_logic(mon, ctx),
+            ctype::GENERIC => self.generic_logic(mon, ctx),
             ctype::DISTANCE => self.distance_logic(mon, ctx),
+            ctype::TD21 => self.td21_logic(mon, ctx),
             ctype::DOC => self.directional_overcurrent_logic(mon, ctx),
-            // NOT_PORTED(WP7.7): the dynamics-coupled sub-types. Their property
-            // surface parses + dumps; only the live sensing is deferred (no
-            // corpus case exercises them). Recorded **once** per object so a
-            // converging run doesn't accrue a duplicate line per control
-            // iteration (audit-code follow-up).
-            ctype::GENERIC | ctype::TD21 => self.record_not_ported_once(ctx),
             _ => {}
         }
     }
 
-    /// Push the deferred-sub-type `NOT_PORTED` error to `ctx.errors`, but only on
-    /// the first `Sample` (the `not_ported_logged` latch) — see the dispatch.
-    fn record_not_ported_once(&mut self, ctx: &mut CtrlCtx) {
-        if self.not_ported_logged {
-            return;
+    /// Pascal `TPCElement.LookupVariable`: return the 1-based index of the first
+    /// state-variable name (case-insensitively) *prefixed* by `s` — Pascal
+    /// compares `Copy(VariableName(i), 1, Length(S))` against `S` — or −1 if none.
+    fn lookup_variable(names: &[String], s: &str) -> i32 {
+        let test_len = s.chars().count();
+        for (i, name) in names.iter().enumerate() {
+            let prefix: String = name.chars().take(test_len).collect();
+            if prefix.eq_ignore_ascii_case(s) {
+                return (i + 1) as i32;
+            }
         }
-        self.not_ported_logged = true;
-        // The dynamics machinery these need (PC state variables / the dynamics
-        // step loop) landed in WP7.7, so both are now *portable*; they stay
-        // deferred only because every Generic/TD21 corpus deck is Phase-8
-        // `Plot`-blocked (can never enter `solvable_now`), so the corpus-backed
-        // WP7.8 classes take precedence. Tracked-open in STATUS §1e.
-        let what = if self.control_type == ctype::GENERIC {
-            "Type=Generic (PC state-variable relay — deferred, Phase-8 Plot-blocked)"
-        } else {
-            "Type=TD21 (time-distance relay — deferred, Phase-8 Plot-blocked)"
-        };
-        ctx.errors.push(format!(
-            "Relay \"{}\": {what} Sample is NOT_PORTED.",
-            self.ccd.cd.obj.name()
-        ));
+        -1
     }
 
     /// Pascal `TRelayObj.DoPendingAction`: execute a popped queue action — OPEN
@@ -665,6 +709,10 @@ impl Relay {
                         self.log(ctx, " ", "Ground Target");
                     }
                     self.armed_for_open = false;
+                    // TD21: wait a full cycle + 1 sample before sensing resumes.
+                    if self.control_type == ctype::TD21 {
+                        self.td21_quiet = self.td21_pt + 1;
+                    }
                     // Pascal `Closed[]` sets YprimInvalid -> SystemYChanged.
                     *ctx.system_y_changed = true;
                 }
@@ -675,6 +723,10 @@ impl Relay {
                     self.operation_count += 1;
                     self.log(ctx, &self.full_name(), "Closed");
                     self.armed_for_close = false;
+                    // TD21: half a cycle of quiet after a reclose.
+                    if self.control_type == ctype::TD21 {
+                        self.td21_quiet = self.td21_pt / 2;
+                    }
                     *ctx.system_y_changed = true;
                 }
             }
@@ -685,6 +737,10 @@ impl Relay {
                 if self.armed_for_close && !self.locked_out {
                     self.log(ctx, &self.full_name(), "Reset");
                     self.reset_with(ctrl, ctx);
+                    // TD21: half a cycle of quiet after a reset.
+                    if self.control_type == ctype::TD21 {
+                        self.td21_quiet = self.td21_pt / 2;
+                    }
                 }
             }
             _ => {}

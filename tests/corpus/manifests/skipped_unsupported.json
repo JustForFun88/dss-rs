@@ -17,19 +17,9 @@
    "note": "Test/Dynamic_Kundur.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Unknown solution mode. (not ported in"
   },
   {
-   "path": "Test/ReverseTD21RelayTest.DSS",
-   "tag": "unsupported_class=relay",
-   "note": "Test/ReverseTD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter"
-  },
-  {
    "path": "Test/Source012Test.dss",
    "tag": "unsupported_unknown",
    "note": "Test/Source012Test.dss: Rust engine errors after compile: [\"Unknown Command: \\\"\\u{feff}Clear\\\"\"]"
-  },
-  {
-   "path": "Test/TD21RelayTest.DSS",
-   "tag": "unsupported_class=relay",
-   "note": "Test/TD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"phas"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
@@ -85,16 +75,6 @@
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
    "tag": "unsupported_command=var",
    "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Show/Fault/Relay/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
-   "tag": "unsupported_class=relay",
-   "note": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for objec"
-  },
-  {
-   "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
-   "tag": "unsupported_class=relay",
-   "note": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS: Rust engine errors after compile: [\"New Command: Object Type \\\"relay\\\" not found.\", \"Unknown parameter \\\"reset\\\" (value \\\"0.20\\\") for object \\\"Line.thev\\\"\", \"Unknown parameter \\\"recloseintervals\\\" (value \\\"0.02,0.02,0.02\\\") for object \\\"Lin"
   },
   {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",

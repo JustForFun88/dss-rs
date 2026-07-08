@@ -1520,6 +1520,40 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.12 Relay `TD21`/`Generic` Sample logic COMPLETE, gate-green** (branch
+`worktree-agent-aa1a1dd57a1e8d4d4`, 2026-07-08). Ported the two previously-deferred
+Relay sub-type `Sample` logics (`Controls/Relay.pas`), removing the `NOT_PORTED`
+dispatch stubs (and the `record_not_ported_once`/`not_ported_logged` latch).
+**`GenericLogic`** (`Relay.pas:1122`): trips one-shot-to-lockout when a monitored
+PC element's state variable leaves `[UnderTrip, OverTrip]`; `MonitorVarIndex` is
+resolved in `recalc` via `LookupVariable` (`PCElement.pas:201` — case-insensitive
+prefix match) against the monitored element's state-variable names captured at
+`monitoredobj=` resolution (recalc has no live foreign element), and the value is
+read from the live element via `get_all_variables[i-1]` (≡ Pascal `Get_Variable(i)`,
+`generator.pas:2639`). Pascal's error 385 (monitored element not a PC element) is
+folded into the 386 not-found path (a non-PC element exposes no variable names) —
+no corpus deck exercises Generic relays, so it is **unit-tested only**.
+**`TD21Logic`** (`Relay.pas:1447`): the differential time-distance relay — a
+per-cycle ring buffer of terminal V/I sized on the first dynamics step from
+`DynaVars.h`/`Frequency` (`round(1/60/dt+0.5)` samples, FPC banker's; the `1/60`
+literal is hard-coded upstream), forming pre-fault-referenced increments `dV`/`dI`
+and a half-reach directional pickup (`-(Vloop/Iloop)` in Q1 + `|Uhsd|²/|Uref|² > 1`);
+the ring advances + `td21_quiet` decrements only on predictor (`IterationFlag ==
+NewTimeStep`) iterations, and `DoPendingAction` sets the post-op `td21_quiet` windows
+(`pt+1` on open, `pt/2` on close/reset). New TD21 ring-buffer state lives on the
+`Relay` struct (constructor `td21_i = -1`, everything else 0/empty; `MakeLike` does
+**not** copy it, per Pascal). Migrated the four TD21 corpus decks
+(`Test/{,Reverse}TD21RelayTest.DSS` + the two `Version8/Distrib/Examples/DistanceRelays/`
+copies) `skipped_unsupported → solvable_now` (**178→182**, COVERAGE
+**53.1%→54.3%**) with `compare_eventlog: true`: all four pass the always-on live
+dynamics gate (`mode=dynamic stepsize=0.001 number=1200`) — event log (temporary-fault
+trip/clear + permanent-fault lockout sequence) **and** final state exact vs the pinned
+oracle (`corpus_live: 182 matched, 173 with full property parity`). No `TODO(compat)`
+added; the one defensive divergence is a `td21_pt < 1` guard that skips the ring math
+when `dt <= 0` (Pascal would `mod 0`-crash; no deck sets `stepsize <= 0`). New relay
+unit tests: `lookup_variable_prefix_match`, Generic over/under/in-band + recalc-386,
+TD21 ring-alloc + forward-fault trip + reverse no-trip (relay lib tests 39→44).
+
 | Phase | Scope | Status |
 |------|-------|--------|
 | 0 | Tooling, oracle, faer spike, CI, Phase-0 goldens | ✅ done (committed) |
