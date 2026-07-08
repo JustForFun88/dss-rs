@@ -397,6 +397,30 @@ mod dispatch {
             0.0
         }
         fn set_loads_need_updating(&mut self) {}
+        fn der_gfm_mode(&self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_storage_state(&self, _r: ElemRef) -> i32 {
+            0
+        }
+        fn der_ilimit(&self, _r: ElemRef) -> f64 {
+            -1.0
+        }
+        fn der_reset_ibr(&self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_check_amps_limit(&mut self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_check_ol_inverter(&mut self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_set_gfm_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_reset_ibr(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_storage_state_off(&mut self, _r: ElemRef) {}
+        fn is_dynamic_model(&self) -> bool {
+            false
+        }
     }
 
     /// A VOLTVAR control over a `vvc_curve` that absorbs above 1.0 pu, named-list
@@ -1251,19 +1275,23 @@ mod dispatch {
     }
 
     #[test]
-    fn gfm_mode_aborts_not_silently() {
-        // GFM (mode ordinal 7) is still deferred (WP7.7); Sample must reject it
-        // loudly, never silently no-op (the deferral-is-never-a-silent-skip rule).
-        // (AVR is now ported — see `avr_*` below.)
+    fn gfm_mode_is_ported_and_inert_when_der_not_grid_forming() {
+        // GFM (mode ordinal 7) is ported (WPG.13): Sample no longer rejects it.
+        // The GFM arm is a no-op for a DER that is not itself in grid-forming mode
+        // (`der_gfm_mode == false` in the mock), so Sample succeeds and queues
+        // nothing. (The live amps-limiter path is gate-verified by the
+        // `gfm_invcontrol.dss` corpus deck, which drives `CheckAmpsLimit`.)
         let mut ic = InvControl::new("ic1");
         ic.set_i32(prop::MODE, 7); // GFM
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
-        let err = ic.sample(&mut env).unwrap_err();
-        assert!(
-            err.contains("WP7.7 (GFM)"),
-            "expected a GFM NOT_PORTED error, got: {err}"
+        ic.sample(&mut env)
+            .expect("GFM sample is ported (no NOT_PORTED error)");
+        assert_eq!(
+            ic.ctrl_vars[0].f_pending_change,
+            super::super::CHANGE_NONE,
+            "no control action queued for a non-grid-forming DER"
         );
     }
 

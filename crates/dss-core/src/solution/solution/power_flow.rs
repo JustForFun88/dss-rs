@@ -77,8 +77,10 @@ fn log_event(ckt: &mut Circuit, name: &str) {
     );
 }
 
-/// Pascal `GetSourceInjCurrents`: all enabled sources inject into `Currents`.
-/// (The GFM PCE pass is empty in Phase 3.)
+/// Pascal `GetSourceInjCurrents`: all enabled sources inject into `Currents`,
+/// then the grid-forming PC elements (`GetPCInjCurr(TRUE)` — a GFM inverter is
+/// a voltage source behind its `CalcGFMYprim` impedance, so it injects with the
+/// sources, not with the ordinary PC elements).
 fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
@@ -93,10 +95,20 @@ fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
             elem.inj_currents(&sys, &mut ctx);
         }
     }
+    // Adds GFM PCE as well.
+    get_pc_inj_curr_filtered(ckt, env, true);
 }
 
-/// Pascal `GetPCInjCurr`: all enabled PC elements inject into `Currents`.
+/// Pascal `GetPCInjCurr(GFMOnly = FALSE)`: the ordinary (non-grid-forming) PC
+/// elements inject into `Currents`.
 fn get_pc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv) {
+    get_pc_inj_curr_filtered(ckt, env, false);
+}
+
+/// Pascal `TSolutionObj.GetPCInjCurr(GFMOnly)`: inject from the enabled PC
+/// elements, selecting grid-forming vs ordinary by `onGFM` (Pascal
+/// `valid := not (GFMOnly xor onGFM) and Enabled`).
+fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: bool) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
     let mut ctx = InjCtx {
@@ -106,7 +118,8 @@ fn get_pc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv) {
     };
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
-        if elem.cd().enabled {
+        let on_gfm = elem.is_gfm();
+        if !(gfm_only ^ on_gfm) && elem.cd().enabled {
             elem.inj_currents(&sys, &mut ctx);
         }
     }

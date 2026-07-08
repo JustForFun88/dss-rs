@@ -9,6 +9,45 @@
 
 Last updated: 2026-07-09.
 
+**WPG.13 GFM grid-forming mode — power-flow model + InvControl arm COMPLETE,
+gate-green (2026-07-09).** Ported the grid-forming inverter voltage-source model
+for **Storage** and **PVSystem** (snapshot/daily/direct/time-series): the shared
+`TInvDynamicVars.CalcGFMYprim` (short-circuit admittance, R0/X0 1.9/5.7 defaults,
+`a:=10` QuadSolver literal reproduced) + `CalcGFMVoltage` (balanced internal
+phasors at `BaseV`) + `FixPhaseAngle` on `InvDynamicVars` (`inv_based_pce.rs`),
+plus each element's `DoGFM_Mode` (`InjCurrent = YPrim·Vinternal`, the `IComp>0`
+BaseV shrink) and the `TInvBasedPCE.GetCurrents` override (`Curr = YPrim·Vnode −
+InjCurrent`). A GFM PCE is now a **voltage source**: it injects with the sources
+(`GetSourceInjCurrents → GetPCInjCurr(TRUE)`) and is skipped in the ordinary PC
+pass (`GetPCInjCurr(FALSE)`, the `is_gfm()` split in `solution/power_flow.rs`).
+The `dispatch.rs:70` Storage/PVSystem GFM aborts are removed. Cites: `Storage.pas`
+`CalcYPrimMatrix`/`DoGFM_Mode`/`CalcStorageModelContribution`, `PVsystem.pas`
+`DoGFM_Mode`/`CalcYPrimMatrix` GFM branch (l.1300), `InvDynamics.pas`
+`CalcGFMYprim`/`CalcGFMVoltage`, `InvBasedPCE.pas` `GetCurrents`/`CheckAmpsLimit`.
+Also ported **InvControl `mode=GFM`** (ordinal 7): the `Sample` amps-limiter/
+overload arm (`CheckAmpsLimit` sets `dynVars.IComp` → drives the next solve's
+`DoGFM_Mode` BaseV shrink; `CheckOLInverter`) and the `DoPendingAction` overload-
+drops-GFM arm, wired through new `InvDispatchEnv` GFM hooks. Two new
+oracle-validated, feature-sensitive, two-process-deterministic controls decks
+gate it live: `gfm_micro.dss` (islanded Storage GFM — island energised ~0.998 pu
+/ ~400 kW WITH `ControlMode=GFM` vs a DEAD island 0 pu / 0 kW without) and
+`gfm_invcontrol.dss` (InvControl mode=GFM `AmpLimit=400` amps-limiter BITES: ~158
+kW throttled vs ~400 kW unlimited). Storage & PVSystem snapshot GFM bit-match the
+oracle (islbus 2397.53 V, pvbus 277.06 V, 2 iters). Found+fixed a real bug: the
+`check_amps_limit` currents were written to a scratch buffer while `get_currents`
+still flagged the `Iterminal` cache fresh → the post-solve `Get_Powers` read a
+stale (0) `Iterminal` → 0 kW. Fixed to `refresh_iterminal` (Pascal
+`GetCurrents(Iterminal)` writes the real array). **NOT_PORTED (honest, deferred):**
+the **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM,
+`VDelta`/`ISPDelta` droop, per-phase GFM `SolveModulation`) — the numerically
+hardest path. The `GFM_IEEE123`/`GFL_IEEE123` corpus family stays **deferred**
+(not `solvable_now`): re-probed, the block MOVED from the InvControl GFM mode-gate
+to orthogonal blockers — `Plot Profile` (Snap decks) and `set steptime` + dynamics
+GFM (Daily decks); forcing them → live gate red. `skipped_unsupported.json` notes
+refreshed. Generator has no GFM (synchronous machine; `generator.pas` carries no
+GFM code) — doc corrected. Gate: `cargo test --workspace` 0 failures; controls
+live 53 (52 matched + 1 abort).
+
 **WPG.15 audit + settlement (2026-07-09), gate-green.** Independent opus audit
 (code xhigh + tests high) of the merged AutoTrans work: **port faithful 1:1**
 (SetNodeRef / CalcY_Terminal / GICBuildYTerminal / GetCurrents fold / Get_Losses

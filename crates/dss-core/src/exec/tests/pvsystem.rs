@@ -23,13 +23,13 @@ fn pvsystem_snapshot_solves_clean() {
     assert!(dss.circuit().expect("circuit").is_solved);
 }
 
-/// Grid-forming mode (`ControlMode=GFM`) is a settable property (it round-trips)
-/// but its solve behavior (`DoGFM_Mode`/`CalcGFMYprim`) is WP7.7. It must surface
-/// an explicit "not ported" error at solve time, never silently run the regular
-/// PQ model — the `NOT_PORTED`-deferral-is-never-a-silent-fallback convention
-/// (audit-code follow-up).
+/// Grid-forming mode (`ControlMode=GFM`, WPG.13): the PVSystem becomes an
+/// internal balanced voltage source (`CalcGFMVoltage` at `BaseV`) behind its
+/// `CalcGFMYprim` short-circuit impedance, injecting with the sources. With no
+/// local load it delivers ~0 kW at 1.0 pu and solves cleanly (no NOT_PORTED
+/// error now that GFM is ported).
 #[test]
-fn pvsystem_gfm_mode_errors_not_silent() {
+fn pvsystem_gfm_mode_solves() {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("New circuit.t basekv=12.47 phases=3 bus1=src basefreq=60");
@@ -42,12 +42,11 @@ fn pvsystem_gfm_mode_errors_not_silent() {
     dss.command("calcvoltagebases");
     dss.command("solve");
     assert!(
-        dss.errors()
-            .iter()
-            .any(|e| e.contains("grid-forming") && e.contains("WP7.7")),
-        "GFM solve must emit the not-ported error, got: {:?}",
+        dss.errors().is_empty(),
+        "GFM solve must not error now that it is ported, got: {:?}",
         dss.errors()
     );
+    assert!(dss.circuit().expect("circuit").is_solved);
 }
 
 /// A mode-3 (state-variable) monitor on a PVSystem must attach and solve cleanly:
