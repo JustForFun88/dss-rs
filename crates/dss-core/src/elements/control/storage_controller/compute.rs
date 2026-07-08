@@ -38,7 +38,7 @@ impl StorageController {
     /// l.1020): the seasonal kW target. `t_high` selects `SeasonTargets`
     /// (discharge, `THigh=1`) vs `SeasonTargetsLow` (charge, `THigh=0`). Callers
     /// only invoke this under the `DSS.SeasonalRating` guard (l.1099/l.1411).
-    fn get_dynamic_target(&self, env: &mut dyn StorageDispatchEnv, t_high: bool) -> f64 {
+    pub(super) fn get_dynamic_target(&self, env: &mut dyn StorageDispatchEnv, t_high: bool) -> f64 {
         let Some(rating_idx) = env.season_rating_idx() else {
             // `DSS.SeasonSignal` empty: Pascal's `Result` stays its `0` init —
             // NOT the non-seasonal `FkWTarget`/`FkWTargetLow` fallback.
