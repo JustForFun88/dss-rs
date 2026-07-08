@@ -34,6 +34,48 @@ build the unit from *regular* transformers, unchanged by WPG.15). COVERAGE.md
 refreshed (unsupported 73→71, needs_investigation 41→43). WPG.15 is now COMPLETE
 (A/B/C all merged-ready). fmt/clippy/`cargo test --workspace` green.
 
+**WPG.15 Stage C closing audit (2026-07-08):** the remaining Transformer-only
+dispatch points now accept either proxy member via
+`transformer::as_controlled_transformer` — `Export`/`Show Taps` rows
+(`report/{export,show}/taps.rs`), the live `TapNum` view
+(`exec/view.rs::regcontrol_tap_numbers`) and the property-read resync
+(`exec/command.rs`); EnergyMeter's metered-element PD check
+(`energymeter/accessors.rs`, Pascal `BASECLASSMASK = PD_ELEMENT`) counts
+AutoTrans (no transformer special-casing: `IsTransformerElement` matches
+XFMR_ELEMENT only, `Utilities.pas:728`). The Series-connection guard now
+reproduces the Pascal **exception** semantics: `RegControl::sample` returns
+`Result`, and the dispatch maps the raise to `SampleControlDevices`'
+(`Solution.pas:1974`) error-484 + "Solution aborted." path (it previously logged
+per-phase and kept solving). The proxy not-found message renders Pascal's
+`TProxyClass` name `(Transformer|AutoTrans)`. Checked the `enabled=yesa` corpus
+quirk against the spec: dss_capi `InterpretYesNo` (`Utilities.pas:400`) reads the
+*first char* → `yesa` = TRUE; the Rust `interpret_yes_no` is identical (the
+GAPS_PLAN "parses as false" warning does not apply to this engine; the decks
+carrying it stay `needs_investigation` regardless).
+
+**WPG.15 deck-edit audit + Line GIC port (2026-07-08).** Re-verified both
+Stage-B corpus-deck edits against the ORIGINAL decks with a full decomposition
+probe (oracle vs Rust, per-element YPrim/current diffs, iteration counts):
+- `autotrans_snap` (60 Hz): the edit is **legitimate** — on the original
+  near-ideal source deck every element YPrim matches the oracle to ≤1e-16 rel
+  (AutoTrans.t1 2e-20, t2 1e-18), iteration counts are equal (2=2), the auto
+  units' currents are at/below the V-noise floor (t1 2.3e-8 rel, t2 3e-15),
+  and only the `mvasc3=2e6` Vsource + `r1=1e-6` switch currents diverge
+  (5.4e-5 rel = a ~1e-9-rel V wobble divided by 1e-6 Ω) with node-V at
+  ~2.8e-8 rel — a proven faer-vs-KLU conditioning floor, not a maskable bug.
+  The physical-source deck pins the same auto model at the tighter micro tier.
+- `autotrans_gic` (0.1 Hz): the edit had **sidestepped a real gap** — the
+  original deck's 33 % `Line.line1` YPrim divergence was the **unported Line
+  GIC branch** (`TLineObj.ConvertZinvToPosSeqR`, `Line.pas:1297/2086`: below
+  0.51 Hz the series Zinv collapses to the diagonal positive-sequence
+  resistance `Zs−Zm`, X dropped — cross-phase coupling vanishes), not
+  conditioning (the deck's 0.1 Hz state is zero-current on both engines, so no
+  cancellation exists there). **Ported the branch** into `line/solve.rs`
+  (per the "port gaps immediately" rule) and **restored the original deck**,
+  which now passes the full micro-tier compare (Line YPrim 1.2e-16 rel) and
+  pins both the Line GIC conversion and AutoTrans `GICBuildYTerminal`. No other
+  live deck solves below 0.51 Hz (the remaining GIC decks are WPG.16-pending).
+
 **WPG.15 AutoTrans Stage B (2026-07-08): the auto electrical model — live-green.**
 Ported the solve path loop-for-loop: `CalcYPrim` (`AutoTrans.pas:1199` —
 `BuildYPrimComponent` for series+shunt, **no `AddNeutralToY`**); the `SetNodeRef`
