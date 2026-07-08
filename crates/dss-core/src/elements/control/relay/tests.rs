@@ -930,6 +930,27 @@ fn recalc_out_of_range_terminal_errors_384_and_requests_abort() {
     );
 }
 
+/// `recalc` with no controlled (switched) element records error 387 AND
+/// requests a solution abort: Pascal `DoErrorMsg` (`Relay.pas:889`) sets
+/// `SolutionAbort := True` (`DSSGlobals.pas:265`) — same class as 384/388,
+/// unlike the `DoSimpleMsg` errors 385/386 (record-only).
+#[test]
+fn recalc_missing_switched_element_errors_387_and_requests_abort() {
+    // No monitored snapshot and no controlled element resolved: recalc skips
+    // the mon block and hits the "SwitchedObj not set" branch.
+    let mut r = Relay::new("r387");
+    r.recalc();
+    assert!(
+        r.ccd.cd.obj.take_abort(),
+        "error 387 (DoErrorMsg) must request a solution abort"
+    );
+    let errs = r.ccd.cd.obj.take_errors();
+    assert!(
+        errs.iter().any(|e| e.contains("387")),
+        "expected error 387, got {errs:?}"
+    );
+}
+
 // --- TD21 (differential time-distance, 21) ----------------------------------
 
 /// A TD21 relay with a resistive reach (`Z1=1∠0`, `K0=0`, `M=1`), `PhaseTrip=1`.

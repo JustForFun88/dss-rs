@@ -584,7 +584,9 @@ impl Relay {
         }
 
         // Sync the controlled element to the present state and (when enabled)
-        // mark it as an OCP device. Pascal errors 387 if no controlled element.
+        // mark it as an OCP device. Pascal `DoErrorMsg` 387 (Relay.pas:889) sets
+        // `SolutionAbort := True` (`DSSGlobals.pas:265`) when no controlled
+        // element is set — same abort class as errors 384/388, so request it.
         if self.ccd.controlled_element.is_some() {
             self.queue_ocp_flag();
             if self.present_state == CTRL_CLOSE {
@@ -599,7 +601,7 @@ impl Relay {
                 self.queue_switch_force(false);
             }
         } else {
-            self.ccd.cd.obj.push_error(format!(
+            self.ccd.cd.obj.push_error_abort(format!(
                 "Relay: \"{}\": CktElement for SwitchedObj is not set. Element must be defined previously. (Error 387)",
                 self.ccd.cd.obj.name()
             ));
