@@ -2071,6 +2071,96 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     fn set_loads_need_updating(&mut self) {
         *self.loads_need_updating = true;
     }
+
+    // --- grid-forming (GFM) arm ---
+    fn der_gfm_mode(&self, r: ElemRef) -> bool {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.gfm_mode
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.gfm_mode
+        } else {
+            false
+        }
+    }
+    fn der_storage_state(&self, r: ElemRef) -> i32 {
+        self.store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<Storage>()
+            .map_or(0, |st| st.f_state)
+    }
+    fn der_ilimit(&self, r: ElemRef) -> f64 {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.dyn_vars.i_limit
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.dyn_vars.i_limit
+        } else {
+            -1.0
+        }
+    }
+    fn der_reset_ibr(&self, r: ElemRef) -> bool {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.dyn_vars.reset_ibr
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.dyn_vars.reset_ibr
+        } else {
+            false
+        }
+    }
+    fn der_check_amps_limit(&mut self, r: ElemRef) -> bool {
+        let sys = self.sys;
+        let node_v = self.node_v;
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.check_amps_limit(sys, node_v)
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.check_amps_limit(sys, node_v)
+        } else {
+            false
+        }
+    }
+    fn der_check_ol_inverter(&mut self, r: ElemRef) -> bool {
+        let sys = self.sys;
+        let node_v = self.node_v;
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.check_ol_inverter(sys, node_v)
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.check_ol_inverter(sys, node_v)
+        } else {
+            false
+        }
+    }
+    fn der_set_gfm_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.gfm_mode = value;
+            pv.cd.yprim_invalid = true;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.gfm_mode = value;
+            st.cd.yprim_invalid = true;
+        }
+    }
+    fn der_set_reset_ibr(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.dyn_vars.reset_ibr = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.dyn_vars.reset_ibr = value;
+        }
+    }
+    fn der_set_storage_state_off(&mut self, r: ElemRef) {
+        if let Some(st) = self.store.obj_mut(r).as_any_mut().downcast_mut::<Storage>() {
+            st.f_state = 0; // STORE_IDLING ("burning, turn it off")
+            st.state_changed = true;
+        }
+    }
+    fn is_dynamic_model(&self) -> bool {
+        self.sys.is_dynamic_model
+    }
 }
 
 /// Pascal `TExpControl.UpdateAll` (`SolutionAlgs.EndOfTimeStepCleanup`, l.92): after
