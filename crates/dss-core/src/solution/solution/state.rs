@@ -74,6 +74,13 @@ impl SolveMode {
 pub const POWERFLOW: i32 = 1;
 pub const ADMITTANCE: i32 = 2;
 
+/// Random distribution codes (`DSSGlobals.pas`): `Solution.RandomType` (`Set
+/// random=`, `RandomModeEnum` ordinals `none=0`/`Gaussian=1`/`Uniform=2`/
+/// `LogNormal=3`). Consumed by the MonteCarlo `Randomize` paths.
+pub const GAUSSIAN: i32 = 1;
+pub const UNIFORM: i32 = 2;
+pub const LOGNORMAL: i32 = 3;
+
 /// Load-shape class codes (`DSSGlobals.pas`): the class the GENERALTIME /
 /// DYNAMICMODE dispatch picks (`Circuit.ActiveLoadShapeClass`, `Set
 /// LoadShapeClass=`). `USENONE` (-1) = not set → `ShapeFactor = 1+j1`.
