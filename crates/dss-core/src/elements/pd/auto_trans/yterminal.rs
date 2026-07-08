@@ -342,6 +342,29 @@ impl AutoTrans {
         self.y_term_nl = yterm_nl;
     }
 
+    /// Pascal `TAutoTransObj.BuildYPrimComponent` (`AutoTrans.pas:1794`): stamp
+    /// `Y_Terminal` into the phase-expanded `YPrim` component via `TermRef` (each
+    /// entry goes in `nphases` times). Identical to the Transformer's.
+    pub(super) fn build_yprim_component(
+        yp: &mut CMatrix,
+        yt: &CMatrix,
+        term_ref: &[usize],
+        nw: usize,
+        np: usize,
+    ) {
+        let nw2 = 2 * nw;
+        for i in 1..=nw2 {
+            for j in 1..=i {
+                let value = yt.get(i - 1, j - 1);
+                for kk in 0..np {
+                    let r = term_ref[i + kk * nw2];
+                    let c = term_ref[j + kk * nw2];
+                    yp.add_sym(r - 1, c - 1, value);
+                }
+            }
+        }
+    }
+
     /// Pascal `TAutoTransObj.GetAllWindingCurrents` (`AutoTrans.pas:1523`):
     /// `Iterm = Y_Term · Vterm` phase-by-phase, length `2·nphases·NumWindings`.
     /// The Series arm reads the second node from `Vterminal[iphase + Fnphases]`

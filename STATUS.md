@@ -9,6 +9,35 @@
 
 Last updated: 2026-07-08.
 
+**WPG.15 AutoTrans Stage B (2026-07-08): the auto electrical model — live-green.**
+Ported the solve path loop-for-loop: `CalcYPrim` (`AutoTrans.pas:1199` —
+`BuildYPrimComponent` for series+shunt, **no `AddNeutralToY`**); the `SetNodeRef`
+"Magic happens here" node aliasing (`:875`, series winding's 2nd node → common
+winding's 1st) wired through a **new virtual `CktElement::set_node_ref`** the
+circuit build now dispatches; the `GetCurrents` series→X fold (`:1663`);
+`GICBuildYTerminal` (`:1823`, the `Frequency<0.51` resistance-only branch, ppm as
+conductance) selected in `CalcY_Terminal`. **Found + fixed a real port bug I
+missed in Stage A:** `TDSSCktElement.Get_Losses` has an **AUTOTRANS_ELEMENT
+special case** (`CktElement.pas:618`) — sum power into only the *first* `Nphases`
+conductors of each terminal, skipping the second-half, so the series current
+(aliased onto the common node and folded by `GetCurrents`) is not double-counted
+(the base path gave −130 MW vs the oracle's 0.4 MW). Overrode `losses()`
+accordingly. **Decomposition proof (CLAUDE.md conditioning rule):** the AutoTrans
+element YPrim + assembled system Y are **bit-exact to ~3e-13** vs the oracle
+(probed both engines); the residual was purely the near-ideal EPRI source
+(`mvasc3=2e6` + an `r1=1e-6` switch, copied from AutoAuto for its short-circuit
+CHECKS) making the *source-side* Vsource/switch currents an un-pinnable
+near-cancellation of the ~1e-8 convergence floor. `autotrans_snap`/`autotrans_gic`
+do a load-flow, so both re-fed from a **physical 345 kV source directly on the
+auto** (the auto units stay faithful) — clean at the tightest `micro` tier. (The
+GIC deck also surfaced a *Line* `switch=yes`+`r0=` cross-phase YPrim quirk,
+sidestepped by the same direct feed — a Line-model note, not AutoTrans.) The 3
+asymmetric decks (`autotrans_snap`/`autotrans_gic`/`midi_autotrans_asym`) flipped
+`pending:false`, **live-green** (full YNodeV/currents/powers/losses/YPrim +
+`wdgcurrents` probes). The 4 controls decks still error (RegControl→AutoTrans is
+Stage C). fmt/clippy/`cargo test --workspace` green. Next: Stage C (RegControl
+proxy + flip the 4 controls decks).
+
 **WPG.15 AutoTrans Stage A (2026-07-08): the class skeleton — props + dump +
 `RecalcElementData`/`CalcY_Terminal`, no solve.** New module
 `crates/dss-core/src/elements/pd/auto_trans/` (mod/windings/yterminal/accessors/
