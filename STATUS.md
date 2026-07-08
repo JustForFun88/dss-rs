@@ -1789,6 +1789,44 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 CIM Stage B (loads) COMPLETE, gate-green** (branch
+`worktree-agent-a716de72c8222fb0c`, 2026-07-09; base reset from the stale toy-repo
+`d04fbd4` to `phase-8-reporting @ 879f39e`, `.inputs`/`.venv`/`tools/opendss/.venv`
+junctions recreated — the known worktree-race traps). Replaced the Stage A
+`Load (EnergyConsumer)` `NOT_PORTED` arm with the real **EnergyConsumer** sweep
+(`Common/ExportCIMXML.pas:4448-4491`): per-load `StartInstance` +
+`CircuitNode`/`VbaseNode`, the `FLoadModel` → `LoadResponseCharacteristic` id map
+(model 8/Zipv writes no `LoadResponse` node — no CIM arm), `EnergyConsumer.p/q`
+(SSH), `customerCount`, wye→`grounded=true`/delta→`grounded=false` (the
+`TODO(compat)` hard-coded-grounded quirk `4478`), plus **AttachLoadPhases**
+(`1749`) + **AttachSecondaryPhases** (`1736`) → per-phase `EnergyConsumerPhase`
+(the 3-phase early-exit, the split-secondary `s1`/`s2` branch, and the
+non-secondary per-phase loop, driven by ported **PhaseString** `491` +
+**DeltaPhaseString** `638`). Added the **ECP** machinery (`TECPObject` +
+`ECPList`/`ECPHash` as a keyed insertion-ordered `EcpList`, `AddLoadECP` `1130`):
+one `EnergyConnectionProfile` per distinct DSS shape/spectrum profile, keyed
+`Load:<daily>:<duty>:<growth>:<yearly>:<cvr>:<spectrum>` — the spectrum position
+is `NameIfNotNil(SpectrumObj)` (the default `defaultload` appears in the **key**
+but the `dssSpectrum` **node** is default-suppressed), and the yearly position
+picks up OpenDSS's daily→yearly copy. `op_limits`/ECP scratch hoisted to
+`export_cdpsm` scope and threaded through EnergySource + EnergyConsumer; the
+closing `EnergyConnectionProfile` (`4628`) and `OperationalLimitSet`/`CurrentLimit`
+(`4658`) sweeps are now live (loads pass `norm=emerg=0`, so no op-limits yet).
+New writer helpers `phase_kind_node`/`shunt_connection_kind_node`; new
+`cim/export.rs` load `DSSObjType = 59` (`LOAD_ELEMENT 56 | PC_ELEMENT 3`, the
+`GetTermUuid` key prefix). Gate deck `cim_load.dss` (wye/delta/motor/CVR 3-phase +
+1-/2-phase secondaries + a daily-shape ECP; models 1..5) → byte-exact golden
+`tests/golden/cim/cim_load.xml` (759 lines). Note: a load-bearing circuit with no
+series branches (lines/transformers = Stage C/E) leaves every bus base at 0 in the
+oracle's `SetVoltageBases` (deterministic — the 3-process fixture check + oracle
+probe agree), so every non-3-phase load reads as secondary here; all branches are
+still exercised and the export is byte-identical. Full `cargo test --workspace`
+green (corpus_live 13/13, 90.5s). Remaining `NOT_PORTED` arms: Stage C
+(Lines/LineCode/WireData/TSData/CNData/LineGeometry/LineSpacing), Stage D
+(Capacitor/Reactor), Stage E (Transformer/AutoTrans/RegControl), Stage F
+(Generator/PVSystem/Storage/InvControl/ExpControl). **Next = Stage C** (lines +
+switches + conductor catalog).
+
 **WPG.18 CIM XML export — Stage A COMPLETE, gate-green** (branch
 `worktree-agent-a6aed205a5f4a066e`, 2026-07-09; base reset from a stale toy-repo
 `d04fbd4` to `phase-8-reporting @ eba653e`, `.inputs`/`tools/opendss/.venv`
