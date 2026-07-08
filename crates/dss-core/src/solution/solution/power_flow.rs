@@ -3,12 +3,66 @@
 //! dQ/dV seed, `DoPFLOWsolution`, `SolveCircuit`, the live `CheckControls`,
 //! `SolveSnap` and `SolveDirect`.
 
-use crate::circuit::Circuit;
+use num_complex::Complex64;
+
+use crate::circuit::{CAPADD, Circuit, GENADD};
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 
 use super::{ActiveY, NEWTONSOLVE, SolveEnv, SolveMode, SolveResult, sys_ctx};
+
+/// Pascal `TSolutionObj.AddInAuxCurrents` → `TAutoAdd.AddCurrents`
+/// (`Solution.pas` l.2139 / `AutoAdd.pas` l.597): during an AutoAdd candidate
+/// solve, inject the trial generator/capacitor current at the bus under test.
+/// The `AddInAuxCurrents` gate is `SolutionMode = AUTOADDFLAG`, so this no-ops
+/// in any other mode even though only AutoAdd ever sets `use_aux_currents`.
+fn add_in_aux_currents(ckt: &mut Circuit, solve_type: i32) {
+    if ckt.solution.mode != SolveMode::AutoAdd {
+        return;
+    }
+    let aa = &ckt.auto_add_obj;
+    let (add_type, phases, gen_va, ycap, bus_index) =
+        (aa.add_type, aa.phases, aa.gen_va, aa.ycap, aa.bus_index);
+    if bus_index == 0 {
+        return;
+    }
+    // Snapshot the node refs first (drops the `ckt.buses` borrow) so the
+    // `ckt.solution.currents` write below doesn't alias it. Pascal `GetRef(i)`
+    // is 1-based; the Rust accessor is 0-based, and `BusIndex` is Pascal 1-based.
+    let nrefs: Vec<usize> = (1..=phases as usize)
+        .map(|i| ckt.buses[bus_index - 1].get_ref(i - 1))
+        .collect();
+    for nref in nrefs {
+        if nref == 0 {
+            continue; // add in only non-ground currents
+        }
+        let bus_v = ckt.solution.node_v[nref];
+        if bus_v.re == 0.0 && bus_v.im == 0.0 {
+            continue;
+        }
+        // Current INTO the system network.
+        match add_type {
+            GENADD => {
+                let inj = (gen_va / bus_v).conj();
+                if solve_type == NEWTONSOLVE {
+                    ckt.solution.currents[nref] -= inj; // Terminal Current
+                } else {
+                    ckt.solution.currents[nref] += inj; // Injection Current
+                }
+            }
+            CAPADD => {
+                // Constant Y model.
+                if solve_type == NEWTONSOLVE {
+                    ckt.solution.currents[nref] += Complex64::new(0.0, ycap) * bus_v;
+                } else {
+                    ckt.solution.currents[nref] += Complex64::new(0.0, -ycap) * bus_v;
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
 /// `DSS.LogThisEvent(name)` with the solution's clock/iteration fields (the
 /// callers gate on `ckt.LogEvents` themselves, like the Pascal call sites).
@@ -79,7 +133,11 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         if ckt.solution.system_y_changed {
             build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
         }
-        // UseAuxCurrents/AddInAuxCurrents: AutoAdd only, not in Phase 3.
+        // Pascal `if UseAuxCurrents then AddInAuxCurrents(NORMALSOLVE)`
+        // (Solution.pas l.899): AutoAdd's per-candidate trial-device injection.
+        if ckt.solution.use_aux_currents {
+            add_in_aux_currents(ckt, super::NORMALSOLVE);
+        }
 
         if ckt.log_events {
             log_event(ckt, "Solve Sparse Set DoNormalSolution ...");
@@ -277,7 +335,7 @@ fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `SolveSnap`.
-pub(super) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     set_generator_disp_ref(ckt); // Pascal SnapShotInit's first action
     ckt.solution.snap_shot_init();
     let mut total_iterations = 0;

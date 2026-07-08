@@ -7,6 +7,21 @@ use super::*;
 impl Dss {
     /// Pascal `DoSolveCmd`: `ActiveCircuit.Solution.Solve()`.
     pub(super) fn do_solve_cmd(&mut self) {
+        // Pascal `TSolutionObj.Solve`'s `AUTOADDFLAG` arm dispatches to
+        // `ckt.AutoAddObj.Solve()`, which re-enters the executive to add the
+        // winner — impossible from the `(ckt, env)`-scoped solution dispatcher,
+        // so it is intercepted here at the executive layer (exec/auto_add.rs).
+        if self
+            .circuit
+            .as_ref()
+            .expect("gated in command()")
+            .solution
+            .mode
+            == SolveMode::AutoAdd
+        {
+            self.do_auto_add_solve();
+            return;
+        }
         let Dss {
             classes,
             circuit,

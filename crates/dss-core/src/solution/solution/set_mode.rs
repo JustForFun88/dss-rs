@@ -130,7 +130,8 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
         }
         SolveMode::AutoAdd => {
             sol.interval_hrs = 1.0;
-            // AutoAddObj.ModeChanged — AutoAdd is not ported (later phase).
+            // `ckt.AutoAddObj.ModeChanged := TRUE` is set after the match (it
+            // borrows `ckt`, disjoint from the `sol` borrow held here).
         }
         SolveMode::Harmonic => {
             sol.control_mode = CONTROLSOFF;
@@ -148,6 +149,12 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
             sol.preserve_node_voltages = true;
         }
         SolveMode::Direct => {}
+    }
+    // Pascal `TSolveMode.AUTOADDFLAG: ckt.AutoAddObj.ModeChanged := TRUE`
+    // (Solution.pas l.2111) — forces `MakeBusList` to rebuild on the next
+    // AutoAdd solve.
+    if value == SolveMode::AutoAdd {
+        ckt.auto_add_obj.mode_changed = true;
     }
     true
 }

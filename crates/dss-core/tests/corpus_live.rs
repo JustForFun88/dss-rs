@@ -45,10 +45,11 @@ use std::time::{Duration, Instant};
 
 use dss_core::exec::Dss;
 use harness::{
-    ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
-    YMat, YPrim, compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element,
-    compare_eventlog, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
-    compare_probe, compare_system_y, compare_variables, compare_yprim, tol_for,
+    ElementCap, ExportPolicy, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, RowPolicy,
+    VariablesCap, YFingerprint, YMat, YPrim, compare_all_properties, compare_ctrlqueue,
+    compare_discrete, compare_element, compare_eventlog, compare_export, compare_fingerprint,
+    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
+    compare_variables, compare_yprim, tol_for,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -75,6 +76,10 @@ struct CaseResult {
     node_order: Vec<String>,
     n_steps: usize,
     checkpoints: Vec<Checkpoint>,
+    /// WPG.5: the `<CircuitName_>AutoAddLog.csv` contents the AutoAdd solve
+    /// wrote (present only when the case sets `compare_autoadd_log`).
+    #[serde(default)]
+    autoadd_log: Option<String>,
 }
 
 /// One committed-step capture (same shape as the checkpoint goldens, but live).
@@ -85,6 +90,10 @@ struct Checkpoint {
     converged: bool,
     v_re: Vec<f64>,
     v_im: Vec<f64>,
+    /// WPG.5: `DSS.GlobalResult` after this step's solve (present only when the
+    /// case sets `compare_global_result`).
+    #[serde(default)]
+    global_result: String,
     #[serde(default)]
     y: Option<YMat>,
     y_fingerprint: YFingerprint,
@@ -432,6 +441,8 @@ impl Oracle {
             "eventlog": c.compare_eventlog,
             "ctrlqueue": c.compare_ctrlqueue,
             "all_properties": c.compare_all_properties,
+            "global_result": c.compare_global_result,
+            "autoadd_log": c.compare_autoadd_log,
         });
         let r = self.call(&req);
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
@@ -621,6 +632,9 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
             "{label} step {i}: Rust engine errors: {:?}",
             dss.errors()
         );
+        // WPG.5: capture `DSS.GlobalResult` right after the solve — the `?`-query
+        // probes below overwrite it (each `?` clears + resets GlobalResult).
+        let rust_global_result = dss.result().to_string();
         let ctx = format!("{label} step {i}");
 
         // Node order + voltages (immutable circuit borrow).
@@ -786,6 +800,19 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
             compare_ctrlqueue(&dss, &cp.ctrlqueue, &ctx);
         }
 
+        // WPG.5: `DSS.GlobalResult` (`Text.Result`) after the step's solve — the
+        // AutoAdd winner + improvement figure. Tokenized on `,` so the bus name
+        // is exact and the figure is tolerance-compared (a faer-vs-KLU last-digit
+        // floor on the derived scalar is not a divergence).
+        if c.compare_global_result {
+            compare_export(
+                &cp.global_result,
+                &rust_global_result,
+                &global_result_policy(&tol),
+                &format!("{ctx} GlobalResult"),
+            );
+        }
+
         // WP8.5b corpus property parity: every element's every property value,
         // Rust `?`-surface vs oracle `Properties(p).Val`. Additive block AFTER
         // the probes — off unless the case opts in (`compare_all_properties`).
@@ -797,6 +824,63 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
             );
             compare_all_properties(&mut dss, &cp.all_properties, &tol, &ctx);
         }
+    }
+
+    // WPG.5: the `<CircuitName_>AutoAddLog.csv` the AutoAdd solve wrote (both
+    // engines write it to the case dir, cleaned up by the CorpusGuard). Read the
+    // Rust file (still present — the guard restores on drop at function end) and
+    // compare it tokenwise against the oracle's captured contents.
+    if c.compare_autoadd_log {
+        let oracle_log = oc.autoadd_log.as_deref().unwrap_or_else(|| {
+            panic!("{label}: compare_autoadd_log set but the oracle returned no AutoAddLog")
+        });
+        let case_name = dss
+            .circuit()
+            .expect("circuit exists after AutoAdd")
+            .case_name
+            .clone();
+        let dir = Path::new(case_path)
+            .parent()
+            .expect("case_path has a parent dir");
+        let log_path = dir.join(format!("{case_name}_AutoAddLog.csv"));
+        let rust_log = std::fs::read_to_string(&log_path).unwrap_or_else(|e| {
+            panic!("{label}: read Rust AutoAddLog {}: {e}", log_path.display())
+        });
+        compare_export(
+            oracle_log,
+            &rust_log,
+            &autoadd_log_policy(&tol),
+            &format!("{label} AutoAddLog"),
+        );
+    }
+}
+
+/// [`ExportPolicy`] for the AutoAdd `GlobalResult` line (`"<bus>, <figure>"`):
+/// one comma-tokenized row, the bus name exact (text), the improvement figure
+/// on the calibrated `micro` energy floor (a loss-difference scalar, so it
+/// carries the same cancellation-limited tolerance as the log losses).
+fn global_result_policy(tol: &harness::Tolerances) -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: tol.energy_rel,
+        abs: tol.energy_abs,
+        col_tol: Vec::new(),
+    }
+}
+
+/// [`ExportPolicy`] for the `AutoAddLog.csv`: a fixed header row (verbatim) then
+/// one comma-tokenized row per tested bus (bus name exact; kV/loss/UE/%/weighted/
+/// iterations on the `micro` energy floor).
+fn autoadd_log_policy(tol: &harness::Tolerances) -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: tol.energy_rel,
+        abs: tol.energy_abs,
+        col_tol: Vec::new(),
     }
 }
 
@@ -853,6 +937,16 @@ struct SolvableCase {
     /// families proven fully clean by the `corpus_live_properties` pilot triage.
     #[serde(default)]
     compare_all_properties: bool,
+    /// WPG.5: compare `DSS.GlobalResult` (`Text.Result`) per step — the AutoAdd
+    /// winner + improvement figure (`"b3, 0.0180069930672805"`). Tokenized via
+    /// `compare_export` so the bus name is exact and the figure is tolerance-
+    /// compared (a faer-vs-KLU last-digit floor is not a divergence).
+    #[serde(default)]
+    compare_global_result: bool,
+    /// WPG.5: compare the `<CircuitName_>AutoAddLog.csv` the AutoAdd solve writes
+    /// (per-candidate loss/UE search rows), tokenized via `compare_export`.
+    #[serde(default)]
+    compare_autoadd_log: bool,
     /// The feature this case covers is not ported yet (GAPS_PLAN.md §2.3/§3.1):
     /// the family gate asserts the Rust engine errors loudly instead of
     /// live-comparing. The WP in `wp` flips this to `false` when it ports the

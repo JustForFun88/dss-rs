@@ -18,5 +18,5 @@ pub use solution::{
     POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, USEDAILY, USEDUTY, USENONE,
     USEYEARLY, set_mode, set_voltage_bases, solve, solve_zero_load_snapshot, sys_ctx,
 };
-pub(crate) use solution::{calc_initial_machine_states, initialize_for_harmonics};
+pub(crate) use solution::{calc_initial_machine_states, initialize_for_harmonics, solve_snap};
 pub use ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
