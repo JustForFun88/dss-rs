@@ -1,0 +1,24 @@
+! GAPS deck: SolveMode=AutoAdd, addtype=CAPACITOR (Pascal TAutoAdd.Solve CAPADD
+! arm, AutoAdd.pas l.180). The generator sibling (autoadd.dss) covers GENADD; this
+! deck exercises the completely separate capacitor path: per-candidate shunt
+! admittance injection (Ycap), the winner emission `New Capacitor.cadd1 ...`, the
+! GetUniqueCapName allocator, and the <case>_AutoAddedCapacitors.txt append. The
+! lagging loads (pf 0.95 / 0.92) make a shunt capacitor loss-reducing, so the
+! search has a real (feature-sensitive) winner. Requires an EnergyMeter for the
+! loss/UE registers. Writes AutoAddLog. GlobalResult for CAPADD is the winner bus
+! NAME ONLY (no improvement figure — AutoAdd.pas l.560, unlike GENADD).
+Clear
+New Circuit.gaps_aacap basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Line.l3 bus1=b2 bus2=b3 phases=3 r1=0.40 x1=1.00 r0=1.1 x0=2.9 c1=3.0 c0=1.5 length=1.0 units=km
+New Load.ld1 bus1=b2 phases=3 kv=12.47 kw=700 pf=0.95 model=1
+New Load.ld2 bus1=b3 phases=3 kv=12.47 kw=500 pf=0.92 model=1
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set addtype=capacitor capkvar=600
+Set autobuslist=(b1, b2, b3)
+Set mode=AutoAdd
+! Harness-driven (WPG.5): the family gate issues the single `solve` (n_steps=1),
+! so the AutoAdd capacity search runs exactly once — no trailing `Solve` here.

@@ -808,7 +808,7 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
             compare_export(
                 &cp.global_result,
                 &rust_global_result,
-                &global_result_policy(&tol),
+                &global_result_policy(),
                 &format!("{ctx} GlobalResult"),
             );
         }
@@ -855,17 +855,33 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
     }
 }
 
-/// [`ExportPolicy`] for the AutoAdd `GlobalResult` line (`"<bus>, <figure>"`):
-/// one comma-tokenized row, the bus name exact (text), the improvement figure
-/// on the calibrated `micro` energy floor (a loss-difference scalar, so it
-/// carries the same cancellation-limited tolerance as the log losses).
-fn global_result_policy(tol: &harness::Tolerances) -> ExportPolicy {
+/// [`ExportPolicy`] for the AutoAdd `GlobalResult` line: the bus name exact
+/// (text token), the GENADD improvement figure on a **measured** faer-vs-KLU
+/// floor — NOT the generic 1e-4 energy floor.
+///
+/// WPG.5 MINOR (audit): the figure is a mild loss-difference scalar
+/// (`LossWeight·(base_losses − candidate_losses)/GenkW`; ~2× cancellation, well
+/// under one decimal digit), so it is nowhere near a 1e-4 cancellation floor —
+/// the old policy pinned only ~3 sig figs of a 16-digit scalar without proof.
+/// Probing both engines on `autoadd.dss` (the only GENADD figure case):
+///   oracle `0.0180069930672805`  vs  Rust `0.0180069930672506`
+///   → |Δ| = 2.99e-14 abs / 1.66e-12 rel.
+/// That is the true Rust↔oracle reality for this scalar. The floor is set just
+/// above it with margin for last-ulp wobble on the cancellation-amplified value
+/// (rel 1e-10 ≈ 60× the measured rel, abs 1e-12 ≈ 33× the measured abs) — 6
+/// orders TIGHTER than the old 1e-4, so it now pins ~10 sig figs and a real
+/// regression in the weight/normalization/base-loss computation (which would
+/// move the figure ≫1e-10) can no longer hide. CAPADD's GlobalResult is the
+/// winner bus NAME only (no figure), so this floor is exercised solely by the
+/// GENADD case. (CLAUDE.md: floors change only with empirical proof — here,
+/// tightening, the safe direction.)
+fn global_result_policy() -> ExportPolicy {
     ExportPolicy {
         sep: ',',
         header_lines: 0,
         rows: RowPolicy::ExactOrdered,
-        rel: tol.energy_rel,
-        abs: tol.energy_abs,
+        rel: 1e-10,
+        abs: 1e-12,
         col_tol: Vec::new(),
     }
 }
@@ -1624,6 +1640,7 @@ const MODES_REQUIRED: &[&str] = &[
     "monte3.dss",
     "montefault.dss",
     "autoadd.dss",
+    "autoadd_cap.dss",
     "newton.dss",
     "newton_feeder.dss",
     "reactor_rlcurve.dss",
