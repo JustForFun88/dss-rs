@@ -2779,6 +2779,134 @@ SCENARIOS = [
             "New Isource.i1 bus2=b2 bus1=b1 phases=3 amps=10",
         ],
     },
+    # --- GICLine (GAPS_PLAN WPG.16) ------------------------------------------
+    # The 2-terminal induced-EMF source. Defaults: Phases=3, R=1, X=0, C=0,
+    # Frequency=0.1, ScanType/Sequence=0 (zero seq, internal), Bus2 defaults to
+    # Bus1 node-stripped, Volts computed by Compute_VLine (default geodesy).
+    {
+        "name": "gicline_default",
+        "target": "GICLine.l1",
+        "commands": ["New GICLine.l1 bus1=b1 bus2=b2"],
+    },
+    {
+        # Volts explicitly specified (VoltsSpecified=TRUE): Compute_VLine is NOT
+        # invoked, so Volts stays 120 (not the geodesy value).
+        "name": "gicline_volts",
+        "target": "GICLine.l1",
+        "commands": [
+            "New GICLine.l1 bus1=b1 bus2=b2 phases=3 R=3.5 X=0.2 Volts=120 Angle=15",
+        ],
+    },
+    {
+        # Geodesy spec (EN/EE + endpoints): Volts = Compute_VLine, VE/VN from the
+        # lat/lon deltas (DeltaLat=Lat2-Lat1, DeltaLon=Lon2-Lon1).
+        "name": "gicline_geodesy",
+        "target": "GICLine.l1",
+        "commands": [
+            "New GICLine.l1 bus1=b1 bus2=b2 R=2.8 EN=1.0 EE=1.0 "
+            "Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+        ],
+    },
+    {
+        # Blocking capacitor C>0 (the series Xc branch in CalcYPrim; C is a
+        # stored property, no effect on the property dump itself).
+        "name": "gicline_cap",
+        "target": "GICLine.l1",
+        "commands": ["New GICLine.l1 bus1=b1 bus2=b2 R=3.1 C=32.0 Volts=80 Angle=0"],
+    },
+    {
+        # 1-phase, node-stripped default Bus2 (keeps the bus-name part only).
+        "name": "gicline_1phase",
+        "target": "GICLine.l1",
+        "commands": ["New GICLine.l1 bus1=c1.1 phases=1 R=1.5 Volts=50"],
+    },
+    {
+        # MakeLike copies Z/R/X/C/Volts/Angle/SrcFrequency/Scan/Sequence but NOT
+        # the geodesy or VoltsSpecified; the derived object's EndEdit recomputes
+        # Volts from the default geodesy (so EN/EE/Lat/Lon show defaults and
+        # Volts is the default 113.32, not the base's custom value).
+        "name": "gicline_makelike",
+        "target": "GICLine.l1",
+        "commands": [
+            "New GICLine.base bus1=b1 bus2=b2 phases=3 R=2.5 X=0.3 C=5 "
+            "EN=2.0 EE=1.5 Lat1=40 Lon1=-80 Lat2=41 Lon2=-79 Angle=15",
+            "New GICLine.l1 like=base bus1=c1",
+        ],
+    },
+    # --- GICTransformer (GAPS_PLAN WPG.16) -----------------------------------
+    # The resistance-only GIC winding model. Defaults: Phases=3, Type=GSU,
+    # kVLL1=500, kVLL2=138, MVA=100, %R1=%R2=0.2, K=2.2, R1/R2 derived from %R
+    # (R1=5, R2=0.38088 via the FZbase and the FpctR1-for-both quirk).
+    {
+        "name": "gictransformer_default",
+        "target": "GICTransformer.t1",
+        "commands": ["New GICTransformer.t1 busH=b1"],
+    },
+    {
+        # GSU: single winding, R1 spec (InverseValue -> G1), neutral node 4.
+        # FpctRSpecified=FALSE so %R1 is derived from G1 (0.0048), %R2 from the
+        # default G2 (0.2).
+        "name": "gictransformer_gsu",
+        "target": "GICTransformer.tg1",
+        "commands": ["New GICTransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU"],
+    },
+    {
+        # YY: H+X windings, both neutrals on node 4; R1/R2 ohm spec. BusX
+        # promotes Nterms 2->4 (SetBusX write function).
+        "name": "gictransformer_yy",
+        "target": "GICTransformer.tg2",
+        "commands": [
+            "New GICTransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 "
+            "R1=0.2 R2=0.1 type=YY",
+        ],
+    },
+    {
+        # Auto: %R spec on the kV/MVA base + VarCurve; Type=Auto ties Bus2 to
+        # Bus3 (BusNH shows b3x). R1/R2 derived from %R with the FpctR1 quirk
+        # (R2 uses %R1, not %R2).
+        "name": "gictransformer_auto",
+        "target": "GICTransformer.tg3",
+        "commands": [
+            "New XYcurve.vgic npts=3 xarray=(0 1 2) yarray=(0 0.6 1.0)",
+            "New GICTransformer.tg3 busH=b3 busX=b3x busNX=b3.4.4.4 %R1=0.2 %R2=0.15 "
+            "kvll1=345 kvll2=138 mva=300 varcurve=vgic type=Auto",
+        ],
+    },
+    {
+        # MakeLike copies the conductances/spec/kV/MVA/%R/K and the rating tail.
+        "name": "gictransformer_makelike",
+        "target": "GICTransformer.t1",
+        "commands": [
+            "New GICTransformer.base busH=b1 busNH=b1.4.4.4 busX=b1x busNX=b1.4.4.4 "
+            "R1=0.15 R2=0.08 kvll1=345 kvll2=138 mva=250 type=YY",
+            "New GICTransformer.t1 like=base busH=b2",
+        ],
+    },
+    # --- GICsource (GAPS_PLAN WPG.16) ----------------------------------------
+    # The Line-spliced injector: the source's name must match an existing Line.
+    # Defaults: Phases=3, Angle=0, Frequency=0.1, EN/EE=1, default geodesy,
+    # Spectrum forbidden (empty). Volts=Compute_VLine (sign-flipped) unless spec.
+    {
+        "name": "gicsource_volts",
+        "target": "GICsource.seg1",
+        "commands": [
+            "New Line.seg1 bus1=b1 bus2=b2 phases=3 r1=3.2 x1=0.1 r0=3.2 x0=0.1 "
+            "c1=0 c0=0 length=1",
+            "New GICsource.seg1 Volts=110 Angle=0 Frequency=0.1",
+        ],
+    },
+    {
+        # Geodesy spec (VoltsSpecified=FALSE): Volts = Compute_VLine with the
+        # sign-flipped deltas (DeltaLat=Lat1-Lat2).
+        "name": "gicsource_geodesy",
+        "target": "GICsource.seg2",
+        "commands": [
+            "New Line.seg2 bus1=b2 bus2=b3 phases=3 r1=2.7 x1=0.1 r0=2.7 x0=0.1 "
+            "c1=0 c0=0 length=1",
+            "New GICsource.seg2 EN=1.0 EE=1.0 Frequency=0.1 "
+            "Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+        ],
+    },
 ]
 
 

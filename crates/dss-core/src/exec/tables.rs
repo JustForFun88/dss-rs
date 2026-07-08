@@ -176,6 +176,7 @@ pub(crate) mod cmd {
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
     pub const BUSCOORDS: usize = 58;
+    pub const LATLONGCOORDS: usize = 94;
     pub const MAKE_BUS_LIST: usize = 59;
     pub const INTERPOLATE: usize = 62;
     pub const ALIGN_FILE: usize = 63;

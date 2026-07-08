@@ -47,6 +47,38 @@ GFM (Daily decks); forcing them → live gate red. `skipped_unsupported.json` no
 refreshed. Generator has no GFM (synchronous machine; `generator.pas` carries no
 GFM code) — doc corrected. Gate: `cargo test --workspace` 0 failures; controls
 live 53 (52 matched + 1 abort).
+**WPG.16 GIC family (GICTransformer + GICLine + GICsource) — COMPLETE, live-green
+(2026-07-09).** Ported all three GIC classes 1:1 from
+`PDElements/GICTransformer.pas` (595) / `PCElements/GICLine.pas` (679) /
+`PCElements/GICsource.pas` (478). **GICTransformer** (`elements/pd/gic_transformer/`):
+shunt PDElement, pure-conductance blocks (GSU one-G1-block / Auto+YY two-block),
+R1/R2 stored as G1/G2 via `INVERSE_VALUE`, `%R1`/`%R2` on the kV²/MVA base
+(`FpctRSpecified` toggle), `SetBusX` write-fn promotes Nterms 2→4, `Type=Auto`
+ties Bus2:=Bus3, VarCurve XYcurve ref, K default 2.2. Reproduced the upstream
+`RecalcElementData` quirk `G2 := 100/(FZbase2·FpctR1)` (uses **%R1**, not %R2 —
+`TODO(compat)` in `solve.rs`, oracle-confirmed R2=0.12696 for tg3). **GICLine**
+(`elements/pc/gic_line/`): 2-terminal zero-seq Thevenin source, `Compute_VLine`
+geodesy (ΔLat=Lat2−Lat1), series RL·FreqMult + blocking cap `Xc=−1/(2π·f·C·1e-6)`,
+`DumpProperties` override (VE/VN/Z-Matrix). **GICsource** (`elements/pc/gic_source/`):
+NON_PCPD Line-splicer — the executive resolves the same-named Line through the
+foreign view (`edit_active`), `recalc` inserts a `gic_<name>` bus and rewrites the
+Line's Bus2 via a new `RefAction::SetElementBus`; sign-flipped geodesy
+(ΔLat=Lat1−Lat2), fixed series G=10000. Registered at the Pascal DSSClassList
+slots (GICsource after IndMach012; GICLine/GICTransformer after ExpControl) with
+new `ElemKind::GicLine`/`GicTransformer` (PC/PD lists). **One faer-vs-KLU guard:**
+the series-only `CalcVoltageBases` snapshot floats a GICTransformer's X-side bus
+(shunt-only reachability) → faer errors where KLU tolerates; mirrored the Reactor's
+tiny (1e-10) series-diagonal stamp — invisible to the full-YPrim compare (only
+`yprim_series` carries it). Wired the trivially-shared `LatLongCoords` command
+(→ `do_bus_coords_cmd(true)`, swap-XY) so `GICExample/GIC_Example.dss` compiles
+clean. **Gates:** the 4 asymmetric GIC decks (`gicline_gic`/`gictransformer_gic`/
+`gicsource_gic`/`gic_midi`) flipped `pending:false` — full live compare + property
+parity + the bus2 splice probes all green; `props_roundtrip` (+13 GIC scenarios),
+6 GIC `Dump` goldens, and the `dump3_commands` golden (GIC sections rejoined) all
+pass; `GIC_Example.dss` migrated `skipped_unsupported`→`solvable_now` (44 nodes,
+matches oracle; COVERAGE 182→183, unsupported 67→66). No `NOT_PORTED` on the
+element path (`WriteVarOutputRecord`/`Export GICMvar` is the only deferred piece —
+the consuming export verb is unported, tracked separately, not the element).
 
 **WPG.15 audit + settlement (2026-07-09), gate-green.** Independent opus audit
 (code xhigh + tests high) of the merged AutoTrans work: **port faithful 1:1**

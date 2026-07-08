@@ -87,11 +87,6 @@
    "note": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss: Re-probed 2026-07-07 (WPG.14): Isource, Spectrum csvfile=, Plot, Show and mode=harmonics are all ported now (compiles, converges through the harmonics solve, 278 nodes). Rust engine errors after compile: [\"Command \\\"ClearBusMarkers\\\" is not ported yet.\", \"Command \\\"AddBusMarker\\\" is not ported yet.\"]"
   },
   {
-   "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
-   "tag": "unsupported_class=GICLine",
-   "note": "Version8/Distrib/Examples/GICExample/GIC_Example.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Command: Object Type \\\"GICLine\\\" not found.\", \"New Co"
-  },
-  {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
    "tag": "deferred=gfm-dynamics/plot",
    "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (NOT_PORTED) then `set mode=dynamics steptime=...` (the `steptime` Set option + GFL dynamics-mode trajectory, out of WPG.13 scope). Kept deferred; migrating would make the live gate red."

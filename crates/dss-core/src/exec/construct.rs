@@ -223,10 +223,19 @@ impl Dss {
                 |name| Box::new(ind_mach012::IndMach012::new(name)),
                 ElemKind::IndMach012,
             ),
-            // AutoTrans registers after IndMach012, before InvControl (Pascal
-            // DSSClassDefs.pas:270; the GICsource class between them, :267, is
-            // unported). Registration order does not affect node ordering, which
-            // follows element creation order.
+            // GICsource registers directly after IndMach012 (Pascal
+            // DSSClassDefs.pas:267 GIC_SOURCE, before AutoTrans:270). It is
+            // `SOURCE | NON_PCPD_ELEM` like VSource/Isource, so it joins the
+            // `sources` list (ElemKind::Source). Registration order does not
+            // affect node ordering, which follows element creation order.
+            DssClass::ckt_class(
+                gic_source::class_props(),
+                |name| Box::new(gic_source::GicSource::new(name)),
+                ElemKind::Source,
+            ),
+            // AutoTrans registers after GICsource, before InvControl (Pascal
+            // DSSClassDefs.pas:270). Registration order does not affect node
+            // ordering, which follows element creation order.
             DssClass::ckt_class(
                 auto_trans::class_props(&enums),
                 |name| Box::new(auto_trans::AutoTrans::new(name)),
@@ -264,6 +273,20 @@ impl Dss {
                 exp_control::class_props(),
                 |name| Box::new(exp_control::ExpControl::new(name)),
                 ElemKind::Control,
+            ),
+            // GICLine + GICTransformer register after ExpControl (Pascal
+            // DSSClassDefs.pas:279/282, before VSConverter:285). GICLine is a
+            // PC-element voltage source; GICTransformer a shunt PD element.
+            // Registration order does not affect node ordering.
+            DssClass::ckt_class(
+                gic_line::class_props(),
+                |name| Box::new(gic_line::GicLine::new(name)),
+                ElemKind::GicLine,
+            ),
+            DssClass::ckt_class(
+                gic_transformer::class_props(&enums),
+                |name| Box::new(gic_transformer::GicTransformer::new(name)),
+                ElemKind::GicTransformer,
             ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
             DssClass::ckt_class(

@@ -2131,9 +2131,43 @@ DUMP_AT_DECK = [
     # is unchanged, and `WdgCurrents` stays a deterministic zero (no NodeV).
 ]
 
+# GIC family DumpProperties (WPG.16): a small 0.1-Hz GIC net exercising all
+# three classes. GICLine has a real `DumpProperties` override (the Complete-only
+# BaseFrequency/Volts/VMag/VE/VN block + the series Z matrix); GICTransformer
+# (shunt PD) and GICsource (NON_PCPD source) fall through to the generic base
+# dumps. The geodesy GICLine (gl2) pins VE/VN; the YY GICTransformer (tg2) pins
+# the 4-terminal generic block; the spliced GICsource (seg) pins the
+# NON_PCPD/TPCElement dump ordering.
+DUMP_GIC_DECK = [
+    "new circuit.dumpgic basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000",
+    "new gicline.gl1 bus1=b1 bus2=b2 R=3.5 Volts=120 Angle=0",
+    "new gicline.gl2 bus1=b2 bus2=b3 R=2.8 EN=1.0 EE=1.0 "
+    "Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+    "new gictransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU",
+    "new gictransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 "
+    "R1=0.2 R2=0.1 type=YY",
+    "new line.seg bus1=b3 bus2=b4 phases=3 r1=2.7 x1=0.1 r0=2.7 x0=0.1 "
+    "c1=0 c0=0 length=1",
+    "new gicsource.seg Volts=110 Angle=0 Frequency=0.1",
+    "new reactor.g1 phases=3 bus1=b1 r=0.20 x=0",
+    "new reactor.gg1 phases=1 bus1=b1.4 r=0.20 x=0",
+    "new reactor.gg2 phases=1 bus1=b2.4 r=0.15 x=0",
+    "new reactor.g4 phases=3 bus1=b4 r=0.25 x=0",
+    "set voltagebases=[345]",
+    "calcvoltagebases",
+    "set frequency=0.1",
+    "solve",
+]
+
 # (stem, deck, report). Each captures `<case>_PropertyDump.txt` (Dump sets
 # GlobalResult), read back by the Rust golden via `dss.last_result_file()`.
 DUMP_DECKS = [
+    ("dump_gicline", DUMP_GIC_DECK, "gicline.gl2"),
+    ("dump_gicline_debug", DUMP_GIC_DECK, "gicline.gl2 debug"),
+    ("dump_gictransformer", DUMP_GIC_DECK, "gictransformer.tg2"),
+    ("dump_gictransformer_debug", DUMP_GIC_DECK, "gictransformer.tg2 debug"),
+    ("dump_gicsource", DUMP_GIC_DECK, "gicsource.seg"),
+    ("dump_gicsource_debug", DUMP_GIC_DECK, "gicsource.seg debug"),
     ("dump_autotrans", DUMP_AT_DECK, "autotrans.t1"),
     ("dump_autotrans3", DUMP_AT_DECK, "autotrans.t3"),
     ("dump_reactor", DUMP_R_DECK, "reactor.*"),
@@ -2192,17 +2226,13 @@ DUMP3_AUX = [
 DUMP_CAPACITOR_GARBAGE_PREFIXES = ("~ CMatrix=(", "~ FaultRate=", "~ pctPerm=")
 
 # `[<ClassName>]` sections dropped from the `dump3_commands` golden at
-# capture: these classes are NOT_PORTED (AutoTrans → GAPS_PLAN WPG.15,
-# GICsource/GICLine/GICTransformer → WPG.16), so the Rust registry — and
-# therefore its byte-exact `Dump commands` output — has no section for them
-# yet. Prune this tuple (and regenerate) as each class lands; every *ported*
-# class's section stays byte-pinned (order, property names, help). Isource
-# landed in WPG.14 and is pruned from this list.
-DUMP_COMMANDS_UNPORTED_SECTIONS = (
-    "GICsource",
-    "GICLine",
-    "GICTransformer",
-)
+# capture: these classes are NOT_PORTED, so the Rust registry — and therefore
+# its byte-exact `Dump commands` output — has no section for them yet. Prune
+# this tuple (and regenerate) as each class lands; every *ported* class's
+# section stays byte-pinned (order, property names, help). Isource landed in
+# WPG.14; AutoTrans in WPG.15; GICsource/GICLine/GICTransformer in WPG.16 —
+# all pruned. The list is now empty (every registered class has a section).
+DUMP_COMMANDS_UNPORTED_SECTIONS: tuple[str, ...] = ()
 
 
 def strip_unported_class_sections(content: str) -> str:

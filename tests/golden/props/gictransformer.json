@@ -1,0 +1,172 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "gictransformer",
+ "scenarios": [
+  {
+   "name": "gictransformer_default",
+   "commands": [
+    "New GICTransformer.t1 busH=b1"
+   ],
+   "target": "GICTransformer.t1",
+   "properties": {
+    "BusH": "b1",
+    "BusNH": "b1.0.0.0",
+    "BusX": "",
+    "BusNX": "",
+    "Phases": "3",
+    "Type": "GSU",
+    "R1": "5",
+    "R2": "0.38088",
+    "kVLL1": "500",
+    "kVLL2": "138",
+    "MVA": "100",
+    "VarCurve": "",
+    "%R1": "0.2",
+    "%R2": "0.2",
+    "K": "2.2",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gictransformer_gsu",
+   "commands": [
+    "New GICTransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU"
+   ],
+   "target": "GICTransformer.tg1",
+   "properties": {
+    "BusH": "b1",
+    "BusNH": "b1.4.4.4",
+    "BusX": "",
+    "BusNX": "",
+    "Phases": "3",
+    "Type": "GSU",
+    "R1": "0.12",
+    "R2": "0.38088",
+    "kVLL1": "500",
+    "kVLL2": "138",
+    "MVA": "100",
+    "VarCurve": "",
+    "%R1": "0.0048",
+    "%R2": "0.2",
+    "K": "2.2",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gictransformer_yy",
+   "commands": [
+    "New GICTransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 R1=0.2 R2=0.1 type=YY"
+   ],
+   "target": "GICTransformer.tg2",
+   "properties": {
+    "BusH": "b2",
+    "BusNH": "b2.4.4.4",
+    "BusX": "b2x",
+    "BusNX": "b2.4.4.4",
+    "Phases": "3",
+    "Type": "YY",
+    "R1": "0.2",
+    "R2": "0.1",
+    "kVLL1": "500",
+    "kVLL2": "138",
+    "MVA": "100",
+    "VarCurve": "",
+    "%R1": "0.008",
+    "%R2": "0.0525099768956102",
+    "K": "2.2",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gictransformer_auto",
+   "commands": [
+    "New XYcurve.vgic npts=3 xarray=(0 1 2) yarray=(0 0.6 1.0)",
+    "New GICTransformer.tg3 busH=b3 busX=b3x busNX=b3.4.4.4 %R1=0.2 %R2=0.15 kvll1=345 kvll2=138 mva=300 varcurve=vgic type=Auto"
+   ],
+   "target": "GICTransformer.tg3",
+   "properties": {
+    "BusH": "b3",
+    "BusNH": "b3x",
+    "BusX": "b3x",
+    "BusNX": "b3.4.4.4",
+    "Phases": "3",
+    "Type": "Auto",
+    "R1": "0.7935",
+    "R2": "0.12696",
+    "kVLL1": "345",
+    "kVLL2": "138",
+    "MVA": "300",
+    "VarCurve": "vgic",
+    "%R1": "0.2",
+    "%R2": "0.15",
+    "K": "2.2",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gictransformer_makelike",
+   "commands": [
+    "New GICTransformer.base busH=b1 busNH=b1.4.4.4 busX=b1x busNX=b1.4.4.4 R1=0.15 R2=0.08 kvll1=345 kvll2=138 mva=250 type=YY",
+    "New GICTransformer.t1 like=base busH=b2"
+   ],
+   "target": "GICTransformer.t1",
+   "properties": {
+    "BusH": "b2",
+    "BusNH": "b2.0.0.0",
+    "BusX": "",
+    "BusNX": "",
+    "Phases": "3",
+    "Type": "YY",
+    "R1": "0.15",
+    "R2": "0.08",
+    "kVLL1": "345",
+    "kVLL2": "138",
+    "MVA": "250",
+    "VarCurve": "",
+    "%R1": "0.0315059861373661",
+    "%R2": "0.10501995379122",
+    "K": "2.2",
+    "NormAmps": "0",
+    "EmergAmps": "0",
+    "FaultRate": "0",
+    "pctPerm": "100",
+    "Repair": "0",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}
