@@ -200,7 +200,9 @@ impl CktElement for Line {
     }
 
     /// Pascal `TLineObj.CalcYPrim` (sym-component, matrix and geometry paths;
-    /// the long-line correction and the <0.51 Hz GIC conversion are Phase 7+).
+    /// the long-line correction is Phase 7+). Below `0.51 Hz` (GIC) the inverted
+    /// series Z collapses to its positive-sequence resistance
+    /// (`ConvertZinvToPosSeqR`) and the shunt capacitance is skipped.
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
@@ -323,6 +325,43 @@ impl CktElement for Line {
             ));
             return;
         }
+
+        // Pascal `TLineObj.ConvertZinvToPosSeqR` (Line.pas:1297/2086): for a GIC
+        // (~dc) solution use only the positive-sequence *resistance* — re-invert
+        // Zinv back to Z (length included), average the diagonal and (upper
+        // triangle) off-diagonal elements, `Z1 = Zs − Zm` with the X part
+        // dropped, then rebuild Zinv as the diagonal-only inverse. Cross-phase
+        // coupling vanishes (matches the oracle's 0.1 Hz Line YPrim; the
+        // pre-port Rust build kept the r0≠r1 coupling — a proven 33 % YPrim
+        // divergence on `autotrans_gic`'s original switch line).
+        if sys.frequency < 0.51 {
+            // Re-invert Zinv back to Z with length included.
+            if zinv.invert().is_err() {
+                self.cd.obj.push_error(format!(
+                    "Matrix Inversion Error for Line \"{}\". \
+                     Invalid impedance specified. Aborting solution.",
+                    self.cd.obj.name()
+                ));
+                return;
+            }
+            let zs = zinv.avg_diagonal();
+            let zm = zinv.avg_off_diagonal();
+            let z1 = Complex64::new((zs - zm).re, 0.0); // ignore X part
+            zinv.clear();
+            for i in 0..zinv.order() {
+                zinv.set(i, i, z1);
+            }
+            // Back to Zinv for inserting in Yprim.
+            if zinv.invert().is_err() {
+                self.cd.obj.push_error(format!(
+                    "Matrix Inversion Error for Line \"{}\". \
+                     Invalid impedance specified. Aborting solution.",
+                    self.cd.obj.name()
+                ));
+                return;
+            }
+        }
+
         for i in 0..nphases {
             for j in 0..nphases {
                 let value = zinv.get(i, j);

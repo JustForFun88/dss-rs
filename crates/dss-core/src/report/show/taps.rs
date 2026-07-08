@@ -5,7 +5,7 @@
 
 use crate::circuit::Circuit;
 use crate::elements::control::reg_control::RegControl;
-use crate::elements::pd::transformer::Transformer;
+use crate::elements::pd::transformer::as_controlled_transformer;
 use crate::exec::registry::DssClass;
 use crate::report::format;
 
@@ -31,13 +31,19 @@ pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
             continue;
         };
         let tobj = &classes[tref.cls].objects[tref.idx];
-        let Some(tr) = tobj.as_any().downcast_ref::<Transformer>() else {
+        // Either member of the Transformer/AutoTrans proxy (Pascal walks the
+        // shared `TControlledTransformerObj` base).
+        let Some(tr) = as_controlled_transformer(&**tobj) else {
             continue;
         };
 
         let iwind = rc.tr_winding();
-        // `winding_tap_data(i)` = (PresentTap, MaxTap, MinTap, TapIncrement).
-        let (present, max_tap, min_tap, inc) = tr.winding_tap_data(iwind as usize);
+        let (present, max_tap, min_tap, inc) = (
+            tr.present_tap(iwind as usize),
+            tr.max_tap(iwind as usize),
+            tr.min_tap(iwind as usize),
+            tr.tap_increment(iwind as usize),
+        );
         // Pascal `TapPosition(iWind) = Round((PresentTap - (Max+Min)/2)/Increment)`.
         // TODO(compat): FPC `Round` is ties-to-even (see RegControl `get_tap_num`).
         let position = if inc == 0.0 {

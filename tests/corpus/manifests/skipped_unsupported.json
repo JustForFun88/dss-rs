@@ -2,11 +2,6 @@
  "comment": "Entry points using a class/command/mode the port lacks. Required tag: unsupported_class=.. | unsupported_command=.. | unsupported_mode=.. | missing_feature=..",
  "cases": [
   {
-   "path": "Test/AutoTrans/AutoAuto.dss",
-   "tag": "unsupported_class=autotrans",
-   "note": "Test/AutoTrans/AutoAuto.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"autotrans\\\" not found.\", \"Unknown parameter \\\"wdg\\\" (value \\\"1\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"conn\\\" (value \\\"s\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"kV\\\" (value \\\"345.0\\\") "
-  },
-  {
    "path": "Test/CapControlFollow.dss",
    "tag": "unsupported_property=CapControl.ControlSignal",
    "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks. Rust engine error: \"CapControl.cap1ctrl.ControlSignal: this property is not ported yet (Phase 3 slice)\" -> the CapControl then samples with no monitored element set and the solve aborts."
@@ -40,11 +35,6 @@
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss",
    "tag": "unsupported_command=SetkVBase",
    "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is "
-  },
-  {
-   "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
-   "tag": "unsupported_class=autotrans",
-   "note": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss: Rust engine errors after compile: [\"New Command: Object Type \\\"autotrans\\\" not found.\", \"Unknown parameter \\\"wdg\\\" (value \\\"1\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"conn\\\" (value \\\"s\\\") for object \\\"Line.line1\\\"\", \"Unknown parameter \\\"kV"
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",

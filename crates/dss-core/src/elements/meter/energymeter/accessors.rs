@@ -18,8 +18,15 @@ pub(crate) fn capture_metered(full_name: String, obj: &dyn DssObject) -> EmSnaps
         .as_ckt_element()
         .expect("element= resolves to a ckt elem");
     let cd = elem.cd();
+    // Pascal checks `BASECLASSMASK = PD_ELEMENT` — AutoTrans qualifies like any
+    // other PD element (no transformer special-casing in EnergyMeter:
+    // `IsTransformerElement` matches XFMR_ELEMENT only, Utilities.pas:728).
     let is_pd = obj.as_any().downcast_ref::<Line>().is_some()
         || obj.as_any().downcast_ref::<Transformer>().is_some()
+        || obj
+            .as_any()
+            .downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>()
+            .is_some()
         || obj.as_any().downcast_ref::<Capacitor>().is_some()
         || obj.as_any().downcast_ref::<Reactor>().is_some();
     EmSnapshot {

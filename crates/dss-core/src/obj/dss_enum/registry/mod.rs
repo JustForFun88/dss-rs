@@ -52,6 +52,7 @@ impl EnumRegistry {
             load_shape_class: solution.load_shape_class,
             core_type: pd.core_type,
             lead_lag: pd.lead_lag,
+            autotrans_connection: pd.autotrans_connection,
             reg_control_phase: control.reg_control_phase,
             mon_phase: control.mon_phase,
             cap_control_type: control.cap_control_type,

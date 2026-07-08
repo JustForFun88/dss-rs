@@ -203,6 +203,16 @@
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
    "tag": "entry_point",
    "note": "live probe: oracle produced no JSON response\n--- stdout ---\n{\"ok\":true,\"result\":{\"node_order\":[\"SOURCEBUS.1\",\"SOURCEBUS.2\",\"SOURCEBUS.3\",\"SX2000404A.2\",\"SX2000404A.1\",\"SX2000405A.2\",\"SX2000405A.1\",\"SX2000402A.1\",\"SX2000402A.2\",\"SX2000403A.2\",\"SX2000403A.1\",\"SX2804272B.1\",\"SX2804272B.2\",\"SX2001309A.2\",\"SX2001309"
+  },
+  {
+   "path": "Test/AutoTrans/AutoAuto.dss",
+   "tag": "live_mismatch",
+   "note": "AutoTrans class ported (WPG.15); the deck compiles+solves cleanly (0 errors). Live node-V near-cancellation floor ~5e-9 rel / ~1e-3 abs on the 199 kV buses -- the AutoAuto near-ideal source (mvasc3=2e6, needed for its HL/HT/LT short-circuit CHECKS) makes the source-side quantities un-pinnable (the AutoTrans YPrim + assembled system Y are bit-exact ~3e-13; same class as autotrans_snap and the Auto1bus/Auto3bus regular-transformer builds). Vendored deck -- cannot re-feed with a physical source."
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
+   "tag": "live_mismatch",
+   "note": "AutoTrans class ported (WPG.15); the deck compiles+solves cleanly (0 errors). Live node-V near-cancellation floor ~5e-9 rel / ~1e-3 abs on the 199 kV buses -- the AutoAuto near-ideal source (mvasc3=2e6, needed for its HL/HT/LT short-circuit CHECKS) makes the source-side quantities un-pinnable (the AutoTrans YPrim + assembled system Y are bit-exact ~3e-13; same class as autotrans_snap and the Auto1bus/Auto3bus regular-transformer builds). Vendored deck -- cannot re-feed with a physical source."
   }
  ]
 }

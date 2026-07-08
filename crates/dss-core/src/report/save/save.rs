@@ -78,6 +78,11 @@ pub fn write_dss_object(
         .downcast_ref::<crate::elements::pd::transformer::Transformer>()
     {
         xf.save_write_body(out, cx);
+    } else if let Some(at) = obj
+        .as_any()
+        .downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>()
+    {
+        at.save_write_body(out, cx);
     } else {
         save_write(out, cx, &*obj);
     }

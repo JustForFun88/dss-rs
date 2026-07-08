@@ -1,18 +1,19 @@
-//! Trait impls: `CktElement` (reliability/losses, Yprim build), the
+//! Trait impls: `CktElement` (reliability/losses, YPrim build), the
 //! `ControlledTransformer` RegControl surface, and `DssObject` (typed property
-//! getters/setters, the per-winding struct arrays, `MakeLike`).
+//! getters/setters, the per-winding struct arrays, `PropertySideEffects`,
+//! `MakeLike`).
 
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::general::xfmr_code::XfmrCodeObj;
-use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
+use crate::elements::pd::transformer::ControlledTransformer;
+use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
-use super::{ControlledTransformer, Transformer, prop, xsc_size};
+use super::{AutoTrans, prop, xsc_size};
 
-impl CktElement for Transformer {
+impl CktElement for AutoTrans {
     fn cd(&self) -> &CktElementData {
         &self.cd
     }
@@ -40,9 +41,42 @@ impl CktElement for Transformer {
         self.emerg_amps
     }
 
-    /// Pascal `TTransfObj.GetLosses` (Transformer.pas l.1635): no-load losses
-    /// are the power into `Yprim_Shunt` from each terminal; load losses are the
-    /// remainder of the total.
+    /// Pascal `TDSSCktElement.Get_Losses` **AUTOTRANS_ELEMENT special case**
+    /// (`CktElement.pas:618`): sum complex power into only the *first* `Nphases`
+    /// conductors of each terminal and **skip the second-half** conductors
+    /// (`Inc(k, Nphases)`). The series winding's second node is aliased onto the
+    /// common winding's node and `GetCurrents` folds the series current into the
+    /// X terminal, so summing all `Yorder` conductors (the base path) would
+    /// double-count the series power (≈ V_X·conj(I_series), ~150 MW here). The
+    /// base `losses()` must NOT be used for the auto.
+    fn losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Complex64 {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+            return Complex64::ZERO;
+        }
+        self.compute_iterminal(sys, node_v);
+        let cd = self.cd();
+        let np = cd.nphases;
+        let mut result = Complex64::ZERO;
+        let mut k = 0usize;
+        for _ in 0..cd.nterms {
+            for _ in 0..np {
+                let n = cd.node_ref[k];
+                if n > 0 {
+                    result += node_v[n] * cd.iterminal[k].conj();
+                }
+                k += 1;
+            }
+            k += np; // skip the second-half (return) conductors of this terminal
+        }
+        if sys.positive_sequence {
+            result *= 3.0;
+        }
+        result
+    }
+
+    /// Pascal `TAutoTransObj.GetLosses` (`AutoTrans.pas:1674`): no-load losses are
+    /// the power into `Yprim_Shunt` from each terminal; load losses are the
+    /// remainder of the total. Identical to the Transformer split.
     fn get_losses_split(
         &mut self,
         sys: &SysCtx,
@@ -66,9 +100,58 @@ impl CktElement for Transformer {
         (total, load, no_load)
     }
 
-    /// Pascal `TTransfObj.CalcYPrim`: stamp `Y_Term`/`Y_Term_NL` into the
-    /// series/shunt YPrim via `TermRef`, add neutral branches, then apply the
-    /// open-conductor corrections.
+    /// Pascal `TDSSCktElement.SetNodeRef` override (`AutoTrans.pas:875`) — the
+    /// "Magic happens here": after the base copy, for terminal 2 with a Series
+    /// winding 1, alias the series winding's second node onto the common
+    /// winding's first (`NodeRef[Fnphases+i] := NodeRef[i+Fnconds]`), keeping the
+    /// flat array and terminal-2's `TermNodeRef` in sync (both writes are
+    /// reproduced 1:1 — `NodeRef` 1-based, `TermNodeRef` 0-based).
+    fn set_node_ref(&mut self, iterm: usize, node_ref_array: &[usize]) {
+        self.cd.set_node_ref(iterm, node_ref_array);
+        if iterm == 2 && self.windings[0].connection == 2 {
+            let np = self.cd.nphases;
+            let nconds = self.cd.nconds;
+            for i in 1..=np {
+                let src = self.cd.node_ref[nconds + i - 1];
+                self.cd.node_ref[np + i - 1] = src;
+                self.cd.terminals[iterm - 1].term_node_ref[np + i - 1] = src;
+            }
+        }
+    }
+
+    /// Pascal `TAutoTransObj.GetCurrents` override (`AutoTrans.pas:1663`): the
+    /// base PD current (`Iterminal = Yprim·Vterminal`), then **fold the series
+    /// (wdg 1) current into the X terminal** — `Curr[i+Fnconds] += Curr[i+
+    /// Fnphases]` — so the reported X-terminal current is the combined
+    /// series+common winding current.
+    fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
+        {
+            let cd = self.cd_mut();
+            if !cd.enabled || cd.node_ref.is_empty() {
+                curr.fill(Complex64::ZERO);
+                return;
+            }
+            cd.compute_vterminal(node_v);
+            match &cd.yprim {
+                Some(yprim) => yprim.mv_mult(curr, &cd.vterminal),
+                None => {
+                    curr.fill(Complex64::ZERO);
+                    return;
+                }
+            }
+        }
+        let np = self.cd.nphases;
+        let nconds = self.cd.nconds;
+        for i in 0..np {
+            curr[nconds + i] += curr[np + i];
+        }
+    }
+
+    /// Pascal `TAutoTransObj.CalcYPrim` (`AutoTrans.pas:1199`): rebuild `Y_Term`
+    /// at the solution frequency if it changed, stamp it (and `Y_Term_NL`) into
+    /// the series/shunt YPrim via `TermRef`, combine, then apply the
+    /// open-conductor corrections. Unlike the Transformer there is **no**
+    /// `AddNeutralToY` (the auto has no brought-out neutral impedance).
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let yorder = self.cd.yorder;
         let nw = self.num_windings.max(0) as usize;
@@ -86,13 +169,6 @@ impl CktElement for Transformer {
 
         Self::build_yprim_component(&mut yp_series, &self.y_term, &self.term_ref, nw, np);
         Self::build_yprim_component(&mut yp_shunt, &self.y_term_nl, &self.term_ref, nw, np);
-        Self::add_neutral_to_y(
-            &mut yp_series,
-            &self.windings,
-            self.cd.nconds,
-            self.ppm_float_factor,
-            freq_mult,
-        );
 
         yprim.copy_from(&yp_series);
         yprim.add_from(&yp_shunt);
@@ -106,12 +182,12 @@ impl CktElement for Transformer {
     }
 }
 
-impl ControlledTransformer for Transformer {
+impl ControlledTransformer for AutoTrans {
     fn name(&self) -> &str {
         self.cd.obj.name()
     }
     fn full_name(&self) -> String {
-        format!("Transformer.{}", self.cd.obj.name())
+        format!("AutoTrans.{}", self.cd.obj.name())
     }
     fn n_phases(&self) -> usize {
         self.cd.nphases
@@ -123,16 +199,16 @@ impl ControlledTransformer for Transformer {
         self.cd.yorder
     }
     fn wdg_connection(&self, term: usize) -> i32 {
-        Transformer::wdg_connection(self, term)
+        AutoTrans::wdg_connection(self, term)
     }
     fn rotate_phases(&self, iphs: usize) -> usize {
         self.rotate_phases_1based(iphs)
     }
     fn base_voltage(&self, term: usize) -> f64 {
-        Transformer::base_voltage(self, term)
+        AutoTrans::base_voltage(self, term)
     }
     fn present_tap(&self, w: usize) -> f64 {
-        Transformer::present_tap(self, w)
+        AutoTrans::present_tap(self, w)
     }
     fn min_tap(&self, w: usize) -> f64 {
         self.winding_tap_data(w).2
@@ -144,7 +220,7 @@ impl ControlledTransformer for Transformer {
         self.winding_tap_data(w).3
     }
     fn set_present_tap(&mut self, w: usize, value: f64) -> bool {
-        Transformer::set_present_tap(self, w, value)
+        AutoTrans::set_present_tap(self, w, value)
     }
     fn power_into_re(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> f64 {
         self.power_into(term, node_v, sys).re
@@ -157,7 +233,7 @@ impl ControlledTransformer for Transformer {
     }
 }
 
-impl DssObject for Transformer {
+impl DssObject for AutoTrans {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
     }
@@ -187,8 +263,7 @@ impl DssObject for Transformer {
             NUMTAPS => self.windings[self.aw()].num_taps,
             LEADLAG => self.hv_leads_lv as i32,
             CORE => self.core_type,
-            SEASONS => self.num_amp_ratings,
-            _ => unreachable!("Transformer has no integer property {idx}"),
+            _ => unreachable!("AutoTrans has no integer property {idx}"),
         }
     }
     fn set_i32(&mut self, idx: usize, value: i32) {
@@ -207,8 +282,7 @@ impl DssObject for Transformer {
             }
             LEADLAG => self.hv_leads_lv = value != 0,
             CORE => self.core_type = value,
-            SEASONS => self.num_amp_ratings = value,
-            _ => unreachable!("Transformer has no integer property {idx}"),
+            _ => unreachable!("AutoTrans has no integer property {idx}"),
         }
     }
 
@@ -220,14 +294,12 @@ impl DssObject for Transformer {
             KVA => self.windings[w].kva,
             TAP => self.windings[w].putap,
             PCTR => self.windings[w].rpu,
-            RNEUT => self.windings[w].rneut,
-            XNEUT => self.windings[w].xneut,
+            RDCOHMS => self.windings[w].rdcohms,
             MAXTAP => self.windings[w].max_tap,
             MINTAP => self.windings[w].min_tap,
-            RDCOHMS => self.windings[w].rdcohms,
-            XHL | X12 => self.xhl,
-            XHT | X13 => self.xht,
-            XLT | X23 => self.xlt,
+            XHX => self.puxhx,
+            XHT => self.puxht,
+            XXT => self.puxxt,
             THERMAL => self.thermal_time_const,
             N => self.n_thermal,
             M => self.m_thermal,
@@ -245,7 +317,7 @@ impl DssObject for Transformer {
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
             BASE_FREQ => self.cd.base_frequency,
-            _ => unreachable!("Transformer has no double property {idx}"),
+            _ => unreachable!("AutoTrans has no double property {idx}"),
         }
     }
     fn set_f64(&mut self, idx: usize, value: f64) {
@@ -256,14 +328,12 @@ impl DssObject for Transformer {
             KVA => self.windings[w].kva = value,
             TAP => self.windings[w].putap = value,
             PCTR => self.windings[w].rpu = value,
-            RNEUT => self.windings[w].rneut = value,
-            XNEUT => self.windings[w].xneut = value,
+            RDCOHMS => self.windings[w].rdcohms = value,
             MAXTAP => self.windings[w].max_tap = value,
             MINTAP => self.windings[w].min_tap = value,
-            RDCOHMS => self.windings[w].rdcohms = value,
-            XHL | X12 => self.xhl = value,
-            XHT | X13 => self.xht = value,
-            XLT | X23 => self.xlt = value,
+            XHX => self.puxhx = value,
+            XHT => self.puxht = value,
+            XXT => self.puxxt = value,
             THERMAL => self.thermal_time_const = value,
             N => self.n_thermal = value,
             M => self.m_thermal = value,
@@ -281,7 +351,7 @@ impl DssObject for Transformer {
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,
             BASE_FREQ => self.cd.base_frequency = value,
-            _ => unreachable!("Transformer has no double property {idx}"),
+            _ => unreachable!("AutoTrans has no double property {idx}"),
         }
     }
 
@@ -291,7 +361,7 @@ impl DssObject for Transformer {
             SUB => self.is_substation,
             XRCONST => self.xrconst,
             ENABLED => self.cd.enabled,
-            _ => unreachable!("Transformer has no boolean property {idx}"),
+            _ => unreachable!("AutoTrans has no boolean property {idx}"),
         }
     }
     fn set_bool(&mut self, idx: usize, value: bool) {
@@ -300,7 +370,7 @@ impl DssObject for Transformer {
             SUB => self.is_substation = value,
             XRCONST => self.xrconst = value,
             ENABLED => self.cd.set_enabled(value),
-            _ => unreachable!("Transformer has no boolean property {idx}"),
+            _ => unreachable!("AutoTrans has no boolean property {idx}"),
         }
     }
 
@@ -309,9 +379,8 @@ impl DssObject for Transformer {
         match idx {
             SUBNAME => self.substation_name.clone(),
             BANK => self.xfmr_bank.clone(),
-            XFMRCODE => self.xfmr_code_name.clone(),
             WDGCURRENTS => self.winding_currents_result(),
-            _ => unreachable!("Transformer has no string property {idx}"),
+            _ => unreachable!("AutoTrans has no string property {idx}"),
         }
     }
     fn set_string(&mut self, idx: usize, value: String) {
@@ -321,29 +390,27 @@ impl DssObject for Transformer {
             BANK => self.xfmr_bank = value,
             // WdgCurrents is a read-only result property (silent ignore).
             WDGCURRENTS => {}
-            _ => unreachable!("Transformer has no string property {idx}"),
+            _ => unreachable!("AutoTrans has no string property {idx}"),
         }
     }
 
     fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
         match idx {
             prop::XSCARRAY => Some(&self.xsc),
-            prop::RATINGS => Some(&self.kva_ratings),
-            _ => unreachable!("Transformer has no array property {idx}"),
+            _ => unreachable!("AutoTrans has no array property {idx}"),
         }
     }
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         match idx {
             prop::XSCARRAY => self.xsc = value,
-            prop::RATINGS => self.kva_ratings = value,
-            _ => unreachable!("Transformer has no array property {idx}"),
+            _ => unreachable!("AutoTrans has no array property {idx}"),
         }
     }
 
     fn array_size(&self, idx: usize) -> usize {
         match idx {
             prop::XSCARRAY => xsc_size(self.num_windings),
-            _ => unreachable!("Transformer has no function-sized array {idx}"),
+            _ => unreachable!("AutoTrans has no function-sized array {idx}"),
         }
     }
 
@@ -356,7 +423,7 @@ impl DssObject for Transformer {
                 KVAS => w.kva,
                 TAPS => w.putap,
                 PCTRS => w.rpu,
-                _ => unreachable!("Transformer has no struct array {idx}"),
+                _ => unreachable!("AutoTrans has no struct array {idx}"),
             })
             .collect()
     }
@@ -369,7 +436,7 @@ impl DssObject for Transformer {
                 KVAS => w.kva = *v,
                 TAPS => w.putap = *v,
                 PCTRS => w.rpu = *v,
-                _ => unreachable!("Transformer has no struct array {idx}"),
+                _ => unreachable!("AutoTrans has no struct array {idx}"),
             }
         }
         self.active_winding = self.num_windings;
@@ -378,7 +445,7 @@ impl DssObject for Transformer {
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
             prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
-            _ => unreachable!("Transformer has no struct enum array {idx}"),
+            _ => unreachable!("AutoTrans has no struct enum array {idx}"),
         }
     }
     fn set_struct_i32_array(&mut self, idx: usize, values: &[i32]) {
@@ -388,14 +455,14 @@ impl DssObject for Transformer {
                     w.connection = *v;
                 }
             }
-            _ => unreachable!("Transformer has no struct enum array {idx}"),
+            _ => unreachable!("AutoTrans has no struct enum array {idx}"),
         }
         self.active_winding = self.num_windings;
     }
 
     fn set_active_struct_bus(&mut self, value: &str) {
         let t = self.aw() + 1;
-        self.cd.set_bus(t, value);
+        self.set_bus_auto(t, value);
     }
     fn get_active_struct_bus(&self) -> String {
         self.cd.get_bus(self.aw() + 1).to_string()
@@ -403,7 +470,7 @@ impl DssObject for Transformer {
     fn set_struct_buses(&mut self, values: &[Option<String>]) {
         for (i, v) in values.iter().enumerate() {
             if let Some(v) = v {
-                self.cd.set_bus(i + 1, v);
+                self.set_bus_auto(i + 1, v);
             }
         }
         self.active_winding = self.num_windings;
@@ -414,41 +481,34 @@ impl DssObject for Transformer {
             .collect()
     }
 
-    /// `xfmrcode=`: store the resolved code's name + ElemRef and copy its data
-    /// immediately (Pascal `FetchXfmrCode`).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
-        match idx {
-            prop::XFMRCODE => {
-                self.xfmr_code_name = name;
-                self.xfmr_code_ref = resolved.map(|(r, _)| r);
-                if let Some((_, obj)) = resolved
-                    && let Some(code) = obj.as_any().downcast_ref::<XfmrCodeObj>()
-                {
-                    self.fetch_xfmr_code(code);
-                }
-            }
-            _ => unreachable!("Transformer has no resolved object-ref property {idx}"),
-        }
-    }
-
-    /// Pascal `TTransfObj.PropertySideEffects`.
+    /// Pascal `TAutoTransObj.PropertySideEffects` (`AutoTrans.pas:574`).
     fn side_effects(&mut self, idx: usize, prev_int: i32) {
         use prop::*;
         match idx {
             PHASES => {
                 if self.cd.nphases as i32 != prev_int {
-                    let nc = self.cd.nphases + 1;
+                    let nc = 2 * self.cd.nphases;
                     self.cd.set_nconds(nc);
                 }
             }
             CONN => {
+                // Force winding 1 = Series, winding 2 = Wye regardless of input.
+                match self.active_winding {
+                    1 => self.windings[0].connection = 2,
+                    2 => self.windings[1].connection = 0,
+                    _ => {}
+                }
                 self.cd.yorder = self.cd.nconds * self.cd.nterms;
-                self.cd.yprim_invalid = true;
+            }
+            CONNS => {
+                for i in 1..=self.num_windings.max(0) as usize {
+                    match i {
+                        1 => self.windings[0].connection = 2,
+                        2 => self.windings[1].connection = 0,
+                        _ => {}
+                    }
+                }
+                self.cd.yorder = self.cd.nconds * self.cd.nterms;
             }
             WINDINGS => self.realloc_windings(prev_int),
             KVA => {
@@ -468,32 +528,30 @@ impl DssObject for Transformer {
                     self.pct_load_loss = (self.windings[0].rpu + self.windings[1].rpu) * 100.0;
                 }
             }
+            RDCOHMS => {
+                let w = self.aw();
+                self.windings[w].rdc_specified = true;
+            }
             KVAS => {
                 let k = self.windings[0].kva;
                 self.norm_max_hkva = 1.1 * k;
                 self.emerg_max_hkva = 1.5 * k;
             }
-            XHL | XHT | XLT | X12 | X13 | X23 => {
+            XHX | XHT | XXT => {
+                // SpecSet1 {XHX,XHT,XXT} vs SpecSet2 {XSCArray}.
                 self.cd.obj.clear_seq(XSCARRAY);
-                self.cd.obj.clear_seq(XFMRCODE);
-                self.xhl_changed = true;
+                self.xhx_changed = true;
             }
             PCTLOADLOSS => {
+                // Assume load loss split evenly between windings 1 and 2.
                 if self.windings.len() >= 2 {
                     let r = self.pct_load_loss / 2.0 / 100.0;
                     self.windings[0].rpu = r;
                     self.windings[1].rpu = r;
                 }
             }
-            RDCOHMS => {
-                let w = self.aw();
-                self.windings[w].rdc_specified = true;
-            }
-            SEASONS => self
-                .kva_ratings
-                .resize(self.num_amp_ratings.max(0) as usize, 0.0),
             XSCARRAY => {
-                for p in [XHL, XHT, XLT, X12, X13, X23, XFMRCODE] {
+                for p in [XHX, XHT, XXT] {
                     self.cd.obj.clear_seq(p);
                 }
             }
@@ -503,57 +561,54 @@ impl DssObject for Transformer {
         // YPrim invalidation on anything that changes impedance values.
         if matches!(
             idx,
-            TAP | TAPS
-                | KV
+            CONN | KV
                 | KVA
+                | TAP
                 | PCTR
-                | RNEUT
-                | XNEUT
+                | RDCOHMS
+                | CORE
                 | BUSES
                 | CONNS
                 | KVS
                 | KVAS
+                | TAPS
+                | XHX
+                | XHT
+                | XXT
                 | PCTLOADLOSS
                 | PCTNOLOADLOSS
                 | PCTIMAG
                 | PPM_ANTIFLOAT
                 | PCTRS
-                | XHL
-                | XHT
-                | XLT
-                | X12
-                | X13
-                | X23
                 | XSCARRAY
         ) {
             self.cd.yprim_invalid = true;
         }
     }
 
-    /// Pascal base `EndEdit` → `RecalcElementData` (Transformer does not
-    /// override `EndEdit`, unlike Line).
+    /// Pascal base `EndEdit` → `RecalcElementData`.
     fn end_edit(&mut self) {
         self.recalc();
     }
 
-    /// Pascal `TTransfObj.MakeLike`.
+    /// Pascal `TAutoTransObj.MakeLike` (`AutoTrans.pas:773`).
     fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(o) = other.as_any().downcast_ref::<Transformer>() else {
+        let Some(o) = other.as_any().downcast_ref::<AutoTrans>() else {
             return;
         };
         self.cd.make_like_base(&o.cd);
         self.cd.nphases = o.cd.nphases;
         self.set_num_windings(o.num_windings);
-        let nc = self.cd.nphases + 1;
-        self.cd.set_nconds(nc); // forces terminal/conductor reallocation
+        let nc = 2 * self.cd.nphases; // forces terminal/conductor reallocation
+        self.cd.set_nconds(nc);
         self.cd.yprim_invalid = true;
 
         self.windings.clone_from(&o.windings);
         self.set_term_ref();
 
-        self.xhl = o.xhl;
-        self.xht = o.xht;
-        self.xlt = o.xlt;
+        self.puxhx = o.puxhx;
+        self.puxht = o.puxht;
+        self.puxxt = o.puxxt;
         let n = xsc_size(self.num_windings);
         for i in 0..n {
             self.xsc[i] = o.xsc[i];
@@ -576,23 +631,15 @@ impl DssObject for Transformer {
         self.xrconst = o.xrconst;
 
         self.xfmr_bank = o.xfmr_bank.clone();
-        self.xfmr_code_name = o.xfmr_code_name.clone();
-        self.xfmr_code_ref = o.xfmr_code_ref;
-
-        self.num_amp_ratings = o.num_amp_ratings;
-        self.kva_ratings.clone_from(&o.kva_ratings);
     }
 
-    /// Target side of RegControl's deferred `TapNum` write (Pascal
-    /// `Set_TapNum` pokes `tr.PresentTap[w]` directly).
+    /// Target side of RegControl's deferred `TapNum` write (Pascal `Set_TapNum`
+    /// pokes `tr.PresentTap[w]` directly).
     fn apply_ref_action(&mut self, action: &crate::obj::base::RefAction) {
         match action {
             crate::obj::base::RefAction::SetTransformerTap { winding, tap, .. } => {
                 self.set_present_tap(*winding, *tap);
             }
-            // `SetSwitchClosed`/`SetConductorsClosed`/`SetOcpDevice` are applied
-            // generically by the executive (they act on the CktElement base),
-            // never routed here.
             crate::obj::base::RefAction::SetSwitchClosed { .. }
             | crate::obj::base::RefAction::SetConductorsClosed { .. }
             | crate::obj::base::RefAction::SetOcpDevice { .. } => {}

@@ -57,6 +57,130 @@ yaxis-0 `%Available` live-`DCkW` `Calc_PBase` branch and the `FVWStateRequested`
 curve-swap now have dedicated `inv_control/tests.rs` unit tests (the gate decks
 use the yaxis-1 default + no requested-flip).
 
+**WPG.15 AutoTrans Stage C (2026-07-08): RegControl + corpus — COMPLETE, live-green.**
+RegControl's `transformer=` now resolves against **both** classes (Pascal
+`Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`) via a new
+`PropDef::object_ref_two_classes` + a `parse.rs` second-class fallback; the
+control-loop dispatch (`solution/controls/dispatch.rs`) and `RegControl`'s
+`set_object_ref` accept either `Transformer` or `AutoTrans`. **AutoTrans
+implements `ControlledTransformer`** (tap accessors `present_tap`/`set_present_tap`
+(`:1432`)/`winding_tap_data`/`wdg_connection`/`base_voltage`, `GetWindingVoltages`
+Series arm (`:1604`), `power_into` reading the terminal's `TermNodeRef` since the
+`SetNodeRef` magic desyncs it from the flat `NodeRef`). Added a `full_name()` to
+the trait so the Series-connection guard (`RegControl.pas:1009`) reports the
+concrete class. **Monitor mode-2 tap monitor** now accepts AutoTrans alongside
+Transformer (`Monitor.pas:542-543`). The 4 controls decks
+(`autotrans_reg`/`autotrans_both`/`midi_autotrans`/`midi_autotrans_both`) flipped
+`pending:false`, **live-green** (event logs equal, `tapnum`/`taps`/`wdgcurrents`
+probes exact, the `both` decks pin the snapshot→daily transition). **Corpus
+re-classify:** all AutoTrans corpus decks now compile+solve (0 errors — AutoTrans
++ `BatchEdit` land it); `AutoAuto.dss` (both copies) moved
+`unsupported_class=autotrans` → `skipped_needs_investigation` (class ported; a
+near-ideal-source ~5e-9-rel node-V floor, same class as autotrans_snap — vendored,
+its short-circuit checks need `mvasc3=2e6`); Auto1bus/Auto3bus/AutoHLT stay (they
+build the unit from *regular* transformers, unchanged by WPG.15). COVERAGE.md
+refreshed (unsupported 73→71, needs_investigation 41→43). WPG.15 is now COMPLETE
+(A/B/C all merged-ready). fmt/clippy/`cargo test --workspace` green.
+
+**WPG.15 Stage C closing audit (2026-07-08):** the remaining Transformer-only
+dispatch points now accept either proxy member via
+`transformer::as_controlled_transformer` — `Export`/`Show Taps` rows
+(`report/{export,show}/taps.rs`), the live `TapNum` view
+(`exec/view.rs::regcontrol_tap_numbers`) and the property-read resync
+(`exec/command.rs`); EnergyMeter's metered-element PD check
+(`energymeter/accessors.rs`, Pascal `BASECLASSMASK = PD_ELEMENT`) counts
+AutoTrans (no transformer special-casing: `IsTransformerElement` matches
+XFMR_ELEMENT only, `Utilities.pas:728`). The Series-connection guard now
+reproduces the Pascal **exception** semantics: `RegControl::sample` returns
+`Result`, and the dispatch maps the raise to `SampleControlDevices`'
+(`Solution.pas:1974`) error-484 + "Solution aborted." path (it previously logged
+per-phase and kept solving). The proxy not-found message renders Pascal's
+`TProxyClass` name `(Transformer|AutoTrans)`. Checked the `enabled=yesa` corpus
+quirk against the spec: dss_capi `InterpretYesNo` (`Utilities.pas:400`) reads the
+*first char* → `yesa` = TRUE; the Rust `interpret_yes_no` is identical (the
+GAPS_PLAN "parses as false" warning does not apply to this engine; the decks
+carrying it stay `needs_investigation` regardless).
+
+**WPG.15 deck-edit audit + Line GIC port (2026-07-08).** Re-verified both
+Stage-B corpus-deck edits against the ORIGINAL decks with a full decomposition
+probe (oracle vs Rust, per-element YPrim/current diffs, iteration counts):
+- `autotrans_snap` (60 Hz): the edit is **legitimate** — on the original
+  near-ideal source deck every element YPrim matches the oracle to ≤1e-16 rel
+  (AutoTrans.t1 2e-20, t2 1e-18), iteration counts are equal (2=2), the auto
+  units' currents are at/below the V-noise floor (t1 2.3e-8 rel, t2 3e-15),
+  and only the `mvasc3=2e6` Vsource + `r1=1e-6` switch currents diverge
+  (5.4e-5 rel = a ~1e-9-rel V wobble divided by 1e-6 Ω) with node-V at
+  ~2.8e-8 rel — a proven faer-vs-KLU conditioning floor, not a maskable bug.
+  The physical-source deck pins the same auto model at the tighter micro tier.
+- `autotrans_gic` (0.1 Hz): the edit had **sidestepped a real gap** — the
+  original deck's 33 % `Line.line1` YPrim divergence was the **unported Line
+  GIC branch** (`TLineObj.ConvertZinvToPosSeqR`, `Line.pas:1297/2086`: below
+  0.51 Hz the series Zinv collapses to the diagonal positive-sequence
+  resistance `Zs−Zm`, X dropped — cross-phase coupling vanishes), not
+  conditioning (the deck's 0.1 Hz state is zero-current on both engines, so no
+  cancellation exists there). **Ported the branch** into `line/solve.rs`
+  (per the "port gaps immediately" rule) and **restored the original deck**,
+  which now passes the full micro-tier compare (Line YPrim 1.2e-16 rel) and
+  pins both the Line GIC conversion and AutoTrans `GICBuildYTerminal`. No other
+  live deck solves below 0.51 Hz (the remaining GIC decks are WPG.16-pending).
+
+**WPG.15 AutoTrans Stage B (2026-07-08): the auto electrical model — live-green.**
+Ported the solve path loop-for-loop: `CalcYPrim` (`AutoTrans.pas:1199` —
+`BuildYPrimComponent` for series+shunt, **no `AddNeutralToY`**); the `SetNodeRef`
+"Magic happens here" node aliasing (`:875`, series winding's 2nd node → common
+winding's 1st) wired through a **new virtual `CktElement::set_node_ref`** the
+circuit build now dispatches; the `GetCurrents` series→X fold (`:1663`);
+`GICBuildYTerminal` (`:1823`, the `Frequency<0.51` resistance-only branch, ppm as
+conductance) selected in `CalcY_Terminal`. **Found + fixed a real port bug I
+missed in Stage A:** `TDSSCktElement.Get_Losses` has an **AUTOTRANS_ELEMENT
+special case** (`CktElement.pas:618`) — sum power into only the *first* `Nphases`
+conductors of each terminal, skipping the second-half, so the series current
+(aliased onto the common node and folded by `GetCurrents`) is not double-counted
+(the base path gave −130 MW vs the oracle's 0.4 MW). Overrode `losses()`
+accordingly. **Decomposition proof (CLAUDE.md conditioning rule):** the AutoTrans
+element YPrim + assembled system Y are **bit-exact to ~3e-13** vs the oracle
+(probed both engines); the residual was purely the near-ideal EPRI source
+(`mvasc3=2e6` + an `r1=1e-6` switch, copied from AutoAuto for its short-circuit
+CHECKS) making the *source-side* Vsource/switch currents an un-pinnable
+near-cancellation of the ~1e-8 convergence floor. `autotrans_snap`/`autotrans_gic`
+do a load-flow, so both re-fed from a **physical 345 kV source directly on the
+auto** (the auto units stay faithful) — clean at the tightest `micro` tier. (The
+GIC deck also surfaced a *Line* `switch=yes`+`r0=` cross-phase YPrim quirk,
+sidestepped by the same direct feed — a Line-model note, not AutoTrans.) The 3
+asymmetric decks (`autotrans_snap`/`autotrans_gic`/`midi_autotrans_asym`) flipped
+`pending:false`, **live-green** (full YNodeV/currents/powers/losses/YPrim +
+`wdgcurrents` probes). The 4 controls decks still error (RegControl→AutoTrans is
+Stage C). fmt/clippy/`cargo test --workspace` green. Next: Stage C (RegControl
+proxy + flip the 4 controls decks).
+
+**WPG.15 AutoTrans Stage A (2026-07-08): the class skeleton — props + dump +
+`RecalcElementData`/`CalcY_Terminal`, no solve.** New module
+`crates/dss-core/src/elements/pd/auto_trans/` (mod/windings/yterminal/accessors/
+dump/save/tests), cloned from the ported Transformer and adapted to the auto:
+**41 class props** (49 incl. the PDClass/CktElement tails + Like) in Pascal
+`TAutoTransProp` order (`AutoTrans.pas:364`) — `XHX/XHT/XXT` (trap_zero 7/35/30),
+a dedicated `AutoTransConnectionEnum {wye=0,delta=1,series=2}` (registered in
+`EnumRegistry`, aliases y/ln→wye, ll→delta, s→series), **no XfmrCode, no
+RNeut/XNeut**, `Core`/`RDCOhms` in the winding-definition section, and
+`WdgCurrents` carrying `READS_VTERMINAL`. `PropertySideEffects` (`:574`) force
+wdg1=Series/wdg2=Wye; `RecalcElementData` (`:919`) derives the series `kVSeries`
+VBase, `Rdc`, anti-float and Norm/EmergAmps (the default `RDCOhms=5.957…` /
+`NormAmps=6.194…` are oracle-exact); `CalcY_Terminal` (`:1856`, incl. the auto
+`ZCorrected`/`puXst`/`GICBuildYTerminal` corrections) is ported for the dump. The
+**solve path (`CalcYPrim`, the `SetNodeRef` node aliasing, the `GetCurrents`
+fold) is `NOT_PORTED` behind a loud error** (owner: Stage B) — a solve of an
+AutoTrans-bearing circuit aborts (the ymatrix builder lifts the queued error to
+`SolutionAbort`), so the 7 pending corpus decks stay red. Registered in
+`construct.rs` between IndMach012 and InvControl (Pascal DSSClassDefs.pas:270),
+with `ElemKind::AutoTrans` → `pd_elements` + a separate `auto_transformers` list
+(Pascal `AUTOTRANS_ELEMENT`, NOT `Transformers`) and `is_pd_element` recognition
+(meter zones + isolated report). **Gate A green:** `props_roundtrip`
+(`tests/golden/props/autotrans.json`, 6 scenarios) + byte-exact
+`dump_autotrans`/`dump_autotrans3` goldens + the `[AutoTrans]` section rejoined
+`dump3_commands` (unstripped) + 4 module unit tests; fmt/clippy/`cargo test
+--workspace` all green (13 corpus pending unchanged). Next: Stage B (the auto
+electrical model + flip the 3 asymmetric decks).
+
 **GAPS round-2 (2026-07-08): five more GAPS ports (WPG.4/5/6/9/11) + four
 audit-fix worktrees, all merged to `phase-8-reporting` (HEAD `e82517b`); each
 port had an opus `/audit-code` + `/audit-tests` pair and each fix an opus

@@ -1,34 +1,41 @@
-//! Port of `PDElements/Transformer.pas` — `TTransfObj`, the multi-winding
-//! transformer. Each winding becomes a terminal (`nterms = NumWindings`,
-//! `nconds = nphases + 1`, the extra conductor the brought-out neutral). The
-//! electrical core is `CalcY_Terminal` (a `2·NumWindings` admittance built from
-//! the short-circuit reactance matrix `ZB`, the winding-ratio incidence and the
-//! magnetizing branch), stamped phase-by-phase into `YPrim` through `TermRef`.
+//! Port of `PDElements/AutoTrans.pas` — `TAutoTransObj`, the autotransformer.
+//! Created upstream (2018) *from* Transformer and sharing its
+//! `TControlledTransformerObj` base, so the machinery mirrors
+//! [`crate::elements::pd::transformer`] closely; the differences are the
+//! auto-connection electrical model:
 //!
-//! GIC (`frequency < 0.51`) and harmonics interplay are deferred (Phase 7); the
-//! 60 Hz power-flow path is complete. Per-winding data lives in the shared
-//! [`Winding`] record (`Transformer.pas` `TWinding`).
+//! - Windings: **Series** (`conn=s`, code 2), **Common/Wye** (code 0) and an
+//!   optional **Delta** tertiary (code 1). `nconds = 2·nphases` (two conductors
+//!   per winding — the series winding's second end is aliased onto the common
+//!   winding's first node in `SetNodeRef`, "Magic happens here").
+//! - Reactances are `XHX`/`XHT`/`XXT` (not `XHL`/`XHT`/`XLT`); there is no
+//!   `XfmrCode`, and `RNeut`/`XNeut` are absent (the auto has no brought-out
+//!   neutral impedance).
+//! - `CalcY_Terminal` applies the auto corrections (`ZCorrected`, the 3-winding
+//!   `puXst`, `kVSeries`) — Dommel (6.45/6.46/6.50).
 //!
-//! Split into submodules (this file holds the metadata, struct, `Create` and the
-//! [`ControlledTransformer`] trait):
-//! - [`windings`]: winding/tap queries and the structural reallocation +
-//!   `TermRef` / `FetchXfmrCode` machinery (the RegControl-facing surface).
-//! - [`yterminal`]: the electrical core — `RecalcElementData`, `CalcY_Terminal`,
+//! The electrical core (`SetNodeRef` magic, `CalcY_Terminal`, `GICBuildYTerminal`,
+//! `GetCurrents` fold, the Series arms of the winding readouts) lands in
+//! WPG.15 Stage B; Stage A is the class skeleton (props, `RecalcElementData`,
+//! `CalcY_Terminal`, dump) and defers the `CalcYPrim`/solve path behind a loud
+//! error so the pending corpus decks stay red until Stage B.
+//!
+//! Split into submodules mirroring the transformer layout:
+//! - [`windings`]: winding/tap queries, `SetTermRef`, `RotatePhases`, the winding
+//!   reallocation and the RegControl-facing surface.
+//! - [`yterminal`]: `RecalcElementData`, `CalcY_Terminal`, `GICBuildYTerminal`,
 //!   the `YPrim` stamping and the winding-current results.
-//! - [`accessors`]: the `CktElement` / `ControlledTransformer` / `DssObject`
-//!   trait impls.
+//! - [`accessors`]: the `CktElement` / `DssObject` trait impls.
 
 #[cfg(test)]
 mod tests;
 
-use num_complex::Complex64;
-
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::winding::Winding;
-use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 mod accessors;
 mod dump;
@@ -36,7 +43,9 @@ mod save;
 mod windings;
 mod yterminal;
 
-/// 1-based property ordinals (Pascal `TTransfProp` + class tails).
+/// 1-based property ordinals (Pascal `TAutoTransProp` + class tails). The
+/// removed `XfmrCode` (Pascal comment `//XfmrCode=39, // removed, unused`) leaves
+/// no gap — `XRConst`/`LeadLag`/`WdgCurrents` follow `Bank` directly.
 pub mod prop {
     pub const PHASES: usize = 1;
     pub const WINDINGS: usize = 2;
@@ -47,16 +56,16 @@ pub mod prop {
     pub const KVA: usize = 7;
     pub const TAP: usize = 8;
     pub const PCTR: usize = 9;
-    pub const RNEUT: usize = 10;
-    pub const XNEUT: usize = 11;
+    pub const RDCOHMS: usize = 10;
+    pub const CORE: usize = 11;
     pub const BUSES: usize = 12;
     pub const CONNS: usize = 13;
     pub const KVS: usize = 14;
     pub const KVAS: usize = 15;
     pub const TAPS: usize = 16;
-    pub const XHL: usize = 17;
+    pub const XHX: usize = 17;
     pub const XHT: usize = 18;
-    pub const XLT: usize = 19;
+    pub const XXT: usize = 19;
     pub const XSCARRAY: usize = 20;
     pub const THERMAL: usize = 21;
     pub const N: usize = 22;
@@ -76,55 +85,48 @@ pub mod prop {
     pub const PPM_ANTIFLOAT: usize = 36;
     pub const PCTRS: usize = 37;
     pub const BANK: usize = 38;
-    pub const XFMRCODE: usize = 39;
-    pub const XRCONST: usize = 40;
-    pub const X12: usize = 41;
-    pub const X13: usize = 42;
-    pub const X23: usize = 43;
-    pub const LEADLAG: usize = 44;
-    pub const WDGCURRENTS: usize = 45;
-    pub const CORE: usize = 46;
-    pub const RDCOHMS: usize = 47;
-    pub const SEASONS: usize = 48;
-    pub const RATINGS: usize = 49;
+    pub const XRCONST: usize = 39;
+    pub const LEADLAG: usize = 40;
+    pub const WDGCURRENTS: usize = 41;
     // TPDClass tail:
-    pub const NORMAMPS: usize = 50;
-    pub const EMERGAMPS: usize = 51;
-    pub const FAULTRATE: usize = 52;
-    pub const PCTPERM: usize = 53;
-    pub const REPAIR: usize = 54;
+    pub const NORMAMPS: usize = 42;
+    pub const EMERGAMPS: usize = 43;
+    pub const FAULTRATE: usize = 44;
+    pub const PCTPERM: usize = 45;
+    pub const REPAIR: usize = 46;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 55;
-    pub const ENABLED: usize = 56;
-    pub const NUM_PROPS: usize = 57; // incl. Like
+    pub const BASE_FREQ: usize = 47;
+    pub const ENABLED: usize = 48;
+    pub const NUM_PROPS: usize = 49; // incl. Like
 }
 
-/// `TTransf.DefineProperties`.
+/// `TAutoTrans.DefineProperties` (`AutoTrans.pas:364`).
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let pct = 0.01;
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::integer("Windings").flags(PropFlags::GREATER_THAN_ONE | PropFlags::SUPPRESS_JSON),
+        PropDef::integer("Windings")
+            .flags(PropFlags::NON_ZERO | PropFlags::NON_NEGATIVE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
         PropDef::bus_on_struct("Bus"),
-        PropDef::mapped_string_enum("Conn", enums.connection),
+        PropDef::mapped_string_enum("Conn", enums.autotrans_connection),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
-        PropDef::double("RNeut"),
-        PropDef::double("XNeut"),
+        PropDef::double("RDCOhms"),
+        PropDef::mapped_string_enum("Core", enums.core_type),
         // General data (plural array forms write every winding).
         PropDef::buses_on_struct("Buses", WINDINGS),
-        PropDef::enum_array_on_struct("Conns", enums.connection, WINDINGS),
+        PropDef::enum_array_on_struct("Conns", enums.autotrans_connection, WINDINGS),
         PropDef::double_array_on_struct("kVs", WINDINGS).flags(PropFlags::NON_NEGATIVE),
         PropDef::double_array_on_struct("kVAs", WINDINGS),
         PropDef::double_array_on_struct("Taps", WINDINGS),
-        PropDef::double("XHL").scale(pct).trap_zero(7.0),
+        PropDef::double("XHX").scale(pct).trap_zero(7.0),
         PropDef::double("XHT").scale(pct).trap_zero(35.0),
-        PropDef::double("XLT").scale(pct).trap_zero(30.0),
+        PropDef::double("XXT").scale(pct).trap_zero(30.0),
         PropDef::double_v_array("XSCArray")
             .scale(pct)
             .flags(PropFlags::NON_ZERO),
@@ -146,19 +148,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
         PropDef::string("Bank"),
-        PropDef::object_ref_class("XfmrCode", "XfmrCode"),
         PropDef::boolean("XRConst"),
-        PropDef::double("X12").scale(pct).trap_zero(7.0),
-        PropDef::double("X13").scale(pct).trap_zero(35.0),
-        PropDef::double("X23").scale(pct).trap_zero(30.0),
         PropDef::mapped_string_enum("LeadLag", enums.lead_lag),
         // Read-only result string (winding currents mag/angle); the render reads
         // the live `cd.vterminal`, so the `?`/`Dump` surfaces refresh it first.
         PropDef::string("WdgCurrents").flags(PropFlags::READS_VTERMINAL),
-        PropDef::mapped_string_enum("Core", enums.core_type),
-        PropDef::double("RDCOhms"),
-        PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double_array("Ratings", SEASONS),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
@@ -170,19 +164,19 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
-    ClassProps::new("Transformer", defs, true)
+    ClassProps::new("AutoTrans", defs, true)
 }
 
-/// `TTransfObj`.
+/// `TAutoTransObj`.
 #[derive(Debug, Clone)]
-pub struct Transformer {
+pub struct AutoTrans {
     pub cd: CktElementData,
     /// Pascal `ActiveWinding` (1-based).
     active_winding: i32,
     num_windings: i32,
     max_windings: i32,
     windings: Vec<Winding>,
-    /// Pascal `XSC` — per-unit short-circuit reactances (`x12 x13 x23 …`).
+    /// Pascal `puXSC` — per-unit short-circuit reactances (`xhx xht xxt …`).
     xsc: Vec<f64>,
     /// Pascal `TermRef`: winding-conductor → terminal-conductor map, 1-based
     /// with slot 0 unused; values are 1-based conductor indices into `YPrim`.
@@ -201,15 +195,16 @@ pub struct Transformer {
     is_substation: bool,
     substation_name: String,
     xfmr_bank: String,
-    xfmr_code_name: String,
-    xfmr_code_ref: Option<ElemRef>,
     core_type: i32,
-    xhl: f64,
-    xht: f64,
-    xlt: f64,
-    /// Pascal `XHLChanged`: an XHL/XHT/XLT/X12/X13/X23 was set, so the leading
-    /// `XSC` slots are refilled in `RecalcElementData`.
-    xhl_changed: bool,
+    /// Pascal `puXHX`/`puXHT`/`puXXT` — per-unit reactances between winding pairs.
+    puxhx: f64,
+    puxht: f64,
+    puxxt: f64,
+    /// Pascal `kVSeries` — rating for the Series winding.
+    kv_series: f64,
+    /// Pascal `XHXChanged`: an XHX/XHT/XXT was set, so the leading `puXSC` slots
+    /// are refilled in `RecalcElementData`.
+    xhx_changed: bool,
     norm_max_hkva: f64,
     emerg_max_hkva: f64,
     thermal_time_const: f64,
@@ -229,9 +224,6 @@ pub struct Transformer {
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
-    num_amp_ratings: i32,
-    kva_ratings: Vec<f64>,
-    amp_ratings: Vec<f64>,
 }
 
 /// Pascal `XscSize`: `(NumWindings-1)·NumWindings/2`.
@@ -240,12 +232,51 @@ fn xsc_size(num_windings: i32) -> usize {
     if n >= 1 { (n - 1) * n / 2 } else { 0 }
 }
 
-impl Transformer {
-    /// Pascal `TTransfObj.Create`.
+/// Pascal `TAutoWinding.Init(iWinding)`: winding 1 is the **Series** winding
+/// (115 kV), all others the **Common/Wye** default (12.47 kV). Reuses the shared
+/// [`Winding`] record (its `rneut`/`xneut` fields are unused by the auto — there
+/// is no brought-out neutral impedance).
+fn auto_winding_init(iwinding: usize) -> Winding {
+    let (connection, kvll) = if iwinding == 1 {
+        (2, 115.0)
+    } else {
+        (0, 12.47)
+    };
+    let kva = 1000.0;
+    let rpu = 0.002;
+    let rdcpu = rpu * 0.85;
+    let vbase = kvll / sqrt3() * 1000.0;
+    let mut w = Winding {
+        connection,
+        kvll,
+        vbase,
+        kva,
+        putap: 1.0,
+        rpu,
+        rdcpu,
+        // Pascal: RdcOhms := Sqr(kVLL) / (kVA / 1000) * Rdcpu (placeholder;
+        // RecalcElementData recomputes it from the series VBase).
+        rdcohms: kvll * kvll / (kva / 1000.0) * rdcpu,
+        rdc_specified: false,
+        rneut: -1.0, // unused by AutoTrans
+        xneut: 0.0,
+        y_ppm: 0.0,
+        tap_increment: 0.00625,
+        min_tap: 0.90,
+        max_tap: 1.10,
+        num_taps: 32,
+    };
+    // Pascal Init: ComputeAntiFloatAdder(1.0e-6, kVA / 3 / 1000).
+    w.compute_anti_float_adder(1.0e-6, kva / 3.0 / 1000.0);
+    w
+}
+
+impl AutoTrans {
+    /// Pascal `TAutoTransObj.Create` (`AutoTrans.pas:820`).
     pub fn new(name: &str) -> Self {
         let mut cd = CktElementData::new(name, prop::NUM_PROPS);
         cd.nphases = 3;
-        cd.nconds = 4;
+        cd.nconds = 2 * cd.nphases; // two conductors per phase (auto)
 
         let mut t = Self {
             cd,
@@ -267,13 +298,12 @@ impl Transformer {
             is_substation: false,
             substation_name: String::new(),
             xfmr_bank: String::new(),
-            xfmr_code_name: String::new(),
-            xfmr_code_ref: None,
             core_type: 0,
-            xhl: 0.07,
-            xht: 0.35,
-            xlt: 0.30,
-            xhl_changed: true,
+            puxhx: 0.10,
+            puxht: 0.35,
+            puxxt: 0.30,
+            kv_series: 0.0,
+            xhx_changed: true,
             norm_max_hkva: 0.0,
             emerg_max_hkva: 0.0,
             thermal_time_const: 2.0,
@@ -292,11 +322,8 @@ impl Transformer {
             fault_rate: 0.007,
             pct_perm: 0.0,
             hrs_to_repair: 0.0,
-            num_amp_ratings: 1,
-            kva_ratings: vec![0.0],
-            amp_ratings: vec![0.0],
         };
-        t.set_num_windings(2); // allocates windings, XSC, terminals, matrices
+        t.set_num_windings(2); // allocates windings, puXSC, terminals, matrices
         t.active_winding = 1;
 
         let kva1 = t.windings[0].kva;
@@ -311,62 +338,7 @@ impl Transformer {
             w.compute_anti_float_adder(ppm, vabase_1ph);
         }
 
-        t.num_amp_ratings = 1;
-        t.kva_ratings = vec![t.norm_max_hkva];
-
         t.recalc();
         t
     }
-}
-
-/// The controlled-transformer surface RegControl's `Sample`/`DoPendingAction`
-/// read and mutate (Pascal `TControlledTransformerObj` methods). It is a trait
-/// so the regulator decision logic can be unit-tested against a lightweight mock
-/// without a fully node-wired transformer; [`Transformer`] is the production
-/// implementor. All winding/terminal indices are 1-based (as in Pascal); the
-/// voltage/current buffers are 0-based, length `nphases`/`yorder`.
-pub trait ControlledTransformer {
-    fn name(&self) -> &str;
-    /// Pascal `FullName` (`Class.name`) — RegControl's Series-connection guard
-    /// message reports the controlled element's full name, so it names the
-    /// concrete class (`Transformer.x` or `AutoTrans.x`).
-    fn full_name(&self) -> String;
-    fn n_phases(&self) -> usize;
-    fn n_conds(&self) -> usize;
-    fn y_order(&self) -> usize;
-    fn wdg_connection(&self, term: usize) -> i32;
-    /// `RotatePhases` (1-based in, 1-based out).
-    fn rotate_phases(&self, iphs: usize) -> usize;
-    fn base_voltage(&self, term: usize) -> f64;
-    fn present_tap(&self, w: usize) -> f64;
-    fn min_tap(&self, w: usize) -> f64;
-    fn max_tap(&self, w: usize) -> f64;
-    fn tap_increment(&self, w: usize) -> f64;
-    /// Apply a tap; returns whether Y must be rebuilt (Pascal `SystemYChanged`).
-    fn set_present_tap(&mut self, w: usize, value: f64) -> bool;
-    /// `Power[term].re` in watts.
-    fn power_into_re(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> f64;
-    /// `GetWindingVoltages(term, VBuffer)`.
-    fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]);
-    /// `ControlledElement.GetCurrents(CBuffer)`.
-    fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]);
-}
-
-/// View a [`DssObject`](crate::obj::base::DssObject) as a
-/// [`ControlledTransformer`] — the Pascal `TControlledTransformerObj` base,
-/// implemented by both `Transformer` and `AutoTrans` (the two members of
-/// RegControl's `Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`). Used
-/// by every surface that reaches the controlled transformer through a
-/// RegControl reference (`Export`/`Show Taps`, the live `TapNum` reads).
-pub fn as_controlled_transformer(
-    obj: &dyn crate::obj::base::DssObject,
-) -> Option<&dyn ControlledTransformer> {
-    let any = obj.as_any();
-    if let Some(t) = any.downcast_ref::<Transformer>() {
-        return Some(t);
-    }
-    if let Some(t) = any.downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>() {
-        return Some(t);
-    }
-    None
 }
