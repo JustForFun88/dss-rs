@@ -331,6 +331,15 @@ pub trait CktElement {
         false
     }
 
+    /// Pascal `(pElem is TInvBasedPCE) and TInvBasedPCE(pElem).GFM_Mode` — an
+    /// inverter-based PC element (PVSystem/Storage) currently in grid-forming
+    /// mode. The solution splits its injection pass on this flag
+    /// (`GetPCInjCurr(GFMOnly)`): a GFM PCE injects with the *sources*, not with
+    /// the ordinary PC elements. Default false.
+    fn is_gfm(&self) -> bool {
+        false
+    }
+
     /// Pascal `TControlElem.FControlledElement` (via `Set_ControlledElement`):
     /// the circuit element this control acts on, or `None` for a non-control
     /// element (and for the fleet controls that act on a *list* of elements

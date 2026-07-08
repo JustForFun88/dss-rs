@@ -21,8 +21,9 @@ use super::{STORE_CHARGING, STORE_DISCHARGING, Storage};
 impl Storage {
     /// Pascal `CalcYPrimMatrix` (power-flow path). `Y` depends on the state:
     /// charging stamps `+YeqDischarge`, idling stamps 0, discharging stamps
-    /// `−YeqDischarge`. The harmonic-model branch (uses the `%R`/`%X` `Yeq`) and
-    /// the grid-forming (`CalcGFMYprim`) branch are WP7.6/7.7.
+    /// `−YeqDischarge`. The harmonic-model branch uses the `%R`/`%X` `Yeq`; a
+    /// discharging **grid-forming** unit stamps the `CalcGFMYprim` short-circuit
+    /// admittance instead (WPG.13).
     pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
         self.cd.yprim_freq = sys.frequency;
         let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
@@ -62,13 +63,32 @@ impl Storage {
         }
 
         // Regular power-flow Storage model. Yeq is the L-N equivalent admittance.
+        // A discharging **grid-forming** unit stamps the CalcGFMYprim short-circuit
+        // admittance directly and exits (Pascal `if GFM_mode then Exit`).
         let mut y = match self.f_state {
             STORE_CHARGING => self.yeq_discharge,
-            STORE_DISCHARGING => -self.yeq_discharge,
+            STORE_DISCHARGING if !self.base.gfm_mode => -self.yeq_discharge,
+            STORE_DISCHARGING => {
+                // GFM discharging: `with dynVars, StorageVars` seeds the GFM
+                // impedance inputs, then `CalcGFMYprim` fills YMatrix in place.
+                self.base.dyn_vars.rated_kv_ll = self.kv_storage_base; // PresentkV
+                self.base.dyn_vars.discharging = self.f_state == STORE_DISCHARGING;
+                self.base.dyn_vars.m_kva_rating = self.f_kva_rating;
+                let order = ymatrix.order();
+                let gfm = self.base.dyn_vars.calc_gfm_yprim(nphases, order);
+                ymatrix.copy_from(&gfm);
+                Complex64::ZERO // Y is unused on the GFM path (exits below).
+            }
             _ => Complex64::ZERO, // idling
         };
         // Modify the base admittance for harmonics.
         y.im /= freq_multiplier;
+
+        // Grid-forming mode built its whole YMatrix above (CalcGFMYprim), or (for a
+        // non-discharging GFM unit) stamps nothing — either way exit here.
+        if self.base.gfm_mode {
+            return;
+        }
 
         match self.base.connection {
             Connection::Wye => {
@@ -234,13 +254,10 @@ impl Storage {
     }
 
     /// Pascal `CalcStorageModelContribution`: dispatch the power-flow model.
-    /// The dynamics (`DoDynamicMode`) and harmonic (`DoHarmonicMode`)
-    /// contributions are genuinely unreachable from a power-flow solve (those
-    /// modes still error before any element runs) and land in WP7.6/7.7. The
-    /// grid-forming (`DoGFM_Mode`) contribution is **also** WP7.7, but
-    /// `ControlMode=GFM` is a settable per-element property, so it *is* reachable
-    /// — guarded with an explicit "not ported" error rather than silently running
-    /// the regular PQ model (which would give plausible-but-wrong numbers).
+    /// The dynamics (`DoDynamicMode`) path is reached only in a dynamics solve;
+    /// harmonics (`DoHarmonicMode`) above the fundamental. The grid-forming
+    /// (`DoGFM_Mode`) contribution (WPG.13) injects the internal voltage-source
+    /// current through `YPrim` when `ControlMode=GFM`.
     pub(super) fn calc_storage_model_contribution(
         &mut self,
         sys: &SysCtx,
@@ -260,15 +277,8 @@ impl Storage {
             return;
         }
         if self.base.gfm_mode {
-            // Pascal `if GFM_Mode then DoGFM_Mode(); Exit;` — DoGFM_Mode /
-            // CalcGFMYprim are WP7.7 (dynamics). Init InjCurrent from Yprim like
-            // the user-model path, then surface a clear unported error.
-            self.calc_yprim_contribution(node_v);
-            errors.push(format!(
-                "Storage.{}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7).",
-                self.cd.obj.name()
-            ));
+            // Pascal `if GFM_Mode then DoGFM_Mode(); Exit;`.
+            self.do_gfm_mode(node_v);
             return;
         }
         match self.base.voltage_model {
@@ -286,6 +296,82 @@ impl Storage {
             }
             _ => self.do_constant_pq(sys, node_v),
         }
+    }
+
+    /// Pascal `TStorageObj.CheckOLInverter` (Storage.pas): true if any inverter
+    /// phase current exceeds the per-phase VA rating divided by `VBase`
+    /// (grid-forming overload check; `GFM_Mode = FALSE` short-circuits to false).
+    pub fn check_ol_inverter(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> bool {
+        if !self.base.gfm_mode {
+            return false;
+        }
+        let nphases = self.cd.nphases;
+        let max_amps = ((self.f_kva_rating * 1000.0) / nphases as f64) / self.base.v_base;
+        // Pascal `GetCurrents(Iterminal)`: fresh currents written into `Iterminal`
+        // (so a later cache-aware `Get_Powers` reuses them — do not leave the
+        // `Iterminal` cache flagged fresh but unwritten).
+        self.refresh_iterminal(sys, node_v);
+        (0..nphases).any(|i| self.cd.iterminal[i].norm() > max_amps)
+    }
+
+    /// Pascal `TInvBasedPCE.CheckAmpsLimit` (InvBasedPCE.pas l.182): the GFM
+    /// amps limiter — set `dynVars.IComp` to the largest per-phase apparent
+    /// power (`|I|·|V_node|`) exceeding the `ILimit·VBase` threshold, and return
+    /// whether any phase exceeded it (drives the `DoGFM_Mode` `IComp > 0` BaseV
+    /// shrink on the next solve).
+    pub fn check_amps_limit(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> bool {
+        let nom_p = self.base.dyn_vars.i_limit * self.base.v_base;
+        if !self.base.gfm_mode {
+            return false;
+        }
+        // Pascal `GetCurrents(Iterminal)` — fresh currents into `Iterminal`.
+        self.refresh_iterminal(sys, node_v);
+        let nphases = self.cd.nphases;
+        self.base.dyn_vars.i_comp = 0.0;
+        let mut result = false;
+        for i in 0..nphases {
+            let phase_amps = self.cd.iterminal[i].norm();
+            let volts = node_v[self.cd.node_ref[i]].norm();
+            let phase_p = phase_amps * volts;
+            if phase_p > nom_p {
+                if phase_p > self.base.dyn_vars.i_comp {
+                    self.base.dyn_vars.i_comp = phase_p;
+                }
+                result = true;
+            }
+        }
+        result
+    }
+
+    /// Pascal `TStorageObj.DoGFM_Mode` (Storage.pas l.2185): the grid-forming
+    /// inverter as an internal balanced voltage source (`CalcGFMVoltage` at
+    /// `BaseV`) behind the `CalcGFMYprim` short-circuit impedance already stamped
+    /// into `YPrim`. `InjCurrent = YPrim · Vterminal(internal)`; `ITerminal` is
+    /// left *not* updated so a later `GetCurrents` recomputes it against the node
+    /// voltage (`TInvBasedPCE.GetCurrents`). The `IComp > 0` branch shrinks
+    /// `BaseV` when the amps limiter (InvControl GFM mode) is saturating.
+    pub(super) fn do_gfm_mode(&mut self, node_v: &[Complex64]) {
+        let _ = node_v; // internal source voltage — independent of node voltages
+        // dynVars.BaseV := VBase; Discharging := (StorageState = STORE_DISCHARGING).
+        self.base.dyn_vars.base_v = self.base.v_base;
+        self.base.dyn_vars.discharging = self.f_state == STORE_DISCHARGING;
+        if self.base.dyn_vars.i_comp > 0.0 {
+            let z_sys =
+                2.0 * (self.base.v_base * self.base.dyn_vars.i_limit) - self.base.dyn_vars.i_comp;
+            self.base.dyn_vars.base_v =
+                (z_sys / self.base.dyn_vars.i_limit) * self.base.dyn_vars.v_error;
+        }
+        let nphases = self.cd.nphases;
+        self.base
+            .dyn_vars
+            .calc_gfm_voltage(nphases, &mut self.cd.vterminal);
+        // InjCurrent = YPrim · Vterminal (overwrites, like the source elements).
+        let cd = &mut self.cd;
+        if let Some(yprim) = &cd.yprim {
+            yprim.mv_mult(&mut cd.inj_current, &cd.vterminal);
+        }
+        // set_ITerminalUpdated(FALSE): force GetCurrents to recompute Iterminal.
+        self.cd.iterminal_updated = false;
     }
 
     /// Pascal `CalcInjCurrentArray`.

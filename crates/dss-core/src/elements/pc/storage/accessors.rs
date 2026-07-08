@@ -140,6 +140,11 @@ impl CktElement for Storage {
         self.spectrum_obj = spectrum;
     }
 
+    /// Pascal `(pElem is TInvBasedPCE) and GFM_Mode`.
+    fn is_gfm(&self) -> bool {
+        self.base.gfm_mode
+    }
+
     /// Pascal `TStorageObj.InjCurrents` + `TPCElement.InjCurrents`.
     fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
         if !self.cd.enabled {
@@ -172,6 +177,25 @@ impl CktElement for Storage {
         if self.cd.iterminal_solution_count != sys.solution_count && !self.storage_obj_switch_open {
             let mut errors = Vec::new();
             self.calc_storage_model_contribution(sys, node_v, &mut errors);
+        }
+        if self.base.gfm_mode {
+            // Pascal `TInvBasedPCE.GetCurrents` (GFM override, InvBasedPCE.pas
+            // l.211): read `Vterminal` from `NodeV`, then `Curr = YPrim·Vterminal
+            // − InjCurrent` — the current through the GFM short-circuit impedance
+            // (the model's `Vterminal` above holds the *internal* source phasors).
+            let cd = &mut self.cd;
+            for i in 0..cd.yorder {
+                cd.vterminal[i] = node_v[cd.node_ref[i]];
+            }
+            if let Some(yprim) = &cd.yprim {
+                yprim.mv_mult(curr, &cd.vterminal);
+            }
+            for (i, c) in curr.iter_mut().enumerate() {
+                *c -= cd.inj_current[i];
+            }
+            self.cd.iterminal_updated = true;
+            self.cd.iterminal_solution_count = sys.solution_count;
+            return;
         }
         if self.cd.iterminal_updated {
             curr.copy_from_slice(&self.cd.iterminal[..curr.len()]);

@@ -58,12 +58,13 @@ fn storage_daily_run_depletes_soc() {
     assert_eq!(dss.result(), "Idling");
 }
 
-/// Grid-forming mode (`ControlMode=GFM`) is a settable property (it round-trips)
-/// but its solve behavior (`DoGFM_Mode`/`CalcGFMYprim`) is WP7.7. It must surface
-/// an explicit "not ported" error at solve time, never silently run the regular
-/// PQ model — the `NOT_PORTED`-deferral-is-never-a-silent-fallback convention.
+/// Grid-forming mode (`ControlMode=GFM`, WPG.13): the Storage becomes an internal
+/// balanced voltage source (`CalcGFMVoltage` at `BaseV`) behind its `CalcGFMYprim`
+/// short-circuit impedance, injecting with the sources. With no local load its
+/// internal voltage matches the grid, so it delivers ~0 kW and the bus sits at
+/// 1.0 pu — bit-matching the pinned oracle (converges in 2 iterations).
 #[test]
-fn storage_gfm_mode_errors_not_silent() {
+fn storage_gfm_mode_solves() {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("New circuit.t basekv=12.47 phases=3 bus1=src basefreq=60");
@@ -76,12 +77,12 @@ fn storage_gfm_mode_errors_not_silent() {
     dss.command("calcvoltagebases");
     dss.command("solve");
     assert!(
-        dss.errors()
-            .iter()
-            .any(|e| e.contains("grid-forming") && e.contains("WP7.7")),
-        "GFM solve must emit the not-ported error, got: {:?}",
+        dss.errors().is_empty(),
+        "GFM solve must not error now that it is ported, got: {:?}",
         dss.errors()
     );
+    let ckt = dss.circuit().expect("circuit exists");
+    assert!(ckt.is_solved, "GFM circuit did not converge");
 }
 
 /// A mode-3 (state-variable) monitor on a Storage must attach and solve cleanly:

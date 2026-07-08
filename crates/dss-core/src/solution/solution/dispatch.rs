@@ -2,8 +2,6 @@
 //! (the `CalcVoltageBases` command).
 
 use crate::circuit::Circuit;
-use crate::elements::pc::pvsystem::PVSystem;
-use crate::elements::pc::storage::Storage;
 use crate::solution::ymatrix::initialize_node_vbase;
 use crate::util::sqrt3;
 
@@ -33,49 +31,6 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     if ckt.solution.solution_abort {
         env.errors.push("Solution aborted.".to_string());
         return Ok(());
-    }
-
-    // Grid-forming inverter mode (PVSystem `ControlMode=GFM`) is WP7.7
-    // (dynamics): `DoGFM_Mode`/`CalcGFMYprim` are not ported. Refuse the solve
-    // with an explicit error rather than silently running the regular PQ model,
-    // which would give plausible-but-wrong numbers (the deferral-is-never-a-
-    // silent-fallback convention). No gated case sets GFM.
-    for r in ckt.pv_systems.clone() {
-        let gfm_name = env
-            .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<PVSystem>()
-            .and_then(|pv| {
-                (pv.cd.enabled && pv.base.gfm_mode).then(|| pv.cd.obj.name().to_string())
-            });
-        if let Some(name) = gfm_name {
-            env.errors.push(format!(
-                "PVSystem.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7)."
-            ));
-            ckt.solution.solution_abort = true;
-            return Ok(());
-        }
-    }
-    // Same guard for Storage `ControlMode=GFM` (DoGFM_Mode/CalcGFMYprim: WP7.7).
-    for r in ckt.storages.clone() {
-        let gfm_name = env
-            .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Storage>()
-            .and_then(|st| {
-                (st.cd.enabled && st.base.gfm_mode).then(|| st.cd.obj.name().to_string())
-            });
-        if let Some(name) = gfm_name {
-            env.errors.push(format!(
-                "Storage.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7)."
-            ));
-            ckt.solution.solution_abort = true;
-            return Ok(());
-        }
     }
 
     ckt.default_growth_factor = if ckt.solution.year == 0 {
