@@ -331,7 +331,7 @@
    "selected_elements": [
     "*"
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.16"
   },
   {
@@ -341,7 +341,7 @@
    "selected_elements": [
     "*"
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.16"
   },
   {
@@ -365,7 +365,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.16",
    "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12)."
   },
@@ -418,7 +418,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.16",
    "note": "All three GIC classes chained on a 6-substation 345 kV ring (33 nodes); the bus2 probes pin the GICsource splices. No async/both variants: the GIC classes have no shape reference or time-varying drive upstream."
   }

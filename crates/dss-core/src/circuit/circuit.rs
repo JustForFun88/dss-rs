@@ -59,6 +59,10 @@ pub enum ElemKind {
     VsConverter,
     Vccs,
     Upfc,
+    /// GICLine (Pascal `GIC_Line | PC_ELEMENT`): a PC-element voltage source.
+    GicLine,
+    /// GICTransformer (Pascal `GIC_Transformer | PD_ELEMENT`): a shunt PD element.
+    GicTransformer,
     Meter,
     EnergyMeter,
     Sensor,
@@ -430,6 +434,13 @@ impl Circuit {
                 self.pc_elements.push(r);
                 self.upfcs.push(r);
             }
+            // GICLine (WPG.16): a PC-element voltage source (Pascal
+            // `GIC_Line | PC_ELEMENT`, no special CLASSMASK list). In
+            // `pc_elements` only — injects via `get_pc_inj_curr`.
+            ElemKind::GicLine => self.pc_elements.push(r),
+            // GICTransformer (WPG.16): a shunt PD element (Pascal
+            // `GIC_Transformer | PD_ELEMENT`, no special CLASSMASK list).
+            ElemKind::GicTransformer => self.pd_elements.push(r),
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),

@@ -4156,6 +4156,52 @@ fn dump_isource_debug_matches_oracle() {
     run_deck_dump_exact("dump_isource_debug");
 }
 
+// --- WPG.16: the GIC family DumpProperties ---
+
+/// `Dump gicline.gl2` — GICLine's Pascal `DumpProperties` override on the
+/// geodesy unit (the generic `~ name=value` property loop; the VE/VN/Z-Matrix
+/// block is Complete-only, so absent here).
+#[test]
+fn dump_gicline_matches_oracle() {
+    run_deck_dump_exact("dump_gicline");
+}
+
+/// `Dump gicline.gl2 debug` — the Complete-only tail: `BaseFrequency`/`Volts`/
+/// `VMag`/`VE`/`VN` (%g) + the base-frequency series `Z Matrix` lower triangle.
+#[test]
+fn dump_gicline_debug_matches_oracle() {
+    run_deck_dump_exact("dump_gicline_debug");
+}
+
+/// `Dump gictransformer.tg2` — the YY 4-terminal unit; no Pascal override, so
+/// the generic PD-element dump (pins the `%R1`/`%R2` spelling + the promoted
+/// BusX/BusNX terminals).
+#[test]
+fn dump_gictransformer_matches_oracle() {
+    run_deck_dump_exact("dump_gictransformer");
+}
+
+/// `Dump gictransformer.tg2 debug` — the generic PD Complete form (the
+/// CktElement Y-block over the pure-conductance shunt YPrim).
+#[test]
+fn dump_gictransformer_debug_matches_oracle() {
+    run_deck_dump_exact("dump_gictransformer_debug");
+}
+
+/// `Dump gicsource.seg` — GICsource has no Pascal override; NON_PCPD like
+/// Isource, so it takes the `TPCElement` dump ordering (pins the spliced buses).
+#[test]
+fn dump_gicsource_matches_oracle() {
+    run_deck_dump_exact("dump_gicsource");
+}
+
+/// `Dump gicsource.seg debug` — the `TPCElement` Complete form (Y-block +
+/// `! VARIABLES` + generic props + two trailing blank lines).
+#[test]
+fn dump_gicsource_debug_matches_oracle() {
+    run_deck_dump_exact("dump_gicsource_debug");
+}
+
 // --- WP8.5 step 4: the `Save` forms (Pascal `DoSaveCmd`) ---
 
 /// Replay the `save_forms` deck **fresh** (Pascal `Flg.HasBeenSaved` persists

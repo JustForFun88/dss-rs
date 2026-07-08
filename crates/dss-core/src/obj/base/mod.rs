@@ -221,6 +221,17 @@ pub enum RefAction {
         device_type: i32,
         auto: bool,
     },
+    /// GICsource `RecalcElementData` (GICsource.pas:350): rewrite the spliced
+    /// Line's `Bus2` to the inserted `GIC_<name>` bus. Pascal pokes the target
+    /// Line through `ParsePropertyValue(TLineProp.Bus2, GICBus)`; the Line's
+    /// `Bus2` side effect is inert (a plain bus rename), so this applies the bus
+    /// name generically through the target's
+    /// [`CktElement`](crate::elements::traits::CktElement) base.
+    SetElementBus {
+        target: crate::elements::traits::ElemRef,
+        terminal: usize,
+        bus: String,
+    },
 }
 
 impl RefAction {
@@ -231,6 +242,7 @@ impl RefAction {
             RefAction::SetSwitchClosed { target, .. } => *target,
             RefAction::SetConductorsClosed { target, .. } => *target,
             RefAction::SetOcpDevice { target, .. } => *target,
+            RefAction::SetElementBus { target, .. } => *target,
         }
     }
 }

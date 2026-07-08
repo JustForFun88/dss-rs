@@ -2088,6 +2088,31 @@ Negative value denotes an induction generator. "
 25, "Like", "Make like another object, e.g.:
 
 New Capacitor.C2 like=c1  ..."
+[GICsource]
+1, "Volts", "Voltage magnitude, in volts, of the GIC voltage induced across the associated line. When specified, induced voltage is assumed defined by Voltage and Angle properties. 
+
+Specify this value
+
+OR
+
+EN, EE, lat1, lon1, lat2, lon2. 
+
+Not both!!  Last one entered will take precedence. Assumed identical in each phase of the Line object."
+2, "Angle", "Phase angle in degrees of first phase. Default=0.0.  See Voltage property"
+3, "Frequency", "Source frequency.  Defaults to  0.1 Hz. So GICSource=0 at power frequency."
+4, "Phases", "Number of phases.  Defaults to 3. All three phases are assumed in phase (zero sequence)"
+5, "EN", "Northward Electric field (V/km). If specified, Voltage and Angle are computed from EN, EE, lat and lon values."
+6, "EE", "Eastward Electric field (V/km).  If specified, Voltage and Angle are computed from EN, EE, lat and lon values."
+7, "Lat1", "Latitude of Bus1 of the line(degrees)"
+8, "Lon1", "Longitude of Bus1 of the line (degrees)"
+9, "Lat2", "Latitude of Bus2 of the line (degrees)"
+10, "Lon2", "Longitude of Bus2 of the line (degrees)"
+11, "Spectrum", "Not used."
+12, "BaseFreq", "Not used."
+13, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
+14, "Like", "Make like another object, e.g.:
+
+New Capacitor.C2 like=c1  ..."
 [AutoTrans]
 1, "Phases", "Number of phases this AutoTrans. Default is 3."
 2, "Windings", "Number of windings, this AutoTrans. (Also is the number of terminals) Default is 2. This property triggers memory allocation for the AutoTrans and will cause other properties to revert to default values."
@@ -2428,6 +2453,78 @@ However, storage is not actually implemented yet. Use fully qualified PVSystem n
 15, "BaseFreq", "Base Frequency for ratings."
 16, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
 17, "Like", "Make like another object, e.g.:
+
+New Capacitor.C2 like=c1  ..."
+[GICLine]
+1, "Bus1", "Name of bus to which the main terminal (1) is connected.
+bus1=busname
+bus1=busname.1.2.3"
+2, "Bus2", "Name of bus to which 2nd terminal is connected.
+bus2=busname
+bus2=busname.1.2.3
+
+No Default; must be specified."
+3, "Volts", "Voltage magnitude, in volts, of the GIC voltage induced across this line. When specified, voltage source is assumed defined by Voltage and Angle properties. 
+
+Specify this value
+
+OR
+
+EN, EE, lat1, lon1, lat2, lon2. 
+
+Not both!!  Last one entered will take precedence. Assumed identical in each phase of the Line object."
+4, "Angle", "Phase angle in degrees of first phase. Default=0.0.  See Voltage property"
+5, "Frequency", "Source frequency.  Defaults to 0.1 Hz."
+6, "Phases", "Number of phases.  Defaults to 3."
+7, "R", "Resistance of line, ohms of impedance in series with GIC voltage source. "
+8, "X", "Reactance at base frequency, ohms. Default = 0.0. This value is generally not important for GIC studies but may be used if desired."
+9, "C", "Value of line blocking capacitance in microfarads. Default = 0.0, implying that there is no line blocking capacitor."
+10, "EN", "Northward Electric field (V/km). If specified, Voltage and Angle are computed from EN, EE, lat and lon values."
+11, "EE", "Eastward Electric field (V/km).  If specified, Voltage and Angle are computed from EN, EE, lat and lon values."
+12, "Lat1", "Latitude of Bus1 (degrees)"
+13, "Lon1", "Longitude of Bus1 (degrees)"
+14, "Lat2", "Latitude of Bus2 (degrees)"
+15, "Lon2", "Longitude of Bus2 (degrees)"
+16, "Spectrum", "Inherited Property for all PCElements. Name of harmonic spectrum for this source.  Default is "defaultvsource", which is defined when the DSS starts."
+17, "BaseFreq", "Inherited Property for all PCElements. Base frequency for specification of reactance value."
+18, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
+19, "Like", "Make like another object, e.g.:
+
+New Capacitor.C2 like=c1  ..."
+[GICTransformer]
+1, "BusH", "Name of High-side(H) bus. Examples:
+BusH=busname
+BusH=busname.1.2.3"
+2, "BusNH", "Name of Neutral bus for H, or first, winding. Defaults to all phases connected to H-side bus, node 0, if not specified and transformer type is either GSU or YY. (Shunt Wye Connection to ground reference)For Auto, this is automatically set to the X bus."
+3, "BusX", "Name of Low-side(X) bus, if type=Auto or YY. "
+4, "BusNX", "Name of Neutral bus for X, or Second, winding. Defaults to all phases connected to X-side bus, node 0, if not specified. (Shunt Wye Connection to ground reference)"
+5, "Phases", "Number of Phases. Default is 3."
+6, "Type", "Type of transformer: {GSU* | Auto | YY}. Default is GSU."
+7, "R1", "Resistance, each phase, ohms for H winding, (Series winding, if Auto). Default is 0.0001. If "
+8, "R2", "Resistance, each phase, ohms for X winding, (Common winding, if Auto). Default is 0.0001. "
+9, "kVLL1", "Optional. kV LL rating for H winding (winding 1). Default is 500. Required if you are going to export vars for power flow analysis or enter winding resistances in percent."
+10, "kVLL2", "Optional. kV LL rating for X winding (winding 2). Default is 138. Required if you are going to export vars for power flow analysis or enter winding resistances in percent.."
+11, "MVA", "Optional. MVA Rating assumed Transformer. Default is 100. Used for computing vars due to GIC and winding resistances if kV and MVA ratings are specified."
+12, "VarCurve", "Optional. XYCurve object name. Curve is expected as TOTAL pu vars vs pu GIC amps/phase. Vars are in pu of the MVA property. No Default value. Required only if you are going to export vars for power flow analysis. See K property."
+13, "%R1", "Optional. Percent Resistance, each phase, for H winding (1), (Series winding, if Auto). Default is 0.2. 
+
+Alternative way to enter R1 value. It is the actual resistances in ohmns that matter. MVA and kV should be specified."
+14, "%R2", "Optional. Percent Resistance, each phase, for X winding (2), (Common winding, if Auto). Default is 0.2. 
+
+Alternative way to enter R2 value. It is the actual resistances in ohms that matter. MVA and kV should be specified."
+15, "K", "Mvar K factor. Default way to convert GIC Amps in H winding (winding 1) to Mvar. Default is 2.2. Commonly-used simple multiplier for estimating Mvar losses for power flow analysis. 
+
+Mvar = K * kvLL * GIC per phase / 1000 
+
+Mutually exclusive with using the VarCurve property and pu curves.If you specify this (default), VarCurve is ignored."
+16, "NormAmps", "Normal rated current."
+17, "EmergAmps", "Maximum or emerg current."
+18, "FaultRate", "Failure rate per year."
+19, "pctPerm", "Percent of failures that become permanent."
+20, "Repair", "Hours to repair."
+21, "BaseFreq", "Base Frequency for ratings."
+22, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
+23, "Like", "Make like another object, e.g.:
 
 New Capacitor.C2 like=c1  ..."
 [VSConverter]

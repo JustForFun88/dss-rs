@@ -1,0 +1,58 @@
+{
+ "schema": 1,
+ "oracle": {
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+ },
+ "class": "gicsource",
+ "scenarios": [
+  {
+   "name": "gicsource_volts",
+   "commands": [
+    "New Line.seg1 bus1=b1 bus2=b2 phases=3 r1=3.2 x1=0.1 r0=3.2 x0=0.1 c1=0 c0=0 length=1",
+    "New GICsource.seg1 Volts=110 Angle=0 Frequency=0.1"
+   ],
+   "target": "GICsource.seg1",
+   "properties": {
+    "Volts": "110",
+    "Angle": "0",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "gicsource_geodesy",
+   "commands": [
+    "New Line.seg2 bus1=b2 bus2=b3 phases=3 r1=2.7 x1=0.1 r0=2.7 x0=0.1 c1=0 c0=0 length=1",
+    "New GICsource.seg2 EN=1.0 EE=1.0 Frequency=0.1 Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605"
+   ],
+   "target": "GICsource.seg2",
+   "properties": {
+    "Volts": "-113.323162579526",
+    "Angle": "0",
+    "Frequency": "0.1",
+    "Phases": "3",
+    "EN": "1",
+    "EE": "1",
+    "Lat1": "33.613499",
+    "Lon1": "-87.373673",
+    "Lat2": "33.547885",
+    "Lon2": "-86.074605",
+    "Spectrum": "",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  }
+ ]
+}
