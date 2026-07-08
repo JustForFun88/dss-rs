@@ -129,3 +129,12 @@ fn cim_src() {
 fn cim_load() {
     run_case("cim_load");
 }
+
+/// Stage C: ACLineSegment/LoadBreakSwitch sweep (coded sym + coded matrix +
+/// sym-inline + matrix-inline PUZ + geometry + spacing + CN/TS cable lines +
+/// a Fuse switch), AttachLinePhases/AttachSwitchPhases, and the LineCode /
+/// WireData / TSData / CNData / LineGeometry / LineSpacing catalog.
+#[test]
+fn cim_lines() {
+    run_case("cim_lines");
+}
