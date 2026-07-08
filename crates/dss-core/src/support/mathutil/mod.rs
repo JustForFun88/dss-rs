@@ -9,6 +9,9 @@
 #[cfg(test)]
 mod tests;
 
+mod rng;
+pub use rng::FpcRng;
+
 use num_complex::Complex64;
 
 use super::cmatrix::CMatrix;

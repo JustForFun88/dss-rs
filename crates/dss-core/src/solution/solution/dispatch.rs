@@ -10,6 +10,7 @@ use crate::util::sqrt3;
 use super::dynamics::solve_dynamic;
 use super::fault_study::solve_fault_study;
 use super::harmonics::{solve_harmonic, solve_harmonic_t};
+use super::monte_carlo::{solve_monte_fault, solve_monte1, solve_monte2, solve_monte3};
 use super::power_flow::{solve_direct, solve_snap, solve_zero_load_snapshot};
 use super::time_series::{
     solve_daily, solve_duty, solve_general_time, solve_ld1, solve_ld2, solve_peak_day, solve_yearly,
@@ -97,12 +98,14 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::LD1 => solve_ld1(ckt, env),
         SolveMode::LD2 => solve_ld2(ckt, env),
         SolveMode::Time => solve_general_time(ckt, env),
+        SolveMode::Monte1 => solve_monte1(ckt, env),
+        SolveMode::Monte2 => solve_monte2(ckt, env),
+        SolveMode::Monte3 => solve_monte3(ckt, env),
+        SolveMode::MonteFault => solve_monte_fault(ckt, env),
         _ => {
-            // The remaining modes — AutoAdd, MonteCarlo (Monte1/2/3) and
-            // MonteFault — have **no corpus deck** that exercises them (WP7.9
-            // probe), so each keeps the Pascal "Unknown solution mode." error
-            // (`TSolutionObj.Solve` else, #481) rather than a partial port. Port
-            // on demand if a future gate needs one.
+            // The remaining mode — AutoAdd — has no corpus deck yet (WPG.5), so
+            // it keeps the Pascal "Unknown solution mode." error (`TSolutionObj.
+            // Solve` else, #481) rather than a partial port.
             env.errors
                 .push("Unknown solution mode. (mode not ported — no corpus case)".to_string());
             Ok(())

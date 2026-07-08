@@ -11,6 +11,7 @@ use crate::circuit::bus::Bus;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::solution::Solution;
 use crate::support::hashlist::HashList;
+use crate::support::mathutil::FpcRng;
 
 /// Pascal `TNodeBus`: global node number → (bus, user node number).
 #[derive(Debug, Clone, Copy, Default)]
@@ -121,6 +122,14 @@ pub struct Circuit {
     pub sensors: Vec<ElemRef>,
 
     pub solution: Solution,
+
+    /// The engine-global RNG (FPC RTL Mersenne-Twister), shared by every
+    /// MonteCarlo draw (`solve_monte1`/`solve_monte_fault`, `Load.Randomize`,
+    /// `Fault.Randomize`). Upstream lives in the `Shared/mathutil.pas` unit and
+    /// is time-seeded once by `initialization Randomize;`; reproduced by seeding
+    /// from the clock at circuit creation (documented nondeterministic like
+    /// upstream — no golden/oracle reads an RNG-carried value, GAPS_PLAN.md §2.1).
+    pub rng: FpcRng,
 
     pub fundamental: f64,
     pub is_solved: bool,
@@ -277,6 +286,12 @@ impl Circuit {
             energy_meters: Vec::new(),
             sensors: Vec::new(),
             solution: Solution::new(default_base_freq),
+            rng: {
+                // FPC `Shared/mathutil.pas` does `initialization Randomize;`.
+                let mut r = FpcRng::new();
+                r.randomize();
+                r
+            },
             fundamental: default_base_freq,
             is_solved: false,
             // Pascal ctor: `BusNameRedefined := TRUE` — forces the first

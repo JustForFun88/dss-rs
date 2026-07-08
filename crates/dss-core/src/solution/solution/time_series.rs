@@ -53,7 +53,11 @@ fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `EnergyMeterClass.SampleAll` (`SolutionAlgs.pas` l.78): the monitor sweep
 /// (mode ≠ 5) always runs; the EnergyMeter register sweep runs when the solve
 /// mode requests it.
-fn sample_all_monitors_and_meters(ckt: &mut Circuit, env: &mut SolveEnv, sample_meters: bool) {
+pub(super) fn sample_all_monitors_and_meters(
+    ckt: &mut Circuit,
+    env: &mut SolveEnv,
+    sample_meters: bool,
+) {
     crate::solution::monitors::sample_all_monitors(ckt, env, false);
     if sample_meters {
         let sys = sys_ctx(ckt);
