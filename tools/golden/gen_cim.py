@@ -46,6 +46,7 @@ OUT_DIR = REPO_ROOT / "tests" / "golden" / "cim"
 # `CircuitName_`). Stage A: `cim_src.dss` (Vsource + buscoords only).
 CASES = [
     {"deck": "cim_src.dss", "circuit": "cim_src"},
+    {"deck": "cim_load.dss", "circuit": "cim_load"},
 ]
 
 
