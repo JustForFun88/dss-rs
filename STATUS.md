@@ -1789,6 +1789,46 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 CIM Stage D (capacitors + CapControls + series reactors) COMPLETE,
+gate-green** (branch `worktree-agent-a5a4c8b61573a0b06`, 2026-07-09; base reset
+from the stale toy-repo `d04fbd4` to `phase-8-reporting @ b05e6f6`, `.inputs` +
+`tools/opendss/.venv` junctions recreated — the known worktree-race traps).
+Replaced the three Stage D `NOT_PORTED` arms with the real ports
+(`Common/ExportCIMXML.pas:3684-3781`, `4274-4292`). **ShuntCapacitor sweep**
+(`3684-3731`) → `LinearShuntCompensator`: `bPerSection = 0.001·Totalkvar/NomKV²/
+NumSteps`, `nomU = 1000·NomKV`, wye → `grounded=TRUE`+`b0PerSection=bPerSection`
+vs delta → `grounded=FALSE`+`b0PerSection=0` (reproduced upstream quirk: the delta
+branch emits `grounded` under the `LinearShuntCompensator.` prefix, wye under
+`ShuntCompensator.` — `TODO(compat)`), `normal/maximumSections=NumSteps`,
+`aVRDelay` = the last controlling CapControl's `OnDelayVal`, SSH `sections` = count
+of in-service steps (`States[i]>0`), then **AttachCapPhases** (`1703`, non-3φ:
+per-phase `LinearShuntCompensatorPhase`, `bph = bPerSection/NPhases`, delta →
+`DeltaPhaseString`) + `WriteTerminals(NormAmps,EmergAmps)`. **CapControl sweep**
+(`3733-3781`) → `RegulatingControl`: Location→cap loc, `RegulatingCondEq`→cap,
+`.Terminal` = `GetTermUuid(MonitoredElement, ElementTerminal)`, `MonitoredPhaseNode`
+from ported **FirstPhaseString** (`1391`) shifted by `PTPhase`, `RegulatingControlEnum`
+by type (current/voltage/kvar/time/pf → currentFlow/voltage/reactivePower/
+timeScheduled/powerFactor; FOLLOW → no `.mode` line, matching the Pascal `case`),
+`discrete=TRUE`, `enabled`, `targetValue = val·0.5·(v1+v2)`, `targetDeadband =
+val·(v2−v1)` where val/v1/v2 depend on control type. **Reactor sweep** (`4274-4292`)
+→ `SeriesCompensator`: `r/x/r0/x0` all from `Z.re/.im` (r0=r, x0=x), `WriteTerminals`.
+New writer helpers `regulating_control_enum`/`monitored_phase_node`; new constants
+`CAP_DSS_OBJ_TYPE = 106` (`CAP_ELEMENT 104 | PD 2`), `REACTOR_DSS_OBJ_TYPE = 138`
+(`REACTOR_ELEMENT 136 | PD 2`), `CAP_CTRL_*` ordinals, and `cktelem_dss_obj_type`
+(class-name → `DSSObjType`, resolving a CapControl's *monitored* element's terminal
+key generically — the port carries no runtime `DSSObjType`; covers Vsource/Line/
+Load/Capacitor/Reactor, returns `None` → a loud error for classes Stage E/F add).
+Added read-only getters citing the Pascal fields: `Capacitor::{total_kvar,nom_kv,
+num_steps,connection,norm_amps,emerg_amps}`, `Reactor::{z,norm_amps,emerg_amps}`,
+`CapControl::{control_type,pt_phase,pt_ratio_val,ct_ratio_val,on_value,off_value,
+pf_on_value,pf_off_value,on_delay_val}` — no behavior change. Gate deck
+`cim_shunt.dss` (wye+delta+1φ caps, a voltage-mode + a current-mode CapControl,
+a series reactor) → byte-exact golden `tests/golden/cim/cim_shunt.xml` (788 lines).
+Full `cargo test --workspace` green (861 unit + corpus_live 13/13; golden_cim 4/4).
+Remaining `NOT_PORTED` arms: Stage E (Transformer/AutoTrans/RegControl), Stage F
+(Generator/PVSystem/Storage/InvControl/ExpControl). **Next = Stage E** (transformers
++ AutoTrans + regulators).
+
 **WPG.18 CIM Stage C (lines + switches + conductor catalog) COMPLETE, gate-green**
 (branch `worktree-agent-aa4705404a39d2918`, 2026-07-09; base reset from the stale
 toy-repo `d04fbd4` to `phase-8-reporting @ 253102f`, `.inputs` + `tools/opendss/.venv`

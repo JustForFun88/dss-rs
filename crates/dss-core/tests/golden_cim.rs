@@ -138,3 +138,13 @@ fn cim_load() {
 fn cim_lines() {
     run_case("cim_lines");
 }
+
+/// Stage D: LinearShuntCompensator sweep (wye + delta + 1-phase caps, the
+/// `AttachCapPhases` per-phase breakdown, the SSH `sections`/`aVRDelay`),
+/// CapControl → RegulatingControl (a voltage-mode + a current-mode control,
+/// `MonitoredPhaseNode`/`RegulatingControlEnum`/target value/deadband), and the
+/// series-reactor → SeriesCompensator sweep.
+#[test]
+fn cim_shunt() {
+    run_case("cim_shunt");
+}

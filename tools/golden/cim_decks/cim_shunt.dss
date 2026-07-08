@@ -1,0 +1,36 @@
+! GAPS_PLAN WPG.18 CIM export — Stage D golden deck (shunt capacitors +
+! CapControls + a series reactor). Vsource + LineCode/Line + Load only for the
+! rest (Stage A/B/C); NO transformer/regcontrol/DER so the export contains
+! exactly the ported classes (a not-yet-ported class would fire a NOT_PORTED
+! error and diverge from the oracle golden). A short radial feeder:
+!   SourceBus -l_main-> b1 -l_br-> b2 -rx(reactor)-> b3
+! caps at b1 (wye 3ph + delta 3ph) and b3.1 (1ph), loads at b2 (3ph) and b3.1.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.cim_shunt basekv=4.16 pu=1.00 phases=3 bus1=SourceBus angle=30
+
+! --- feeder (Stage C: ACLineSegment) — the CapControls monitor these lines ---
+New LineCode.lc1 nphases=3 R1=0.1 X1=0.3 R0=0.2 X0=0.6 C1=3.0 C0=1.5 units=kft
+New Line.l_main Bus1=SourceBus.1.2.3 Bus2=b1.1.2.3 LineCode=lc1 Length=1.0 units=kft
+New Line.l_br   Bus1=b1.1.2.3        Bus2=b2.1.2.3 LineCode=lc1 Length=0.5 units=kft
+
+! --- series reactor (Stage D -> SeriesCompensator) ---
+New Reactor.rx phases=3 Bus1=b2.1.2.3 Bus2=b3.1.2.3 R=0.5 X=2.0
+
+! --- shunt capacitors (Stage D -> LinearShuntCompensator) ---
+New Capacitor.cap_wye   Bus1=b1.1.2.3 phases=3 kv=4.16 kvar=600
+New Capacitor.cap_delta Bus1=b1.1.2.3 phases=3 kv=4.16 kvar=300 conn=delta
+New Capacitor.cap_1ph   Bus1=b3.1     phases=1 kv=2.4  kvar=100
+
+! --- CapControls (Stage D -> RegulatingControl): a voltage-mode and a
+!     current-mode control, each monitoring a feeder line ---
+New CapControl.cc_v Element=Line.l_main Terminal=1 Capacitor=cap_wye   Type=voltage PTRatio=20  ONsetting=125 OFFsetting=130 Delay=15
+New CapControl.cc_i Element=Line.l_br   Terminal=1 Capacitor=cap_delta Type=current CTRatio=100 ONsetting=75  OFFsetting=25  Delay=10
+
+! --- loads (Stage B) at the leaf buses ---
+New Load.load_b2 Bus1=b2.1.2.3 phases=3 conn=Wye Model=1 kV=4.16 kW=300 kvar=150
+New Load.load_b3 Bus1=b3.1     phases=1 conn=Wye Model=1 kV=2.4  kW=80  kvar=40
+
+Set Voltagebases=[4.16, 2.4]
+calcv
+Solve
