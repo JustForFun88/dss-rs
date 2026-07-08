@@ -1789,6 +1789,46 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 CIM XML export — Stage A COMPLETE, gate-green** (branch
+`worktree-agent-a6aed205a5f4a066e`, 2026-07-09; base reset from a stale toy-repo
+`d04fbd4` to `phase-8-reporting @ eba653e`, `.inputs`/`tools/opendss/.venv`
+junctions recreated — both known worktree-race traps). Ported the CIM100 XML
+writer core + the whole `ExportCDPSM` skeleton (`Common/ExportCIMXML.pas:
+3203-4707`) top-to-bottom (GAPS_PLAN WPG.18 decision 7): regions/substation/
+feeder/location, the six fixed `OperationalLimitType`s, the `BaseVoltage` +
+op-limit-set sweep over `LegalVoltageBases`, the bus → `TopologicalNode`/
+`ConnectivityNode` sweep, the swing-bus `TopologicalIsland`, the fixed
+7-model `LoadResponseCharacteristic` catalog (unconditional — oracle-probed to
+fire even on a load-free circuit), the closing `OperationalLimitSet`/
+`CurrentLimit` sweep, plus the full **EnergySource** (Vsource) per-object
+sweep. Every not-yet-ported class arm (Generator/PVSystem/Storage/InvControl/
+ExpControl/Capacitor/Reactor/Transformer/AutoTrans/RegControl/Line/LineCode/
+WireData/TSData/CNData/LineGeometry/LineSpacing) is a scoped `NOT_PORTED`
+error firing only when the circuit actually contains instances of that class
+(`cim/export.rs::not_ported_if_any`) — never a silent drop; the file still
+completes every ported section. New module `crates/dss-core/src/cim/{writer,
+export}.rs` (writer = pure formatter: `WriteCimLn`/`Start(Free)Instance`/
+`EndInstance`/node helpers/`StartCIMFile`, combined-mode-only per Stage A
+scope; export = the `ExportCDPSM` control flow), `Uuid::to_cim_string`
+(`NamedObject.pas:64` `UUIDToCIMString` — braces-stripped **uppercase**, no
+leading underscore, oracle-probed; the WP brief's "leading `_`, lowercase"
+description does not match the source or the oracle and was not followed),
+`CimExporter::{get_term_uuid, get_base_v_uuid, get_op_lim_v_uuid,
+get_op_lim_i_uuid}` (the UUID-surface wrappers over the WP8.6 substrate).
+`exec/report.rs` wires `Export CIM100` (ptr 21) to `cim::export::export_cdpsm`
+via the `subs`/`subg`/`g`/`fil`/`fid`/`sid`/`sg`/`rg` option loop
+(`ExportOptions.pas:227-259`, `AssignNewUUID`'s brace-wrap-then-parse +
+error-303-on-malformed-GUID); `Export CIM100Fragments` (ptr 20) is a single
+top-level `NOT_PORTED` until Stage F. Gate mechanism (decision 1-2): new
+`tools/golden/gen_cim.py` runs the 3-process fixture recipe (compute fixture →
+produce golden → repeat-and-assert-bit-identical) against the pinned oracle;
+new `crates/dss-core/tests/golden_cim.rs` replays the same deck
+(`tools/golden/cim_decks/cim_src.dss`) + fixture and byte-compares
+(CRLF-normalized only, zero tolerance) against `tests/golden/cim/cim_src.xml`
+— green. Full `cargo test --workspace` green (incl. the live corpus oracle
+gate, 87s). **Next = Stage B** (loads + `WriteLoadModel`/ECP machinery,
+`rg "NOT_PORTED" crates/dss-core/src/cim/` still non-empty through Stage E).
+
 **WPG.12 Relay `TD21`/`Generic` Sample logic COMPLETE, gate-green** (branch
 `worktree-agent-aa1a1dd57a1e8d4d4`, 2026-07-08). Ported the two previously-deferred
 Relay sub-type `Sample` logics (`Controls/Relay.pas`), removing the `NOT_PORTED`

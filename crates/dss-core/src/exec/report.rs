@@ -40,6 +40,20 @@ fn register_need_rewrite(path: &Path) -> bool {
     }
 }
 
+/// Pascal `AssignNewUUID` (`ExportOptions.pas:109`): brace-wrap `val` if it
+/// isn't already, then parse it (`StringToUuid`). `Err` carries the exact FPC
+/// `EConvertError` text (over the brace-wrapped value, matching the Pascal
+/// evaluation order) for the caller's error-303 rendering.
+fn assign_new_uuid(val: &str) -> Result<crate::cim::Uuid, String> {
+    let braced = if val.contains('{') {
+        val.to_string()
+    } else {
+        format!("{{{val}}}")
+    };
+    crate::cim::Uuid::parse(&braced)
+        .ok_or_else(|| format!("\"{braced}\" is not a valid GUID value"))
+}
+
 impl Dss {
     /// Pascal `DoExportCmd` (`ExportOptions.pas:127`): read the report keyword,
     /// resolve it against `ExportCommands`, dispatch to the matching exporter.
@@ -187,6 +201,87 @@ impl Dss {
             }
         }
 
+        // `CIM100Fragments`/`CIM100`(20/21) pre-parse (Pascal `ExportOptions.pas:
+        // 227-259`): a `name=value` loop, each name matched by
+        // `CompareTextShortest` against `subs`/`subg`/`g`/`fil`/`fid`/`sid`/`sg`/
+        // `rg`, looping until `NextParam` returns an empty name (Pascal reads
+        // name+value unconditionally before the `while` check, so a single
+        // *positional* value with no `name=` — empty `ParamName` — never enters
+        // the loop and is silently discarded; this is the oracle's own
+        // behavior, not a Rust gap, so `Export CIM100 <file>` with no `fil=`
+        // never resolves `<file>` — reproduced as-is). Defaults
+        // (`ExportOptions.pas:183-186`) computed first; `fil=` lands in its own
+        // `cim_explicit` (the shared trailing-filename read below never fires
+        // for 20/21 — the loop already exhausts the parser).
+        let mut cim_substation = String::new();
+        let mut cim_sub_geo = String::new();
+        let mut cim_geo_region = String::new();
+        let mut cim_explicit = String::new();
+        let mut cim_fdr_uuid = None;
+        let mut cim_sub_uuid = None;
+        let mut cim_sub_geo_uuid = None;
+        let mut cim_rgn_uuid = None;
+        let mut cim_convert_error: Option<String> = None;
+        if matches!(ptr, 20 | 21) {
+            let ckt_name = self
+                .circuit
+                .as_ref()
+                .expect("post-circuit dispatch")
+                .name
+                .clone();
+            cim_substation = format!("{ckt_name}_Substation");
+            cim_sub_geo = format!("{ckt_name}_SubRegion");
+            cim_geo_region = format!("{ckt_name}_Region");
+            loop {
+                let param_name = self.parser.next_param(&self.vars).to_lowercase();
+                if param_name.is_empty() {
+                    break;
+                }
+                let parm2 = self.parser.make_string(&self.vars);
+                if crate::util::compare_text_shortest_eq(&param_name, "subs") {
+                    cim_substation = parm2;
+                } else if crate::util::compare_text_shortest_eq(&param_name, "subg") {
+                    cim_sub_geo = parm2;
+                } else if crate::util::compare_text_shortest_eq(&param_name, "g") {
+                    cim_geo_region = parm2;
+                } else if crate::util::compare_text_shortest_eq(&param_name, "fil") {
+                    cim_explicit = parm2;
+                } else if crate::util::compare_text_shortest_eq(&param_name, "fid") {
+                    match assign_new_uuid(&parm2) {
+                        Ok(u) => cim_fdr_uuid = Some(u),
+                        Err(e) => {
+                            cim_convert_error = Some(e);
+                            break;
+                        }
+                    }
+                } else if crate::util::compare_text_shortest_eq(&param_name, "sid") {
+                    match assign_new_uuid(&parm2) {
+                        Ok(u) => cim_sub_uuid = Some(u),
+                        Err(e) => {
+                            cim_convert_error = Some(e);
+                            break;
+                        }
+                    }
+                } else if crate::util::compare_text_shortest_eq(&param_name, "sg") {
+                    match assign_new_uuid(&parm2) {
+                        Ok(u) => cim_sub_geo_uuid = Some(u),
+                        Err(e) => {
+                            cim_convert_error = Some(e);
+                            break;
+                        }
+                    }
+                } else if crate::util::compare_text_shortest_eq(&param_name, "rg") {
+                    match assign_new_uuid(&parm2) {
+                        Ok(u) => cim_rgn_uuid = Some(u),
+                        Err(e) => {
+                            cim_convert_error = Some(e);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         // The optional trailing filename (Pascal `ExportOptions.pas:300-305`).
         self.parser.next_param(&self.vars);
         let explicit = self.parser.make_string(&self.vars);
@@ -290,6 +385,37 @@ impl Dss {
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             47 => self.export_with(&explicit, "EXP_YVoltages.csv", export::export_y_voltages),
             48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
+            20 => {
+                // `Export CIM100Fragments` (Pascal `ExportCDPSM(..., Combined =
+                // FALSE)`): the `Separate = true` per-profile file split is
+                // GAPS_PLAN WPG.18 Stage F. A malformed `fid=`/`sid=`/`sg=`/`rg=`
+                // still aborts the command first (Pascal evaluates the whole
+                // option loop before ever reaching the `ExportCDPSM` call).
+                if let Some(emsg) = cim_convert_error {
+                    self.push_cim_convert_error(emsg);
+                } else {
+                    self.errors.push(
+                        "Export \"CIM100Fragments\" is not ported yet (GAPS_PLAN WPG.18 Stage F)."
+                            .to_string(),
+                    );
+                }
+            }
+            21 => {
+                if let Some(emsg) = cim_convert_error {
+                    self.push_cim_convert_error(emsg);
+                } else {
+                    self.export_cim100(
+                        &cim_explicit,
+                        &cim_substation,
+                        &cim_sub_geo,
+                        &cim_geo_region,
+                        cim_fdr_uuid,
+                        cim_sub_uuid,
+                        cim_sub_geo_uuid,
+                        cim_rgn_uuid,
+                    );
+                }
+            }
             _ => {
                 let name = EXPORT_OPTIONS[ptr - 1];
                 self.errors
@@ -334,6 +460,81 @@ impl Dss {
             f(classes, ckt, &sys, &node_v)
         };
         self.write_export(explicit, default_name, &content);
+    }
+
+    /// `Export CIM100` (Pascal `ExportOptions.pas` ptr 21 →
+    /// `DSS.CIMExporter.ExportCDPSM(Filename, Substation, SubGeographicRegion,
+    /// GeographicRegion, FdrUuid, SubUuid, SubGeoUuid, RgnUuid, TRUE)`):
+    /// resolve the (possibly `fid=`/`sid=`/`sg=`/`rg=`-overridden) circuit UUIDs
+    /// (Pascal `DefaultCircuitUUIDs`, `ExportCIMXML.pas:1276` — re-derived here
+    /// via the same idempotent `GetDevUuid` lookups the unconditional
+    /// `self.default_circuit_uuids()` call already primed, GAPS_PLAN WPG.18
+    /// Stage A decision), run [`crate::cim::export::export_cdpsm`] (combined
+    /// mode), and write the result via the shared [`Dss::write_export`] path —
+    /// default filename `CIM100x.xml` (`ExportOptions.pas:351`).
+    #[allow(clippy::too_many_arguments)]
+    fn export_cim100(
+        &mut self,
+        explicit: &str,
+        substation: &str,
+        sub_geographic_region: &str,
+        geographic_region: &str,
+        fdr_override: Option<crate::cim::Uuid>,
+        sub_override: Option<crate::cim::Uuid>,
+        sub_geo_override: Option<crate::cim::Uuid>,
+        rgn_override: Option<crate::cim::Uuid>,
+    ) {
+        use crate::cim::UuidChoice;
+        let fdr_uuid = fdr_override.unwrap_or_else(|| {
+            let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
+            crate::cim::get_or_create_uuid(&mut ckt.uuid)
+        });
+        let sub_uuid = sub_override
+            .unwrap_or_else(|| self.cim.get_dev_uuid(UuidChoice::Station, "Station", 1));
+        let rgn_uuid =
+            rgn_override.unwrap_or_else(|| self.cim.get_dev_uuid(UuidChoice::GeoRgn, "GeoRgn", 1));
+        let sub_geo_uuid = sub_geo_override
+            .unwrap_or_else(|| self.cim.get_dev_uuid(UuidChoice::SubGeoRgn, "SubGeoRgn", 1));
+
+        let content = {
+            let Dss {
+                classes,
+                circuit,
+                cim,
+                errors,
+                ..
+            } = self;
+            let ckt = circuit.as_mut().expect("post-circuit dispatch");
+            crate::cim::export::export_cdpsm(
+                classes,
+                ckt,
+                cim,
+                errors,
+                substation,
+                sub_geographic_region,
+                geographic_region,
+                fdr_uuid,
+                sub_uuid,
+                sub_geo_uuid,
+                rgn_uuid,
+            )
+        };
+        self.write_export(explicit, "CIM100x.xml", &content);
+    }
+
+    /// Pascal `ProcessCommand`'s except handler (`ExecCommands.pas:697-701`)
+    /// for the `EConvertError` a malformed `Export CIM100 fid=`/`sid=`/`sg=`/
+    /// `rg=` UUID raises inside `AssignNewUUID` (`ExportOptions.pas:109`) — the
+    /// same error-303 shape [`Dss::do_uuids_cmd`] renders for the identical
+    /// upstream exception.
+    fn push_cim_convert_error(&mut self, emsg: String) {
+        self.errors.push(format!(
+            "Error 303 Reported From OpenDSS Intrinsic Function: \n\
+             ProcessCommand: Exception Raised While Processing DSS Command: \n\
+             {}\n\nError Description: \n{emsg}\n\nProbable Cause: \n\
+             Error in command string or circuit data.",
+            self.parser.cmd_string()
+        ));
     }
 
     /// Like [`Dss::export_with_mut`] but for the `WriteNodeList`/`WriteElem*`
