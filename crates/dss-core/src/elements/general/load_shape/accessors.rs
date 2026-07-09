@@ -2,7 +2,7 @@
 //! accessors, the `Action` handler, file-load plumbing, `PropertySideEffects`,
 //! `EndEdit` and `MakeLike`.
 
-use crate::obj::base::{DssObjData, DssObject, FileLoad};
+use crate::obj::base::{DssObjData, DssObject, FileLoad, ShapeSave};
 
 use super::prop::{
     CSVFILE, DBLFILE, HOUR, INTERPOLATION, INTERVAL, MEAN, MEMORYMAPPING, MINTERVAL, MULT, NPTS,
@@ -138,20 +138,25 @@ impl DssObject for LoadShapeObj {
         }
     }
 
-    /// Pascal `StringEnumActionProperty` for `Action`.
+    /// Pascal `StringEnumActionProperty` for `Action` (`TLoadShapeAction`:
+    /// Normalize=0, DblSave=1, SngSave=2 — `LoadShape.pas:264-267/326-336`).
     fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
         match ordinal {
             0 => self.normalize(errors), // Normalize
-            // DblSave / SngSave write binary files — not ported.
-            _ => errors.push(format!(
-                "LoadShape.{}: Action=DblSave/SngSave (binary file output) is not ported.",
-                self.data.name()
-            )),
+            // DblSave(1)/SngSave(2): queue the binary write (Pascal
+            // `SaveToDblFile`/`SaveToSngFile`, LoadShape.pas:1880/1939).
+            1 => self.queue_shape_save(false, errors),
+            2 => self.queue_shape_save(true, errors),
+            _ => {}
         }
     }
 
     fn take_file_loads(&mut self) -> Vec<FileLoad> {
         std::mem::take(&mut self.pending_file_loads)
+    }
+
+    fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
+        std::mem::take(&mut self.pending_shape_saves)
     }
 
     /// Apply a resolved text file: `CSVFile` (Pascal `DoCSVFile`) or

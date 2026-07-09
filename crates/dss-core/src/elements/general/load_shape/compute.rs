@@ -381,6 +381,51 @@ impl LoadShapeObj {
         }
     }
 
+    /// Queue a `SngSave`/`DblSave` binary write (Pascal `TLoadShapeObj.
+    /// SaveToDblFile`/`SaveToSngFile`, `LoadShape.pas:1880/1939`). Mirrors the
+    /// Pascal head: `UseFloat64` first, then the `if not Assigned(dP)` guard
+    /// (`DoSimpleMsg` 622/623), then snapshot `dP` — and `dQ` when `Assigned(dQ)`
+    /// — into a [`ShapeSave`] for the executive (which owns `OutputDirectory` /
+    /// `GlobalResult`). LoadShape uses the `_P`/`_Q` filename split.
+    pub(super) fn queue_shape_save(&mut self, sng: bool, errors: &mut Vec<String>) {
+        // Pascal `UseFloat64` (LoadShape.pas:1888/1946): ensure the f64 arrays.
+        self.use_float64();
+        // NOT_PORTED: an MMF-backed shape saves via `InterpretDblArrayMMF`
+        // (LoadShape.pas:1898-1905/1956-1963), a path that is not ported. Refuse
+        // loudly rather than emit possibly-wrong bytes. Owner: LoadShape MMF pass.
+        if self.use_mmf {
+            errors.push(format!(
+                "LoadShape.{}: Action=SngSave/DblSave on a MemoryMapping (MMF) shape is not ported.",
+                self.data.name()
+            ));
+            return;
+        }
+        let n = self.n();
+        // Pascal `if not Assigned(dP)` → `DoSimpleMsg('%s P multipliers not
+        // defined.', [FullName], 622/623)` then `Exit`.
+        let Some(p) = self.p_mult.as_ref() else {
+            errors.push(format!(
+                "LoadShape.{} P multipliers not defined.",
+                self.data.name()
+            ));
+            return;
+        };
+        let values: Vec<f64> = p.iter().take(n).copied().collect();
+        // Q file only `if Assigned(dQ)`.
+        let q_values = self
+            .q_mult
+            .as_ref()
+            .map(|q| q.iter().take(n).copied().collect::<Vec<f64>>());
+        self.pending_shape_saves.push(crate::obj::base::ShapeSave {
+            name: self.data.name().to_string(),
+            sng,
+            values,
+            q_values,
+            p_suffix: true,
+            result_tag: "mult",
+        });
+    }
+
     /// Pascal `TLoadShapeObj.Normalize`: scale the multipliers so the peak (or
     /// `BaseP`/`BaseQ` if set) becomes 1.0.
     pub(super) fn normalize(&mut self, errors: &mut Vec<String>) {

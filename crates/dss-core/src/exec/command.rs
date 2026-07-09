@@ -822,6 +822,8 @@ impl Dss {
             enums,
             errors,
             current_dir,
+            output_directory,
+            last_result,
             ..
         } = self;
         // Split the registry so the active class is borrowed mutably for the
@@ -1177,6 +1179,17 @@ impl Dss {
             }
         }
 
+        // Deferred binary shape saves (LoadShape/TShape/PriceShape
+        // `Action=SngSave/DblSave`): the `Action` property hook cannot reach
+        // `OutputDirectory`/`GlobalResult`, so it queued the write (Pascal
+        // `SaveToDblFile`/`SaveToSngFile`). Perform it now, after `output_directory`
+        // is reachable. Writes are pure little-endian IEEE-754 streams into the
+        // output directory, exactly like Pascal `GetOutputStreamEx(FName, fmCreate)`.
+        let shape_saves = objects[oi].take_shape_saves();
+        for ss in &shape_saves {
+            write_shape_save(output_directory, last_result, ss, errors);
+        }
+
         objects[oi].end_edit();
 
         // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
@@ -1294,4 +1307,64 @@ impl Dss {
             }
         }
     }
+}
+
+/// Write a queued [`ShapeSave`] to `OutputDirectory` and set `GlobalResult`
+/// (Pascal `TLoadShapeObj.SaveToDblFile`/`SaveToSngFile` and the TShape/
+/// PriceShape equivalents). The P/value file is always written; the Q file only
+/// when the shape carries a Q series (`if Assigned(dQ)`). Filenames follow the
+/// class convention: LoadShape splits `<name>_P`/`<name>_Q`, TShape/PriceShape
+/// use the bare `<name>`. The streams are raw little-endian IEEE-754.
+fn write_shape_save(
+    output_directory: &Path,
+    last_result: &mut String,
+    ss: &crate::obj::base::ShapeSave,
+    errors: &mut Vec<String>,
+) {
+    let ext = if ss.sng { "sng" } else { "dbl" };
+    let ftag = if ss.sng { "sngfile" } else { "dblfile" };
+
+    let p_name = if ss.p_suffix {
+        format!("{}_P.{ext}", ss.name)
+    } else {
+        format!("{}.{ext}", ss.name)
+    };
+    let p_path = output_directory.join(&p_name);
+    if let Err(e) = std::fs::write(&p_path, encode_shape_bytes(&ss.values, ss.sng)) {
+        errors.push(format!(
+            "Error writing file: \"{}\" ({e})",
+            p_path.display()
+        ));
+        return;
+    }
+    // Pascal `DSS.GlobalResult := '<tag>=[<ftag>=' + FName + ']'`.
+    *last_result = format!("{}=[{ftag}={}]", ss.result_tag, p_path.display());
+
+    // Q file (LoadShape only, and only when `dQ` is assigned).
+    if let Some(q) = &ss.q_values {
+        let q_path = output_directory.join(format!("{}_Q.{ext}", ss.name));
+        if let Err(e) = std::fs::write(&q_path, encode_shape_bytes(q, ss.sng)) {
+            errors.push(format!(
+                "Error writing file: \"{}\" ({e})",
+                q_path.display()
+            ));
+            return;
+        }
+        // Pascal `AppendGlobalResult(DSS, ' Qmult=[<ftag>=' + FName + ']')`.
+        last_result.push_str(&format!(" Qmult=[{ftag}={}]", q_path.display()));
+    }
+}
+
+/// Serialize a shape series to a raw little-endian byte stream: f32 for `sng`,
+/// f64 otherwise (Pascal `F.Write(Single/Double)`).
+fn encode_shape_bytes(values: &[f64], sng: bool) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len() * if sng { 4 } else { 8 });
+    for &v in values {
+        if sng {
+            bytes.extend_from_slice(&(v as f32).to_le_bytes());
+        } else {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    bytes
 }
