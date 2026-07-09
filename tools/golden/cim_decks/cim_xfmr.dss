@@ -1,0 +1,64 @@
+! GAPS_PLAN WPG.18 CIM export — Stage E golden deck (transformers +
+! autotransformers + banks + RegControl). Exercises every transformer arm of
+! `ExportCDPSM` (`ExportCIMXML.pas:3783-4270`):
+!   - AutoTrans t1 (3-winding YNad1) + t2 (2-winding YNa) -> PowerTransformerEnd
+!     + mesh/core, no tanks. Body from the corpus asymmetric/autotrans_snap.dss
+!     330 MVA unit (proven solvable).
+!   - Transformer.sub: 3-phase, 2-winding Delta-Wye, NO XfmrCode -> case 1
+!     (PowerTransformerEnd + TransformerMeshImpedance + TransformerCoreAdmittance).
+!   - Transformer.t3w: 3-phase, 3-winding, delta tertiary -> case 1, 3-winding
+!     (phaseAngleClock=1 on the delta end).
+!   - Transformer.xfcoded: 3-phase using XfmrCode.tc1 -> case 2 (TransformerTank +
+!     TransformerTankEnd + WriteXfmrCode TransformerTankInfo/EndInfo/tests).
+!   - reg1t/reg2t/reg3t: three single-phase, NO code -> case 3 (each synthesizes a
+!     CIMXfmrCode_<name>), banked as `regbank` (a multi-unit PowerTransformer with
+!     vectorGroup), each controlled by a RegControl -> RatioTapChanger +
+!     TapChangerControl (SSH TapChanger.step = live TapNum after the control loop).
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.cim_xfmr basekv=345.0 phases=3 mvasc3=30000 25000
+
+! --- AutoTransformers: 330 MVA 345/161/13.8 YNad1 + a 2-winding 115/69 YNa ---
+New AutoTrans.t1 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 %imag=0.0329 %noloadloss=0.02402
+~ wdg=1 bus=sourcebus conn=s kV=345.0 kVA=330000 %r=0.0493
+~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556
+~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503
+New Load.l161 bus1=low  phases=3 kv=161  kw=250000 pf=0.88 model=1
+New Load.l138 bus1=tert phases=3 kv=13.8 kw=30000  pf=0.95 model=1
+
+New Vsource.s2 bus1=sub2 basekv=115 pu=1.01 phases=3 mvasc3=15000 mvasc1=12000
+New AutoTrans.t2 phases=3 windings=2 xhx=8.5
+~ wdg=1 bus=sub2 conn=s kV=115 kVA=50000 %r=0.08
+~ wdg=2 bus=mid2 conn=w kV=69  kVA=50000 %r=0.09
+New Load.l69 bus1=mid2 phases=3 kv=69 kw=32000 pf=0.9 model=1
+
+! --- Case 1: plain 3-phase 2-winding transformer (Delta-Wye), no XfmrCode ---
+New Transformer.sub phases=3 windings=2 xhl=8 %loadloss=0.5 %noloadloss=0.2 %imag=0.5
+~ wdg=1 bus=low.1.2.3 conn=delta kV=161   kva=100000
+~ wdg=2 bus=mv.1.2.3  conn=wye   kV=12.47 kva=100000
+New Load.loadmv bus1=mv.1.2.3 phases=3 kv=12.47 kw=1000 kvar=400 model=1
+
+! --- Case 3 + bank + RegControl: an IEEE13-style 3x single-phase regulator bank
+!     on the 12.47 kV feeder (mv -> regout), each a 1-phase no-code transformer ---
+New Transformer.reg1t phases=1 windings=2 bank=regbank xhl=0.1 %loadloss=0.01 buses=[mv.1, regout.1] kvs=[7.2, 7.2] kvas=[2000, 2000] numtaps=32 maxtap=1.1 mintap=0.9
+New Transformer.reg2t phases=1 windings=2 bank=regbank xhl=0.1 %loadloss=0.01 buses=[mv.2, regout.2] kvs=[7.2, 7.2] kvas=[2000, 2000] numtaps=32 maxtap=1.1 mintap=0.9
+New Transformer.reg3t phases=1 windings=2 bank=regbank xhl=0.1 %loadloss=0.01 buses=[mv.3, regout.3] kvs=[7.2, 7.2] kvas=[2000, 2000] numtaps=32 maxtap=1.1 mintap=0.9
+New RegControl.creg1 transformer=reg1t winding=2 vreg=122 band=2 ptratio=60 ctprim=300 R=3 X=9
+New RegControl.creg2 transformer=reg2t winding=2 vreg=122 band=2 ptratio=60 ctprim=300 R=3 X=9
+New RegControl.creg3 transformer=reg3t winding=2 vreg=122 band=2 ptratio=60 ctprim=300 R=3 X=9
+New Load.lreg bus1=regout.1.2.3 phases=3 kv=12.47 kw=600 kvar=200 model=1
+
+! --- Case 2: 3-phase transformer via XfmrCode -> TransformerTank + TankInfo ---
+New XfmrCode.tc1 phases=3 windings=2 xhl=6 %loadloss=0.8 %noloadloss=0.15 %imag=0.4 kvs=[12.47, 0.48] kvas=[500, 500] conns=[wye, wye]
+New Line.lc_feed Bus1=mv.1.2.3 Bus2=lv2.1.2.3 phases=3 R1=0.1 X1=0.3 R0=0.2 X0=0.6 C1=3.0 C0=1.5 Length=0.3 units=kft
+New Transformer.xfcoded phases=3 windings=2 xfmrcode=tc1 buses=[lv2.1.2.3, load2.1.2.3]
+New Load.load2 bus1=load2.1.2.3 phases=3 kv=0.48 kw=200 kvar=80 model=1
+
+! --- 3-winding transformer with delta tertiary (case 1, 3 windings) ---
+New Transformer.t3w phases=3 windings=3 xhl=8 xht=10 xlt=9 buses=[mv.1.2.3, lv3.1.2.3, tert3.1.2.3] conns=[wye, wye, delta] kvs=[12.47, 4.16, 0.48] kvas=[3000, 3000, 1000]
+New Load.load3 bus1=lv3.1.2.3 phases=3 kv=4.16 kw=500 kvar=200 model=1
+
+Set voltagebases=[345.0 161.0 115.0 69.0 13.8 12.47 7.2 4.16 0.48]
+Calcvoltagebases
+Set tolerance=1e-8
+Solve

@@ -84,6 +84,119 @@ impl Transformer {
         }
     }
 
+    /// Pascal `Get_BasekVLL(i)` = `Winding[i].kVLL` (`Transformer.pas:1819`) —
+    /// also the raw `Winding[i].kvll` the CIM `PowerTransformerEnd.ratedU`
+    /// reads. 1-based winding; 0 out of range. (CIM export, WPG.18 Stage E.)
+    pub fn winding_kvll(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].kvll
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_WdgkVA(i)` = `Winding[i].kVA` (`Transformer.pas:1438`).
+    pub fn wdg_kva(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].kva
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_WdgResistance(i)` = `Winding[i].Rpu` (`Transformer.pas:1430`).
+    pub fn wdg_resistance(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].rpu
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_WdgRneutral(i)` = `Winding[i].Rneut` (`Transformer.pas:1446`).
+    pub fn winding_rneut(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].rneut
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_WdgXneutral(i)` = `Winding[i].Xneut` (`Transformer.pas:1454`).
+    pub fn winding_xneut(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].xneut
+        } else {
+            0.0
+        }
+    }
+
+    /// `Winding[i].NumTaps` — the tap-changer step count (CIM
+    /// `ShortCircuitTest.energisedEndStep`, WPG.18 Stage E). 1-based; 0 out of
+    /// range.
+    pub fn winding_num_taps(&self, i: usize) -> i32 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].num_taps
+        } else {
+            0
+        }
+    }
+
+    /// Pascal `Get_Xsc(i)` = `XSC[i]` for 1-based `i` in
+    /// `1..=(NumWindings-1)·NumWindings/2` (`Transformer.pas:1462`); 0 otherwise.
+    pub fn xsc_val(&self, seq: usize) -> f64 {
+        let imax = xsc_size(self.num_windings);
+        if seq >= 1 && seq <= imax {
+            self.xsc[seq - 1]
+        } else {
+            0.0
+        }
+    }
+
+    /// The whole `Winding` array (`TTransfObj.Winding`) — the CIM `WriteXfmrCode`
+    /// case-3 synthesis reads a transformer's winding web directly (Pascal
+    /// `PullFromTransformer`, `XfmrCode.pas:582`).
+    pub fn windings(&self) -> &[Winding] {
+        &self.windings
+    }
+
+    /// The whole `XSC` array (`TTransfObj.XSC`) — CIM case-3 synthesis.
+    pub fn xsc(&self) -> &[f64] {
+        &self.xsc
+    }
+
+    /// Pascal `pctNoLoadLoss` (`%NoLoadLoss`) — CIM `TransformerCoreAdmittance.g`.
+    pub fn pct_no_load_loss(&self) -> f64 {
+        self.pct_no_load_loss
+    }
+
+    /// Pascal `pctImag` (`%IMag`) — CIM `TransformerCoreAdmittance.b`.
+    pub fn pct_imag(&self) -> f64 {
+        self.pct_imag
+    }
+
+    /// Pascal `NormMaxHKVA` — CIM `NoLoadTest`/`TransformerEndInfo` ratings.
+    pub fn norm_max_hkva(&self) -> f64 {
+        self.norm_max_hkva
+    }
+
+    /// Pascal `EmergMaxHKVA`.
+    pub fn emerg_max_hkva(&self) -> f64 {
+        self.emerg_max_hkva
+    }
+
+    /// Pascal `XfmrBank` — the bank name the CIM `PowerTransformer` groups by
+    /// (`ExportCIMXML.pas:3970`).
+    pub fn xfmr_bank(&self) -> &str {
+        &self.xfmr_bank
+    }
+
+    /// Pascal `XfmrCodeObj` — `Some` iff an `xfmrcode=` resolved (the CIM arm's
+    /// case-2 vs case-1/3 discriminant, `ExportCIMXML.pas:3945/3998`).
+    pub fn xfmr_code_ref(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.xfmr_code_ref
+    }
+
     /// Pascal `RotatePhases` exposed for the RegControl delta/regulated-bus path
     /// (returns a 1-based phase index).
     pub fn rotate_phases_1based(&self, iphs: usize) -> usize {

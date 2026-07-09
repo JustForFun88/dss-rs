@@ -189,6 +189,40 @@ pub fn shunt_connection_kind_node(buf: &mut String, prf: ProfileChoice, root: &s
     );
 }
 
+/// Pascal `TCIMExporterHelper.WindingConnectionKindNode` (`ExportCIMXML.pas:
+/// 1620`): `<cim:PowerTransformerEnd.connectionKind rdf:resource="…#
+/// WindingConnection.<val>"/>` (D, Y, Z, Yn, Zn, A, I).
+pub fn winding_connection_kind_node(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:PowerTransformerEnd.connectionKind rdf:resource="{CIM_NS}#WindingConnection.{val}"/>"#
+        ),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.WindingConnectionEnum` (`ExportCIMXML.pas:1440`):
+/// `<cim:TransformerEndInfo.connectionKind rdf:resource="…#WindingConnection.
+/// <val>"/>` — the `TransformerEndInfo` (catalog) counterpart of
+/// [`winding_connection_kind_node`].
+pub fn winding_connection_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:TransformerEndInfo.connectionKind rdf:resource="{CIM_NS}#WindingConnection.{val}"/>"#
+        ),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.TransformerControlEnum` (`ExportCIMXML.pas:1482`):
+/// the `RatioTapChanger.tculControlMode` line is **commented out** upstream, so
+/// this emits **nothing**. Kept as a call site (a no-op) to mirror the Pascal
+/// flow 1:1 (`ExportCIMXML.pas:4252` calls `TransformerControlEnum(FunPrf,
+/// 'volt')`).
+pub fn transformer_control_enum(_buf: &mut String, _prf: ProfileChoice, _val: &str) {}
+
 /// Pascal `TCIMExporterHelper.RegulatingControlEnum` (`ExportCIMXML.pas:1434`):
 /// `<cim:RegulatingControl.mode rdf:resource="…#RegulatingControlModeKind.<val>"/>`.
 pub fn regulating_control_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
