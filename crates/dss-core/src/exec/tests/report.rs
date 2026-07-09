@@ -30,18 +30,73 @@ fn solve_currents(extra: &[&str]) -> Vec<(String, Vec<f64>)> {
         .collect()
 }
 
-/// `Plot`/`Visualize` are GUI commands; headless they must be exact no-ops —
-/// the solved model is bit-identical with and without them (PHASE8_PLAN §2.5).
+/// `Plot` is a GUI command whose headless dispatch (`DoPlotCmd`,
+/// `PlotOptions.pas:202-213`) exits before any guard — an exact no-op: the
+/// solved model is bit-identical with and without it (PHASE8_PLAN §2.5).
 #[test]
 fn plot_visualize_are_headless_noops() {
     let base = solve_currents(&[]);
     assert!(!base.is_empty(), "fixture produced no elements to compare");
-    let with_plot = solve_currents(&[
-        "plot type=circuit quantity=power",
-        "plot daisy",
-        "visualize element=line.l1",
-    ]);
-    assert_eq!(base, with_plot, "Plot/Visualize changed the solved model");
+    let with_plot = solve_currents(&["plot type=circuit quantity=power", "plot daisy"]);
+    assert_eq!(base, with_plot, "Plot changed the solved model");
+}
+
+/// `Visualize` (`DoVisualizeCmd`, `ExecHelper.pas:4099`) runs its guards
+/// before the NIL-callback no-op, so they are engine-observable: #24722 on an
+/// unsolved circuit (oracle-probed, WP8.1 audit), #282 not-found — including a
+/// general-object reference (dead wrong-type arm: `Handle = 0` upstream). A
+/// valid element reference on a solved circuit is a clean no-op.
+#[test]
+fn visualize_guards_match_oracle() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000");
+    dss.command(
+        "new line.l1 bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0",
+    );
+    dss.command("new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=0.95 model=1");
+
+    // Unsolved (NodeV unallocated — before even `calcvoltagebases`, whose
+    // zero-load snapshot already allocates NodeV, same as Pascal) → #24722.
+    dss.command("visualize element=line.l1");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("must be solved before")),
+        "unsolved Visualize must error #24722, got {:?}",
+        dss.errors()
+    );
+
+    dss.errors.clear();
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Solved + existing circuit element → clean no-op.
+    dss.command("visualize what=voltage element=line.l1");
+    assert!(
+        dss.errors().is_empty(),
+        "valid Visualize must be a clean no-op, got {:?}",
+        dss.errors()
+    );
+
+    // Missing element / bare command / general-object reference → #282.
+    for cmd in [
+        "visualize element=line.nope",
+        "visualize",
+        "visualize element=loadshape.default",
+    ] {
+        dss.errors.clear();
+        dss.command(cmd);
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Requested Circuit Element")),
+            "{cmd:?} must error #282 not-found, got {:?}",
+            dss.errors()
+        );
+    }
 }
 
 /// `Plot`/`Visualize`/`Show` are post-circuit verbs (Pascal `ProcessCommand`):
@@ -539,5 +594,30 @@ fn dump_single_object_errors() {
     );
     let produced = std::fs::read_to_string(dss.last_result_file()).unwrap();
     assert!(produced.starts_with("! OPTIONS\n"), "{produced:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// `dump solution` renders `Set LDCurve=<name>` from the `Set LDCurve=`
+/// LoadShape (GAPS WPG.3; Pascal `Solution.pas:1816` `NameIfNotNil`) — the
+/// render was hardcoded empty before the WPG.17 sweep. The unset (empty) case
+/// stays byte-pinned by the `dump3_solution` golden. (The name renders in the
+/// port's lowercase-normalized storage form — the identifier-case convention;
+/// the comparator treats identifier case as non-significant.)
+#[test]
+fn dump_solution_renders_ldcurve_name() {
+    let dir = std::env::temp_dir().join(format!("dss_dump_ldcurve_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut dss = Dss::new();
+    dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command("new loadshape.ldc npts=2 interval=1 mult=[1 0.5]");
+    dss.command("set ldcurve=ldc");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    dss.command("dump solution");
+    let produced = std::fs::read_to_string(dss.last_result_file()).unwrap();
+    assert!(
+        produced.contains("Set LDCurve=ldc\n"),
+        "LDCurve name must render: {produced:?}"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }

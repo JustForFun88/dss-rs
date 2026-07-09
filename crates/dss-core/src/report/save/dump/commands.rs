@@ -13,11 +13,10 @@ use crate::report::help_catalog::dss_help;
 /// `DSS.DSSClassList` iteration order `DumpAllDSSCommands` walks. The Rust
 /// registry (`exec/construct.rs`) groups the `DSS_OBJECT` classes ahead of
 /// the circuit-element classes (an internal layout choice), so the dump walks
-/// this table instead. Classes not yet registered are skipped:
-/// NOT_PORTED — GICsource / GICLine / GICTransformer (WPG.16); their sections
-/// are dropped from the oracle golden at capture (`tools/golden/gen_reports.py`
-/// `DUMP_COMMANDS_UNPORTED_SECTIONS`) and rejoin it as each class lands.
-/// AutoTrans (WPG.15) is now registered — its `[AutoTrans]` section rejoined.
+/// this table instead. Every class here is registered since WPG.14/15/16
+/// (Isource, AutoTrans, the GIC trio) — the skip below is defensive-only and
+/// `gen_reports.py::DUMP_COMMANDS_UNPORTED_SECTIONS` is empty (the golden
+/// carries every section).
 const PASCAL_CLASS_ORDER: &[&str] = &[
     "LineCode",
     "LoadShape",

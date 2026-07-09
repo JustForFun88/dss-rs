@@ -9,6 +9,37 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 exit sweep IN PROGRESS (2026-07-09).** Item-1 marker sweep + registry
+diff done: the Rust registry matches `DSSClassDefs.pas` `CreateDSSClasses`
+class-for-class (49/49); no `pending: true` remains in any family manifest
+(item 2 already holds). The sweep found and fixed: **(a)** a real render bug —
+`dump solution` hardcoded an empty `Set LDCurve=` where Pascal
+`NameIfNotNil(LoadDurCurveObj)` (`Solution.pas:1816`) renders the WPG.3 curve
+name (fixed in `report/save/dump/solution.rs`, new unit test
+`dump_solution_renders_ldcurve_name`); **(b)** the `Visualize` guard errors —
+`DoVisualizeCmd` (`ExecHelper.pas:4099`) runs #24722 (unsolved circuit) and
+#282 (element not found) BEFORE the NIL-callback no-op, so they are
+engine-observable and are now ported (`exec/command.rs::do_visualize_cmd`; the
+wrong-type #282 arm is dead upstream — `GetCktElementIndex` resolves via
+`Handle`, 0 for general objects — reproduced by resolving circuit-element
+classes only; `Plot` stays a total no-op — `DoPlotCmd` exits before any guard
+when the callback is NIL, `PlotOptions.pas:202-213`); **(c)** the defensive
+unknown-solution-mode error now carries the Pascal-exact `#481` text (every
+mode is ported; only the exec-intercepted AutoAdd hits the arm); **(d)** a
+stale-owner comment pass — ReduceAlgs/`Save circuit`/MonteFault/Line-`spacing=`
+/AutoAdd-`MakeBusList` claims of "NOT_PORTED" corrected to their landed WPs,
+GFM dynamics stubs retagged from "WP7.7 GFM step" to the WPG.13 deferral (incl.
+the two user-visible abort strings), `construct.rs` "unported classes" notes
+dropped. **Sweep-surfaced porting follow-ups (user-directed 2026-07-09: port,
+don't leave):** XYcurve `CSVFile`/`SngFile`/`DblFile` (the one surviving
+test-absence deferral, PHASE5-era), LoadShape `MemoryMapping=yes` + `Set/Get
+TotalTime` (the "no corpus deck uses it" claim was stale — 7
+`MemoryMappingLoadShapes/ckt24` decks are blocked on exactly this), binary
+shape outputs `SngSave`/`DblSave` (PHASE8 §4 scope), `PreserveNodeVoltages`
+(`Ymatrix.pas:298/449`), the Monitor 1024-sample flush model, and the
+dynamics-mode GFM branch (WPG.13 deferral — the one large item). Executing via
+an ultracode multi-agent round (opus spec/port agents, opus-xhigh audits).
+
 **WPG.13 GFM grid-forming mode — power-flow model + InvControl arm COMPLETE,
 gate-green (2026-07-09).** Ported the grid-forming inverter voltage-source model
 for **Storage** and **PVSystem** (snapshot/daily/direct/time-series): the shared

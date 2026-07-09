@@ -177,7 +177,7 @@ impl Storage {
                 self.base.dyn_vars.vgrid[i] = c_to_polar(node_v[self.cd.node_ref[i]]);
                 let vg_mag = self.base.dyn_vars.vgrid[i].mag;
 
-                // NOT_PORTED: GFM_Mode branch — WP7.7 GFM step.
+                // NOT_PORTED: GFM_Mode branch — dynamics-mode GFM, WPG.13 deferral.
                 // GFL only:
                 if vg_mag < min_vs || vg_mag > max_vs {
                     self.base.dyn_vars.isp = 0.01; // turn off the inverter
@@ -322,10 +322,10 @@ impl Storage {
         // In this port DynaModel.Exists is always false; if somehow reached:
 
         if self.base.gfm_mode {
-            // NOT_PORTED: GFM path (CalcGFMVoltage) — WP7.7 GFM step.
+            // NOT_PORTED: GFM path (CalcGFMVoltage) — dynamics-mode GFM, WPG.13 deferral.
             errors.push(format!(
                 "Storage.{}: grid-forming inverter mode (ControlMode=GFM) dynamics \
-                 is not ported yet (Phase 7 WP7.7 GFM step).",
+                 is not ported yet (WPG.13 defers the dynamics-mode GFM branch).",
                 self.cd.obj.name()
             ));
             return;

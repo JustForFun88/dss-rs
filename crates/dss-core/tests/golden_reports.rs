@@ -4554,11 +4554,10 @@ fn dump3_devicelist_matches_oracle() {
 /// `Dump commands` — `DumpAllDSSCommands`: `[execcommands]`/`[execoptions]`
 /// over the executive name tables and one `[<Class>]` section per registered
 /// class in `DSSClassList` order, each line's help from the gettext catalog
-/// (`report/help_catalog.rs`, generated from the pinned wheel). The oracle
-/// golden was captured with the five NOT_PORTED class sections dropped
-/// (Isource/GICsource/AutoTrans/GICLine/GICTransformer — see
-/// `gen_reports.py::DUMP_COMMANDS_UNPORTED_SECTIONS`); everything else is
-/// byte-exact, pinning command/option/property names and help text.
+/// (`report/help_catalog.rs`, generated from the pinned wheel). Since
+/// WPG.14/15/16 every registered class has its section in the golden
+/// (`gen_reports.py::DUMP_COMMANDS_UNPORTED_SECTIONS` is empty); the whole
+/// report is byte-exact, pinning command/option/property names and help text.
 #[test]
 fn dump3_commands_matches_oracle() {
     run_deck_dump_exact("dump3_commands");

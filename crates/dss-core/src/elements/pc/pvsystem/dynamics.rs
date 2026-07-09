@@ -117,7 +117,7 @@ impl PVSystem {
             self.base.dyn_vars.dit[i] = 0.0;
             self.base.dyn_vars.vgrid[i] = c_to_polar(node_v[self.cd.node_ref[i]]);
 
-            // GFM branch is NOT_PORTED — WP7.7 GFM step. GFL only:
+            // GFM branch is NOT_PORTED — dynamics-mode GFM, WPG.13 deferral. GFL only:
             let vg_mag = self.base.dyn_vars.vgrid[i].mag;
             self.base.dyn_vars.it[i] = ((panel_kw * 1000.0) / vg_mag) / nphases_f;
 
@@ -301,10 +301,11 @@ impl PVSystem {
         errors: &mut Vec<String>,
     ) {
         if self.base.gfm_mode {
-            // NOT_PORTED: GFM path (CalcGFMVoltage / CalcGFMYprim) — WP7.7 GFM step.
+            // NOT_PORTED: GFM path (CalcGFMVoltage / CalcGFMYprim) —
+            // dynamics-mode GFM, WPG.13 deferral.
             errors.push(format!(
                 "PVSystem.{}: grid-forming inverter mode (ControlMode=GFM) dynamics \
-                 is not ported yet (Phase 7 WP7.7 GFM step).",
+                 is not ported yet (WPG.13 defers the dynamics-mode GFM branch).",
                 self.cd.obj.name()
             ));
             return;

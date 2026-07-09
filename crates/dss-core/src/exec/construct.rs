@@ -214,10 +214,9 @@ impl Dss {
                 |name| Box::new(espvl_control::EspvlControl::new(name)),
                 ElemKind::Control,
             ),
-            // IndMach012 registers after PVSystem, before InvControl (Pascal
-            // DSSClassDefs.pas:264 INDMACH012_ELEMENT; the GICsource/AutoTrans
-            // classes around it are unported). Registration order does not affect
-            // node ordering, which follows element creation order.
+            // IndMach012 registers after ESPVLControl, before GICsource (Pascal
+            // DSSClassDefs.pas:264 INDMACH012_ELEMENT). Registration order does
+            // not affect node ordering, which follows element creation order.
             DssClass::ckt_class(
                 ind_mach012::class_props(&enums),
                 |name| Box::new(ind_mach012::IndMach012::new(name)),
@@ -256,11 +255,11 @@ impl Dss {
                 |name| Box::new(vccs::Vccs::new(name)),
                 ElemKind::Vccs,
             ),
-            // InvControl registers after PVSystem (Pascal DSSClassDefs.pas:273;
-            // the UPFC/GICsource/AutoTrans classes between PVSystem and InvControl
-            // are unported, so among ported classes it follows IndMach012).
-            // Registration order does not affect node ordering, which follows
-            // element creation order.
+            // InvControl registers after AutoTrans (Pascal DSSClassDefs.pas:273;
+            // VSConverter/VCCS sit at their own Pascal slots but are registered
+            // just above — the class order the oracle observes is pinned by the
+            // dump3_commands golden). Registration order does not affect node
+            // ordering, which follows element creation order.
             DssClass::ckt_class(
                 inv_control::class_props(&enums),
                 |name| Box::new(inv_control::InvControl::new(name)),

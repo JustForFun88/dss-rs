@@ -149,16 +149,16 @@ impl Dss {
             // changes no electrical state — PHASE8_PLAN §2.5); WP8.4 lands the
             // real ShowResults formatters + the 24700/24701/24702/999 errors.
             cmd::SHOW => self.do_show_cmd(),
-            // Pascal `DoPlotCmd`/`DoVisualizeCmd` are GUI commands; in the pinned
-            // headless oracle they produce no engine-observable state, so a
-            // documented no-op is faithful, not a fake (PHASE8_PLAN §2.5; the live
-            // gate compares the assembled model, not any plot). Post-circuit, like
-            // the oracle's dispatch (so before a circuit the generic guard above
-            // emits #301; oracle-probed). NOT_PORTED, tracked for a real WP:
-            // `Visualize` on an *unsolved* circuit errors #24722 on the oracle —
-            // not reproduced here (no corpus deck reaches it; Visualize stays a
-            // documented no-op per §2.5).
-            cmd::PLOT | cmd::VISUALIZE => {}
+            // Pascal `DoPlotCmd` (`PlotOptions.pas:202-213`) exits before ANY
+            // guard when `DSSPlotCallback` is NIL — the pinned headless oracle —
+            // so `Plot` is a faithful total no-op (PHASE8_PLAN §2.5; the live
+            // gate compares the assembled model, not any plot). Post-circuit,
+            // like the oracle's dispatch (before a circuit the generic guard
+            // above emits #301; oracle-probed).
+            cmd::PLOT => {}
+            // `Visualize` differs: `DoVisualizeCmd` runs its guards BEFORE the
+            // callback check, so they are engine-observable and ported.
+            cmd::VISUALIZE => self.do_visualize_cmd(),
             cmd::BATCH_EDIT => self.do_batch_edit_cmd(),
             // Pascal `ExecCommands.pas` `ord(Cmd.MakeBusList)`:
             // `if BusNameRedefined then ReprocessBusDefs` — nothing else.
@@ -510,6 +510,84 @@ impl Dss {
                 Some(_) => {}
             }
         }
+    }
+
+    /// Pascal `DoVisualizeCmd` (`ExecHelper.pas:4099-4197`). The plot itself
+    /// goes to `DSSPlotCallback` — NIL in the pinned headless oracle — so past
+    /// the guards this is a faithful no-op (PHASE8_PLAN §2.5). The guards run
+    /// BEFORE the callback check and ARE engine-observable, so they are
+    /// ported: #24722 on an unsolved circuit (`Solution.NodeV` unallocated),
+    /// #282 element-not-found. Notes:
+    /// - the no-circuit #24721 arm is unreachable here — the dispatcher's
+    ///   generic pre-circuit guard already emits #301 (oracle-probed, WP8.1);
+    /// - the `"%s" must be a circuit element type!` #282 arm is dead upstream:
+    ///   `GetCktElementIndex` (`Utilities.pas:733`) resolves through
+    ///   `element.Handle`, and a general (non-circuit) `DSSObject`'s Handle is
+    ///   0 → the not-found arm fires instead, so a `loadshape.x` reference
+    ///   lands on "not found" — reproduced by resolving through circuit-element
+    ///   classes only.
+    fn do_visualize_cmd(&mut self) {
+        // `not assigned(Solution.NodeV)` → #24722. `node_v` starts as the
+        // ground-only slot `[0]` and is sized by the first Y build/solve
+        // (`ymatrix::build_y_matrix`, `allocate_vi`).
+        if self
+            .circuit
+            .as_ref()
+            .is_none_or(|c| c.solution.node_v.len() <= 1)
+        {
+            self.errors
+                .push("The circuit must be solved before you can do this.".to_string());
+            return;
+        }
+
+        // Parse `What=`/`Element=` (`CompareTextShortest` prefixes; bare
+        // values fill positions 1, 2, …; unknown names are skipped). `What`
+        // (the plotted quantity) has no engine-observable effect.
+        let mut elem_name = String::new();
+        let mut pointer = 0usize;
+        loop {
+            let param_name = self.parser.next_param(&self.vars);
+            let param = self.parser.make_string(&self.vars);
+            if param.is_empty() {
+                break;
+            }
+            if param_name.is_empty() {
+                pointer += 1;
+            } else if crate::util::compare_text_shortest_eq(&param_name, "WHAT") {
+                pointer = 1;
+            } else if crate::util::compare_text_shortest_eq(&param_name, "ELEMENT") {
+                pointer = 2;
+            } else {
+                continue; // Unknown named parm — ignored (Pascal `Unknown`).
+            }
+            if pointer == 2 {
+                elem_name = param.to_string();
+            }
+        }
+
+        // `GetCktElementIndex` (`Utilities.pas:733`): split `Class.Name` at
+        // the first dot; an unknown/absent class falls back to the
+        // last-referenced class; an empty name or a general-object class
+        // (Handle = 0, see the doc note) → not found.
+        let (cls_str, obj_str) =
+            crate::util::parse_object_class_and_name(&mut self.parser, &self.vars, &elem_name);
+        let ci = match self.class_by_name.get(&cls_str.to_lowercase()) {
+            Some(&ci) => Some(ci),
+            None => self.active_class, // `DSS.LastClassReferenced` fallback
+        };
+        let found = ci.is_some_and(|ci| {
+            self.classes[ci].kind.is_some()
+                && !obj_str.is_empty()
+                && self.classes[ci]
+                    .name_to_idx
+                    .contains_key(&obj_str.to_lowercase())
+        });
+        if !found {
+            self.errors.push(format!(
+                "Requested Circuit Element: \"{elem_name}\" not found."
+            ));
+        }
+        // Found: the plot JSON goes to the NIL callback — faithful no-op.
     }
 
     /// Pascal `AddObject`: create the object (or make the existing one

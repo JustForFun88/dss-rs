@@ -2043,7 +2043,7 @@ impl Dss {
     ///
     /// 1. empty or `meters` → [`Dss::save_meters_cmd`] (Monitor `Save` flush +
     ///    EnergyMeter `SaveRegisters`), then Exit.
-    /// 2. `circuit` → `Circuit.Save(SaveDir)` — NOT_PORTED(WP8.5 step 5).
+    /// 2. `circuit` → `Circuit.Save(SaveDir)` (WP8.5 step 5, `report/save/`).
     /// 3. `voltages` → [`Dss::save_voltages_cmd`], then Exit.
     /// 4. any class name → `WriteClassFile`: default filename is the **bare
     ///    class name, no `.dss` extension** (probe-proven: `save load` writes a
