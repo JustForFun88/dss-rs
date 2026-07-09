@@ -1632,6 +1632,10 @@ fn controls_cases_match_oracle() {
 /// fails here.
 const MODES_REQUIRED: &[&str] = &[
     "shape_binfiles/shape_binfiles.dss",
+    // WPG.17 feature decks (audit settlement: the anti-deletion floor must
+    // cover every feature deck, not only the pre-WPG.17 set).
+    "xycurve_files/xycurve_files.dss",
+    "shape_mmf/shape_mmf.dss",
     "generaltime.dss",
     "ld1.dss",
     "ld2.dss",

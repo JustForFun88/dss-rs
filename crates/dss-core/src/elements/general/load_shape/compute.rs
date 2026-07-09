@@ -366,8 +366,15 @@ impl LoadShapeObj {
         Some(idx)
     }
 
-    /// Pascal `TLoadShapeObj.SetMaxPandQ`: peak P and the coincident Q.
+    /// Pascal `TLoadShapeObj.SetMaxPandQ` (`LoadShape.pas:2048`): peak P and
+    /// the coincident Q. Under MMF (or external memory, not modeled) Pascal
+    /// exits FIRST, leaving `MaxP`/`MaxQ` at the constructor defaults `1.0`/
+    /// `0.0` — oracle-confirmed `pmax=1, qmax=0` for every MMF shape (audit
+    /// settlement 2026-07-09: the dropped guard mis-scaled `useactual` loads).
     pub(super) fn set_max_p_and_q(&mut self) {
+        if self.use_mmf {
+            return;
+        }
         let Some(p) = self.p_mult.as_ref() else {
             return;
         };
