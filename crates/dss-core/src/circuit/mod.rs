@@ -9,6 +9,6 @@ pub mod terminal;
 
 pub use auto_add::{AutoAdd, CAPADD, GENADD};
 pub use bus::Bus;
-pub use circuit::{Circuit, ElemKind, NodeBus, ReductionStrategy};
+pub use circuit::{BusMarker, Circuit, ElemKind, NodeBus, ReductionStrategy};
 pub use ckt_tree::{BusAdjLists, CktTree, TreeNode, ZoneEndsList};
 pub use terminal::Terminal;
