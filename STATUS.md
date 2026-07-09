@@ -1789,6 +1789,47 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
+five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
+IEEE1547; scaffolding/EnergySource/DER/loads/ECP; caps/CapControl/reactors/lines/
+switches/catalog; transformers/AutoTrans/banks/RegControl) against
+`ExportCIMXML.pas`/`ExportOptions.pas`/`NamedObject.pas`/`Circuit.pas`. **Verdict:
+faithful 1:1** on every gated and common path; **three defects found + fixed**, all
+golden-uncaught (content-neutral or on branches no gate deck reaches):
+- **[Major] IEEE1547 empty-`DERList` branch dropped the `Enabled` guard**
+  (`WriteCIM` `3044`/`3052`): the fallback iterating `ckt.storages`/`pv_systems`
+  gated only on the downcast, so a **disabled** DER would leak a
+  `DERDynamics.PowerElectronicsConnection` ref + overwrite the nameplate. Fixed
+  with the faithful enabled check (`ieee1547.rs`). Empirically the branch is hard
+  to reach — an InvControl with no `DERList=` **auto-populates** it with all DER,
+  so the *named*-DER branch (which includes disabled DER, matching Pascal
+  `SetElementActive`) fires instead; that named branch is now byte-verified vs the
+  oracle (a scratch deck with a disabled PV/Storage → 0 diff, 3 refs incl.
+  disabled, both engines).
+- **[Major] fragments-mode `@lastexportfile`/`last_result_file`** pointed at the
+  last file written (`<base>_DYN.xml`) instead of Pascal's suffix-less base
+  (`SetLastResultFile(DSS, FileName)`, `ExportOptions.pas:635` — `ExportCDPSM`
+  appends `_<PRF>.xml` to its own by-value copy). The 7 XML files are byte-exact
+  (goldens compare content only, so uncaught), but the executive state a script
+  reads via `$lastexportfile$` diverged. Fixed to point at the base
+  (`exec/report.rs`).
+- **[Minor] `base_v_name`/`op_lim_v_name`** used native `{:.4}` (ties-to-even) not
+  the ties-away `ff_fixed` that `op_lim_i_name` uses — **latent** (identical on
+  every realistic base voltage; a divergence needs an odd multiple of 0.03125),
+  the tie STATUS had deferred to the exit sweep. Aligned all three name-formatters
+  on `ff_fixed` now (zero golden change); WPG.17 no longer owns this item.
+
+**Accepted (tracked, not defects):** the IEEE1547 `FindSignalTerminals`/`MonBus`
+signal path deviations (PC-scan omits caps/reactors, creation-order vs class-list
+ordering, obj-type fallback for exotic monitored classes, `FinishNameplate` 0/0)
+— all **non-byte-gated** (no solvable oracle deck runs `export cim100` with a
+`MonBus`) and documented in-module; the 5 `TODO(compat)` markers (double-`b0ch`
+typo, wye-cap hard-grounded, delta/wye `grounded`-prefix, load `allow_sec`, the
+`2.3026`≈ln10) all justified reproductions; the case-3 XfmrCode synthesis is a
+transient no-mutation view (safer than Pascal); the Gen/Load ECP `.spectrum` raw
+string vs PV/Storage `spectrum_obj` name is output-identical for valid decks.
+Post-fix gate green (fmt/clippy/`cargo test --workspace` incl. `golden_cim` 9/9).
+
 **WPG.18 CIM Stage F (DER + IEEE1547 + fragments mode) COMPLETE, gate-green**
 (2026-07-09, on `phase-8-reporting @ 7c74344`). The last WPG.18 stage — every
 `NOT_PORTED` arm is now a real port (`rg NOT_PORTED crates/dss-core/src/cim/` =

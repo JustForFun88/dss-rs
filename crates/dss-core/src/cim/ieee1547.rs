@@ -614,8 +614,19 @@ impl Ieee1547Controller {
         writer::boolean_node(buf, prf, "DERIEEEType1.phaseToPhaseApplicable", false);
 
         if self.der_names.is_empty() {
-            // Reference + nameplate from every enabled Storage then PVSystem.
+            // Reference + nameplate from every **enabled** Storage then PVSystem
+            // (Pascal `WriteCIM` `if pBat.Enabled` `3044` / `if pPV.Enabled`
+            // `3052` — the element lists carry disabled units too, so the guard
+            // is load-bearing). Unlike the named-DER branch below, which emits
+            // regardless (Pascal `SetElementActive` + unconditional `RefNode`).
             for &r in &ckt.storages.clone() {
+                let enabled = classes[r.cls].objects[r.idx]
+                    .as_any()
+                    .downcast_ref::<Storage>()
+                    .is_some_and(|s| s.cd.enabled);
+                if !enabled {
+                    continue;
+                }
                 let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
                 if let Some(plate) = storage_plate(classes, r) {
                     writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
@@ -623,6 +634,13 @@ impl Ieee1547Controller {
                 }
             }
             for &r in &ckt.pv_systems.clone() {
+                let enabled = classes[r.cls].objects[r.idx]
+                    .as_any()
+                    .downcast_ref::<PVSystem>()
+                    .is_some_and(|p| p.cd.enabled);
+                if !enabled {
+                    continue;
+                }
                 let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
                 if let Some(plate) = pv_plate(classes, r) {
                     writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);

@@ -471,13 +471,17 @@ pub fn remote_input_signal_enum(buf: &mut Writer, prf: ProfileChoice, val: &str)
 
 /// Pascal `GetBaseVName` (`ExportCIMXML.pas:1309`): `FloatToStrF(val, ffFixed, 6,
 /// 4)` = fixed notation, 4 fractional digits (`ffFixed` ignores `Precision`).
+/// Uses the ties-away [`ff_fixed`] (like [`op_lim_i_name`]), not native `{:.4}`
+/// (ties-to-even): identical on every realistic base voltage, but correct on an
+/// exact 4-decimal dyadic tie (odd multiple of 0.03125).
 pub fn base_v_name(val: f64) -> String {
-    format!("BaseV_{val:.4}")
+    format!("BaseV_{}", ff_fixed(val, 4))
 }
 
-/// Pascal `GetOpLimVName` (`ExportCIMXML.pas:1320`).
+/// Pascal `GetOpLimVName` (`ExportCIMXML.pas:1320`): ties-away [`ff_fixed`] (see
+/// [`base_v_name`]).
 pub fn op_lim_v_name(val: f64) -> String {
-    format!("OpLimV_{val:.4}")
+    format!("OpLimV_{}", ff_fixed(val, 4))
 }
 
 /// FPC `FloatToStrF(v, ffFixed, 6, decimals)` reproduced faithfully for the CIM

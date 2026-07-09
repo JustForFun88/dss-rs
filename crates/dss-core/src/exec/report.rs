@@ -604,16 +604,20 @@ impl Dss {
             "CIM100",
         );
         let base = base.to_string_lossy().into_owned();
-        let mut last = String::new();
         for (suffix, content) in fragments {
             let path = std::path::PathBuf::from(format!("{base}_{suffix}.xml"));
-            if self.write_report(&path, &content) {
-                last = self.last_result_file.clone();
-            }
+            // `write_report` sets `@lastfile`/`last_result_file` to each per-file
+            // path as a side effect; the loop-final bookkeeping below overrides it.
+            self.write_report(&path, &content);
         }
-        if !last.is_empty() {
-            self.vars.add("@lastexportfile", &last);
-        }
+        // Pascal `DoExportCmd` tail (`ExportOptions.pas:635-636`): after
+        // `ExportCDPSM`, `SetLastResultFile(DSS, FileName)` + `@lastexportfile :=
+        // FileName` where `FileName` is the **suffix-less base** (`ExportCDPSM`
+        // appends `_<PRF>.xml` to its own by-value copy, `FD_Create`), NOT any of
+        // the seven produced files. Point the executive state at the base.
+        self.last_result_file = base.clone();
+        self.vars.add("@lastfile", &base);
+        self.vars.add("@lastexportfile", &base);
     }
 
     /// Pascal `ProcessCommand`'s except handler (`ExecCommands.pas:697-701`)
