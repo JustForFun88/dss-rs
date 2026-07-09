@@ -199,15 +199,51 @@ fn csvfile_queues_a_file_load() {
 }
 
 #[test]
-fn action_dblsave_is_not_ported() {
-    let (_cls, _obj, errs) = edited(&[
+fn action_dblsave_queues_bare_name_double_save() {
+    // WPG.17: `Action=DblSave/SngSave` now queues a binary write (Pascal
+    // `TTShapeObj.SaveToDblFile`/`SaveToSngFile`). TShape uses the bare `<name>`
+    // filename (no `_P`/`_Q` split), a single value series, GlobalResult tag `Temp`.
+    let (_cls, mut obj, errs) = edited(&[
         ("npts", "4"),
         ("interval", "1"),
         ("temp", "20 30 50 80"),
         ("action", "dblsave"),
     ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(!s.sng, "dblsave → double precision");
+    assert!(!s.p_suffix, "TShape writes the bare <name>");
+    assert_eq!(s.result_tag, "Temp");
+    assert_eq!(s.values, vec![20.0, 30.0, 50.0, 80.0]);
+    assert!(s.q_values.is_none(), "TShape has no Q series");
+}
+
+#[test]
+fn action_sngsave_queues_single_precision() {
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "3"),
+        ("interval", "1"),
+        ("temp", "10 20 30"),
+        ("action", "sngsave"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    assert!(saves[0].sng, "sngsave → single precision");
+    assert_eq!(saves[0].values, vec![10.0, 20.0, 30.0]);
+}
+
+#[test]
+fn action_save_undefined_series_errors() {
+    // Pascal `if not Assigned(TValues)` → `DoSimpleMsg('%s Temperatures not
+    // defined.', …)` and no queued save.
+    let (_cls, mut obj, errs) = edited(&[("action", "dblsave")]);
     assert!(
-        errs.iter().any(|e| e.to_lowercase().contains("not ported")),
+        errs.iter()
+            .any(|e| e.to_lowercase().contains("temperatures not defined")),
         "{errs:?}"
     );
+    assert!(obj.take_shape_saves().is_empty());
 }

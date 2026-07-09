@@ -10,6 +10,7 @@ impl Monitor {
     /// the two time-column labels — see [`Self::clear_monitor_stream`]).
     pub fn reset_it(&mut self, is_harmonic: bool) {
         self.mon_buffer.clear();
+        self.bufptr = 0; // Pascal `ResetIt` (Monitor.pas:1132): `BufPtr := 0`.
         self.clear_monitor_stream(is_harmonic);
     }
 
