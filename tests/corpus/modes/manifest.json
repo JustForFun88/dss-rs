@@ -107,6 +107,51 @@
    "notes": "WPG.1 audit follow-up: ls_sng0i pins the single-precision interpolation + Mean/StdDev single stats; t_sng0 the ScalarShapeCore pair branch; g_csvf fractional CSV years (DoCSVFile ignores RoundA); g_sng the Sng-side year rounding."
   },
   {
+   "path": "shape_mmf/shape_mmf.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Loadshape.ls_sng",
+     "props": [
+      "npts",
+      "interval",
+      "mult",
+      "qmult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_dbl",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_mult",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_pq",
+     "props": [
+      "npts",
+      "mult",
+      "qmult"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.17",
+   "notes": "WPG.17 LoadShape MemoryMapping=Yes + Set/Get TotalTime. Self-contained (no var, no non-MM File=). sngfile/dblfile/raw mult=(sngfile=) MMF are fixed-interval = I/O-only (numerically identical to non-MM, exercising the sng/dbl/raw MMF readers); the ls_pq shape is the feature axis: its P column is exponent notation and the MMF text accept-set drops sign/exponent, so ld_pq draws 501 kW (P mult 5.01) at hour 8 under MMF vs 50 kW (0.50) without it. Under MMF the array props dump the (<directive>) round-trip. Oracle-validated (pinned dss-python 0.15.7): compiles+solves+converges; AllBusVmag fingerprint bit-identical across TWO separate oracle processes (38c28c752fa5ecae); feature-sensitive \u2014 flipping MemoryMapping off the pq shape changes the fingerprint to e363c3929e7d692f (ld_pq_P 167->16.7 W/phase). The trailing Set/Get totaltime exercises the option surface (inert for the compared fingerprint)."
+  },
+  {
    "path": "generaltime.dss",
    "kind": "micro",
    "n_steps": 8,
@@ -290,7 +335,7 @@
    ],
    "pending": false,
    "wp": "WPG.5",
-   "note": "WPG.5 audit (Major): the CAPADD (addtype=capacitor) branch of TAutoAdd.Solve — completely ungated until now (autoadd.dss covers only GENADD). Exercises the per-candidate Ycap shunt injection, the winner emission `New Capacitor.cadd1`, GetUniqueCapName, and the <case>_AutoAddedCapacitors.txt append. Oracle-validated (dss-python 0.15.7, two separate processes bit-identical): Text.Result=\"b2\" (CAPADD GlobalResult is the winner bus NAME only, no improvement figure — AutoAdd.pas l.560); Capacitor.cadd1 = bus1 b2 / 3ph / kvar 600 / kv 12.47; AutoAddLog rows b1/b2/b3 (b2 max weighted). Same PROCESS-EXIT segfault as autoadd.dss (captured before teardown). Feature-sensitive: if the CAPADD branch no-ops, no cadd1 is added (probe fails) and GlobalResult goes empty.",
+   "note": "WPG.5 audit (Major): the CAPADD (addtype=capacitor) branch of TAutoAdd.Solve \u2014 completely ungated until now (autoadd.dss covers only GENADD). Exercises the per-candidate Ycap shunt injection, the winner emission `New Capacitor.cadd1`, GetUniqueCapName, and the <case>_AutoAddedCapacitors.txt append. Oracle-validated (dss-python 0.15.7, two separate processes bit-identical): Text.Result=\"b2\" (CAPADD GlobalResult is the winner bus NAME only, no improvement figure \u2014 AutoAdd.pas l.560); Capacitor.cadd1 = bus1 b2 / 3ph / kvar 600 / kv 12.47; AutoAddLog rows b1/b2/b3 (b2 max weighted). Same PROCESS-EXIT segfault as autoadd.dss (captured before teardown). Feature-sensitive: if the CAPADD branch no-ops, no cadd1 is added (probe fails) and GlobalResult goes empty.",
    "compare_global_result": true,
    "compare_autoadd_log": true
   },
@@ -303,7 +348,7 @@
    ],
    "pending": false,
    "wp": "WPG.6",
-   "note": "Set algorithm=Newton (Pascal DoNewtonSolution): the current-injection algorithm on the light 3-bus feeder. Oracle-validated (dss-python 0.15.7): converged, 2 iterations, bit-identical across two processes. The gate pins the full model (converged flag, iteration count, voltages, I/P/L). NOTE: Newton and the normal fixed-point converge to the SAME voltages in the SAME iteration count, so the ONLY channel that distinguishes them is the post-Newton stale-Iterminal Powers/Losses split (TODO(compat) in exec/view.rs snapshot_elements) — that is what actually verifies Newton dispatch is wired."
+   "note": "Set algorithm=Newton (Pascal DoNewtonSolution): the current-injection algorithm on the light 3-bus feeder. Oracle-validated (dss-python 0.15.7): converged, 2 iterations, bit-identical across two processes. The gate pins the full model (converged flag, iteration count, voltages, I/P/L). NOTE: Newton and the normal fixed-point converge to the SAME voltages in the SAME iteration count, so the ONLY channel that distinguishes them is the post-Newton stale-Iterminal Powers/Losses split (TODO(compat) in exec/view.rs snapshot_elements) \u2014 that is what actually verifies Newton dispatch is wired."
   },
   {
    "path": "newton_feeder.dss",
@@ -314,7 +359,7 @@
    ],
    "pending": false,
    "wp": "WPG.6",
-   "note": "WPG.6 second Newton case: a 115/12.47 kV transformer feeder with stressed constant-power loads, re-solved under algorithm=Newton. Oracle-validated (dss-python 0.15.7): converged, 3 iterations (vs 2 for newton.dss), bit-identical across two processes. Its value over newton.dss is the distinct topology (2-winding transformer + mixed 3ph/1ph constant-power loads) under the Newton path — not the iteration count, which does not distinguish Newton from the normal algorithm (see newton.dss note)."
+   "note": "WPG.6 second Newton case: a 115/12.47 kV transformer feeder with stressed constant-power loads, re-solved under algorithm=Newton. Oracle-validated (dss-python 0.15.7): converged, 3 iterations (vs 2 for newton.dss), bit-identical across two processes. Its value over newton.dss is the distinct topology (2-winding transformer + mixed 3ph/1ph constant-power loads) under the Newton path \u2014 not the iteration count, which does not distinguish Newton from the normal algorithm (see newton.dss note)."
   },
   {
    "path": "reactor_rlcurve.dss",

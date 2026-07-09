@@ -163,8 +163,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
-   "tag": "unsupported_option=TotalTime; unsupported_feature=file-backed-arrays",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Runs to completion on the Rust engine (yearly, 100 steps; hour=100, converged; 6.3s debug / 1.1s release). Blocked by memory-mapped/file-backed LoadShapes and Set/Get TotalTime. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug — see STATUS §1f."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Runs to completion on the Rust engine (yearly, 100 steps; hour=100, converged; 6.3s debug / 1.1s release). WPG.17 resolved the two former blockers — Set/Get TotalTime and the active LS_PhaseA memory-mapped shape (mult=(sngfile=mySGL.sng) MemoryMapping=Yes). Now blocked ONLY by the non-MM file-backed arrays LS_PhaseB/C/ThreePhase/Other_Bus_Load (mult=(file=…) action=normalize), which are WPG.1's File= item — still NOT_PORTED (LOUD error). Retagged (not re-classified) reflecting the WPG.17 feature additions; NOT solvable_now until File= lands. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact, not a bug — see STATUS §1f."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
