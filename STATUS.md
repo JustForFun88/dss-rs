@@ -19,6 +19,16 @@ dropped from all three; XYcurve now has no remaining unported props. CSV sets
 binary fragment is upstream UB (NOT reproduced, full-row gate). New live deck
 `tests/corpus/modes/xycurve_files/` (fixtures via `tools/decks/gen_xycurve_fixtures.py`)
 GAPS-3 oracle-validated; unit tests replace `file_props_are_not_ported`.
+**Audit settlement (2 independent opus auditors, 0 Critical/Major):** one
+factually-wrong comment fixed (a non-empty non-numeric CSV token *raises*
+upstream — 58614 abort, `NumPoints` unchanged — it does not yield DblValue=0;
+the port keeps the established spectrum convention of substituting 0.0,
+divergent on malformed files only, now documented at `read_csv_file`); the
+deferred-`FileLoad` same-command reordering (file prop + later array prop)
+confirmed as a pre-existing accepted architectural limitation across all shape
+classes and documented at `obj/base/mod.rs::FileLoad` (no corpus deck hits it).
+One auditor independently re-ran the GAPS §3 proof (feature-sensitivity
+fingerprint flip + inline-arrays bit-identity `00471ed4…`).
 
 **WPG.17 exit sweep IN PROGRESS (2026-07-09).** Item-1 marker sweep + registry
 diff done: the Rust registry matches `DSSClassDefs.pas` `CreateDSSClasses`
