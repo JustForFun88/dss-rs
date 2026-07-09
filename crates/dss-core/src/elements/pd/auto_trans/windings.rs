@@ -77,6 +77,61 @@ impl AutoTrans {
         }
     }
 
+    /// Pascal `Get_BasekVLL(i)` = `Winding[i].kVLL` (`AutoTrans.pas:1817`) — the
+    /// CIM `PowerTransformerEnd.ratedU`/`zbase` source (WPG.18 Stage E). 1-based;
+    /// 0 out of range.
+    pub fn winding_kvll(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].kvll
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_WdgkVA(i)` = `Winding[i].kVA` (`AutoTrans.pas:1464`).
+    pub fn wdg_kva(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].kva
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_WdgResistance(i)` = `Winding[i].Rpu` (`AutoTrans.pas:1456`).
+    pub fn wdg_resistance(&self, i: usize) -> f64 {
+        if i >= 1 && i <= self.num_windings.max(0) as usize {
+            self.windings[i - 1].rpu
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `Get_Xsc(i)` = `XSC[i]` for 1-based `i` in
+    /// `1..=(NumWindings-1)·NumWindings/2` (`AutoTrans.pas:1472`); 0 otherwise.
+    pub fn xsc_val(&self, seq: usize) -> f64 {
+        let imax = xsc_size(self.num_windings);
+        if seq >= 1 && seq <= imax {
+            self.xsc[seq - 1]
+        } else {
+            0.0
+        }
+    }
+
+    /// Pascal `pctNoLoadLoss` — CIM `TransformerCoreAdmittance.g`.
+    pub fn pct_no_load_loss(&self) -> f64 {
+        self.pct_no_load_loss
+    }
+
+    /// Pascal `pctImag` — CIM `TransformerCoreAdmittance.b`.
+    pub fn pct_imag(&self) -> f64 {
+        self.pct_imag
+    }
+
+    /// Pascal `XfmrBank` — the CIM bank name (`ExportCIMXML.pas:3813`).
+    pub fn xfmr_bank(&self) -> &str {
+        &self.xfmr_bank
+    }
+
     /// Pascal `RotatePhases` exposed for the RegControl delta/regulated-bus path
     /// (1-based phase index).
     pub fn rotate_phases_1based(&self, iphs: usize) -> usize {

@@ -61,6 +61,15 @@ const CAP_DSS_OBJ_TYPE: i32 = 106;
 /// in `PD_ELEMENT = 2`, so a Reactor's `DSSObjType` is `136 or 2 = 138`.
 const REACTOR_DSS_OBJ_TYPE: i32 = 138;
 
+/// Pascal `DSSClassDefs.pas`: `XFMR_ELEMENT = 4*8 = 32`; `TPDClass.Create` ORs in
+/// `PD_ELEMENT = 2`, so a Transformer's `DSSObjType` is `32 or 2 = 34` — the
+/// integer prefix of its `GetTermUuid` key (`"34=<name>=<seq>"`).
+pub(crate) const XFMR_DSS_OBJ_TYPE: i32 = 34;
+
+/// Pascal `DSSClassDefs.pas`: `AUTOTRANS_ELEMENT = 37*8 = 296`; `TPDClass.Create`
+/// ORs in `PD_ELEMENT = 2`, so an AutoTrans's `DSSObjType` is `296 or 2 = 298`.
+pub(crate) const AUTOTRANS_DSS_OBJ_TYPE: i32 = 298;
+
 /// Pascal `ECapControlType` ordinals (`CapControl.pas:92`), the discriminant the
 /// CapControl→RegulatingControl arm switches on. `FOLLOWCONTROL = 5` and
 /// `USERCONTROL = 6` have no `RegulatingControlEnum` mode line in the Pascal
@@ -89,6 +98,8 @@ fn cktelem_dss_obj_type(class_name: &str) -> Option<i32> {
         "load" => LOAD_DSS_OBJ_TYPE,
         "capacitor" => CAP_DSS_OBJ_TYPE,
         "reactor" => REACTOR_DSS_OBJ_TYPE,
+        "transformer" => XFMR_DSS_OBJ_TYPE,
+        "autotrans" => AUTOTRANS_DSS_OBJ_TYPE,
         _ => return None,
     })
 }
@@ -101,11 +112,11 @@ fn cktelem_dss_obj_type(class_name: &str) -> Option<i32> {
 /// freshly started and freed within the one call (`StartOpLimitList`/
 /// `FreeOpLimitList`), unlike the persistent `UuidHash`, so there is nothing to
 /// carry on [`CimExporter`] itself.
-struct OpLimit {
-    uuid: Uuid,
-    local_name: String,
-    norm_amps: f64,
-    emerg_amps: f64,
+pub(crate) struct OpLimit {
+    pub(crate) uuid: Uuid,
+    pub(crate) local_name: String,
+    pub(crate) norm_amps: f64,
+    pub(crate) emerg_amps: f64,
 }
 
 /// Pascal `TECPObject` (`ExportCIMXML.pas:74-94`): one `EnergyConnectionProfile`
@@ -217,7 +228,7 @@ fn add_load_ecp(
 /// terminal, order-insensitive. `phs` is the raw bus-spec string (with its `.N`
 /// node suffixes), `nphases`/`bus_kvbase` come from the element + its terminal
 /// bus. A bus-spec with no dot ⇒ all phases (`ABC`).
-fn phase_string(phs: &str, nphases: usize, bus_kvbase: f64, allow_sec: bool) -> String {
+pub(crate) fn phase_string(phs: &str, nphases: usize, bus_kvbase: f64, allow_sec: bool) -> String {
     let mut b_sec = false;
     if allow_sec {
         if nphases == 2 && bus_kvbase < 0.25 {
@@ -494,7 +505,7 @@ fn attach_cap_phases(
 /// just the element count (`clsXfCd.ElementCount()`, `clsLnCd.ElementList`
 /// walks, …): every not-yet-ported catalog-class guard needs only "is this
 /// class populated", never the objects themselves.
-fn class_len(classes: &[DssClass], name: &str) -> usize {
+pub(crate) fn class_len(classes: &[DssClass], name: &str) -> usize {
     classes
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case(name))
@@ -517,7 +528,7 @@ fn not_ported_if_any(errors: &mut Vec<String>, count: usize, class_desc: &str, s
 
 /// Pascal `TCIMExporterHelper.WritePositions` (`ExportCIMXML.pas:2044`).
 #[allow(clippy::too_many_arguments)]
-fn write_positions(
+pub(crate) fn write_positions(
     buf: &mut String,
     ckt: &Circuit,
     cim: &mut CimExporter,
@@ -856,7 +867,12 @@ fn conductor_class_name(cond: &dyn DssObject) -> Option<&'static str> {
 /// `AttachLinePhases`/`AttachSwitchPhases`), from the raw bus-spec `.N` ordering.
 /// `phs` is the terminal's bus-spec string; `nphases`/`bus_kvbase` its element +
 /// bus. No dot ⇒ `ABC`.
-fn phase_order_string(phs: &str, nphases: usize, bus_kvbase: f64, allow_sec: bool) -> String {
+pub(crate) fn phase_order_string(
+    phs: &str,
+    nphases: usize,
+    bus_kvbase: f64,
+    allow_sec: bool,
+) -> String {
     let mut b_sec = false;
     if allow_sec {
         if nphases == 2 && bus_kvbase < 0.25 {
@@ -1327,7 +1343,7 @@ fn conductor_geom_amps(o: &dyn DssObject) -> Option<(ConductorGeom, f64)> {
 }
 
 /// The index of the (case-insensitive) class in the class list, or `None`.
-fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
+pub(crate) fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
     classes
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case(name))
@@ -2837,26 +2853,20 @@ pub(crate) fn export_cdpsm(
     }
 
     // Transformers + AutoTransformers + their banks (`3785-4197`) — Stage E.
-    not_ported_if_any(
-        errors,
-        ckt.transformers.len(),
-        "Transformer (PowerTransformer)",
-        "Stage E",
-    );
-    not_ported_if_any(
-        errors,
-        ckt.auto_transformers.len(),
-        "AutoTrans (PowerTransformer)",
-        "Stage E",
+    super::power_xfmr::write_transformers(
+        &mut buf,
+        classes,
+        ckt,
+        cim,
+        &mut op_limits,
+        &mut op_limit_idx,
+        crs_uuid,
+        fdr_uuid,
+        sqrt3,
     );
 
     // RegControls -> RatioTapChanger/TapChangerControl (`4198-4273`) — Stage E.
-    not_ported_if_any(
-        errors,
-        class_len(classes, "RegControl"),
-        "RegControl (RatioTapChanger)",
-        "Stage E",
-    );
+    super::power_xfmr::write_reg_controls(&mut buf, classes, ckt, cim);
 
     // Series reactors -> SeriesCompensator (`4274-4292`) — Stage D.
     for &r in &ckt.reactors.clone() {
