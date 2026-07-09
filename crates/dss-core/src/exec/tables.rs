@@ -376,6 +376,36 @@ pub(crate) mod opt {
     /// `DaisySize` written into the plot payload.
     pub const DAISY_SIZE: usize = 76;
 
+    // The GUI plot-marker style options (ExecOptions.pas Set arms :615-682 /
+    // Get arms :978-1041): headless-inert Circuit fields emitted into the
+    // plot-callback `Markers` object (WPG.17 Plot audit settlement).
+    pub const MARK_SWITCHES: usize = 74;
+    pub const SWITCH_MARKER_CODE: usize = 75;
+    pub const MARK_TRANSFORMERS: usize = 77;
+    pub const TRANS_MARKER_CODE: usize = 78;
+    pub const TRANS_MARKER_SIZE: usize = 79;
+    pub const MARK_CAPACITORS: usize = 83;
+    pub const MARK_REGULATORS: usize = 84;
+    pub const MARK_PVSYSTEMS: usize = 85;
+    pub const MARK_STORAGE: usize = 86;
+    pub const CAP_MARKER_CODE: usize = 87;
+    pub const REG_MARKER_CODE: usize = 88;
+    pub const PV_MARKER_CODE: usize = 89;
+    pub const STORE_MARKER_CODE: usize = 90;
+    pub const CAP_MARKER_SIZE: usize = 91;
+    pub const REG_MARKER_SIZE: usize = 92;
+    pub const PV_MARKER_SIZE: usize = 93;
+    pub const STORE_MARKER_SIZE: usize = 94;
+    pub const MARK_FUSES: usize = 96;
+    pub const FUSE_MARKER_CODE: usize = 97;
+    pub const FUSE_MARKER_SIZE: usize = 98;
+    pub const MARK_RECLOSERS: usize = 99;
+    pub const RECLOSER_MARKER_CODE: usize = 100;
+    pub const RECLOSER_MARKER_SIZE: usize = 101;
+    pub const MARK_RELAYS: usize = 103;
+    pub const RELAY_MARKER_CODE: usize = 104;
+    pub const RELAY_MARKER_SIZE: usize = 105;
+
     pub const HOUR: usize = 3;
     pub const SEC: usize = 4;
     pub const YEAR: usize = 5;

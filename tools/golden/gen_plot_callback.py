@@ -93,6 +93,14 @@ VARIANTS = [
         "plot type=circuit labels=y thickness=7 plotid=myplot 3phlinestyle=2 "
         "tricolormax=1.08 tricolormid=0.9",
     ]),
+    # The marker-style `Set` options (ExecOptions.pas:615-682) flow into the
+    # payload's `Markers` object — pins the Set handlers end-to-end.
+    ("circuit_marked", [
+        "Set MarkTransformers=yes TransMarkerCode=12 TransMarkerSize=4",
+        "Set MarkFuses=yes FuseMarkerCode=25 MarkSwitches=yes SwitchMarkerCode=6",
+        "Set MarkCapacitors=yes CapMarkerSize=2 MarkRelays=yes RelayMarkerCode=17",
+        "plot type=circuit quantity=Power",
+    ]),
 ]
 
 
