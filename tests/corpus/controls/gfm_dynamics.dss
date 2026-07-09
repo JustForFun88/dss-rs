@@ -1,0 +1,47 @@
+! GAPS deck (WPG.17): a discharging Storage in grid-forming inverter mode
+! (ControlMode=GFM) BLACK-STARTING an ISLANDED section in DYNAMICS mode.
+!
+! Topology: sourcebus --feeder--> mainbus --sw1(OPEN)--> islbus. Opening the tie
+! switch sw1 islands {islbus, stobus}: the only source left in that island is the
+! GFM Storage (a balanced internal voltage source scaled by its integrated filter
+! current it[0] behind its CalcGFMYprim short-circuit impedance), stepped up
+! 0.48->4.16 kV by tsto and forming the voltage for Load.isl. The main grid is
+! de-energised downstream of the open switch.
+!
+! Dynamics-mode GFM machinery exercised (Storage.pas / InvDynamics.pas, WPG.17):
+!   IntegrateStates GFM sub-branch (VDelta droop -> ISPDelta ramp, FixPhaseAngle),
+!   DoDynamicMode GFM (BaseV = BasekV*1000*(it[0]/iMaxPPhase); CalcGFMVoltage ->
+!   InjCurrent = YPrim*Vinternal), and CheckIfDelivering (SOC/report state).
+!
+! SafeVoltage=0 IS MANDATORY: with the default SafeVoltage=100 the MinVS safe-mode
+! threshold blocks the black start from 0 V (island stays DEAD). Set to 0 so the
+! droop can lift the terminal voltage from zero.
+!
+! FEATURE-SENSITIVITY (pinned oracle dss-python 0.15.7, 60x 1ms dynamics steps):
+!   WITH   ControlMode=GFM + SafeVoltage=0: the island BLACK-STARTS and ENERGISES.
+!          islbus ~0.977 pu after 60 steps, the Storage forms the grid and supplies
+!          the whole island load (~-400.7 kW / ~-80.9 kvar). Converges.
+!   WITHOUT ControlMode=GFM (plain GFL current source): the islanded inverter
+!          CANNOT form voltage -> the dynamics solve is NON-CONVERGENT (NaN node
+!          voltages, storage idles at 0 kW). A non-convergent GFL island vs a
+!          0.977-pu energised GFM one is a total, unambiguous divergence far above
+!          any tolerance, so the deck is a live gate for the ported dynamics-mode
+!          Storage GFM black-start droop.
+!   (Two-process oracle capture is bit-identical; determinism proven.)
+!
+! Explicit stepsize= (not steptime=, which is a no-op Set option) keeps the step
+! size independent of the WPG.17 `set steptime` fix.
+Clear
+New Circuit.gfm_dyn basekv=4.16 phases=3 bus1=sourcebus
+New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 length=1 units=km
+New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes
+New Transformer.tsto phases=3 windings=2 buses=(stobus islbus) conns=(delta wye) kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5
+New Storage.batt phases=3 conn=delta bus1=stobus kV=0.48 kva=800 kWrated=800 kWhrated=6000 %stored=100 %reserve=20 %IdlingkW=1 %R=50 %X=50 State=DISCHARGING kP=0.3 KVDC=0.700 PITol=0.1 SafeVoltage=0 ControlMode=GFM
+New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1
+New Monitor.mvi element=Storage.batt terminal=1 mode=0
+New Monitor.msv element=Storage.batt terminal=1 mode=3
+Set voltagebases=[4.16 0.48]
+Calcvoltagebases
+open line.sw1 terminal=1
+solve
+Set mode=dynamics stepsize=0.001 number=60 maxiterations=30

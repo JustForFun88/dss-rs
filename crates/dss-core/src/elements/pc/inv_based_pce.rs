@@ -20,7 +20,7 @@
 //! (GFM) power-flow model — `CalcGFMYprim`/`CalcGFMVoltage`, the `GetCurrents`
 //! override, `CheckAmpsLimit` — landed in WPG.13 (snapshot/daily/direct). The
 //! **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM,
-//! `FixPhaseAngle`/`VDelta`/`ISPDelta` droop) is still NOT_PORTED.
+//! `FixPhaseAngle`/`VDelta`/`ISPDelta` black-start droop) landed in WPG.17.
 //!
 //! [`Generator`]: crate::elements::pc::generator::Generator
 
@@ -116,7 +116,7 @@ pub struct InvDynamicVars {
     /// `VDelta` — GFM black-start voltage delta per phase (droop control).
     pub v_delta: Vec<f64>,
     /// `ISPDelta` — GFM current-target delta per phase (black-start / droop;
-    /// consumed by the dynamics-mode GFM `IntegrateStates`, NOT_PORTED).
+    /// ramped by the dynamics-mode GFM `IntegrateStates`, WPG.17).
     pub isp_delta: Vec<f64>,
     /// `AngDelta` — phase-angle correction (GFM `FixPhaseAngle`).
     pub ang_delta: Vec<f64>,

@@ -1285,6 +1285,29 @@
    "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process oracle capture bit-identical (determinism proven)."
   },
   {
+   "path": "gfm_dynamics.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state",
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.17",
+   "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V)."
+  },
+  {
    "path": "storagecontroller_seasonal.dss",
    "kind": "micro",
    "n_steps": 24,
