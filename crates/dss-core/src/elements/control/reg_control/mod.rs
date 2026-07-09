@@ -336,6 +336,82 @@ impl RegControl {
         ((tr.present_tap(w as usize) - mid) / inc).round_ties_even() as i32
     }
 
+    // --- CIM100 export read accessors (WPG.18 Stage E, `ExportCIMXML.pas:4198-
+    // 4270`). Every field maps 1:1 to a `TRegControlObj` property the
+    // `RatioTapChanger`/`TapChangerControl` arm reads; no behavior change. ---
+
+    /// Pascal `Vreg` — CIM `RegulatingControl.targetValue`.
+    pub(crate) fn vreg(&self) -> f64 {
+        self.vreg
+    }
+    /// Pascal `Bandwidth` — CIM `RegulatingControl.targetDeadband`.
+    pub(crate) fn bandwidth(&self) -> f64 {
+        self.bandwidth
+    }
+    /// Pascal `PTRatio` — CIM `TapChanger.ptRatio` / `v1` divisor.
+    pub(crate) fn pt_ratio(&self) -> f64 {
+        self.pt_ratio
+    }
+    /// Pascal `CTRating` — CIM `TapChanger.ctRating` (and `ctRatio = /0.2`).
+    pub(crate) fn ct_rating(&self) -> f64 {
+        self.ct_rating
+    }
+    /// Pascal `R` (line-drop R) — CIM `TapChangerControl.lineDropR`.
+    pub(crate) fn ldc_r(&self) -> f64 {
+        self.r
+    }
+    /// Pascal `X` (line-drop X) — CIM `TapChangerControl.lineDropX`.
+    pub(crate) fn ldc_x(&self) -> f64 {
+        self.x
+    }
+    /// Pascal `LDCActive` — CIM `TapChangerControl.lineDropCompensation`.
+    pub(crate) fn ldc_active(&self) -> bool {
+        self.ldc_active
+    }
+    /// Pascal `TapDelay` — CIM `TapChanger.subsequentDelay`.
+    pub(crate) fn tap_delay(&self) -> f64 {
+        self.tap_delay
+    }
+    /// Pascal `VLimit` — CIM `TapChangerControl.maxLimitVoltage` (when active).
+    /// `VLimitActive` (`RegControl.pas:1307`) is just `vlimit() > 0`, computed at
+    /// the CIM call site (the private `vlimit_active` in `control_loop` is not in
+    /// scope there).
+    pub(crate) fn vlimit(&self) -> f64 {
+        self.vlimit
+    }
+    /// Pascal `IsReversible` (the `reversible=` property).
+    pub(crate) fn is_reversible(&self) -> bool {
+        self.is_reversible
+    }
+    /// Pascal `ReverseNeutral` — CIM `TapChangerControl.reverseToNeutral`.
+    pub(crate) fn reverse_neutral(&self) -> bool {
+        self.reverse_neutral
+    }
+    /// Pascal `revDelay` — CIM `TapChangerControl.reversingDelay`.
+    pub(crate) fn rev_delay(&self) -> f64 {
+        self.rev_delay
+    }
+    /// Pascal `revPowerThreshold` — CIM `TapChangerControl.reversingPowerThreshold`.
+    pub(crate) fn rev_power_threshold(&self) -> f64 {
+        self.rev_power_threshold
+    }
+    /// Pascal `revR` — CIM `TapChangerControl.reverseLineDropR`.
+    pub(crate) fn rev_r(&self) -> f64 {
+        self.rev_r
+    }
+    /// Pascal `revX` — CIM `TapChangerControl.reverseLineDropX`.
+    pub(crate) fn rev_x(&self) -> f64 {
+        self.rev_x
+    }
+    /// Pascal `revVreg` — CIM `RegulatingControl.reverseTargetValue`.
+    pub(crate) fn rev_vreg(&self) -> f64 {
+        self.rev_vreg
+    }
+    /// Pascal `revBandwidth` — CIM `RegulatingControl.reverseTargetDeadband`.
+    pub(crate) fn rev_bandwidth(&self) -> f64 {
+        self.rev_bandwidth
+    }
+
     /// Resync every winding's `tap_snap` from the **live** controlled
     /// transformer, so the `&self` `TapNum` getter (and the property dump) render
     /// Pascal `Get_TapNum`'s live `PresentTap[TapWinding]` reading rather than a

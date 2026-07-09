@@ -1789,6 +1789,60 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 CIM Stage E (transformers + AutoTrans + banks + RegControl) COMPLETE,
+gate-green** (branch `worktree-agent-a32f944d01be61c20`, 2026-07-09; base reset
+from the stale toy-repo `d04fbd4` to `phase-8-reporting @ 5f114cf`, `.inputs` +
+`tools/opendss/.venv` junctions recreated — the known worktree-race traps).
+Ported `Common/ExportCIMXML.pas:3783-4270` into a new byte-faithful split module
+`crates/dss-core/src/cim/power_xfmr.rs` (extracted per SPLITTING_RULES as the arm
+landed; `export.rs` calls `write_transformers` then `write_reg_controls` where its
+two Stage-E `NOT_PORTED` guards sat). **AutoTrans sweep** (`3804-3932`): always
+balanced-3φ `PowerTransformerEnd`s + `TransformerMeshImpedance`/
+`TransformerCoreAdmittance` (no tanks), vector group `YNa`(2w)/`YNad1`(3w); i=1→Y
+ungrounded, i=2→A grounded (rground/xground=0), i≥3→D clock=1; core `b = -%imag/
+100/zbase` (note the **minus**, unlike regular transformers). **Three regular
+transformer cases** (`3934-4155`): case 1 (no code & 3φ) → `PowerTransformerEnd` +
+mesh/core with the grounded/rground/xground branch on `Winding.Connection`/`Rneut`/
+`NodeRef[(i-1)·Nconds+Nphases]`; case 2 (has code) → `TransformerTank` +
+`TransformerTankEnd` (via `XfmrTankPhasesAndGround`, `1531`) referencing the code's
+`TransformerTankInfo`; case 3 (no code & not 3φ) → the transformer's own winding
+web is written as a synthesized `CIMXfmrCode_<name>` tank-info (Pascal
+`PullFromTransformer` reproduced as a transient view — no circuit mutation). **All
+XfmrCodes written unconditionally** (`WriteXfmrCode`, `2133`: `TransformerTankInfo`
++ per-winding `TransformerEndInfo` + `NoLoadTest` + per-pair `ShortCircuitTest`),
+real codes first (class order) then the synthesized case-3 codes (transformer
+order). **Banks** (`TCIMBankObject`, `698-805`, ported as a local `CimBank`
+struct): `BuildVectorGroup` from accumulated winding phases/connections/ground/
+clock, `PowerTransformer` written last in insertion order (autotrans banks, then
+transformer banks), leading `=` stripped from no-bank names. **RegControl arm**
+(`4198-4270`): skipped for AutoTrans-controlled regs (only `Transformer`);
+`TapChangerControl` (mode=voltage, targetValue=Vreg, targetDeadband=Bandwidth, LDC,
+reversible block, `maxLimitVoltage`=Vlimit|MaxTap·v1) + `RatioTapChanger`
+(stepVoltageIncrement=100·TapIncrement, highStep=NumTaps div 2, SSH
+`TapChanger.step` = the **live** `tap_num_live` reading — guards the RegControl
+stale-tap bug from MEMORY). New writers `winding_connection_kind_node`(1620)/
+`winding_connection_enum`(1440)/`transformer_control_enum`(1482, a no-op — the
+Pascal body is commented out). Constants `XFMR_DSS_OBJ_TYPE=34`(=32|2),
+`AUTOTRANS_DSS_OBJ_TYPE=298`(=296|2) added to `cktelem_dss_obj_type`. Read-only
+getters added (each cites its Pascal field): Transformer `winding_kvll`/`wdg_kva`/
+`wdg_resistance`/`winding_rneut`/`winding_xneut`/`winding_num_taps`/`xsc_val`/
+`windings`/`xsc`/`pct_no_load_loss`/`pct_imag`/`norm_max_hkva`/`emerg_max_hkva`/
+`xfmr_bank`/`xfmr_code_ref`; AutoTrans `winding_kvll`/`wdg_kva`/`wdg_resistance`/
+`xsc_val`/`pct_no_load_loss`/`pct_imag`/`xfmr_bank`; RegControl `vreg`/`bandwidth`/
+`pt_ratio`/`ct_rating`/`ldc_r`/`ldc_x`/`ldc_active`/`tap_delay`/`vlimit`/
+`is_reversible`/`reverse_neutral`/`rev_delay`/`rev_power_threshold`/`rev_r`/`rev_x`/
+`rev_vreg`/`rev_bandwidth`. **Gate E golden** `cim_xfmr.dss` (2×AutoTrans YNad1/YNa
++ case-1 Δ-Y + 3-winding Δ-tertiary + case-2 XfmrCode tank + a 3-unit single-phase
+regulator bank = case 3 + RegControl), byte-exact vs the pinned oracle
+(`tests/golden/cim/cim_xfmr.xml`, 2174 lines / 165 345 bytes; fixture
+`cim_xfmr_fixture.csv`, 297 keys — completeness proof green). The solver-dependent
+SSH `TapChanger.step` matched byte-exact ⇒ Rust and oracle converge to the same
+regulator taps. `rg NOT_PORTED crates/dss-core/src/cim/` = the single remaining
+**Stage F** arm (Generator/PVSystem/Storage/InvControl/ExpControl + fragments
+mode). IEEE13/IEEE123 full-feeder CIM goldens deferred to Stage F/handoff (the
+`cim_xfmr.dss` deck already exercises all three transformer cases + AutoTrans +
+banks + RegControl end-to-end).
+
 **WPG.18 CIM Stage D (capacitors + CapControls + series reactors) COMPLETE,
 gate-green** (branch `worktree-agent-a5a4c8b61573a0b06`, 2026-07-09; base reset
 from the stale toy-repo `d04fbd4` to `phase-8-reporting @ b05e6f6`, `.inputs` +

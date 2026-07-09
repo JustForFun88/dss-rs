@@ -49,6 +49,7 @@ CASES = [
     {"deck": "cim_load.dss", "circuit": "cim_load"},
     {"deck": "cim_lines.dss", "circuit": "cim_lines"},
     {"deck": "cim_shunt.dss", "circuit": "cim_shunt"},
+    {"deck": "cim_xfmr.dss", "circuit": "cim_xfmr"},
 ]
 
 

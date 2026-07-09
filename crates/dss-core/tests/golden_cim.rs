@@ -148,3 +148,15 @@ fn cim_lines() {
 fn cim_shunt() {
     run_case("cim_shunt");
 }
+
+/// Stage E: transformers + autotransformers + banks + RegControl. The three
+/// transformer cases (`PowerTransformerEnd`+mesh/core with no code; a
+/// `TransformerTank`+`TransformerTankInfo` XfmrCode; a synthesized
+/// `CIMXfmrCode_<name>` for a no-code non-3-phase unit), a 3-winding delta
+/// tertiary, two `AutoTrans` (YNad1 + YNa vector groups), a 3-unit regulator
+/// bank, and RegControl → `RatioTapChanger`/`TapChangerControl` (SSH
+/// `TapChanger.step` = the live post-solve `TapNum`).
+#[test]
+fn cim_xfmr() {
+    run_case("cim_xfmr");
+}
