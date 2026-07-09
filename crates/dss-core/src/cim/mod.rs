@@ -17,6 +17,7 @@
 mod tests;
 
 pub(crate) mod export;
+pub(crate) mod ieee1547;
 pub(crate) mod power_xfmr;
 pub(crate) mod writer;
 
@@ -32,6 +33,14 @@ impl Uuid {
     /// Never oracle-pinnable — goldens preload every UUID they compare.
     pub fn create_v4() -> Self {
         Self(uuid::Uuid::new_v4())
+    }
+
+    /// The all-zero UUID — a placeholder for the fragments-mode writer's
+    /// per-profile `ids[]` slots before their first `StartInstance`
+    /// (`ExportCIMXML.pas:415`); never emitted (the auto-`StartFreeInstance` path
+    /// only reads a slot after `StartInstance` has set it).
+    pub fn nil() -> Self {
+        Self(uuid::Uuid::nil())
     }
 
     /// Pascal `StringToUUID` (FPC `StringToGUID`): parse a `{…}`-braced (or
@@ -58,6 +67,13 @@ impl Uuid {
     /// CIM XML export (WPG.18) is this form.
     pub fn to_cim_string(&self) -> String {
         self.0.hyphenated().to_string().to_uppercase()
+    }
+}
+
+impl Default for Uuid {
+    /// The nil UUID — a placeholder slot value (see [`Uuid::nil`]); never emitted.
+    fn default() -> Self {
+        Self::nil()
     }
 }
 

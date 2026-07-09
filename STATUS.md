@@ -1789,6 +1789,60 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**WPG.18 CIM Stage F (DER + IEEE1547 + fragments mode) COMPLETE, gate-green**
+(2026-07-09, on `phase-8-reporting @ 7c74344`). The last WPG.18 stage — every
+`NOT_PORTED` arm is now a real port (`rg NOT_PORTED crates/dss-core/src/cim/` =
+empty). Three parts, all **byte-exact vs the pinned oracle** (combined **and**
+the 7 fragment files):
+- **DER sweeps** (`ExportCIMXML.pas:3503-3612`, in `cim/export.rs`): Generator →
+  `SynchronousMachine` (+ `RotatingMachine.p/q/ratedS/ratedU`), PVSystem →
+  `PhotovoltaicUnit` + `PowerElectronicsConnection` (maxP/minP, maxIFault,
+  ratedS/U, the kvarlimit-set-vs-default `maxQ`/`minQ` arms), Storage →
+  `BatteryUnit` (ratedE/storedE/`BatteryStateEnum`) + `PowerElectronicsConnection`.
+  Shared `attach_der_phases`/`write_der_phase` (the non-3φ `SynchronousMachinePhase`
+  / `PowerElectronicsConnectionPhase` breakdown incl. the `<0.25 kV` s1/s2 split),
+  `ConverterControlEnum`, and `add_generator_ecp`/`add_solar_ecp`/`add_storage_ecp`
+  (the `Gen:`/`PV:`/`Bat:` EnergyConnectionProfile keys, the PV T-shape trio).
+  Constants `GEN=83`/`STORAGE=171`/`PVSYSTEM=195` added to `cktelem_dss_obj_type`.
+- **IEEE1547 controller** (new `cim/ieee1547.rs`, `ExportCIMXML.pas:2318-3183`):
+  one reused `Ieee1547Controller` pulls each enabled InvControl then ExpControl.
+  `PullFromInvControl` (the vvc/voltwatt/voltwattCH/wattvar curve-scan loops incl.
+  the `dec(i)` re-scan, the mode/combi enable logic, the mode-3 DRC-as-AVR curve
+  synthesis), `PullFromExpControl`, `SetDefaults` catA/catB, `SetPhotovoltaic`/
+  `SetStorageNameplate` + `FinishNameplate`, `WriteCIM` (`DERIEEEType1` +
+  `DERNameplateData`/`Applied` + VoltVar/WattVar/ConstPF/ConstQ/VoltWatt settings)
+  → all into the **Dyn** profile. Reproduces the defined upstream quirk that the
+  reused controller **appends** DER names in `PullFromExpControl` (`pDERNames.Add`,
+  not `Assign`) so the ExpControl's `DERIEEEType1` references BOTH controls' DERs.
+  New public getters on `InvControl`/`ExpControl` (curves + mode/scalar fields) —
+  no behavior change. `TODO(compat)` on the truncated `2.3026` (= `ln 10`).
+  **NOT byte-gated (honest):** the `FindSignalTerminals`/`RemoteInputSignal` path
+  (only reached with a control `MonBus`) is ported (a bus-name `getPDEatBus`/
+  `getPCEatBus` scan) but unverified — no *solvable* oracle deck runs `export
+  cim100` with a MonBus InvControl (probed: they abort the oracle solve). The
+  gated local-monitoring case (empty `MonBuses` ⇒ no signals) is what `cim_der`
+  exercises.
+- **Fragments mode** (`Export CIM100Fragments`, ptr 20): `writer.rs` gains a
+  stateful `Writer` carrying both modes — combined writes one FUN buffer,
+  fragments routes each line to its per-profile buffer with `WriteCimLn`'s
+  auto-`StartFreeInstance` and `EndInstance`'s close-every-open-profile logic
+  (`FD_Create`/`FD_Destroy`, `4729-4763`). The combined path stays byte-identical
+  (all 7 pre-existing goldens unchanged). `exec/report.rs` ptr 20 wired to
+  `export_cim100_fragments` (`<CaseName>_CIM100_<PRF>.xml`). All `writer::`/
+  `power_xfmr`/`export` call sites migrated `&mut String` → `&mut Writer`
+  (mechanical; the combined output is unchanged, proven by the 7 unchanged
+  goldens + a scratch cim_xfmr fragment A/B vs oracle).
+
+**Gate:** new deck `cim_der.dss` (Gen 3φ+1φ+daily; PV 3φ default-limit + 3φ
+kvarMax-set + 2φ 0.208 secondary + daily/TDaily; Storage discharging/idling/2φ
+charging; InvControl volt-var catB curve; ExpControl) → combined golden
+`cim_der.xml` (1256 lines) **and** 7 fragment goldens `cim_der_<PRF>.xml`; tests
+`cim_der` + `cim_der_fragments` in `golden_cim.rs`. `gen_cim.py` gained a
+`"fragments"` case flag + the 7-file completeness proof. Full gate green: `cargo
+fmt --check`, `cargo clippy --workspace -D warnings`, `cargo test --workspace`
+(incl. `corpus_live` 13/13 + `golden_cim` 9/9). **WPG.18 CIM XML export is now
+complete (Stages A–F).** Remaining in GAPS_PLAN: **WPG.17 (exit sweep)**.
+
 **WPG.18 CIM Stage E (transformers + AutoTrans + banks + RegControl) COMPLETE,
 gate-green** (branch `worktree-agent-a32f944d01be61c20`, 2026-07-09; base reset
 from the stale toy-repo `d04fbd4` to `phase-8-reporting @ 5f114cf`, `.inputs` +

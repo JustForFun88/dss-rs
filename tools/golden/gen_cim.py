@@ -51,6 +51,10 @@ CASES = [
     {"deck": "cim_lines.dss", "circuit": "cim_lines"},
     {"deck": "cim_shunt.dss", "circuit": "cim_shunt"},
     {"deck": "cim_xfmr.dss", "circuit": "cim_xfmr"},
+    # Stage F: the DER sweeps + IEEE1547 controller + fragments mode. `fragments`
+    # additionally emits the seven `_FUN/_GEO/_TOPO/_SSH/_CAT/_EP/_DYN.xml` goldens
+    # from `export cim100fragments` (same preloaded fixture, byte-exact per file).
+    {"deck": "cim_der.dss", "circuit": "cim_der", "fragments": True},
     # Corpus feeder cases (Stage E): compile the vendored master, CIM-export the
     # whole real feeder. IEEE13 = case-1 (sub/XFM1) + case-3 (3 single-phase
     # regulators) + RegControl + 37 ACLineSegments (Stage C catalog).
@@ -112,6 +116,30 @@ def _produce_cim100(
     return matches[0].read_text()  # universal newlines -> LF
 
 
+# The seven CIM profiles `export cim100fragments` splits into, paired with the
+# golden suffix (Pascal `FD_Create`, `ExportCIMXML.pas:4738-4744`).
+FRAGMENT_PROFILES = ["FUN", "GEO", "TOPO", "SSH", "CAT", "EP", "DYN"]
+
+
+def _produce_fragments(
+    d, deck_path: Path, circuit: str, tmp: str, fixture_path: Path, post: list[str]
+) -> dict[str, str]:
+    """One fragments run: fresh compile, preload the fixture, `export
+    cim100fragments`, return `{PRF: bytes}` for the seven per-profile files
+    (`<circuit>_CIM100_<PRF>.xml`, LF-normalized)."""
+    _run_deck(d, deck_path, post)
+    d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+    d.Text.Command = f'uuids file="{fixture_path.as_posix()}"'
+    d.Text.Command = "export cim100fragments"
+    out = {}
+    for prf in FRAGMENT_PROFILES:
+        matches = list(Path(tmp).glob(f"{circuit}_CIM100_{prf}.xml"))
+        if len(matches) != 1:
+            sys.exit(f"gen_cim: expected one {circuit}_CIM100_{prf}.xml in {tmp}, found {matches}")
+        out[prf] = matches[0].read_text()
+    return out
+
+
 def _compile_target(case: dict) -> Path:
     """The file `compile` runs: a corpus feeder master (`master` key, relative to
     `tests/corpus/electricdss-tst`) or a local micro deck (`deck` key)."""
@@ -170,6 +198,27 @@ def gen_case(d, case: dict) -> None:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / f"{circuit}.xml").write_text(golden, newline="\n")
+
+    # --- optional: the seven fragment-mode goldens (+ their completeness proof) --
+    if case.get("fragments"):
+        tmp4 = tempfile.mkdtemp(prefix="dss_gen_cim_")
+        tmp5 = tempfile.mkdtemp(prefix="dss_gen_cim_")
+        try:
+            frags = _produce_fragments(d, deck_path, circuit, tmp4, fixture_path, post)
+            frags_repeat = _produce_fragments(d, deck_path, circuit, tmp5, fixture_path, post)
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp4, ignore_errors=True)
+            shutil.rmtree(tmp5, ignore_errors=True)
+        for prf in FRAGMENT_PROFILES:
+            if frags_repeat[prf] != frags[prf]:
+                sys.exit(
+                    f"gen_cim: {circuit} fragment {prf} fixture INCOMPLETE (repeat run "
+                    "diverged — an un-preloaded UUID drew a fresh v4). Fix the fixture."
+                )
+            (OUT_DIR / f"{circuit}_{prf}.xml").write_text(frags[prf], newline="\n")
+        print(f"  + {len(FRAGMENT_PROFILES)} fragment goldens ({circuit}_<PRF>.xml)")
+
     meta = {
         "report": "cim100",
         "circuit": circuit,

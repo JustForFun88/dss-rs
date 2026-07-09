@@ -1,17 +1,16 @@
 //! Pascal `TCIMExporter.ExportCDPSM` (`Common/ExportCIMXML.pas:3203-4707`) — the
-//! CIM100 XML export control flow. GAPS_PLAN WPG.18 Stage A ports the **entire**
-//! flow top-to-bottom (decision 7): the scaffolding (regions/substation/feeder/
-//! location, the six `OperationalLimitType`s, the `BaseVoltage`+op-limit-set
-//! sweep over `LegalVoltageBases`, the bus → `TopologicalNode`/`ConnectivityNode`
-//! sweep, the swing-bus `TopologicalIsland`, the fixed `LoadResponseCharacteristic`
-//! catalog, and the closing `OperationalLimitSet`/`CurrentLimit` sweep) plus the
-//! **EnergySource** (Vsource) per-object sweep — every other class arm is a
-//! scoped [`not_ported_if_any`] error that fires only when the circuit actually
-//! contains instances of that not-yet-ported class (never a silent drop; see
-//! GAPS_PLAN WPG.18 decision 7 and the prohibition in the WP brief). Combined
-//! mode only (`Export CIM100`, `ExportOptions.pas` ptr 21); `Export
-//! CIM100Fragments` (ptr 20) is NOT_PORTED at the `exec/report.rs` dispatch
-//! until Stage F.
+//! CIM100 XML export control flow, ported top-to-bottom (GAPS_PLAN WPG.18
+//! decision 7): the scaffolding (regions/substation/feeder/location, the six
+//! `OperationalLimitType`s, the `BaseVoltage`+op-limit-set sweep over
+//! `LegalVoltageBases`, the bus → `TopologicalNode`/`ConnectivityNode` sweep, the
+//! swing-bus `TopologicalIsland`, the fixed `LoadResponseCharacteristic` catalog,
+//! and the closing `OperationalLimitSet`/`CurrentLimit` sweep) plus every
+//! per-class sweep — EnergySource, DER (Generator/PVSystem/Storage), the IEEE1547
+//! controller ([`super::ieee1547`]), capacitors, reactors, lines/switches,
+//! transformers/AutoTrans/regulators ([`super::power_xfmr`]), loads, and the
+//! conductor/xfmr catalogs. Both output modes run through [`writer::Writer`]:
+//! combined (`Export CIM100`, `ExportOptions.pas` ptr 21) and fragments (`Export
+//! CIM100Fragments`, ptr 20).
 
 use std::collections::HashMap;
 
@@ -24,7 +23,10 @@ use crate::elements::general::line_code::{LineCodeObj, prop as lc_prop};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::pc::VSource;
+use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::{Connection, Load, LoadModel};
+use crate::elements::pc::pvsystem::PVSystem;
+use crate::elements::pc::storage::Storage;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
@@ -70,6 +72,19 @@ pub(crate) const XFMR_DSS_OBJ_TYPE: i32 = 34;
 /// ORs in `PD_ELEMENT = 2`, so an AutoTrans's `DSSObjType` is `296 or 2 = 298`.
 pub(crate) const AUTOTRANS_DSS_OBJ_TYPE: i32 = 298;
 
+/// Pascal `DSSClassDefs.pas`: `GEN_ELEMENT = 10*8 = 80`; `TPCClass.Create` ORs in
+/// `PC_ELEMENT = 3`, so a Generator's `DSSObjType` is `80 or 3 = 83` — the
+/// `GetTermUuid` key prefix (`"83=<name>=<seq>"`).
+const GEN_DSS_OBJ_TYPE: i32 = 83;
+
+/// Pascal `DSSClassDefs.pas`: `STORAGE_ELEMENT = 21*8 = 168`; `| PC_ELEMENT 3`
+/// → `171` (`SetElementNameplate` tests `PC_ELEMENT + STORAGE_ELEMENT`).
+const STORAGE_DSS_OBJ_TYPE: i32 = 171;
+
+/// Pascal `DSSClassDefs.pas`: `PVSYSTEM_ELEMENT = 24*8 = 192`; `| PC_ELEMENT 3`
+/// → `195` (`SetElementNameplate` tests `PC_ELEMENT + PVSYSTEM_ELEMENT`).
+const PVSYSTEM_DSS_OBJ_TYPE: i32 = 195;
+
 /// Pascal `ECapControlType` ordinals (`CapControl.pas:92`), the discriminant the
 /// CapControl→RegulatingControl arm switches on. `FOLLOWCONTROL = 5` and
 /// `USERCONTROL = 6` have no `RegulatingControlEnum` mode line in the Pascal
@@ -91,7 +106,7 @@ const CAP_CTRL_PF: i32 = 4;
 /// only at export time — is mapped from its class name here. Returns `None` for
 /// a class not yet covered so the caller can fire a loud error rather than emit a
 /// silently-wrong key (Stages E/F extend this table as their classes land).
-fn cktelem_dss_obj_type(class_name: &str) -> Option<i32> {
+pub(crate) fn cktelem_dss_obj_type(class_name: &str) -> Option<i32> {
     Some(match class_name.to_ascii_lowercase().as_str() {
         "vsource" => VSOURCE_DSS_OBJ_TYPE,
         "line" => LINE_DSS_OBJ_TYPE,
@@ -100,6 +115,9 @@ fn cktelem_dss_obj_type(class_name: &str) -> Option<i32> {
         "reactor" => REACTOR_DSS_OBJ_TYPE,
         "transformer" => XFMR_DSS_OBJ_TYPE,
         "autotrans" => AUTOTRANS_DSS_OBJ_TYPE,
+        "generator" => GEN_DSS_OBJ_TYPE,
+        "storage" => STORAGE_DSS_OBJ_TYPE,
+        "pvsystem" => PVSYSTEM_DSS_OBJ_TYPE,
         _ => return None,
     })
 }
@@ -223,6 +241,140 @@ fn add_load_ecp(
     ecps.list[slot].connections.push(load_uuid);
 }
 
+/// The shared find-or-create body of the DER `Add*ECP` helpers (`AddSolarECP`
+/// `1170`, `AddStorageECP` `1211`, `AddGeneratorECP` `1243`): if `has_ref`
+/// (Pascal's "any shape/spectrum set" guard), find-or-create the
+/// `EnergyConnectionProfile` for `key` and append `conn_uuid`. `fields` supplies
+/// the pre-resolved node values; the T-shape trio is empty for Gen/Storage.
+#[allow(clippy::too_many_arguments)]
+fn add_der_ecp(
+    ecps: &mut EcpList,
+    cim: &mut CimExporter,
+    conn_uuid: Uuid,
+    has_ref: bool,
+    key: String,
+    daily: &str,
+    duty: &str,
+    yearly: &str,
+    spectrum: &str,
+    tdaily: &str,
+    tduty: &str,
+    tyearly: &str,
+) {
+    if !has_ref {
+        return;
+    }
+    let slot = match ecps.idx.get(&key) {
+        Some(&s) => s,
+        None => {
+            let uuid = cim.get_dev_uuid(UuidChoice::ECProfile, &key, 0);
+            let s = ecps.list.len();
+            ecps.list.push(Ecp {
+                uuid,
+                local_name: key.clone(),
+                daily: daily.to_string(),
+                duty: duty.to_string(),
+                yearly: yearly.to_string(),
+                growth: String::new(),
+                spectrum: spectrum.to_string(),
+                cvr: String::new(),
+                tdaily: tdaily.to_string(),
+                tduty: tduty.to_string(),
+                tyearly: tyearly.to_string(),
+                connections: Vec::new(),
+            });
+            ecps.idx.insert(key, s);
+            s
+        }
+    };
+    ecps.list[slot].connections.push(conn_uuid);
+}
+
+/// Pascal `TCIMExporterHelper.AddGeneratorECP` (`ExportCIMXML.pas:1243`): keyed
+/// `Gen:<daily>:<duty>:<yearly>:<spectrum>`; fires when any shape is set or the
+/// spectrum is non-default (`defaultgen`). Like `AddLoadECP`, the spectrum node
+/// is suppressed for the default (present in the key, absent in the output).
+#[allow(clippy::too_many_arguments)]
+fn add_generator_ecp(
+    ecps: &mut EcpList,
+    cim: &mut CimExporter,
+    gen_uuid: Uuid,
+    daily: &str,
+    duty: &str,
+    yearly: &str,
+    spectrum: &str,
+) {
+    let spectrum_non_default = !spectrum.eq_ignore_ascii_case("defaultgen");
+    let has_ref =
+        !daily.is_empty() || !duty.is_empty() || !yearly.is_empty() || spectrum_non_default;
+    let key = format!("Gen:{daily}:{duty}:{yearly}:{spectrum}");
+    let spectrum_node = if spectrum_non_default { spectrum } else { "" };
+    add_der_ecp(
+        ecps,
+        cim,
+        gen_uuid,
+        has_ref,
+        key,
+        daily,
+        duty,
+        yearly,
+        spectrum_node,
+        "",
+        "",
+        "",
+    );
+}
+
+/// Pascal `TCIMExporterHelper.AddSolarECP` (`ExportCIMXML.pas:1170`): keyed
+/// `PV:<daily>:<duty>:<yearly>:<Tdaily>:<Tduty>:<Tyearly>:<spectrum>`; fires when
+/// any of those references is set (the PVSystem spectrum defaults to nil, so
+/// `NameIfNotNil` is `''` and it is written verbatim — no default-suppression).
+#[allow(clippy::too_many_arguments)]
+fn add_solar_ecp(
+    ecps: &mut EcpList,
+    cim: &mut CimExporter,
+    pv_uuid: Uuid,
+    daily: &str,
+    duty: &str,
+    yearly: &str,
+    tdaily: &str,
+    tduty: &str,
+    tyearly: &str,
+    spectrum: &str,
+) {
+    let has_ref = !daily.is_empty()
+        || !duty.is_empty()
+        || !yearly.is_empty()
+        || !tdaily.is_empty()
+        || !tduty.is_empty()
+        || !tyearly.is_empty()
+        || !spectrum.is_empty();
+    let key = format!("PV:{daily}:{duty}:{yearly}:{tdaily}:{tduty}:{tyearly}:{spectrum}");
+    add_der_ecp(
+        ecps, cim, pv_uuid, has_ref, key, daily, duty, yearly, spectrum, tdaily, tduty, tyearly,
+    );
+}
+
+/// Pascal `TCIMExporterHelper.AddStorageECP` (`ExportCIMXML.pas:1211`): keyed
+/// `Bat:<daily>:<duty>:<yearly>:<spectrum>`; fires when any of those is set (the
+/// storage spectrum also defaults to nil → `''`, written verbatim).
+fn add_storage_ecp(
+    ecps: &mut EcpList,
+    cim: &mut CimExporter,
+    bat_uuid: Uuid,
+    daily: &str,
+    duty: &str,
+    yearly: &str,
+    spectrum: &str,
+) {
+    let has_ref =
+        !daily.is_empty() || !duty.is_empty() || !yearly.is_empty() || !spectrum.is_empty();
+    let key = format!("Bat:{daily}:{duty}:{yearly}:{spectrum}");
+    add_der_ecp(
+        ecps, cim, bat_uuid, has_ref, key, daily, duty, yearly, spectrum, "", "", "",
+    );
+}
+
 /// Pascal `TCIMExporterHelper.PhaseString` (`ExportCIMXML.pas:491`): the CIM
 /// phase letters (`ABC`/`AB`/… or the split-secondary `s1`/`s2`/`s12`) for one
 /// terminal, order-insensitive. `phs` is the raw bus-spec string (with its `.N`
@@ -316,7 +468,7 @@ fn delta_phase_string(phs: &str, nphases: usize) -> String {
 /// `LoadPhase=<load>_<phs>=1`.
 #[allow(clippy::too_many_arguments)]
 fn write_energy_consumer_phase(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     cim: &mut CimExporter,
     load_name: &str,
     load_uuid: Uuid,
@@ -358,7 +510,7 @@ fn write_energy_consumer_phase(
 /// terminal-1 raw bus-spec and its bus base voltage.
 #[allow(clippy::too_many_arguments)]
 fn attach_load_phases(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     cim: &mut CimExporter,
     load_name: &str,
     load_uuid: Uuid,
@@ -418,7 +570,7 @@ fn attach_load_phases(
 /// bus base voltage (for `PhaseString`).
 #[allow(clippy::too_many_arguments)]
 fn attach_cap_phases(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     cim: &mut CimExporter,
     cap_name: &str,
     cap_uuid: Uuid,
@@ -513,23 +665,109 @@ pub(crate) fn class_len(classes: &[DssClass], name: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// GAPS_PLAN WPG.18 decision 7: a scoped, loud `NOT_PORTED` error for one
-/// not-yet-ported class arm, firing only when the circuit actually contains
-/// instances of it (`count > 0`) — an empty list is Pascal's own no-op, ported
-/// as a silent no-op here too. Never a silent drop: the caller still completes
-/// every other (ported) section of the file.
-fn not_ported_if_any(errors: &mut Vec<String>, count: usize, class_desc: &str, stage: &str) {
-    if count > 0 {
-        errors.push(format!(
-            "Export CIM100: {class_desc} export not ported yet (GAPS_PLAN WPG.18 {stage})."
-        ));
+/// One per-phase DER object — the shared body of Pascal
+/// `AttachSecondary{Gen,Solar,Storage}Phases` and the per-phase loop of
+/// `Attach{Generator,Solar,Storage}Phases` (`ExportCIMXML.pas:1806-1996`).
+/// `root` is `SynchronousMachinePhase` (Generator) or
+/// `PowerElectronicsConnectionPhase` (PV/Storage); `ref_field` the back-ref node;
+/// `uuid_choice` the phase-UUID family (`GenPhase`/`SolarPhase`/`BatteryPhase`).
+#[allow(clippy::too_many_arguments)]
+fn write_der_phase(
+    buf: &mut writer::Writer,
+    cim: &mut CimExporter,
+    root: &str,
+    ref_field: &str,
+    uuid_choice: UuidChoice,
+    name: &str,
+    elem_uuid: Uuid,
+    geo_uuid: Uuid,
+    phs: &str,
+    p: f64,
+    q: f64,
+) {
+    let local_name = format!("{name}_{phs}");
+    let phase_uuid = cim.get_dev_uuid(uuid_choice, &local_name, 1);
+    writer::start_instance(buf, ProfileChoice::Fun, root, phase_uuid, &local_name);
+    writer::phase_kind_node(buf, ProfileChoice::Fun, root, phs);
+    writer::double_node(buf, ProfileChoice::Ssh, &format!("{root}.p"), p);
+    writer::double_node(buf, ProfileChoice::Ssh, &format!("{root}.q"), q);
+    writer::ref_node(buf, ProfileChoice::Fun, ref_field, elem_uuid);
+    writer::ref_node(
+        buf,
+        ProfileChoice::Geo,
+        "PowerSystemResource.Location",
+        geo_uuid,
+    );
+    writer::end_instance(buf, ProfileChoice::Fun, root);
+}
+
+/// Pascal `Attach{Generator,Solar,Storage}Phases` (`ExportCIMXML.pas:1819/1883/
+/// 1947`): the per-phase breakdown for a **non-3-phase** DER (3-phase units carry
+/// no phase objects). `s := DeltaPhaseString` when delta, else `PhaseString(_, 1)`
+/// (`bAllowSec = TRUE`); a `< 0.25 kV` unit is split-secondary (2-phase → s1/s2,
+/// else the single ordered string). `bus_kvbase0` is terminal-1's bus base.
+#[allow(clippy::too_many_arguments)]
+fn attach_der_phases(
+    buf: &mut writer::Writer,
+    cim: &mut CimExporter,
+    root: &str,
+    ref_field: &str,
+    uuid_choice: UuidChoice,
+    nphases: usize,
+    is_delta: bool,
+    present_kv: f64,
+    present_kw: f64,
+    present_kvar: f64,
+    bus_spec0: &str,
+    bus_kvbase0: f64,
+    name: &str,
+    elem_uuid: Uuid,
+    geo_uuid: Uuid,
+) {
+    if nphases == 3 {
+        return;
+    }
+    let p = 1000.0 * present_kw / nphases as f64;
+    let q = 1000.0 * present_kvar / nphases as f64;
+    let s = if is_delta {
+        delta_phase_string(bus_spec0, nphases)
+    } else {
+        phase_string(bus_spec0, nphases, bus_kvbase0, true)
+    };
+    let phase = |buf: &mut writer::Writer, cim: &mut CimExporter, phs: &str, p, q| {
+        write_der_phase(
+            buf,
+            cim,
+            root,
+            ref_field,
+            uuid_choice,
+            name,
+            elem_uuid,
+            geo_uuid,
+            phs,
+            p,
+            q,
+        );
+    };
+    // `< 0.25 kV` → split secondary (no `bAllowSec`/`LoadClass` gate, unlike loads).
+    if present_kv < 0.25 {
+        if nphases == 2 {
+            phase(buf, cim, "s1", p, q);
+            phase(buf, cim, "s2", p, q);
+        } else {
+            phase(buf, cim, &s, p, q);
+        }
+        return;
+    }
+    for c in s.chars() {
+        phase(buf, cim, &c.to_string(), p, q);
     }
 }
 
 /// Pascal `TCIMExporterHelper.WritePositions` (`ExportCIMXML.pas:2044`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn write_positions(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     ckt: &Circuit,
     cim: &mut CimExporter,
     parent_class_name: &str,
@@ -599,7 +837,7 @@ pub(crate) fn write_positions(
 /// Pascal `TCIMExporterHelper.WriteReferenceTerminals` (`ExportCIMXML.pas:2073`).
 #[allow(clippy::too_many_arguments)]
 fn write_reference_terminals(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     ckt: &mut Circuit,
     cim: &mut CimExporter,
     op_limits: &mut Vec<OpLimit>,
@@ -687,7 +925,7 @@ fn write_reference_terminals(
 /// `WritePositions(pElem, geoUUID, crsUUID)`.
 #[allow(clippy::too_many_arguments)]
 fn write_terminals(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     ckt: &mut Circuit,
     cim: &mut CimExporter,
     op_limits: &mut Vec<OpLimit>,
@@ -740,7 +978,7 @@ fn write_terminals(
 /// Vsource-only deck).
 #[allow(clippy::too_many_arguments)]
 fn write_load_model(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     name: &str,
     id: Uuid,
     z_p: f64,
@@ -989,7 +1227,7 @@ fn parse_switch_class(
 /// is the object's `DSSClassName` (`WireData`/`CNData`/`TSData`), `norm_amps`
 /// its `NormAmps`.
 fn write_wire_data(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     class_name: &str,
     name: &str,
     geom: &ConductorGeom,
@@ -1027,7 +1265,7 @@ fn write_wire_data(
 /// (commented out). `eps_r`/`ins_layer`/`dia_ins`/`dia_cable` are the shared
 /// `TCableData` fields, `radius_units` the `RadiusUnits`.
 fn write_cable_data(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     radius_units: i32,
     eps_r: f64,
     ins_layer: f64,
@@ -1079,7 +1317,7 @@ fn write_cable_data(
 /// Pascal `TCIMExporterHelper.WriteTapeData` (`ExportCIMXML.pas:2250`). The
 /// `CableShieldMaterialEnum` call is a no-op upstream (commented out).
 fn write_tape_data(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     radius_units: i32,
     dia_shield: f64,
     tape_layer: f64,
@@ -1110,7 +1348,7 @@ fn write_tape_data(
 /// Pascal `TCIMExporterHelper.WriteConcData` (`ExportCIMXML.pas:2262`).
 #[allow(clippy::too_many_arguments)]
 fn write_conc_data(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     radius_units: i32,
     res_units: i32,
     dia_cable: f64,
@@ -1204,7 +1442,7 @@ struct LineSnap {
 /// 3-phase symmetric-components). Each phase references its master `WireInfo`
 /// conductor when one exists (`i <= NumConductorsAvailable`).
 fn attach_line_phases(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     classes: &mut [DssClass],
     cim: &mut CimExporter,
     snap: &LineSnap,
@@ -1270,7 +1508,7 @@ fn attach_line_phases(
 /// Pascal `AttachSwitchPhases` (`ExportCIMXML.pas:1661`): the per-phase
 /// `SwitchPhase` breakdown supporting transpositions (skipped for a balanced
 /// 3-phase switch whose two terminals share the phase order).
-fn attach_switch_phases(buf: &mut String, cim: &mut CimExporter, snap: &LineSnap) {
+fn attach_switch_phases(buf: &mut writer::Writer, cim: &mut CimExporter, snap: &LineSnap) {
     let s1 = phase_order_string(&snap.bus_specs[0], snap.nphases, snap.bus_kvbases[0], true);
     let s2 = phase_order_string(&snap.bus_specs[1], snap.nphases, snap.bus_kvbases[1], true);
     if snap.nphases == 3 && s1.chars().count() == 3 && s1 == s2 {
@@ -1355,7 +1593,7 @@ pub(crate) fn class_index(classes: &[DssClass], name: &str) -> Option<usize> {
 /// LineCode. The `Units=UNITS_NONE` fix-up loop (`4495-4509`) adopts the units
 /// of the first enabled `Line` referencing this code (mutating `pLnCd.Units`).
 fn write_line_code_catalog(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     classes: &mut [DssClass],
     cim: &mut CimExporter,
     ckt: &Circuit,
@@ -1553,7 +1791,7 @@ fn find_line_units_for_linecode(classes: &[DssClass], ckt: &Circuit, lc_name: &s
 
 /// Pascal WireData catalog sweep (`ExportCIMXML.pas:4549-4555`): one
 /// `OverheadWireInfo` per `WireData`.
-fn write_wire_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
+fn write_wire_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     let Some(ci) = class_index(classes, "wiredata") else {
         return;
     };
@@ -1572,7 +1810,7 @@ fn write_wire_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
 
 /// Pascal TSData catalog sweep (`ExportCIMXML.pas:4557-4564`): one
 /// `TapeShieldCableInfo` per `TSData`.
-fn write_ts_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
+fn write_ts_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     let Some(ci) = class_index(classes, "tsdata") else {
         return;
     };
@@ -1610,7 +1848,7 @@ fn write_ts_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
 
 /// Pascal CNData catalog sweep (`ExportCIMXML.pas:4566-4573`): one
 /// `ConcentricNeutralCableInfo` per `CNData`.
-fn write_cn_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
+fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     let Some(ci) = class_index(classes, "cndata") else {
         return;
     };
@@ -1665,7 +1903,11 @@ fn write_cn_data_catalog(buf: &mut String, classes: &mut [DssClass]) {
 /// Pascal LineGeometry catalog sweep (`ExportCIMXML.pas:4575-4599`): one
 /// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads the first
 /// conductor's `PhaseChoice`. Coordinates are per-conductor `Units[i]`.
-fn write_line_geometry_catalog(buf: &mut String, classes: &mut [DssClass], cim: &mut CimExporter) {
+fn write_line_geometry_catalog(
+    buf: &mut writer::Writer,
+    classes: &mut [DssClass],
+    cim: &mut CimExporter,
+) {
     let Some(ci) = class_index(classes, "linegeometry") else {
         return;
     };
@@ -1741,7 +1983,11 @@ fn write_line_geometry_catalog(buf: &mut String, classes: &mut [DssClass], cim: 
 /// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads
 /// `Ycoord[1] > 0`. The single `Units` applies to every coordinate. The
 /// `WirePosition` UUIDs are keyed with `seq = 2` (Pascal's "2 for pSpac").
-fn write_line_spacing_catalog(buf: &mut String, classes: &mut [DssClass], cim: &mut CimExporter) {
+fn write_line_spacing_catalog(
+    buf: &mut writer::Writer,
+    classes: &mut [DssClass],
+    cim: &mut CimExporter,
+) {
     let Some(ci) = class_index(classes, "linespacing") else {
         return;
     };
@@ -1809,13 +2055,14 @@ fn write_line_spacing_catalog(buf: &mut String, classes: &mut [DssClass], cim: &
     }
 }
 
-/// Pascal `TCIMExporter.ExportCDPSM` (`ExportCIMXML.pas:3203`), combined mode
-/// (`Combined = TRUE`, `ExportOptions.pas` ptr 21). Returns the full XML text;
-/// the caller (`exec/report.rs`) owns writing it to the resolved file path
-/// (matching every other `Export` formatter in this codebase). Scoped
-/// `NOT_PORTED` errors for not-yet-ported class arms are appended to `errors`
-/// (GAPS_PLAN WPG.18 decision 7) — the file is still completed with every
-/// ported section present.
+/// Pascal `TCIMExporter.ExportCDPSM` (`ExportCIMXML.pas:3203`). Drives the whole
+/// export through a [`writer::Writer`] (`combined` = `Export CIM100` ptr 21, else
+/// `Export CIM100Fragments` ptr 20) and returns it; the caller
+/// (`exec/report.rs`) finalizes it (`into_combined` / `into_fragments`) and owns
+/// writing the file(s), matching every other `Export` formatter in this codebase.
+/// A loud error is appended to `errors` only for a genuine unsupported case (a
+/// CapControl monitored-element class with no `DSSObjType` mapping) — every
+/// element class is otherwise fully ported.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn export_cdpsm(
     classes: &mut [DssClass],
@@ -1829,7 +2076,8 @@ pub(crate) fn export_cdpsm(
     sub_uuid: Uuid,
     sub_geo_uuid: Uuid,
     rgn_uuid: Uuid,
-) -> String {
+    combined: bool,
+) -> writer::Writer {
     let sqrt3 = 3.0_f64.sqrt();
     let two_pi = 2.0 * std::f64::consts::PI;
 
@@ -1848,9 +2096,12 @@ pub(crate) fn export_cdpsm(
     // "if not assigned" guard, unlike UuidList) — modeled as plain Rust locals
     // (`op_limits`/`op_limit_idx` below); Bank/ECP lists arrive with Stage E/B.
 
-    let mut buf = String::new();
+    // `FD_Create` (`ExportCIMXML.pas:4729`): open the writer + emit the
+    // per-file `StartCIMFile` preamble(s). `combined = true` → one FUN buffer
+    // (`Export CIM100`); `false` → seven per-profile files (`Export
+    // CIM100Fragments`).
     let cim_ver_uuid = cim.get_dev_uuid(UuidChoice::CIMVer, "IEC", 1);
-    writer::start_cim_file(&mut buf, ProfileChoice::Fun, cim_ver_uuid);
+    let mut buf = writer::Writer::new(combined, cim_ver_uuid);
 
     let ckt_name = ckt.name.clone();
 
@@ -2295,17 +2546,646 @@ pub(crate) fn export_cdpsm(
     let mut op_limit_idx: HashMap<String, usize> = HashMap::new();
     let mut ecps = EcpList::default();
 
-    // Generators / PVSystems / StorageElements / IEEE1547 (InvControl+ExpControl)
-    // (`3503-3634`) — Stage F.
-    not_ported_if_any(errors, ckt.generators.len(), "Generator", "Stage F");
-    not_ported_if_any(errors, ckt.pv_systems.len(), "PVSystem", "Stage F");
-    not_ported_if_any(errors, ckt.storages.len(), "Storage", "Stage F");
-    not_ported_if_any(
-        errors,
-        class_len(classes, "InvControl") + class_len(classes, "ExpControl"),
-        "InvControl/ExpControl (IEEE1547Controller)",
-        "Stage F",
-    );
+    // Generators -> SynchronousMachine (`3503-3522`) — Stage F.
+    for &r in &ckt.generators.clone() {
+        struct GenSnap {
+            enabled: bool,
+            name: String,
+            nphases: usize,
+            is_delta: bool,
+            present_kw: f64,
+            present_kvar: f64,
+            present_kv: f64,
+            kva_rating: f64,
+            nterm: usize,
+            bus_specs: Vec<String>,
+            bus_refs: Vec<usize>,
+            daily: String,
+            duty: String,
+            yearly: String,
+            spectrum: String,
+        }
+        let snap = {
+            let obj = &classes[r.cls].objects[r.idx];
+            let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+                continue;
+            };
+            let nm = |o: Option<&dyn DssObject>| -> String {
+                o.map(|s| s.data().name().to_string()).unwrap_or_default()
+            };
+            GenSnap {
+                enabled: g.cd.enabled,
+                name: g.cd.obj.name().to_string(),
+                nphases: g.cd.nphases,
+                is_delta: g.connection as i32 == 1,
+                present_kw: g.present_kw(),
+                present_kvar: g.present_kvar(),
+                present_kv: g.kv_generator_base,
+                kva_rating: g.kva_rating,
+                nterm: g.cd.nterms,
+                bus_specs: g.cd.bus_names.clone(),
+                bus_refs: g.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                daily: nm(g.daily_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                duty: nm(g.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                yearly: nm(g.yearly_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                spectrum: g.spectrum.clone(),
+            }
+        };
+        if !snap.enabled {
+            continue;
+        }
+        let gen_uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let bus_kvbase0 = ckt.buses[snap.bus_refs[0]].kv_base;
+
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "SynchronousMachine",
+            gen_uuid,
+            &snap.name,
+        );
+        writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "RotatingMachine.p",
+            snap.present_kw * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "RotatingMachine.q",
+            snap.present_kvar * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "RotatingMachine.ratedS",
+            snap.kva_rating * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "RotatingMachine.ratedU",
+            snap.present_kv * 1000.0,
+        );
+        // `SynchMachTypeEnum`/`SynchMachModeEnum` are commented out upstream
+        // (`3514-3515`) — no node emitted.
+        let geo_uuid = cim.get_dev_uuid(UuidChoice::MachLoc, &snap.name, 1);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "SynchronousMachine");
+        attach_der_phases(
+            &mut buf,
+            cim,
+            "SynchronousMachinePhase",
+            "SynchronousMachinePhase.SynchronousMachine",
+            UuidChoice::GenPhase,
+            snap.nphases,
+            snap.is_delta,
+            snap.present_kv,
+            snap.present_kw,
+            snap.present_kvar,
+            &snap.bus_specs[0],
+            bus_kvbase0,
+            &snap.name,
+            gen_uuid,
+            geo_uuid,
+        );
+        write_terminals(
+            &mut buf,
+            ckt,
+            cim,
+            &mut op_limits,
+            &mut op_limit_idx,
+            GEN_DSS_OBJ_TYPE,
+            "Generator",
+            &snap.name,
+            gen_uuid,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            geo_uuid,
+            crs_uuid,
+            0.0,
+            0.0,
+        );
+        add_generator_ecp(
+            &mut ecps,
+            cim,
+            gen_uuid,
+            &snap.daily,
+            &snap.duty,
+            &snap.yearly,
+            &snap.spectrum,
+        );
+    }
+
+    // PVSystems -> PhotovoltaicUnit + PowerElectronicsConnection (`3524-3569`).
+    for &r in &ckt.pv_systems.clone() {
+        struct PvSnap {
+            enabled: bool,
+            name: String,
+            nphases: usize,
+            is_delta: bool,
+            present_kw: f64,
+            present_kvar: f64,
+            present_kv: f64,
+            pmpp: f64,
+            pct_cut_in: f64,
+            pct_cut_out: f64,
+            kva_rating: f64,
+            vmin_pu: f64,
+            var_mode: i32,
+            cim_dyn: bool,
+            fkvar_limit: f64,
+            fkvar_limit_neg: f64,
+            kvar_limit_set: bool,
+            kvar_limit_neg_set: bool,
+            nterm: usize,
+            bus_specs: Vec<String>,
+            bus_refs: Vec<usize>,
+            daily: String,
+            duty: String,
+            yearly: String,
+            tdaily: String,
+            tduty: String,
+            tyearly: String,
+            spectrum: String,
+        }
+        let snap = {
+            let obj = &classes[r.cls].objects[r.idx];
+            let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() else {
+                continue;
+            };
+            let nm = |o: Option<&dyn DssObject>| -> String {
+                o.map(|s| s.data().name().to_string()).unwrap_or_default()
+            };
+            PvSnap {
+                enabled: pv.cd.enabled,
+                name: pv.cd.obj.name().to_string(),
+                nphases: pv.cd.nphases,
+                is_delta: pv.base.connection as i32 == 1,
+                present_kw: pv.present_kw(),
+                present_kvar: pv.present_kvar(),
+                present_kv: pv.kv_pvsystem_base,
+                pmpp: pv.f_pmpp,
+                pct_cut_in: pv.base.fpct_cut_in,
+                pct_cut_out: pv.base.fpct_cut_out,
+                kva_rating: pv.f_kva_rating,
+                vmin_pu: pv.base.vminpu,
+                var_mode: pv.base.var_mode,
+                cim_dyn: pv.base.using_cim_dynamics(),
+                fkvar_limit: pv.f_kvar_limit,
+                fkvar_limit_neg: pv.f_kvar_limit_neg,
+                kvar_limit_set: pv.base.kvar_limit_set,
+                kvar_limit_neg_set: pv.base.kvar_limit_neg_set,
+                nterm: pv.cd.nterms,
+                bus_specs: pv.cd.bus_names.clone(),
+                bus_refs: pv.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                daily: nm(pv
+                    .base
+                    .daily_shape_obj
+                    .as_ref()
+                    .map(|o| o as &dyn DssObject)),
+                duty: nm(pv.base.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                yearly: nm(pv
+                    .base
+                    .yearly_shape_obj
+                    .as_ref()
+                    .map(|o| o as &dyn DssObject)),
+                tdaily: nm(pv.daily_t_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                tduty: nm(pv.duty_t_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                tyearly: nm(pv.yearly_t_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                spectrum: nm(pv.spectrum_obj.as_ref().map(|o| o as &dyn DssObject)),
+            }
+        };
+        if !snap.enabled {
+            continue;
+        }
+        let pv_uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let bus_kvbase0 = ckt.buses[snap.bus_refs[0]].kv_base;
+
+        let pv_panels_uuid = cim.get_dev_uuid(UuidChoice::PVPanels, &snap.name, 1);
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "PhotovoltaicUnit",
+            pv_panels_uuid,
+            &snap.name,
+        );
+        let geo_uuid = cim.get_dev_uuid(UuidChoice::SolarLoc, &snap.name, 1);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsUnit.maxP",
+            snap.pmpp * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsUnit.minP",
+            (snap.pct_cut_in.min(snap.pct_cut_out) * snap.kva_rating / 100.0) * 1000.0,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "PhotovoltaicUnit");
+
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "PowerElectronicsConnection",
+            pv_uuid,
+            &snap.name,
+        );
+        writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Fun,
+            "PowerElectronicsConnection.PowerElectronicsUnit",
+            pv_panels_uuid,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.maxIFault",
+            1.0 / snap.vmin_pu,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "PowerElectronicsConnection.p",
+            snap.present_kw * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "PowerElectronicsConnection.q",
+            snap.present_kvar * 1000.0,
+        );
+        writer::converter_control_enum(&mut buf, ProfileChoice::Ssh, snap.var_mode, snap.cim_dyn);
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.ratedS",
+            snap.kva_rating * 1000.0,
+        );
+        let rated_u = if snap.nphases == 1 {
+            snap.present_kv * 1000.0 * sqrt3
+        } else {
+            snap.present_kv * 1000.0
+        };
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.ratedU",
+            rated_u,
+        );
+        let max_q = if !snap.kvar_limit_set {
+            snap.kva_rating * 1000.0 * 0.25
+        } else {
+            snap.fkvar_limit * 1000.0
+        };
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.maxQ",
+            max_q,
+        );
+        let min_q = if !snap.kvar_limit_neg_set {
+            -snap.kva_rating * 1000.0 * 0.25
+        } else {
+            -snap.fkvar_limit_neg * 1000.0
+        };
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.minQ",
+            min_q,
+        );
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "PowerElectronicsConnection");
+        attach_der_phases(
+            &mut buf,
+            cim,
+            "PowerElectronicsConnectionPhase",
+            "PowerElectronicsConnectionPhase.PowerElectronicsConnection",
+            UuidChoice::SolarPhase,
+            snap.nphases,
+            snap.is_delta,
+            snap.present_kv,
+            snap.present_kw,
+            snap.present_kvar,
+            &snap.bus_specs[0],
+            bus_kvbase0,
+            &snap.name,
+            pv_uuid,
+            geo_uuid,
+        );
+        // PV/Storage: `WriteReferenceTerminals` then `WritePositions` (the
+        // localName swap to the panel/cell name is a no-op — Rust's name == the
+        // DER name); not the folded `WriteTerminals`.
+        write_reference_terminals(
+            &mut buf,
+            ckt,
+            cim,
+            &mut op_limits,
+            &mut op_limit_idx,
+            PVSYSTEM_DSS_OBJ_TYPE,
+            &snap.name,
+            pv_uuid,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            0.0,
+            0.0,
+        );
+        write_positions(
+            &mut buf,
+            ckt,
+            cim,
+            "PVSystem",
+            &snap.name,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            geo_uuid,
+            crs_uuid,
+        );
+        add_solar_ecp(
+            &mut ecps,
+            cim,
+            pv_uuid,
+            &snap.daily,
+            &snap.duty,
+            &snap.yearly,
+            &snap.tdaily,
+            &snap.tduty,
+            &snap.tyearly,
+            &snap.spectrum,
+        );
+    }
+
+    // StorageElements -> BatteryUnit + PowerElectronicsConnection (`3571-3612`).
+    for &r in &ckt.storages.clone() {
+        struct BatSnap {
+            enabled: bool,
+            name: String,
+            nphases: usize,
+            is_delta: bool,
+            present_kw: f64,
+            present_kvar: f64,
+            present_kv: f64,
+            vmin_pu: f64,
+            var_mode: i32,
+            cim_dyn: bool,
+            kw_rating: f64,
+            pct_kw_rated: f64,
+            kwh_rating: f64,
+            kwh_stored: f64,
+            storage_state: i32,
+            fkva_rating: f64,
+            fkvar_limit: f64,
+            fkvar_limit_neg: f64,
+            nterm: usize,
+            bus_specs: Vec<String>,
+            bus_refs: Vec<usize>,
+            daily: String,
+            duty: String,
+            yearly: String,
+            spectrum: String,
+        }
+        let snap = {
+            let obj = &classes[r.cls].objects[r.idx];
+            let Some(st) = obj.as_any().downcast_ref::<Storage>() else {
+                continue;
+            };
+            let nm = |o: Option<&dyn DssObject>| -> String {
+                o.map(|s| s.data().name().to_string()).unwrap_or_default()
+            };
+            BatSnap {
+                enabled: st.cd.enabled,
+                name: st.cd.obj.name().to_string(),
+                nphases: st.cd.nphases,
+                is_delta: st.base.connection as i32 == 1,
+                present_kw: st.present_kw(),
+                present_kvar: st.present_kvar(),
+                present_kv: st.present_kv(),
+                vmin_pu: st.base.vminpu,
+                var_mode: st.base.var_mode,
+                cim_dyn: st.base.using_cim_dynamics(),
+                kw_rating: st.kw_rating,
+                pct_kw_rated: st.pct_kw_rated,
+                kwh_rating: st.kwh_rating,
+                kwh_stored: st.kwh_stored,
+                storage_state: st.f_state,
+                fkva_rating: st.f_kva_rating,
+                fkvar_limit: st.f_kvar_limit,
+                fkvar_limit_neg: st.f_kvar_limit_neg,
+                nterm: st.cd.nterms,
+                bus_specs: st.cd.bus_names.clone(),
+                bus_refs: st.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                daily: nm(st
+                    .base
+                    .daily_shape_obj
+                    .as_ref()
+                    .map(|o| o as &dyn DssObject)),
+                duty: nm(st.base.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
+                yearly: nm(st
+                    .base
+                    .yearly_shape_obj
+                    .as_ref()
+                    .map(|o| o as &dyn DssObject)),
+                spectrum: nm(st.spectrum_obj.as_ref().map(|o| o as &dyn DssObject)),
+            }
+        };
+        if !snap.enabled {
+            continue;
+        }
+        let bat_uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let bus_kvbase0 = ckt.buses[snap.bus_refs[0]].kv_base;
+
+        let battery_uuid = cim.get_dev_uuid(UuidChoice::Battery, &snap.name, 1);
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "BatteryUnit",
+            battery_uuid,
+            &snap.name,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsUnit.maxP",
+            snap.kw_rating * snap.pct_kw_rated * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsUnit.minP",
+            -snap.kw_rating * snap.pct_kw_rated * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "BatteryUnit.ratedE",
+            snap.kwh_rating * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "BatteryUnit.storedE",
+            snap.kwh_stored * 1000.0,
+        );
+        writer::battery_state_enum(&mut buf, ProfileChoice::Ssh, snap.storage_state);
+        let geo_uuid = cim.get_dev_uuid(UuidChoice::BatteryLoc, &snap.name, 1);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "BatteryUnit");
+
+        writer::start_instance(
+            &mut buf,
+            ProfileChoice::Fun,
+            "PowerElectronicsConnection",
+            bat_uuid,
+            &snap.name,
+        );
+        writer::circuit_node(&mut buf, ProfileChoice::Fun, fdr_uuid);
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Fun,
+            "PowerElectronicsConnection.PowerElectronicsUnit",
+            battery_uuid,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.maxIFault",
+            1.0 / snap.vmin_pu,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "PowerElectronicsConnection.p",
+            snap.present_kw * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ssh,
+            "PowerElectronicsConnection.q",
+            snap.present_kvar * 1000.0,
+        );
+        writer::converter_control_enum(&mut buf, ProfileChoice::Ssh, snap.var_mode, snap.cim_dyn);
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.ratedS",
+            snap.fkva_rating * 1000.0,
+        );
+        let rated_u = if snap.nphases == 1 {
+            snap.present_kv * 1000.0 * sqrt3
+        } else {
+            snap.present_kv * 1000.0
+        };
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.ratedU",
+            rated_u,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.maxQ",
+            snap.fkvar_limit.min(snap.fkva_rating) * 1000.0,
+        );
+        writer::double_node(
+            &mut buf,
+            ProfileChoice::Ep,
+            "PowerElectronicsConnection.minQ",
+            -snap.fkvar_limit_neg.min(snap.fkva_rating) * 1000.0,
+        );
+        writer::ref_node(
+            &mut buf,
+            ProfileChoice::Geo,
+            "PowerSystemResource.Location",
+            geo_uuid,
+        );
+        writer::end_instance(&mut buf, ProfileChoice::Fun, "PowerElectronicsConnection");
+        attach_der_phases(
+            &mut buf,
+            cim,
+            "PowerElectronicsConnectionPhase",
+            "PowerElectronicsConnectionPhase.PowerElectronicsConnection",
+            UuidChoice::BatteryPhase,
+            snap.nphases,
+            snap.is_delta,
+            snap.present_kv,
+            snap.present_kw,
+            snap.present_kvar,
+            &snap.bus_specs[0],
+            bus_kvbase0,
+            &snap.name,
+            bat_uuid,
+            geo_uuid,
+        );
+        write_reference_terminals(
+            &mut buf,
+            ckt,
+            cim,
+            &mut op_limits,
+            &mut op_limit_idx,
+            STORAGE_DSS_OBJ_TYPE,
+            &snap.name,
+            bat_uuid,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            0.0,
+            0.0,
+        );
+        write_positions(
+            &mut buf,
+            ckt,
+            cim,
+            "Storage",
+            &snap.name,
+            snap.nterm,
+            &snap.bus_specs,
+            &snap.bus_refs,
+            geo_uuid,
+            crs_uuid,
+        );
+        add_storage_ecp(
+            &mut ecps,
+            cim,
+            bat_uuid,
+            &snap.daily,
+            &snap.duty,
+            &snap.yearly,
+            &snap.spectrum,
+        );
+    }
+
+    // IEEE1547 (InvControl + ExpControl) -> DERIEEEType1 (`3614-3634`) — Stage F.
+    super::ieee1547::write_ieee1547_controllers(&mut buf, classes, ckt, cim);
 
     // EnergySource sweep (`3636-3682`) — Stage A.
     for &r in &ckt.sources.clone() {
@@ -3665,7 +4545,7 @@ pub(crate) fn export_cdpsm(
             ecp.uuid,
             &ecp.local_name,
         );
-        let str_node = |buf: &mut String, node: &str, val: &str| {
+        let str_node = |buf: &mut writer::Writer, node: &str, val: &str| {
             if !val.is_empty() {
                 writer::string_node(buf, ProfileChoice::Ssh, node, val);
             }
@@ -3782,7 +4662,8 @@ pub(crate) fn export_cdpsm(
     // `FreeBankList`/`FreeECPList`/`FreeOpLimitList` are Rust's natural drop of
     // the local scratch state above.
 
-    // `FD_Destroy` (`4752`), combined mode.
-    writer::write_cim_ln(&mut buf, ProfileChoice::Fun, "</rdf:RDF>");
+    // `FD_Destroy` (`4752`): the closing `</rdf:RDF>` per file is appended by the
+    // writer's finalizer ([`writer::Writer::into_combined`] /
+    // [`writer::Writer::into_fragments`]) — the caller picks the mode-matching one.
     buf
 }

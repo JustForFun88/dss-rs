@@ -655,4 +655,52 @@ impl InvControl {
     pub(crate) fn der_name_list(&self) -> &[String] {
         &self.der_name_list
     }
+
+    // --- Read-only accessors for the CIM `TIEEE1547Controller` export (WPG.18
+    // Stage F, `ExportCIMXML.pas` `PullFromInvControl`). No behavior change. ---
+
+    /// `MonBusesNameList` — the raw monitored-bus strings (`FindSignalTerminals`).
+    pub(crate) fn mon_buses_name_list(&self) -> &[String] {
+        &self.mon_buses_name_list
+    }
+    /// `Fvvc_curve` — the volt-var curve snapshot (`None` if unset).
+    pub(crate) fn vvc_curve(&self) -> Option<&XyCurveObj> {
+        self.vvc_curve.as_ref()
+    }
+    /// `Fvoltwatt_curve` — the volt-watt curve snapshot.
+    pub(crate) fn voltwatt_curve(&self) -> Option<&XyCurveObj> {
+        self.voltwatt_curve.as_ref()
+    }
+    /// `FvoltwattCH_curve` — the volt-watt charging curve snapshot.
+    pub(crate) fn voltwattch_curve(&self) -> Option<&XyCurveObj> {
+        self.voltwattch_curve.as_ref()
+    }
+    /// `Fwattvar_curve` — the watt-var curve snapshot.
+    pub(crate) fn wattvar_curve(&self) -> Option<&XyCurveObj> {
+        self.wattvar_curve.as_ref()
+    }
+    /// `LPFTau` (seconds).
+    pub(crate) fn lpf_tau(&self) -> f64 {
+        self.lpf_tau
+    }
+    /// `ControlMode` ordinal (VOLTVAR=1…AVR=6).
+    pub(crate) fn control_mode(&self) -> i32 {
+        self.control_mode
+    }
+    /// `CombiMode` ordinal (VV_VW=1, VV_DRC=2).
+    pub(crate) fn combi_mode(&self) -> i32 {
+        self.combi_mode
+    }
+    /// `FDRCRollAvgWindowLength` (DynReacAvgWindowLen, seconds).
+    pub(crate) fn drc_roll_avg_window_length(&self) -> i32 {
+        self.drc_roll_avg_window_length
+    }
+    /// `FArGraLowV` — DRC low-voltage slope.
+    pub(crate) fn ar_gra_low_v(&self) -> f64 {
+        self.ar_gra_low_v
+    }
+    /// `FArGraHiV` — DRC high-voltage slope.
+    pub(crate) fn ar_gra_hi_v(&self) -> f64 {
+        self.ar_gra_hi_v
+    }
 }

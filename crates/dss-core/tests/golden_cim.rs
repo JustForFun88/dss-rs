@@ -135,6 +135,61 @@ fn run_case(circuit: &str) {
     run(circuit, &decks_dir().join(format!("{circuit}.dss")), &[]);
 }
 
+/// The seven profiles `Export CIM100Fragments` splits into (Pascal `FD_Create`,
+/// `ExportCIMXML.pas:4738-4744`).
+const FRAGMENT_PROFILES: [&str; 7] = ["FUN", "GEO", "TOPO", "SSH", "CAT", "EP", "DYN"];
+
+/// Fragments-mode gate: replay `<circuit>.dss`, preload its fixture, run `Export
+/// CIM100Fragments`, and byte-compare each produced `<circuit>_CIM100_<PRF>.xml`
+/// against the golden `<circuit>_<PRF>.xml` (GAPS_PLAN WPG.18 Stage F decision 3,
+/// applied per profile).
+fn run_case_fragments(circuit: &str) {
+    let compile_path = decks_dir().join(format!("{circuit}.dss"));
+    let fixture = decks_dir().join(format!("{circuit}_fixture.csv"));
+    assert!(
+        compile_path.is_file(),
+        "missing deck: {}",
+        compile_path.display()
+    );
+    assert!(fixture.is_file(), "missing fixture: {}", fixture.display());
+
+    let scratch = std::env::temp_dir().join(format!("dss_golden_cim_frag_{circuit}"));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        compile_path.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command(&format!(
+        "set datapath=\"{}\"",
+        scratch.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command(&format!(
+        "uuids file=\"{}\"",
+        fixture.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command("export cim100fragments");
+    assert!(
+        dss.errors().is_empty(),
+        "{circuit} fragments: unexpected errors: {:?}",
+        dss.errors()
+    );
+
+    for prf in FRAGMENT_PROFILES {
+        let produced = scratch.join(format!("{circuit}_CIM100_{prf}.xml"));
+        let rust = std::fs::read_to_string(&produced)
+            .unwrap_or_else(|e| panic!("read {}: {e}", produced.display()));
+        let golden_path = golden_dir().join(format!("{circuit}_{prf}.xml"));
+        let oracle = std::fs::read_to_string(&golden_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", golden_path.display()));
+        assert_cim_bytes_eq(&oracle, &rust, &format!("{circuit}_{prf}"));
+    }
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// A corpus-feeder case: compile the vendored master (relative to
 /// `tests/corpus/electricdss-tst`) then run `post` — the whole real feeder,
 /// CIM-exported and byte-compared like a micro deck. `circuit` is the feeder's
@@ -190,6 +245,22 @@ fn cim_shunt() {
 #[test]
 fn cim_xfmr() {
     run_case("cim_xfmr");
+}
+
+/// Stage F: the DER sweeps (Generator → `SynchronousMachine`, PVSystem →
+/// `PowerElectronicsConnection` + `PhotovoltaicUnit`, Storage → `BatteryUnit`) +
+/// the IEEE1547 controller (InvControl volt-var catB + ExpControl → `DERIEEEType1`
+/// nameplate + settings) + the DER `EnergyConnectionProfile` rows. Combined mode.
+#[test]
+fn cim_der() {
+    run_case("cim_der");
+}
+
+/// Stage F fragments mode: the same `cim_der` deck exported via `Export
+/// CIM100Fragments` — the seven per-profile files each byte-exact vs the oracle.
+#[test]
+fn cim_der_fragments() {
+    run_case_fragments("cim_der");
 }
 
 /// Stage E corpus feeder: the vendored IEEE 13-node master, CIM-exported whole.

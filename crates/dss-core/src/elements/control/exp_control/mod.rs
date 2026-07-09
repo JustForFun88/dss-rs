@@ -271,4 +271,32 @@ impl ExpControl {
     pub(crate) fn pvsystem_name_list(&self) -> &[String] {
         &self.pvsystem_name_list
     }
+
+    // --- Read-only accessors for the CIM `TIEEE1547Controller` export (WPG.18
+    // Stage F, `ExportCIMXML.pas` `PullFromExpControl`). No behavior change. ---
+
+    /// `DERNameList` — the class-prefixed controlled-DER names.
+    pub(crate) fn der_name_list(&self) -> &[String] {
+        &self.der_name_list
+    }
+    /// `QMaxLead` — the kvar (pu) lead limit (drives the catB estimate).
+    pub(crate) fn qmax_lead(&self) -> f64 {
+        self.qmax_lead
+    }
+    /// `QMaxLag` — the kvar (pu) lag limit.
+    pub(crate) fn qmax_lag(&self) -> f64 {
+        self.qmax_lag
+    }
+    /// `VregTau` — the `Vreg` slew time constant (s).
+    pub(crate) fn vreg_tau(&self) -> f64 {
+        self.vreg_tau
+    }
+    /// `Tresponse` — the open-loop response time (s).
+    pub(crate) fn tresponse(&self) -> f64 {
+        self.tresponse
+    }
+    /// `QVSlope` (Slope) — the volt-var slope.
+    pub(crate) fn q_v_slope(&self) -> f64 {
+        self.q_v_slope
+    }
 }

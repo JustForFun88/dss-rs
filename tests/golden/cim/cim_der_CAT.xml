@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- un-comment this line to enable validation
+-->
+<rdf:RDF xmlns:cim="http://iec.ch/TC57/CIM100#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<!--
+-->
+<cim:IEC61970CIMVersion rdf:about="urn:uuid:D5D768BC-090B-4C74-A652-F9986FC30A44">
+  <cim:IEC61970CIMVersion.version>IEC61970CIM100</cim:IEC61970CIMVersion.version>
+  <cim:IEC61970CIMVersion.date>2019-04-01</cim:IEC61970CIMVersion.date>
+</cim:IEC61970CIMVersion>
+<cim:TransformerTankInfo rdf:about="urn:uuid:967041AD-DC9C-4A2A-B8D7-DA343052A5A6">
+  <cim:IdentifiedObject.mRID>967041AD-DC9C-4A2A-B8D7-DA343052A5A6</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5</cim:IdentifiedObject.name>
+</cim:TransformerTankInfo>
+<cim:TransformerEndInfo rdf:about="urn:uuid:7EB523AA-9C54-4AB5-910F-9AFC470A6E8F">
+  <cim:IdentifiedObject.mRID>7EB523AA-9C54-4AB5-910F-9AFC470A6E8F</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_1</cim:IdentifiedObject.name>
+  <cim:TransformerEndInfo.TransformerTankInfo rdf:resource="urn:uuid:967041AD-DC9C-4A2A-B8D7-DA343052A5A6"/>
+  <cim:TransformerEndInfo.endNumber>1</cim:TransformerEndInfo.endNumber>
+  <cim:TransformerEndInfo.connectionKind rdf:resource="http://iec.ch/TC57/CIM100#WindingConnection.I"/>
+  <cim:TransformerEndInfo.phaseAngleClock>0</cim:TransformerEndInfo.phaseAngleClock>
+  <cim:TransformerEndInfo.ratedU>2400</cim:TransformerEndInfo.ratedU>
+  <cim:TransformerEndInfo.ratedS>25000</cim:TransformerEndInfo.ratedS>
+  <cim:TransformerEndInfo.shortTermS>27500</cim:TransformerEndInfo.shortTermS>
+  <cim:TransformerEndInfo.emergencyS>37500</cim:TransformerEndInfo.emergencyS>
+  <cim:TransformerEndInfo.r>1.3824</cim:TransformerEndInfo.r>
+  <cim:TransformerEndInfo.insulationU>0</cim:TransformerEndInfo.insulationU>
+</cim:TransformerEndInfo>
+<cim:TransformerEndInfo rdf:about="urn:uuid:EC3D2362-4378-4AA8-B55F-CC7FE2F08147">
+  <cim:IdentifiedObject.mRID>EC3D2362-4378-4AA8-B55F-CC7FE2F08147</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_2</cim:IdentifiedObject.name>
+  <cim:TransformerEndInfo.TransformerTankInfo rdf:resource="urn:uuid:967041AD-DC9C-4A2A-B8D7-DA343052A5A6"/>
+  <cim:TransformerEndInfo.endNumber>2</cim:TransformerEndInfo.endNumber>
+  <cim:TransformerEndInfo.connectionKind rdf:resource="http://iec.ch/TC57/CIM100#WindingConnection.I"/>
+  <cim:TransformerEndInfo.phaseAngleClock>0</cim:TransformerEndInfo.phaseAngleClock>
+  <cim:TransformerEndInfo.ratedU>120</cim:TransformerEndInfo.ratedU>
+  <cim:TransformerEndInfo.ratedS>25000</cim:TransformerEndInfo.ratedS>
+  <cim:TransformerEndInfo.shortTermS>27500</cim:TransformerEndInfo.shortTermS>
+  <cim:TransformerEndInfo.emergencyS>37500</cim:TransformerEndInfo.emergencyS>
+  <cim:TransformerEndInfo.r>0.006912</cim:TransformerEndInfo.r>
+  <cim:TransformerEndInfo.insulationU>0</cim:TransformerEndInfo.insulationU>
+</cim:TransformerEndInfo>
+<cim:TransformerEndInfo rdf:about="urn:uuid:5CE76749-F8AB-4C15-B961-B375DADA1167">
+  <cim:IdentifiedObject.mRID>5CE76749-F8AB-4C15-B961-B375DADA1167</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_3</cim:IdentifiedObject.name>
+  <cim:TransformerEndInfo.TransformerTankInfo rdf:resource="urn:uuid:967041AD-DC9C-4A2A-B8D7-DA343052A5A6"/>
+  <cim:TransformerEndInfo.endNumber>3</cim:TransformerEndInfo.endNumber>
+  <cim:TransformerEndInfo.connectionKind rdf:resource="http://iec.ch/TC57/CIM100#WindingConnection.I"/>
+  <cim:TransformerEndInfo.phaseAngleClock>6</cim:TransformerEndInfo.phaseAngleClock>
+  <cim:TransformerEndInfo.ratedU>120</cim:TransformerEndInfo.ratedU>
+  <cim:TransformerEndInfo.ratedS>25000</cim:TransformerEndInfo.ratedS>
+  <cim:TransformerEndInfo.shortTermS>27500</cim:TransformerEndInfo.shortTermS>
+  <cim:TransformerEndInfo.emergencyS>37500</cim:TransformerEndInfo.emergencyS>
+  <cim:TransformerEndInfo.r>0.006912</cim:TransformerEndInfo.r>
+  <cim:TransformerEndInfo.insulationU>0</cim:TransformerEndInfo.insulationU>
+</cim:TransformerEndInfo>
+<cim:NoLoadTest rdf:about="urn:uuid:D7604770-C10E-42D2-B569-644988A6EE5B">
+  <cim:IdentifiedObject.mRID>D7604770-C10E-42D2-B569-644988A6EE5B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_1</cim:IdentifiedObject.name>
+  <cim:NoLoadTest.EnergisedEnd rdf:resource="urn:uuid:7EB523AA-9C54-4AB5-910F-9AFC470A6E8F"/>
+  <cim:NoLoadTest.energisedEndVoltage>2400</cim:NoLoadTest.energisedEndVoltage>
+  <cim:NoLoadTest.excitingCurrent>0.53851648</cim:NoLoadTest.excitingCurrent>
+  <cim:NoLoadTest.excitingCurrentZero>0.53851648</cim:NoLoadTest.excitingCurrentZero>
+  <cim:NoLoadTest.loss>0.05</cim:NoLoadTest.loss>
+  <cim:NoLoadTest.lossZero>0.05</cim:NoLoadTest.lossZero>
+  <cim:TransformerTest.basePower>25000</cim:TransformerTest.basePower>
+  <cim:TransformerTest.temperature>50</cim:TransformerTest.temperature>
+</cim:NoLoadTest>
+<cim:ShortCircuitTest rdf:about="urn:uuid:2C7A7024-8830-49B5-A229-969DFA30CFF9">
+  <cim:IdentifiedObject.mRID>2C7A7024-8830-49B5-A229-969DFA30CFF9</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_1</cim:IdentifiedObject.name>
+  <cim:ShortCircuitTest.EnergisedEnd rdf:resource="urn:uuid:7EB523AA-9C54-4AB5-910F-9AFC470A6E8F"/>
+  <cim:ShortCircuitTest.GroundedEnds rdf:resource="urn:uuid:EC3D2362-4378-4AA8-B55F-CC7FE2F08147"/>
+  <cim:ShortCircuitTest.energisedEndStep>16</cim:ShortCircuitTest.energisedEndStep>
+  <cim:ShortCircuitTest.groundedEndStep>16</cim:ShortCircuitTest.groundedEndStep>
+  <cim:ShortCircuitTest.leakageImpedance>6.2682351</cim:ShortCircuitTest.leakageImpedance>
+  <cim:ShortCircuitTest.leakageImpedanceZero>6.2682351</cim:ShortCircuitTest.leakageImpedanceZero>
+  <cim:ShortCircuitTest.loss>0.45</cim:ShortCircuitTest.loss>
+  <cim:ShortCircuitTest.lossZero>0.45</cim:ShortCircuitTest.lossZero>
+  <cim:TransformerTest.basePower>25000</cim:TransformerTest.basePower>
+  <cim:TransformerTest.temperature>50</cim:TransformerTest.temperature>
+</cim:ShortCircuitTest>
+<cim:ShortCircuitTest rdf:about="urn:uuid:93B23F20-B82F-47DE-8A23-C7ABEDDE9A0B">
+  <cim:IdentifiedObject.mRID>93B23F20-B82F-47DE-8A23-C7ABEDDE9A0B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_2</cim:IdentifiedObject.name>
+  <cim:ShortCircuitTest.EnergisedEnd rdf:resource="urn:uuid:7EB523AA-9C54-4AB5-910F-9AFC470A6E8F"/>
+  <cim:ShortCircuitTest.GroundedEnds rdf:resource="urn:uuid:5CE76749-F8AB-4C15-B961-B375DADA1167"/>
+  <cim:ShortCircuitTest.energisedEndStep>16</cim:ShortCircuitTest.energisedEndStep>
+  <cim:ShortCircuitTest.groundedEndStep>16</cim:ShortCircuitTest.groundedEndStep>
+  <cim:ShortCircuitTest.leakageImpedance>6.2682351</cim:ShortCircuitTest.leakageImpedance>
+  <cim:ShortCircuitTest.leakageImpedanceZero>6.2682351</cim:ShortCircuitTest.leakageImpedanceZero>
+  <cim:ShortCircuitTest.loss>0.45</cim:ShortCircuitTest.loss>
+  <cim:ShortCircuitTest.lossZero>0.45</cim:ShortCircuitTest.lossZero>
+  <cim:TransformerTest.basePower>25000</cim:TransformerTest.basePower>
+  <cim:TransformerTest.temperature>50</cim:TransformerTest.temperature>
+</cim:ShortCircuitTest>
+<cim:ShortCircuitTest rdf:about="urn:uuid:BCE71805-9BD9-4CB4-9E2A-70FF8281B9B4">
+  <cim:IdentifiedObject.mRID>BCE71805-9BD9-4CB4-9E2A-70FF8281B9B4</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>ct5_3</cim:IdentifiedObject.name>
+  <cim:ShortCircuitTest.EnergisedEnd rdf:resource="urn:uuid:EC3D2362-4378-4AA8-B55F-CC7FE2F08147"/>
+  <cim:ShortCircuitTest.GroundedEnds rdf:resource="urn:uuid:5CE76749-F8AB-4C15-B961-B375DADA1167"/>
+  <cim:ShortCircuitTest.energisedEndStep>16</cim:ShortCircuitTest.energisedEndStep>
+  <cim:ShortCircuitTest.groundedEndStep>16</cim:ShortCircuitTest.groundedEndStep>
+  <cim:ShortCircuitTest.leakageImpedance>0.01588925</cim:ShortCircuitTest.leakageImpedance>
+  <cim:ShortCircuitTest.leakageImpedanceZero>0.01588925</cim:ShortCircuitTest.leakageImpedanceZero>
+  <cim:ShortCircuitTest.loss>0.6</cim:ShortCircuitTest.loss>
+  <cim:ShortCircuitTest.lossZero>0.6</cim:ShortCircuitTest.lossZero>
+  <cim:TransformerTest.basePower>25000</cim:TransformerTest.basePower>
+  <cim:TransformerTest.temperature>50</cim:TransformerTest.temperature>
+</cim:ShortCircuitTest>
+</rdf:RDF>
