@@ -56,6 +56,7 @@ mod construct;
 mod distribute;
 mod get_cmd;
 mod helpers;
+mod plot;
 mod reduce;
 pub(crate) mod registry;
 mod report;
@@ -68,8 +69,13 @@ mod view;
 
 pub(crate) use helpers::*;
 pub(crate) use registry::{ClassStore, DssClass, ForeignClasses};
-pub(crate) use tables::{EXEC_COMMANDS, EXEC_OPTIONS, cmd, opt};
+pub(crate) use tables::{EXEC_COMMANDS, EXEC_OPTIONS, PLOT_OPTIONS, cmd, opt};
 pub use view::{ElementSnapshot, MeterZoneView, MonitorView, SystemYCsc};
+
+/// The plot/visualize callback (`DSS.DSSPlotCallback`): given the assembled
+/// `plotParams` JSON string, returns an `i32` (Pascal ignores it; kept for
+/// signature parity). Boxed so a GUI consumer can capture state.
+type PlotCallback = Box<dyn FnMut(&str) -> i32>;
 
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
@@ -84,6 +90,9 @@ pub struct Dss {
     /// `DSS.DSSExecutive.ShowCommands` — the `Show` report keyword list
     /// (Pascal `ShowOptions.DefineOptions`), abbreviation-matched (WP8.1).
     show_commands: CommandList,
+    /// `DSS.DSSExecutive.PlotCommands` — the `Plot` option keyword list
+    /// (Pascal `PlotOptions.DefineOptions`), abbreviation-matched (WPG.17).
+    plot_commands: CommandList,
     /// Main parser driving the command/edit loop (`DSS.Parser`).
     parser: Parser,
     /// Scratch parser for property values (`DSS.AuxParser`/`PropParser`).
@@ -134,12 +143,47 @@ pub struct Dss {
     /// order — the list the whole-circuit `Dump` walks after `CktElements`
     /// (Pascal `ExecHelper.pas:1373`; populated at `AddObject`, `:1899`).
     dss_objs: Vec<ElemRef>,
+    /// `DSS.DaisySize` (`DSSClass.pas:741`, default 1.0; `Set Daisysize=`):
+    /// a GUI daisy-plot marker radius written into the plot-callback payload.
+    /// Lives on the DSS context, not the circuit.
+    daisy_size: f64,
+    /// `DSS.DSSPlotCallback` (`Common/DSSClass.pas:658`). Native replacement for
+    /// the C export `DSS_RegisterPlotCallback` (`CAPI_DSS.pas:267`). `None` =>
+    /// `Plot` is a total no-op and `DoVisualizeCmd` skips its JSON emission —
+    /// byte-identical to the pinned headless oracle. Registering it is the single
+    /// gate that subsumes BOTH Pascal gates (`NoFormsAllowed=False` AND
+    /// `DSSPlotCallback<>NIL`); see [`Dss::register_plot_callback`].
+    plot_callback: Option<PlotCallback>,
 }
 
 impl Dss {
     /// Accumulated error messages (`DoSimpleMsg` log).
     pub fn errors(&self) -> &[String] {
         &self.errors
+    }
+
+    /// Register the plot/visualize callback — the native Rust replacement for
+    /// the C export `DSS_RegisterPlotCallback` (`CAPI_DSS.pas:267`).
+    ///
+    /// The closure receives the assembled `plotParams` JSON string (the exact
+    /// payload Pascal builds with `TJSONObject.FormatJSON` and hands to
+    /// `DSS.DSSPlotCallback`) and returns an `i32` (Pascal ignores the return;
+    /// kept for signature parity). A registered callback is the single opt-in
+    /// gate: it collapses Pascal's two guards (`not NoFormsAllowed` AND
+    /// `DSSPlotCallback<>NIL`) into one, which is the faithful headless
+    /// equivalent — the console-only `NoFormsAllowed`/`AllowForms`/error-5096
+    /// machinery models a text terminal a headless library does not have and
+    /// stays NOT_PORTED. With no callback, `Plot` is a total no-op and
+    /// `Visualize` runs its guards but emits no JSON, exactly like the pinned
+    /// oracle.
+    pub fn register_plot_callback(&mut self, cb: impl FnMut(&str) -> i32 + 'static) {
+        self.plot_callback = Some(Box::new(cb));
+    }
+
+    /// Drop the plot callback (maps `DSS_RegisterPlotCallback(NULL)` /
+    /// dss-python `plot.disable()`): `Plot` reverts to a total no-op.
+    pub fn unregister_plot_callback(&mut self) {
+        self.plot_callback = None;
     }
 
     /// The most recent query/`Get` result (`DSS.GlobalResult`).

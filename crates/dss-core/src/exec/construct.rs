@@ -11,6 +11,7 @@ impl Dss {
         let option_list = CommandList::new(EXEC_OPTIONS.iter().copied());
         let export_commands = CommandList::new(crate::report::EXPORT_OPTIONS.iter().copied());
         let show_commands = CommandList::new(crate::report::SHOW_OPTIONS.iter().copied());
+        let plot_commands = CommandList::new(PLOT_OPTIONS.iter().copied());
 
         // Class registry. More classes are registered here as they are ported.
         let classes = vec![
@@ -318,6 +319,7 @@ impl Dss {
             option_list,
             export_commands,
             show_commands,
+            plot_commands,
             parser: Parser::new(),
             aux_parser: Parser::new(),
             vars: ParserVars::new(),
@@ -337,6 +339,8 @@ impl Dss {
             redirect_abort: false,
             cim: crate::cim::CimExporter::default(),
             dss_objs: Vec::new(),
+            daisy_size: 1.0, // DSSClass.pas:1283
+            plot_callback: None,
         };
         dss.create_default_dss_items();
         dss

@@ -9,6 +9,27 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 port: Plot/Visualize callback surface DONE (2026-07-09).** Ported
+`DoPlotCmd` (`PlotOptions.pas:182`) — the full option parse (`PlotCommands`
+abbrev table `PLOT_OPTIONS`, all 23 `ParamPointer` arms) + the `plotParams`
+JSON assembly (30-key payload, `Markers` object, `BusMarkers[]`) + the #24732
+unsolved guard — plus `AddBusMarker`/`ClearBusMarkers` (`ExecHelper.pas:4382` /
+`Circuit.pas:3069`) and the `Visualize` JSON emission (`ExecHelper.pas:4184`).
+Native `Dss::register_plot_callback`/`unregister_plot_callback`
+(`exec/mod.rs`): a registered callback is the single opt-in gate that subsumes
+BOTH Pascal gates (`NoFormsAllowed=False` AND `DSSPlotCallback<>NIL`) — the
+console-only `AllowForms`/error-5096 machinery stays NOT_PORTED (no headless
+analog). New `interpret_color_name`/`color_to_html` (`util.rs`, VCL `clXXX`
+palette pinned by the golden), `BusMarker` + 27 marker fields on `Circuit`,
+`DaisySize` + `Set Daisysize=` on `Dss`. TODO(compat): `type=Losses→LoadShape`
+(letter L unconditional, PlotOptions.pas:274), unrecognized-type→'Circuit'
+default, `min=` always flags `MinScaleIsSpecified`. Tests: 10 unit
+(`exec/plot/tests.rs`, gating/guards/payloads/markers/visualize) + color unit +
+a golden capture (`tools/golden/gen_plot_callback.py` via the oracle's
+`DSS_RegisterPlotCallback`, 13 variants, `golden_plot_callback.rs` structural
+compare). DI-family (`DI_plot`/`CompareCases`/`YearlyCurves`) stays NOT_PORTED
+(upstream calls the callback with no NIL guard = UB). Full gate green.
+
 **WPG.17 exit sweep IN PROGRESS (2026-07-09).** Item-1 marker sweep + registry
 diff done: the Rust registry matches `DSSClassDefs.pas` `CreateDSSClasses`
 class-for-class (49/49); no `pending: true` remains in any family manifest

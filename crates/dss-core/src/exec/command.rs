@@ -149,13 +149,17 @@ impl Dss {
             // changes no electrical state — PHASE8_PLAN §2.5); WP8.4 lands the
             // real ShowResults formatters + the 24700/24701/24702/999 errors.
             cmd::SHOW => self.do_show_cmd(),
-            // Pascal `DoPlotCmd` (`PlotOptions.pas:202-213`) exits before ANY
-            // guard when `DSSPlotCallback` is NIL — the pinned headless oracle —
-            // so `Plot` is a faithful total no-op (PHASE8_PLAN §2.5; the live
-            // gate compares the assembled model, not any plot). Post-circuit,
-            // like the oracle's dispatch (before a circuit the generic guard
-            // above emits #301; oracle-probed).
-            cmd::PLOT => {}
+            // Pascal `DoPlotCmd` (`PlotOptions.pas:182`). With no plot callback
+            // registered it exits before ANY guard (the pinned headless oracle),
+            // so `Plot` is a faithful total no-op; with a callback registered
+            // (WPG.17) it parses the options and fires the `plotParams` JSON.
+            // Post-circuit, like the oracle's dispatch (before a circuit the
+            // generic guard above emits #301; oracle-probed).
+            cmd::PLOT => self.do_plot_cmd(),
+            // Pascal `DoAddMarkerCmd` / `TDSSCircuit.ClearBusMarkers`: the
+            // bus-marker list feeding the plot payload's `BusMarkers[]` (WPG.17).
+            cmd::ADD_BUS_MARKER => self.do_add_marker_cmd(),
+            cmd::CLEAR_BUS_MARKER => self.do_clear_bus_markers_cmd(),
             // `Visualize` differs: `DoVisualizeCmd` runs its guards BEFORE the
             // callback check, so they are engine-observable and ported.
             cmd::VISUALIZE => self.do_visualize_cmd(),
@@ -542,8 +546,11 @@ impl Dss {
 
         // Parse `What=`/`Element=` (`CompareTextShortest` prefixes; bare
         // values fill positions 1, 2, …; unknown names are skipped). `What`
-        // (the plotted quantity) has no engine-observable effect.
+        // (the plotted quantity) is carried into the callback JSON's `Quantity`;
+        // it has no engine-observable effect otherwise. Default `Current`
+        // (`ExecHelper.pas:4124`).
         let mut elem_name = String::new();
+        let mut quantity = "Current";
         let mut pointer = 0usize;
         loop {
             let param_name = self.parser.next_param(&self.vars);
@@ -560,8 +567,19 @@ impl Dss {
             } else {
                 continue; // Unknown named parm — ignored (Pascal `Unknown`).
             }
-            if pointer == 2 {
-                elem_name = param.to_string();
+            match pointer {
+                1 => {
+                    // First letter of the value → the plotted quantity
+                    // (`ExecHelper.pas:4148`).
+                    quantity = match param.as_bytes().first().map(u8::to_ascii_lowercase) {
+                        Some(b'c') => "Current",
+                        Some(b'v') => "Voltage",
+                        Some(b'p') => "Power",
+                        _ => quantity,
+                    };
+                }
+                2 => elem_name = param.to_string(),
+                _ => {}
             }
         }
 
@@ -586,8 +604,22 @@ impl Dss {
             self.errors.push(format!(
                 "Requested Circuit Element: \"{elem_name}\" not found."
             ));
+            return;
         }
-        // Found: the plot JSON goes to the NIL callback — faithful no-op.
+        // Found: build the Visualize JSON `{PlotType, ElementName, ElementType,
+        // Quantity}` (`ExecHelper.pas:4184`) and fire the callback. `ElementType`
+        // is the element's DSS class name; `ElementName` its Name. With no
+        // callback registered this is a faithful no-op (byte-identical to the
+        // pinned headless oracle, which runs `DSSPlotCallback = NIL`).
+        let ci = ci.expect("found implies ci is Some");
+        let oi = self.classes[ci]
+            .name_to_idx
+            .get(&obj_str.to_lowercase())
+            .copied()
+            .expect("found confirmed the object exists");
+        let element_name = self.classes[ci].objects[oi].data().name().to_string();
+        let element_type = self.classes[ci].props.class_name().to_string();
+        self.fire_visualize_callback(&element_name, &element_type, quantity);
     }
 
     /// Pascal `AddObject`: create the object (or make the existing one
