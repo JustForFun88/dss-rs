@@ -9,6 +9,32 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 exit sweep COMPLETE — GAPS_PLAN executed (2026-07-09).** All three
+exit-sweep items hold: **(1)** every `NOT_PORTED`/`no corpus case` marker
+points at a live owner (never/UB/Phase-9/WPG.19/WPG.20/`JSON_EXPORT_PLAN.md`),
+no test-absence deferral survives, and the registry diff vs `DSSClassDefs.pas`
+is clean (49/49); **(2)** no `pending: true` remains in any family manifest;
+**(3)** full gate + live corpus green, COVERAGE refreshed, PORTING_PLAN
+cross-linked ("GAPS_PLAN executed", §Phase 9). Executed with the user-directed
+"port, don't leave" extension — see the GAPS_PLAN §WPG.17 closure addendum for
+the six ports of this round and the named follow-ups (WPG.19 non-MM `File=`
+arrays, WPG.20 MMF-save, JSON plan in the repo root). **Corpus phase:** the
+final `DSS_LIVE_CLASSIFY` pass probed all 43 `needs_investigation` candidates —
+honestly 0 newly solvable (all sit on documented floors); new §3-validated
+family decks this round: `xycurve_files`, `shape_mmf`, `gfm_dynamics`,
+`pv_gfm_dynamics` (all in the anti-deletion floors); `FreqScan/Run_Scan.dss`
+migrated to `solvable_now` (unblocked by the Plot-round `AddBusMarker`/
+`ClearBusMarkers`; full live compare green). **The audit-requested IEEE123-GFM
+spot-migration produced a REAL finding:** `Run_IEEE123Bus_GFMSnap.DSS` runs on
+both engines but EXCEEDS the live band (step 0 entry 278, |diff| 9.03e-5 >
+allowed 2.96e-5, ~3.7e-7 rel node V) — the earlier "purely scope" retag was
+inaccurate; the deck now sits in `skipped_needs_investigation` with the
+measured divergence and the whole `ieee123-gfm` family's notes cite it. Per
+CLAUDE.md it is a BUG until the decomposition protocol proves a floor — owner:
+the GFM full-feeder investigation follow-up. COVERAGE: solvable_now **184
+(54.9%)**, unsupported 66→64, needs_investigation 43→44. Merge to `main`
+remains explicit-request-only. **Next: WP8.8 (Phase-8 exit).**
+
 **GFM audit settlement, part 1 (2026-07-09; both auditors: 0 Critical/Major on
 the GFM math — every numeric pin independently reproduced on the oracle).**
 audit-tests' Major settled: the FaultStudy/MonteFault GFM tests were smoke-only

@@ -174,7 +174,7 @@ impl DssObject for LoadShapeObj {
     /// file directives that the numeric parser cannot read. Under
     /// `MemoryMapping=Yes` the directive queues an eager MMF read (the `UseMMF`
     /// branch); without it, a file directive is the non-MM `File=` array feature
-    /// (WPG.1) — still NOT_PORTED, so surface a loud error. A plain numeric list
+    /// (WPG.19, the GAPS closure follow-up) — still NOT_PORTED, so surface a loud error. A plain numeric list
     /// returns `false` and flows to `ParseAsVector` unchanged.
     fn set_f64_array_raw(&mut self, idx: usize, raw: &str) -> bool {
         if !matches!(idx, MULT | PMULT | QMULT) {
@@ -202,13 +202,13 @@ impl DssObject for LoadShapeObj {
                 },
             ));
         } else {
-            // NOT_PORTED(LoadShape non-MM `File=` numeric arrays — WPG.1): a
+            // NOT_PORTED(LoadShape non-MM `File=` numeric arrays — WPG.19, GAPS_PLAN closure addendum): a
             // `mult=(file=…)` without MemoryMapping reads a file into `dP` via
             // `InterpretDblArray`; the file-directive reader is a separate item.
             self.data.push_error(format!(
                 "LoadShape.{}: file-backed numeric arrays \
                  (\"file=\"/\"sngfile=\"/\"dblfile=\" inside Mult/PMult/QMult without \
-                 MemoryMapping=Yes) are not supported yet (WPG.1).",
+                 MemoryMapping=Yes) are not supported yet (WPG.19).",
                 self.data.name()
             ));
         }

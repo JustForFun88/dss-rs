@@ -1062,6 +1062,37 @@ known at authoring) and record the WP in STATUS §1 per the ritual.
    (§1-style); PORTING_PLAN.md cross-link ("GAPS_PLAN executed").
 4. Merge per the per-phase convention — only on explicit user request.
 
+### WPG.17 as executed (2026-07-09) — closure addendum
+
+Executed with a user-directed scope extension ("port, don't leave"): beyond
+the sweep, the closure round ported XYcurve `CSVFile`/`SngFile`/`DblFile`,
+LoadShape `MemoryMapping=Yes` + `Set/Get TotalTime`, the binary shape outputs
+`SngSave`/`DblSave`, `PreserveNodeVoltages`, the Monitor 1024-single flush,
+the **dynamics-mode GFM** branch (retiring the WPG.13 deferral), the
+`Visualize` guard errors, and the full **Plot/Visualize callback surface**
+(`DoPlotCmd` + `plotParams` JSON + native `register_plot_callback` + the
+marker-style `Set`/`Get` options) — each in an isolated worktree with an
+independent audit-code/audit-tests pair, merged and settled per the ritual.
+
+**Named follow-ups surfaced by the closure (owners, not silent leftovers):**
+
+- **WPG.19 (open): non-MM file-backed numeric arrays** — Pascal
+  `InterpretDblArray`'s `(file=…)`/`(sngfile=…)`/`(dblfile=…)` directive for
+  array props WITHOUT `MemoryMapping=Yes` (`Utilities.pas`); surfaced as the
+  remaining blocker of `MemoryMappingLoadShapes/ckt24` (`LS_PhaseB/C…`).
+  Loud `NOT_PORTED` at `load_shape/accessors.rs::set_f64_array_raw`.
+- **WPG.20 (open): MMF-shape binary save** — `Action=SngSave/DblSave` on a
+  `MemoryMapping=Yes` LoadShape keeps a loud refusal; removing it needs an
+  oracle probe of the MMF-save Q-side semantics (`Assigned(dQ)` under MMF)
+  before the emitted bytes can be trusted.
+- **JSON output** (`Obj_ToJSON`/`Batch_ToJSON`/`Obj_Circuit_ToJSON_` +
+  `joptions`; `FromJSON` import and `CAPI_Schema` behind it) — user-deferred
+  2026-07-09; the implementation-ready plan is **`JSON_EXPORT_PLAN.md`**
+  (repo root; two stages, byte-exact fpjson goldens, tiers inside).
+- **DI-plot family** (`DI_plot`/`CompareCases`/`YearlyCurves`) — upstream
+  calls the plot callback with no NIL guard (UB); stays `NOT_PORTED` with the
+  UB citation.
+
 ## 5. Execution notes
 
 - Order: WPG.1–WPG.11 are small and independent — run them in numeric order

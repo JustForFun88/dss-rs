@@ -1308,6 +1308,28 @@
    "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V)."
   },
   {
+   "path": "pv_gfm_dynamics.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "PVSystem.pv",
+     "props": [
+      "irradiance",
+      "pmpp",
+      "kva"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.17",
+   "note": "PVSystem twin of gfm_dynamics.dss (GFM audit settlement: the PV GFM dynamics path previously had only a last-sample unit pin). Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors); exercises PVsystem.pas InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated pinned oracle dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive -- WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory."
+  },
+  {
    "path": "storagecontroller_seasonal.dss",
    "kind": "micro",
    "n_steps": 24,

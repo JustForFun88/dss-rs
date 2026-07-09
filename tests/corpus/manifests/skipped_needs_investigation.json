@@ -2,6 +2,11 @@
  "comment": "TEMP probe",
  "cases": [
   {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
+   "tag": "live_mismatch",
+   "note": "WPG.17 closure spot-migration (2026-07-09, the audit-requested proof of the ieee123-gfm retag): the full-IEEE123 GFM snapshot RUNS on both engines but the live compare EXCEEDS the band -- step 0 entry 278 differs: actual (242.97248052746485, -151.10845578423772) vs expected (242.9725258689647, -151.10837768870124); |diff| = 9.030373429344032e-5 > allowed 2.9612827566470234e-5 (~3.7e-7 rel on node V). So the earlier 'purely a scope decision' claim was inaccurate: there IS a real above-band divergence on the full feeder. Every command is ported (the micro GFM gates gfm_micro/gfm_dynamics/pv_gfm_dynamics are live-green), so this is either a GFM-related port gap only visible at feeder scale or a conditioning floor -- per CLAUDE.md it stays a BUG until the decomposition protocol (tighten tolerance / controlled experiment / first-divergence trajectory) proves the floor. Owner: the GFM full-feeder investigation follow-up."
+  },
+  {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
    "tag": "entry_point",
    "note": "live probe: Test/AutoTrans/Auto1bus-step1.dss step 0: entry 0 differs: actual (199185.8310688565, -0.0026516858644518295) vs expected (199185.83007916168, -0.006262229866034236); |diff| = 3.7437312696727435e-3 > allowed 1.992858300791618e-3"

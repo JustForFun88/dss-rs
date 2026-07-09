@@ -1,0 +1,38 @@
+! GFM audit settlement (WPG.17): a PVSystem in grid-forming inverter mode
+! (ControlMode=GFM) BLACK-STARTING an ISLANDED section in DYNAMICS mode — the
+! PVSystem twin of gfm_dynamics.dss (the auditors flagged that the PV GFM
+! dynamics path had only a last-sample unit pin, no full-trajectory live gate).
+!
+! Topology: sourcebus --feeder--> mainbus --sw1(OPEN)--> islbus. Opening sw1
+! islands {islbus, pvbus}; the only source left is the GFM PVSystem (balanced
+! internal voltage source scaled by its integrated filter current it[0] behind
+! CalcGFMYprim), stepped up 0.48->4.16 kV by tpv, forming the island voltage.
+!
+! Dynamics-mode PV GFM machinery exercised (PVsystem.pas / InvDynamics.pas):
+!   InitStateVars GFM it:=0 seed (PVsystem.pas:2246-2249), IntegrateStates GFM
+!   droop using the OVERWRITTEN iMaxPPhase (:2305/:2324-2355 — unlike Storage,
+!   which keeps IMaxPhase local), DoDynamicMode GFM injection (:1870-1876).
+!
+! SafeVoltage=0 IS MANDATORY (same as the Storage deck): the default MinVS
+! safe-mode threshold blocks a black start from 0 V.
+!
+! FEATURE-SENSITIVITY (pinned oracle dss-python 0.15.7, 60x 1ms steps):
+!   WITH   ControlMode=GFM + SafeVoltage=0: island BLACK-STARTS, islbus
+!          ~0.977 pu after 60 steps, PV supplies the island load.
+!   WITHOUT ControlMode=GFM (plain GFL): the islanded inverter cannot form
+!          voltage -> dynamics solve NON-CONVERGENT (NaN node V) — a total
+!          divergence. (Validation fingerprints recorded in the manifest note.)
+Clear
+New Circuit.pv_gfm_dyn basekv=4.16 phases=3 bus1=sourcebus
+New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 length=1 units=km
+New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes
+New Transformer.tpv phases=3 windings=2 buses=(pvbus islbus) conns=(delta wye) kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5
+New PVSystem.pv phases=3 conn=delta bus1=pvbus kV=0.48 kva=800 pmpp=800 irradiance=1 %R=50 %X=50 kP=0.3 KVDC=0.700 PITol=0.1 SafeVoltage=0 ControlMode=GFM
+New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1
+New Monitor.pvi element=PVSystem.pv terminal=1 mode=0
+New Monitor.psv element=PVSystem.pv terminal=1 mode=3
+Set voltagebases=[4.16 0.48]
+Calcvoltagebases
+open line.sw1 terminal=1
+solve
+Set mode=dynamics stepsize=0.001 number=60 maxiterations=30
