@@ -83,13 +83,11 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::MonteFault => solve_monte_fault(ckt, env),
         // AutoAdd is intercepted at the executive layer (exec/auto_add.rs),
         // before this dispatcher runs, because its winner instantiation
-        // re-enters the executive command path — it never reaches here.
-        _ => {
-            // Any remaining/unported mode keeps the Pascal "Unknown solution
-            // mode." error (`TSolutionObj.Solve` else, #481) rather than a
-            // partial port.
-            env.errors
-                .push("Unknown solution mode. (mode not ported — no corpus case)".to_string());
+        // re-enters the executive command path — it never reaches here. Every
+        // other mode is ported, so this arm is defensive-only; it keeps the
+        // Pascal-exact `TSolutionObj.Solve` else-branch error (#481).
+        SolveMode::AutoAdd => {
+            env.errors.push("Unknown solution mode.".to_string());
             Ok(())
         }
     };

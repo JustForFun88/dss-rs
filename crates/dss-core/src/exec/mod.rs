@@ -117,8 +117,8 @@ pub struct Dss {
     /// `SetDataPath(DSS, CurrDir)` for Compile before and after processing the
     /// deck — `ExecHelper.pas:546/651` — so default-named exports land next to
     /// the compiled deck; oracle-verified). Plain `Redirect` moves only
-    /// `current_dir`. The non-writable-dir scratch fallback is NOT_PORTED
-    /// (no corpus deck writes to a non-writable dir).
+    /// `current_dir`. The non-writable-dir scratch fallback is NOT_PORTED —
+    /// environment-dependent, see `set_cmd::apply_data_path`'s doc.
     output_directory: PathBuf,
     /// `DSS.LastResultFile` / `@lastfile` (Pascal `SetLastResultFile`): the path
     /// of the most recently written report (`Export`/`Show`/`Save`). Surfaced via

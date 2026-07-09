@@ -7,8 +7,12 @@ use super::*;
 /// failure → leave dirs unchanged), then point both the working dir and the
 /// report `OutputDirectory` at it. Allowed with or without a circuit (it touches
 /// the DSS context, not the circuit). The non-writable-dir → scratch fallback is
-/// NOT_PORTED (no corpus deck writes to a non-writable dir); empty `DataPath=` is
-/// a no-op here (Pascal clears DataDirectory; unexercised).
+/// NOT_PORTED — an environment-dependent I/O rescue (`DSSGlobals.pas:561-568`
+/// redirects `OutputDirectory` to the per-user `GetDefaultScratchDirectory`
+/// appdata dir when the target isn't writable), machine-state-dependent and not
+/// oracle-pinnable; the port keeps `OutputDirectory` on the requested dir, so a
+/// later write fails loudly instead of landing in a hidden scratch dir. Empty
+/// `DataPath=` is a no-op here (Pascal clears DataDirectory; unexercised).
 ///
 /// Uses single-level `create_dir` (not `create_dir_all`) to match Pascal's RTL
 /// `CreateDir`, which fails — #907, dirs unchanged — when a *parent* is missing.

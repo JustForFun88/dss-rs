@@ -127,8 +127,10 @@ impl ScalarShapeCore {
         };
 
         // Normalize Hr into the first cycle (wraparound). Pascal divides by
-        // Hours[FNumPoints] unguarded; we skip the degenerate last-hour==0 curve
-        // (no corpus case) to avoid a Rust divide-by-zero panic.
+        // Hours[FNumPoints] unguarded, so a degenerate curve whose LAST hour is
+        // 0 poisons Hr to NaN (masked-FPU Inf·0) — defined-garbage on a
+        // pathological input, not reproduced (CLAUDE.md known-bug policy): the
+        // port skips the wraparound and reads the curve as-is.
         let mut hr = hr;
         let last = h[npts - 1]; // Hours[FNumPoints]
         if hr > last && last != 0.0 {

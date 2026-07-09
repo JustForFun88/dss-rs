@@ -259,8 +259,8 @@ pub(crate) fn do_keeper_bus_list(
 /// `Set ReduceOption=` value into a [`crate::circuit::ReductionStrategy`]. The
 /// first character (case-insensitive) selects the mode; an `S` is
 /// disambiguated Switch-vs-Shortlines by `CompareTextShortest(S, 'SWITCH')`.
-/// The strategy is only stored — the reduction (`ReduceAlgs.pas`) is
-/// `NOT_PORTED`.
+/// The stored strategy is consumed by the WP8.7 `ReduceZone` dispatch
+/// (`report/reduce.rs`).
 pub(crate) fn set_reduce_strategy(ckt: &mut Circuit, s: &str, errors: &mut Vec<String>) {
     use crate::circuit::ReductionStrategy as Rs;
     ckt.reduction_strategy_string = s.to_string();

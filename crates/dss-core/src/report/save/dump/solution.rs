@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use crate::circuit::{CAPADD, Circuit};
 use crate::exec::{SystemYCsc, int_array_to_string};
+use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::report::format;
 use crate::util::float_to_str;
@@ -129,10 +130,15 @@ pub(crate) fn dump_solution_properties(
         .unwrap_or((0.0, 0.0));
     out.push_str(&format!("Set %mean={}\n", format::g(mean * 100.0, 4)));
     out.push_str(&format!("Set %stddev={}\n", format::g(std_dev * 100.0, 4)));
-    // `NameIfNotNil(LoadDurCurveObj)`: the LoadDuration curve is not modeled
-    // (`Set LDCurve=` NOT_PORTED, see `exec/report.rs` register exports) — the
-    // object is always NIL, rendering empty.
-    out.push_str("Set LDCurve=\n");
+    // `NameIfNotNil(LoadDurCurveObj)` (`Solution.pas:1816`): the name of the
+    // `Set LDCurve=` LoadShape (GAPS WPG.3), empty when unset — same render as
+    // the `exec/report.rs` register-export header.
+    let ldcurve = ckt
+        .load_dur_curve_obj
+        .as_ref()
+        .map(|s| s.data().name().to_string())
+        .unwrap_or_default();
+    out.push_str(&format!("Set LDCurve={ldcurve}\n"));
     out.push_str(&format!(
         "Set %growth={}\n",
         format::g((ckt.default_growth_rate - 1.0) * 100.0, 4)

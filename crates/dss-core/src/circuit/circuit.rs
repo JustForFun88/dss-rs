@@ -23,10 +23,9 @@ pub struct NodeBus {
 
 /// Pascal `Circuit.pas` `TReductionStrategy` — the circuit-reduction mode
 /// selected by `Set ReduceOption=` and consumed by `EnergyMeter.ReduceZone`.
-/// (`rsTapEnds` was removed upstream 2018-02-28.) The reduction algorithms
-/// themselves (`ReduceAlgs.pas`) are `NOT_PORTED` — they hinge on the
-/// unported 210-line `TLineObj.MergeWith` series/parallel line merge; only the
-/// option/command surface is ported in WP6.8. Deferred to a later phase.
+/// (`rsTapEnds` was removed upstream 2018-02-28.) The option/command surface
+/// landed in WP6.8; the reduction algorithms themselves (`ReduceAlgs.pas`,
+/// incl. `TLineObj.MergeWith`) are ported in WP8.7 (`report/reduce.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReductionStrategy {
     #[default]
@@ -243,14 +242,15 @@ pub struct Circuit {
     /// `LossRegs` — meter register indices summed as "losses".
     pub loss_regs: Vec<i32>,
     /// `AutoAddBusList` — candidate buses for the auto-add search. Pascal uses
-    /// a `TBusHashListType`; the skeleton keeps an insertion-ordered,
-    /// original-case `Vec<String>` (sufficient for the `Get` echo — the
-    /// hash-list dedup/`Find` is only needed by the unported `MakeBusList`).
+    /// a `TBusHashListType`; the port keeps an insertion-ordered,
+    /// original-case `Vec<String>` (the `Get` echo plus the WPG.5
+    /// `auto_add::make_bus_list` candidate walk, which does its own
+    /// case-insensitive resolve against the circuit bus list).
     pub auto_add_bus_list: Vec<String>,
 
     /// `ReductionStrategy`/`ReductionStrategyString` — the `Set ReduceOption=`
-    /// state. The strategy is parsed and stored; the actual zone reduction is
-    /// `NOT_PORTED` (see [`ReductionStrategy`]).
+    /// state consumed by the WP8.7 `EnergyMeter.ReduceZone` dispatch (see
+    /// [`ReductionStrategy`]).
     pub reduction_strategy: ReductionStrategy,
     pub reduction_strategy_string: String,
     /// `ReductionZmag` (ohms) — the short-line merge threshold (`Set Zmag=`).

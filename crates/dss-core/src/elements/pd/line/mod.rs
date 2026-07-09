@@ -1,8 +1,9 @@
 //! Port of `PDElements/Line.pas` — `TLineObj`. Impedance sources: symmetrical
 //! components (R1/X1/R0/X0/C1/C0/B1/B0), the direct matrix specification
-//! (rmatrix/xmatrix/cmatrix), the LineCode catalog (Phase 4), and the
-//! `LineGeometry` Carson path (`geometry=`, WP7.1 step 3a). The `spacing=`/
-//! `wires=`/`cncables=`/`tscables=` forms remain `NOT_PORTED` (step 3b).
+//! (rmatrix/xmatrix/cmatrix), the LineCode catalog (Phase 4), the
+//! `LineGeometry` Carson path (`geometry=`, WP7.1 step 3a), and the
+//! `spacing=`/`wires=`/`cncables=`/`tscables=` forms (step 3b —
+//! `FMakeZFromSpacing` via a throwaway geometry, see `line_spacing_obj`).
 //!
 //! For the sym/matrix/linecode sources `Z`/`Yc` hold ohms (resp. susceptance)
 //! **per unit length** at base frequency and `CalcYPrim` applies length, units
