@@ -73,6 +73,26 @@ VARIANTS = [
     ("visualize_power", ["visualize powers Transformer.tr1"]),
     ("visualize_current", ["visualize current Line.l1"]),
     ("visualize_voltage", ["visualize voltage Line.l1"]),
+    # --- audit-settlement variants (2026-07-09): pin the TODO(compat)s and the
+    # parse arms the first 13 variants only exercised at their defaults. ---
+    # `min=` asymmetry: min=0 still sets MinScaleIsSpecified (unlike max=0).
+    ("circuit_min_zero", ["plot type=circuit quantity=Voltage min=0"]),
+    ("circuit_min_five", ["plot type=circuit quantity=Voltage min=5"]),
+    # showloops=y flips PlotType to MeterZones (arm 7).
+    ("circuit_showloops", ["plot type=circuit showloops=y"]),
+    # C2/C3 color arms (11/12).
+    ("circuit_c2_c3", ["plot type=circuit C2=Red C3=Green"]),
+    # profile x-axis scale keyword (arm 22).
+    ("profile_scale_kft", ["plot type=profile profilescale=120kft"]),
+    # Unrecognized `type=` falls back to 'Circuit' (empty else, TODO(compat)).
+    ("type_unrecognized", ["plot type=xyz"]),
+    # daisy `buslist=(…)` value-list branch (arm 17, interpret_string_list).
+    ("daisy_buslist", ["plot type=daisy buslist=(src, b, c)"]),
+    # One combined variant driving the remaining cosmetic arms off-default.
+    ("circuit_styled", [
+        "plot type=circuit labels=y thickness=7 plotid=myplot 3phlinestyle=2 "
+        "tricolormax=1.08 tricolormid=0.9",
+    ]),
 ]
 
 

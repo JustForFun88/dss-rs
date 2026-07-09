@@ -87,6 +87,54 @@
       "cmds": [
         "visualize voltage Line.l1"
       ]
+    },
+    {
+      "stem": "circuit_min_zero",
+      "cmds": [
+        "plot type=circuit quantity=Voltage min=0"
+      ]
+    },
+    {
+      "stem": "circuit_min_five",
+      "cmds": [
+        "plot type=circuit quantity=Voltage min=5"
+      ]
+    },
+    {
+      "stem": "circuit_showloops",
+      "cmds": [
+        "plot type=circuit showloops=y"
+      ]
+    },
+    {
+      "stem": "circuit_c2_c3",
+      "cmds": [
+        "plot type=circuit C2=Red C3=Green"
+      ]
+    },
+    {
+      "stem": "profile_scale_kft",
+      "cmds": [
+        "plot type=profile profilescale=120kft"
+      ]
+    },
+    {
+      "stem": "type_unrecognized",
+      "cmds": [
+        "plot type=xyz"
+      ]
+    },
+    {
+      "stem": "daisy_buslist",
+      "cmds": [
+        "plot type=daisy buslist=(src, b, c)"
+      ]
+    },
+    {
+      "stem": "circuit_styled",
+      "cmds": [
+        "plot type=circuit labels=y thickness=7 plotid=myplot 3phlinestyle=2 tricolormax=1.08 tricolormid=0.9"
+      ]
     }
   ]
 }
