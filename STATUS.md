@@ -29,9 +29,19 @@ spot-migration produced a REAL finding:** `Run_IEEE123Bus_GFMSnap.DSS` runs on
 both engines but EXCEEDS the live band (step 0 entry 278, |diff| 9.03e-5 >
 allowed 2.96e-5, ~3.7e-7 rel node V) — the earlier "purely scope" retag was
 inaccurate; the deck now sits in `skipped_needs_investigation` with the
-measured divergence and the whole `ieee123-gfm` family's notes cite it. Per
-CLAUDE.md it is a BUG until the decomposition protocol proves a floor — owner:
-the GFM full-feeder investigation follow-up. COVERAGE: solvable_now **184
+measured divergence and the whole `ieee123-gfm` family's notes cite it.
+**RESOLVED 2026-07-09 (decomposition protocol executed): proven conditioning
+floor, not a port bug.** The whole above-band gap is the zero-sequence common
+mode of the two floating delta buses (StoBus/PVBus — delta xfmr winding +
+delta DER, no zero-seq ground path): pinned only by the transformer anti-float
+adder (−j1.4468e-6 S = 2·Y_PPM, measured from the live Y) vs ~452 S diagonal →
+amplification ~3.1e8 × f64 ε ≈ 3.4e-8 rel per solve, iterating to the observed
+2.6–3.2e-7 rel. Proof: system Y bit-identical, iteration counts equal at every
+stage, differential/L-L quantities ≤2.3e-10 rel, all non-DER nodes in-band
+(8.1e-9 rel); deck minus the DER pair collapses to 8.2e-9 rel; InvControl
+removal changes nothing (GFM exonerated). Same un-pinnable class as AutoAuto —
+NOT a TODO(compat), must not be "fixed". Full proof in the deck's manifest
+note. COVERAGE: solvable_now **184
 (54.9%)**, unsupported 66→64, needs_investigation 43→44. Hygiene follow-up
 (purged in `84b8dfa`): the `DSS_LIVE_CLASSIFY` oracle-side probe and a manual
 `dss-cli` run wrote outputs (DI files / monitor CSVs) NEXT TO the vendored
