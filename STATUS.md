@@ -32,8 +32,13 @@ inaccurate; the deck now sits in `skipped_needs_investigation` with the
 measured divergence and the whole `ieee123-gfm` family's notes cite it. Per
 CLAUDE.md it is a BUG until the decomposition protocol proves a floor — owner:
 the GFM full-feeder investigation follow-up. COVERAGE: solvable_now **184
-(54.9%)**, unsupported 66→64, needs_investigation 43→44. Merge to `main`
-remains explicit-request-only. **Next: WP8.8 (Phase-8 exit).**
+(54.9%)**, unsupported 66→64, needs_investigation 43→44. Hygiene follow-up
+(purged in `84b8dfa`): the `DSS_LIVE_CLASSIFY` oracle-side probe and a manual
+`dss-cli` run wrote outputs (DI files / monitor CSVs) NEXT TO the vendored
+decks — the CorpusGuard redirect covers the harness's Rust side but not the
+classify oracle process cwd; extend it before the next classify pass (WP8.8
+candidate). Merge to `main` remains explicit-request-only. **Next: WP8.8
+(Phase-8 exit).**
 
 **GFM audit settlement, part 1 (2026-07-09; both auditors: 0 Critical/Major on
 the GFM math — every numeric pin independently reproduced on the oracle).**
