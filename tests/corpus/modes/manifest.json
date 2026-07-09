@@ -329,6 +329,19 @@
    "note": "Harmonics case: the second Solve sweeps harmonics 1/5/7 (3 monitor samples). Feature-sensitive probe-proven: removing rcurve/lcurve shifts the harmonic monitor channels ~0.6%."
   },
   {
+   "path": "xycurve_files/xycurve_files.dss",
+   "kind": "micro",
+   "n_steps": 3,
+   "selected_elements": [
+    "Reactor.rx1",
+    "Reactor.rx2"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.17",
+   "note": "XYcurve CSVFile/SngFile/DblFile file-input props: rc.csv, lc.sng, rc2.dbl feed three curves into two series reactors' rcurve/lcurve; harmonics solve (1/5/7 -> 3 monitor samples). GAPS-3 oracle-validated (dss-python 0.15.7): compiles+solves+converges clean; bit-identical monitor fingerprint across two separate oracle processes (50ba0afb...); feature-sensitive (dropping rcurve/lcurve changes the fingerprint), and a same-values xarray/yarray deck reproduces the file-fed fingerprint bit-for-bit (readers parse the intended values). Fixtures from tools/decks/gen_xycurve_fixtures.py."
+  },
+  {
    "path": "isource_harm.dss",
    "kind": "micro",
    "n_steps": 1,
