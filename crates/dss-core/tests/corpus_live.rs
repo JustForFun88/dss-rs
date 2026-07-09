@@ -1571,6 +1571,12 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "autotrans_both.dss",
     "midi_autotrans.dss",
     "midi_autotrans_both.dss",
+    // WPG.13/WPG.17 grid-forming decks (audit settlement: every feature deck
+    // joins the anti-deletion floor).
+    "gfm_micro.dss",
+    "gfm_invcontrol.dss",
+    "gfm_dynamics.dss",
+    "pv_gfm_dynamics.dss",
 ];
 
 /// Every controls case must exercise at least one element-specific channel

@@ -333,9 +333,21 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
   (`tests/save_roundtrip.rs`).
 
 ### Phase 9 — Exotics (~8%, optional — stopping before this still = complete simulator)
+
+> **GAPS_PLAN executed (2026-07-09):** WPG.1–WPG.18 + the WPG.17 exit sweep are
+> COMPLETE (see `GAPS_PLAN.md` §WPG.17 closure addendum and `STATUS.md`). The
+> closure round additionally ported the sweep-surfaced items (XYcurve file
+> props, LoadShape MemoryMapping + TotalTime, SngSave/DblSave,
+> PreserveNodeVoltages, the Monitor 1024-flush, the dynamics-mode GFM branch —
+> retiring the WPG.13 deferral — and the Plot/Visualize callback surface with
+> `Dss::register_plot_callback` for GUI hosts). Named follow-ups: WPG.19
+> (non-MM `File=` arrays), WPG.20 (MMF-shape save), `JSON_EXPORT_PLAN.md`
+> (user-deferred JSON output). The remaining Phase-9 scope below is the
+> A-Diakoptics/actor/Pstcalc residue.
+
 - ~~`ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle)~~ —
   **moved to `GAPS_PLAN.md` WPG.18** (byte-exact golden XML gate via the
-  `uuids file=` determinism recipe).
+  `uuids file=` determinism recipe) — **executed**.
 - ~~A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
   gate: numerically identical to single-actor results.~~ — **moved to
   `MULTITHREADING_PLAN.md` (2026-07-06):** actor mode = stage M2 there (same

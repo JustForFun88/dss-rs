@@ -943,7 +943,7 @@ fn mmf_pqcsv_dump_quirk_through_executive() {
 }
 
 /// Without MemoryMapping, a `mult=(sngfile=…)` file directive is the non-MM
-/// `File=` array feature (WPG.1) — still NOT_PORTED, so a loud error is
+/// `File=` array feature (WPG.19, GAPS_PLAN closure addendum) — still NOT_PORTED, so a loud error is
 /// recorded (and a plain numeric list is unaffected).
 #[test]
 fn non_mmf_file_directive_is_loud_not_ported() {
@@ -954,7 +954,7 @@ fn non_mmf_file_directive_is_loud_not_ported() {
     dss.command("New LoadShape.d npts=3 interval=1 mult=(sngfile=x.sng)");
     assert!(
         dss.errors().iter().any(|e| e.contains("not supported yet")),
-        "expected a WPG.1 not-ported error, got {:?}",
+        "expected a WPG.19 not-ported error, got {:?}",
         dss.errors()
     );
 }
