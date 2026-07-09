@@ -9,6 +9,30 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 port — dynamics-mode GFM + StepTime (2026-07-09).** The WPG.13
+deferral is closed: the grid-forming black-start droop now runs in dynamics
+mode for **both** Storage and PVSystem — `IntegrateStates` GFM sub-branch
+(`VDelta`→`ISPDelta` ramp + `FixPhaseAngle`, Storage.pas l.2886-2918 /
+PVsystem.pas l.2324-2355), `DoDynamicMode` internal-voltage-source injection
+(`BaseV = BasekV·1000·it[0]/iMaxPPhase`), Storage `CheckIfDelivering` (SOC
+recharge + `Get_Variable` state 2/3/4), and PVSystem `InitStateVars` `it:=0`
+GFM seed. Storage keeps `IMaxPhase` LOCAL / PVSystem overwrites `iMaxPPhase`
+(reproduced exactly). New live-gate deck `tests/corpus/controls/gfm_dynamics.dss`
+(islanded Storage black-starts to ~0.977 pu / −400.7 kW; two-process
+bit-identical; non-convergent WITHOUT GFM) + storage/pvsystem unit pins, all
+oracle-verified. **Dispatch refusal removed entirely** — Dynamic/FaultStudy/
+MonteFault all drive the real GFM injection now. Empirically corrected the
+spec's finding-5: the MonteFault "GFM Access Violation" is actually the
+**empty-Faults NIL-deref** (`PickAFault`/`Randomize`, reproduces with plain
+GFL too) — upstream UB, not GFM-related; the port already skips it safely
+(`pick_a_fault → None`). `set steptime`/`processtime` are now silent no-ops
+(Pascal has no Set arm for 106/108); the gfm branch's all-no-op timing arm was
+dropped at merge — `TotalTime`(107) keeps the MMF branch's Pascal-faithful
+settable arm. GFM/GFL_IEEE123 skip-notes retagged (Plot is a headless no-op,
+steptime/dynamics-GFM ported; they stay deferred purely as a
+full-feeder-trajectory scope decision — spot-check owed, see the GFM audit
+settlement). Gate green.
+
 **MMF audit settlement (2026-07-09; audit-code found 1 real Major, fixed).**
 The port had dropped Pascal's `if UseMMF or ExternalMemory then Exit` guard at
 the head of `SetMaxPandQ` (`LoadShape.pas:2048`), so `MaxP`/`MaxQ` were

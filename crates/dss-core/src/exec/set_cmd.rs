@@ -615,6 +615,11 @@ impl Dss {
                             ckt.solution.min_iterations = v;
                         }
                     }
+                    // (The timing options 106/107/108 are handled above: the MMF
+                    // merge carries the Pascal-faithful arms — `TotalTime` settable
+                    // per ExecOptions.pas:683-684, `ProcessTime`/`StepTime` Get-only
+                    // silent no-ops. The gfm branch's all-no-op arm was dropped at
+                    // merge as unreachable and 107-divergent.)
                     _ => {
                         let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
                         errors.push(format!("Set option \"{name}\" is not ported yet."));
