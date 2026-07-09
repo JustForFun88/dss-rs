@@ -1834,14 +1834,24 @@ getters added (each cites its Pascal field): Transformer `winding_kvll`/`wdg_kva
 `rev_vreg`/`rev_bandwidth`. **Gate E golden** `cim_xfmr.dss` (2×AutoTrans YNad1/YNa
 + case-1 Δ-Y + 3-winding Δ-tertiary + case-2 XfmrCode tank + a 3-unit single-phase
 regulator bank = case 3 + RegControl), byte-exact vs the pinned oracle
-(`tests/golden/cim/cim_xfmr.xml`, 2174 lines / 165 345 bytes; fixture
-`cim_xfmr_fixture.csv`, 297 keys — completeness proof green). The solver-dependent
-SSH `TapChanger.step` matched byte-exact ⇒ Rust and oracle converge to the same
-regulator taps. `rg NOT_PORTED crates/dss-core/src/cim/` = the single remaining
-**Stage F** arm (Generator/PVSystem/Storage/InvControl/ExpControl + fragments
-mode). IEEE13/IEEE123 full-feeder CIM goldens deferred to Stage F/handoff (the
-`cim_xfmr.dss` deck already exercises all three transformer cases + AutoTrans +
-banks + RegControl end-to-end).
+(`tests/golden/cim/cim_xfmr.xml`, 2174 lines; fixture 297 keys). The
+solver-dependent SSH `TapChanger.step` matched byte-exact ⇒ Rust and oracle
+converge to the same regulator taps. **Two full corpus-feeder goldens** land too:
+**IEEE13** (`IEEE13Nodeckt.xml`, 4042 lines — sub/XFM1 case 1 + 3 single-phase
+regulators case 3 + RegControl + 37 ACLineSegments) and **IEEE123**
+(`ieee123.xml`, 15 242 lines — 7 regulators + XFM1 + 16 LoadBreakSwitches + 359
+ACLineSegments; the master only defines the feeder so the golden harness gained a
+`post` command list = `["solve"]`, buscoords omitted → 0,0 positions). Generating
+IEEE13 surfaced **one pre-existing Stage-A bug**: `op_lim_i_name` used Rust's
+native `{:.1}` (round-half-to-**even**), but FPC `FloatToStrF(ffFixed)` rounds
+ties **away from zero** — IEEE13's reg `EmergAmps = 2499/2.4 = exactly 1041.25`
+gave oracle `1041.3` vs Rust `1041.2`, so the `OpLimI=…` key missed the fixture
+and drew a random v4. Fixed with a faithful `ff_fixed` helper (scale → `round()`
+[ties-away] → rebuild from the scaled integer); non-tie values are unchanged, so
+Stage A–D goldens are unaffected (`base_v_name`/`op_lim_v_name` carry the same
+latent tie issue — noted for the exit sweep; no feeder hits it yet).
+`rg NOT_PORTED crates/dss-core/src/cim/` = the single remaining **Stage F** arm
+(Generator/PVSystem/Storage/InvControl/ExpControl + fragments mode).
 
 **WPG.18 CIM Stage D (capacitors + CapControls + series reactors) COMPLETE,
 gate-green** (branch `worktree-agent-a5a4c8b61573a0b06`, 2026-07-09; base reset
