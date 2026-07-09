@@ -9,6 +9,17 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 port: XYcurve file-input props (2026-07-09).** Ported `CSVFile`/
+`SngFile`/`DblFile` (props 5/6/7, Pascal `Common/Utilities.pas`
+`DoCSVFile`/`DoSngFile`/`DoDblFile` with `pA=XValues`, `pB=YValues`,
+`OnlyLoadB=False`, `RoundA=False`; side-effect wiring `XYcurve.pas:337-361`)
+via the deferred `FileLoad` path (mirrors spectrum/load_shape). `NOT_PORTED`
+dropped from all three; XYcurve now has no remaining unported props. CSV sets
+`npts:=i` unconditionally, sng/dbl shrink-only-when-short; malformed trailing
+binary fragment is upstream UB (NOT reproduced, full-row gate). New live deck
+`tests/corpus/modes/xycurve_files/` (fixtures via `tools/decks/gen_xycurve_fixtures.py`)
+GAPS-3 oracle-validated; unit tests replace `file_props_are_not_ported`.
+
 **WPG.17 exit sweep IN PROGRESS (2026-07-09).** Item-1 marker sweep + registry
 diff done: the Rust registry matches `DSSClassDefs.pas` `CreateDSSClasses`
 class-for-class (49/49); no `pending: true` remains in any family manifest

@@ -2,9 +2,11 @@
 //! `Points` get/set, `PropertySideEffects` and `MakeLike`. Split out of
 //! `xy_curve/mod.rs` (no behavioral change).
 
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, FileLoad};
 
-use super::prop::{NPTS, X, XARRAY, XSCALE, XSHIFT, Y, YARRAY, YSCALE, YSHIFT};
+use super::prop::{
+    CSVFILE, DBLFILE, NPTS, SNGFILE, X, XARRAY, XSCALE, XSHIFT, Y, YARRAY, YSCALE, YSHIFT,
+};
 use super::{XyCurveObj, prop};
 
 impl DssObject for XyCurveObj {
@@ -136,12 +138,55 @@ impl DssObject for XyCurveObj {
                 let v = self.x_values[0];
                 self.set_x(v);
             }
+            // Pascal `DoCSVFile`/`DoSngFile`/`DoDblFile` run here
+            // (`XYcurve.pas:337-342`), but the hook can't reach the filesystem:
+            // queue the read for the executive. The arrays' first-point sync
+            // (`X:=XValues[1]; Y:=YValues[1]`) happens in `apply_*_file_load`
+            // (via `sync_first_point`), once the file is resolved.
+            CSVFILE => self
+                .pending_file_loads
+                .push(FileLoad::text(CSVFILE, self.csvfile.clone())),
+            SNGFILE => self
+                .pending_file_loads
+                .push(FileLoad::binary(SNGFILE, self.sngfile.clone())),
+            DBLFILE => self
+                .pending_file_loads
+                .push(FileLoad::binary(DBLFILE, self.dblfile.clone())),
             _ => {}
         }
         // Pascal `case Idx of 2..7: LastValueAccessed := 1;`
         if (prop::POINTS..=prop::DBLFILE).contains(&idx) {
             self.last_value_accessed = 0;
         }
+    }
+
+    fn take_file_loads(&mut self) -> Vec<FileLoad> {
+        std::mem::take(&mut self.pending_file_loads)
+    }
+
+    /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`), then sync the first
+    /// point (Pascal `XYcurve.pas:357-361`).
+    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+        if load.prop == CSVFILE {
+            self.read_csv_file(content);
+            self.sync_first_point();
+        }
+    }
+
+    /// Apply a resolved `SngFile`/`DblFile` (Pascal `DoSngFile`/`DoDblFile`),
+    /// then sync the first point (Pascal `XYcurve.pas:357-361`).
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        _errors: &mut Vec<String>,
+    ) {
+        match load.prop {
+            SNGFILE => self.read_sng_file(content),
+            DBLFILE => self.read_dbl_file(content),
+            _ => return,
+        }
+        self.sync_first_point();
     }
 
     /// Pascal `TXYcurveObj.MakeLike`.
