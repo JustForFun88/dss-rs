@@ -505,6 +505,69 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// One binary-save golden: the produced filename in the datapath and the raw
+/// bytes captured under `tests/golden/reports/<golden>`.
+#[derive(Debug, Deserialize)]
+struct BinSaveFile {
+    produced: String,
+    golden: String,
+}
+
+/// Meta for the WPG.17 binary-save golden: the definition deck, the
+/// `Action=SngSave/DblSave` commands, and the produced→golden file map.
+#[derive(Debug, Deserialize)]
+struct BinSaveMeta {
+    deck: Vec<String>,
+    actions: Vec<String>,
+    files: Vec<BinSaveFile>,
+}
+
+/// WPG.17: LoadShape/TShape/PriceShape `Action=SngSave/DblSave` binary writers
+/// (Pascal `SaveToDblFile`/`SaveToSngFile`). The goldens are the **raw bytes**
+/// the oracle wrote — pure little-endian IEEE-754 with zero formatting freedom —
+/// so this is a byte-exact `Vec<u8>` compare (no tolerance, unlike the
+/// number-parsing `compare_export` used for text reports). Both engines parse
+/// the same decimal literals to the same nearest-f64 and narrow to the same
+/// nearest-f32, so bit-identity is guaranteed for a literal-mult deck. A
+/// Rust-only write→re-read round-trip could not catch an endian/stride/`_P`-
+/// suffix/element-count error that happens to round-trip; this can.
+#[test]
+fn binsave_matches_oracle() {
+    let dir = reports_dir();
+    let meta: BinSaveMeta = {
+        let p = dir.join("loadshape_binsave.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir("binsave");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    for c in &meta.actions {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "binsave: {:?}", dss.errors());
+
+    for f in &meta.files {
+        let golden = std::fs::read(dir.join(&f.golden))
+            .unwrap_or_else(|e| panic!("read golden {}: {e}", f.golden));
+        let produced = std::fs::read(scratch.join(&f.produced))
+            .unwrap_or_else(|e| panic!("read produced {}: {e}", f.produced));
+        assert_eq!(
+            produced, golden,
+            "binsave: bytes differ for {} (golden {})",
+            f.produced, f.golden
+        );
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Compile a **heavy** master once and diff several reports against the oracle,
 /// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
 /// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the

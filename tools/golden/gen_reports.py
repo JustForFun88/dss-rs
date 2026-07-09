@@ -2566,6 +2566,75 @@ def gen_uuids(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# --- WPG.17: LoadShape/TShape/PriceShape SngSave/DblSave binary writers -------
+# `Action=SngSave/DblSave` writes the multiplier arrays as packed little-endian
+# IEEE-754 streams (Pascal `SaveToDblFile`/`SaveToSngFile`, LoadShape.pas:1880/
+# 1939, TempShape.pas:528/548, PriceShape.pas:547/568). LoadShape splits into
+# `<name>_P`/`<name>_Q`; TShape/PriceShape write the bare `<name>`. The goldens
+# are the RAW BYTES (no newline normalization) — the strongest possible pin for a
+# pure-binary format. The Rust runner (`golden_reports.rs::binsave_matches_oracle`)
+# replays the same deck+actions and asserts `Vec<u8>` byte equality.
+BINSAVE_DECK = [
+    "new circuit.binsave basekv=12.47 bus1=src",
+    "new loadshape.bs npts=4 interval=1 mult=(0.5 0.75 1.0 0.8) qmult=(0.1 0.2 0.3 0.4)",
+    "new tshape.ts npts=3 interval=1 temp=(10 20 30)",
+    "new priceshape.ps npts=3 interval=1 price=(1.5 2.5 3.5)",
+]
+BINSAVE_ACTIONS = [
+    "edit loadshape.bs action=sngsave",
+    "edit loadshape.bs action=dblsave",
+    "edit tshape.ts action=sngsave",
+    "edit tshape.ts action=dblsave",
+    "edit priceshape.ps action=sngsave",
+    "edit priceshape.ps action=dblsave",
+]
+# (produced filename in the datapath, golden basename under tests/golden/reports)
+BINSAVE_FILES = [
+    ("bs_P.sng", "loadshape_binsave_p_sng.bin"),
+    ("bs_Q.sng", "loadshape_binsave_q_sng.bin"),
+    ("bs_P.dbl", "loadshape_binsave_p_dbl.bin"),
+    ("bs_Q.dbl", "loadshape_binsave_q_dbl.bin"),
+    ("ts.sng", "tshape_binsave_sng.bin"),
+    ("ts.dbl", "tshape_binsave_dbl.bin"),
+    ("ps.sng", "priceshape_binsave_sng.bin"),
+    ("ps.dbl", "priceshape_binsave_dbl.bin"),
+]
+
+
+def gen_loadshape_binsave(d) -> None:
+    """Capture the oracle's SngSave/DblSave binary outputs for LoadShape,
+    TShape and PriceShape as raw bytes."""
+    tmp = tempfile.mkdtemp(prefix="dss_gen_binsave_")
+    produced_bytes: dict[str, bytes] = {}
+    try:
+        d.Text.Command = "clear"
+        for c in BINSAVE_DECK:
+            d.Text.Command = c
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for c in BINSAVE_ACTIONS:
+            d.Text.Command = c
+        for produced, golden in BINSAVE_FILES:
+            produced_bytes[golden] = (Path(tmp) / produced).read_bytes()
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for _produced, golden in BINSAVE_FILES:
+        (OUT_DIR / golden).write_bytes(produced_bytes[golden])
+    meta = {
+        "report": "loadshape_binsave",
+        "deck": BINSAVE_DECK,
+        "actions": BINSAVE_ACTIONS,
+        "files": [{"produced": p, "golden": g} for p, g in BINSAVE_FILES],
+    }
+    (OUT_DIR / "loadshape_binsave.meta.json").write_text(
+        json.dumps(meta, indent=2) + "\n", newline="\n"
+    )
+    total = sum(len(b) for b in produced_bytes.values())
+    print(f"wrote {len(BINSAVE_FILES)} binsave goldens ({total} bytes total)")
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -2613,6 +2682,7 @@ def main() -> None:
     gen_reliability_multimeter(d)
     gen_dump_decks(d)
     gen_save_decks(d)
+    gen_loadshape_binsave(d)
     gen_interp(d)
     gen_distribute(d)
     gen_uuids(d)

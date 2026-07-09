@@ -40,6 +40,9 @@ const SEQUENCEMASK: i32 = 16;
 const MAGNITUDEMASK: i32 = 32;
 const POSSEQONLYMASK: i32 = 64;
 const NUM_SOLUTION_VARS: usize = 12;
+/// Pascal `BufferSize` (`Meters/Monitor.pas:478`): a **fixed** 1024-single
+/// (4 KiB) scratch buffer. `AddDblToBuffer` flushes once `BufPtr` reaches it.
+pub(super) const BUFFER_SIZE: usize = 1024;
 
 /// 1-based property ordinals (`TMonitorProp` + the `TCktElementClass` tail).
 pub mod prop {
@@ -105,11 +108,19 @@ pub struct Monitor {
     sample_count: i32,
     /// Pascal `MonitorStream` size in whole records (not modeled as a separate
     /// byte stream: `mon_buffer[..flushed_records*stride]` IS the flushed
-    /// portion). Advances to `sample_count` on [`Self::save`]. The Pascal
-    /// `BufferSize=1024`-double auto-flush-on-overflow (`AddDblToBuffer`,
-    /// `Monitor.pas:1596`) is not modeled — no ported deck samples anywhere
-    /// near 1024/`(record_size+2)` records between two `Save`s.
+    /// portion). Advances to `sample_count` on [`Self::save`]. Distinct from
+    /// [`Self::bufptr`]: `flushed_records == 0` uniquely means "no explicit
+    /// `Save`/`SaveAll` yet" (gating the dss-python `[0.0]` Channel placeholder),
+    /// whereas `bufptr == 0` is also true right after a 1024-single auto-flush.
     flushed_records: usize,
+    /// Pascal `BufPtr` (`Meters/Monitor.pas:143`): the live count of singles in
+    /// the `MonBuffer` scratch since the last flush. In the merged
+    /// MonBuffer+MonitorStream model a flush moves no data (every single already
+    /// lives in `mon_buffer`) — this cursor just resets, so the last `bufptr`
+    /// singles of `mon_buffer` are the unflushed remainder `DumpProperties`
+    /// renders as `// Buffer=`. Advanced per single with the 1024 wrap by
+    /// `AddDblToBuffer`, zeroed by [`Self::save`] and `ResetIt`.
+    bufptr: usize,
     header: Vec<String>,
     valid_monitor: bool,
     hour: i32,
@@ -158,6 +169,7 @@ impl Monitor {
             record_size: 0,
             sample_count: 0,
             flushed_records: 0,
+            bufptr: 0,
             header: Vec::new(),
             valid_monitor: false,
             hour: 0,
@@ -220,6 +232,7 @@ impl Monitor {
     /// own") and `SolveFaultStudy` (which never samples monitors at all).
     pub fn save(&mut self) {
         self.flushed_records = self.sample_count as usize;
+        self.bufptr = 0; // Pascal `Save` (Monitor.pas:1127): `BufPtr := 0`.
     }
 
     /// Pascal `TMonitorObj.TranslateToCSV` (`Meters/Monitor.pas:1690`): serialize

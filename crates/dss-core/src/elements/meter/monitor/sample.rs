@@ -12,7 +12,17 @@ use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
 impl Monitor {
-    fn add_dbl(&mut self, v: f64) {
+    /// Pascal `TMonitorObj.AddDblToBuffer` (`Meters/Monitor.pas:1591`): narrow
+    /// the value to single precision and append it, tracking the live scratch
+    /// cursor `BufPtr`. The 1024-single flush check is per single, so it can (and
+    /// does) fire mid-record. In the merged MonBuffer+MonitorStream model the
+    /// flush moves no data — the single already lives in `mon_buffer` — so only
+    /// `bufptr` resets (Pascal `Save` sets `BufPtr := 0`, Monitor.pas:1596-1599).
+    pub(super) fn add_dbl(&mut self, v: f64) {
+        if self.bufptr == super::BUFFER_SIZE {
+            self.bufptr = 0;
+        }
+        self.bufptr += 1;
         self.mon_buffer.push(v as f32);
     }
     fn add_dbls(&mut self, vs: &[f64]) {

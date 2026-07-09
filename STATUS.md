@@ -9,6 +9,25 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 port — SngSave/DblSave + PreserveNodeVoltages + Monitor 1024-flush
+(2026-07-09).** Three sweep-surfaced follow-ups landed. **(1)** LoadShape/TShape/
+PriceShape `Action=SngSave/DblSave` binary writers (Pascal `SaveToDblFile`/
+`SaveToSngFile`): the `do_action` hook can't reach `OutputDirectory`/`GlobalResult`,
+so it queues a new `ShapeSave` (obj/base) drained in `edit_active` — mirrors the
+`FileLoad` deferral. LoadShape splits `<name>_P`/`<name>_Q` (Q only `if Assigned(dQ)`),
+TShape/PriceShape write the bare `<name>`; raw little-endian f32/f64. Pinned by a
+**byte-exact** golden (`binsave_matches_oracle`, 8 `.bin` goldens via new
+`gen_reports.py::gen_loadshape_binsave`). MMF-backed save stays LOUD-NOT_PORTED.
+**(2)** `PreserveNodeVoltages` (`Ymatrix.pas:298/449`): `update_vbus`/
+`restore_node_v_from_vbus` (Solution.pas:2377/2392) now bracket `build_y_matrix`
+(was an inert NOT_PORTED note); net no-op while node count is stable (harmonics/
+dynamics goldens unmoved), flag-sensitive unit tests. **(3)** Monitor 1024-single
+flush: new `bufptr` cursor (Pascal `BufPtr`/`AddDblToBuffer`) drives the
+`DumpProperties // Bufptr=`/`// Buffer=` remainder; both dump goldens unchanged.
+Gate green except the pre-existing Oddie-venv-gated `modes_cases_match_oracle`
+(opt-in EPRI/upgrade channel, `tools/opendss/.venv` absent in worktree —
+environmental, orthogonal to these changes).
+
 **Plot audit settlement (2026-07-09, both independent opus auditors: 0
 Critical/Major).** audit-tests' one Major — the `min=` `TODO(compat)`
 reproduction was unpinned — settled by extending `gen_plot_callback.py` 13→22

@@ -1,0 +1,51 @@
+{
+  "report": "loadshape_binsave",
+  "deck": [
+    "new circuit.binsave basekv=12.47 bus1=src",
+    "new loadshape.bs npts=4 interval=1 mult=(0.5 0.75 1.0 0.8) qmult=(0.1 0.2 0.3 0.4)",
+    "new tshape.ts npts=3 interval=1 temp=(10 20 30)",
+    "new priceshape.ps npts=3 interval=1 price=(1.5 2.5 3.5)"
+  ],
+  "actions": [
+    "edit loadshape.bs action=sngsave",
+    "edit loadshape.bs action=dblsave",
+    "edit tshape.ts action=sngsave",
+    "edit tshape.ts action=dblsave",
+    "edit priceshape.ps action=sngsave",
+    "edit priceshape.ps action=dblsave"
+  ],
+  "files": [
+    {
+      "produced": "bs_P.sng",
+      "golden": "loadshape_binsave_p_sng.bin"
+    },
+    {
+      "produced": "bs_Q.sng",
+      "golden": "loadshape_binsave_q_sng.bin"
+    },
+    {
+      "produced": "bs_P.dbl",
+      "golden": "loadshape_binsave_p_dbl.bin"
+    },
+    {
+      "produced": "bs_Q.dbl",
+      "golden": "loadshape_binsave_q_dbl.bin"
+    },
+    {
+      "produced": "ts.sng",
+      "golden": "tshape_binsave_sng.bin"
+    },
+    {
+      "produced": "ts.dbl",
+      "golden": "tshape_binsave_dbl.bin"
+    },
+    {
+      "produced": "ps.sng",
+      "golden": "priceshape_binsave_sng.bin"
+    },
+    {
+      "produced": "ps.dbl",
+      "golden": "priceshape_binsave_dbl.bin"
+    }
+  ]
+}
