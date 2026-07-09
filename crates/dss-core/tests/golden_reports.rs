@@ -548,8 +548,31 @@ fn binsave_matches_oracle() {
         dss.command(c);
     }
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
-    for c in &meta.actions {
+    // Per-action `GlobalResult` (audit settlement): `<tag>=[<ftag>=<path>]`,
+    // with the LoadShape Q clause joined by `AppendGlobalResult`'s `', '` plus
+    // the clause's own leading space — `],  Qmult=[` (comma + TWO spaces),
+    // oracle-probed (`DSSGlobals.pas:452-459`).
+    let p = |n: &str| scratch.join(n).display().to_string();
+    let expected_results = [
+        format!(
+            "mult=[sngfile={}],  Qmult=[sngfile={}]",
+            p("bs_P.sng"),
+            p("bs_Q.sng")
+        ),
+        format!(
+            "mult=[dblfile={}],  Qmult=[dblfile={}]",
+            p("bs_P.dbl"),
+            p("bs_Q.dbl")
+        ),
+        format!("Temp=[sngfile={}]", p("ts.sng")),
+        format!("Temp=[dblfile={}]", p("ts.dbl")),
+        format!("Price=[sngfile={}]", p("ps.sng")),
+        format!("Price=[dblfile={}]", p("ps.dbl")),
+    ];
+    assert_eq!(meta.actions.len(), expected_results.len());
+    for (c, exp) in meta.actions.iter().zip(&expected_results) {
         dss.command(c);
+        assert_eq!(&dss.result(), exp, "GlobalResult after {c:?}");
     }
     assert!(dss.errors().is_empty(), "binsave: {:?}", dss.errors());
 

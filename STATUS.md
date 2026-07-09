@@ -9,6 +9,20 @@
 
 Last updated: 2026-07-09.
 
+**Trio audit settlement (2026-07-09, both independent opus auditors: 0
+Critical/Major).** The one real Minor — the LoadShape Q-file `GlobalResult`
+clause dropped Pascal `AppendGlobalResult`'s `', '` join (oracle emits
+`],  Qmult=[`, comma + two spaces; `DSSGlobals.pas:452-459`) — fixed in
+`exec/command.rs::write_shape_save` and pinned by new per-action
+`GlobalResult` assertions in `binsave_matches_oracle` (all six action strings
+exact). Coverage findings settled: LoadShape-side save tests added (no-`qmult`
+→ no `_Q`, P-undefined error 622/623, MMF-refusal guard pinned);
+`PreserveNodeVoltages` gains the missing RENUMBER-path unit test
+(`vbus_restore_lands_on_renumbered_refs` — voltages follow bus node positions
+to their new refs, the feature's actual point). The mid-solve
+`flushed_records` Question accepted + documented at `monitor/sample.rs::add_dbl`
+(unreachable from script; every multi-step loop ends with `SaveAll`).
+
 **WPG.17 port — SngSave/DblSave + PreserveNodeVoltages + Monitor 1024-flush
 (2026-07-09).** Three sweep-surfaced follow-ups landed. **(1)** LoadShape/TShape/
 PriceShape `Action=SngSave/DblSave` binary writers (Pascal `SaveToDblFile`/

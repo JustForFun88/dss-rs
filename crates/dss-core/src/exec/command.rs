@@ -1382,8 +1382,12 @@ fn write_shape_save(
             ));
             return;
         }
-        // Pascal `AppendGlobalResult(DSS, ' Qmult=[<ftag>=' + FName + ']')`.
-        last_result.push_str(&format!(" Qmult=[{ftag}={}]", q_path.display()));
+        // Pascal `AppendGlobalResult(DSS, ' Qmult=[<ftag>=' + FName + ']')` —
+        // `AppendGlobalResult` (`DSSGlobals.pas:452-459`) joins a non-empty
+        // result with `', '`, and the appended clause itself starts with a
+        // space, so the oracle emits `],  Qmult=[` (comma + TWO spaces; audit
+        // settlement, oracle-probed).
+        last_result.push_str(&format!(",  Qmult=[{ftag}={}]", q_path.display()));
     }
 }
 

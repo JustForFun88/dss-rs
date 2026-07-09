@@ -705,3 +705,58 @@ fn csv_after_sng_ends_single_storage() {
     assert!(obj.s_p.is_none(), "PQCSVFile read must end single storage");
     assert_eq!(obj.get_mult_at_hour(1.0).re, 1.0);
 }
+
+#[test]
+fn action_sngsave_no_qmult_omits_q() {
+    // Audit settlement: a LoadShape WITHOUT `qmult` must queue no Q series
+    // (Pascal writes `_Q` only `if Assigned(dQ)`, LoadShape.pas:1908/1971) —
+    // and the P side carries the `_P` split + `mult` GlobalResult tag.
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "3"),
+        ("interval", "1"),
+        ("mult", "0.5 1.0 0.75"),
+        ("action", "sngsave"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(s.sng);
+    assert!(s.p_suffix, "LoadShape uses the _P/_Q filename split");
+    assert_eq!(s.result_tag, "mult");
+    assert_eq!(s.values, vec![0.5, 1.0, 0.75]);
+    assert!(s.q_values.is_none(), "no qmult -> no _Q file");
+}
+
+#[test]
+fn action_save_p_undefined_errors() {
+    // Pascal `if not Assigned(dP)` -> `DoSimpleMsg('%s P multipliers not
+    // defined.', 622/623)`, nothing queued.
+    let (_cls, mut obj, errs) = edited(&[("action", "dblsave")]);
+    assert!(
+        errs.iter().any(|e| e.contains("P multipliers not defined")),
+        "{errs:?}"
+    );
+    assert!(obj.take_shape_saves().is_empty());
+}
+
+#[test]
+fn action_save_mmf_refuses_loudly() {
+    // The MMF-backed save path (`InterpretDblArrayMMF`,
+    // LoadShape.pas:1898-1905) is NOT_PORTED: the guard must refuse loudly and
+    // queue nothing (audit settlement pins the guard so it cannot silently
+    // "improve" into wrong bytes).
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "2"),
+        ("interval", "1"),
+        ("mult", "1 2"),
+        ("memorymapping", "yes"),
+        ("action", "sngsave"),
+    ]);
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("MemoryMapping") && e.contains("not ported")),
+        "{errs:?}"
+    );
+    assert!(obj.take_shape_saves().is_empty());
+}
