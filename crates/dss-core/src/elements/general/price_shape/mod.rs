@@ -163,16 +163,21 @@ impl DssObject for PriceShapeObj {
         }
     }
 
-    /// Pascal `StringEnumActionProperty` for `Action` (DblSave/SngSave only).
-    fn do_action(&mut self, _ordinal: i32, errors: &mut Vec<String>) {
-        errors.push(format!(
-            "PriceShape.{}: Action=DblSave/SngSave (binary file output) is not ported.",
-            self.core.data.name()
-        ));
+    /// Pascal `StringEnumActionProperty` for `Action` (`TPriceShapeAction`:
+    /// DblSave=0, SngSave=1 — `PriceShape.pas:149-150`). Queues the binary write
+    /// (Pascal `SaveToDblFile`/`SaveToSngFile`, `PriceShape.pas:547/568`).
+    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+        let full_name = format!("PriceShape.{}", self.core.data.name());
+        self.core
+            .queue_shape_save(ordinal == 1, "Price", &full_name, "Prices", errors);
     }
 
     fn take_file_loads(&mut self) -> Vec<FileLoad> {
         std::mem::take(&mut self.core.pending_file_loads)
+    }
+
+    fn take_shape_saves(&mut self) -> Vec<crate::obj::base::ShapeSave> {
+        self.core.take_shape_saves()
     }
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).

@@ -9,10 +9,10 @@
 //!
 //! Pascal `BufferSize` is a **fixed** constant `1024` (`Monitor.pas:478`,
 //! never doubled/grown, so `// BufferSize=1024` is always correct — not a
-//! running capacity). `MonBuffer` gets **flushed to `MonitorStream` and
-//! `BufPtr` reset to `0`** two ways: mid-accumulation once `BufPtr =
-//! BufferSize` (`AddDblToBuffer`, `Monitor.pas:1125-1127` — not modeled, see
-//! `mod.rs`'s `flushed_records` doc) and — the far more common trigger —
+//! running capacity). `MonBuffer` gets **flushed and `BufPtr` reset to `0`**
+//! two ways: mid-accumulation once `BufPtr = BufferSize` (`AddDblToBuffer`,
+//! `Monitor.pas:1596`, per single so it can fire mid-record — modeled here by
+//! the `bufptr` cursor, see `mod.rs`) and — the far more common trigger —
 //! unconditionally at the end of every multi-step solve (`TDSSMonitor.
 //! SaveAll`, called from every `SolveDaily`/`SolveYearly`/… loop in
 //! `SolutionAlgs.pas` right after `MonitorClass.SampleAll`, **except**
@@ -22,8 +22,8 @@
 //! empty (see [`render_buffer`]'s doc for the direct oracle confirmation),
 //! but genuinely non-empty after a `SolveGeneralTime` step (no gate fixture
 //! dumps a monitor mid-`mode=Time` run; the `dump_monitor` golden pins only
-//! the pre-solve empty-buffer case). The port renders `mon_buffer`'s tail past
-//! `flushed_records` (the genuine Pascal-fidelity pending slice), not the
+//! the pre-solve empty-buffer case). The port renders the trailing `bufptr`
+//! singles of `mon_buffer` (the genuine Pascal-fidelity pending slice), not the
 //! whole sample history.
 //!
 //! **`BaseFrequency=%.1g` quirk (probe-proven, 2026-07-06):** the oracle
@@ -59,12 +59,13 @@ impl Monitor {
             "// BaseFrequency={}\n",
             crate::report::format::g(self.med.cd.base_frequency, 15)
         ));
-        // Pending slice: everything sampled since the last flush (Pascal
-        // `MonBuffer[1..BufPtr]`) — `mon_buffer` holds flushed + pending
-        // records back to back, `flushed_records` marks the boundary.
-        let stride = 2 + self.record_size;
-        let pending = &self.mon_buffer[self.flushed_records * stride..];
-        out.push_str(&format!("// Bufptr={}\n", pending.len()));
+        // Pending slice: the live `MonBuffer` scratch since the last flush
+        // (Pascal `MonBuffer[1..BufPtr]`). `bufptr` is single-granular and wraps
+        // every 1024 singles (`AddDblToBuffer`), so it can begin mid-record — the
+        // faithful upstream quirk; in the merged buffer those are the trailing
+        // `bufptr` singles.
+        let pending = &self.mon_buffer[self.mon_buffer.len() - self.bufptr..];
+        out.push_str(&format!("// Bufptr={}\n", self.bufptr));
         out.push_str("// Buffer=\n");
         out.push_str(&render_buffer(pending, 2 + self.med.cd.nconds * 4));
     }
@@ -110,6 +111,49 @@ fn render_buffer(buf: &[f32], wrap: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::render_buffer;
+    use crate::elements::meter::monitor::Monitor;
+
+    /// Pascal `AddDblToBuffer` (`Monitor.pas:1591`): the 1024-single `BufferSize`
+    /// flush boundary. The check is a *pre-increment* compare, so the flush fires
+    /// on the 1025th `add_dbl`, not the 1024th. Drive 1030 singles → one flush →
+    /// `bufptr == 6`, and the `// Buffer=` pending slice is exactly the last 6
+    /// singles (the post-flush remainder, faithfully mid-record).
+    #[test]
+    fn bufptr_wraps_at_1024_and_pending_is_remainder() {
+        let mut m = Monitor::new("m");
+        for i in 0..1024 {
+            m.add_dbl(i as f64);
+        }
+        assert_eq!(m.bufptr, 1024, "no flush until BufPtr == BufferSize");
+        m.add_dbl(1024.0); // 1025th add: pre-check flushes, BufPtr := 1
+        assert_eq!(m.bufptr, 1);
+        for i in 1025..1030 {
+            m.add_dbl(i as f64);
+        }
+        assert_eq!(m.bufptr, 6, "1030 adds → one flush → remainder of 6");
+        assert_eq!(m.mon_buffer.len(), 1030, "no single is ever discarded");
+
+        // Pending slice = the trailing `bufptr` singles (Pascal MonBuffer[1..BufPtr]).
+        let pending = &m.mon_buffer[m.mon_buffer.len() - m.bufptr..];
+        assert_eq!(
+            pending,
+            &[1024.0f32, 1025.0, 1026.0, 1027.0, 1028.0, 1029.0]
+        );
+        // `// Buffer=` render: wrap = 2 + Fnconds*4; here 6, so the wrap newline
+        // fires after the 6th single, then the loop's unconditional trailing
+        // newline follows (Pascal `FSWriteln(F)` at Monitor.pas:1847).
+        assert_eq!(
+            render_buffer(pending, 6),
+            "1024.0, 1025.0, 1026.0, 1027.0, 1028.0, 1029.0, \n\n"
+        );
+
+        // Pascal `Save` resets BufPtr to 0 (Monitor.pas:1127); the merged stream
+        // keeps every single, so nothing is lost.
+        m.sample_count = 0;
+        m.save();
+        assert_eq!(m.bufptr, 0);
+        assert_eq!(m.mon_buffer.len(), 1030);
+    }
 
     /// No samples (the only oracle-reachable case, `dump_monitor` golden):
     /// just the trailing newline, no wrap ever fires.

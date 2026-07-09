@@ -153,16 +153,21 @@ impl DssObject for TShapeObj {
         }
     }
 
-    /// Pascal `StringEnumActionProperty` for `Action` (DblSave/SngSave only).
-    fn do_action(&mut self, _ordinal: i32, errors: &mut Vec<String>) {
-        errors.push(format!(
-            "TShape.{}: Action=DblSave/SngSave (binary file output) is not ported.",
-            self.core.data.name()
-        ));
+    /// Pascal `StringEnumActionProperty` for `Action` (`TTShapeAction`:
+    /// DblSave=0, SngSave=1 — `TempShape.pas:152-154`). Queues the binary write
+    /// (Pascal `SaveToDblFile`/`SaveToSngFile`, `TempShape.pas:528/548`).
+    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+        let full_name = format!("TShape.{}", self.core.data.name());
+        self.core
+            .queue_shape_save(ordinal == 1, "Temp", &full_name, "Temperatures", errors);
     }
 
     fn take_file_loads(&mut self) -> Vec<FileLoad> {
         std::mem::take(&mut self.core.pending_file_loads)
+    }
+
+    fn take_shape_saves(&mut self) -> Vec<crate::obj::base::ShapeSave> {
+        self.core.take_shape_saves()
     }
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).

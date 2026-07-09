@@ -37,6 +37,39 @@ pub fn initialize_node_vbase(ckt: &mut Circuit) {
     ckt.solution.voltage_base_changed = false;
 }
 
+/// Pascal `TSolutionObj.UpdateVBus` (`Common/Solution.pas` l.2377): snapshot the
+/// present node-voltage vector into each bus's saved `VBus` slots, so a
+/// subsequent Y rebuild that renumbers nodes can restore them. Guarded by
+/// `pBus.VBus <> NIL` — here `!bus.vbus.is_empty()`, which holds for every bus
+/// once `ReprocessBusDefs` has allocated bus state (`Circuit.pas` l.2205-2206).
+/// `ref_no[j]` is the 0-based global node index (ground = 0 → `node_v[0]` = 0).
+fn update_vbus(ckt: &mut Circuit) {
+    let node_v = &ckt.solution.node_v;
+    for bus in &mut ckt.buses {
+        if bus.vbus.is_empty() {
+            continue;
+        }
+        for j in 0..bus.ref_no.len() {
+            bus.vbus[j] = node_v[bus.ref_no[j]];
+        }
+    }
+}
+
+/// Pascal `TSolutionObj.RestoreNodeVfromVbus` (`Common/Solution.pas` l.2392):
+/// the inverse of [`update_vbus`] — write each bus's saved `VBus` back into the
+/// node-voltage vector after the rebuild.
+fn restore_node_v_from_vbus(ckt: &mut Circuit) {
+    let node_v = &mut ckt.solution.node_v;
+    for bus in &ckt.buses {
+        if bus.vbus.is_empty() {
+            continue;
+        }
+        for j in 0..bus.ref_no.len() {
+            node_v[bus.ref_no[j]] = bus.vbus[j];
+        }
+    }
+}
+
 /// Pascal `BuildYMatrix`: full rebuild of the designated Y matrix; with
 /// `allocate_vi` also (re)allocates the solution vectors and the node-V base.
 pub fn build_y_matrix(
@@ -45,15 +78,20 @@ pub fn build_y_matrix(
     option: BuildOption,
     allocate_vi: bool,
 ) -> SolveResult {
-    // NOT_PORTED(WP7.7): Pascal `BuildYMatrix` brackets the rebuild with
-    // `UpdateVBus()` / `RestoreNodeVfromVbus()` when `Solution.PreserveNodeVoltages`
-    // is set (Ymatrix.pas l.298/l.449), so node voltages survive a mid-mode Y
-    // rebuild. The flag is set entering Harmonic/HarmonicT (WP7.6) and Dynamic
-    // (WP7.7 step 1) but not yet consumed here. Inert so far: those modes do not
-    // force a mid-step structural Y rebuild without a per-element dynamics YPrim
-    // invalidation (step 2). Honour it when the step-2 machine YPrims can change Y
-    // mid-dynamics; until then the harmonics goldens + the step-1 driver tests pass
-    // because no rebuild discards the preserved voltages.
+    // Pascal `BuildYMatrix` brackets the rebuild with `UpdateVBus()` /
+    // `RestoreNodeVfromVbus()` when `Solution.PreserveNodeVoltages` is set
+    // (Ymatrix.pas l.298/l.449), so node voltages survive a Y rebuild that
+    // renumbers nodes. The flag is set entering Harmonic/HarmonicT (WP7.6) and
+    // Dynamic (WP7.7). `update_vbus` snapshots the present node voltages *before*
+    // the (possible) `ReprocessBusDefs`; `restore_node_v_from_vbus` at the tail
+    // writes them back. Whenever the node count is unchanged (the harmonics
+    // goldens + the dynamics step-1 driver) the round-trip is a net no-op —
+    // restore re-applies exactly the pre-build snapshot — so no gate moves; it
+    // only matters once a mid-mode rebuild renumbers or reallocates nodes.
+    if ckt.solution.preserve_node_voltages {
+        update_vbus(ckt);
+    }
+
     // Recount buses/nodes if bus definitions changed — this changes the node
     // references into the system Y matrix.
     if ckt.bus_name_redefined {
@@ -191,5 +229,175 @@ pub fn build_y_matrix(
             ckt.solution.series_y_invalid = false; // SystemYChange unchanged
         }
     }
+
+    // Pascal `BuildYMatrix` tail (Ymatrix.pas l.449): restore the snapshot taken
+    // above, after the Yprim add + solution-array realloc renumbered/reallocated
+    // the node vector.
+    if ckt.solution.preserve_node_voltages {
+        restore_node_v_from_vbus(ckt);
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuit::Bus;
+    use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+    use crate::obj::base::DssObject;
+    use dss_parser::{Parser, ParserVars};
+
+    fn c(re: f64, im: f64) -> Complex64 {
+        Complex64::new(re, im)
+    }
+
+    /// A no-op [`ElemStore`]: `build_y_matrix` only dereferences it through the
+    /// element loops, which are empty here, so every method is unreachable.
+    struct EmptyStore;
+    impl ElemStore for EmptyStore {
+        fn ckt_elem(&self, _r: ElemRef) -> &dyn CktElement {
+            unimplemented!()
+        }
+        fn ckt_elem_mut(&mut self, _r: ElemRef) -> &mut dyn CktElement {
+            unimplemented!()
+        }
+        fn obj(&self, _r: ElemRef) -> &dyn DssObject {
+            unimplemented!()
+        }
+        fn obj_mut(&mut self, _r: ElemRef) -> &mut dyn DssObject {
+            unimplemented!()
+        }
+        fn find_ckt_element(&self, _full_name: &str) -> Option<ElemRef> {
+            None
+        }
+        fn find_general(&self, _class_name: &str, _obj_name: &str) -> Option<ElemRef> {
+            None
+        }
+        fn pair_mut(
+            &mut self,
+            _a: ElemRef,
+            _b: ElemRef,
+        ) -> (&mut dyn DssObject, &mut dyn DssObject) {
+            unimplemented!()
+        }
+        fn triple_mut(
+            &mut self,
+            _a: ElemRef,
+            _b: ElemRef,
+            _c: ElemRef,
+        ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
+            unimplemented!()
+        }
+    }
+
+    /// A circuit with a single 3-node bus (`ref_no = [1,2,3]`), the node vector
+    /// seeded with `node_v` (index 0 = ground) and every `vbus` slot at
+    /// `vbus_seed` (a sentinel for the build-wiring tests).
+    fn one_bus_ckt(node_v: Vec<Complex64>, vbus_seed: Complex64) -> Circuit {
+        let mut ckt = Circuit::new("t", 60.0);
+        // A fresh circuit defaults `bus_name_redefined = true`; leaving it set
+        // would make `build_y_matrix` call `reprocess_bus_defs`, which rebuilds
+        // the bus list from the (empty) element set and discards our hand-built
+        // bus. These tests exercise the no-renumber path, so clear it.
+        ckt.bus_name_redefined = false;
+        ckt.num_nodes = 3;
+        let mut bus = Bus::new("b1");
+        bus.nodes = vec![1, 2, 3];
+        bus.ref_no = vec![1, 2, 3];
+        bus.vbus = vec![vbus_seed; 3];
+        bus.bus_current = vec![Complex64::ZERO; 3];
+        ckt.buses = vec![bus];
+        ckt.solution.node_v = node_v;
+        ckt
+    }
+
+    /// `update_vbus`/`restore_node_v_from_vbus` are exact inverses over the
+    /// `ref_no` node map (Pascal `UpdateVBus`/`RestoreNodeVfromVbus`).
+    #[test]
+    fn vbus_round_trip_maps_ref_no() {
+        let mut ckt = one_bus_ckt(
+            vec![Complex64::ZERO, c(10.0, 1.0), c(20.0, 2.0), c(30.0, 3.0)],
+            Complex64::ZERO,
+        );
+        update_vbus(&mut ckt);
+        assert_eq!(
+            ckt.buses[0].vbus,
+            vec![c(10.0, 1.0), c(20.0, 2.0), c(30.0, 3.0)]
+        );
+        // Clobber the live node vector, then restore from the saved VBus.
+        for i in 1..=3 {
+            ckt.solution.node_v[i] = Complex64::ZERO;
+        }
+        restore_node_v_from_vbus(&mut ckt);
+        assert_eq!(
+            ckt.solution.node_v,
+            vec![Complex64::ZERO, c(10.0, 1.0), c(20.0, 2.0), c(30.0, 3.0)]
+        );
+    }
+
+    /// Flag ON: `build_y_matrix` runs update *then* restore. Node voltages come
+    /// back unchanged (net no-op) AND the `vbus` sentinel is overwritten with the
+    /// live values — proving `update_vbus` executed inside the build.
+    #[test]
+    fn build_preserves_and_updates_vbus_when_flag_set() {
+        let known = vec![Complex64::ZERO, c(1.0, 1.0), c(2.0, 2.0), c(3.0, 3.0)];
+        let sentinel = c(-1.0, -1.0);
+        let mut ckt = one_bus_ckt(known.clone(), sentinel);
+        ckt.solution.preserve_node_voltages = true;
+
+        let mut store = EmptyStore;
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        {
+            let mut env = SolveEnv {
+                store: &mut store,
+                parser: &mut parser,
+                vars: &vars,
+                errors: &mut errors,
+            };
+            build_y_matrix(&mut ckt, &mut env, BuildOption::WholeMatrix, false).unwrap();
+        }
+
+        assert_eq!(
+            ckt.solution.node_v, known,
+            "round-trip leaves node_v intact"
+        );
+        assert_eq!(
+            ckt.buses[0].vbus,
+            vec![c(1.0, 1.0), c(2.0, 2.0), c(3.0, 3.0)],
+            "update_vbus overwrote the sentinel"
+        );
+    }
+
+    /// Flag OFF: neither update nor restore runs. The `vbus` sentinel survives
+    /// (nothing wrote it) — this is what makes the ON test non-vacuous.
+    #[test]
+    fn build_leaves_vbus_untouched_when_flag_clear() {
+        let known = vec![Complex64::ZERO, c(1.0, 1.0), c(2.0, 2.0), c(3.0, 3.0)];
+        let sentinel = c(-1.0, -1.0);
+        let mut ckt = one_bus_ckt(known.clone(), sentinel);
+        ckt.solution.preserve_node_voltages = false;
+
+        let mut store = EmptyStore;
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        {
+            let mut env = SolveEnv {
+                store: &mut store,
+                parser: &mut parser,
+                vars: &vars,
+                errors: &mut errors,
+            };
+            build_y_matrix(&mut ckt, &mut env, BuildOption::WholeMatrix, false).unwrap();
+        }
+
+        assert_eq!(ckt.solution.node_v, known);
+        assert_eq!(
+            ckt.buses[0].vbus,
+            vec![sentinel; 3],
+            "update_vbus must NOT run with the flag clear"
+        );
+    }
 }

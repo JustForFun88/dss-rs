@@ -142,6 +142,9 @@ pub struct LoadShapeObj {
     pqcsvfile: String,
     /// Deferred file reads queued by `CSVFile` (drained by the executive).
     pending_file_loads: Vec<FileLoad>,
+    /// Deferred binary saves queued by `Action=SngSave/DblSave` (drained by the
+    /// executive, which owns `OutputDirectory`/`GlobalResult`).
+    pending_shape_saves: Vec<crate::obj::base::ShapeSave>,
 }
 
 impl LoadShapeObj {
@@ -173,6 +176,7 @@ impl LoadShapeObj {
             dblfile: String::new(),
             pqcsvfile: String::new(),
             pending_file_loads: Vec::new(),
+            pending_shape_saves: Vec::new(),
         }
     }
 

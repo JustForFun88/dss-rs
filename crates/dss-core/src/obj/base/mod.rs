@@ -297,6 +297,35 @@ impl FileLoad {
     }
 }
 
+/// A queued binary shape-save action — the `SngSave`/`DblSave` `Action` of
+/// LoadShape and its TShape/PriceShape siblings (Pascal `SaveToDblFile` /
+/// `SaveToSngFile`, `LoadShape.pas:1880/1939`, `TempShape.pas:528/548`,
+/// `PriceShape.pas:547/568`). Like [`FileLoad`], the `do_action` property hook
+/// runs inside the parse loop with no reach to `OutputDirectory` or
+/// `GlobalResult`, so it snapshots what to write and defers the write to the
+/// executive ([`DssObject::take_shape_saves`], drained in `edit_active`).
+#[derive(Debug, Clone)]
+pub struct ShapeSave {
+    /// Filename stem — the object's lowercased `Name` (Pascal `Format('%s…',
+    /// [Name])`; DSS lowercases `Name` in the constructor, so both engines agree).
+    pub name: String,
+    /// `true` → single precision, `.sng` (`SaveToSngFile`); `false` → double,
+    /// `.dbl` (`SaveToDblFile`).
+    pub sng: bool,
+    /// The P/value series (already widened to f64 by `UseFloat64`), written
+    /// little-endian in `0..NumPoints` order.
+    pub values: Vec<f64>,
+    /// The Q series — LoadShape only, and only when `qmult`/`dQ` is defined
+    /// (`if Assigned(dQ)`); `None` ⇒ no Q file and no ` Qmult=` result clause.
+    pub q_values: Option<Vec<f64>>,
+    /// LoadShape splits into `<name>_P`/`<name>_Q`; TShape/PriceShape write the
+    /// bare `<name>`. `true` ⇒ the `_P`/`_Q` split.
+    pub p_suffix: bool,
+    /// The `GlobalResult` tag word: `mult` (LoadShape), `Temp` (TShape),
+    /// `Price` (PriceShape).
+    pub result_tag: &'static str,
+}
+
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
@@ -601,6 +630,13 @@ pub trait DssObject {
     /// The executive resolves each path and calls [`DssObject::apply_file_load`]
     /// *before* `end_edit`, so derived state (e.g. `SetMaxPandQ`) sees the data.
     fn take_file_loads(&mut self) -> Vec<FileLoad> {
+        Vec::new()
+    }
+
+    /// Drain the [`ShapeSave`]s queued by a `SngSave`/`DblSave` action during the
+    /// last edit. The executive writes each to `OutputDirectory` and sets
+    /// `GlobalResult`. Default empty.
+    fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
         Vec::new()
     }
 

@@ -25,7 +25,7 @@
 //! read via the deferred [`FileLoad`] path, exactly like LoadShape (WP5.2b /
 //! WPG.1 for the binary pair).
 
-use crate::obj::base::{DssObjData, FileLoad};
+use crate::obj::base::{DssObjData, FileLoad, ShapeSave};
 use crate::support::mathutil::{curve_mean_and_std_dev, mean_and_std_dev};
 use dss_parser::{Parser, ParserVars};
 
@@ -57,6 +57,8 @@ pub struct ScalarShapeCore {
     pub dblfile: String,
     /// Deferred file reads queued by `CSVFile` (drained by the executive).
     pub pending_file_loads: Vec<FileLoad>,
+    /// Deferred binary saves queued by `Action=SngSave/DblSave`.
+    pub pending_shape_saves: Vec<ShapeSave>,
 }
 
 impl ScalarShapeCore {
@@ -76,11 +78,48 @@ impl ScalarShapeCore {
             sngfile: String::new(),
             dblfile: String::new(),
             pending_file_loads: Vec::new(),
+            pending_shape_saves: Vec::new(),
         }
     }
 
     fn n(&self) -> usize {
         self.num_points.max(0) as usize
+    }
+
+    /// Queue a `SngSave`/`DblSave` binary write (Pascal `TTShapeObj`/
+    /// `TPriceShapeObj.SaveToDblFile`/`SaveToSngFile`, `TempShape.pas:528/548`,
+    /// `PriceShape.pas:547/568`). Single value series, bare `<name>` filename (no
+    /// `_P`/`_Q` split), `GlobalResult` tag `result_tag` (`Temp`/`Price`). The
+    /// caller passes `full_name` and `noun` for the not-defined guard
+    /// (`if not Assigned(TValues/PriceValues)` → `DoSimpleMsg` 57622/57623 or
+    /// 58622/58623).
+    pub fn queue_shape_save(
+        &mut self,
+        sng: bool,
+        result_tag: &'static str,
+        full_name: &str,
+        noun: &str,
+        errors: &mut Vec<String>,
+    ) {
+        let n = self.n();
+        let Some(v) = self.values.as_ref() else {
+            errors.push(format!("{full_name} {noun} not defined."));
+            return;
+        };
+        let values: Vec<f64> = v.iter().take(n).copied().collect();
+        self.pending_shape_saves.push(ShapeSave {
+            name: self.data.name().to_string(),
+            sng,
+            values,
+            q_values: None,
+            p_suffix: false,
+            result_tag,
+        });
+    }
+
+    /// Drain the queued binary saves for the executive.
+    pub fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
+        std::mem::take(&mut self.pending_shape_saves)
     }
 
     /// Pascal `GetTemperature` / `GetPrice`: the scalar value nearest the
