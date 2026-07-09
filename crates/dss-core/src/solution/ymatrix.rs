@@ -335,6 +335,30 @@ mod tests {
         );
     }
 
+    /// The feature's actual point (audit settlement — the prior tests only
+    /// covered the no-renumber net-no-op): a rebuild that RENUMBERS nodes must
+    /// restore each bus's saved voltages at the bus's NEW node indices — the
+    /// snapshot keys by (bus, node position), not by global node number
+    /// (Pascal `VBus[j]` ↔ `RefNo[j]`, `Solution.pas:2377/2392`).
+    #[test]
+    fn vbus_restore_lands_on_renumbered_refs() {
+        let mut ckt = one_bus_ckt(
+            vec![Complex64::ZERO, c(10.0, 1.0), c(20.0, 2.0), c(30.0, 3.0)],
+            Complex64::ZERO,
+        );
+        update_vbus(&mut ckt); // vbus (by node position) = [10+1i, 20+2i, 30+3i]
+        // Renumber: the bus's three nodes move to global slots 3, 1, 2 (as a
+        // `ReprocessBusDefs` re-order would) and the node vector is cleared.
+        ckt.buses[0].ref_no = vec![3, 1, 2];
+        ckt.solution.node_v = vec![Complex64::ZERO; 4];
+        restore_node_v_from_vbus(&mut ckt);
+        assert_eq!(
+            ckt.solution.node_v,
+            vec![Complex64::ZERO, c(20.0, 2.0), c(30.0, 3.0), c(10.0, 1.0)],
+            "voltages must follow the bus's node positions to their NEW refs"
+        );
+    }
+
     /// Flag ON: `build_y_matrix` runs update *then* restore. Node voltages come
     /// back unchanged (net no-op) AND the `vbus` sentinel is overwritten with the
     /// live values — proving `update_vbus` executed inside the build.

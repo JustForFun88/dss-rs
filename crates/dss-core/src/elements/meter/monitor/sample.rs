@@ -18,6 +18,13 @@ impl Monitor {
     /// does) fire mid-record. In the merged MonBuffer+MonitorStream model the
     /// flush moves no data — the single already lives in `mon_buffer` — so only
     /// `bufptr` resets (Pascal `Save` sets `BufPtr := 0`, Monitor.pas:1596-1599).
+    /// Accepted divergence (audit Question, 2026-07-09): Pascal's mid-solve
+    /// flush calls the full `Save`, so `MonitorStream` becomes non-empty at
+    /// that instant; here `flushed_records` stays 0 until an explicit `save()`.
+    /// Observable only by reading a monitor mid-solve after ≥1024 singles and
+    /// before the loop-end `SaveAll` — unreachable from script (every
+    /// multi-step solve loop ends with `SaveAll`); all post-solve outputs are
+    /// identical.
     pub(super) fn add_dbl(&mut self, v: f64) {
         if self.bufptr == super::BUFFER_SIZE {
             self.bufptr = 0;
