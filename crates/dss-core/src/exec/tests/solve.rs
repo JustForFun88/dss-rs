@@ -245,3 +245,41 @@ fn bus_adjacency_lists_bucket_elements() {
     assert_eq!(names(&adj.pc[b2]), vec!["ld1", "cap1"]);
     assert!(adj.pc[sb].is_empty(), "sources are NON_PCPD");
 }
+
+/// `set steptime`/`processtime` are Get-only wall-clock timers with **no** Set arm
+/// in Pascal `DoSetCmd` (they fall through the `else // Ignore excess parameters`
+/// no-op, ExecOptions.pas l.755-758); `set totaltime` DOES write the
+/// `Total_Time_Elapsed` diagnostic accumulator (`:683-684` — the settable arm and
+/// its `Get` round-trip are pinned by `exec/tests/options_timing.rs`), with zero
+/// effect on the solution. All three must NOT error (the old "not ported yet"
+/// divergence for `steptime`) and must NOT change the solved state. Confirmed
+/// against the pinned oracle.
+#[test]
+fn set_time_elapsed_options_are_silent_noops() {
+    let mut dss = Dss::new();
+    dss.command("New circuit.twobus basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+    dss.command("New Line.l1 bus1=sourcebus bus2=loadbus length=1 units=km");
+    dss.command("New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let v0: Vec<num_complex::Complex64> = dss.circuit().unwrap().solution.node_v.clone();
+
+    // The sets must not error and must not mutate the solved state (no re-solve —
+    // a re-solve would introduce ~1e-9 last-ulp iterate jitter and hide the point).
+    for cmd in ["set steptime=0.5", "set processtime=3", "set totaltime=5"] {
+        dss.command(cmd);
+        assert!(
+            dss.errors().is_empty(),
+            "{cmd} must be a silent no-op, got: {:?}",
+            dss.errors()
+        );
+    }
+    let v1 = &dss.circuit().unwrap().solution.node_v;
+    assert_eq!(v0.len(), v1.len());
+    assert!(
+        v0.iter().zip(v1.iter()).all(|(a, b)| a == b),
+        "time-option sets must not touch the solution"
+    );
+}

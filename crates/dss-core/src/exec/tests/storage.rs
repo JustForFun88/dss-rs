@@ -86,12 +86,119 @@ fn storage_gfm_mode_solves() {
 }
 
 /// The **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM) is
-/// still NOT_PORTED (WPG.13). A `set mode=dynamics` solve over a grid-forming
-/// Storage must be refused with an explicit abort — never silently inject a stale
-/// current (the deferral-is-never-a-silent-fallback convention; the power-flow
-/// GFM above is ported and solves).
+/// ported (WPG.17). A discharging grid-forming Storage black-STARTS an islanded
+/// section in `set mode=dynamics`: the droop lifts the island from 0 V and the
+/// inverter forms the grid, delivering ~400 kW into the island load. The oracle
+/// pins (dss-python 0.15.7, 60x 1ms steps) are islbus ~0.977 pu and the Storage
+/// delivering ~-400.7 kW. (SafeVoltage=0 is mandatory — the default 100 blocks the
+/// black start from 0 V.) The full monitor trajectory is bit-checked against the
+/// oracle by the live-gate deck `tests/corpus/controls/gfm_dynamics.dss`.
 #[test]
-fn storage_gfm_dynamics_aborts_loudly() {
+fn storage_gfm_dynamics_matches_oracle() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("New Circuit.gfm_dyn basekv=4.16 phases=3 bus1=sourcebus");
+    dss.command(
+        "New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 \
+         length=1 units=km",
+    );
+    dss.command("New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes");
+    dss.command(
+        "New Transformer.tsto phases=3 windings=2 buses=(stobus islbus) \
+         conns=(delta wye) kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5",
+    );
+    dss.command(
+        "New Storage.batt phases=3 conn=delta bus1=stobus kV=0.48 kva=800 \
+         kWrated=800 kWhrated=6000 %stored=100 %reserve=20 %IdlingkW=1 %R=50 %X=50 \
+         State=DISCHARGING kP=0.3 KVDC=0.700 PITol=0.1 SafeVoltage=0 ControlMode=GFM",
+    );
+    dss.command("New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1");
+    dss.command("New Monitor.msv element=Storage.batt terminal=1 mode=3");
+    dss.command("Set voltagebases=[4.16 0.48]");
+    dss.command("Calcvoltagebases");
+    dss.command("open line.sw1 terminal=1");
+    dss.command("solve"); // steady snapshot (islanded GFM) — converges
+    assert!(
+        dss.errors().is_empty(),
+        "islanded GFM snapshot: {:?}",
+        dss.errors()
+    );
+    dss.command("Set mode=dynamics stepsize=0.001 number=60 maxiterations=30");
+    dss.command("solve"); // dynamics GFM black start — ported, must NOT abort
+    assert!(
+        dss.errors().is_empty(),
+        "dynamics GFM must solve now that it is ported: {:?}",
+        dss.errors()
+    );
+
+    let ckt = dss.circuit().expect("circuit");
+    assert!(ckt.is_solved, "dynamics GFM island did not converge");
+
+    // The black start energised the island: islbus lifts to ~0.977 pu (a dead GFL
+    // island would sit at ~0). `kv_base` is L-N kV (SetVoltageBases).
+    let bidx = ckt.bus_list.find("islbus").expect("islbus exists");
+    let bus = &ckt.buses[bidx];
+    let vpu = ckt.solution.node_v[bus.get_ref(0)].norm() / (bus.kv_base * 1000.0);
+    assert!(
+        (vpu - 0.97682).abs() < 2e-3,
+        "islbus energised to oracle ~0.977 pu, got {vpu}"
+    );
+
+    // The Storage forms the grid and delivers ~400 kW (mode-3 var 3 = kWOut, the
+    // abs delivered real power; a dead island would report 0).
+    let m = dss.monitor_view("msv").expect("msv monitor");
+    let kw_out = *m.channels[2].last().expect("kWOut samples") as f64;
+    assert!(
+        (kw_out - 400.7).abs() < 2.0,
+        "Storage delivers oracle ~400.7 kW, got {kw_out}"
+    );
+}
+
+/// FaultStudy also sets `is_dynamic_model` (Pascal `Set_Mode`, Solution.pas
+/// l.2092-2094), so it reaches the (now ported, WPG.17) GFM `DoDynamicMode`. A
+/// GFM DER in FaultStudy converges cleanly on the oracle — the `it[0]=0` state
+/// init makes `BaseV=0` so the inverter injects nothing (kW=0), leaving its
+/// `CalcGFMYprim` shunt in the short-circuit network. No abort.
+#[test]
+fn storage_gfm_faultstudy_converges() {
+    let mut dss = gfm_der_circuit();
+    dss.command("set mode=faultstudy");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "FaultStudy GFM must converge, got: {:?}",
+        dss.errors()
+    );
+    assert!(dss.circuit().expect("circuit").is_solved);
+}
+
+/// MonteFault also sets `is_dynamic_model`, and with a Fault object present a GFM
+/// DER converges cleanly (matches the oracle). NOTE: MonteFault over a circuit
+/// with an **empty** Faults list is an upstream NIL-deref Access Violation
+/// (`PickAFault`/`ActiveFaultObj.Randomize`, SolutionAlgs.pas l.701/725) — this is
+/// independent of GFM (it reproduces with a plain GFL DER too) and is upstream UB,
+/// which the port does not reproduce: `pick_a_fault` returns `None` and the direct
+/// solve proceeds fault-free. Here a Fault is present, so both engines run the
+/// real fault case.
+#[test]
+fn storage_gfm_montefault_with_fault_converges() {
+    let mut dss = gfm_der_circuit();
+    dss.command("New Fault.fx bus1=b phases=3 r=1 enabled=no");
+    dss.command("set mode=MF");
+    dss.command("set number=1");
+    dss.command("set random=none"); // deterministic (no resistance jitter)
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "MonteFault GFM (fault present) must converge, got: {:?}",
+        dss.errors()
+    );
+    assert!(dss.circuit().expect("circuit").is_solved);
+}
+
+/// Shared source → line → grid-forming Storage, solved to a converged snapshot and
+/// ready to enter a dynamic mode (FaultStudy / MonteFault).
+fn gfm_der_circuit() -> Dss {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("New circuit.t basekv=4.16 phases=3 bus1=src basefreq=60");
@@ -99,7 +206,7 @@ fn storage_gfm_dynamics_aborts_loudly() {
     dss.command(
         "New Storage.s1 bus1=b phases=3 conn=delta kV=4.16 kva=800 kWrated=800 \
          kWhrated=6000 state=discharging %R=50 %X=50 kP=0.3 KVDC=0.7 PITol=0.1 \
-         ControlMode=GFM",
+         SafeVoltage=0 ControlMode=GFM",
     );
     dss.command("set voltagebases=[4.16]");
     dss.command("calcvoltagebases");
@@ -109,51 +216,7 @@ fn storage_gfm_dynamics_aborts_loudly() {
         "snapshot GFM must solve: {:?}",
         dss.errors()
     );
-    dss.command("set mode=dynamics stepsize=0.001 number=1");
-    dss.command("solve"); // dynamics GFM: NOT_PORTED, must abort loudly
-    assert!(
-        dss.errors()
-            .iter()
-            .any(|e| e.contains("grid-forming") && e.to_lowercase().contains("dynamics")),
-        "dynamics GFM must abort with an explicit not-ported error, got: {:?}",
-        dss.errors()
-    );
-}
-
-/// FaultStudy and MonteFault also set `is_dynamic_model` (Pascal `Set_Mode`,
-/// Solution.pas l.2088-2094), so they too reach the NOT_PORTED `DoDynamicMode`
-/// GFM stub. A GFM DER in either mode must abort loudly, never silently inject a
-/// stale current (batch-2 audit finding: the dynamics-only guard let these two
-/// modes fall through into the silent stub). Snapshot GFM stays solvable.
-#[test]
-fn storage_gfm_faultstudy_and_montefault_abort_loudly() {
-    // The Solution-Mode enum spells MonteFault "MF" (registry/solution.rs).
-    for mode in ["faultstudy", "MF number=1"] {
-        let mut dss = Dss::new();
-        dss.command("clear");
-        dss.command("New circuit.t basekv=4.16 phases=3 bus1=src basefreq=60");
-        dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
-        dss.command(
-            "New Storage.s1 bus1=b phases=3 conn=delta kV=4.16 kva=800 kWrated=800 \
-             kWhrated=6000 state=discharging %R=50 %X=50 kP=0.3 KVDC=0.7 PITol=0.1 \
-             ControlMode=GFM",
-        );
-        dss.command("set voltagebases=[4.16]");
-        dss.command("calcvoltagebases");
-        dss.command("solve"); // snapshot GFM: ported, solves
-        assert!(
-            dss.errors().is_empty(),
-            "snapshot GFM must solve (mode {mode}): {:?}",
-            dss.errors()
-        );
-        dss.command(&format!("set mode={mode}"));
-        dss.command("solve"); // runs the dynamic model -> GFM NOT_PORTED -> abort
-        assert!(
-            dss.errors().iter().any(|e| e.contains("grid-forming")),
-            "{mode} GFM must abort with an explicit not-ported error, got: {:?}",
-            dss.errors()
-        );
-    }
+    dss
 }
 
 /// A mode-3 (state-variable) monitor on a Storage must attach and solve cleanly:
