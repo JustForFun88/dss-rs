@@ -9,6 +9,19 @@
 
 Last updated: 2026-07-09.
 
+**GFM audit settlement, part 1 (2026-07-09; both auditors: 0 Critical/Major on
+the GFM math — every numeric pin independently reproduced on the oracle).**
+audit-tests' Major settled: the FaultStudy/MonteFault GFM tests were smoke-only
+("converges") against specific deterministic oracle observables — now pinned
+(`storage_term1_kw` helper; MonteFault |P| = 748.7156 kW ±0.05, FaultStudy ≈0
+— both matched the oracle on first run). The merge dropped the gfm branch's
+all-no-op timing arm (unreachable duplicate + 107-divergent; `TotalTime` keeps
+the MMF Pascal-faithful settable arm, `ExecOptions.pas:683-684`), and the
+`set_time_elapsed_options_are_silent_noops` doc was corrected accordingly.
+Owed to part 2 (the corpus phase): a PV-GFM dynamics live deck (§3 protocol)
+and the IEEE123-GFM spot-migration both auditors requested to validate the
+"trajectory-scope" retag.
+
 **WPG.17 port — dynamics-mode GFM + StepTime (2026-07-09).** The WPG.13
 deferral is closed: the grid-forming black-start droop now runs in dynamics
 mode for **both** Storage and PVSystem — `IntegrateStates` GFM sub-branch

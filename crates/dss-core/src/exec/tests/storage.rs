@@ -170,6 +170,25 @@ fn storage_gfm_faultstudy_converges() {
         dss.errors()
     );
     assert!(dss.circuit().expect("circuit").is_solved);
+    // Audit settlement: pin the oracle observable, not just convergence — the
+    // `it[0]=0` GFM seed makes `BaseV=0`, so the Storage injects ~0 kW
+    // (oracle-probed 1.2e-5 kW).
+    let p_kw = storage_term1_kw(&mut dss);
+    assert!(
+        p_kw.abs() < 0.01,
+        "FaultStudy GFM Storage must inject ~0 kW (oracle 1.2e-5), got {p_kw}"
+    );
+}
+
+/// Terminal-1 total P (kW) of `Storage.s1` from the element snapshot (kW/kvar
+/// interleaved per conductor).
+fn storage_term1_kw(dss: &mut Dss) -> f64 {
+    let snap = dss.snapshot_elements();
+    let s = snap
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("Storage.s1"))
+        .expect("Storage.s1 in the snapshot");
+    s.powers.iter().step_by(2).take(3).sum()
 }
 
 /// MonteFault also sets `is_dynamic_model`, and with a Fault object present a GFM
@@ -194,6 +213,14 @@ fn storage_gfm_montefault_with_fault_converges() {
         dss.errors()
     );
     assert!(dss.circuit().expect("circuit").is_solved);
+    // Audit settlement: MonteFault auto-enables the fault and the GFM Storage
+    // delivers a specific, deterministic power — oracle-probed 748.7156 kW
+    // (terminal-1 P, `random=none`). A wrong-but-convergent injection fails.
+    let p_kw = storage_term1_kw(&mut dss);
+    assert!(
+        (p_kw.abs() - 748.7156).abs() < 0.05,
+        "MonteFault GFM Storage |P| must match the oracle 748.7156 kW, got {p_kw}"
+    );
 }
 
 /// Shared source → line → grid-forming Storage, solved to a converged snapshot and
