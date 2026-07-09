@@ -160,6 +160,19 @@ pub struct Solution {
     pub t: f64,
     pub h: f64,
     pub dbl_hour: f64,
+    /// Solve timers in microseconds (Pascal `Solve_Time_Elapsed` /
+    /// `Total_Time_Elapsed` / `Step_Time_Elapsed`, `Solution.pas:211-214`),
+    /// surfaced by `Get`/`Set processtime|totaltime|steptime`. Upstream fills
+    /// these from `QueryPerformanceCounter` — inherently non-deterministic
+    /// wall-clock, which this port does **not** reproduce (same convention as
+    /// the monitor time channels 11/12 hardcoded to 0, `monitor/mod.rs:136`):
+    /// they stay `0.0`, and only `total_time_elapsed` is user-settable
+    /// (`set totaltime=…`). The gate-able surface is the round-trip
+    /// (fresh/after-reset → 0; after `set totaltime=v` → v); any post-solve
+    /// timing value is non-deterministic and never gated.
+    pub solve_time_elapsed: f64,
+    pub total_time_elapsed: f64,
+    pub step_time_elapsed: f64,
     /// `DynaVars.IterationFlag`: predictor (`NewTimeStep`) vs corrector
     /// (`SameTimeStep`) within a dynamics time step (`SolveDynamic`).
     pub iteration_flag: IterationFlag,
@@ -239,6 +252,9 @@ impl Solution {
             t: 0.0,
             h: 0.001, // default for dynasolve
             dbl_hour: 0.0,
+            solve_time_elapsed: 0.0,
+            total_time_elapsed: 0.0,
+            step_time_elapsed: 0.0,
             iteration_flag: IterationFlag::NewTimeStep,
             interval_hrs: 1.0,
             number_of_times: 100,

@@ -24,9 +24,20 @@
 //! float32 branch requires `dQ = NIL`, and any later `QMult=` edit runs
 //! `UseFloat64` first) and is not modeled — greppable:
 //! NOT_PORTED(LoadShape `sQ` single storage — API-only, unreachable from
-//! script). Memory-mapped files (`MemoryMapping`) are not ported (no corpus
-//! case needs them); `MemoryMapping=yes` stores the flag but the lookup never
-//! takes the MMF path.
+//! script). Memory-mapped files (`MemoryMapping=Yes`, WPG.17) ARE modeled by
+//! *eager* reads: the actual `CreateFileMapping`/`mmap` I/O strategy is not
+//! ported (no observable numerics), but each MMF file reader
+//! (`read_{sng,dbl,csv,pq_csv}_file`, and the raw `mult=(sngfile=…)`
+//! directive) reads the whole file up front into the f64 `p_mult`/`q_mult`
+//! arrays with the MMF-path-specific semantics (Pascal
+//! `InterpretDblArrayMMF`/`LoadFileFeatures`): no `NumPoints` shrink, the
+//! text accept-set byte filter, `sngfile` widened into `dP` (f64, not `sP`),
+//! and the `(<mmFileCmd>)` property round-trip. The existing f64
+//! `get_mult_at_hour` double path is then the correct lookup (`s_p` stays
+//! `None`). Single-column `csvfile=` under MMF is an upstream defect
+//! (division-by-zero in the oracle's lazy byte reader for one-column files);
+//! the eager reader reads it correctly and no gated deck exercises it — see
+//! `compute.rs::read_csv_file`.
 //!
 //! Split into submodules (no behavioral change): the struct, its constructor and
 //! the simple accessors live here; the curve lookup / normalization / statistics
@@ -130,9 +141,15 @@ pub struct LoadShapeObj {
     base_q: f64,
     /// Pascal `interpolation` (`Avg`=0, `Edge`=1).
     interpolation: i32,
-    /// Pascal `UseMMF` (memory-mapped files); stored but the lookup never uses
-    /// it (MMF not ported).
+    /// Pascal `UseMMF` (memory-mapped files). When set, the file readers
+    /// eager-load into `p_mult`/`q_mult` with the MMF-path semantics and the
+    /// array properties dump the directive string below.
     use_mmf: bool,
+    /// Pascal `mmFileCmd` / `mmFileCmdQ`: the original file directive string for
+    /// the P / Q multipliers under MMF, dumped by `GetPropertyValue` as
+    /// `(<cmd>)` (`LoadShape.pas:1846-1867`). Empty ⇒ dumps `()`.
+    mm_file_cmd: String,
+    mm_file_cmd_q: String,
     /// Hunt cache for the variable-interval lookup (Pascal `LastValueAccessed`,
     /// a 0-based index into the 0-based arrays; ctor sets it to 1).
     last_value_accessed: usize,
@@ -167,6 +184,8 @@ impl LoadShapeObj {
             base_q: 0.0,
             interpolation: INTERP_AVG,
             use_mmf: false,
+            mm_file_cmd: String::new(),
+            mm_file_cmd_q: String::new(),
             last_value_accessed: 1,
             csvfile: String::new(),
             sngfile: String::new(),

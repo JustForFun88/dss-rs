@@ -62,6 +62,12 @@ impl ClassProps {
             // (`DSSObjectHelper.pas` l.2241).
             PropType::MappedIntEnum => obj.get_i32(idx).to_string(),
             PropType::DoubleArray => {
+                // Pascal `GetPropertyValue`: a memory-mapped array (LoadShape
+                // Mult/PMult/QMult under MMF) dumps its directive `(<mmFileCmd>)`
+                // instead of the numeric values.
+                if let Some(s) = obj.f64_array_dump_override(idx) {
+                    return s;
+                }
                 let n = obj.get_i32(pd.size_prop).max(0) as usize;
                 get_dss_array_f64(n, obj.get_f64_array(idx), pd.scale)
             }

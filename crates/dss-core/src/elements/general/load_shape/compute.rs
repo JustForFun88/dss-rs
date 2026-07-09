@@ -8,6 +8,8 @@ use crate::support::mathutil::{
 use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
+use crate::obj::base::MmfKind;
+
 use super::{INTERP_EDGE, LoadShapeObj, store_array};
 
 impl LoadShapeObj {
@@ -525,6 +527,17 @@ impl LoadShapeObj {
     /// (`Interval = 0`) each row is `hour, mult`. Reads at most `NumPoints` rows
     /// and shrinks `NumPoints` to the count actually read.
     pub(super) fn read_csv_file(&mut self, content: &str) {
+        // Pascal `ReadCSVFile` MMF branch (`LoadShape.pas:1031-1041`): map the
+        // whole file (`file=`+name, column 1) and eager-read via the text
+        // accept-set. (Single-column text under MMF divides by zero in the
+        // oracle's lazy byte reader — an upstream defect the eager reader
+        // sidesteps; no gated deck exercises it.)
+        if self.use_mmf {
+            let npts = self.n();
+            let vals = self.mmf_read_text(content, 1, npts);
+            self.finish_mmf(vals, false);
+            return;
+        }
         // Pascal `ReadCSVFile` runs `UseFloat64` first (`LoadShape.pas:1044`):
         // a CSV read ends any live single-precision storage before it
         // overwrites `dP`/`dH` (audit follow-up — without this a stale `sP`
@@ -573,6 +586,17 @@ impl LoadShapeObj {
     /// path): each row is `P, Q` (or `hour, P, Q` when `Interval = 0`). Reads at
     /// most `NumPoints` rows and shrinks `NumPoints` to the count actually read.
     pub(super) fn read_pq_csv_file(&mut self, content: &str) {
+        // Pascal `Read2ColCSVFile` MMF branch (`LoadShape.pas:950-966`): P from
+        // column 1, Q from column 2 of the same mapped view. Read both before
+        // finishing so a short-file shrink does not perturb the Q pass.
+        if self.use_mmf {
+            let npts = self.n();
+            let p = self.mmf_read_text(content, 1, npts);
+            let q = self.mmf_read_text(content, 2, npts);
+            self.finish_mmf(p, false);
+            self.finish_mmf(q, true);
+            return;
+        }
         // Pascal `Read2ColCSVFile` runs `UseFloat64` first (`LoadShape.pas:970`).
         self.use_float64();
         let npts = self.n();
@@ -634,6 +658,15 @@ impl LoadShapeObj {
     /// reproduced per the CLAUDE.md rule; the port shrinks like the float64
     /// path, so a truncated file yields the defined prefix instead of garbage.
     pub(super) fn read_sng_file(&mut self, content: &[u8]) {
+        // Pascal `ReadSngFile` MMF branch (`LoadShape.pas:1103-1113`): map the
+        // whole file (`sngfile=`+name) and read `npts` little-endian f32,
+        // widened into `dP` (f64) — NOT the `sP`/`GetMultAtHourSingle` path.
+        if self.use_mmf {
+            let npts = self.n();
+            let vals = self.mmf_read_f32(content, npts);
+            self.finish_mmf(vals, false);
+            return;
+        }
         let npts = self.n();
         if self.q_mult.is_none() {
             // Float32 path: "Take the opportunity to use float32 data".
@@ -700,6 +733,14 @@ impl LoadShapeObj {
     /// row layout as [`Self::read_sng_file`] but always double precision (no
     /// float32/float64 branch in Pascal here).
     pub(super) fn read_dbl_file(&mut self, content: &[u8]) {
+        // Pascal `ReadDblFile` MMF branch (`LoadShape.pas:1207-1217`): map the
+        // whole file (`dblfile=`+name) and read `npts` little-endian f64.
+        if self.use_mmf {
+            let npts = self.n();
+            let vals = self.mmf_read_f64(content, npts);
+            self.finish_mmf(vals, false);
+            return;
+        }
         // Pascal `ReadDblFile` runs `UseFloat64` first (`LoadShape.pas:1220`).
         self.use_float64();
         let npts = self.n();
@@ -726,5 +767,146 @@ impl LoadShapeObj {
             self.num_points = n as i32;
             self.p_mult = store_array(p);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Memory-mapped-file (`MemoryMapping=Yes`) eager readers (WPG.17).
+    // Pascal maps the file and reads records lazily through the map in
+    // `GetMultAtHour`; this port reads the whole file up front into the f64
+    // `dP`/`dQ` arrays with the identical record semantics
+    // (`InterpretDblArrayMMF`, `LoadShape.pas:1343-1418`), so the existing f64
+    // lookup is then correct with `sP = NIL`. Fixed-interval only (every corpus
+    // deck is `interval=1`); MMF + variable interval never populates the hour
+    // array upstream (a degenerate path) and is not exercised — see mod.rs.
+    // ------------------------------------------------------------------
+
+    /// Read `min(npts, available)` little-endian f32 records, widened to f64.
+    fn mmf_read_f32(&self, bytes: &[u8], npts: usize) -> Vec<f64> {
+        let k = (bytes.len() / 4).min(npts);
+        bytes[..k * 4]
+            .chunks_exact(4)
+            .map(|c| f64::from(f32::from_le_bytes(c.try_into().unwrap())))
+            .collect()
+    }
+
+    /// Read `min(npts, available)` little-endian f64 records.
+    fn mmf_read_f64(&self, bytes: &[u8], npts: usize) -> Vec<f64> {
+        let k = (bytes.len() / 8).min(npts);
+        bytes[..k * 8]
+            .chunks_exact(8)
+            .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+            .collect()
+    }
+
+    /// Read up to `npts` text records at the given 1-based comma column via the
+    /// Pascal MMF accept-set (`InterpretDblArrayMMF` PlainText). One line per
+    /// record (equivalent to Pascal's fixed-width byte indexing for the uniform
+    /// files it requires; non-uniform widths are upstream UB, not reproduced).
+    fn mmf_read_text(&mut self, content: &str, column: i32, npts: usize) -> Vec<f64> {
+        let mut out = Vec::with_capacity(npts);
+        let mut lines = content.lines();
+        for _ in 0..npts {
+            let Some(line) = lines.next() else { break };
+            out.push(self.mmf_text_value(line, column));
+        }
+        out
+    }
+
+    /// Pascal `InterpretDblArrayMMF` PlainText record (`LoadShape.pas:1361-
+    /// 1400`): accumulate one comma-delimited column's characters and parse.
+    ///
+    /// TODO(compat): the accept-set keeps only bytes in `[46, 58)` — `.` (46),
+    /// `/` (47), and digits `0`–`9` (48–57) — dropping sign, `+`, `e`/`E`
+    /// exponent and whitespace. So `-0.5` → `0.5`, `1.5e-3` → `1.53`, and `/`
+    /// is kept into the token (`LoadShape.pas:1374`). Empty content defaults to
+    /// `1.0` (`:1389-1390`). The non-MM CSV reader uses the full aux parser
+    /// (sign/exponent honoured) — a deliberate MMF-path divergence, wiped with
+    /// the other compat shims.
+    fn mmf_text_value(&mut self, line: &str, column: i32) -> f64 {
+        let mut content = String::new();
+        let mut j = 0i32;
+        for &b in line.as_bytes() {
+            if b == 0x0A {
+                break; // lines() already strips this; kept for byte-faithfulness
+            }
+            if (46..58).contains(&b) {
+                content.push(b as char);
+            }
+            if b == 44 {
+                // a comma: advance the column counter, stop at the target column
+                j += 1;
+                if j == column {
+                    break;
+                }
+                content.clear();
+            }
+        }
+        if content.is_empty() {
+            return 1.0;
+        }
+        match content.parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => {
+                // NOT_PORTED(InterpretDblArrayMMF error-785 byte-offset return):
+                // Pascal returns `i - 1` (a heap byte index) on a `strtofloat`
+                // failure (`:1396`) — a defined-but-nonsensical value only
+                // reachable on a malformed token (e.g. one containing `/`). Not
+                // reproduced (UB-adjacent, unreachable from the corpus); surface
+                // a real error and fall back to the `1.0` default instead.
+                self.data.push_error(format!(
+                    "LoadShape.{}: invalid numeric token \"{content}\" in a \
+                     memory-mapped text file.",
+                    self.data.name()
+                ));
+                1.0
+            }
+        }
+    }
+
+    /// Store an eager MMF read into `dP` (P side) or `dQ` (Q side), ending any
+    /// single-precision storage (`sP = NIL`, so the f64 lookup wins) and
+    /// leaving `NumPoints` unchanged for a complete file (Pascal never shrinks
+    /// under MMF, `:761`). A short file is upstream UB (Pascal reads past the
+    /// map); the port clamps to the records present with a loud diagnostic —
+    /// the P side then shrinks `NumPoints` to keep the array/`npts` invariant
+    /// the lookup relies on (the Q lookup is length-guarded, so Q does not).
+    fn finish_mmf(&mut self, values: Vec<f64>, qside: bool) {
+        let npts = self.n();
+        let short = values.len() < npts;
+        if short {
+            self.data.push_error(format!(
+                "LoadShape.{}: memory-mapped file has fewer records ({}) than \
+                 npts ({npts}); using the {} present (upstream reads past the map).",
+                self.data.name(),
+                values.len(),
+                values.len()
+            ));
+        }
+        if qside {
+            self.q_mult = store_array(values);
+        } else {
+            self.s_p = None;
+            self.s_h = None;
+            if short {
+                self.num_points = values.len() as i32;
+            }
+            self.p_mult = store_array(values);
+        }
+    }
+
+    /// Apply a raw MMF array directive (`mult=(sngfile=…)` / `qmult=(file=…)`,
+    /// Pascal `CustomSetRaw` MMF branches, `LoadShape.pas:756-800`). The kind /
+    /// column / P-vs-Q side were parsed from the directive at set time.
+    pub(super) fn read_mmf_raw(&mut self, bytes: &[u8], kind: MmfKind, column: i32, qside: bool) {
+        let npts = self.n();
+        let values = match kind {
+            MmfKind::Float32 => self.mmf_read_f32(bytes, npts),
+            MmfKind::Float64 => self.mmf_read_f64(bytes, npts),
+            MmfKind::Text => {
+                let content = String::from_utf8_lossy(bytes);
+                self.mmf_read_text(&content, column, npts)
+            }
+        };
+        self.finish_mmf(values, qside);
     }
 }

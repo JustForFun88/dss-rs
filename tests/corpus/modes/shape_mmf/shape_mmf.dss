@@ -1,0 +1,32 @@
+! GAPS deck (WPG.17): LoadShape MemoryMapping=Yes + Set/Get TotalTime.
+! Self-contained (no `var`, no non-MM File= arrays) — the gate-able MMF engine
+! feature. sngfile/dblfile MMF are fixed-interval, so numerically identical to
+! non-MM (an I/O strategy) — they exercise the sng/dbl MMF readers. The pq shape
+! is the feature-sensitivity axis: its P column is written in exponent notation,
+! and the MMF text accept-set (Pascal InterpretDblArrayMMF, bytes [46,58)) drops
+! the sign/exponent, so P reads as {1.51, 2.01, ...} under MMF vs {0.15, 0.20,
+! ...} without it — a large, oracle-observable divergence in ld_pq's power.
+! Fixtures (committed) regenerate via tools/decks/gen_shape_mmf_fixtures.py.
+Clear
+New Circuit.gaps_mmf basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.ls_sng npts=8 interval=1 MemoryMapping=Yes sngfile=mm8.sng
+New Loadshape.ls_dbl npts=8 interval=1 MemoryMapping=Yes dblfile=mm8.dbl
+! Raw mult=(sngfile=...) directive form (Pascal CustomSetRaw), MMF before mult.
+New Loadshape.ls_mult npts=8 interval=1 MemoryMapping=Yes mult=(sngfile=mm8.sng)
+New Loadshape.ls_pq npts=8 interval=1 MemoryMapping=Yes pqcsvfile=mmpq8.csv
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Load.ld_sng bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=ls_sng
+New Load.ld_dbl bus1=b1 phases=3 kv=12.47 kw=400 pf=0.92 model=1 daily=ls_dbl
+New Load.ld_mult bus1=b1 phases=3 kv=12.47 kw=200 pf=0.93 model=1 daily=ls_mult
+New Load.ld_pq bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95 model=1 daily=ls_pq
+New Monitor.m_sng element=Load.ld_sng terminal=1 mode=1 ppolar=no
+New Monitor.m_dbl element=Load.ld_dbl terminal=1 mode=1 ppolar=no
+New Monitor.m_mult element=Load.ld_mult terminal=1 mode=1 ppolar=no
+New Monitor.m_pq element=Load.ld_pq terminal=1 mode=1 ppolar=no
+Set voltagebases=[12.47]
+Calcvoltagebases
+! Exercise the Set/Get TotalTime option surface (Pascal ExecOptions 107).
+Set totaltime=0
+Set mode=daily stepsize=1h number=8
+Solve
+Get totaltime

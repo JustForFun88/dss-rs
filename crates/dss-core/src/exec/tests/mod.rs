@@ -23,6 +23,7 @@ mod lifecycle;
 mod line_fetch;
 mod monitors;
 mod open_close;
+mod options_timing;
 mod pvsystem;
 mod reduce;
 mod reliability;

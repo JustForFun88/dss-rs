@@ -393,6 +393,12 @@ pub(crate) mod opt {
     pub const LOG: usize = 66;
     pub const OVERLOAD_REPORT: usize = 68;
     pub const VOLT_EXCEPTION_REPORT: usize = 69;
+    /// `ProcessTime` (Get-only → `Solve_Time_Elapsed`) / `TotalTime`
+    /// (Set+Get → `Total_Time_Elapsed`) / `StepTime` (Get-only →
+    /// `Step_Time_Elapsed`), `ExecOptions.pas:106-108`.
+    pub const PROCESS_TIME: usize = 106;
+    pub const TOTAL_TIME: usize = 107;
+    pub const STEP_TIME: usize = 108;
     pub const SAMPLE_ENERGY_METERS: usize = 109;
     pub const LOAD_SHAPE_CLASS: usize = 80;
     pub const EARTH_MODEL: usize = 81;

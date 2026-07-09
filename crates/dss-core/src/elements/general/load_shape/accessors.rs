@@ -2,13 +2,44 @@
 //! accessors, the `Action` handler, file-load plumbing, `PropertySideEffects`,
 //! `EndEdit` and `MakeLike`.
 
-use crate::obj::base::{DssObjData, DssObject, FileLoad};
+use crate::obj::base::{DssObjData, DssObject, FileLoad, MmfKind, MmfLoad};
 
 use super::prop::{
     CSVFILE, DBLFILE, HOUR, INTERPOLATION, INTERVAL, MEAN, MEMORYMAPPING, MINTERVAL, MULT, NPTS,
     PBASE, PMAX, PMULT, PQCSVFILE, QBASE, QMAX, QMULT, SINTERVAL, SNGFILE, STDDEV, USEACTUAL,
 };
 use super::{LoadShapeObj, store_array};
+
+/// Parse a LoadShape array file directive (`sngfile=…` / `dblfile=…` /
+/// `file=… column=N`) as the Pascal `LoadFileFeatures` AuxParser does. Returns
+/// `None` for a plain numeric list (no leading `file`/`sngfile`/`dblfile`
+/// token), which then flows to the ordinary numeric parser.
+fn parse_mmf_directive(value: &str) -> Option<(MmfKind, String, i32)> {
+    let mut tokens = value.split_whitespace();
+    let (key, val) = tokens.next()?.split_once('=')?;
+    let kind = match key.to_ascii_lowercase().as_str() {
+        "sngfile" => MmfKind::Float32,
+        "dblfile" => MmfKind::Float64,
+        "file" => MmfKind::Text,
+        _ => return None,
+    };
+    let mut column = 1;
+    if kind == MmfKind::Text {
+        // Pascal scans the remaining params for `column=` (CompareTextShortest).
+        for tok in tokens {
+            if let Some((k, v)) = tok.split_once('=')
+                && !k.is_empty()
+                && "column".starts_with(&k.to_ascii_lowercase())
+            {
+                column = v.parse().unwrap_or(1);
+            }
+        }
+    }
+    // Pascal reads the filename with `AuxParser.StrValue`, which strips a
+    // surrounding quote pair (corpus filenames have no embedded spaces).
+    let filename = val.trim_matches(|c| c == '"' || c == '\'').to_string();
+    Some((kind, filename, column))
+}
 
 impl DssObject for LoadShapeObj {
     fn data(&self) -> &DssObjData {
@@ -138,6 +169,66 @@ impl DssObject for LoadShapeObj {
         }
     }
 
+    /// Pascal `TLoadShapeObj.CustomSetRaw` for `Mult`/`PMult`/`QMult`
+    /// (`LoadShape.pas:746-811`): intercept the `sngfile=`/`dblfile=`/`file=`
+    /// file directives that the numeric parser cannot read. Under
+    /// `MemoryMapping=Yes` the directive queues an eager MMF read (the `UseMMF`
+    /// branch); without it, a file directive is the non-MM `File=` array feature
+    /// (WPG.1) — still NOT_PORTED, so surface a loud error. A plain numeric list
+    /// returns `false` and flows to `ParseAsVector` unchanged.
+    fn set_f64_array_raw(&mut self, idx: usize, raw: &str) -> bool {
+        if !matches!(idx, MULT | PMULT | QMULT) {
+            return false;
+        }
+        let Some((kind, filename, column)) = parse_mmf_directive(raw) else {
+            return false;
+        };
+        let qside = idx == QMULT;
+        if self.use_mmf {
+            // Pascal stores `mmFileCmd(Q) := S` (the raw directive) for the
+            // property round-trip, then eager-reads the file.
+            if qside {
+                self.mm_file_cmd_q = raw.to_string();
+            } else {
+                self.mm_file_cmd = raw.to_string();
+            }
+            self.pending_file_loads.push(FileLoad::mmf_raw(
+                idx,
+                filename,
+                MmfLoad {
+                    kind,
+                    column,
+                    qside,
+                },
+            ));
+        } else {
+            // NOT_PORTED(LoadShape non-MM `File=` numeric arrays — WPG.1): a
+            // `mult=(file=…)` without MemoryMapping reads a file into `dP` via
+            // `InterpretDblArray`; the file-directive reader is a separate item.
+            self.data.push_error(format!(
+                "LoadShape.{}: file-backed numeric arrays \
+                 (\"file=\"/\"sngfile=\"/\"dblfile=\" inside Mult/PMult/QMult without \
+                 MemoryMapping=Yes) are not supported yet (WPG.1).",
+                self.data.name()
+            ));
+        }
+        true
+    }
+
+    /// Pascal `TLoadShapeObj.GetPropertyValue` for `Mult`/`PMult`/`QMult` under
+    /// MMF (`LoadShape.pas:1846-1867`): the dump is `(<mmFileCmd>)` for the P
+    /// side and `(<mmFileCmdQ>)` for the Q side, not the numeric values.
+    fn f64_array_dump_override(&self, idx: usize) -> Option<String> {
+        if !self.use_mmf {
+            return None;
+        }
+        match idx {
+            MULT | PMULT => Some(format!("({})", self.mm_file_cmd)),
+            QMULT => Some(format!("({})", self.mm_file_cmd_q)),
+            _ => None,
+        }
+    }
+
     /// Pascal `StringEnumActionProperty` for `Action`.
     fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
         match ordinal {
@@ -155,26 +246,54 @@ impl DssObject for LoadShapeObj {
     }
 
     /// Apply a resolved text file: `CSVFile` (Pascal `DoCSVFile`) or
-    /// `PQCSVFile` (Pascal `Do2ColCSVFile`).
+    /// `PQCSVFile` (Pascal `Do2ColCSVFile`). Under MMF the readers eager-load
+    /// and record the `mmFileCmd` directive strings (`'file='+FileName`, and
+    /// for PQ the overwritten `'file='+FileName+' column=2'`, `LoadShape.pas:
+    /// 954-963`; `mmFileCmdQ` is never set for PQ, so QMult dumps `()`).
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
         match load.prop {
-            CSVFILE => self.read_csv_file(content),
-            PQCSVFILE => self.read_pq_csv_file(content),
+            CSVFILE => {
+                if self.use_mmf {
+                    self.mm_file_cmd = format!("file={}", load.filename);
+                }
+                self.read_csv_file(content);
+            }
+            PQCSVFILE => {
+                if self.use_mmf {
+                    self.mm_file_cmd = format!("file={} column=2", load.filename);
+                }
+                self.read_pq_csv_file(content);
+            }
             _ => {}
         }
     }
 
-    /// Apply a resolved binary file: `SngFile` (Pascal `ReadSngFile`) or
-    /// `DblFile` (Pascal `ReadDblFile`).
+    /// Apply a resolved binary file: `SngFile` (Pascal `ReadSngFile`),
+    /// `DblFile` (Pascal `ReadDblFile`), or a raw MMF array directive
+    /// (`mult=(sngfile=…)`, [`FileLoad::mmf`], Pascal `CustomSetRaw`).
     fn apply_binary_file_load(
         &mut self,
         load: &FileLoad,
         content: &[u8],
         _errors: &mut Vec<String>,
     ) {
+        if let Some(mmf) = &load.mmf {
+            self.read_mmf_raw(content, mmf.kind, mmf.column, mmf.qside);
+            return;
+        }
         match load.prop {
-            SNGFILE => self.read_sng_file(content),
-            DBLFILE => self.read_dbl_file(content),
+            SNGFILE => {
+                if self.use_mmf {
+                    self.mm_file_cmd = format!("sngfile={}", load.filename);
+                }
+                self.read_sng_file(content);
+            }
+            DBLFILE => {
+                if self.use_mmf {
+                    self.mm_file_cmd = format!("dblfile={}", load.filename);
+                }
+                self.read_dbl_file(content);
+            }
             _ => {}
         }
     }
@@ -262,6 +381,8 @@ impl DssObject for LoadShapeObj {
         };
         self.use_actual = o.use_actual;
         self.use_mmf = o.use_mmf;
+        self.mm_file_cmd = o.mm_file_cmd.clone();
+        self.mm_file_cmd_q = o.mm_file_cmd_q.clone();
         self.base_p = o.base_p;
         self.base_q = o.base_q;
         self.set_max_p_and_q();
