@@ -279,9 +279,14 @@ impl XyCurveObj {
     /// `while ((F.Position + 1) < F.Size) and (i < NumPoints)` guard (`:2277`):
     /// the pre-read guard requires ≥2 bytes to remain, so a final ≤1-byte line
     /// with no trailing newline (or a trailing blank line) is not read — the
-    /// same subtlety `spectrum::read_csv_file` reproduces. A non-numeric token
-    /// yields `0.0` (AuxParser `DblValue` = 0), so a well-formed file never
-    /// hits the Pascal `58614` processing-error path.
+    /// same subtlety `spectrum::read_csv_file` reproduces. Malformed-token
+    /// divergence (audit-settled 2026-07-09): Pascal `MakeDouble`
+    /// (`ParserDel.pas:718-747`) returns `0.0` only for an *empty* token; a
+    /// non-empty non-numeric token **raises**, and `DoCSVFile`'s handler prints
+    /// error 58614 and exits WITHOUT `NumPoints := i` (partially-filled
+    /// realloc'd arrays — semi-garbage). The port deliberately follows the
+    /// established `spectrum::read_csv_file` convention instead: substitute
+    /// `0.0` and keep reading. Well-formed files are identical on both engines.
     fn read_csv_file(&mut self, content: &str) {
         let n = self.n();
         let mut xs = vec![0.0; n];

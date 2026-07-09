@@ -256,7 +256,14 @@ impl RefAction {
 /// `SngFile`/`DblFile` little-endian f32/f64 streams, WPG.1). The object then
 /// parses the content with its own format rules. Nothing reads the object's
 /// data between the property set and the load, so the deferral is
-/// unobservable (the load still completes before `EndEdit`).
+/// unobservable (the load still completes before `EndEdit`) — with one
+/// documented limitation (audit Question, 2026-07-09, accepted): Pascal runs
+/// the file read *inline at its property position*, so a single command that
+/// sets a file prop AND a later array prop touching the same arrays (e.g.
+/// `csvfile=f yarray=(…)`) finishes with the file values overwritten by the
+/// array on Pascal but the array overwritten by the deferred file read here.
+/// No corpus deck combines the two in one command; the common orders (file
+/// prop alone / after `npts`) are identical on both engines.
 #[derive(Debug, Clone)]
 pub struct FileLoad {
     /// The 1-based property index that requested the load, so the object knows
