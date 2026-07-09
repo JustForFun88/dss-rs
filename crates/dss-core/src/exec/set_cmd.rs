@@ -64,6 +64,7 @@ impl Dss {
                 max_allocation_iterations,
                 current_dir,
                 output_directory,
+                daisy_size,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -535,6 +536,13 @@ impl Dss {
                         match enums.get(enums.earth_model).string_to_ordinal(&param) {
                             Ok(v) => *default_earth_model = v,
                             Err(e) => errors.push(e.to_string()),
+                        }
+                    }
+                    // Pascal `ExecOptions.pas:620`: `Set Daisysize=` sets the
+                    // DSS-context `DaisySize` written into the plot payload.
+                    opt::DAISY_SIZE => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            *daisy_size = v;
                         }
                     }
                     opt::NEGLECT_LOAD_Y => ckt.neglect_load_y = interpret_yes_no(&param),

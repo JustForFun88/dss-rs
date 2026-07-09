@@ -67,6 +67,31 @@ pub enum ElemKind {
     Sensor,
 }
 
+/// Pascal `Circuit.pas` `TBusMarker` (decl :49, `Reset` :3098): one entry of
+/// the plot bus-marker list, populated by `AddBusMarker` and emitted into the
+/// plot-callback JSON's `BusMarkers[]`. Purely a GUI-plot annotation —
+/// headless-inert (affects no solve/report).
+#[derive(Debug, Clone)]
+pub struct BusMarker {
+    pub bus_name: String,
+    pub add_marker_color: i32,
+    pub add_marker_code: i32,
+    pub add_marker_size: i32,
+}
+
+impl Default for BusMarker {
+    /// Pascal `TBusMarker.Reset` (Circuit.pas:3098): `BusName=''`,
+    /// `AddMarkerColor=clBlack`, `AddMarkerCode=4`, `AddMarkerSize=1`.
+    fn default() -> Self {
+        Self {
+            bus_name: String::new(),
+            add_marker_color: 0x000000, // clBlack
+            add_marker_code: 4,
+            add_marker_size: 1,
+        }
+    }
+}
+
 /// The circuit model (`TDSSCircuit`).
 pub struct Circuit {
     /// Lowercased circuit name.
@@ -177,6 +202,44 @@ pub struct Circuit {
     /// `NodeMarkerWidth` (Circuit.pas:500; `Set Nodewidth=`): the `NodeWidth`
     /// column of `Export Profile`.
     pub node_marker_width: i32,
+
+    /// The GUI plot-marker style globals (Circuit.pas:217-249, defaults :499-527)
+    /// emitted into the plot-callback JSON's `Markers` object. Headless-inert —
+    /// no solve/report reads them; only the plot payload does. Their `Set`
+    /// handlers (`SwitchMarkerCode`, `TransMarkerCode`, ...) are still
+    /// NOT_PORTED, so these hold the Circuit.pas defaults, which is what the
+    /// pinned headless oracle emits for every corpus deck (none set them).
+    pub switch_marker_code: i32,
+    pub trans_marker_code: i32,
+    pub cap_marker_code: i32,
+    pub reg_marker_code: i32,
+    pub pv_marker_code: i32,
+    pub store_marker_code: i32,
+    pub fuse_marker_code: i32,
+    pub recloser_marker_code: i32,
+    pub relay_marker_code: i32,
+    pub trans_marker_size: i32,
+    pub cap_marker_size: i32,
+    pub reg_marker_size: i32,
+    pub pv_marker_size: i32,
+    pub store_marker_size: i32,
+    pub fuse_marker_size: i32,
+    pub recloser_marker_size: i32,
+    pub relay_marker_size: i32,
+    pub mark_switches: bool,
+    pub mark_transformers: bool,
+    pub mark_capacitors: bool,
+    pub mark_regulators: bool,
+    pub mark_pv_systems: bool,
+    pub mark_storage: bool,
+    pub mark_fuses: bool,
+    pub mark_reclosers: bool,
+    /// `MarkRelays` has no explicit default in `TDSSCircuit.Create` — FPC
+    /// zero-inits the object, so it starts `false` (reproduced here).
+    pub mark_relays: bool,
+    /// `BusMarkerList` (Circuit.pas:250): the `AddBusMarker`/`ClearBusMarkers`
+    /// list emitted into the plot payload's `BusMarkers[]`.
+    pub bus_marker_list: Vec<BusMarker>,
 
     /// `DefaultHourMult`: the circuit-wide multiplier SolveDaily/Yearly derive
     /// from the default shape each step (consumed by generator dispatch, which
@@ -326,6 +389,34 @@ impl Circuit {
             em_di: Default::default(),
             node_marker_code: 16, // Circuit.pas:499
             node_marker_width: 1, // Circuit.pas:500
+            // Circuit.pas:501-527 defaults.
+            switch_marker_code: 5,
+            trans_marker_code: 35,
+            cap_marker_code: 38,
+            reg_marker_code: 17,
+            pv_marker_code: 15,
+            store_marker_code: 9,
+            fuse_marker_code: 25,
+            recloser_marker_code: 17,
+            relay_marker_code: 17,
+            trans_marker_size: 1,
+            cap_marker_size: 3,
+            reg_marker_size: 5,
+            pv_marker_size: 1,
+            store_marker_size: 1,
+            fuse_marker_size: 1,
+            recloser_marker_size: 5,
+            relay_marker_size: 5,
+            mark_switches: false,
+            mark_transformers: false,
+            mark_capacitors: false,
+            mark_regulators: false,
+            mark_pv_systems: false,
+            mark_storage: false,
+            mark_fuses: false,
+            mark_reclosers: false,
+            mark_relays: false,
+            bus_marker_list: Vec::new(),
             // FPC zero-initializes the field; the first time-series step
             // overwrites it from the default shape.
             default_hour_mult: Complex64::ZERO,

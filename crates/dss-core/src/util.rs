@@ -56,6 +56,103 @@ pub fn compare_text_shortest_eq(s1: &str, s2: &str) -> bool {
     a[..n].eq_ignore_ascii_case(&b[..n])
 }
 
+// --- VCL TColor palette (FPC `Graphics`/`GraphType` build unit) ---
+//
+// These `clXXX` integer constants are NOT in the vendored dss_capi source (they
+// come from an FPC build unit), so the values are the standard VCL palette and
+// are pinned empirically against the oracle by the plot-callback golden capture
+// (`tools/golden/gen_plot_callback.py`; the four exercised by the default payload
+// — Blue/Green/Red/Black — plus `$`-hex are confirmed live). TColor is
+// `$00BBGGRR`: the low byte is red, the mid byte green, the high byte blue.
+const CL_BLACK: i32 = 0x000000;
+const CL_MAROON: i32 = 0x000080;
+const CL_GREEN: i32 = 0x008000;
+const CL_OLIVE: i32 = 0x008080;
+const CL_NAVY: i32 = 0x800000;
+const CL_PURPLE: i32 = 0x800080;
+const CL_TEAL: i32 = 0x808000;
+const CL_GRAY: i32 = 0x808080;
+const CL_SILVER: i32 = 0x00C0_C0C0;
+const CL_RED: i32 = 0x0000FF;
+const CL_LIME: i32 = 0x00FF00;
+const CL_YELLOW: i32 = 0x00FFFF;
+const CL_BLUE: i32 = 0x00FF_0000;
+const CL_FUCHSIA: i32 = 0x00FF_00FF;
+const CL_AQUA: i32 = 0x00FF_FF00;
+const CL_LT_GRAY: i32 = CL_SILVER; // FPC clLtGray = clSilver
+const CL_DK_GRAY: i32 = CL_GRAY; // FPC clDkGray = clGray
+const CL_WHITE: i32 = 0x00FF_FFFF;
+
+/// The default plot color (`InterpretColorName` starts `Result := clBlue`).
+pub const CL_BLUE_DEFAULT: i32 = CL_BLUE;
+
+/// Pascal `Utilities.InterpretColorName` (Utilities.pas:1727): the
+/// `CompareTextShortest` name table (order-sensitive — the FIRST matching prefix
+/// wins), else `StrToInt(S)` (decimal or `$`-hex). Returns `None` when neither a
+/// name nor an integer parses — the caller then emits error #724 and falls back
+/// to `clBlue` (Pascal keeps `Result := clBlue` from the top and does
+/// `DoSimpleMsg 724` in the `except`). The `clXXX` values are pinned by the
+/// golden (see the palette note above), not fabricated as authoritative.
+pub fn interpret_color_name(s: &str) -> Option<i32> {
+    // Same order as the Pascal if-else chain (order matters: a short input like
+    // "b" matches the FIRST prefix, `black`, not `blue`).
+    const TABLE: &[(&str, i32)] = &[
+        ("black", CL_BLACK),
+        ("Maroon", CL_MAROON),
+        ("Green", CL_GREEN),
+        ("Olive", CL_OLIVE),
+        ("Navy", CL_NAVY),
+        ("Purple", CL_PURPLE),
+        ("Teal", CL_TEAL),
+        ("Gray", CL_GRAY),
+        ("Silver", CL_SILVER),
+        ("Red", CL_RED),
+        ("Lime", CL_LIME),
+        ("Yellow", CL_YELLOW),
+        ("Blue", CL_BLUE),
+        ("Fuchsia", CL_FUCHSIA),
+        ("Aqua", CL_AQUA),
+        ("LtGray", CL_LT_GRAY),
+        ("DkGray", CL_DK_GRAY),
+        ("White", CL_WHITE),
+    ];
+    for (name, color) in TABLE {
+        if compare_text_shortest_eq(name, s) {
+            return Some(*color);
+        }
+    }
+    // Pascal `StrToInt(S)`: decimal, or a `$`-prefixed hex literal (the corpus
+    // form, e.g. `C1=$00FF00FF`). FPC also accepts `0x`; other radix prefixes are
+    // not part of the color contract and are left to the decimal/hex parse.
+    str_to_int(s)
+}
+
+/// Pascal RTL `StrToInt`, the subset the color parser needs: a plain decimal
+/// integer or a `$`/`0x`-prefixed hexadecimal literal.
+fn str_to_int(s: &str) -> Option<i32> {
+    let t = s.trim();
+    if let Some(hex) = t.strip_prefix('$') {
+        return u32::from_str_radix(hex, 16).ok().map(|v| v as i32);
+    }
+    if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        return u32::from_str_radix(hex, 16).ok().map(|v| v as i32);
+    }
+    t.parse::<i32>().ok()
+}
+
+/// Pascal `PlotOptions.ColorToHTML` (PlotOptions.pas:172): a TColor (`$00BBGGRR`)
+/// rendered `#RRGGBB` — `IntToHex(c and clRed, 2)` (red, low byte), then green
+/// (`and clLime shr 8`), then blue (`and clBlue shr 16`), each 2 uppercase hex
+/// digits.
+pub fn color_to_html(c: i32) -> String {
+    format!(
+        "#{:02X}{:02X}{:02X}",
+        c & 0xFF,
+        (c >> 8) & 0xFF,
+        (c >> 16) & 0xFF
+    )
+}
+
 /// Pascal `InterpretYesNo`: looks only at the first character —
 /// `y`/`t` → true, anything else → false. (The original reads `S[1]`
 /// unconditionally; an empty string is undefined behavior there and simply
@@ -899,6 +996,37 @@ mod tests {
         assert!(!interpret_yes_no(""));
         assert_eq!(str_y_or_n(true), "Yes");
         assert_eq!(str_y_or_n(false), "No");
+    }
+
+    #[test]
+    fn color_names_and_html() {
+        // The four names confirmed live against the pinned oracle + their HTML.
+        assert_eq!(
+            color_to_html(interpret_color_name("Blue").unwrap()),
+            "#0000FF"
+        );
+        assert_eq!(
+            color_to_html(interpret_color_name("Green").unwrap()),
+            "#008000"
+        );
+        assert_eq!(
+            color_to_html(interpret_color_name("Red").unwrap()),
+            "#FF0000"
+        );
+        assert_eq!(
+            color_to_html(interpret_color_name("Black").unwrap()),
+            "#000000"
+        );
+        // `$`-hex fallback (corpus `RunDSS_ckt7.dss:27` `C1=$00FF00FF`).
+        assert_eq!(
+            color_to_html(interpret_color_name("$00FF00FF").unwrap()),
+            "#FF00FF"
+        );
+        // Order-sensitivity: a bare "b" matches the FIRST prefix `black`, not
+        // `blue` (the Pascal if-else chain order).
+        assert_eq!(interpret_color_name("b"), Some(CL_BLACK));
+        // Invalid spec → None (caller emits #724 and uses clBlue).
+        assert_eq!(interpret_color_name("notacolor"), None);
     }
 
     #[test]

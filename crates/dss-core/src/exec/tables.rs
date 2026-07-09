@@ -196,6 +196,8 @@ pub(crate) mod cmd {
     pub const BATCH_EDIT: usize = 95;
     pub const RELCALC: usize = 100;
     pub const VAR: usize = 101;
+    pub const ADD_BUS_MARKER: usize = 85;
+    pub const CLEAR_BUS_MARKER: usize = 99;
     pub const GIS_COORDS: usize = 118;
     pub const CLEAR_ALL: usize = 119;
     pub const COMHELP: usize = 120;
@@ -338,8 +340,42 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     "NUMANodes",
 ];
 
+/// Pascal `TPlotOption` names in ordinal order (`PlotOptions.DefineOptions`),
+/// with the `__` stripped and the two renames `typ`→`type`, `obj`→`object`.
+/// Index `i` is `ParamPointer` `i + 1` (matched abbreviation-wise by the
+/// `plot_commands` `CommandList`). See `PlotOptions.pas:19-44/152-170`.
+pub(crate) const PLOT_OPTIONS: &[&str] = &[
+    "type",
+    "quantity",
+    "max",
+    "dots",
+    "labels",
+    "object",
+    "showloops",
+    "r3",
+    "r2",
+    "c1",
+    "c2",
+    "c3",
+    "channels",
+    "bases",
+    "subs",
+    "thickness",
+    "buslist",
+    "min",
+    "3phLinestyle",
+    "1phLinestyle",
+    "phases",
+    "profilescale",
+    "PlotID",
+];
+
 /// `TExecOption` ordinals the executive implements.
 pub(crate) mod opt {
+    /// `Set Daisysize=` (ExecOptions.pas Daisysize=76): the DSS-context
+    /// `DaisySize` written into the plot payload.
+    pub const DAISY_SIZE: usize = 76;
+
     pub const HOUR: usize = 3;
     pub const SEC: usize = 4;
     pub const YEAR: usize = 5;

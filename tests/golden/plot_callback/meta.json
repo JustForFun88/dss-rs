@@ -1,0 +1,92 @@
+{
+  "deck": [
+    "clear",
+    "new circuit.plotfix basekv=12.47 bus1=src",
+    "new line.l1 bus1=src bus2=b",
+    "new line.l2 bus1=b bus2=c",
+    "new transformer.tr1 phases=3 windings=2 buses=(c, d) conns=(wye,wye) kvs=(12.47,4.16) kvas=(1000,1000) xhl=5",
+    "new load.ld1 bus1=d phases=3 kv=4.16 kw=100",
+    "solve"
+  ],
+  "variants": [
+    {
+      "stem": "circuit_power",
+      "cmds": [
+        "plot type=circuit quantity=Power Max=2000 dots=n labels=n subs=y C1=Blue 1phlinestyle=3"
+      ]
+    },
+    {
+      "stem": "circuit_voltage",
+      "cmds": [
+        "plot type=circuit quantity=Voltage Max=0.95"
+      ]
+    },
+    {
+      "stem": "circuit_losses_hex",
+      "cmds": [
+        "plot circuit Losses Max=.02 dots=y C1=$00FF00FF"
+      ]
+    },
+    {
+      "stem": "profile_default",
+      "cmds": [
+        "plot type=profile phases=default"
+      ]
+    },
+    {
+      "stem": "profile_all",
+      "cmds": [
+        "plot type=profile phases=all"
+      ]
+    },
+    {
+      "stem": "profile_primary",
+      "cmds": [
+        "plot type=profile phases=primary"
+      ]
+    },
+    {
+      "stem": "monitor",
+      "cmds": [
+        "plot type=monitor object=m1 channels=(1,3,5) base=[7200 7200 7200]"
+      ]
+    },
+    {
+      "stem": "daisy",
+      "cmds": [
+        "plot type=daisy"
+      ]
+    },
+    {
+      "stem": "losses_loadshape",
+      "cmds": [
+        "plot type=Losses"
+      ]
+    },
+    {
+      "stem": "busmarkers",
+      "cmds": [
+        "AddBusMarker Bus=b code=5 color=Red size=3",
+        "plot type=circuit quantity=Power Max=2000 subs=y C1=Blue 1phlinestyle=3"
+      ]
+    },
+    {
+      "stem": "visualize_power",
+      "cmds": [
+        "visualize powers Transformer.tr1"
+      ]
+    },
+    {
+      "stem": "visualize_current",
+      "cmds": [
+        "visualize current Line.l1"
+      ]
+    },
+    {
+      "stem": "visualize_voltage",
+      "cmds": [
+        "visualize voltage Line.l1"
+      ]
+    }
+  ]
+}
