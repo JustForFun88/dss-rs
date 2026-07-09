@@ -785,7 +785,10 @@ fn mmf_sngfile_fixed_matches_non_mmf() {
     let (_c, mut plain, _) = edited(&[("npts", "8"), ("interval", "1")]);
     plain.read_sng_file(&bytes);
 
-    for h in 1..=8 {
+    for (h, &v) in (1..=8).zip(vals.iter()) {
+        // Audit settlement: pin the exact f32→f64 widenings from the known
+        // bytes, not only Rust-vs-Rust reader agreement.
+        assert_eq!(mmf.get_mult_at_hour(h as f64).re, v as f64, "hour {h} MMF");
         assert_eq!(
             mmf.get_mult_at_hour(h as f64).re,
             plain.get_mult_at_hour(h as f64).re,
@@ -810,7 +813,8 @@ fn mmf_dblfile_fixed_matches_non_mmf() {
     let (_c, mut plain, _) = edited(&[("npts", "6"), ("interval", "1")]);
     plain.read_dbl_file(&bytes);
 
-    for h in 1..=6 {
+    for (h, &v) in (1..=6).zip(vals.iter()) {
+        assert_eq!(mmf.get_mult_at_hour(h as f64).re, v, "hour {h} exact f64");
         assert_eq!(
             mmf.get_mult_at_hour(h as f64).re,
             plain.get_mult_at_hour(h as f64).re
@@ -821,8 +825,14 @@ fn mmf_dblfile_fixed_matches_non_mmf() {
 
 /// A.4 accept-set quirk (TODO(compat)): the MMF text reader keeps only bytes
 /// `[46,58)`, dropping sign / `+` / exponent, and defaults empty → 1.0. So
-/// `-0.5`→0.5, `1.5e-3`→1.53, blank line → 1.0 (hand-computed from Pascal
-/// `InterpretDblArrayMMF`; the non-MM CSV reader would honour sign/exponent).
+/// `-0.5`→0.5, `1.5e-3`→1.53, blank line → 1.0. Precision note (audit
+/// settlement): only row 0 is byte-for-byte what Pascal would read — Pascal
+/// indexes records by the FIRST line's byte stride (`mmLineLen`,
+/// `LoadShape.pas:609-615`), so this non-uniform-width input is upstream UB
+/// past row 0 (misaligned reads); the port reads line-by-line (documented
+/// divergence). What this test pins is the accept-set CHAR FILTER, which
+/// matches Pascal `:1361-1400` exactly; uniform-width files (every valid MMF
+/// fixture) are oracle-gated by the `shape_mmf` deck.
 #[test]
 fn mmf_plaintext_accept_set_quirk() {
     let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "3"), ("interval", "1")]);
@@ -947,4 +957,31 @@ fn non_mmf_file_directive_is_loud_not_ported() {
         "expected a WPG.1 not-ported error, got {:?}",
         dss.errors()
     );
+}
+
+/// Audit settlement (Major): Pascal `SetMaxPandQ` exits FIRST under
+/// `UseMMF or ExternalMemory` (`LoadShape.pas:2048`), leaving `MaxP`/`MaxQ`
+/// at the constructor defaults 1.0/0.0 — oracle-confirmed (`? pmax = 1`,
+/// `? qmax = 0` for every MMF shape). A dropped guard mis-scales any
+/// `useactual` load fed by an MMF shape.
+#[test]
+fn mmf_leaves_max_p_and_q_at_defaults() {
+    let dir = std::env::temp_dir().join(format!("dss_mmf_pmax_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("pk.csv");
+    std::fs::write(&f, "1, 0.40, 0.10\n2, 0.55, 0.30\n3, 0.75, 0.20\n").unwrap();
+    use crate::exec::Dss;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command(&format!(
+        "New LoadShape.mm npts=3 interval=1 memorymapping=yes pqcsvfile=\"{}\"",
+        f.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? Loadshape.mm.pmax");
+    assert_eq!(dss.result(), "1", "MMF leaves MaxP at the 1.0 default");
+    dss.command("? Loadshape.mm.qmax");
+    assert_eq!(dss.result(), "0", "MMF leaves MaxQ at the 0.0 default");
+    std::fs::remove_dir_all(&dir).ok();
 }

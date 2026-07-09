@@ -9,6 +9,27 @@
 
 Last updated: 2026-07-09.
 
+**MMF audit settlement (2026-07-09; audit-code found 1 real Major, fixed).**
+The port had dropped Pascal's `if UseMMF or ExternalMemory then Exit` guard at
+the head of `SetMaxPandQ` (`LoadShape.pas:2048`), so `MaxP`/`MaxQ` were
+recomputed from the eager MMF data (port 5.01/0.65 vs oracle 1/0 on the
+`ls_pq` shape) — a latent mis-scale for any `useactual` load fed by an MMF
+shape. **Fixed** (`compute.rs::set_max_p_and_q` early-returns on `use_mmf`),
+pinned three ways: `pmax`/`qmax` added to the `ls_pq` manifest probe (live
+oracle-compared), a new unit test (`mmf_leaves_max_p_and_q_at_defaults`,
+peak≠1 fixture), and the guard comment cites the oracle probe. audit-tests
+Minors settled: both new WPG.17 decks (`xycurve_files`, `shape_mmf`) added to
+the `MODES_REQUIRED` anti-deletion floor; the sng/dbl MMF equivalence unit
+tests now also pin the exact widened f64 values from the known bytes (were
+Rust-vs-Rust only); the accept-set test doc corrected (only row 0 of the
+non-uniform input is Pascal-faithful — past row 0 upstream is stride-misaligned
+UB; the test pins the char filter, uniform files are deck-gated). Accepted:
+the deck's `Get totaltime` line is non-gating decoration (wall-clock timers are
+never numerically compared — documented in the manifest note). Open follow-up
+(loud, honest): `Action=SngSave/DblSave` on an MMF shape keeps the trio-era
+NOT_PORTED refusal — removing it needs an oracle probe of the MMF-save Q-side
+semantics (`Assigned(dQ)` under MMF) before the bytes can be trusted.
+
 **WPG.17 port: LoadShape MemoryMapping + Set/Get TotalTime (2026-07-09).**
 Ported the two former `master_ckt24` blockers. **(a) LoadShape `MemoryMapping=Yes`**
 (`LoadShape.pas`): the MMF file readers (`sngfile`/`dblfile`/`csvfile`/`pqcsvfile`

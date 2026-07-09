@@ -143,7 +143,9 @@
      "props": [
       "npts",
       "mult",
-      "qmult"
+      "qmult",
+      "pmax",
+      "qmax"
      ]
     }
    ],
