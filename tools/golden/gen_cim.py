@@ -39,6 +39,7 @@ from gen_checkpoints import check_pin  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DECKS_DIR = REPO_ROOT / "tools" / "golden" / "cim_decks"
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "cim"
+CORPUS = REPO_ROOT / "tests" / "corpus" / "electricdss-tst"
 
 # One case per Stage (A-F); each names a deck file under `cim_decks/` and the
 # circuit name that deck declares (`New Circuit.<name>` -- also the
@@ -49,6 +50,22 @@ CASES = [
     {"deck": "cim_load.dss", "circuit": "cim_load"},
     {"deck": "cim_lines.dss", "circuit": "cim_lines"},
     {"deck": "cim_shunt.dss", "circuit": "cim_shunt"},
+    {"deck": "cim_xfmr.dss", "circuit": "cim_xfmr"},
+    # Corpus feeder cases (Stage E): compile the vendored master, CIM-export the
+    # whole real feeder. IEEE13 = case-1 (sub/XFM1) + case-3 (3 single-phase
+    # regulators) + RegControl + 37 ACLineSegments (Stage C catalog).
+    {
+        "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+        "circuit": "IEEE13Nodeckt",
+    },
+    # IEEE123: the master only *defines* the feeder (no Solve), so a post-compile
+    # `solve` is issued (buscoords are omitted → PositionPoints default to 0,0 on
+    # both engines). 7 regulators (case-3 synthesized codes), an XFM1, 16 switches.
+    {
+        "master": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+        "circuit": "ieee123",
+        "post": ["solve"],
+    },
 ]
 
 
@@ -71,15 +88,21 @@ def _rewrite_uuids_to_fixture(export_uuids_text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _run_deck(d, deck_path: Path) -> None:
+def _run_deck(d, deck_path: Path, post: list[str]) -> None:
     d.Text.Command = "clear"
     d.Text.Command = f'compile "{deck_path.as_posix()}"'
+    # Post-compile commands (e.g. `solve` for a corpus master that only defines
+    # the feeder) run against the master's datapath, before it is redirected.
+    for cmd in post:
+        d.Text.Command = cmd
 
 
-def _produce_cim100(d, deck_path: Path, circuit: str, tmp: str, fixture_path: Path) -> str:
+def _produce_cim100(
+    d, deck_path: Path, circuit: str, tmp: str, fixture_path: Path, post: list[str]
+) -> str:
     """One (b)/(c)-style run: fresh compile, preload the fixture, export
     CIM100, return the produced bytes (LF-normalized)."""
-    _run_deck(d, deck_path)
+    _run_deck(d, deck_path, post)
     d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
     d.Text.Command = f'uuids file="{fixture_path.as_posix()}"'
     d.Text.Command = "export cim100"
@@ -89,15 +112,24 @@ def _produce_cim100(d, deck_path: Path, circuit: str, tmp: str, fixture_path: Pa
     return matches[0].read_text()  # universal newlines -> LF
 
 
+def _compile_target(case: dict) -> Path:
+    """The file `compile` runs: a corpus feeder master (`master` key, relative to
+    `tests/corpus/electricdss-tst`) or a local micro deck (`deck` key)."""
+    if "master" in case:
+        return (CORPUS / case["master"]).resolve()
+    return DECKS_DIR / case["deck"]
+
+
 def gen_case(d, case: dict) -> None:
-    deck_path = DECKS_DIR / case["deck"]
+    deck_path = _compile_target(case)
     circuit = case["circuit"]
+    post = case.get("post", [])
     assert deck_path.is_file(), f"missing deck: {deck_path}"
 
     # --- process 1: compute + capture the fixture ------------------------
     tmp1 = tempfile.mkdtemp(prefix="dss_gen_cim_")
     try:
-        _run_deck(d, deck_path)
+        _run_deck(d, deck_path, post)
         d.Text.Command = f'set datapath="{tmp1.replace(chr(92), "/")}"'
         d.Text.Command = "export cim100"  # discarded; populates the hashed-key list
         d.Text.Command = "export uuids"
@@ -116,7 +148,7 @@ def gen_case(d, case: dict) -> None:
     # --- process 2: produce the golden ------------------------------------
     tmp2 = tempfile.mkdtemp(prefix="dss_gen_cim_")
     try:
-        golden = _produce_cim100(d, deck_path, circuit, tmp2, fixture_path)
+        golden = _produce_cim100(d, deck_path, circuit, tmp2, fixture_path, post)
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp2, ignore_errors=True)
@@ -124,7 +156,7 @@ def gen_case(d, case: dict) -> None:
     # --- process 3: fixture-completeness proof ----------------------------
     tmp3 = tempfile.mkdtemp(prefix="dss_gen_cim_")
     try:
-        repeat = _produce_cim100(d, deck_path, circuit, tmp3, fixture_path)
+        repeat = _produce_cim100(d, deck_path, circuit, tmp3, fixture_path, post)
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp3, ignore_errors=True)
@@ -141,10 +173,15 @@ def gen_case(d, case: dict) -> None:
     meta = {
         "report": "cim100",
         "circuit": circuit,
-        "deck": case["deck"],
         "fixture": f"{circuit}_fixture.csv",
         "suffix": "CIM100x.xml",
     }
+    if "master" in case:
+        meta["master"] = case["master"]
+        if case.get("post"):
+            meta["post"] = case["post"]
+    else:
+        meta["deck"] = case["deck"]
     (OUT_DIR / f"{circuit}.meta.json").write_text(json.dumps(meta, indent=2) + "\n", newline="\n")
     print(
         f"wrote {circuit}.xml ({len(golden)} bytes, {golden.count(chr(10))} lines), "

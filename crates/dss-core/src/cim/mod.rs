@@ -17,6 +17,7 @@
 mod tests;
 
 pub(crate) mod export;
+pub(crate) mod power_xfmr;
 pub(crate) mod writer;
 
 use crate::support::hashlist::HashList;

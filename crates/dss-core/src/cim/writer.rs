@@ -189,6 +189,40 @@ pub fn shunt_connection_kind_node(buf: &mut String, prf: ProfileChoice, root: &s
     );
 }
 
+/// Pascal `TCIMExporterHelper.WindingConnectionKindNode` (`ExportCIMXML.pas:
+/// 1620`): `<cim:PowerTransformerEnd.connectionKind rdf:resource="…#
+/// WindingConnection.<val>"/>` (D, Y, Z, Yn, Zn, A, I).
+pub fn winding_connection_kind_node(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:PowerTransformerEnd.connectionKind rdf:resource="{CIM_NS}#WindingConnection.{val}"/>"#
+        ),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.WindingConnectionEnum` (`ExportCIMXML.pas:1440`):
+/// `<cim:TransformerEndInfo.connectionKind rdf:resource="…#WindingConnection.
+/// <val>"/>` — the `TransformerEndInfo` (catalog) counterpart of
+/// [`winding_connection_kind_node`].
+pub fn winding_connection_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
+    write_cim_ln(
+        buf,
+        prf,
+        &format!(
+            r#"  <cim:TransformerEndInfo.connectionKind rdf:resource="{CIM_NS}#WindingConnection.{val}"/>"#
+        ),
+    );
+}
+
+/// Pascal `TCIMExporterHelper.TransformerControlEnum` (`ExportCIMXML.pas:1482`):
+/// the `RatioTapChanger.tculControlMode` line is **commented out** upstream, so
+/// this emits **nothing**. Kept as a call site (a no-op) to mirror the Pascal
+/// flow 1:1 (`ExportCIMXML.pas:4252` calls `TransformerControlEnum(FunPrf,
+/// 'volt')`).
+pub fn transformer_control_enum(_buf: &mut String, _prf: ProfileChoice, _val: &str) {}
+
 /// Pascal `TCIMExporterHelper.RegulatingControlEnum` (`ExportCIMXML.pas:1434`):
 /// `<cim:RegulatingControl.mode rdf:resource="…#RegulatingControlModeKind.<val>"/>`.
 pub fn regulating_control_enum(buf: &mut String, prf: ProfileChoice, val: &str) {
@@ -235,10 +269,33 @@ pub fn op_lim_v_name(val: f64) -> String {
     format!("OpLimV_{val:.4}")
 }
 
+/// FPC `FloatToStrF(v, ffFixed, 6, decimals)` reproduced faithfully for the CIM
+/// device-UUID *names* (which are byte-compared, unlike the tolerance-parsed
+/// report cells). The one place it differs from Rust's native `{v:.N}` is the
+/// **exact-tie** case: FPC rounds ties **away from zero**, Rust's formatter ties
+/// **to even**. `f64::round()` is ties-away, so scale → round → rebuild the
+/// string from the scaled integer (a second `{:.N}` could re-round). The 6-sig
+/// `Precision` is a no-op for the CIM magnitudes (amps < 1e5 at 1 decimal), so it
+/// is not modelled. Oracle-proven 2026-07-09: IEEE13's regulator EmergAmps =
+/// 2499/2.4 = **exactly** 1041.25 → oracle `1041.3`, native `{:.1}` → `1041.2`.
+fn ff_fixed(v: f64, decimals: usize) -> String {
+    let factor = 10u64.pow(decimals as u32);
+    let scaled = (v.abs() * factor as f64).round() as u64;
+    let sign = if v < 0.0 && scaled != 0 { "-" } else { "" };
+    let int_part = scaled / factor;
+    if decimals == 0 {
+        format!("{sign}{int_part}")
+    } else {
+        let frac = scaled % factor;
+        format!("{sign}{int_part}.{frac:0>decimals$}")
+    }
+}
+
 /// Pascal `GetOpLimIName` (`ExportCIMXML.pas:1330`): `FloatToStrF(_, ffFixed, 6,
-/// 1)` for both operands, joined by `_`.
+/// 1)` for both operands, joined by `_` (FPC ties-away rounding — see
+/// [`ff_fixed`]).
 pub fn op_lim_i_name(norm: f64, emerg: f64) -> String {
-    format!("OpLimI_{norm:.1}_{emerg:.1}")
+    format!("OpLimI_{}_{}", ff_fixed(norm, 1), ff_fixed(emerg, 1))
 }
 
 /// Pascal `IsGroundBus` (`ExportCIMXML.pas:2025`): `True` (ground) unless the raw
