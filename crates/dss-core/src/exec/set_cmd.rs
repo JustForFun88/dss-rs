@@ -545,6 +545,57 @@ impl Dss {
                             *daisy_size = v;
                         }
                     }
+                    // The GUI plot-marker style options (`ExecOptions.pas:615-682`):
+                    // Circuit fields flowing into the plot payload's `Markers`
+                    // object (WPG.17 Plot audit settlement) — headless-inert.
+                    opt::MARK_SWITCHES => ckt.mark_switches = interpret_yes_no(&param),
+                    opt::MARK_TRANSFORMERS => ckt.mark_transformers = interpret_yes_no(&param),
+                    opt::MARK_CAPACITORS => ckt.mark_capacitors = interpret_yes_no(&param),
+                    opt::MARK_REGULATORS => ckt.mark_regulators = interpret_yes_no(&param),
+                    opt::MARK_PVSYSTEMS => ckt.mark_pv_systems = interpret_yes_no(&param),
+                    opt::MARK_STORAGE => ckt.mark_storage = interpret_yes_no(&param),
+                    opt::MARK_FUSES => ckt.mark_fuses = interpret_yes_no(&param),
+                    opt::MARK_RECLOSERS => ckt.mark_reclosers = interpret_yes_no(&param),
+                    opt::MARK_RELAYS => ckt.mark_relays = interpret_yes_no(&param),
+                    opt::SWITCH_MARKER_CODE
+                    | opt::TRANS_MARKER_CODE
+                    | opt::TRANS_MARKER_SIZE
+                    | opt::CAP_MARKER_CODE
+                    | opt::REG_MARKER_CODE
+                    | opt::PV_MARKER_CODE
+                    | opt::STORE_MARKER_CODE
+                    | opt::CAP_MARKER_SIZE
+                    | opt::REG_MARKER_SIZE
+                    | opt::PV_MARKER_SIZE
+                    | opt::STORE_MARKER_SIZE
+                    | opt::FUSE_MARKER_CODE
+                    | opt::FUSE_MARKER_SIZE
+                    | opt::RECLOSER_MARKER_CODE
+                    | opt::RECLOSER_MARKER_SIZE
+                    | opt::RELAY_MARKER_CODE
+                    | opt::RELAY_MARKER_SIZE => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            *match pointer {
+                                opt::SWITCH_MARKER_CODE => &mut ckt.switch_marker_code,
+                                opt::TRANS_MARKER_CODE => &mut ckt.trans_marker_code,
+                                opt::TRANS_MARKER_SIZE => &mut ckt.trans_marker_size,
+                                opt::CAP_MARKER_CODE => &mut ckt.cap_marker_code,
+                                opt::REG_MARKER_CODE => &mut ckt.reg_marker_code,
+                                opt::PV_MARKER_CODE => &mut ckt.pv_marker_code,
+                                opt::STORE_MARKER_CODE => &mut ckt.store_marker_code,
+                                opt::CAP_MARKER_SIZE => &mut ckt.cap_marker_size,
+                                opt::REG_MARKER_SIZE => &mut ckt.reg_marker_size,
+                                opt::PV_MARKER_SIZE => &mut ckt.pv_marker_size,
+                                opt::STORE_MARKER_SIZE => &mut ckt.store_marker_size,
+                                opt::FUSE_MARKER_CODE => &mut ckt.fuse_marker_code,
+                                opt::FUSE_MARKER_SIZE => &mut ckt.fuse_marker_size,
+                                opt::RECLOSER_MARKER_CODE => &mut ckt.recloser_marker_code,
+                                opt::RECLOSER_MARKER_SIZE => &mut ckt.recloser_marker_size,
+                                opt::RELAY_MARKER_CODE => &mut ckt.relay_marker_code,
+                                _ => &mut ckt.relay_marker_size,
+                            } = v;
+                        }
+                    }
                     opt::NEGLECT_LOAD_Y => ckt.neglect_load_y = interpret_yes_no(&param),
                     opt::MIN_ITERATIONS => {
                         if let Some(v) = get_int(parser, vars, errors) {

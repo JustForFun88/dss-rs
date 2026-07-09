@@ -241,7 +241,11 @@ impl Dss {
                         let n = n.min(51);
                         p.channels = buf[..n]
                             .iter()
-                            .map(|v| v.round_ties_even() as u32)
+                            // FPC `Round` (banker's) into an `array of Cardinal`:
+                            // a negative wraps modulo 2^32 (range checks off
+                            // upstream), so go through i64 — `as u32` alone
+                            // would saturate to 0 (audit settlement).
+                            .map(|v| (v.round_ties_even() as i64) as u32)
                             .collect();
                         p.bases = vec![1.0; n];
                     }

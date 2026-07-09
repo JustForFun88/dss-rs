@@ -262,3 +262,77 @@ fn visualize_unsolved_guard() {
         dss.errors()
     );
 }
+
+/// The solution guard covers every guarded first letter (`A C D G M P Z`,
+/// `PlotOptions.pas:236`) — not only `C` (audit settlement: only the C path
+/// was unit-covered).
+#[test]
+fn unsolved_guard_covers_all_guarded_types() {
+    for ty in [
+        "auto", "circuit", "daisy", "general", "meter", "profile", "zone",
+    ] {
+        let (mut dss, cap) = dss_with_capture();
+        dss.command("new circuit.t basekv=12.47 bus1=src");
+        dss.command("new line.l1 bus1=src bus2=b");
+        dss.command(&format!("plot type={ty}"));
+        assert!(
+            cap.borrow().is_empty(),
+            "type={ty}: unsolved guard must suppress the callback"
+        );
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("must be solved before")),
+            "type={ty}: expected #24732, got {:?}",
+            dss.errors()
+        );
+    }
+}
+
+/// `channels=` caps at 51 values (Pascal `DblBuffer[0..50]`) and a negative
+/// entry wraps like FPC `Round` into `Cardinal` (audit settlement — `as u32`
+/// alone would saturate to 0).
+#[test]
+fn channels_cap_and_negative_wrap() {
+    let (mut dss, cap) = dss_with_capture();
+    solved_circuit(&mut dss);
+    let many: Vec<String> = (1..=60).map(|i| i.to_string()).collect();
+    dss.command(&format!(
+        "plot type=monitor object=m1 channels=({})",
+        many.join(",")
+    ));
+    let v = only_payload(&cap);
+    let ch = v["Channels"].as_array().expect("Channels array");
+    assert_eq!(ch.len(), 51, "channel list caps at 51");
+
+    cap.borrow_mut().clear();
+    dss.command("plot type=monitor object=m1 channels=(1,-2,3)");
+    let g = cap.borrow();
+    let v: serde_json::Value = serde_json::from_str(&g[0]).unwrap();
+    let ch = v["Channels"].as_array().unwrap();
+    assert_eq!(ch[1].as_u64(), Some(4294967294), "-2 wraps modulo 2^32");
+}
+
+/// The marker-style `Set` handlers (audit settlement) drive the payload's
+/// `Markers` object; `Get` echoes them back (`ExecOptions.pas:615-682/978-1041`).
+#[test]
+fn marker_set_options_reach_payload_and_get() {
+    let (mut dss, cap) = dss_with_capture();
+    solved_circuit(&mut dss);
+    dss.command("Set MarkTransformers=yes TransMarkerCode=12 TransMarkerSize=4");
+    dss.command("Set MarkFuses=yes FuseMarkerCode=25 RelayMarkerSize=9");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("plot type=circuit");
+    let v = only_payload(&cap);
+    let m = &v["Markers"];
+    assert_eq!(m["MarkTransformers"], true);
+    assert_eq!(m["TransMarkerCode"], 12);
+    assert_eq!(m["TransMarkerSize"], 4);
+    assert_eq!(m["MarkFuses"], true);
+    assert_eq!(m["FuseMarkerCode"], 25);
+    assert_eq!(m["RelayMarkerSize"], 9);
+    assert_eq!(m["MarkSwitches"], false, "untouched fields keep defaults");
+
+    dss.command("get MarkTransformers TransMarkerCode FuseMarkerCode Daisysize");
+    assert_eq!(dss.result(), "Yes, 12, 25, 1");
+}

@@ -28,6 +28,7 @@ impl Dss {
             enums,
             errors,
             default_base_freq,
+            daisy_size,
             last_result,
             ..
         } = self;
@@ -212,6 +213,67 @@ impl Dss {
                 // Pascal `ExecOptions.pas:959/961` (the plot-marker echoes).
                 opt::MARKER_CODE => append_result(&mut result, &ckt.node_marker_code.to_string()),
                 opt::NODE_WIDTH => append_result(&mut result, &ckt.node_marker_width.to_string()),
+                // The GUI plot-marker style echoes (`ExecOptions.pas:978-1041`,
+                // WPG.17 Plot audit settlement); DaisySize is `%-.6g` (`:983`).
+                opt::DAISY_SIZE => {
+                    append_result(&mut result, &crate::report::format::g(*daisy_size, 6))
+                }
+                opt::MARK_SWITCHES => append_result(&mut result, yes_no(ckt.mark_switches)),
+                opt::MARK_TRANSFORMERS => append_result(&mut result, yes_no(ckt.mark_transformers)),
+                opt::MARK_CAPACITORS => append_result(&mut result, yes_no(ckt.mark_capacitors)),
+                opt::MARK_REGULATORS => append_result(&mut result, yes_no(ckt.mark_regulators)),
+                opt::MARK_PVSYSTEMS => append_result(&mut result, yes_no(ckt.mark_pv_systems)),
+                opt::MARK_STORAGE => append_result(&mut result, yes_no(ckt.mark_storage)),
+                opt::MARK_FUSES => append_result(&mut result, yes_no(ckt.mark_fuses)),
+                opt::MARK_RECLOSERS => append_result(&mut result, yes_no(ckt.mark_reclosers)),
+                opt::MARK_RELAYS => append_result(&mut result, yes_no(ckt.mark_relays)),
+                opt::SWITCH_MARKER_CODE => {
+                    append_result(&mut result, &ckt.switch_marker_code.to_string())
+                }
+                opt::TRANS_MARKER_CODE => {
+                    append_result(&mut result, &ckt.trans_marker_code.to_string())
+                }
+                opt::TRANS_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.trans_marker_size.to_string())
+                }
+                opt::CAP_MARKER_CODE => {
+                    append_result(&mut result, &ckt.cap_marker_code.to_string())
+                }
+                opt::REG_MARKER_CODE => {
+                    append_result(&mut result, &ckt.reg_marker_code.to_string())
+                }
+                opt::PV_MARKER_CODE => append_result(&mut result, &ckt.pv_marker_code.to_string()),
+                opt::STORE_MARKER_CODE => {
+                    append_result(&mut result, &ckt.store_marker_code.to_string())
+                }
+                opt::CAP_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.cap_marker_size.to_string())
+                }
+                opt::REG_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.reg_marker_size.to_string())
+                }
+                opt::PV_MARKER_SIZE => append_result(&mut result, &ckt.pv_marker_size.to_string()),
+                opt::STORE_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.store_marker_size.to_string())
+                }
+                opt::FUSE_MARKER_CODE => {
+                    append_result(&mut result, &ckt.fuse_marker_code.to_string())
+                }
+                opt::FUSE_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.fuse_marker_size.to_string())
+                }
+                opt::RECLOSER_MARKER_CODE => {
+                    append_result(&mut result, &ckt.recloser_marker_code.to_string())
+                }
+                opt::RECLOSER_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.recloser_marker_size.to_string())
+                }
+                opt::RELAY_MARKER_CODE => {
+                    append_result(&mut result, &ckt.relay_marker_code.to_string())
+                }
+                opt::RELAY_MARKER_SIZE => {
+                    append_result(&mut result, &ckt.relay_marker_size.to_string())
+                }
                 opt::LOG => append_result(&mut result, yes_no(ckt.log_events)),
                 opt::DEFAULT_BASE_FREQUENCY => {
                     append_result(&mut result, &(default_base_freq.round() as i64).to_string())
