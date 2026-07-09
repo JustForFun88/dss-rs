@@ -295,6 +295,12 @@ impl ClassProps {
                 ))
             }
             PropType::DoubleArray => {
+                // Pascal `CustomSetRaw`: a class may consume the raw value
+                // before numeric parsing (LoadShape's `mult=(sngfile=…)` MMF
+                // directives). If it does, skip `InterpretDblArray` entirely.
+                if obj.set_f64_array_raw(idx, value) {
+                    return Ok(0);
+                }
                 let max = obj.get_i32(pd.size_prop).max(0) as usize;
                 let mut buf = vec![0.0; max];
                 interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;

@@ -288,6 +288,18 @@ impl Dss {
                 opt::MIN_ITERATIONS => {
                     append_result(&mut result, &ckt.solution.min_iterations.to_string())
                 }
+                // Pascal `ExecOptions.pas:1042-1047`: the wall-clock solve
+                // timers (microseconds). Non-deterministic after a solve; `0`
+                // on a fresh circuit / after `set totaltime=0`.
+                opt::PROCESS_TIME => {
+                    append_result(&mut result, &float_to_str(ckt.solution.solve_time_elapsed))
+                }
+                opt::TOTAL_TIME => {
+                    append_result(&mut result, &float_to_str(ckt.solution.total_time_elapsed))
+                }
+                opt::STEP_TIME => {
+                    append_result(&mut result, &float_to_str(ckt.solution.step_time_elapsed))
+                }
                 _ => {
                     let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
                     errors.push(format!("Get option \"{name}\" is not ported yet."));

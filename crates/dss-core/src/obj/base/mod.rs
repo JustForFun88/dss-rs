@@ -276,6 +276,38 @@ pub struct FileLoad {
     /// [`DssObject::apply_binary_file_load`]); `false` for a line-oriented text
     /// read (`CSVFile`/`PQCSVFile`, dispatched to [`DssObject::apply_file_load`]).
     pub binary: bool,
+    /// When `Some`, this is a raw memory-mapped array directive from a
+    /// `mult=(sngfile=…)` / `qmult=(file=…)` command (LoadShape `CustomSetRaw`
+    /// under `MemoryMapping=Yes`, `LoadShape.pas:756-800`). The file kind /
+    /// column / P-vs-Q side are not encoded by [`Self::prop`] there, so they
+    /// travel here. Always read as bytes (`binary = true`); text kinds decode
+    /// per line. `None` for the ordinary file-property loads
+    /// (`SngFile`/`DblFile`/`CSVFile`/`PQCSVFile`), whose MMF handling the
+    /// readers key off `prop` + the object's `use_mmf` flag.
+    pub mmf: Option<MmfLoad>,
+}
+
+/// The three memory-mapped LoadShape file kinds (Pascal `TLSFileType`,
+/// `LoadShape.pas:126`): plain-text CSV/txt, little-endian `f64`, `f32`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MmfKind {
+    /// `file=` — ANSI text, one record per fixed-width line.
+    Text,
+    /// `dblfile=` — little-endian `f64` stream.
+    Float64,
+    /// `sngfile=` — little-endian `f32` stream (widened to `f64`).
+    Float32,
+}
+
+/// Metadata for a raw MMF array directive (see [`FileLoad::mmf`]).
+#[derive(Debug, Clone)]
+pub struct MmfLoad {
+    /// The record kind parsed from the directive's first token.
+    pub kind: MmfKind,
+    /// 1-based comma-delimited column for [`MmfKind::Text`] (`file=… column=N`).
+    pub column: i32,
+    /// `true` when the directive came from `qmult=` (store into `dQ`), else `dP`.
+    pub qside: bool,
 }
 
 impl FileLoad {
@@ -285,6 +317,7 @@ impl FileLoad {
             prop,
             filename: filename.into(),
             binary: false,
+            mmf: None,
         }
     }
     /// A binary (raw byte stream, `SngFile`/`DblFile`) deferred load.
@@ -293,6 +326,17 @@ impl FileLoad {
             prop,
             filename: filename.into(),
             binary: true,
+            mmf: None,
+        }
+    }
+    /// A raw memory-mapped array directive (`mult=(sngfile=…)`) load; always
+    /// read as bytes and dispatched to [`DssObject::apply_binary_file_load`].
+    pub fn mmf_raw(prop: usize, filename: impl Into<String>, mmf: MmfLoad) -> Self {
+        Self {
+            prop,
+            filename: filename.into(),
+            binary: true,
+            mmf: Some(mmf),
         }
     }
 }
@@ -385,6 +429,27 @@ pub trait DssObject {
     }
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         unreachable!("set_f64_array not implemented for property {idx}")
+    }
+
+    /// Pascal per-class `CustomSetRaw` hook for a `DoubleArray` property: given
+    /// the raw property value *before* numeric parsing, the object may consume
+    /// it directly and return `true` to skip [`Self::set_f64_array`] +
+    /// `ParseAsVector`. Only LoadShape overrides it — to intercept the
+    /// `mult=(sngfile=…)` / `file=…` / `dblfile=…` file directives that the
+    /// numeric parser cannot read (`LoadShape.pas:746-811`). Default: `false`
+    /// (the value flows to the normal numeric path unchanged).
+    fn set_f64_array_raw(&mut self, idx: usize, raw: &str) -> bool {
+        let _ = (idx, raw);
+        false
+    }
+
+    /// Pascal `GetPropertyValue` override for a `DoubleArray` property: when
+    /// the array is backed by a memory-mapped file, the dump is the original
+    /// directive `(<mmFileCmd>)`, not the numeric values (`LoadShape.pas:1846-
+    /// 1867`). `None` renders the normal numeric array. Only LoadShape overrides.
+    fn f64_array_dump_override(&self, idx: usize) -> Option<String> {
+        let _ = idx;
+        None
     }
     /// `IntegerArrayProperty` read (e.g. a capacitor `States`); `None` mirrors a
     /// NIL Pascal array pointer (dumps as an empty string).

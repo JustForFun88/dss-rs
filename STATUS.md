@@ -9,6 +9,29 @@
 
 Last updated: 2026-07-09.
 
+**WPG.17 port: LoadShape MemoryMapping + Set/Get TotalTime (2026-07-09).**
+Ported the two former `master_ckt24` blockers. **(a) LoadShape `MemoryMapping=Yes`**
+(`LoadShape.pas`): the MMF file readers (`sngfile`/`dblfile`/`csvfile`/`pqcsvfile`
+properties + the raw `mult=(sngfile=…)` `CustomSetRaw` directive) now *eager-read*
+the whole file into the f64 `p_mult`/`q_mult` with the MMF-path semantics —
+`InterpretDblArrayMMF` text accept-set (`[46,58)`, drops sign/exponent →
+`TODO(compat)`), `sngfile` widened into `dP` (f64, not `sP`), no `NumPoints`
+shrink, the `(<mmFileCmd>)` property round-trip incl. the PQ display quirk
+(`mult`→`(file=… column=2)`, `qmult`→`()`). The actual mmap I/O is not ported (no
+observable numerics); single-column `csvfile=` under MMF is an upstream
+div-by-zero (not reproduced). New hooks `DssObject::set_f64_array_raw` /
+`f64_array_dump_override` (default no-op; only LoadShape opts in) on the
+`DoubleArray` arm. **(b) `Set/Get processtime|totaltime|steptime`**
+(`ExecOptions.pas:106-108`): only `totaltime` is settable; `processtime`/`steptime`
+are Get-only no-ops on Set. The wall-clock timers are NOT accumulated (stay 0, per
+the monitor channels-11/12 convention) — only the deterministic round-trip is
+gated. **Deck:** new self-contained `tests/corpus/modes/shape_mmf/` (sng/dbl/raw
+MMF + a pq shape whose exponent P column makes MMF observably differ from non-MM);
+oracle-proven (converges; 2-process bit-identical fingerprint; feature-sensitive)
+and live-matched. `master_ckt24.dss` retagged `unsupported_feature=file-backed-arrays`
+(only the non-MM `File=` arrays LS_PhaseB/C remain, WPG.1); the 6 `var` decks stay
+blocked. Full gate green.
+
 **Trio audit settlement (2026-07-09, both independent opus auditors: 0
 Critical/Major).** The one real Minor — the LoadShape Q-file `GlobalResult`
 clause dropped Pascal `AppendGlobalResult`'s `', '` join (oracle emits

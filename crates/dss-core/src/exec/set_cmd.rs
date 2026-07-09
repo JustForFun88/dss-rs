@@ -596,6 +596,19 @@ impl Dss {
                             } = v;
                         }
                     }
+                    // Pascal `ExecOptions.pas:683-684`: only `TotalTime` is
+                    // settable. `ProcessTime`/`StepTime` are Get-only — the
+                    // Pascal case falls to `else // Ignore excess parameters`
+                    // (silent no-op), so they must NOT hit the "not ported" arm.
+                    opt::TOTAL_TIME => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.solution.total_time_elapsed = v;
+                        }
+                    }
+                    opt::PROCESS_TIME | opt::STEP_TIME => {
+                        // Get-only: consume the value, no effect (Pascal no-op).
+                        let _ = get_dbl(parser, vars, errors);
+                    }
                     opt::NEGLECT_LOAD_Y => ckt.neglect_load_y = interpret_yes_no(&param),
                     opt::MIN_ITERATIONS => {
                         if let Some(v) = get_int(parser, vars, errors) {
