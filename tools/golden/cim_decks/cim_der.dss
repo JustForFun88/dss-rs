@@ -1,0 +1,40 @@
+// GAPS_PLAN WPG.18 Stage F gate deck: the DER sweeps + the IEEE1547 controller +
+// the DER ECP machinery + fragments mode. Every Stage F branch is exercised:
+//   - Generator -> SynchronousMachine: a 3-phase (no phase objects) + a 1-phase
+//     7.2 kV unit (the per-phase SynchronousMachinePhase loop) + a daily LoadShape
+//     (a `Gen:` EnergyConnectionProfile row)
+//   - PVSystem -> PowerElectronicsConnection + PhotovoltaicUnit: a 3-phase unit
+//     with kvar limits unset (the default 0.25 maxQ/minQ arm) + a kvarMax-set unit
+//     (the explicit-limit arm) + a 2-phase 0.208 kV secondary (the s1/s2 split);
+//     a daily + TDaily shape (a `PV:` ECP row with dssPVTDaily)
+//   - Storage -> BatteryUnit: discharging + idling + a 2-phase 0.208 kV charging
+//     battery (BatteryStateEnum: discharging/waiting/charging; the s1/s2 split)
+//   - InvControl volt-var with a Category-B curve (a curveQ < -0.43 => catB
+//     nameplate + settings) over pv1; ExpControl over pv2 (VV_vRefAutoMode + the
+//     QVSlope-derived curve). Note the reused-controller `pDERNames.Add` accretion
+//     (the ExpControl DERIEEEType1 references BOTH pv1 and pv2) is reproduced 1:1.
+New Circuit.cim_der basekv=12.47 bus1=sourcebus phases=3 pu=1.0
+New Transformer.xfm1 phases=3 windings=2 buses=[sourcebus lv] conns=[wye wye] kvs=[12.47 0.48] kvas=[1000 1000] xhl=5
+// center-tap service transformer -> the 0.208 kV split-phase `house` secondary
+New XfmrCode.CT5 phases=1 windings=3 kvs=[2.4 0.12 0.12] kvas=[25 25 25] %imag=0.5 %Rs=[0.6 1.2 1.2] %noloadloss=0.2 Xhl=2.04 Xht=2.04 Xlt=1.36
+New Transformer.tpole XfmrCode=CT5 buses=[sourcebus.1 house.1.0 house.0.2]
+New LoadShape.dayshape npts=4 interval=1 mult=[1 1 1 1]
+New Tshape.tempshape npts=4 interval=1 temp=[25 25 25 25]
+New Generator.gen1   phases=3 bus1=sourcebus kV=12.47 kW=200 kvar=50 model=1 daily=dayshape
+New Generator.gen1ph phases=1 bus1=sourcebus.1 kV=7.2 kW=30 kvar=10
+New PVSystem.pv1   phases=3 bus1=lv kV=0.48 kVA=300 Pmpp=300 irrad=0.8 PF=1 daily=dayshape TDaily=tempshape
+New PVSystem.pv2   phases=3 bus1=lv kV=0.48 kVA=200 Pmpp=200 irrad=0.8 PF=1 kvarMax=120
+New PVSystem.pvsec phases=2 bus1=house.1.2 kv=0.208 conn=wye kVA=5 Pmpp=5 irrad=0.8 PF=1
+New Storage.bat1   phases=3 bus1=lv kV=0.48 kWRated=100 kWhRated=200 kWhStored=100 state=discharging
+New Storage.bat2   phases=3 bus1=lv kV=0.48 kWRated=100 kWhRated=200 kWhStored=100 state=idling
+New Storage.batsec phases=2 bus1=house.1.2 kv=0.208 conn=wye kWRated=5 kWhRated=13.5 kWhStored=5 state=charging
+New XYcurve.vv1547 npts=6 Yarray=[0.44,0.44,0,0,-0.44,-0.44] Xarray=[.5,0.92,0.98,1.02,1.08,1.5]
+New InvControl.vv mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv1547 DERList=[PVSystem.pv1]
+New ExpControl.exp derlist=[PVSystem.pv2] vreg=1.0 slope=22 vregtau=300 Tresponse=5
+Set VoltageBases=[12.47, 0.48, 0.208]
+calcv
+Solve
+SetBusXY bus=sourcebus x=1000 y=2000
+SetBusXY bus=lv x=1000 y=1000
+SetBusXY bus=house x=1000 y=500
+Solve

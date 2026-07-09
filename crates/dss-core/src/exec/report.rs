@@ -387,16 +387,22 @@ impl Dss {
             48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
             20 => {
                 // `Export CIM100Fragments` (Pascal `ExportCDPSM(..., Combined =
-                // FALSE)`): the `Separate = true` per-profile file split is
-                // GAPS_PLAN WPG.18 Stage F. A malformed `fid=`/`sid=`/`sg=`/`rg=`
-                // still aborts the command first (Pascal evaluates the whole
-                // option loop before ever reaching the `ExportCDPSM` call).
+                // FALSE)`): the `Separate = true` per-profile file split. A
+                // malformed `fid=`/`sid=`/`sg=`/`rg=` still aborts the command
+                // first (Pascal evaluates the whole option loop before ever
+                // reaching the `ExportCDPSM` call).
                 if let Some(emsg) = cim_convert_error {
                     self.push_cim_convert_error(emsg);
                 } else {
-                    self.errors.push(
-                        "Export \"CIM100Fragments\" is not ported yet (GAPS_PLAN WPG.18 Stage F)."
-                            .to_string(),
+                    self.export_cim100_fragments(
+                        &cim_explicit,
+                        &cim_substation,
+                        &cim_sub_geo,
+                        &cim_geo_region,
+                        cim_fdr_uuid,
+                        cim_sub_uuid,
+                        cim_sub_geo_uuid,
+                        cim_rgn_uuid,
                     );
                 }
             }
@@ -517,9 +523,97 @@ impl Dss {
                 sub_uuid,
                 sub_geo_uuid,
                 rgn_uuid,
+                true,
             )
+            .into_combined()
         };
         self.write_export(explicit, "CIM100x.xml", &content);
+    }
+
+    /// `Export CIM100Fragments` (Pascal `ExportOptions.pas` ptr 20 →
+    /// `ExportCDPSM(..., Combined = FALSE)`): the same export driven through the
+    /// fragments writer, producing the seven per-profile files
+    /// `<base>_{FUN,GEO,TOPO,SSH,CAT,EP,DYN}.xml` (Pascal `FD_Create`,
+    /// `ExportCIMXML.pas:4738-4744`). The default base is `CIM100`
+    /// (`ExportOptions.pas:351`) → `<OutputDir><CircuitName_>CIM100_<PRF>.xml`; an
+    /// explicit `fil=` base resolves against the deck dir with no `CircuitName_`
+    /// prefix (`DoExportCmd`, matching [`crate::report::output::export_path`]).
+    #[allow(clippy::too_many_arguments)]
+    fn export_cim100_fragments(
+        &mut self,
+        explicit: &str,
+        substation: &str,
+        sub_geographic_region: &str,
+        geographic_region: &str,
+        fdr_override: Option<crate::cim::Uuid>,
+        sub_override: Option<crate::cim::Uuid>,
+        sub_geo_override: Option<crate::cim::Uuid>,
+        rgn_override: Option<crate::cim::Uuid>,
+    ) {
+        use crate::cim::UuidChoice;
+        let fdr_uuid = fdr_override.unwrap_or_else(|| {
+            let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
+            crate::cim::get_or_create_uuid(&mut ckt.uuid)
+        });
+        let sub_uuid = sub_override
+            .unwrap_or_else(|| self.cim.get_dev_uuid(UuidChoice::Station, "Station", 1));
+        let rgn_uuid =
+            rgn_override.unwrap_or_else(|| self.cim.get_dev_uuid(UuidChoice::GeoRgn, "GeoRgn", 1));
+        let sub_geo_uuid = sub_geo_override
+            .unwrap_or_else(|| self.cim.get_dev_uuid(UuidChoice::SubGeoRgn, "SubGeoRgn", 1));
+
+        let fragments = {
+            let Dss {
+                classes,
+                circuit,
+                cim,
+                errors,
+                ..
+            } = self;
+            let ckt = circuit.as_mut().expect("post-circuit dispatch");
+            crate::cim::export::export_cdpsm(
+                classes,
+                ckt,
+                cim,
+                errors,
+                substation,
+                sub_geographic_region,
+                geographic_region,
+                fdr_uuid,
+                sub_uuid,
+                sub_geo_uuid,
+                rgn_uuid,
+                false,
+            )
+            .into_fragments()
+        };
+
+        // Resolve the base path once (Pascal `DoExportCmd` default `CIM100`), then
+        // append each profile's `_<PRF>.xml` — the `FD_Create` filename shape.
+        let case = self
+            .circuit
+            .as_ref()
+            .map(|c| c.case_name.clone())
+            .unwrap_or_default();
+        let circuit_name_ = format!("{case}_");
+        let base = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &circuit_name_,
+            explicit,
+            "CIM100",
+        );
+        let base = base.to_string_lossy().into_owned();
+        let mut last = String::new();
+        for (suffix, content) in fragments {
+            let path = std::path::PathBuf::from(format!("{base}_{suffix}.xml"));
+            if self.write_report(&path, &content) {
+                last = self.last_result_file.clone();
+            }
+        }
+        if !last.is_empty() {
+            self.vars.add("@lastexportfile", &last);
+        }
     }
 
     /// Pascal `ProcessCommand`'s except handler (`ExecCommands.pas:697-701`)

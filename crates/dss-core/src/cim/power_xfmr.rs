@@ -300,7 +300,7 @@ fn ensure_bank(
 /// Pascal `TCIMExporterHelper.WriteXfmrCode` (`ExportCIMXML.pas:2133`): the
 /// `TransformerTankInfo` + one `TransformerEndInfo` per winding + a `NoLoadTest`
 /// + one `ShortCircuitTest` per winding pair.
-fn write_xfmr_code(buf: &mut String, cim: &mut CimExporter, code: &XfmrCodeData) {
+fn write_xfmr_code(buf: &mut writer::Writer, cim: &mut CimExporter, code: &XfmrCodeData) {
     let nw = code.num_windings;
     let w1_kva = code.windings[0].kva;
     writer::start_instance(
@@ -530,7 +530,7 @@ fn write_xfmr_code(buf: &mut String, cim: &mut CimExporter, code: &XfmrCodeData)
 /// Pascal `TCIMExporterHelper.XfmrTankPhasesAndGround` (`ExportCIMXML.pas:1531`):
 /// the `TransformerEnd.grounded`/`rground`/`xground` and
 /// `TransformerTankEnd.orderedPhases` for a tank winding.
-fn xfmr_tank_phases_and_ground(buf: &mut String, w: &WdgData) {
+fn xfmr_tank_phases_and_ground(buf: &mut writer::Writer, w: &WdgData) {
     let mut reverse_ground = false;
     let mut wye_ground = false;
     let mut wye_unground = false;
@@ -583,7 +583,7 @@ fn xfmr_tank_phases_and_ground(buf: &mut String, w: &WdgData) {
 /// `ExportCIMXML.pas:3916-3927/4138-4150`: find-or-create the `(norm, emerg)`
 /// current-limit and reference it on terminal 1.
 fn hv_current_limit(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     cim: &mut CimExporter,
     op_limits: &mut Vec<OpLimit>,
     op_limit_idx: &mut HashMap<String, usize>,
@@ -619,7 +619,7 @@ fn hv_current_limit(
 /// the caller's already-computed constants.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn write_transformers(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     classes: &mut [DssClass],
     ckt: &mut Circuit,
     cim: &mut CimExporter,
@@ -1372,7 +1372,7 @@ pub(crate) fn write_transformers(
 /// each RegControl on a `Transformer` (autotransformer-controlled ones are
 /// skipped, `4202`) → a `TapChangerControl` + `RatioTapChanger`.
 pub(crate) fn write_reg_controls(
-    buf: &mut String,
+    buf: &mut writer::Writer,
     classes: &mut [DssClass],
     ckt: &Circuit,
     cim: &mut CimExporter,
@@ -1481,7 +1481,12 @@ struct RegSnap {
     tap_num: i32,
 }
 
-fn write_one_reg_control(buf: &mut String, cim: &mut CimExporter, reg: &RegSnap, reg_uuid: Uuid) {
+fn write_one_reg_control(
+    buf: &mut writer::Writer,
+    cim: &mut CimExporter,
+    reg: &RegSnap,
+    reg_uuid: Uuid,
+) {
     // TapChangerControl (`4208-4245`).
     let ctrl_uuid = cim.get_dev_uuid(UuidChoice::TapCtrl, &reg.local_name, 1);
     writer::start_instance(
