@@ -543,6 +543,20 @@ impl Dss {
                             ckt.solution.min_iterations = v;
                         }
                     }
+                    opt::STEP_TIME | opt::PROCESS_TIME | opt::TOTAL_TIME => {
+                        // Wall-clock solve-timing options. `StepTime`(108) and
+                        // `ProcessTime`(106) have **no** Set arm in `DoSetCmd` — they
+                        // fall through the `else // Ignore excess parameters` no-op
+                        // (ExecOptions.pas l.755-758); `TotalTime`(107) writes
+                        // `Total_Time_Elapsed`, a diagnostic accumulator with zero
+                        // effect on any solve or report. This port does not model
+                        // wall-clock timing, so all three are silent no-ops — verified
+                        // against the pinned oracle (`set steptime`/`processtime`/
+                        // `totaltime` raise no error and leave the solution unchanged).
+                        // Removes the spurious "not ported yet" divergence for
+                        // `set steptime`. The value token is consumed by the loop's
+                        // `next_param`, exactly like Pascal's ignored excess params.
+                    }
                     _ => {
                         let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
                         errors.push(format!("Set option \"{name}\" is not ported yet."));

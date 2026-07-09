@@ -88,28 +88,28 @@
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (NOT_PORTED) then `set mode=dynamics steptime=...` (the `steptime` Set option + GFL dynamics-mode trajectory, out of WPG.13 scope). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM/GFL power-flow model and the GFL dynamics-mode machinery (WP7.7) are ported and gate-verified. Every command this deck uses is now handled: `Plot` is a headless no-op, `set steptime` a silent no-op Set option (WPG.17), and daily/dynamics GFL + `export monitors` are ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123 whole-feeder GFL dynamics trajectory in the live gate is disproportionate risk vs the controlled inverter-dynamics gates -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (NOT_PORTED) then `set mode=dynamics steptime=...` (the `steptime` Set option + GFL dynamics-mode trajectory, out of WPG.13 scope). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM/GFL power-flow model and the GFL dynamics-mode machinery (WP7.7) are ported and gate-verified. Every command this deck uses is now handled: `Plot` is a headless no-op, `set steptime` a silent no-op Set option (WPG.17), and daily/dynamics GFL + `export monitors` are ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123 whole-feeder GFL dynamics trajectory in the live gate is disproportionate risk vs the controlled inverter-dynamics gates -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
@@ -168,53 +168,53 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (plotting, NOT_PORTED) after the snapshot solves. Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (plotting, NOT_PORTED) after the snapshot solves. Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (plotting, NOT_PORTED) after the snapshot solves. Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (plotting, NOT_PORTED) after the snapshot solves. Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on `Plot Profile` (plotting, NOT_PORTED) after the snapshot solves. Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
-   "tag": "deferred=gfm-dynamics/plot",
-   "note": "Re-probed 2026-07-09 (WPG.13): the GFM power-flow model (CalcGFMYprim/DoGFM_Mode/CalcGFMVoltage + the source-injection routing + the TInvBasedPCE.GetCurrents override) AND the InvControl mode=GFM amps-limiter/overload arm are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss. This deck compiles + solves the snapshot phase (converges), then blocks on the `set mode=dynamics steptime=...` step (the `steptime` Set option + the dynamics-mode GFM branch `DoDynamicMode`/`IntegrateStates` GFM, still NOT_PORTED). Kept deferred; migrating would make the live gate red."
+   "tag": "deferred=ieee123-gfm-trajectory-scope",
+   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123, multi-hundred-step whole-feeder GFM trajectory in the live gate is disproportionate risk vs the controlled gfm_dynamics.dss gate that already proves the machinery -- NOT on any unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
