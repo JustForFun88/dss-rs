@@ -1,0 +1,9 @@
+# Memory-mapped LoadShape fixtures: byte layout is load-bearing (the MMF reader
+# indexes by fixed record/line width), and the oracle-validated fingerprint in
+# manifest.note was computed from these exact bytes. Never apply EOL/other
+# normalization (core.autocrlf is on in this repo), so they stay byte-identical
+# on every platform — LF-only text, raw binary floats.
+mm8.sng -text
+mm8.dbl -text
+mmpq8.csv -text
+shape_mmf.dss -text

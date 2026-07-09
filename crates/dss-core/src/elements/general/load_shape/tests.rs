@@ -760,3 +760,191 @@ fn action_save_mmf_refuses_loudly() {
     );
     assert!(obj.take_shape_saves().is_empty());
 }
+
+// -------------------------------------------------------------------------
+// MemoryMapping=Yes (WPG.17): eager MMF readers. Under MMF the array
+// properties dump the `(<directive>)` round-trip, not numbers, so value
+// correctness is checked through the `get_mult_at_hour` lookup (mirroring the
+// oracle, where the C-API array getters cannot see MMF data either).
+// -------------------------------------------------------------------------
+
+fn sng_bytes(vals: &[f32]) -> Vec<u8> {
+    vals.iter().flat_map(|v| v.to_le_bytes()).collect()
+}
+
+/// A.2 point 3: MMF `sngfile` (widened f32 → f64 lookup) is bit-identical to
+/// the non-MM `sngfile` (f32 `sP`/GetMultAtHourSingle) at every fixed hour,
+/// and MMF never shrinks `NumPoints`.
+#[test]
+fn mmf_sngfile_fixed_matches_non_mmf() {
+    let vals = [0.40f32, 0.55, 0.75, 0.95, 1.00, 0.90, 0.70, 0.50];
+    let bytes = sng_bytes(&vals);
+
+    let (_c, mut mmf, _) = edited(&[("memorymapping", "yes"), ("npts", "8"), ("interval", "1")]);
+    mmf.read_sng_file(&bytes);
+    let (_c, mut plain, _) = edited(&[("npts", "8"), ("interval", "1")]);
+    plain.read_sng_file(&bytes);
+
+    for h in 1..=8 {
+        assert_eq!(
+            mmf.get_mult_at_hour(h as f64).re,
+            plain.get_mult_at_hour(h as f64).re,
+            "hour {h} MMF vs non-MM sngfile"
+        );
+    }
+    assert_eq!(mmf.num_points(), 8, "MMF must not shrink NumPoints");
+    assert!(
+        mmf.s_p.is_none(),
+        "MMF sngfile stores into dP (f64), not sP"
+    );
+}
+
+/// MMF `dblfile` equals non-MM `dblfile` at every index (both pure f64).
+#[test]
+fn mmf_dblfile_fixed_matches_non_mmf() {
+    let vals = [0.3f64, 0.5, 0.9, 1.0, 0.7, 0.4];
+    let bytes: Vec<u8> = vals.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let (_c, mut mmf, _) = edited(&[("memorymapping", "yes"), ("npts", "6"), ("interval", "1")]);
+    mmf.read_dbl_file(&bytes);
+    let (_c, mut plain, _) = edited(&[("npts", "6"), ("interval", "1")]);
+    plain.read_dbl_file(&bytes);
+
+    for h in 1..=6 {
+        assert_eq!(
+            mmf.get_mult_at_hour(h as f64).re,
+            plain.get_mult_at_hour(h as f64).re
+        );
+    }
+    assert_eq!(mmf.num_points(), 6);
+}
+
+/// A.4 accept-set quirk (TODO(compat)): the MMF text reader keeps only bytes
+/// `[46,58)`, dropping sign / `+` / exponent, and defaults empty → 1.0. So
+/// `-0.5`→0.5, `1.5e-3`→1.53, blank line → 1.0 (hand-computed from Pascal
+/// `InterpretDblArrayMMF`; the non-MM CSV reader would honour sign/exponent).
+#[test]
+fn mmf_plaintext_accept_set_quirk() {
+    let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "3"), ("interval", "1")]);
+    obj.read_csv_file("-0.5\n1.5e-3\n\n");
+    assert!((obj.get_mult_at_hour(1.0).re - 0.5).abs() < 1e-12);
+    assert!((obj.get_mult_at_hour(2.0).re - 1.53).abs() < 1e-12);
+    assert!((obj.get_mult_at_hour(3.0).re - 1.0).abs() < 1e-12);
+}
+
+/// PlainText column selection: MMF `PQCSVFile` reads P from column 1, Q from
+/// column 2 of the same content.
+#[test]
+fn mmf_pqcsv_column_selection() {
+    let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "3"), ("interval", "1")]);
+    obj.read_pq_csv_file("0.40,0.30\n0.55,0.40\n0.75,0.55\n");
+    let m1 = obj.get_mult_at_hour(1.0);
+    let m3 = obj.get_mult_at_hour(3.0);
+    assert!((m1.re - 0.40).abs() < 1e-12 && (m1.im - 0.30).abs() < 1e-12);
+    assert!((m3.re - 0.75).abs() < 1e-12 && (m3.im - 0.55).abs() < 1e-12);
+    assert_eq!(obj.num_points(), 3);
+}
+
+/// GetPropertyValue round-trip + no-shrink through the executive: the
+/// `sngfile=` property under MemoryMapping dumps `(sngfile=<file>)` (oracle
+/// `? mult`), and `npts` stays as declared. Also the raw `mult=(sngfile=…)`
+/// directive form (Pascal `CustomSetRaw`).
+#[test]
+fn mmf_property_and_directive_roundtrip_through_executive() {
+    use crate::exec::Dss;
+    let dir = std::env::temp_dir().join(format!(
+        "dss_ls_mmf_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let sng = dir.join("m.sng");
+    std::fs::write(
+        &sng,
+        sng_bytes(&[0.4, 0.55, 0.75, 0.95, 1.0, 0.9, 0.7, 0.5]),
+    )
+    .unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+
+    // Property form.
+    dss.command(&format!(
+        "New LoadShape.a npts=8 interval=1 MemoryMapping=Yes sngfile=\"{}\"",
+        sng.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.a.npts");
+    assert_eq!(dss.result(), "8", "MMF must not shrink npts");
+    dss.command("? LoadShape.a.mult");
+    assert_eq!(dss.result(), format!("(sngfile={})", sng.display()));
+
+    // Raw directive form (mult=(sngfile=…)), MemoryMapping before mult. The
+    // round-trip echoes the raw directive verbatim (Pascal `mmFileCmd := S`),
+    // so use an unquoted path (temp paths here have no spaces).
+    dss.command(&format!(
+        "New LoadShape.b npts=8 interval=1 MemoryMapping=Yes mult=(sngfile={})",
+        sng.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.b.mult");
+    assert_eq!(dss.result(), format!("(sngfile={})", sng.display()));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The upstream PQ display quirk (`LoadShape.pas:954-963` overwrites
+/// `mmFileCmd` to column 2 and never sets `mmFileCmdQ`): under MMF, `? mult`
+/// dumps `(file=<file> column=2)` and `? qmult` dumps `()` — even though the P
+/// lookup correctly uses column 1 (oracle-verified).
+#[test]
+fn mmf_pqcsv_dump_quirk_through_executive() {
+    use crate::exec::Dss;
+    let dir = std::env::temp_dir().join(format!(
+        "dss_ls_mmfpq_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pq = dir.join("pq.csv");
+    std::fs::write(&pq, "0.40,0.30\n0.55,0.40\n0.75,0.55\n").unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command(&format!(
+        "New LoadShape.c npts=3 interval=1 MemoryMapping=Yes pqcsvfile=\"{}\"",
+        pq.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.c.mult");
+    assert_eq!(dss.result(), format!("(file={} column=2)", pq.display()));
+    dss.command("? LoadShape.c.qmult");
+    assert_eq!(dss.result(), "()");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Without MemoryMapping, a `mult=(sngfile=…)` file directive is the non-MM
+/// `File=` array feature (WPG.1) — still NOT_PORTED, so a loud error is
+/// recorded (and a plain numeric list is unaffected).
+#[test]
+fn non_mmf_file_directive_is_loud_not_ported() {
+    use crate::exec::Dss;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command("New LoadShape.d npts=3 interval=1 mult=(sngfile=x.sng)");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("not supported yet")),
+        "expected a WPG.1 not-ported error, got {:?}",
+        dss.errors()
+    );
+}
