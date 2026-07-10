@@ -9,6 +9,46 @@
 
 Last updated: 2026-07-10.
 
+**needs_investigation burn-down, round 2 — AutoTrans family (2026-07-10,
+user-directed "проверь автотрансформатор построчно").** Element EXONERATED
+with bit-level proof: on all probed family decks the assembled system Y is
+BIT-IDENTICAL across engines at every stage (pins every Transformer/XfmrCode/
+AutoTrans YPrim formula AND the whole 8-edit deck sequence — stronger than an
+eyeball line-by-line), iteration counts equal at every solve, and the
+constant-P load loop is self-consistent. The V gaps are the CROSS-SOLVER
+one-shot LU floor of the κ≈1e12 construction (mvasc3=2e6 source + 1e-6 Ω
+switches + floating delta tertiary): faer-vs-KLU on bit-identical (Y, I)
+reproduces the entire engine gap (5.505e-2 vs 5.472e-2 V at LOW;
+scipy+rowscale 6.9e-2). Migration ATTEMPTED and REVERTED: the gate itself
+proved the floor contaminates the element channels — the Vsource no-load
+current (0.15 A resolved through the 1.7e7 S source) inherits dI = Y_src·dV ≈
+6.2e-2 A (40%) and powers dS = V·dI ≈ 12 kVA; admitting that needs ~500×
+i_abs loosening = forbidden fudging masking real short-circuit-current
+regressions. Family stays documented-skipped (tag `near_ideal_source_floor`,
+full proof in each note + TOLERANCE_NOTES §near-ideal-source); counts
+unchanged (solvable 194, needs_investigation 34, of which 9 are this closed
+class). Also measured for WP-R1: iterative refinement DIVERGES on the
+floating tertiary (one step 1.3e-3 → 1492 V — the u·κ≳1 limit live) →
+divergence guard added to RESONANCE_PLAN WP-R1.
+
+**Round 2b — second user challenge ("такие большие значения = баг в порте,
+найди и устрани"), per-element decomposition (2026-07-10, Auto1bus-step1,
+hex-bit transport).** Every remaining channel closed, no bug exists to fix:
+**(1)** substituting the oracle's NodeV bit-exactly into the Rust engine
+reproduces all 8 elements' Currents AND Powers **bit-for-bit** (ulp = 0;
+Vsource alone at 2.3e-10 A = half an ulp of the ≈3.35e6 A cancelling
+`Yprim·V − Iinj` operands) — the entire 6.2e-2 A currents gap is the V vector,
+none of it the element/report formulas. **(2)** RHS: 1 of 42 components off by
+exactly 1 ulp (phase-2 source `inj.im`, libm sin/cos last bit); same-solver
+substitution measures its effect at 1.5e-11 V — innocent. **(3)** residual
+parity: ‖Y·V−I‖₂ = 7.1e-2 (KLU) vs 1.3e-1 (faer) — the oracle sits at the same
+junk floor, so no refinement could close the family below KLU's own error.
+**(4)** third solver: scipy `splu` on the same bits lands 51.6 V from BOTH
+engines (uniform on the six floating-tertiary nodes = zero-seq common mode)
+with a *better* residual (4.8e-2) than the oracle's V (5.6e-2) — the
+mathematically-equivalent solution set spans ~51 V; faer↔KLU's 3.7e-3 V gap is
+four orders tighter. Full numbers in TOLERANCE_NOTES §near-ideal-source.
+
 **needs_investigation burn-down, round 1 (2026-07-10, user-directed).** Three
 real port gaps found by the triage, fixed 1:1 and pinned by migrating their
 decks into the live gate: **(1)** Monitor mode-7 (Storage state) had a header

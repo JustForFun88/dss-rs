@@ -26,6 +26,9 @@ tiers tolerances by **conditioning**, not size:
 - **large_floating_delta** — `large` plus one documented exception: `v_abs`
   5e-4 V (see §floating-delta below). Currently one deck
   (`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`).
+There is deliberately **no** tier for the near-ideal-source AutoTrans family —
+its floor contaminates the currents/powers channels beyond any honest band
+(see §near-ideal-source below); the family stays documented-skipped.
 
 | Quantity | micro | feeder | large |
 |---|---|---|---|
@@ -68,6 +71,60 @@ L-L (differential) voltages — immune to the common mode — and stay gated at
 the `large` floors, as do Y/YPrim/injection. Fix owner: `RESONANCE_PLAN.md`
 WP-R1 (one iterative-refinement step measures 9.4e-6 V vs KLU — 3× under the
 `large`-band); when it lands, retighten this tier back to `large`.
+
+### near-ideal-source (documented-skipped, NOT a tier): cross-solver junk at κ≈1e12
+
+The AutoTrans validation family (`Test/AutoTrans/*` = `Version8/.../AutoTrans/*`
+byte-identical; Auto1bus/Auto3bus build the autotransformer from 1-phase
+3-winding `Transformer`s, AutoHLT from one 3-phase 3-winding, AutoAuto from the
+`AutoTrans` class) stacks a `mvasc3=2000000` source (≈1.7e7 S), 1e-6 Ω switch
+lines (≈1e6 S), ~1e-5 S magnetizing branches and a floating delta tertiary —
+assembled-Y condition ≈1e12. Proof this is a floor and not an element bug
+(2026-07-10, user-challenged line-by-line audit): the assembled system Y is
+**BIT-IDENTICAL** across engines on every family deck at every probed stage
+(strictly stronger than an eyeball formula comparison — it pins every YPrim
+formula and the whole 8-edit deck sequence); iteration counts equal at every
+solve; the constant-P load loop is self-consistent (dI = |I_comp|·dV/|V| to
+2%); and the **one-shot** cross-solver spread on bit-identical `(Y, I)`
+reproduces the entire gap — faer-vs-KLU 5.505e-2 V at the 88 kV LOW bus vs the
+engines' 5.472e-2 V; scipy+rowscale 6.9e-2 V. Family worst: Auto3bus 1.46e-6
+rel.
+
+A second, per-element decomposition round (2026-07-10, `Auto1bus-step1`,
+hex-bit transport) closed every remaining channel:
+
+- **Element formulas bit-exonerated on identical V**: substituting the oracle's
+  NodeV bit-exactly into the Rust engine reproduces every element's `Currents`
+  AND `Powers` **bit-for-bit** (max_ulp = 0 for all lines/transformers). The
+  sole exception, `Vsource.source`, differs by 2.3e-10 A = half an ulp of the
+  ≈3.35e6 A cancelling `Yprim·V − Iinj` operands — 6 orders under the band.
+- **RHS**: 1 of 42 components differs by exactly 1 ulp (`inj.im` of the phase-2
+  source injection, 9.2e5 A scale — libm `sin`/`cos` last-bit FPC↔Rust).
+  Measured effect via same-solver substitution: **1.5e-11 V** — innocent.
+- **Residual parity**: on the shared bit-identical `(Y, I)`,
+  `‖Y·V − I‖₂` = 7.1e-2 (oracle/KLU) vs 1.3e-1 (Rust/faer) — the oracle's
+  answer is no cleaner; both engines sit at the same junk floor, so even a
+  perfectly refined Rust V would still miss the oracle's V by the oracle's own
+  junk.
+- **Third-solver junk span**: scipy `splu` on the same bits lands **51.6 V**
+  away from BOTH engines — uniformly on the six floating-tertiary nodes (the
+  zero-seq common mode) — with a residual (4.8e-2) slightly *better* than the
+  oracle's own (5.6e-2). The mathematically-equivalent solution set spans ~51 V
+  in the null direction; the faer↔KLU gap of 3.7e-3 V is four orders *tighter*
+  than that span.
+
+**Why the family stays OUT of `solvable_now` (no tier):** the V floor
+propagates linearly into the element channels — the Vsource terminal current
+is a 0.15 A no-load quantity resolved through the ≈1.7e7 S source
+(`dI = Y_src·dV_junk`, measured 6.2e-2 A — 40% of the current; powers inherit
+`dS = V·dI ≈ 12 kVA`). Admitting that would need `i_abs` loosened ~500×
+(shared by currents AND powers), masking real regressions in the short-circuit
+currents/losses the family exists to validate. Per the no-fudging rule the
+decks stay documented-skipped; the proven Y bit-identity means any FUTURE
+Y-level divergence here is a real element regression. WP-R1 note: iterative
+refinement DIVERGES on the floating tertiary here (one step: 1.3e-3 → 1492 V —
+the `u·κ ≳ 1` limit in action), so WP-R1's gate must verify the residual
+actually decreased and roll the step back otherwise.
 
 **Maintenance:** a new corpus case defaults to `large`; promote it to `feeder`
 only after `corpus_live` confirms it holds the tighter floor. Golden tests that

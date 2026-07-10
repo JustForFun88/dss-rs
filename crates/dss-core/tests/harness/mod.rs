@@ -404,6 +404,14 @@ pub fn tol_for(kind: &str) -> Tolerances {
             energy_rel: 1e-4,
             energy_abs: 1e-4,
         },
+        // NOTE (2026-07-10): there is deliberately NO tier for the AutoTrans
+        // near-ideal-source family (κ≈1e12): its proven cross-solver V floor
+        // (~5e-6 rel) propagates LINEARLY into the source-side currents
+        // (dI = Y_src·dV ≈ 6e-2 A vs a 0.15 A no-load current) and powers
+        // (~12 kVA), and admitting those needs ~500× i_abs loosening — exactly
+        // the forbidden band-widening that would mask real short-circuit
+        // current regressions. The family stays documented-skipped
+        // (tests/TOLERANCE_NOTES.md §near-ideal-source).
         // Large / numerically-stiff networks (EPRI ckt5, 8500-node, A-Diakoptics
         // torn zones, inverter cases, 4Bus-YYD): voltages 1e-7; the deterministic Y
         // still holds 1e-8. Currents/powers stay 1e-6 rel / 1e-4 abs — their
