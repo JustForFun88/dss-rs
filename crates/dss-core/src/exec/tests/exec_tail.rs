@@ -394,7 +394,8 @@ fn step_solution_commands_match_oracle_iterations() {
 /// `Line1=632670 Line2=692675 Linecode=mtx601` re-linecodes the whole
 /// traceback path 692675 → 671692 (the switch, previously bare) → 670671 →
 /// 632670, leaving branches off the path (632633) untouched. Oracle-probed
-/// 2026-07-10, including all five error surfaces (#28702-28707).
+/// 2026-07-10, including all seven error surfaces (#28701-28707; #28701 and
+/// #28706 added at the audit-tests settlement, both re-probed live).
 #[test]
 fn reconductor_traces_path_and_errors() {
     let mut dss = dss_with_ieee13();
@@ -415,6 +416,15 @@ fn reconductor_traces_path_and_errors() {
     assert_eq!(query(&mut dss, "Line.632633.linecode"), "mtx602");
 
     // Error surfaces.
+    // #28701: an unknown named parameter logs and the command CONTINUES
+    // (Pascal pushes DoSimpleMsg inside the parse loop, no Exit) — the trace
+    // still runs, so this is the only error recorded.
+    dss.command("Reconductor Line1=632670 Line2=670671 linecode=mtx601 bogus=5");
+    assert_eq!(
+        dss.errors(),
+        ["Error: Unknown Parameter on command line: 5"]
+    );
+    dss.errors.clear();
     dss.command("Reconductor Linecode=mtx601");
     assert_eq!(dss.errors(), ["Both Line1 and Line2 must be specified!"]);
     dss.errors.clear();
@@ -443,6 +453,22 @@ fn reconductor_traces_path_and_errors() {
         dss.errors(),
         [
             "Error: Both Lines must be in the same EnergyMeter zone. One or both are not in any meter zone."
+        ]
+    );
+
+    // #28706: two meters, one line in each zone (fresh compile; oracle-probed
+    // with em1 on Line.632670 / em2 on Line.632645 — the meter FullNames are
+    // rendered).
+    let mut dss = dss_with_ieee13();
+    dss.command("new energymeter.em1 element=Line.632670 terminal=1");
+    dss.command("new energymeter.em2 element=Line.632645 terminal=1");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("Reconductor Line1=670671 Line2=645646 linecode=mtx601");
+    assert_eq!(
+        dss.errors(),
+        [
+            "Error: Line1 is in EnergyMeter.em1 zone while Line2 is in EnergyMeter.em2 zone. Both must be in the same Zone."
         ]
     );
 }

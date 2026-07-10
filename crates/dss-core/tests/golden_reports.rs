@@ -1293,7 +1293,47 @@ fn show_powers_elem_autotrans_matches_oracle() {
             gate: Some(GateSpec::MinCols(2, 4, 1e-3)),
         }],
     };
-    run_deck_show("show_powers_elem_autotrans", &policy);
+    let (oracle, rust, scratch) = produce_deck_show("show_powers_elem_autotrans");
+    compare_export(&oracle, &rust, &policy, "show_powers_elem_autotrans");
+    // The per-family whitespace layouts (WP8.8: Sources `%s %4d` one-space
+    // rows, PC width-6 rows + `kW   +j  kvar` header + `'  TERMINAL TOTAL '`
+    // label — `ShowResults.pas:1128/1162/1240/1264/1297/1302`), pinned
+    // BYTE-EXACT against the oracle golden (audit-tests follow-up): the
+    // tokenizing comparator above deliberately collapses whitespace, so the
+    // layout-bearing lines are compared verbatim here. (Same production as
+    // the numeric compare — a second `produce_deck_show` in a sibling test
+    // would race on the shared per-stem scratch dir.)
+    // A row whose |S| rounds to 0.0 kVA is a pure faer-vs-KLU cancellation
+    // residual — its re/im can render `0.0` vs `-0.0` (arbitrary sign), so
+    // those rows are numerically pinned by the tokenizing twin (0.0 == -0.0)
+    // and excluded from the byte compare here (the layout is amply pinned by
+    // the non-degenerate rows).
+    let degenerate = |l: &str| l.split_whitespace().rev().nth(1) == Some("0.0");
+    let select = move |s: &str, pred: fn(&str) -> bool| -> Vec<String> {
+        s.lines()
+            .filter(|l| pred(l) && !degenerate(l))
+            .map(str::to_string)
+            .collect()
+    };
+    type LinePred = fn(&str) -> bool;
+    let preds: [(&str, LinePred); 3] = [
+        ("column headers", |l| l.contains(" Phase ")),
+        ("terminal totals", |l| l.contains("TERMINAL TOTAL")),
+        // Every per-conductor row (Sources 1-space, PD 2-space, PC width-6):
+        // starts with an uppercased bus name of this deck.
+        ("bus rows", |l| {
+            ["SRC", "HIGH", "LOW", "FDR"]
+                .iter()
+                .any(|b| l.starts_with(b))
+        }),
+    ];
+    for (what, pred) in preds {
+        let o = select(&oracle, pred);
+        let r = select(&rust, pred);
+        assert!(!o.is_empty(), "{what}: golden must contain such lines");
+        assert_eq!(o, r, "{what}: byte-exact layout");
+    }
+    std::fs::remove_dir_all(&scratch).ok();
 }
 
 /// See [`show_powers_elem_autotrans_matches_oracle`]; the currents twin

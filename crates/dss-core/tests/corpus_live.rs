@@ -635,6 +635,49 @@ impl Drop for CorpusGuard {
     }
 }
 
+/// The guard's recursive restore, driven end-to-end on a synthetic case dir
+/// (WP8.8 audit-tests follow-up — the deletion path had no self-test): a
+/// run-created top-level file, a run-created file INSIDE a pre-existing
+/// subdir (the recursion's point), and a run-created directory tree are all
+/// removed; the vendored master and an overwritten pre-existing fixture are
+/// preserved/restored byte-for-byte.
+#[test]
+fn corpus_guard_restores_case_dir_recursively() {
+    let root = std::env::temp_dir().join(format!("dss_guard_test_{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let sub = root.join("support");
+    std::fs::create_dir_all(&sub).unwrap();
+    let case = root.join("case.dss");
+    std::fs::write(&case, b"! fixture master").unwrap();
+    let fixture = sub.join("fixture.txt");
+    std::fs::write(&fixture, b"vendored bytes").unwrap();
+    {
+        let _guard = CorpusGuard::new(&case.to_string_lossy());
+        std::fs::write(root.join("run_created.csv"), b"pollution").unwrap();
+        std::fs::write(sub.join("run_created_inner.csv"), b"pollution").unwrap();
+        let di = root.join("ckt_di").join("DI_yr_1");
+        std::fs::create_dir_all(&di).unwrap();
+        std::fs::write(di.join("x.csv"), b"pollution").unwrap();
+        std::fs::write(&fixture, b"overwritten by the run").unwrap();
+    }
+    assert!(case.is_file(), "vendored master must survive");
+    assert_eq!(
+        std::fs::read(&fixture).unwrap(),
+        b"vendored bytes",
+        "overwritten pre-existing fixture must be restored"
+    );
+    assert!(!root.join("run_created.csv").exists());
+    assert!(
+        !sub.join("run_created_inner.csv").exists(),
+        "run-created file inside a pre-existing subdir must be swept (recursion)"
+    );
+    assert!(
+        !root.join("ckt_di").exists(),
+        "run-created dir tree removed"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
 /// Compile + solve one case on both engines and compare every captured field at
 /// every step. `c.selected_elements` is the YPrim focus set (`["*"]` = every
 /// element); element currents/powers/losses are compared for *all* elements.
