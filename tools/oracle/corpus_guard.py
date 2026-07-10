@@ -3,14 +3,17 @@ validation harness (tools/opendss/dsspy_validation/).
 
 Lifted move-only from oracle_server.py so both consumers use the identical,
 empirically-hardened implementation (see the class docstring for the
-snapshot-failure war story). NOT recursive: files created in *sub*directories
-of the case dir escape it — sweep workflows must end with a
-`git status tests/corpus` check (recovery: `git restore tests/corpus`).
+snapshot-failure war story). Run-created TOP-LEVEL directories (the
+`<CircuitName>/DI_yr_*` demand-interval tree) are removed wholesale; files
+created inside a PRE-EXISTING subdirectory still escape — sweep workflows must
+end with a `git status tests/corpus` check (recovery: `git restore
+tests/corpus`).
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 
 _RESTORE_MAX = 2 * 1024 * 1024  # buffer files up to 2 MiB for overwrite-restore
 
@@ -45,6 +48,11 @@ class CorpusGuard:
             p = os.path.join(self.dir, name)
             try:
                 if not os.path.isfile(p):
+                    # Track pre-existing DIRECTORIES by name too, so __exit__
+                    # can tell a run-created one (the `<CircuitName>/DI_yr_*`
+                    # demand-interval tree of a `Set DemandInterval=True` +
+                    # `CloseDI` deck) from a vendored fixture subdir.
+                    self.names.add(name)
                     continue
                 self.names.add(name)
                 if os.path.getsize(p) <= _RESTORE_MAX:
@@ -66,8 +74,15 @@ class CorpusGuard:
         except OSError:
             return False
         for name in current - self.names:  # created by the run
+            p = os.path.join(self.dir, name)
             try:
-                os.remove(os.path.join(self.dir, name))
+                if os.path.isdir(p):
+                    # Run-created directory (the DI `<CircuitName>/` tree).
+                    # The engines never create junctions/links here, and only
+                    # names absent from the pre-run snapshot are removed.
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
             except OSError:
                 pass
         for name, data in self.buf.items():  # overwritten by the run
