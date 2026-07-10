@@ -45,20 +45,29 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -
         return false;
     }
     if ckt.solution.is_harmonic_model && !value_is_harmonic {
-        // Leaving harmonics mode: reset to fundamental. (`InvalidateAllPCElements`
-        // is covered by the frequency change forcing a Y rebuild.)
+        // Leaving harmonics mode (`OK_for_Harmonics`, Solution.pas l.2210):
+        // `InvalidateAllPCELEMENTS()` + reset to fundamental. The invalidate's
+        // observable half is the forced Y rebuild (see the dynamics-leave note
+        // below) — set it unconditionally like Pascal, not only via the
+        // frequency change (which is a no-op when the last solved harmonic was
+        // already the fundamental).
         let fundamental = ckt.fundamental;
         ckt.solution.set_frequency(fundamental, fundamental);
+        ckt.solution.system_y_changed = true;
     }
-    // NOT_PORTED(WP7.7 step 2): Pascal `OK_for_Dynamics` (Solution.pas l.2185)
-    // runs `ckt.InvalidateAllPCELEMENTS()` when *leaving* dynamics mode, to force
-    // a YPrim recompute for machines whose primitive is mode-dependent (the
-    // Norton `Yeq` they present in dynamics differs from their power-flow YPrim).
-    // Inert until the DER `CalcYPrimMatrix` dynamics branch lands (step 2): no
-    // currently-ported element has a dynamics-dependent YPrim, and the leave path
-    // does not change frequency, so there is nothing to invalidate yet. Lands with
-    // the machine YPrims in step 2 (needs the whole-circuit invalidate that reaches
-    // the element store, unlike this `&mut Circuit`-only `set_mode`).
+    // Pascal `OK_for_Dynamics` (Solution.pas l.2185): leaving dynamics mode runs
+    // `ckt.InvalidateAllPCELEMENTS()` — YprimInvalid on every PC element plus
+    // `SystemYChanged := TRUE` (Circuit.pas l.2321) — so the next solve rebuilds
+    // the system Y without the machines' dynamics YPrims (the Norton `Yeq` a
+    // Generator/IndMach012 presents in dynamics, the Storage/PVSystem GFM
+    // short-circuit YPrim). In this port every `build_y_matrix` recomputes every
+    // element's YPrim (the oracle's effective default, see ymatrix.rs), so the
+    // observable half is exactly the rebuild trigger. (Ported at the WP8.8 exit
+    // sweep — the old "inert, no mode-dependent YPrim exists" note predates the
+    // WP7.7 machines and the WPG.13/WPG.17 GFM model.)
+    if ckt.solution.is_dynamic_model && !value_is_dynamic {
+        ckt.solution.system_y_changed = true;
+    }
 
     let sol = &mut ckt.solution;
     sol.mode = value;

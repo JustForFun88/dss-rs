@@ -69,7 +69,9 @@ impl IndMach012 {
                 // has no error channel; the machine is left zero-initialized, so
                 // `w0`/`m_mass` stay 0 and a following `integrate_states` would
                 // divide by `m_mass = 0` (NaN). Unreachable: the corpus is 1-/3-phase.
-                // TODO(WP7.7): surface a real abort if a >3-phase case appears.
+                // On-demand (retagged at the WP8.8 sweep): surface a real abort
+                // (init_state_vars needs an error channel) if a >3-phase dynamics
+                // case appears.
                 return;
             }
         }

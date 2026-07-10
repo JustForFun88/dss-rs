@@ -1270,6 +1270,82 @@ fn show_mismatch_matches_oracle() {
     run_feeder_show("show_mismatch", &policy);
 }
 
+/// The AutoTrans special cases of the element-form `Show` reports (WP8.8 exit
+/// sweep; Pascal `ShowResults.pas` — `WriteTerminalCurrents:604`, `ShowPowers`
+/// case 1 `:1190`, `ShowNodeCurrentSum:3636`): `Ntimes = Nphases` rows per
+/// terminal instead of `NConds`, the per-terminal `Inc(k, Ntimes)` block-skip in
+/// currents/mismatch, and the DEAD post-loop `Inc` in `ShowPowers` (terminal 2
+/// re-reads the first conductor block — reproduced). A well-conditioned
+/// physical-source snapshot deck (the WPG.15 `autotrans_reg.dss` model minus the
+/// control arm), so the digits pin exactly; policies mirror the feeder twins.
+#[test]
+fn show_powers_elem_autotrans_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![ColTol {
+            sel: ColSel::Index(6),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::MinCols(2, 4, 1e-3)),
+        }],
+    };
+    run_deck_show("show_powers_elem_autotrans", &policy);
+}
+
+/// See [`show_powers_elem_autotrans_matches_oracle`]; the currents twin
+/// (`WriteTerminalCurrents` with residual rows). Same near-zero gating as
+/// [`show_currents_elem_matches_oracle`].
+#[test]
+fn show_currents_elem_autotrans_matches_oracle() {
+    let on_i = |sel: ColSel| ColTol {
+        sel,
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::MinCols(2, 2, 1e-4)),
+    };
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![
+            on_i(ColSel::Index(2)),                // |I|
+            on_i(ColSel::Index(6)),                // Re
+            on_i(ColSel::Index(8)),                // Im
+            on_i(ColSel::AfterToken("/_".into())), // angle
+        ],
+    };
+    run_deck_show("show_currents_elem_autotrans", &policy);
+}
+
+/// See [`show_powers_elem_autotrans_matches_oracle`]; the node-current-sum twin
+/// (`ShowNodeCurrentSum` — the AutoTrans arm sums only `Nphases` conductors per
+/// terminal into the node totals). Same residual gating as
+/// [`show_mismatch_matches_oracle`].
+#[test]
+fn show_mismatch_autotrans_matches_oracle() {
+    let residual = |n: usize| ColTol {
+        sel: ColSel::FromEnd(n),
+        rel: 0.0,
+        abs: 0.0,
+        gate: Some(GateSpec::Mask),
+    };
+    let policy = ExportPolicy {
+        sep: ' ',
+        header_lines: 0,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 1.1e-5, // Max Current: the %10.5f render floor (see the feeder twin)
+        col_tol: vec![residual(2), residual(1)],
+    };
+    run_deck_show("show_mismatch_autotrans", &policy);
+}
+
 /// `Show Variables` (Pascal `ShowVariables`): every PC element's present dynamic
 /// state variables. Exercised on IEEE13 + a Generator (6 variables:
 /// `Frequency`/`Theta`/`Vd`/`PShaft`/`dSpeed`/`dTheta`) so the `ELEMENT:` /

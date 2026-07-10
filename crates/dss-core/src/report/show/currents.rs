@@ -288,10 +288,14 @@ pub(crate) fn write_terminal_currents(
     // Pascal `'ELEMENT = ', EncloseQuotes(FullName)` — the full name, native case.
     s.push_str(&format!("ELEMENT = {}\n", format::enclose_quotes(name)));
 
+    // AutoTrans special case (`ShowResults.pas:604/624`): `Ntimes = Nphases` rows
+    // per terminal, and after each terminal the extra `Inc(k, Ntimes)` skips the
+    // remaining conductor block (AutoTrans `NConds = 2·Nphases`).
+    let autotrans = super::is_autotrans(name);
+    let ntimes = if autotrans { nphases } else { ncond };
     let mut k = 0usize;
     for j in 0..nterm {
         // From-bus per terminal (`StripExtension(FirstBus/NextBus)`, uppercased).
-        // No AutoTrans class exists in the port, so `Ntimes = NCond` always.
         let from_bus = ckt
             .buses
             .get(cd.terminals[j].bus_ref)
@@ -299,7 +303,7 @@ pub(crate) fn write_terminal_currents(
             .unwrap_or("");
         let from_bus = format::pad(from_bus, mbnl).to_uppercase();
         let mut ctotal = Complex64::ZERO;
-        for _ in 0..ncond {
+        for _ in 0..ntimes {
             let ck = cd.iterminal[k];
             if show_residual {
                 ctotal += ck;
@@ -331,6 +335,9 @@ pub(crate) fn write_terminal_currents(
         }
         if j < nterm - 1 {
             s.push_str("------------\n");
+        }
+        if autotrans {
+            k += ntimes; // Pascal `Inc(k, Ntimes)` — skip the rest of the block.
         }
     }
     s.push('\n'); // Pascal writes a blank line after each element.

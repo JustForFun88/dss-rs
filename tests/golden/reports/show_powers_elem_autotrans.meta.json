@@ -1,0 +1,16 @@
+{
+  "report": "powers e",
+  "fixture": "show_autotrans",
+  "suffix": "Power_elem_kVA.txt",
+  "deck": [
+    "Set DefaultBaseFrequency=60",
+    "New Circuit.show_autotrans basekv=115 phases=3 bus1=src mvasc3=15000 mvasc1=12000",
+    "New Line.lsrc bus1=src bus2=high phases=3 r1=0.5 x1=2.0 r0=1.5 x0=6.0 c1=0 c0=0 length=1",
+    "New AutoTrans.at phases=3 windings=2 xhx=9 wdg=1 bus=high conn=s kV=115 kVA=40000 %r=0.10 wdg=2 bus=low conn=w kV=34.5 kVA=40000 %r=0.10",
+    "New Line.lf bus1=low bus2=fdr phases=3 r1=0.4 x1=1.1 r0=1.2 x0=3.3 c1=0 c0=0 length=1",
+    "New Load.ld1 bus1=fdr phases=3 kv=34.5 kw=26000 pf=0.9 model=1",
+    "Set voltagebases=[115 34.5]",
+    "Calcvoltagebases",
+    "Solve"
+  ]
+}

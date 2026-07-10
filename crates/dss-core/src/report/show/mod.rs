@@ -70,9 +70,12 @@ use crate::exec::registry::DssClass;
 /// producing them and not reproducible with any single value). It only ever feeds
 /// name-column *padding* — space pads (invisible to the whitespace-tokenizing
 /// golden) or `PadDots` runs (the golden's `split_fields` drops pure dot-runs, so
-/// the quirk cannot affect a token). We therefore keep the honest source value; the
-/// exact per-report byte widths are a WP8.8 byte-faithfulness concern, not gated
-/// here (same masked-cosmetic class as [`max_device_name_length`]'s `= 0`).
+/// the quirk cannot affect a token). SETTLED at the WP8.8 exit sweep: the quirk is
+/// nondeterministic (no single value reproduces it), so per the CLAUDE.md UB rule
+/// it is NOT reproduced — the honest source value stays, the padding widths are
+/// masked cosmetics under the tokenizing comparator (same class as
+/// [`max_device_name_length`]'s `= 0`, whose clean fix in the post-1:1 pass
+/// covers both).
 pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     let mut m = 4;
     for i in 0..ckt.buses.len() {
@@ -102,4 +105,16 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
 /// goldens against a fixed upstream).
 pub(crate) fn max_device_name_length(_classes: &[DssClass], _ckt: &Circuit) -> usize {
     0
+}
+
+/// Pascal `(CLASSMASK and DSSObjType) = AUTOTRANS_ELEMENT`, tested on the report
+/// walks' `Class.name` label (the registry class name, so a prefix test is exact).
+/// Drives the `Ntimes = Nphases` special cases in `WriteTerminalCurrents`
+/// (`ShowResults.pas:604`), `ShowPowers` case 1 (`:1190`) and `ShowNodeCurrentSum`
+/// (`:3636`).
+pub(crate) fn is_autotrans(full_name: &str) -> bool {
+    full_name
+        .split('.')
+        .next()
+        .is_some_and(|c| c.eq_ignore_ascii_case("autotrans"))
 }
