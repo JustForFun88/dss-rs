@@ -3,11 +3,13 @@ validation harness (tools/opendss/dsspy_validation/).
 
 Lifted move-only from oracle_server.py so both consumers use the identical,
 empirically-hardened implementation (see the class docstring for the
-snapshot-failure war story). Run-created TOP-LEVEL directories (the
-`<CircuitName>/DI_yr_*` demand-interval tree) are removed wholesale; files
-created inside a PRE-EXISTING subdirectory still escape — sweep workflows must
-end with a `git status tests/corpus` check (recovery: `git restore
-tests/corpus`).
+snapshot-failure war story). The snapshot is RECURSIVE (WP8.8): run-created
+files inside pre-existing subdirectories and run-created directory trees (the
+`<CircuitName>/DI_yr_*` demand-interval tree) are both detected and removed.
+Writes OUTSIDE the case-dir tree (e.g. a manual `dss-cli` run from elsewhere)
+remain uncoverable here — sweep workflows must still end with a
+`git status tests/corpus` check (recovery: `git restore tests/corpus` /
+`git clean`).
 """
 
 from __future__ import annotations
@@ -31,62 +33,81 @@ class CorpusGuard:
     one file mid-snapshot used to abort the whole listing via the old
     whole-loop `except OSError`, and the exit pass then deleted every corpus
     file that sorted after it, `YgD-Test.dss` included). Per-file failures now
-    only skip that file's overwrite-restore buffer."""
+    only skip that file's overwrite-restore buffer; a failed DIRECTORY listing
+    anywhere in the recursive walk disables deletion entirely (incomplete
+    snapshot = never delete)."""
 
     def __init__(self, case_path: str):
         self.dir = os.path.dirname(os.path.abspath(case_path))
+        # `/`-joined paths relative to `self.dir`, files AND directories.
         self.names: set[str] = set()
         self.buf: dict[str, bytes] = {}
         self._snapshot_ok = False
 
-    def __enter__(self) -> "CorpusGuard":
+    def _snapshot(self, d: str, prefix: str) -> bool:
+        """Recursively track every entry under `d`. Returns False if any
+        directory listing failed (caller disables deletion). Never follows
+        symlinks/junctions (none are expected in the corpus)."""
         try:
-            listing = os.listdir(self.dir)
+            listing = os.listdir(d)
         except OSError:
-            return self  # snapshot failed -> deletion stays disabled
+            return False
+        ok = True
         for name in listing:
-            p = os.path.join(self.dir, name)
+            p = os.path.join(d, name)
+            rel = f"{prefix}/{name}" if prefix else name
+            self.names.add(rel)
             try:
-                if not os.path.isfile(p):
-                    # Track pre-existing DIRECTORIES by name too, so __exit__
-                    # can tell a run-created one (the `<CircuitName>/DI_yr_*`
-                    # demand-interval tree of a `Set DemandInterval=True` +
-                    # `CloseDI` deck) from a vendored fixture subdir.
-                    self.names.add(name)
+                if os.path.isdir(p) and not os.path.islink(p):
+                    ok = self._snapshot(p, rel) and ok
                     continue
-                self.names.add(name)
-                if os.path.getsize(p) <= _RESTORE_MAX:
+                if os.path.isfile(p) and os.path.getsize(p) <= _RESTORE_MAX:
                     with open(p, "rb") as fh:
-                        self.buf[name] = fh.read()
+                        self.buf[rel] = fh.read()
             except OSError:
                 # Unreadable (e.g. transiently locked): it is still a
-                # pre-existing file — keep it in `names` so it is never
+                # pre-existing entry — it stays in `names` so it is never
                 # deleted; only its overwrite-restore is unavailable.
-                self.names.add(name)
-        self._snapshot_ok = True
+                pass
+        return ok
+
+    def __enter__(self) -> "CorpusGuard":
+        self._snapshot_ok = self._snapshot(self.dir, "")
         return self
 
-    def __exit__(self, *exc) -> bool:
-        if not self._snapshot_ok:
-            return False
+    def _sweep_created(self, d: str, prefix: str) -> None:
+        """Delete entries whose relative path is absent from the pre-run
+        snapshot. A run-created directory is removed wholesale; a pre-existing
+        one is recursed to find run-created files inside it."""
         try:
-            current = set(os.listdir(self.dir))
+            current = os.listdir(d)
         except OSError:
-            return False
-        for name in current - self.names:  # created by the run
-            p = os.path.join(self.dir, name)
+            return
+        for name in current:
+            p = os.path.join(d, name)
+            rel = f"{prefix}/{name}" if prefix else name
+            is_dir = os.path.isdir(p) and not os.path.islink(p)
+            if rel in self.names:
+                if is_dir:
+                    self._sweep_created(p, rel)  # pre-existing fixture subdir
+                continue
             try:
-                if os.path.isdir(p):
+                if is_dir:
                     # Run-created directory (the DI `<CircuitName>/` tree).
                     # The engines never create junctions/links here, and only
-                    # names absent from the pre-run snapshot are removed.
+                    # paths absent from the pre-run snapshot are removed.
                     shutil.rmtree(p, ignore_errors=True)
                 else:
                     os.remove(p)
             except OSError:
                 pass
-        for name, data in self.buf.items():  # overwritten by the run
-            p = os.path.join(self.dir, name)
+
+    def __exit__(self, *exc) -> bool:
+        if not self._snapshot_ok:
+            return False
+        self._sweep_created(self.dir, "")
+        for rel, data in self.buf.items():  # overwritten by the run
+            p = os.path.join(self.dir, rel)
             try:
                 with open(p, "rb") as fh:
                     if fh.read() == data:
