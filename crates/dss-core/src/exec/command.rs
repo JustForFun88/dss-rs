@@ -64,17 +64,57 @@ impl Dss {
                 self.do_clear_cmd();
                 return;
             }
-            cmd::FILEEDIT
-            | cmd::CLASSES
-            | cmd::USERCLASSES
-            | cmd::ALIGN_FILE
+            // Pre-circuit commands (`ExecCommands.pas:301-335`, dispatched
+            // before the circuit-required gate; the second, post-circuit case
+            // carries only commented-out duplicates of these).
+            cmd::FILEEDIT => {
+                self.do_file_edit_cmd();
+                return;
+            }
+            cmd::CLASSES => {
+                // Pascal `DoClassesCmd`: every intrinsic class name into
+                // GlobalResult, in `DSSClassList` creation order (the Rust
+                // registry groups DSS_OBJECT classes first, so walk the
+                // Pascal-order table the whole-circuit Dump already uses).
+                for name in crate::report::save::dump::commands::PASCAL_CLASS_ORDER {
+                    super::helpers::append_result(&mut self.last_result, name);
+                }
+                return;
+            }
+            cmd::USERCLASSES => {
+                // Pascal `DoUserClassesCmd`.
+                super::helpers::append_result(&mut self.last_result, "No User Classes Defined.");
+                return;
+            }
+            cmd::CD => {
+                self.do_cd_cmd();
+                return;
+            }
+            cmd::DOSCMD => {
+                // Pascal `ExecCommands.pas:327`: `DSS_CAPI_ALLOW_DOSCMD`
+                // defaults off and stays off in this port (arbitrary shell
+                // execution; the enabling API is deliberately not exposed) —
+                // the error #283 arm is the whole surface.
+                self.errors.push(
+                    "DOScmd is disabled. Enable it via API or set the environment variable DSS_CAPI_ALLOW_DOSCMD=1 before starting the process."
+                        .to_string(),
+                );
+                return;
+            }
+            cmd::VAR => {
+                self.do_var_cmd();
+                return;
+            }
+            // `AlignFile`/`CvrtLoadshapes` are live upstream but unexercised
+            // file-rewrite utilities (0 corpus uses) — loud NOT_PORTED,
+            // on-demand owners. The DI-plot family (`DI_plot`/`CompareCases`/
+            // `YearlyCurves`) stays loud: upstream calls the plot callback
+            // with no NIL guard (UB when unregistered — the WPG.17 rule).
+            cmd::ALIGN_FILE
             | cmd::DI_PLOT
             | cmd::COMPARE_CASES
             | cmd::YEARLY_CURVES
-            | cmd::CD
-            | cmd::DOSCMD
-            | cmd::CVRT_LOADSHAPES
-            | cmd::VAR => {
+            | cmd::CVRT_LOADSHAPES => {
                 self.not_ported_command(pointer);
                 return;
             }
@@ -188,7 +228,90 @@ impl Dss {
                     ckt.solution.solution_initialized = false;
                 }
             }
+            // Pascal `DoEnableCmd`/`DoDisableCmd` (ExecHelper.pas:1095/1145).
+            cmd::ENABLE => self.do_enable_disable_cmd(true),
+            cmd::DISABLE => self.do_enable_disable_cmd(false),
+            // Pascal `DoSetkVBase` (ExecHelper.pas:1949).
+            cmd::SET_KV_BASE => self.do_set_kv_base_cmd(),
+            // Pascal `DolossesCmd` (ExecHelper.pas:2168).
+            cmd::LOSSES => self.do_losses_cmd(),
+            // Pascal `DoSummaryCmd` (ExecHelper.pas:3449).
+            cmd::SUMMARY => self.do_summary_cmd(),
+            // Pascal `DoReconductorCmd` (ExecHelper.pas:4245).
+            cmd::RECONDUCTOR => self.do_reconductor_cmd(),
+            // The step-solution commands (`ExecCommands.pas:578-601`): direct
+            // drivers over the solution internals.
+            cmd::INIT_SNAP
+            | cmd::SOLVE_NO_CONTROL
+            | cmd::SAMPLE_CONTROLS
+            | cmd::DO_CONTROL_ACTIONS
+            | cmd::SHOW_CONTROL_QUEUE
+            | cmd::SOLVE_DIRECT
+            | cmd::SOLVE_PFLOW => self.do_step_solution_cmd(pointer),
             _ => self.not_ported_command(pointer),
+        }
+    }
+
+    /// Pascal `DoFileEditCmd` (`ExecHelper.pas:1681`): an existing file goes to
+    /// `FireOffEditor` — the GUI editor launch, a headless no-op (the
+    /// established `AllowEditor` convention); a missing file sets
+    /// `GlobalResult` (no error). The path resolves against the engine's
+    /// virtual cwd like every file argument.
+    fn do_file_edit_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars).to_string();
+        if !self.current_dir.join(&param).is_file() {
+            self.last_result = format!("File \"{param}\" does not exist.");
+        }
+    }
+
+    /// Pascal `ord(Cmd.CD)` (`ExecCommands.pas:315`): change the data path to
+    /// an EXISTING directory (`SetDataPath`; unlike `Set DataPath=` it never
+    /// creates one) — error #282 on a miss.
+    fn do_cd_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars).to_string();
+        let p = self.current_dir.join(&param);
+        if p.is_dir() {
+            self.current_dir = p.clone();
+            self.output_directory = p;
+        } else {
+            self.errors
+                .push(format!("Directory \"{param}\" not found."));
+        }
+    }
+
+    /// Pascal `DoVarCmd` (`ExecHelper.pas:4889`): the `var` script-variable
+    /// command — bare `var` lists every parser variable (`Variable, Value`
+    /// header + one `<name>. <value|null>` line each), `var @x` echoes the
+    /// substituted value, `var @x=1 @y=2` defines/overwrites variables (a name
+    /// not starting with `@` is error #28725 and stops the scan).
+    fn do_var_cmd(&mut self) {
+        let mut param_name = self.parser.next_param(&self.vars);
+        let mut param = self.parser.make_string(&self.vars).to_string();
+        if param.is_empty() {
+            // Show all vars.
+            let mut s = String::from("Variable, Value\n");
+            for i in 0..self.vars.len() {
+                s.push_str(&self.vars.var_string(i));
+                s.push('\n');
+            }
+            self.last_result = s;
+        } else if param_name.is_empty() {
+            // Show this var's value (the parser already substituted it).
+            self.last_result = param;
+        } else {
+            while !param_name.is_empty() {
+                if !param_name.starts_with('@') {
+                    self.errors.push(format!(
+                        "Illegal Variable Name: {param_name}; Must begin with \"@\""
+                    ));
+                    return;
+                }
+                self.vars.add(&param_name, &param);
+                param_name = self.parser.next_param(&self.vars);
+                param = self.parser.make_string(&self.vars).to_string();
+            }
         }
     }
 
@@ -345,6 +468,57 @@ impl Dss {
                 self.parser.set_position(params_pos);
                 self.edit_active();
             }
+        }
+    }
+
+    /// Pascal `DoEnableCmd`/`DoDisableCmd` (`ExecHelper.pas:1095/1145`):
+    /// `Enable`/`Disable class[.name|.*]`. `circuit` → no-op; an unknown class
+    /// or a non-circuit-element class (the `BASECLASSMASK` guard) → silently
+    /// nothing (no error upstream); `*` → set `Enabled` directly on every
+    /// element of the class (the bare `Set_Enabled` setter — NOT the edit path,
+    /// so `PrpSequence`/`RecalcElementData` are untouched); a name → reload the
+    /// parser with `Enabled=true|false` and run the ordinary edit
+    /// (`EditObject`; a missing name is silently ignored, `SetActive` = false).
+    fn do_enable_disable_cmd(&mut self, enable: bool) {
+        let (obj_type, obj_name) = self.get_obj_class_and_name();
+        if obj_type.is_empty() || obj_type.eq_ignore_ascii_case("circuit") {
+            return; // Pascal: do nothing
+        }
+        let Some(&ci) = self.class_by_name.get(&obj_type.to_lowercase()) else {
+            return; // Pascal: GetDSSClassPtr = NIL → nothing
+        };
+        if self.classes[ci].kind.is_none() {
+            return; // Pascal: (DSSClassType and BASECLASSMASK) = 0 → nothing
+        }
+        if obj_name == "*" {
+            let mut any_changed = false;
+            for obj in &mut self.classes[ci].objects {
+                if let Some(elem) = obj.as_ckt_element_mut() {
+                    let cd = elem.cd_mut();
+                    cd.set_enabled(enable);
+                    if cd.signal_bus_name_redefined {
+                        cd.signal_bus_name_redefined = false;
+                        any_changed = true;
+                    }
+                }
+            }
+            // Pascal `Set_Enabled` writes `BusNameRedefined` on the circuit
+            // immediately; the signal-flag propagation is drained here since
+            // this path bypasses the edit tail.
+            if any_changed && let Some(ckt) = self.circuit.as_mut() {
+                ckt.set_bus_name_redefined(true);
+            }
+        } else {
+            self.active_class = Some(ci); // DSS.LastClassReferenced
+            if !self.classes[ci].set_active(&obj_name) {
+                return; // Pascal EditObject: SetActive false → nothing
+            }
+            self.parser.set_cmd_string(if enable {
+                "Enabled=true"
+            } else {
+                "Enabled=false"
+            });
+            self.edit_active();
         }
     }
 

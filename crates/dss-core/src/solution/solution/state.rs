@@ -323,7 +323,7 @@ impl Solution {
 
     /// Pascal `SnapShotInit` (SetGeneratorDispRef is a no-op without
     /// generators in Phase 3).
-    pub(super) fn snap_shot_init(&mut self) {
+    pub(crate) fn snap_shot_init(&mut self) {
         self.control_iteration = 0;
         self.control_actions_done = false;
         self.most_iterations_done = 0;

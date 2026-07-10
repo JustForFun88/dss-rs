@@ -29,6 +29,7 @@ impl Dss {
             errors,
             default_base_freq,
             daisy_size,
+            auto_show_export,
             last_result,
             ..
         } = self;
@@ -218,6 +219,9 @@ impl Dss {
                 opt::DAISY_SIZE => {
                     append_result(&mut result, &crate::report::format::g(*daisy_size, 6))
                 }
+                // Pascal `ExecOptions.pas:973`: `Get ShowExport` echoes the
+                // stored `AutoShowExport` flag (see the Set arm).
+                opt::SHOW_EXPORT => append_result(&mut result, yes_no(*auto_show_export)),
                 opt::MARK_SWITCHES => append_result(&mut result, yes_no(ckt.mark_switches)),
                 opt::MARK_TRANSFORMERS => append_result(&mut result, yes_no(ckt.mark_transformers)),
                 opt::MARK_CAPACITORS => append_result(&mut result, yes_no(ckt.mark_capacitors)),

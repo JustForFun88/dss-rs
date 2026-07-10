@@ -500,6 +500,217 @@ impl Dss {
         }
     }
 
+    /// Pascal `DoSetkVBase` (`ExecHelper.pas:1949`): `SetkVBase bus=<name>
+    /// kVLL=<v> | kVLN=<v>` — set one bus's `kVBase`. The value is taken L-N:
+    /// a `kvln`-named second parameter is stored as-is, anything else (`kvll`
+    /// or positional) is divided by √3. A hit raises
+    /// `Solution.VoltageBaseChanged`; a miss appends `Bus <name> not found.`
+    /// to `GlobalResult` (no error). Pascal also sets `ActiveBusIndex` — an
+    /// inert side effect here (no ported command consumes an active bus; same
+    /// class as `DoOpenCmd`'s `SetActiveBus`).
+    pub(super) fn do_set_kv_base_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let bus_name = self.parser.make_string(&self.vars).to_lowercase();
+        let param_name = self.parser.next_param(&self.vars).to_lowercase();
+        let kv_value = self.parser.make_double(&self.vars).unwrap_or(0.0);
+
+        let ckt = self.circuit.as_mut().expect("gated in command()");
+        match ckt.bus_list.find(&bus_name) {
+            Some(ib) => {
+                ckt.buses[ib].kv_base = if param_name == "kvln" {
+                    kv_value
+                } else {
+                    kv_value / crate::util::sqrt3()
+                };
+                ckt.solution.voltage_base_changed = true;
+            }
+            None => {
+                super::helpers::append_result(
+                    &mut self.last_result,
+                    &format!("Bus {bus_name} not found."),
+                );
+            }
+        }
+    }
+
+    /// Pascal `DolossesCmd` (`ExecHelper.pas:2168`): the active circuit
+    /// element's `Losses` (kW/kvar) into `GlobalResult`,
+    /// `Format('%10.5g, %10.5g')`. No active element → `GlobalResult`
+    /// untouched (the no-circuit arm is dead — the dispatch gate errors #301
+    /// pre-circuit).
+    pub(super) fn do_losses_cmd(&mut self) {
+        let Some((ci, oi)) = self.active_ckt_element else {
+            return;
+        };
+        let Dss {
+            classes,
+            circuit,
+            last_result,
+            ..
+        } = self;
+        let ckt = circuit.as_ref().expect("gated in command()");
+        let sys = crate::solution::solution::sys_ctx(ckt);
+        let node_v = &ckt.solution.node_v;
+        let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut() else {
+            return;
+        };
+        let loss = elem.losses(&sys, node_v);
+        *last_result = format!(
+            "{}, {}",
+            crate::report::format::g_w(loss.re * 0.001, 10, 5),
+            crate::report::format::g_w(loss.im * 0.001, 10, 5)
+        );
+    }
+
+    /// Pascal `DoSummaryCmd` (`ExecHelper.pas:3449`): the solution summary into
+    /// `GlobalResult` — status/mode/counts/iteration block, then the circuit
+    /// summary (pu-voltage extremes, total source MW/Mvar, losses, frequency,
+    /// mode/control-mode/load-model strings). Formats reproduced line-for-line
+    /// (note the missing space in `Control Mode =%s` on the first occurrence,
+    /// the trailing spaces after `Year/Hour/…voltage` values, and the literal
+    /// `(**** %%)` in the zero-power losses arm — Pascal string concat, not a
+    /// Format specifier).
+    pub(super) fn do_summary_cmd(&mut self) {
+        use crate::report::format;
+        // The &mut element walks first (total source power + losses).
+        let (tp_re_kw, tp_im_kvar) = self.total_power(); // Σ source power[1], kW
+        let (loss_re_w, loss_im_var) = self.losses(); // W/var
+        // `GetTotalPowerFromSources` = −Σ source power (VA); ×1e-6 → MVA.
+        let c_power = (-tp_re_kw * 0.001, -tp_im_kvar * 0.001);
+        let c_losses = (loss_re_w * 1e-6, loss_im_var * 1e-6);
+
+        let ckt = self.circuit.as_ref().expect("gated in command()");
+        let mode_str = self
+            .enums
+            .get(self.enums.solve_mode)
+            .ordinal_to_string(ckt.solution.mode.ordinal());
+        let control_str = self
+            .enums
+            .get(self.enums.control_mode)
+            .ordinal_to_string(ckt.solution.control_mode);
+        let load_model_str = self
+            .enums
+            .get(self.enums.default_load_model)
+            .ordinal_to_string(ckt.solution.load_model);
+
+        let mut s = String::new();
+        s.push_str(if ckt.is_solved {
+            "Status = SOLVED\n"
+        } else {
+            "Status = NOT Solved\n"
+        });
+        s.push_str(&format!("Solution Mode = {mode_str}\n"));
+        s.push_str(&format!("Number = {}\n", ckt.solution.number_of_times));
+        s.push_str(&format!(
+            "Load Mult = {}\n",
+            format::fixed_w(ckt.load_multiplier, 5, 3)
+        ));
+        s.push_str(&format!("Devices = {}\n", ckt.num_devices));
+        s.push_str(&format!("Buses = {}\n", ckt.buses.len()));
+        s.push_str(&format!("Nodes = {}\n", ckt.num_nodes));
+        s.push_str(&format!("Control Mode ={control_str}\n"));
+        s.push_str(&format!("Total Iterations = {}\n", ckt.solution.iteration));
+        s.push_str(&format!(
+            "Control Iterations = {}\n",
+            ckt.solution.control_iteration
+        ));
+        s.push_str(&format!(
+            "Max Sol Iter = {}\n",
+            ckt.solution.most_iterations_done
+        ));
+        s.push_str(" \n - Circuit Summary -\n \n");
+        s.push_str(&format!("Year = {} \n", ckt.solution.year));
+        s.push_str(&format!("Hour = {} \n", ckt.solution.int_hour));
+        s.push_str(&format!(
+            "Max pu. voltage = {} \n",
+            format::g(crate::report::export::max_pu_voltage(ckt), 5)
+        ));
+        s.push_str(&format!(
+            "Min pu. voltage = {} \n",
+            format::g(crate::report::export::min_pu_voltage(ckt, true), 5)
+        ));
+        s.push_str(&format!(
+            "Total Active Power:   {} MW\n",
+            format::g(c_power.0, 6)
+        ));
+        s.push_str(&format!(
+            "Total Reactive Power: {} Mvar\n",
+            format::g(c_power.1, 6)
+        ));
+        if c_power.0 != 0.0 {
+            s.push_str(&format!(
+                "Total Active Losses:   {} MW, ({} %)\n",
+                format::g(c_losses.0, 6),
+                format::g(c_losses.0 / c_power.0 * 100.0, 4)
+            ));
+        } else {
+            s.push_str("Total Active Losses:   ****** MW, (**** %%)\n");
+        }
+        s.push_str(&format!(
+            "Total Reactive Losses: {} Mvar\n",
+            format::g(c_losses.1, 6)
+        ));
+        s.push_str(&format!(
+            "Frequency = {} Hz\n",
+            format::g(ckt.solution.frequency, 15)
+        ));
+        s.push_str(&format!("Mode = {mode_str}\n"));
+        s.push_str(&format!("Control Mode = {control_str}\n"));
+        s.push_str(&format!("Load Model = {load_model_str}\n"));
+        self.last_result = s;
+    }
+
+    /// The step-solution commands (`ExecCommands.pas:578-601`): thin drivers
+    /// over the ported solution internals — `_InitSnap` (`SnapShotInit`),
+    /// `_SolveNoControl` (`SolveCircuit`), `_SampleControls`
+    /// (`SampleControlDevices`), `_DoControlActions` (`DoControlActions`),
+    /// `_ShowControlQueue` (the same `WriteQueue` CSV the `Show controlqueue`
+    /// arm emits, `FireOffEditor` dropped per the GUI no-op rule),
+    /// `_SolveDirect` (`SolveDirect`), `_SolvePFlow` (`DoPFLOWsolution`).
+    pub(super) fn do_step_solution_cmd(&mut self, pointer: usize) {
+        if pointer == cmd::SHOW_CONTROL_QUEUE {
+            let ckt = self.circuit.as_ref().expect("gated in command()");
+            let content = crate::report::show::show_control_queue(&self.classes, ckt);
+            self.write_show_named("ControlQueue.csv", &content, false);
+            return;
+        }
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("gated in command()");
+        if pointer == cmd::INIT_SNAP {
+            // Pascal `TSolutionObj.SnapShotInit` = SetGeneratorDispRef + the
+            // counter/flag reset (split across two fns in this port).
+            crate::solution::solution::set_generator_disp_ref(ckt);
+            ckt.solution.snap_shot_init();
+            return;
+        }
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        // Hard errors are recorded by the solve internals (the `do_solve_cmd`
+        // convention).
+        let _ = match pointer {
+            cmd::SOLVE_NO_CONTROL => crate::solution::solution::solve_circuit(ckt, &mut env),
+            cmd::SAMPLE_CONTROLS => {
+                crate::solution::controls::sample_control_devices(ckt, &mut env)
+            }
+            cmd::DO_CONTROL_ACTIONS => crate::solution::controls::do_control_actions(ckt, &mut env),
+            cmd::SOLVE_DIRECT => crate::solution::solution::solve_direct(ckt, &mut env),
+            cmd::SOLVE_PFLOW => crate::solution::solution::do_pflow_solution(ckt, &mut env),
+            _ => unreachable!("dispatch covers the step-solution ordinals"),
+        };
+    }
+
     /// Pascal `DoInterpolateCmd` (`ExecHelper.pas:3106`): interpolate bus
     /// coordinates in meter zones. Clears `Flg.Checked` on every circuit
     /// element, then runs `InterpolateCoordinates` on every enabled meter

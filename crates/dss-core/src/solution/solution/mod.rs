@@ -51,3 +51,6 @@ pub use state::{
 pub(crate) use dynamics::calc_initial_machine_states;
 pub(crate) use harmonics::initialize_for_harmonics;
 pub(crate) use power_flow::solve_circuit;
+// The `_InitSnap`/`_SolveNoControl`/`_SolveDirect`/`_SolvePFlow` step-solution
+// executive commands (`ExecCommands.pas:578-601`) drive these directly.
+pub(crate) use power_flow::{do_pflow_solution, set_generator_disp_ref, solve_direct};

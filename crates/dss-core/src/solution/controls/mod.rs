@@ -29,6 +29,10 @@ pub(crate) use dispatch::{
     storage_controller_recalc_fleet, update_all_exp_controls, update_all_inv_controls,
 };
 pub(crate) use sampling::{reset_all_controls, sample_do_control_actions};
+// The `_SampleControls`/`_DoControlActions` step-solution executive commands
+// (`ExecCommands.pas:582-585`) drive these directly.
+pub(crate) use actions::do_control_actions;
+pub(crate) use sampling::sample_control_devices;
 
 /// What the dispatch should invoke on the control element.
 #[derive(Clone, Copy)]

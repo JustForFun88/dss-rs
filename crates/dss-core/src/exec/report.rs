@@ -1999,7 +1999,7 @@ impl Dss {
     /// Like [`Dss::write_show`] but `set_last` gates the `@lastshowfile` update.
     /// The two-file `Show Elements` writes its `_Disabled` companion with
     /// `set_last = false` (Pascal sets `@lastshowfile` once, to the main file).
-    fn write_show_named(&mut self, default_name: &str, content: &str, set_last: bool) {
+    pub(super) fn write_show_named(&mut self, default_name: &str, content: &str, set_last: bool) {
         let case = self
             .circuit
             .as_ref()

@@ -271,7 +271,7 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 /// Pascal `TSolutionObj.SetGeneratorDispRef`: the global generator dispatch
 /// reference per solve mode (generator.pas LOADMODE/PRICEMODE compare their
 /// `DispValue` against it).
-pub(super) fn set_generator_disp_ref(ckt: &mut Circuit) {
+pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
     let lm = ckt.load_multiplier;
     let gf = ckt.default_growth_factor;
     let hm = ckt.default_hour_mult.re;
@@ -343,7 +343,7 @@ fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `DoPFLOWsolution`.
-fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.solution_count += 1;
 
     if ckt.solution.voltage_base_changed {
@@ -461,7 +461,7 @@ pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `SolveDirect`.
-pub(super) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.loads_need_updating = true;
     ckt.solution.solution_count += 1;
 
