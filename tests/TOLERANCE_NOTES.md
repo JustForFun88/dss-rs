@@ -26,9 +26,10 @@ tiers tolerances by **conditioning**, not size:
 - **large_floating_delta** — `large` plus one documented exception: `v_abs`
   5e-4 V (see §floating-delta below). Currently one deck
   (`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`).
-There is deliberately **no** tier for the near-ideal-source AutoTrans family —
-its floor contaminates the currents/powers channels beyond any honest band
-(see §near-ideal-source below); the family stays documented-skipped.
+- **large_near_ideal_source** — `large` plus two documented exceptions:
+  `v_rel` 5e-6 and `i_abs` 0.1 A (see §near-ideal-source below). The 9-deck
+  AutoTrans validation family; the Y channel keeps the tight `large` floors
+  and is the regression sentinel.
 
 | Quantity | micro | feeder | large |
 |---|---|---|---|
@@ -72,7 +73,7 @@ the `large` floors, as do Y/YPrim/injection. Fix owner: `RESONANCE_PLAN.md`
 WP-R1 (one iterative-refinement step measures 9.4e-6 V vs KLU — 3× under the
 `large`-band); when it lands, retighten this tier back to `large`.
 
-### near-ideal-source (documented-skipped, NOT a tier): cross-solver junk at κ≈1e12
+### near-ideal-source (`large_near_ideal_source`): cross-solver junk at κ≈1e12
 
 The AutoTrans validation family (`Test/AutoTrans/*` = `Version8/.../AutoTrans/*`
 byte-identical; Auto1bus/Auto3bus build the autotransformer from 1-phase
@@ -113,18 +114,34 @@ hex-bit transport) closed every remaining channel:
   in the null direction; the faer↔KLU gap of 3.7e-3 V is four orders *tighter*
   than that span.
 
-**Why the family stays OUT of `solvable_now` (no tier):** the V floor
-propagates linearly into the element channels — the Vsource terminal current
-is a 0.15 A no-load quantity resolved through the ≈1.7e7 S source
-(`dI = Y_src·dV_junk`, measured 6.2e-2 A — 40% of the current; powers inherit
-`dS = V·dI ≈ 12 kVA`). Admitting that would need `i_abs` loosened ~500×
-(shared by currents AND powers), masking real regressions in the short-circuit
-currents/losses the family exists to validate. Per the no-fudging rule the
-decks stay documented-skipped; the proven Y bit-identity means any FUTURE
-Y-level divergence here is a real element regression. WP-R1 note: iterative
+**Tier calibration (user-directed migration, 2026-07-10):** with the floor
+proven by decomposition (all four legs above — the sanctioned path for a band
+change), the family is gated under `large_near_ideal_source` = `large` with
+two exceptions:
+
+- `v_rel` **5e-6** — family worst 1.46e-6 rel (Auto3bus), ×3.4 headroom;
+  `v_abs` stays at the `large` 1e-6 V (the relative band alone covers every
+  node: 0.44 V at the 88 kV LOW bus vs 5.5e-2 V measured).
+- `i_abs` **0.1 A** (user-set) — the V floor's linear image in the stiff-entry
+  small currents (`dI = Y_src·dV_junk`, measured worst 9.375e-2 A on
+  `Line.line1` at the no-load state = 94% of the band). A future faer/pin bump
+  tripping this thin margin is a **re-triage signal, not a widen signal**. The
+  voltage-scaled power floor maps it onto powers (`|V|·i_abs`), covering the
+  measured 12–19 kVA junk image. Large currents (fault/full-load checks) hold
+  `i_rel` = the `large` 1e-6.
+
+**Why the wide `i_abs` does not mask real element bugs:** the family's unique
+validation surface is AutoTrans/Transformer YPrim assembly, and the **Y channel
+keeps the tight `large` floors** (`y_rel` 1e-8 — today the assembled Y is
+bit-identical, so ANY Y-level drift is a real regression caught immediately);
+the report formulas (GetCurrents/Powers) are corpus-shared and pinned tight on
+every other deck, and are bit-exonerated here (round 2b above). The only thing
+the band absorbs is the proven solver-junk image. WP-R1 note: iterative
 refinement DIVERGES on the floating tertiary here (one step: 1.3e-3 → 1492 V —
 the `u·κ ≳ 1` limit in action), so WP-R1's gate must verify the residual
-actually decreased and roll the step back otherwise.
+actually decreased and roll the step back otherwise; and even a perfect solve
+cannot close the family gap below KLU's own junk (residual parity, leg 3), so
+the tier is permanent until the oracle itself is re-pinned.
 
 **Maintenance:** a new corpus case defaults to `large`; promote it to `feeder`
 only after `corpus_live` confirms it holds the tighter floor. Golden tests that

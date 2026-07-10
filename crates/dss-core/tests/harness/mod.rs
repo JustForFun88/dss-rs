@@ -404,14 +404,40 @@ pub fn tol_for(kind: &str) -> Tolerances {
             energy_rel: 1e-4,
             energy_abs: 1e-4,
         },
-        // NOTE (2026-07-10): there is deliberately NO tier for the AutoTrans
-        // near-ideal-source family (κ≈1e12): its proven cross-solver V floor
-        // (~5e-6 rel) propagates LINEARLY into the source-side currents
-        // (dI = Y_src·dV ≈ 6e-2 A vs a 0.15 A no-load current) and powers
-        // (~12 kVA), and admitting those needs ~500× i_abs loosening — exactly
-        // the forbidden band-widening that would mask real short-circuit
-        // current regressions. The family stays documented-skipped
-        // (tests/TOLERANCE_NOTES.md §near-ideal-source).
+        // The AutoTrans near-ideal-source family (κ≈1e12: mvasc3=2e6 source +
+        // 1e-6 Ω switches + floating delta tertiary). Its V gap is the PROVEN
+        // cross-solver junk floor — proof by decomposition, not by sweep
+        // (tests/TOLERANCE_NOTES.md §near-ideal-source): assembled Y and every
+        // element's Currents/Powers formula are bit-identical on identical
+        // inputs; the single 1-ulp RHS component measures 1.5e-11 V; residual
+        // parity ‖Y·V−I‖ KLU 7.1e-2 vs faer 1.3e-1 (the oracle is no cleaner);
+        // scipy lands 51.6 V from BOTH engines (the equivalent-solution set
+        // spans ~51 V — the engines' 3.7e-3 V gap is 4 orders tighter). The
+        // floor propagates LINEARLY into the stiff-entry small currents
+        // (dI = Y_src·dV, measured 6.2e-2…9.4e-2 A against a 0.15 A no-load
+        // current) and powers (dS = V·dI ≈ 12–19 kVA), so `i_abs` must absorb
+        // exactly that image (0.1 A, user-set — ×1.07 over the measured worst
+        // 9.375e-2 A; a future faer/pin bump tripping it is a re-triage
+        // signal, NOT a widen-the-band signal); the voltage-scaled power floor
+        // maps it to the powers channel automatically. Large currents
+        // (fault/full-load checks, hundreds of A…kA) still hold `i_rel` = the
+        // `large` floor, and `v_rel` 5e-6 covers the V junk with no `v_abs`
+        // change. What keeps real element bugs caught despite the wide
+        // `i_abs`: the family's unique surface is YPrim assembly, and the Y
+        // channel KEEPS the tight `large` floors (bit-identical today — any
+        // Y-level drift is a real regression); the report formulas are
+        // corpus-shared and pinned tight elsewhere. Retighten under WP-R1
+        // only if refinement is proven to shrink the measured junk.
+        "large_near_ideal_source" => Tolerances {
+            v_rel: 5e-6,
+            v_abs: 1e-6,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 0.1,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
         // Large / numerically-stiff networks (EPRI ckt5, 8500-node, A-Diakoptics
         // torn zones, inverter cases, 4Bus-YYD): voltages 1e-7; the deterministic Y
         // still holds 1e-8. Currents/powers stay 1e-6 rel / 1e-4 abs — their
