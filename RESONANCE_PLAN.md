@@ -106,6 +106,34 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   falls below a set bound. (The residual test checks backward stability; only the
   `Z`-convergence checks the forward accuracy that needs the compensated residual.)
 
+  **Second acceptance case — the floating-delta zero-sequence class (measured
+  2026-07-10, `Run_IEEE123Bus_GFMSnap.DSS` investigation).** This is a *power-flow*
+  (not harmonics) beneficiary, proving WP-R1's "any ill-conditioned system" scope on a
+  vendored deck. A bus fed by a delta xfmr winding with a delta DER (StoBus/PVBus)
+  has no zero-sequence path to ground; its common mode is pinned only by the
+  transformer anti-float adder (−j1.4468e-6 S = 2·Y_PPM) against a ~452 S diagonal —
+  a κ≈3.1e8 subspace inside an otherwise well-conditioned solve. Measured on
+  bit-identical `(Y, I)` (exact hex-bit transport — decimal JSON round-trip through
+  serde_json *without* the `float_roundtrip` feature perturbs the last ulp and, ×3e8,
+  poisons such measurements):
+    - zero-seq residual per solve: KLU 7.3e-12 A / scipy 8.7e-12 A / **faer 8.7e-11 A**
+      (~12× worse) → common-mode slack |r₀|/|y₀| ≈ 6e-5 V — the entire above-band
+      live-gate failure of that deck (band 2.96e-5 V);
+    - **one** refinement step: faer residual → 2.1e-11 A, faer-vs-KLU common-mode gap
+      6.6e-5 → **9.4e-6 V** (3× under the band); a second step adds nothing — the
+      remaining ~1e-5 V is the irreducible cross-solver spread (scipy-vs-KLU measures
+      1.2e-5 V on the same bits).
+  **Acceptance:** with refinement on, the one-shot faer-vs-KLU common-mode gap on the
+  captured GFMSnap `(Y, I)` stays under the live band, and the deck's full live compare
+  goes green (migrate it from `skipped_needs_investigation` to `solvable_now` in the
+  default lane). Full measurement record: the deck's note in
+  `tests/corpus/manifests/skipped_needs_investigation.json` + STATUS.md 2026-07-09/10.
+
+  **Gate nuance (from the same investigation):** the *global* `rcond` of such a matrix
+  looks healthy — the junk lives in one tiny subspace, invisible to a whole-matrix
+  condition estimate. The refinement trigger must therefore be the **residual norm**
+  (cheap: one mat-vec on the unscaled `A`), not `rcond` alone.
+
   **Confirmed by the standard numerical-LA literature (this is a named, textbook
   technique, not a homegrown trick).** Both texts describe exactly the three-step
   process `r = b − A·x; solve A·d = r; x += d`:
