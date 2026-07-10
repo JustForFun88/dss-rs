@@ -2,58 +2,13 @@
  "comment": "Entry points excluded from the live gate pending (or after) investigation. Fields: path, tag, note. Tags: root-caused floors that cannot yet be banded honestly (floating_zeroseq_bus) stay here with their proof notes; oracle-side blocks (oracle_*) have nothing to fix port-side; the rest are open triage items. Root-caused floors WITH an honest calibrated band migrate to solvable_now under a dedicated kind (near-ideal-source AutoTrans family -> large_near_ideal_source, 2026-07-10). Full procedures: TESTING.md; floor proofs: tests/TOLERANCE_NOTES.md.",
  "cases": [
   {
-   "path": "Test/IEEE13_CDPSM.dss",
-   "tag": "live_mismatch",
-   "note": "live probe: Test/IEEE13_CDPSM.dss step 0: entry 6 differs: actual (25.33693882144466, -54.23093850536439) vs expected (25.336934606975863, -54.230936661744735); |diff| = 4.600073988079624e-6 > allowed 1.5985778768454727e-6"
-  },
-  {
-   "path": "Test/TestDDRegulator.dss",
-   "tag": "floating_zeroseq_bus",
-   "note": "ROOT-CAUSED 2026-07-10: same proven class as GFM_IEEE123/Run_IEEE123Bus_GFMSnap (TOLERANCE_NOTES.md par. floating-delta), one tier weaker. REGBUS2 sits between TWO delta windings (Transformer.Reg1/Reg2 winding 2) -> no zero-seq ground path; measured zero-seq pinning admittance -j2.14e-8 S vs ~303 S diagonal -> amplification 1.4e10. Decomposition: the whole 5.2191e-3 V gap is common mode on all three REGBUS2 nodes (differential remainder <=1.4e-10 V, L-L <=2.7e-10 V); every other node matches to ~1e-14 rel; Y bit-identical (worst rel 0.0); injections match <1e-9 A; iterations equal. Un-pinnable across solvers at ANY LU accuracy this weakly pinned (KLU-quality residual ~1e-11 A -> ~5e-4 V slack), so even WP-R1 refinement only shrinks, not closes, it. Disposition options: per-bus common-mode exclusion in the compare, or stays documented-skipped."
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss step 0 injection currents: entry 3 differs: actual (-120.91076949743072, 189.99722200766234) vs expected (-120.91079504608052, 189.99726238174765); |diff| = 4.7778659155004466e-5 > allowed 3.252074156666115e-5"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS step 0: entry 3 differs: actual (17234.052127128372, -11794.186870318998) vs expected (17234.05190584576, -11794.186576315598); |diff| = 3.6797281520649204e-4 > allowed 2.0983375735027349e-4"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss step 0: entry 3 differs: actual (16539.605588294868, -12423.328457918105) vs expected (16539.605381237965, -12423.328163465423); |diff| = 3.599651969433129e-4 > allowed 2.0785686568838585e-4"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS step 0 Line.mdv201_62249elb currents: entry 0 differs: actual (-1.4669036865234375, -0.1677703857421875) vs expected (-1.4669075012207031, -0.16776084899902344); |diff| = 1.0271386732357986e-5 > allowed 1.0147646920712708e-5"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss step 0: entry 3 differs: actual (6110.629272677565, -4027.63862143472) vs expected (6110.629323838046, -4027.6385262623153); |diff| = 1.080517535133314e-4 > allowed 7.41858338967193e-5"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS step 0 Line.333 currents: entry 0 differs: actual (19.90692138671875, -38.5438232421875) vs expected (19.9071044921875, -38.5438232421875); |diff| = 1.8310546875e-4 > allowed 1.43381091726556e-5"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "live_mismatch",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss step 0 Line.333 currents: entry 0 differs: actual (204.0386962890625, -185.12255859375) vs expected (204.038818359375, -185.1224365234375); |diff| = 1.7263349150062197e-4 > allowed 3.755034589653353e-5"
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
-   "tag": "entry_point",
+   "tag": "oracle_timeout",
    "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 120s\")"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS",
-   "tag": "wrapper",
+   "tag": "oracle_timeout",
    "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 120s\")"
   },
   {
@@ -67,27 +22,19 @@
    "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
-   "tag": "live_mismatch_near_ideal_source",
-   "note": "live probe: Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss step 0 Vsource.source currents: entry 2 differs: actual (-13.38165283203125, 39.91229248046875) vs expected (-13.38153076171875, 39.91241455078125); |diff| = 1.7263349150062197e-4 > allowed 1.420"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss",
-   "tag": "live_mismatch_near_ideal_source",
-   "note": "live probe: Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss step 0 Vsource.source currents: entry 0 differs: actual (41.2559814453125, 12.551025390625) vs expected (41.25579833984375, 12.55108642578125); |diff| = 1.9301011109426145e-4 > allowed 1.43122"
-  },
-  {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
-   "tag": "entry_point",
+   "tag": "oracle_nonconvergence",
    "note": "live probe: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
-   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
+   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)",
+   "tag": "oracle_nonconvergence"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
-   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
+   "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)",
+   "tag": "oracle_nonconvergence"
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsctest.dss",
@@ -96,33 +43,18 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
-   "tag": "entry_point",
+   "tag": "oracle_nonconvergence",
    "note": "live probe: Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
-   "tag": "floating_zeroseq_bus",
-   "note": "ROOT-CAUSED 2026-07-10: same proven class as GFM_IEEE123/Run_IEEE123Bus_GFMSnap (TOLERANCE_NOTES.md par. floating-delta), extreme variant. BG (0.6 kV) is a DEAD-END bus behind Transformer.Tg winding 2 with no ground reference in its zero-seq (the deck's Generator.WindGen1 at Bg is commented out): measured zero-seq pinning ~1e-12 S vs ~0.42 S diagonal -> amplification 4.2e11. Decomposition: the whole 1.0563e-2 V gap is common mode on all three BG nodes (differential remainder <=6.5e-14 V, L-L <=1.3e-13 V -- bit-level); every other node matches to ~2e-14 rel; Y bit-identical (worst rel 5.8e-16); injections <1e-9 A apart; iterations equal (2). At 4e11 amplification the common mode is un-pinnable across solvers at any accuracy (even a 1e-13 A residual -> ~0.04 V); refinement cannot close it. Disposition options: per-bus common-mode exclusion in the compare, or stays documented-skipped."
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
-   "tag": "entry_point",
+   "tag": "oracle_nonconvergence",
    "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
-   "tag": "entry_point",
-   "note": "live probe: oracle produced no JSON response\n--- stdout ---\n{\"ok\":true,\"result\":{\"node_order\":[\"SOURCEBUS.1\",\"SOURCEBUS.2\",\"SOURCEBUS.3\",\"SX2000404A.2\",\"SX2000404A.1\",\"SX2000405A.2\",\"SX2000405A.1\",\"SX2000402A.1\",\"SX2000402A.2\",\"SX2000403A.2\",\"SX2000403A.1\",\"SX2804272B.1\",\"SX2804272B.2\",\"SX2001309A.2\",\"SX2001309"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
-   "tag": "live_mismatch",
-   "note": "live probe: Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss step 0: entry 12 differs: actual (8174.966722131275, -229.19102012400572) vs expected (8174.964777269752, -229.19087142935336); |diff| = 1.9505374755312288e-3 > allowed 8.278176909626475e-5"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
-   "tag": "live_mismatch",
-   "note": "live probe: Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss step 0: entry 12 differs: actual (8174.966853972126, -229.18711549616273) vs expected (8174.966050254275, -229.18761948096025); |diff| = 9.486638291265044e-4 > allowed 8.278178090976824e-5"
+   "tag": "oracle_timeout",
+   "note": "RE-TRIAGED 2026-07-10: the pinned oracle does NOT converge (1000 iterations, 0.4s -- no timeout involved); the Rust engine also diverges to NaN on this deck. The earlier 'oracle produced no JSON response' was a secondary serialization glitch of the non-converged state, not the root cause. Nothing to gate against port-side; same disposition as the other oracle_nonconvergence cases."
   }
  ]
 }

@@ -1213,6 +1213,76 @@
    "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
    "kind": "large_near_ideal_source",
    "n_steps": 1
+  },
+  {
+   "path": "Test/IEEE13_CDPSM.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/TestDDRegulator.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
   }
  ]
 }

@@ -28,8 +28,17 @@ tiers tolerances by **conditioning**, not size:
   (`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`).
 - **large_near_ideal_source** — `large` plus two documented exceptions:
   `v_rel` 5e-6 and `i_abs` 0.1 A (see §near-ideal-source below). The 9-deck
-  AutoTrans validation family; the Y channel keeps the tight `large` floors
-  and is the regression sentinel.
+  AutoTrans validation family + the 2 `PV_currentkvarLimit_*` decks (Thevenin
+  source Z=1e-8 Ω ≈ 7e7 S: the Vsource current inherits dI = Y_src·dV from a
+  ~3-ulp source-bus dV while the PVSystem itself matches); the Y channel keeps
+  the tight `large` floors and is the regression sentinel.
+- **large_floating_zeroseq** — `large` plus `v_abs` 3e-2 V (see
+  §floating-zeroseq below). The weakly-pinned floating zero-sequence members:
+  TestDDRegulator, DG_Prot_Fdr, LVTestCaseNorthAmerican Master/SecPar.
+- **large_ultra_switch** — `large` plus `i_abs` 2e-3 A (see §ultra-switch
+  below). A-Diakoptics torn circuits whose 1e-8 Ω stitching pseudo-switches
+  (Y≈1e8 S) resolve sub-ulp voltage differences into the currents channel:
+  ckt24 and EPRI_Ckt7-G Torn Master/Master_Interconnected.
 
 | Quantity | micro | feeder | large |
 |---|---|---|---|
@@ -72,6 +81,61 @@ L-L (differential) voltages — immune to the common mode — and stay gated at
 the `large` floors, as do Y/YPrim/injection. Fix owner: `RESONANCE_PLAN.md`
 WP-R1 (one iterative-refinement step measures 9.4e-6 V vs KLU — 3× under the
 `large`-band); when it lands, retighten this tier back to `large`.
+
+### floating-zeroseq (`large_floating_zeroseq`): weakly-pinned common modes
+
+The same physical class as §floating-delta — a subsystem reachable only
+through delta windings has no zero-sequence ground path, and its common-mode
+voltage is pinned solely by the ppm anti-float adders — but with pinning 2–3
+orders weaker than GFMSnap's (amplification 3.1e8 there), so the junk exceeds
+the `large_floating_delta` band and gets its own `v_abs` **3e-2 V** (worst
+measured 1.06e-2 ×2.8; at the smallest affected 346 V buses that is 8.7e-5
+rel). Per-deck proof by decomposition (all 2026-07-10):
+
+- **TestDDRegulator** — REGBUS2 sits between TWO delta windings
+  (Transformer.Reg1/Reg2 winding 2): measured pinning −j2.14e-8 S vs ~303 S
+  diagonal → amplification 1.4e10. The whole 5.2191e-3 V gap is common mode on
+  all three REGBUS2 nodes (differential remainder ≤1.4e-10 V, L-L ≤2.7e-10 V);
+  every other node matches to ~1e-14 rel; Y bit-identical; injections <1e-9 A
+  apart; iterations equal. Un-pinnable across solvers at ANY LU accuracy this
+  weak (a KLU-quality residual ~1e-11 A → ~5e-4 V slack), so even WP-R1
+  refinement only shrinks, never closes, it.
+- **DG_Prot_Fdr** — BG (0.6 kV) is a DEAD-END bus behind Transformer.Tg
+  winding 2 with no zero-seq ground reference (the deck's Generator.WindGen1
+  at Bg is commented out): pinning ~1e-12 S vs ~0.42 S diagonal →
+  amplification 4.2e11. The whole 1.0563e-2 V gap is common mode on the three
+  BG nodes (differential ≤6.5e-14 V — bit-level); every other node ~2e-14 rel;
+  Y bit-identical (worst 5.8e-16 rel); injections <1e-9 A; iterations equal.
+  At 4e11 even a 1e-13 A residual moves it ~0.04 V.
+- **LVTestCaseNorthAmerican Master/SecPar** — the substation transformers are
+  **delta–delta** (230/13.8 kV) and every distribution transformer is delta on
+  the MV side, so the ENTIRE 13.8 kV system floats in zero-seq. Master: all
+  MV buses shift by the identical complex 2.354e-3 V (per-bus differential
+  8.2e-7 V — well inside the `large` floors); SecPar: common 1.94e-3 V,
+  per-bus differential ≤1e-5 V, LV nodes ≤5.4e-8 V. Y pattern identical with
+  worst entry 1.28e-15 rel (libm last-ulp in the LineGeometry line-constants —
+  these decks build lines from geometry); the observed 2.9e-7-rel common mode
+  ≈ (ppm-pinning amplification ~1e8) × (ulp-level Y/solve perturbations) —
+  arithmetic consistent with the floor, impossible for a model bug that small.
+
+Element currents/powers are functions of the differential voltages and are
+immune to the common mode, so every other floor stays at `large` and real
+model bugs at these buses remain caught.
+
+### ultra-switch (`large_ultra_switch`): stitching pseudo-switches at Y≈1e8 S
+
+The A-Diakoptics torn circuits stitch subsystems with deliberate near-zero
+lines (`Line.other_feeders` r1=1e-8 x1=1e-9 Ω → Y≈1e8 S; EPRI_Ckt7-G
+`Line.333` alike). The pseudo-switch current is `Y·(V1−V2)` where V1−V2 is a
+~1e-10-rel difference of ~2e4 V nodes: the engines' (V1−V2) agree to **<2
+f64-ulps** — measured dI = 6.49e-4 A on a 375 A flow (ckt24) = 1.8 ulp ×
+1e8 S, a pure arithmetic bit-floor (the f32-looking reported values are the
+coarse dyadic grid such near-cancellation differences live on — BOTH engines
+produce them). `i_abs` **2e-3** = worst 6.5e-4 ×3; voltages hold the full
+`large` floors and Y stays tight, so a real stitching/model bug still shows at
+ampere scale or in Y. (The EPRI_Ckt5-G torn pair clears the plain `large`
+floors — its worst pseudo-switch current diff is 1.03e-5 A — and stays kind
+`large`.)
 
 ### near-ideal-source (`large_near_ideal_source`): cross-solver junk at κ≈1e12
 
@@ -129,6 +193,14 @@ two exceptions:
   voltage-scaled power floor maps it onto powers (`|V|·i_abs`), covering the
   measured 12–19 kVA junk image. Large currents (fault/full-load checks) hold
   `i_rel` = the `large` 1e-6.
+
+**Additional members (2026-07-10):** `PV_currentkvarLimit_kvar` /
+`_kvarNEG` — a deliberate "TheveninEquivalente" source with Z1=Z0=1e-8+j1e-8 Ω
+(Y_src≈7e7 S). The Vsource current differs by 1.7–1.9e-4 A (vs the plain
+`large` allowance ~1.4e-4) on a ~43 A flow = dI = Y_src·(~3 f64-ulps of the
+7967 V source-bus dV); the PVSystem element itself matches, pinning the PV
+model — only the source-current image of the V bit-floor exceeds the plain
+band.
 
 **Why the wide `i_abs` does not mask real element bugs:** the family's unique
 validation surface is AutoTrans/Transformer YPrim assembly, and the **Y channel

@@ -404,6 +404,53 @@ pub fn tol_for(kind: &str) -> Tolerances {
             energy_rel: 1e-4,
             energy_abs: 1e-4,
         },
+        // A-Diakoptics torn circuits stitched with deliberate ultra-switches
+        // (`Line.other_feeders` r1=1e-8 Ω → Y≈1e8 S; EPRI_Ckt7-G `Line.333`
+        // alike): the pseudo-switch current is Y·(V1−V2) where the engines'
+        // (V1−V2) agree to <2 f64-ulps of the ~2e4 V node voltage — measured
+        // dI 6.5e-4 A on a 375 A flow (ckt24) = exactly 1.8 ulp × 1e8 S, an
+        // arithmetic bit-floor, not a model gap (the f32-looking values are
+        // the coarse dyadic grid such near-cancellation differences live on).
+        // Only `i_abs` widens (2e-3 = worst 6.5e-4 ×3); voltages hold the full
+        // `large` floors and Y stays tight — a real stitching/model bug still
+        // shows at ampere scale or in Y.
+        "large_ultra_switch" => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 1e-6,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 2e-3,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
+        // The floating zero-sequence class, weak-pinning members (proof per
+        // deck in tests/TOLERANCE_NOTES.md §floating-zeroseq): a subsystem fed
+        // ONLY through delta windings has no zero-seq ground path; its common
+        // mode is pinned by the ppm anti-float adders alone, with measured
+        // amplification 1.4e10 (TestDDRegulator REGBUS2) / 4.2e11 (DG_Prot_Fdr
+        // dead-end BG) / ~1e8 across the whole delta-delta-fed 13.8 kV system
+        // of LVTestCaseNorthAmerican. The V gap is 100% common mode (per-bus
+        // differential ≤1e-5 V, within the `large` floors; DG_Prot bit-level
+        // ≤1.3e-13), Y agrees to ≤1.3e-15 rel (libm last-ulp on geometry
+        // decks; bit-identical on DDReg/DG_Prot), injections/iterations match.
+        // `v_abs` 3e-2 = worst measured common mode (1.06e-2, DG_Prot) ×2.8;
+        // at the smallest affected buses (346 V) that is still 8.7e-5 rel.
+        // Element currents/powers are functions of the DIFFERENTIAL voltages —
+        // immune to the common mode — so the tier keeps every other floor at
+        // `large` and real model bugs stay caught (same argument as
+        // `large_floating_delta`, whose GFMSnap member is more strongly pinned
+        // and keeps its tighter 5e-4 band).
+        "large_floating_zeroseq" => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 3e-2,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 1e-4,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
         // The AutoTrans near-ideal-source family (κ≈1e12: mvasc3=2e6 source +
         // 1e-6 Ω switches + floating delta tertiary). Its V gap is the PROVEN
         // cross-solver junk floor — proof by decomposition, not by sweep

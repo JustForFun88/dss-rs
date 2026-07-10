@@ -31,6 +31,33 @@ class). Also measured for WP-R1: iterative refinement DIVERGES on the
 floating tertiary (one step 1.3e-3 → 1492 V — the u·κ≳1 limit live) →
 divergence guard added to RESONANCE_PLAN WP-R1.
 
+**needs_investigation burn-down, round 3 (2026-07-10, user-directed "иди
+дальше").** Fresh `DSS_LIVE_CLASSIFY` sweep over the 25 remaining cases; 14
+root-caused and migrated (solvable 203 → 217, needs_investigation 25 → 11):
+**(a)** 4 tier-misclassifications → kind `large` (IEEE13_CDPSM, ckt7 Master,
+EPRI_Ckt5-G torn ×2 — their old probes ran at `feeder` bands; all clear the
+`large` floors, per the default-classification policy). **(b)** PV
+`currentkvarLimit` pair → `large_near_ideal_source` (deliberate Thevenin
+Z=1e-8 Ω ≈ 7e7 S; Vsource dI = Y_src·(~3 ulp dV) = 1.9e-4 A while the
+PVSystem itself matches). **(c)** NEW tier `large_floating_zeroseq` (`large` +
+v_abs 3e-2): TestDDRegulator (amplification 1.4e10), DG_Prot_Fdr (4.2e11), and
+the newly root-caused LVTestCaseNorthAmerican Master/SecPar — its 230/13.8 kV
+substation transformers are DELTA-DELTA and every distribution transformer is
+delta on the MV side, so the whole 13.8 kV system floats in zero-seq: the
+entire gap is an identical complex common-mode shift on all MV buses
+(Master 2.354e-3 V, per-bus differential 8.2e-7; SecPar 1.94e-3 V, ≤1e-5;
+Y pattern identical, worst entry 1.28e-15 rel = libm last-ulp in the
+LineGeometry line-constants). **(d)** NEW tier `large_ultra_switch` (`large` +
+i_abs 2e-3): ADiakoptics ckt24 + EPRI_Ckt7-G torn pairs — the 1e-8 Ω stitching
+pseudo-switch (Y≈1e8 S) turns a <2-f64-ulp cross-engine (V1−V2) difference
+into dI = 6.5e-4 A on a 375 A flow (arithmetic bit-floor; the f32-looking
+values are the coarse dyadic near-cancellation grid, both engines produce
+them). Remaining 11: 10 oracle-blocked (timeouts/non-convergence — nothing to
+fix port-side) + ieee9500_base (oracle_server produced no JSON response on a
+~9500-node model — port-side INFRASTRUCTURE follow-up, likely a response-size
+limit, not an engine issue). Full proofs: TOLERANCE_NOTES §floating-zeroseq,
+§ultra-switch, §near-ideal-source.
+
 **Round 2c — user-directed migration ("перенеси в solvable — мы же всё равно
 решаем эти схемы", 2026-07-10).** With the floor proven by decomposition
 (round 2b — the sanctioned path for a band change), the 9 AutoTrans decks
