@@ -102,14 +102,31 @@ pub(crate) fn show_mismatch(
     let n = node_v.len();
     let mut currents = vec![Complex64::ZERO; n];
     let mut max_node = vec![0.0f64; n];
-    for_each_enabled_elem(classes, &ckt.ckt_elements, |_name, elem| {
+    for_each_enabled_elem(classes, &ckt.ckt_elements, |name, elem| {
         elem.compute_iterminal(sys, node_v);
         let cd = elem.cd();
-        for i in 0..cd.nconds * cd.nterms {
-            let nref = cd.node_ref[i];
-            let ct = cd.iterminal[i];
-            currents[nref] += ct;
-            max_node[nref] = max_node[nref].max(ct.norm());
+        if super::is_autotrans(name) {
+            // AutoTrans special case (`ShowResults.pas:3636`): per terminal, sum
+            // only the first `Nphases` conductor currents, then skip the same
+            // count (`Inc(k, Nphases)`; AutoTrans `NConds = 2·Nphases`).
+            let mut k = 0usize;
+            for _ in 0..cd.nterms {
+                for _ in 0..cd.nphases {
+                    let nref = cd.node_ref[k];
+                    let ct = cd.iterminal[k];
+                    currents[nref] += ct;
+                    max_node[nref] = max_node[nref].max(ct.norm());
+                    k += 1;
+                }
+                k += cd.nphases;
+            }
+        } else {
+            for i in 0..cd.nconds * cd.nterms {
+                let nref = cd.node_ref[i];
+                let ct = cd.iterminal[i];
+                currents[nref] += ct;
+                max_node[nref] = max_node[nref].max(ct.norm());
+            }
         }
     });
 

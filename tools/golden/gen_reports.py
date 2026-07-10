@@ -1772,6 +1772,70 @@ def gen_show_topology(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# WP8.8 exit-sweep fixture: the AutoTrans special cases in the element-form Show
+# reports (`ShowResults.pas` — `WriteTerminalCurrents:604`, `ShowPowers` case
+# 1 `:1190`, `ShowNodeCurrentSum:3636`: `Ntimes = Nphases` instead of `NConds`,
+# with the per-terminal `Inc(k, Ntimes)` block-skip in the first/last and the
+# DEAD post-loop `Inc` in `ShowPowers`). A well-conditioned physical-source
+# snapshot (the WPG.15 `autotrans_reg.dss` deck minus the daily/control arm) —
+# NOT the vendored `AutoAuto.dss`, whose near-ideal source sits on the proven
+# faer-vs-KLU conditioning floor and cannot pin report digits.
+SHOW_AUTOTRANS_DECK = [
+    "Set DefaultBaseFrequency=60",
+    "New Circuit.show_autotrans basekv=115 phases=3 bus1=src mvasc3=15000 mvasc1=12000",
+    "New Line.lsrc bus1=src bus2=high phases=3 r1=0.5 x1=2.0 r0=1.5 x0=6.0 c1=0 c0=0 length=1",
+    "New AutoTrans.at phases=3 windings=2 xhx=9 "
+    "wdg=1 bus=high conn=s kV=115 kVA=40000 %r=0.10 "
+    "wdg=2 bus=low conn=w kV=34.5 kVA=40000 %r=0.10",
+    "New Line.lf bus1=low bus2=fdr phases=3 r1=0.4 x1=1.1 r0=1.2 x0=3.3 c1=0 c0=0 length=1",
+    "New Load.ld1 bus1=fdr phases=3 kv=34.5 kw=26000 pf=0.9 model=1",
+    "Set voltagebases=[115 34.5]",
+    "Calcvoltagebases",
+    "Solve",
+]
+
+SHOW_AUTOTRANS_REPORTS = [
+    ("powers e", "Power_elem_kVA.txt", "show_powers_elem_autotrans"),
+    ("currents Y elem", "Curr_Elem.txt", "show_currents_elem_autotrans"),
+    ("mismatch", "NodeMismatch.txt", "show_mismatch_autotrans"),
+]
+
+
+def gen_show_autotrans(d) -> None:
+    """Capture the element-form `Show` reports on the AutoTrans snapshot deck —
+    pins the `Ntimes = Nphases` AutoTrans arms against the oracle."""
+    d.AllowEditor = False
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+    try:
+        d.Text.Command = "clear"
+        for c in SHOW_AUTOTRANS_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in SHOW_AUTOTRANS_REPORTS:
+            d.Text.Command = f"show {keyword}"
+            matches = list(Path(tmp).glob(f"*_{suffix}"))
+            if len(matches) != 1:
+                sys.exit(f"show {keyword}: expected 1 *_{suffix}, found {matches}")
+            content = matches[0].read_text()
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            matches[0].unlink()  # the three reports share the tmp dir
+            meta = {
+                "report": keyword,
+                "fixture": case,
+                "suffix": suffix,
+                "deck": SHOW_AUTOTRANS_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_show_busflow(d) -> None:
     """Capture the oracle's `Show busflow` (`ShowBusPowers`) on solved IEEE13, bus
     675 — both the seq form (`show_busflow`) and the element form
@@ -2669,6 +2733,7 @@ def main() -> None:
     gen_show_overload_unserved(d)
     gen_show_zone_loops(d)
     gen_show_controlled(d)
+    gen_show_autotrans(d)
     gen_show_busflow(d)
     gen_show_isolated(d)
     gen_show_topology(d)

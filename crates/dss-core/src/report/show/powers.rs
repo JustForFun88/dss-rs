@@ -163,14 +163,17 @@ pub(crate) fn show_powers_elements(
     let mbnl = super::max_bus_name_length(ckt);
     let pos_seq = sys.positive_sequence;
     let mva = if opt == 1 { 0.001 } else { 1.0 };
-    // The `Bus Phase …` column header (kW/kvar/kVA or MW/Mvar/MVA).
-    let hdr = |s: &mut String, mw: bool| {
+    // The `Bus Phase …` column header. The PD-section and PC-section headers use
+    // different inter-column whitespace (Pascal `ShowResults.pas:1128/1264`):
+    // PD `kW     +j   kvar`, PC `kW   +j  kvar`.
+    let hdr = |s: &mut String, mw: bool, pc: bool| {
         s.push_str(&format::pad("  Bus", mbnl));
-        if mw {
-            s.push_str(" Phase     MW     +j   Mvar         MVA         PF\n");
-        } else {
-            s.push_str(" Phase     kW     +j   kvar         kVA         PF\n");
-        }
+        s.push_str(match (mw, pc) {
+            (true, false) => " Phase     MW     +j   Mvar         MVA         PF\n",
+            (false, false) => " Phase     kW     +j   kvar         kVA         PF\n",
+            (true, true) => " Phase     MW   +j  Mvar         MVA         PF\n",
+            (false, true) => " Phase     kW   +j  kvar         kVA         PF\n",
+        });
         s.push('\n');
     };
 
@@ -182,22 +185,55 @@ pub(crate) fn show_powers_elements(
     s.push('\n');
     s.push_str("Power Delivery Elements\n");
     s.push('\n');
-    hdr(&mut s, opt == 1);
+    hdr(&mut s, opt == 1, false);
 
     for_each_enabled_elem(classes, &ckt.sources, |n, e| {
-        write_powers_element(&mut s, ckt, mbnl, pos_seq, mva, n, e, false, sys, node_v)
+        write_powers_element(
+            &mut s,
+            ckt,
+            mbnl,
+            pos_seq,
+            mva,
+            n,
+            e,
+            PowersFamily::Source,
+            sys,
+            node_v,
+        )
     });
     for_each_enabled_elem(classes, &ckt.pd_elements, |n, e| {
-        write_powers_element(&mut s, ckt, mbnl, pos_seq, mva, n, e, true, sys, node_v)
+        write_powers_element(
+            &mut s,
+            ckt,
+            mbnl,
+            pos_seq,
+            mva,
+            n,
+            e,
+            PowersFamily::Pd,
+            sys,
+            node_v,
+        )
     });
 
     s.push_str("= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =\n");
     s.push('\n');
     s.push_str("Power Conversion Elements\n");
     s.push('\n');
-    hdr(&mut s, opt == 1);
+    hdr(&mut s, opt == 1, true);
     for_each_enabled_elem(classes, &ckt.pc_elements, |n, e| {
-        write_powers_element(&mut s, ckt, mbnl, pos_seq, mva, n, e, false, sys, node_v)
+        write_powers_element(
+            &mut s,
+            ckt,
+            mbnl,
+            pos_seq,
+            mva,
+            n,
+            e,
+            PowersFamily::Pc,
+            sys,
+            node_v,
+        )
     });
 
     // Footer: `Total Circuit Losses = re +j im` (Circuit.Losses·0.001, ·0.001 again
@@ -282,17 +318,22 @@ pub(crate) fn write_terminal_power_seq(
     s.push('\n');
 }
 
+/// Which `ShowPowers` case-1 walk an element belongs to. Pascal uses three
+/// slightly different whitespace layouts (`ShowResults.pas:1162/1240/1297`):
+/// Source rows are `Format('%s %4d …')` (ONE space after the bus name), PD/PC
+/// rows are `WriteStr(…, '  ', node:4, …)` (two spaces); PC per-conductor
+/// powers are `:6:1` (width 6, vs width-8 elsewhere); and the PC terminal
+/// label is `'  TERMINAL TOTAL '` (vs `'   TERMINAL TOTAL'`, `:1302`).
+#[derive(Clone, Copy, PartialEq)]
+enum PowersFamily {
+    Source,
+    Pd,
+    Pc,
+}
+
 /// One element's power-flow block for `show_powers_elements` (Pascal `ShowPowers`
-/// case 1 inner body). `is_pd` enables the 1-phase/2-terminal floating special case.
-///
-/// TODO(WP8): this emits the **PD** row/total/header variant for Sources and PC
-/// too, whereas Pascal uses three slightly different whitespace layouts — Sources
-/// rows are `%s %4d` (1 space), PC per-conductor powers are `:6:1` (width 6, vs
-/// PD's width-8 `%8.1f`), the PC column header reads `kW   +j  kvar`, and the PC
-/// terminal label is `'  TERMINAL TOTAL '` (vs PD's `'   TERMINAL TOTAL'`). Every
-/// difference is leading/trailing whitespace, so the digits are identical and the
-/// whitespace-collapsing + dot-run-dropping golden comparator masks it; the exact
-/// per-family widths are a WP8.8 byte-faithfulness concern.
+/// case 1 inner body). `PowersFamily::Pd` enables the 1-phase/2-terminal floating
+/// special case and the AutoTrans `Ntimes = Nphases` arm.
 #[allow(clippy::too_many_arguments)]
 fn write_powers_element(
     s: &mut String,
@@ -302,24 +343,36 @@ fn write_powers_element(
     mva: f64,
     name: &str,
     elem: &mut dyn CktElement,
-    is_pd: bool,
+    family: PowersFamily,
     sys: &SysCtx,
     node_v: &[Complex64],
 ) {
-    // One conductor row + the per-terminal `... TERMINAL TOTAL` line.
+    // One conductor row + the per-terminal `... TERMINAL TOTAL` line, in the
+    // family's exact layout (see [`PowersFamily`]).
+    let (bus_sep, pw) = match family {
+        PowersFamily::Source => (" ", 8),
+        PowersFamily::Pd => ("  ", 8),
+        PowersFamily::Pc => ("  ", 6),
+    };
     let row = |s: &mut String, from_bus: &str, node_num: i32, sp: Complex64| {
         s.push_str(&format!(
-            "{}  {}    {} +j {}   {}     {}\n",
+            "{}{}{}    {} +j {}   {}     {}\n",
             from_bus,
+            bus_sep,
             format::fixed_w_int(node_num as i64, 4),
-            format::fixed_w(sp.re / 1000.0, 8, 1),
-            format::fixed_w(sp.im / 1000.0, 8, 1),
+            format::fixed_w(sp.re / 1000.0, pw, 1),
+            format::fixed_w(sp.im / 1000.0, pw, 1),
             format::fixed_w(sp.norm() / 1000.0, 8, 1),
             format::fixed_w(power_factor(sp), 8, 4),
         ));
     };
+    let total_label = if family == PowersFamily::Pc {
+        "  TERMINAL TOTAL "
+    } else {
+        "   TERMINAL TOTAL"
+    };
     let total = |s: &mut String, saccum: Complex64| {
-        s.push_str(&format::pad_dots("   TERMINAL TOTAL", mbnl + 10));
+        s.push_str(&format::pad_dots(total_label, mbnl + 10));
         s.push_str(&format!(
             "{} +j {}   {}     {}\n",
             format::fixed_w(saccum.re / 1000.0, 8, 1),
@@ -330,9 +383,18 @@ fn write_powers_element(
     };
 
     elem.compute_iterminal(sys, node_v);
-    let (ncond, nterm) = (elem.cd().nconds, elem.cd().nterms);
+    let (ncond, nterm, nphases) = (elem.cd().nconds, elem.cd().nterms, elem.cd().nphases);
     let cd = elem.cd();
     s.push_str(&format!("ELEMENT = {}\n", format::enclose_quotes(name)));
+    // AutoTrans special case (`ShowResults.pas:1190`): only `Nphases` conductor
+    // rows per terminal. The Pascal `Inc(k, Ntimes)` at `:1252` sits AFTER the
+    // terminal loop where `k` is element-local — it is dead, so terminal 2's rows
+    // re-read the first-terminal conductor block; reproduced faithfully.
+    let ntimes = if family == PowersFamily::Pd && super::is_autotrans(name) {
+        nphases
+    } else {
+        ncond
+    };
     let bus_pad = |t: usize| {
         let b = ckt
             .buses
@@ -351,7 +413,7 @@ fn write_powers_element(
     // PD 1-phase / 2-terminal (possibly floating) special case: one row using the
     // terminal-1 line-line voltage `NodeV[nref1] − NodeV[nref2]` (Pascal
     // `ShowResults.pas:1195`, "Added April 6 2020").
-    if is_pd && nterm == 2 && ncond == 1 {
+    if family == PowersFamily::Pd && nterm == 2 && ncond == 1 {
         let volts = node_v[cd.node_ref[0]] - node_v[cd.node_ref[1]];
         let sp = power(0, volts);
         row(
@@ -366,7 +428,7 @@ fn write_powers_element(
         for j in 0..nterm {
             let from_bus = bus_pad(j);
             let mut saccum = Complex64::ZERO;
-            for _ in 0..ncond {
+            for _ in 0..ntimes {
                 let sp = power(k, node_v[cd.node_ref[k]]);
                 saccum += sp;
                 row(

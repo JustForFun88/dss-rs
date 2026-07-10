@@ -1,0 +1,64 @@
+
+CIRCUIT ELEMENT POWER FLOW
+
+(Power Flow into element from indicated Bus)
+
+Power Delivery Elements
+
+  Bus Phase     kW     +j   kvar         kVA         PF
+
+ELEMENT = "Vsource.source"
+SRC     1     -8602.7 +j  -5106.0    10003.9       0.8599
+SRC     2     -8602.7 +j  -5106.0    10003.9       0.8599
+SRC     3     -8602.7 +j  -5106.0    10003.9       0.8599
+   TERMINAL TOTAL-25808.0 +j -15318.1    30011.6       0.8599
+SRC     0         0.0 +j      0.0        0.0       1.0000
+SRC     0         0.0 +j      0.0        0.0       1.0000
+SRC     0         0.0 +j      0.0        0.0       1.0000
+   TERMINAL TOTAL     0.0 +j      0.0        0.0       1.0000
+
+ELEMENT = "Line.lsrc"
+SRC      1      8602.7 +j   5106.0    10003.9       0.8599
+SRC      2      8602.7 +j   5106.0    10003.9       0.8599
+SRC      3      8602.7 +j   5106.0    10003.9       0.8599
+   TERMINAL TOTAL 25808.0 +j  15318.1    30011.6       0.8599
+HIGH     1     -8591.3 +j  -5060.5     9970.9       0.8616
+HIGH     2     -8591.3 +j  -5060.5     9970.9       0.8616
+HIGH     3     -8591.3 +j  -5060.5     9970.9       0.8616
+   TERMINAL TOTAL-25773.8 +j -15181.5    29912.7       0.8616
+
+ELEMENT = "AutoTrans.at"
+HIGH     1      8591.3 +j   5060.5     9970.9       0.8616
+HIGH     2      8591.3 +j   5060.5     9970.9       0.8616
+HIGH     3      8591.3 +j   5060.5     9970.9       0.8616
+   TERMINAL TOTAL 25773.8 +j  15181.5    29912.7       0.8616
+LOW      1     -2572.9 +j  -1314.9     2889.4       0.8904
+LOW      2     -2572.9 +j  -1314.9     2889.4       0.8904
+LOW      3     -2572.9 +j  -1314.9     2889.4       0.8904
+   TERMINAL TOTAL -7718.6 +j  -3944.8     8668.2       0.8904
+
+ELEMENT = "Line.lf"
+LOW      1      8576.2 +j   4383.1     9631.3       0.8904
+LOW      2      8576.2 +j   4383.1     9631.3       0.8904
+LOW      3      8576.2 +j   4383.1     9631.3       0.8904
+   TERMINAL TOTAL 25728.7 +j  13149.2    28894.0       0.8904
+FDR      1     -8475.0 +j  -4104.8     9416.8       0.9000
+FDR      2     -8475.0 +j  -4104.8     9416.8       0.9000
+FDR      3     -8475.0 +j  -4104.8     9416.8       0.9000
+   TERMINAL TOTAL-25425.1 +j -12314.4    28250.4       0.9000
+
+= = = = = = = = = = = = = = = = = = =  = = = = = = = = = = =  = =
+
+Power Conversion Elements
+
+  Bus Phase     kW   +j  kvar         kVA         PF
+
+ELEMENT = "Load.ld1"
+FDR      1    8474.4 +j 4105.9     9416.6       0.8999
+FDR      2    8474.4 +j 4105.9     9416.6       0.8999
+FDR      3    8474.4 +j 4105.9     9416.6       0.8999
+FDR      0      -0.0 +j    0.0        0.0       1.0000
+  TERMINAL TOTAL  25423.1 +j  12317.7    28249.9       0.8999
+
+
+Total Circuit Losses =  382.9 +j 3003.7
