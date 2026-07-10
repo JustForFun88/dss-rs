@@ -62,6 +62,7 @@ impl Dss {
                 default_base_freq,
                 default_earth_model,
                 max_allocation_iterations,
+                auto_show_export,
                 current_dir,
                 output_directory,
                 daisy_size,
@@ -326,6 +327,10 @@ impl Dss {
                     // Pascal `Set Trapezoidal=`: the meter integration rule
                     // (reset to false by `Set mode=`).
                     opt::TRAPEZOIDAL => ckt.trapezoidal_integration = interpret_yes_no(&param),
+                    // Pascal `ExecOptions.pas:606`: `AutoShowExport` — the
+                    // FireOffEditor auto-open after exports, a GUI no-op
+                    // headless; stored for Set/Get parity only.
+                    opt::SHOW_EXPORT => *auto_show_export = interpret_yes_no(&param),
                     // Pascal `DoAutoAddBusList` (ExecHelper.pas l.1986).
                     opt::AUTO_BUS_LIST => do_auto_add_bus_list(
                         aux_parser,

@@ -57,6 +57,7 @@ mod distribute;
 mod get_cmd;
 mod helpers;
 mod plot;
+mod reconductor;
 mod reduce;
 pub(crate) mod registry;
 mod report;
@@ -118,6 +119,12 @@ pub struct Dss {
     default_earth_model: i32,
     /// `DSS.MaxAllocationIterations` (`Set NumAllocIterations=`); default 2.
     max_allocation_iterations: i32,
+    /// `DSS.AutoShowExport` (`Set ShowExport=`); default FALSE
+    /// (`DSSClass.pas:1278`). Its only upstream consumer is the
+    /// `FireOffEditor` auto-open after an export (`ExportOptions.pas:637`) —
+    /// a GUI no-op headless, so the flag is stored for `Set`/`Get` parity and
+    /// nothing reads it.
+    auto_show_export: bool,
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.
     current_dir: PathBuf,
     /// `DSS.OutputDirectory`: where reports are written (Pascal

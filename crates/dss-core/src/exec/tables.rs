@@ -143,6 +143,19 @@ pub(crate) const EXEC_COMMANDS: &[&str] = &[
 pub(crate) mod cmd {
     pub const NEW: usize = 1;
     pub const EDIT: usize = 2;
+    pub const ENABLE: usize = 10;
+    pub const DISABLE: usize = 11;
+    pub const SET_KV_BASE: usize = 30;
+    pub const LOSSES: usize = 42;
+    pub const SUMMARY: usize = 67;
+    pub const RECONDUCTOR: usize = 77;
+    pub const INIT_SNAP: usize = 78;
+    pub const SOLVE_NO_CONTROL: usize = 79;
+    pub const SAMPLE_CONTROLS: usize = 80;
+    pub const DO_CONTROL_ACTIONS: usize = 81;
+    pub const SHOW_CONTROL_QUEUE: usize = 82;
+    pub const SOLVE_DIRECT: usize = 83;
+    pub const SOLVE_PFLOW: usize = 84;
     pub const MORE: usize = 3;
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
@@ -460,6 +473,7 @@ pub(crate) mod opt {
     pub const LOG: usize = 66;
     pub const OVERLOAD_REPORT: usize = 68;
     pub const VOLT_EXCEPTION_REPORT: usize = 69;
+    pub const SHOW_EXPORT: usize = 71;
     /// `ProcessTime` (Get-only → `Solve_Time_Elapsed`) / `TotalTime`
     /// (Set+Get → `Total_Time_Elapsed`) / `StepTime` (Get-only →
     /// `Step_Time_Elapsed`), `ExecOptions.pas:106-108`.

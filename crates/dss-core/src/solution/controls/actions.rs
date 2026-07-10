@@ -14,7 +14,7 @@ use super::dispatch::dispatch_control;
 use super::multi_rate::do_multi_rate;
 
 /// Pascal `DoControlActions` (l.1941): per-control-mode queue dispatch.
-pub(super) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     match ckt.solution.control_mode {
         CTRLSTATIC => {
             // Execute the nearest set of control actions but leave time as is.

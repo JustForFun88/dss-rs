@@ -72,6 +72,12 @@ def dispatched_commands() -> tuple[list[str], dict[int, str]]:
     arms = list(arm_re.finditer(command_rs))
     for i, m in enumerate(arms):
         body_end = arms[i + 1].start() if i + 1 < len(arms) else len(command_rs)
+        # The catch-all `_ => self.not_ported_command(pointer)` arm caps the
+        # LAST cmd:: arm's body — without this, the final ported arm would be
+        # misread as recognized-not-ported.
+        catch_all = command_rs.find("_ =>", m.end())
+        if catch_all != -1:
+            body_end = min(body_end, catch_all)
         body = command_rs[m.end():body_end]
         arm_status = (
             "recognized-not-ported" if "not_ported_command" in body else "ported"

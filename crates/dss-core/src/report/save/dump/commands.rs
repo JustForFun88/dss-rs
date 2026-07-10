@@ -17,7 +17,7 @@ use crate::report::help_catalog::dss_help;
 /// (Isource, AutoTrans, the GIC trio) — the skip below is defensive-only and
 /// `gen_reports.py::DUMP_COMMANDS_UNPORTED_SECTIONS` is empty (the golden
 /// carries every section).
-const PASCAL_CLASS_ORDER: &[&str] = &[
+pub(crate) const PASCAL_CLASS_ORDER: &[&str] = &[
     "LineCode",
     "LoadShape",
     "TShape",

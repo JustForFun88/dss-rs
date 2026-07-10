@@ -332,6 +332,7 @@ impl Dss {
             default_base_freq: 60.0,
             default_earth_model: 3, // DERI (Pascal `DSSClass.pas:1284`)
             max_allocation_iterations: 2,
+            auto_show_export: false, // DSSClass.pas:1278
             current_dir: std::env::current_dir().unwrap_or_default(),
             output_directory: std::env::current_dir().unwrap_or_default(),
             last_result_file: String::new(),

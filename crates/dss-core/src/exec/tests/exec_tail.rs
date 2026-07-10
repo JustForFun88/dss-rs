@@ -209,3 +209,329 @@ fn interpolate_named_meter_errors() {
         ["Meter Zone Lists need to be built. Do Solve or Makebuslist first!"]
     );
 }
+
+// ---------------------------------------------------------------------------
+// WP8.8 command-tail ports: Enable/Disable, SetkVBase, Losses, Summary, the
+// step-solution commands, Reconductor. Every pinned value/message below was
+// captured live from the pinned oracle (dss-python 0.15.7 / dss_capi 0.14.5)
+// on 2026-07-10 (IEEE13 fixture where one is compiled).
+// ---------------------------------------------------------------------------
+
+/// Compile the vendored IEEE13 master (the live-gate corpus copy).
+fn dss_with_ieee13() -> Dss {
+    let master: std::path::PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+        "Version8",
+        "Distrib",
+        "IEEETestCases",
+        "13Bus",
+        "IEEE13Nodeckt.dss",
+    ]
+    .iter()
+    .collect();
+    assert!(master.is_file(), "IEEE13 master missing");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss
+}
+
+/// Pascal `DoDisableCmd`/`DoEnableCmd`: a named element goes through the edit
+/// path (`Enabled=false`), `*` sets the whole class directly; both raise
+/// `BusNameRedefined`. An unknown class and a non-circuit-element class are
+/// SILENT no-ops (oracle-probed: no error, no result).
+#[test]
+fn enable_disable_named_star_and_silent_arms() {
+    let mut dss = dss_with_loads();
+    dss.command("disable load.la1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "load.la1.enabled"), "No");
+    dss.command("enable load.la1");
+    assert_eq!(query(&mut dss, "load.la1.enabled"), "Yes");
+
+    dss.command("disable load.*");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    for name in ["la1", "la2", "lb1", "xla1"] {
+        assert_eq!(
+            query(&mut dss, &format!("load.{name}.enabled")),
+            "No",
+            "{name}"
+        );
+    }
+    assert!(
+        dss.circuit.as_ref().expect("circuit").bus_name_redefined,
+        "Set_Enabled must raise BusNameRedefined"
+    );
+    dss.command("enable load.*");
+    assert_eq!(query(&mut dss, "load.lb1.enabled"), "Yes");
+
+    // Silent arms (oracle-probed 2026-07-10): unknown class, DSS_OBJECT class.
+    dss.command("disable bogus.*");
+    dss.command("disable loadshape.default");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+}
+
+/// Pascal `DoSetkVBase`: `kVLL` (or positional) divides by √3, `kVLN` stores
+/// as-is; a hit raises `VoltageBaseChanged`, a miss appends
+/// `Bus <name> not found.` to GlobalResult (no error). Oracle-probed on
+/// IEEE13 bus 675: kVLL=4.16 → 2.4017771198288433, kVLN=2.4 → 2.4.
+#[test]
+fn set_kv_base_kvll_kvln_positional_and_missing() {
+    let mut dss = dss_with_ieee13();
+    let kv_base = |dss: &Dss| {
+        let ckt = dss.circuit.as_ref().expect("circuit");
+        let ib = ckt.bus_list.find("675").expect("bus 675");
+        ckt.buses[ib].kv_base
+    };
+    dss.command("SetkVBase bus=675 kVLL=4.16");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(kv_base(&dss), 2.4017771198288433);
+    assert!(dss.circuit.as_ref().unwrap().solution.voltage_base_changed);
+
+    dss.command("SetkVBase bus=675 kVLN=2.4");
+    assert_eq!(kv_base(&dss), 2.4);
+
+    dss.command("SetkVBase 675 4.16");
+    assert_eq!(kv_base(&dss), 2.4017771198288433, "positional = kVLL");
+
+    dss.command("SetkVBase bus=nosuchbus kVLL=1");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(dss.result(), "Bus nosuchbus not found.");
+}
+
+/// Pascal `DolossesCmd`: the ACTIVE circuit element's losses, kW/kvar,
+/// `Format('%10.5g, %10.5g')`. Oracle-probed on solved IEEE13:
+/// `select Line.650632` → `    60.729,     195.99`; `select Transformer.Sub`
+/// → `  0.032284,    0.26244`. (The corpus use, `UPFC_test_3.dss`, is exactly
+/// `select …` + `losses`; Pascal's ActiveCktElement-on-New side effect is not
+/// reproduced — no ported consumer needs it, same inert class as
+/// `DoOpenCmd`'s `SetActiveBus`.)
+#[test]
+fn losses_cmd_formats_active_element_losses() {
+    let mut dss = dss_with_ieee13();
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("select Line.650632");
+    dss.command("Losses");
+    assert_eq!(dss.result(), "    60.729,     195.99");
+    dss.command("select Transformer.Sub");
+    dss.command("Losses");
+    assert_eq!(dss.result(), "  0.032284,    0.26244");
+}
+
+/// Pascal `DoSummaryCmd`: the full summary text into GlobalResult — pinned
+/// byte-for-byte (LF line ends per the port convention) against the oracle's
+/// capture on solved IEEE13, including the `Control Mode =Static` missing
+/// space, the trailing spaces after the Year/Hour/voltage values, and the
+/// ` \n - Circuit Summary -\n \n` separator block.
+#[test]
+fn summary_cmd_matches_oracle_text() {
+    let mut dss = dss_with_ieee13();
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("Summary");
+    let expected = "Status = SOLVED\n\
+        Solution Mode = Snap\n\
+        Number = 100\n\
+        Load Mult = 1.000\n\
+        Devices = 38\n\
+        Buses = 16\n\
+        Nodes = 41\n\
+        Control Mode =Static\n\
+        Total Iterations = 2\n\
+        Control Iterations = 1\n\
+        Max Sol Iter = 2\n \n \
+        - Circuit Summary -\n \n\
+        Year = 0 \n\
+        Hour = 0 \n\
+        Max pu. voltage = 1.056 \n\
+        Min pu. voltage = 0.96084 \n\
+        Total Active Power:   3.56705 MW\n\
+        Total Reactive Power: 1.73644 Mvar\n\
+        Total Active Losses:   0.112392 MW, (3.151 %)\n\
+        Total Reactive Losses: 0.327861 Mvar\n\
+        Frequency = 60 Hz\n\
+        Mode = Snap\n\
+        Control Mode = Static\n\
+        Load Model = PowerFlow\n";
+    assert_eq!(dss.result(), expected);
+}
+
+/// The step-solution commands (`_InitSnap`/`_SolveNoControl`/`_SolveDirect`/
+/// `_SolvePFlow`/`_SampleControls`/`_DoControlActions`): iteration counts
+/// oracle-probed on IEEE13 — `solve` 2, `_SolveDirect` 1 (converged),
+/// `_InitSnap` + `_SolveNoControl` 4, `_SolvePFlow` 2.
+#[test]
+fn step_solution_commands_match_oracle_iterations() {
+    let mut dss = dss_with_ieee13();
+    dss.command("solve");
+    let iters = |dss: &Dss| dss.circuit.as_ref().unwrap().solution.iteration;
+    assert_eq!(iters(&dss), 2);
+    dss.command("_SolveDirect");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(iters(&dss), 1);
+    assert!(dss.circuit.as_ref().unwrap().solution.converged_flag);
+    dss.command("_InitSnap");
+    dss.command("_SolveNoControl");
+    assert_eq!(iters(&dss), 4);
+    dss.command("_SampleControls");
+    dss.command("_DoControlActions");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("_SolvePFlow");
+    assert_eq!(iters(&dss), 2);
+}
+
+/// Pascal `DoReconductorCmd` + `TraceAndEdit`: on metered IEEE13,
+/// `Line1=632670 Line2=692675 Linecode=mtx601` re-linecodes the whole
+/// traceback path 692675 → 671692 (the switch, previously bare) → 670671 →
+/// 632670, leaving branches off the path (632633) untouched. Oracle-probed
+/// 2026-07-10, including all five error surfaces (#28702-28707).
+#[test]
+fn reconductor_traces_path_and_errors() {
+    let mut dss = dss_with_ieee13();
+    dss.command("new energymeter.em1 element=Transformer.Sub terminal=1");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(query(&mut dss, "Line.692675.linecode"), "mtx606");
+    assert_eq!(query(&mut dss, "Line.671692.linecode"), "");
+    dss.command("Reconductor Line1=Line.632670 Line2=Line.692675 Linecode=mtx601");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    for ln in ["650632", "632670", "670671", "692675", "671692"] {
+        assert_eq!(
+            query(&mut dss, &format!("Line.{ln}.linecode")),
+            "mtx601",
+            "{ln}"
+        );
+    }
+    assert_eq!(query(&mut dss, "Line.632633.linecode"), "mtx602");
+
+    // Error surfaces.
+    dss.command("Reconductor Linecode=mtx601");
+    assert_eq!(dss.errors(), ["Both Line1 and Line2 must be specified!"]);
+    dss.errors.clear();
+    dss.command("Reconductor Line1=632670 Line2=692675");
+    assert_eq!(
+        dss.errors(),
+        ["Either a new LineCode or a Geometry must be specified!"]
+    );
+    dss.errors.clear();
+    dss.command("Reconductor Line1=zzz Line2=692675 linecode=mtx601");
+    assert_eq!(dss.errors(), ["Line.zzz not found."]);
+    dss.errors.clear();
+    // Sibling branches: no traceback path in either direction.
+    dss.command("Reconductor Line1=632633 Line2=692675 linecode=mtx601");
+    assert_eq!(
+        dss.errors(),
+        ["Traceback path not found between Line1 and Line2."]
+    );
+    dss.errors.clear();
+
+    // No meter zone: fresh unmetered compile.
+    let mut dss = dss_with_ieee13();
+    dss.command("solve");
+    dss.command("Reconductor Line1=632670 Line2=692675 linecode=mtx601");
+    assert_eq!(
+        dss.errors(),
+        [
+            "Error: Both Lines must be in the same EnergyMeter zone. One or both are not in any meter zone."
+        ]
+    );
+}
+
+/// Pascal `DoVarCmd` (`var`, dispatched pre-circuit, `ExecCommands.pas:334`):
+/// define (`var @x=…`), echo (`var @x`), list (bare `var` — the `Variable,
+/// Value` header + the 7 pre-seeded intrinsics + user vars, `<name>. <value>`),
+/// and the #28725 illegal-name error. All oracle-probed 2026-07-10.
+#[test]
+fn var_cmd_define_echo_list_and_illegal() {
+    let mut dss = Dss::new();
+    dss.command("var @myvar=3.14 @s=hello");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(dss.result(), "");
+    dss.command("var @myvar");
+    assert_eq!(dss.result(), "3.14");
+    dss.command("var");
+    let expected = "Variable, Value\n\
+        @lastfile. null\n\
+        @lastexportfile. null\n\
+        @lastshowfile. null\n\
+        @lastplotfile. null\n\
+        @lastredirectfile. null\n\
+        @lastcompilefile. null\n\
+        @result. null\n\
+        @myvar. 3.14\n\
+        @s. hello\n";
+    assert_eq!(dss.result(), expected);
+    dss.command("var bogus=1");
+    assert_eq!(
+        dss.errors(),
+        ["Illegal Variable Name: bogus; Must begin with \"@\""]
+    );
+}
+
+/// The pre-circuit utility commands (`ExecCommands.pas:301-331`), all
+/// oracle-probed 2026-07-10: `fileedit` on a missing file sets GlobalResult
+/// (an existing file fires the GUI editor — headless no-op); `classes` lists
+/// every intrinsic class; `userclasses` is the fixed banner; `cd` to a missing
+/// directory is error #282; `doscmd` is the fixed disabled error #283.
+#[test]
+fn pre_circuit_utility_commands_match_oracle() {
+    let mut dss = Dss::new();
+    dss.command("fileedit nosuchfile.dss");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(dss.result(), "File \"nosuchfile.dss\" does not exist.");
+
+    dss.command("classes");
+    let r = dss.result().to_string();
+    assert!(
+        r.starts_with(
+            "LineCode, LoadShape, TShape, PriceShape, XYcurve, GrowthShape, TCC_Curve, Spectrum, WireData"
+        ),
+        "{r}"
+    );
+    assert!(
+        r.contains("Vsource, Isource, VCCS, Load, Transformer"),
+        "{r}"
+    );
+
+    dss.command("userclasses");
+    assert_eq!(dss.result(), "No User Classes Defined.");
+
+    dss.command("cd \"Q:/nope\"");
+    assert_eq!(dss.errors(), ["Directory \"Q:/nope\" not found."]);
+    dss.errors.clear();
+
+    dss.command("doscmd echo hi");
+    assert_eq!(
+        dss.errors(),
+        [
+            "DOScmd is disabled. Enable it via API or set the environment variable DSS_CAPI_ALLOW_DOSCMD=1 before starting the process."
+        ]
+    );
+}
+
+/// `Set/Get ShowExport` (`ExecOptions.pas:606/973`): the `AutoShowExport`
+/// flag round-trips as `Yes`/`No` (oracle-probed 2026-07-10); its only
+/// upstream consumer is the GUI editor auto-open — a headless no-op.
+#[test]
+fn show_export_option_round_trips() {
+    let mut dss = dss_with_circuit();
+    dss.command("get showexport");
+    assert_eq!(dss.result(), "No");
+    dss.command("set showexport=yes");
+    dss.command("get showexport");
+    assert_eq!(dss.result(), "Yes");
+    dss.command("set showexport=no");
+    dss.command("get showexport");
+    assert_eq!(dss.result(), "No");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+}
