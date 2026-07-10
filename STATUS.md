@@ -53,10 +53,12 @@ pseudo-switch (Y≈1e8 S) turns a <2-f64-ulp cross-engine (V1−V2) difference
 into dI = 6.5e-4 A on a 375 A flow (arithmetic bit-floor; the f32-looking
 values are the coarse dyadic near-cancellation grid, both engines produce
 them). Remaining 11: 10 oracle-blocked (timeouts/non-convergence — nothing to
-fix port-side) + ieee9500_base (oracle_server produced no JSON response on a
-~9500-node model — port-side INFRASTRUCTURE follow-up, likely a response-size
-limit, not an engine issue). Full proofs: TOLERANCE_NOTES §floating-zeroseq,
-§ultra-switch, §near-ideal-source.
+fix port-side) + ieee9500_base — re-triaged cross-engine on the user's
+question: NO engine solves it as vendored (pinned oracle, official EPRI r3723
+/ r4088 / r4133 all converged=False at the deck's own maxiter=1000 and NaN
+out; the Rust port NaNs identically — lineage-consistent, tag
+`deck_unsolvable_all_engines`). Full proofs: TOLERANCE_NOTES
+§floating-zeroseq, §ultra-switch, §near-ideal-source.
 
 **Round 2c — user-directed migration ("перенеси в solvable — мы же всё равно
 решаем эти схемы", 2026-07-10).** With the floor proven by decomposition
