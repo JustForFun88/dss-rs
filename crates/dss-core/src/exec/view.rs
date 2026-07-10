@@ -518,6 +518,14 @@ impl Dss {
             let Some(rc) = obj.as_any().downcast_ref::<reg_control::RegControl>() else {
                 continue;
             };
+            // The oracle's `RegControls.First/.Next` iterator SKIPS disabled
+            // control elements (C-API `Get_First`/`Get_Next` walk the list with
+            // `if pelem.Enabled`; verified live — a disabled RegControl yields
+            // `First = 0`). Mirror that, or a deck that opens with
+            // `BatchEdit RegControl..* enabled=False` compares 12 taps vs 0.
+            if !rc.ccd.cd.enabled {
+                continue;
+            }
             // Pascal `Get_TapNum` reads the controlled transformer's *live*
             // `PresentTap[TapWinding]`; resolve it here so a direct
             // `Transformer.X.Taps=` edit (which bypasses the control's snapshot)

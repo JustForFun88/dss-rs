@@ -169,7 +169,27 @@ impl Monitor {
                 }
                 return;
             }
-            // Modes 4 (flicker/Pstcalc), 7 (Storage), 8/10 (transformer winding
+            7 => {
+                // Pascal `TakeSample` mode 7 (Monitor.pas l.1298): Storage device
+                // state — PresentkW, Presentkvar, kWhStored, %stored, StorageState,
+                // guarded on the element class exactly like Pascal (a non-Storage
+                // element records the time stamp only). The header promised
+                // `record_size = 5` (header.rs), so before this arm existed a
+                // yearly run panicked in `to_csv` (buffer rows of 2 vs stride 7 —
+                // the StoCtrl_Current_PeakShave corpus deck).
+                if let Some(st) = metered
+                    .as_any()
+                    .downcast_ref::<crate::elements::pc::storage::Storage>()
+                {
+                    self.add_dbl(st.present_kw());
+                    self.add_dbl(st.present_kvar());
+                    self.add_dbl(st.kwh_stored);
+                    self.add_dbl(st.kwh_stored / st.kwh_rating * 100.0);
+                    self.add_dbl(st.f_state as f64);
+                }
+                return;
+            }
+            // Modes 4 (flicker/Pstcalc), 8/10 (transformer winding
             // currents/voltages), 12 (LL) build their header but defer the
             // sample body to Phase 6+/7 (no gate uses them; the metered surface
             // they need is not yet exposed).

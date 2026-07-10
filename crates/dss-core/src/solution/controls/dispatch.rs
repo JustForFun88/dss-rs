@@ -1299,6 +1299,78 @@ impl UpfcDispatchEnv for UpfcDispEnv<'_> {
     }
 }
 
+/// Pascal `TStorageControllerObj.RecalcElementData` tail (StorageController.pas
+/// l.817-828): build the fleet if it changed, then push the controller's
+/// external-dispatch flag and charge/discharge/reserve rates onto it. Pascal
+/// runs this at the end of EVERY edit line (`New`/`~`/`Edit`/`BatchEdit` all
+/// end in `RecalcElementData`), so the intermediate states are observable — a
+/// controller defined across `~` lines first scan-builds the ALL-storage fleet
+/// and pushes its DEFAULT `%reserve`/rates onto it before a later
+/// `elementList=` shrinks the fleet (SupportRun.dss pins non-fleet storages at
+/// `%Reserve = 25` from that residue). Invoked from the executive's edit tail
+/// (`exec/command.rs::edit_active`); same clone-out/copy-back borrow dance as
+/// the `Sample` dispatch above.
+pub(crate) fn storage_controller_recalc_fleet(r: ElemRef, ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let SolveEnv { store, errors, .. } = env;
+    let (monitored, element_terminal) = {
+        let obj = store.obj(r);
+        let Some(sc) = obj.as_any().downcast_ref::<StorageController>() else {
+            return;
+        };
+        (
+            sc.ccd.monitored_element,
+            sc.ccd.element_terminal.max(1) as usize,
+        )
+    };
+    let mut sc = store
+        .obj(r)
+        .as_any()
+        .downcast_ref::<StorageController>()
+        .expect("checked above")
+        .clone();
+    let storages = ckt.storages.clone();
+    let mut queue = std::mem::take(&mut ckt.solution.control_queue);
+    {
+        let Solution {
+            node_v,
+            event_log,
+            loads_need_updating,
+            system_y_changed,
+            int_hour,
+            t,
+            control_iteration,
+            ..
+        } = &mut ckt.solution;
+        let mut denv = StorageDispEnv {
+            store: &mut **store,
+            node_v: &*node_v,
+            sys: &sys,
+            monitored,
+            element_terminal,
+            storages,
+            queue: &mut queue,
+            events: event_log,
+            errors,
+            loads_need_updating,
+            system_y_changed,
+            self_ref: r,
+            int_hour: *int_hour,
+            t: *t,
+            control_iter: *control_iteration,
+            season_rating: ckt.season_rating,
+            season_signal: ckt.season_signal.clone(),
+        };
+        sc.recalc_fleet(&mut denv);
+    }
+    ckt.solution.control_queue = queue;
+    *store
+        .obj_mut(r)
+        .as_any_mut()
+        .downcast_mut::<StorageController>()
+        .expect("checked above") = sc;
+}
+
 /// [`StorageDispatchEnv`] over the store: the monitored element's terminal
 /// power/current and the dispatched Storage fleet's state, reached through the
 /// class registry. The fleet-scan list is the circuit's creation-ordered

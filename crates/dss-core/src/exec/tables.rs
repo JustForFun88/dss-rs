@@ -199,6 +199,7 @@ pub(crate) mod cmd {
     pub const ADD_BUS_MARKER: usize = 85;
     pub const CLEAR_BUS_MARKER: usize = 99;
     pub const GIS_COORDS: usize = 118;
+    pub const WAIT: usize = 122;
     pub const CLEAR_ALL: usize = 119;
     pub const COMHELP: usize = 120;
 }

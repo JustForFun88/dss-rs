@@ -125,51 +125,6 @@
    "note": "live probe: Version8/Distrib/Examples/Stevenson/StevensonPflow.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
-   "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
-   "tag": "engine_panic",
-   "note": "live probe (WP8.6 step7 re-probe): index out of bounds: the len is 17520 but the index is 17520"
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
-   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
-   "tag": "regcontrol_enabled_filter",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks — deck compiles and the 24h daily solve converges, but the live gate's regcontrol-tap comparison fails: \"regcontrol count differs: left: 12 right: 0\". Root-caused (empirically, dss-python probe): the deck opens with \"BatchEdit RegControl..* enabled=False\" (disables all 12 RegControls); the oracle's Circuit.RegControls.First/.Next iterator SKIPS disabled control elements (confirmed live: a disabled RegControl yields 0 from RegControls.First), but Rust's exec/view.rs::regcontrol_tap_numbers() iterates ckt.controls unconditionally (no `enabled` filter), so it reports all 12. A real, verified port gap (not a numeric floor) — NOT fixed in this WP (no engine code touched here); flagged for a follow-up one-line fix."
-  },
-  {
    "path": "Version8/Distrib/Examples/VSConverter/vsctest.dss",
    "tag": "oracle_nonconvergence",
    "note": "live probe: Version8/Distrib/Examples/VSConverter/vsctest.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
