@@ -1168,6 +1168,51 @@
    "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Test/AutoTrans/Auto1bus-step1.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/AutoTrans/Auto1bus.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/AutoTrans/Auto3bus.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/AutoTrans/AutoAuto.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/AutoTrans/AutoHLT.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
+   "kind": "large_near_ideal_source",
+   "n_steps": 1
   }
  ]
 }

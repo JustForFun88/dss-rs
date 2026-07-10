@@ -31,6 +31,16 @@ class). Also measured for WP-R1: iterative refinement DIVERGES on the
 floating tertiary (one step 1.3e-3 → 1492 V — the u·κ≳1 limit live) →
 divergence guard added to RESONANCE_PLAN WP-R1.
 
+**Round 2c — user-directed migration ("перенеси в solvable — мы же всё равно
+решаем эти схемы", 2026-07-10).** With the floor proven by decomposition
+(round 2b — the sanctioned path for a band change), the 9 AutoTrans decks
+moved to `solvable_now` under a new `large_near_ideal_source` tier: `large` +
+`v_rel` 5e-6 (family worst 1.46e-6, ×3.4) + `i_abs` 0.1 A (user-set; measured
+worst 9.375e-2 A = 94% of band — a future trip is a re-triage signal, not a
+widen signal). The Y channel keeps the tight `large` floors and is the
+regression sentinel (bit-identical today; the family's unique surface is
+YPrim assembly). Counts: solvable 194 → 203, needs_investigation 34 → 25.
+
 **Round 2b — second user challenge ("такие большие значения = баг в порте,
 найди и устрани"), per-element decomposition (2026-07-10, Auto1bus-step1,
 hex-bit transport).** Every remaining channel closed, no bug exists to fix:
