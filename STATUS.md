@@ -7,7 +7,37 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-09.
+Last updated: 2026-07-10.
+
+**needs_investigation burn-down, round 1 (2026-07-10, user-directed).** Three
+real port gaps found by the triage, fixed 1:1 and pinned by migrating their
+decks into the live gate: **(1)** Monitor mode-7 (Storage state) had a header
+promising `record_size = 5` with a deferred sample body — every yearly export
+panicked in `to_csv` (`StoCtrl_Current_PeakShave`); body now ported from
+Monitor.pas l.1298 (PresentkW/Presentkvar/kWhStored/%stored/State). **(2)**
+`Dss::regcontrol_tap_numbers` didn't mirror the oracle iterator's
+enabled-filter (`RegControls.First/.Next` skip disabled; verified live), so
+`BatchEdit RegControl..* enabled=False` decks compared 12 taps vs 0. **(3)**
+StorageController parse-time semantics: Pascal `RecalcElementData` ends EVERY
+edit line by `MakeFleetList` + `SetFleetToExternal` + `SetAllFleetValues` — the
+Rust port deferred that to the first Sample, losing the observable residue (a
+controller defined across `~` lines pushes its DEFAULT %reserve/rates onto the
+scan-all fleet before `elementList=` shrinks it; SupportRun pins Storage.A..E
+at %Reserve=25 from exactly that). Now runs eagerly via
+`storage_controller_recalc_fleet` from the executive's edit tail; also fixed
+the Pascal local-`kWNeeded` SHADOW in `DoPeakShaveModeLow` (the `kWneed`
+property only ever reflects the discharge path — the charge path's value is
+local). Also ported en route: the `Wait` executive command (a silent no-op
+while `Parallel_enabled` is false — ExecCommands.pas `ord(Cmd.Wait)`; the
+StoCtrl deck's `Add_Issues.dss` issues a bare `wait`). The 8
+StorageControllerTechNote decks pass the FULL live compare incl. property
+parity, and the yearly `StoCtrl_Current_PeakShave/master.dss` (8760-step, EPRI
+ckt7 + StorageController I-peakshave) passes the full live compare too — all 9
+migrated to `solvable_now` (185→194; needs_investigation 43→34). **Gate
+runtime:** the yearly deck cost ~27 min at opt-0, so the dev/test profile now
+carries `opt-level=3` overrides for the engine crates + all deps (workspace
+Cargo.toml; TESTING.md) with `overflow-checks`/`debug-assertions` explicitly
+pinned `true` — release-speed engine, dev-profile safety, same gate command.
 
 **WPG.17 exit sweep COMPLETE — GAPS_PLAN executed (2026-07-09).** All three
 exit-sweep items hold: **(1)** every `NOT_PORTED`/`no corpus case` marker

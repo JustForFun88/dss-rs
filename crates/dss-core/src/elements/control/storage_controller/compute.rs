@@ -180,7 +180,26 @@ impl StorageController {
         if !self.fleet_list_changed {
             return;
         }
-        self.make_fleet_list(env);
+        self.recalc_fleet(env);
+    }
+
+    /// Pascal `TStorageControllerObj.RecalcElementData` tail
+    /// (StorageController.pas l.817-828): `if FleetListChanged then
+    /// MakeFleetList; if FleetSize > 0 then begin SetFleetToExternal;
+    /// SetAllFleetValues end`. Runs at EVERY edit of the controller (each
+    /// `New`/`~`/`Edit`/`BatchEdit` line ends in `RecalcElementData`), via
+    /// [`storage_controller_recalc_fleet`] — the intermediate pushes are
+    /// observable: a controller defined across `~` lines first scan-builds the
+    /// ALL-storage fleet and pushes its DEFAULT `%reserve`/rates onto it, and
+    /// only the later `elementList=` line shrinks the fleet (SupportRun.dss
+    /// pins Storage.A..E at `%Reserve = 25` from exactly that residue).
+    ///
+    /// [`storage_controller_recalc_fleet`]:
+    ///     crate::solution::controls::dispatch::storage_controller_recalc_fleet
+    pub(crate) fn recalc_fleet(&mut self, env: &mut dyn StorageDispatchEnv) {
+        if self.fleet_list_changed {
+            self.make_fleet_list(env);
+        }
         if self.fleet_size > 0 {
             self.set_fleet_to_external(env);
             self.set_all_fleet_values(env);
@@ -785,13 +804,21 @@ impl StorageController {
         let actual_kwh = self.get_fleet_kwh(env);
         let total_rating_kwh = self.fleet_kwh_rating(env);
 
+        // Pascal `DoPeakShaveModeLow` declares a LOCAL `kWNeeded`
+        // (StorageController.pas l.1385 var block) that SHADOWS the
+        // property-backed field — the `kWneed` property only ever reflects the
+        // discharge path (`DoLoadFollowMode`, where the assignments hit the
+        // field). Keep the charge path's value local to reproduce that: the
+        // live property gate pins it (`kWNeed` after a charge sample must stay
+        // the last discharge-path value).
+        let mut kw_needed;
         if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
             // Convert Pdiff from amps to kW.
             let elem_volts = env.monitored_vterminal1_abs();
-            self.kw_needed = env.monitored_nphases() as f64 * p_diff * elem_volts / 1000.0;
+            kw_needed = env.monitored_nphases() as f64 * p_diff * elem_volts / 1000.0;
             amps_diff = p_diff;
         } else {
-            self.kw_needed = p_diff;
+            kw_needed = p_diff;
         }
 
         // Check if the fleet is idling.
@@ -840,7 +867,7 @@ impl StorageController {
                 if self.ccd.show_event_log {
                     let msg = format!(
                         "Attempting to charge {} kW with {} kWh remaining and {} rating.",
-                        g6(self.kw_needed),
+                        g6(kw_needed),
                         g6(total_rating_kwh - actual_kwh),
                         g6(total_rating_kwh)
                     );
@@ -851,7 +878,7 @@ impl StorageController {
                     let snap = env.snap(r);
 
                     if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
-                        self.kw_needed = if snap.nphases == 1 {
+                        kw_needed = if snap.nphases == 1 {
                             snap.present_kv * amps_diff
                         } else {
                             snap.present_kv * 3.0_f64.sqrt() * amps_diff
@@ -861,7 +888,7 @@ impl StorageController {
                     let weight = self.weights.get(i).copied().unwrap_or(1.0);
                     // May be positive or negative.
                     let mut charge_kw = snap.present_kw
-                        + self.kw_needed * (weight / self.total_weight) * self.disp_factor;
+                        + kw_needed * (weight / self.total_weight) * self.disp_factor;
                     if charge_kw < 0.0 {
                         charge_kw = (-snap.kw_rating).max(charge_kw); // vs kVA rating
                     }

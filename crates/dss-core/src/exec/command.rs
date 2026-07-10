@@ -172,6 +172,13 @@ impl Dss {
             // version can be loaded more easily." (OpenDSS-GIS is out of the
             // DSS-Extensions scope.)
             cmd::GIS_COORDS => {}
+            // Pascal `ExecCommands.pas` `ord(Cmd.Wait)`: `if
+            // PMParent.Parallel_enabled then Wait4Actors(...)` — with the
+            // parallel machinery disabled (the pinned oracle's default and this
+            // port's only mode until MULTITHREADING_PLAN lands actors) it is a
+            // silent no-op, exactly like the oracle (the StoCtrl corpus deck's
+            // `Add_Issues.dss` issues a bare `wait` mid-script).
+            cmd::WAIT => {}
             cmd::SET_BUS_XY => self.do_set_bus_xy_cmd(),
             cmd::INTERPOLATE => self.do_interpolate_cmd(),
             // Pascal `DoRemoveCmd` (ExecHelper.pas:4939) → `DoRemoveBranches`.
@@ -840,6 +847,48 @@ impl Dss {
     /// from the property setters; nothing reads them mid-edit, so polling
     /// after the edit is equivalent).
     pub(super) fn edit_active(&mut self) {
+        self.edit_active_inner();
+
+        // Pascal `TStorageControllerObj.RecalcElementData` ends every edit
+        // line by building the fleet and pushing the controller's rates onto
+        // it (see `storage_controller_recalc_fleet`); that needs the whole
+        // store, so it runs here, after the split-borrow edit re-assembles
+        // `self`.
+        let Some(ci) = self.active_class else { return };
+        let Some(oi) = self.classes[ci].active else {
+            return;
+        };
+        if !self.classes[ci].objects[oi]
+            .as_any()
+            .is::<crate::elements::control::storage_controller::StorageController>()
+            || self.circuit.is_none()
+        {
+            return;
+        }
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("checked above");
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        crate::solution::controls::storage_controller_recalc_fleet(
+            crate::elements::traits::ElemRef { cls: ci, idx: oi },
+            ckt,
+            &mut env,
+        );
+    }
+
+    fn edit_active_inner(&mut self) {
         let Some(ci) = self.active_class else {
             self.errors
                 .push("There is no active element to edit.".to_string());

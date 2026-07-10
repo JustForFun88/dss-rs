@@ -752,6 +752,51 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss",
    "kind": "feeder",
    "n_steps": 1
