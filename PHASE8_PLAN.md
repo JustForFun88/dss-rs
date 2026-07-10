@@ -104,9 +104,7 @@ executive verbs (`BatchEdit`, `Interpolate`, `Distribute`, …), and the full
 2. **Export: solution outputs (WP8.2)** — ✅ COMPLETE.
 3. **Export: device/meter/reliability outputs (WP8.3)** — ✅ COMPLETE.
 4. **Show reports (WP8.4)** — ✅ COMPLETE.
-5. **Save + Dump (WP8.5)** — 🚧 IN PROGRESS: Dump single-object forms + 6 leaf
-   overrides landed; remaining = the 8 leaf overrides, the whole-circuit/aux
-   Dump forms, all `Save` forms, the round-trip gate.
+5. **Save + Dump (WP8.5)** — ✅ COMPLETE (incl. WP8.5b property parity).
    5b. **Corpus property parity (WP8.5b, addendum)** — exhaustive
    per-element property-value comparison vs the pinned oracle (pilot
    report → gate flags); executes after WP8.5 completes. See §WP8.5b.
@@ -408,7 +406,7 @@ golden_reports 125).
 
 ---
 
-### WP8.5 — Save circuit + `Save <class>` + Dump [14%] — 🚧 IN PROGRESS
+### WP8.5 — Save circuit + `Save <class>` + Dump [14%] — ✅ COMPLETE
 
 **Done (record: STATUS.md §1 frontier + §1f):** Dump steps 1–2 — the
 single-object forms `Dump <class>.[name|*] [debug]` (`report/save/dump.rs`
@@ -666,7 +664,7 @@ approved 2026-07-07):
 
 ---
 
-### WP8.6 — Executive tail: BatchEdit, MakeBusList/GISCoords, SetBusXY+Interpolate, Distribute, Uuids [12%]
+### WP8.6 — Executive tail: BatchEdit, MakeBusList/GISCoords, SetBusXY+Interpolate, Distribute, Uuids [12%] — ✅ COMPLETE
 
 **Pascal:** `Executive/ExecHelper.pas` `DoBatchEditCmd:292`,
 `DoInterpolateCmd:3106`, `DoDistributeCmd:3755` + `makeDistributedGenerators:3701`,
@@ -792,7 +790,7 @@ Steps:
 
 ---
 
-### WP8.7 — ReduceAlgs (full) + `TLineObj.MergeWith` + `Remove` [8%]
+### WP8.7 — ReduceAlgs (full) + `TLineObj.MergeWith` + `Remove` [8%] — ✅ COMPLETE
 
 **Pascal:** `PDElements/Line.pas` `MergeWith:1631-1840`;
 `Meters/ReduceAlgs.pas` (whole file, procedures below);
@@ -898,7 +896,7 @@ Steps:
 
 ---
 
-### WP8.8 — Phase exit [6%]
+### WP8.8 — Phase exit [6%] — ✅ EXECUTED (2026-07-10; record in `STATUS.md` §1 — incl. the port-don't-defer executive-tail closure, the recursive CorpusGuard, and the final classify to 226 solvable / 67.5%)
 
 1. `rg "TODO\(compat\)"` / `rg "NOT_PORTED"` / `rg "TODO\(WP8\)"` sweep — every
    remaining site points at its owner (GAPS_PLAN WPG.* — incl. WPG.18 for CIM —
