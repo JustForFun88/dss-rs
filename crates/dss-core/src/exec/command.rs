@@ -267,7 +267,12 @@ impl Dss {
 
     /// Pascal `ord(Cmd.CD)` (`ExecCommands.pas:315`): change the data path to
     /// an EXISTING directory (`SetDataPath`; unlike `Set DataPath=` it never
-    /// creates one) — error #282 on a miss.
+    /// creates one) — error #282 on a miss. Like the shared `Set DataPath=`
+    /// port (`set_cmd.rs::apply_data_path`), the Pascal non-writable-dir →
+    /// scratch `OutputDirectory` fallback (`DSSGlobals.pas:562-568`) is
+    /// NOT_PORTED — an environment-dependent I/O rescue, not oracle-pinnable;
+    /// a later write fails loudly instead (audit WP8.8: consistent recorded
+    /// narrowing, corpus-unreachable).
     fn do_cd_cmd(&mut self) {
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars).to_string();

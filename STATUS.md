@@ -91,6 +91,26 @@ Details:
 - **Step 5.** PORTING_PLAN §Phase 8 marked COMPLETE (executed marker + the
   actor-residual pointer); this STATUS record; phase records live in
   `docs/phase-records/phase-8.md`.
+- **Audit settlement (2026-07-10, two fresh independent opus agents: 0
+  Critical/Major).** audit-code: port faithful across all seven focus areas
+  (mode-leave observable proven identical incl. harmonics iteration counts;
+  AutoTrans k-indexing; PowersFamily byte-exact; every ordinal/error text
+  verified; recursive guard "strictly safer"); its one Minor — the CD/`Set
+  DataPath=` non-writable-dir scratch fallback (`DSSGlobals.pas:562-568`) —
+  settled as the pre-existing recorded narrowing (not oracle-pinnable,
+  corpus-unreachable; now documented at `do_cd_cmd` too). audit-tests: every
+  spot-checked oracle pin reproduced live; goldens feature-sensitive; nothing
+  loosened. Its two Minors settled by STRENGTHENING: **(1)** the per-family
+  `show powers e` whitespace layouts are now byte-pinned
+  (`show_powers_elem_autotrans_layout_bytes` — headers/bus-rows/totals
+  verbatim vs the golden; degenerate |S|≈0 rows excluded: their `0.0`/`-0.0`
+  render sign is faer-vs-KLU residual noise, numerically pinned by the
+  tokenizing twin); **(2)** Reconductor now pins all seven error surfaces
+  (#28701/#28706 added, both re-probed live). Its Question settled: NEW
+  CorpusGuard self-test (`corpus_guard_restores_case_dir_recursively` —
+  vendored preserved, overwrite restored, subdir/DI-tree pollution swept).
+  Owed follow-up (recorded): root-cause the DOCTechNote×4 live_mismatch
+  (~2.4e-7 rel) per the no-rationalizing rule.
 
 **needs_investigation burn-down, round 2 — AutoTrans family (2026-07-10,
 user-directed "проверь автотрансформатор построчно").** Element EXONERATED
