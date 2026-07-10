@@ -41,7 +41,19 @@ stage, differential/L-L quantities ≤2.3e-10 rel, all non-DER nodes in-band
 (8.1e-9 rel); deck minus the DER pair collapses to 8.2e-9 rel; InvControl
 removal changes nothing (GFM exonerated). Same un-pinnable class as AutoAuto —
 NOT a TODO(compat), must not be "fixed". Full proof in the deck's manifest
-note. COVERAGE: solvable_now **184
+note. **Sharpened 2026-07-10 (bitwise audit on user challenge):** engine solve
+is deterministic and bit-equal to a fresh faer solve of the exported (Y, I);
+the last solve's RHS bit-equals the captured injection and node_v bit-equals
+the solve output (no index permutation, no stale I); Storage/PVSystem/
+StickCurr/CalcVTerminalPhase/DoNormalSolution verified line-by-line vs Pascal.
+Clean hex-bit-transport measurement (decimal-JSON transport perturbs the last
+ulp — serde_json parses floats non-roundtrip without `float_roundtrip` — and
+×3e8 poisons junk-subspace numbers): the whole gap is faer's **one-shot** LU
+rounding in the anti-float subspace (zero-seq residual 8.7e-11 A vs KLU
+7.3e-12 A, ~12×), not iteration accumulation; ONE iterative-refinement step →
+2.1e-11 A / 9.4e-6 V, 3× under the band. Fix owner: `RESONANCE_PLAN.md` WP-R1
+(second acceptance case added there); the deck migrates to `solvable_now` when
+WP-R1 lands. faer 0.24.4 probed: bit-identical to 0.24.0, no help. COVERAGE: solvable_now **184
 (54.9%)**, unsupported 66→64, needs_investigation 43→44. Hygiene follow-up
 (purged in `84b8dfa`): the `DSS_LIVE_CLASSIFY` oracle-side probe and a manual
 `dss-cli` run wrote outputs (DI files / monitor CSVs) NEXT TO the vendored
