@@ -52,8 +52,16 @@ ulp — serde_json parses floats non-roundtrip without `float_roundtrip` — and
 rounding in the anti-float subspace (zero-seq residual 8.7e-11 A vs KLU
 7.3e-12 A, ~12×), not iteration accumulation; ONE iterative-refinement step →
 2.1e-11 A / 9.4e-6 V, 3× under the band. Fix owner: `RESONANCE_PLAN.md` WP-R1
-(second acceptance case added there); the deck migrates to `solvable_now` when
-WP-R1 lands. faer 0.24.4 probed: bit-identical to 0.24.0, no help. COVERAGE: solvable_now **184
+(second acceptance case added there). faer 0.24.4 probed: bit-identical to
+0.24.0, no help. **Migrated to `solvable_now` (2026-07-10, user-directed):**
+new tolerance tier `large_floating_delta` = `large` with `v_abs` 5e-4 V only
+(the proven common-mode junk; ~1.8e-6 rel at the 277 V DER buses; everything
+else — Y/YPrim/injection/currents/powers, which are L-L-based and immune to
+the common mode — stays at `large` floors). Documented in
+tests/TOLERANCE_NOTES.md §floating-delta; full live compare green (iterations
+exact, all other channels at `large`). Retighten the tier to `large` when
+WP-R1's refinement lands. COVERAGE: solvable_now 184→**185**,
+needs_investigation 44→43. COVERAGE: solvable_now **184
 (54.9%)**, unsupported 66→64, needs_investigation 43→44. Hygiene follow-up
 (purged in `84b8dfa`): the `DSS_LIVE_CLASSIFY` oracle-side probe and a manual
 `dss-cli` run wrote outputs (DI files / monitor CSVs) NEXT TO the vendored

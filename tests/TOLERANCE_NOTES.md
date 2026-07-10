@@ -23,6 +23,9 @@ tiers tolerances by **conditioning**, not size:
 - **large** — large or numerically-stiff networks (EPRI ckt5 / 8500-Node /
   A-Diakoptics torn zones / inverter cases / IEEE123 / 4Bus-YYD). Also the safe
   default for an unrecognized `kind`.
+- **large_floating_delta** — `large` plus one documented exception: `v_abs`
+  5e-4 V (see §floating-delta below). Currently one deck
+  (`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`).
 
 | Quantity | micro | feeder | large |
 |---|---|---|---|
@@ -37,6 +40,34 @@ cases (faer↔KLU floor: ckt5 conductor power ~1.3e-6 rel, a PVSystem `Vsource`
 current ~1.2e-4 A, IEEE123's `S2` monitor channel ~1.1e-7 rel). The assembled Y
 is deterministic (same YPrim stamps both engines, not a solver output), so it
 holds 1e-8 in every class.
+
+### floating-delta (`large_floating_delta`): the un-pinnable zero-sequence common mode
+
+A bus fed by a **delta** transformer winding carrying a **delta** DER
+(`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`: StoBus + PVBus) has no
+zero-sequence path to ground. Its common-mode voltage is pinned only by the
+winding's anti-float adder (−j1.4468e-6 S = 2·`Y_PPM`) against a ~452 S
+diagonal — a κ≈3.1e8 subspace inside an otherwise well-conditioned solve. The
+common mode is therefore **solver-junk with a stable per-solver value**:
+measured on bit-identical `(Y, I)` (hex-bit transport; a decimal JSON
+round-trip perturbs the last ulp and, ×3e8, poisons the measurement), each
+solver leaves a different zero-seq residual — KLU 7.3e-12 A, scipy 8.7e-12 A,
+faer 8.7e-11 A — i.e. common-mode slacks of 5e-6…7e-5 V, and the engines land
+9.03e-5 V apart at the gate's step 0. The proof it is a floor and not a bug
+(2026-07-09/10, bitwise audit): engine solve is deterministic and bit-equal to
+a fresh faer solve of its exported `(Y, I)`; the last solve's RHS bit-equals
+the captured injection; the assembled Y is bit-identical across engines;
+the element formulas match Pascal line-by-line; the diff is 100% common mode
+(differential remainder ≤5.9e-8 V, L-L ≈2.3e-10 rel; every non-DER node
+in-band at `large`).
+
+The tier therefore keeps every `large` floor and widens **only `v_abs`, to
+5e-4 V** (≈5.5× the measured worst; ~1.8e-6 rel at the 277 V DER buses). No
+real coverage is lost: the DER elements' currents/powers are functions of the
+L-L (differential) voltages — immune to the common mode — and stay gated at
+the `large` floors, as do Y/YPrim/injection. Fix owner: `RESONANCE_PLAN.md`
+WP-R1 (one iterative-refinement step measures 9.4e-6 V vs KLU — 3× under the
+`large`-band); when it lands, retighten this tier back to `large`.
 
 **Maintenance:** a new corpus case defaults to `large`; promote it to `feeder`
 only after `corpus_live` confirms it holds the tighter floor. Golden tests that

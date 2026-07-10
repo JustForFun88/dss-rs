@@ -376,6 +376,34 @@ pub fn tol_for(kind: &str) -> Tolerances {
             energy_rel: 1e-4,
             energy_abs: 1e-4,
         },
+        // The floating-delta zero-sequence class (currently the IEEE123 GFM
+        // snapshot deck): a bus fed by a delta transformer winding with a delta
+        // DER has no zero-sequence path to ground — its common-mode voltage is
+        // pinned only by the winding's anti-float adder (−j1.4468e-6 S = 2·Y_PPM)
+        // against a ~452 S diagonal, a κ≈3.1e8 subspace inside an otherwise
+        // well-conditioned solve. That common mode is solver-junk: on
+        // bit-identical (Y, I) KLU / scipy / faer each leave a *different* stable
+        // value (spreads 1.2e-5 … 6.6e-5 V; the engines land 9.03e-5 V apart at
+        // step 0 — 100% common mode, differential remainder ≤5.9e-8 V). `v_abs`
+        // absorbs exactly that junk: 5e-4 ≈ 5.5× the measured worst, still only
+        // ~1.8e-6 rel at the 277 V DER buses. Everything else keeps the `large`
+        // floors — in particular the DER elements' currents/powers are functions
+        // of the L-L (differential) voltages, immune to the common mode, so real
+        // model bugs at these buses stay caught. Empirical proof (CLAUDE.md: a
+        // floor changes only with proof by decomposition): tests/TOLERANCE_NOTES.md
+        // §floating-delta; fix owner RESONANCE_PLAN.md WP-R1 (iterative refinement
+        // lands the faer junk 3× under the `large` band → retighten this tier to
+        // `large` then).
+        "large_floating_delta" => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 5e-4,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 1e-4,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
         // Large / numerically-stiff networks (EPRI ckt5, 8500-node, A-Diakoptics
         // torn zones, inverter cases, 4Bus-YYD): voltages 1e-7; the deterministic Y
         // still holds 1e-8. Currents/powers stay 1e-6 rel / 1e-4 abs — their
