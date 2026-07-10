@@ -28,8 +28,8 @@
   },
   {
    "path": "Test/TestDDRegulator.dss",
-   "tag": "live_mismatch",
-   "note": "live probe: Test/TestDDRegulator.dss step 0: entry 7 differs: actual (6234.358238554014, -3601.3806209240656) vs expected (6234.357890616303, -3601.3754134028977); |diff| = 5.219131859314523e-3 > allowed 7.299800217822203e-5"
+   "tag": "floating_zeroseq_bus",
+   "note": "ROOT-CAUSED 2026-07-10: same proven class as GFM_IEEE123/Run_IEEE123Bus_GFMSnap (TOLERANCE_NOTES.md par. floating-delta), one tier weaker. REGBUS2 sits between TWO delta windings (Transformer.Reg1/Reg2 winding 2) -> no zero-seq ground path; measured zero-seq pinning admittance -j2.14e-8 S vs ~303 S diagonal -> amplification 1.4e10. Decomposition: the whole 5.2191e-3 V gap is common mode on all three REGBUS2 nodes (differential remainder <=1.4e-10 V, L-L <=2.7e-10 V); every other node matches to ~1e-14 rel; Y bit-identical (worst rel 0.0); injections match <1e-9 A; iterations equal. Un-pinnable across solvers at ANY LU accuracy this weakly pinned (KLU-quality residual ~1e-11 A -> ~5e-4 V slack), so even WP-R1 refinement only shrinks, not closes, it. Disposition options: per-bus common-mode exclusion in the compare, or stays documented-skipped."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
@@ -181,8 +181,8 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
-   "tag": "entry_point",
-   "note": "live probe: Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss step 0: entry 23 differs: actual (173.1924557181546, -299.99692313160205) vs expected (173.20299697837544, -299.9962461716041); |diff| = 1.056297504882513e-2 > allowed 4.464058687137746e-6"
+   "tag": "floating_zeroseq_bus",
+   "note": "ROOT-CAUSED 2026-07-10: same proven class as GFM_IEEE123/Run_IEEE123Bus_GFMSnap (TOLERANCE_NOTES.md par. floating-delta), extreme variant. BG (0.6 kV) is a DEAD-END bus behind Transformer.Tg winding 2 with no ground reference in its zero-seq (the deck's Generator.WindGen1 at Bg is commented out): measured zero-seq pinning ~1e-12 S vs ~0.42 S diagonal -> amplification 4.2e11. Decomposition: the whole 1.0563e-2 V gap is common mode on all three BG nodes (differential remainder <=6.5e-14 V, L-L <=1.3e-13 V -- bit-level); every other node matches to ~2e-14 rel; Y bit-identical (worst rel 5.8e-16); injections <1e-9 A apart; iterations equal (2). At 4e11 amplification the common mode is un-pinnable across solvers at any accuracy (even a 1e-13 A residual -> ~0.04 V); refinement cannot close it. Disposition options: per-bus common-mode exclusion in the compare, or stays documented-skipped."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
