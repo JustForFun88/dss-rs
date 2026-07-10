@@ -111,7 +111,11 @@ which makes the Oddie venv + `tools/opendss/bin/` binaries a **mandatory**
 
 **Run the gate** — the three commands above. Keep `tests/corpus` pristine
 afterwards (`git status tests/corpus`): the live gate executes decks in place;
-the `CorpusGuard` restores them, but re-vendor if anything lingers.
+the `CorpusGuard` (recursive since WP8.8 — it also removes run-created files
+inside pre-existing fixture subdirs) restores each case dir on both engine
+sides, but a run that writes OUTSIDE the case-dir tree (e.g. a manual
+`dss-cli` invocation) is uncoverable — `git restore`/`git clean` the subtree
+if anything lingers.
 
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.

@@ -498,23 +498,72 @@ const RESTORE_MAX: u64 = 2 * 1024 * 1024;
 /// a migrated deck's `Export voltages` / `Show` / `Save` writes report files next
 /// to the deck — pure pollution of the vendored corpus fixture, which the live
 /// gate never reads (it compares the in-memory model). Mirrors the oracle
-/// server's `_CorpusGuard` (`tools/oracle/oracle_server.py`), which does the same
+/// server's `_CorpusGuard` (`tools/oracle/corpus_guard.py`), which does the same
 /// on the oracle side. RAII: created before the Rust compile, restores on drop.
+///
+/// The snapshot is RECURSIVE (WP8.8): keys are `/`-joined paths relative to the
+/// case dir, so a file the run drops inside a pre-existing fixture subdir (a
+/// redirected support script's `Export`, a `<CircuitName>/DI_yr_*` tree grafted
+/// into a vendored folder) is detected and removed too — the old top-level-only
+/// snapshot let those escape. A run that writes OUTSIDE the case-dir tree (e.g.
+/// a manual `dss-cli` invocation from elsewhere) is still uncoverable here; the
+/// documented backstop stays `git status tests/corpus` + `git restore`/`clean`.
 struct CorpusGuard {
     dir: PathBuf,
     names: BTreeSet<String>,
     buf: BTreeMap<String, Vec<u8>>,
-    /// The pre-run snapshot succeeded. If the initial `read_dir` fails (transient
-    /// EMFILE / AV or indexer lock on Windows), `names` would be empty and Drop
-    /// would treat *every* file as run-created and delete the whole feeder dir.
-    /// Guard against that catastrophe: a failed snapshot disables deletion. (The
-    /// oracle's Python mirror `_CorpusGuard` now carries the same `_snapshot_ok`
+    /// The pre-run snapshot succeeded IN FULL. If any `read_dir` fails
+    /// (transient EMFILE / AV or indexer lock on Windows), `names` would be
+    /// truncated and Drop would treat pre-existing corpus files as run-created
+    /// and delete them. Guard against that catastrophe: an incomplete snapshot
+    /// disables deletion entirely. (The oracle's Python mirror carries the same
     /// gate — its old whole-loop `except OSError` demonstrably deleted corpus
     /// files when one file was transiently locked mid-snapshot.)
     snapshot_ok: bool,
 }
 
 impl CorpusGuard {
+    /// Recursively list `dir`, pushing `/`-joined relative paths of every entry
+    /// (files AND directories) into `names`, and buffering small files into
+    /// `buf`. Returns false if any directory listing failed (incomplete
+    /// snapshot → caller must disable deletion). Per-file metadata/read errors
+    /// only skip that file's overwrite-restore buffer — the name is still
+    /// tracked so it is never deleted. `file_type()` does not follow links, so
+    /// a (never-expected) symlink is tracked by name and never descended into.
+    fn snapshot(
+        dir: &std::path::Path,
+        prefix: &str,
+        names: &mut BTreeSet<String>,
+        buf: &mut BTreeMap<String, Vec<u8>>,
+    ) -> bool {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        let mut ok = true;
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let rel = if prefix.is_empty() {
+                name
+            } else {
+                format!("{prefix}/{name}")
+            };
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            names.insert(rel.clone());
+            if is_dir {
+                ok &= Self::snapshot(&entry.path(), &rel, names, buf);
+                continue;
+            }
+            let small = entry
+                .metadata()
+                .map(|m| m.is_file() && m.len() <= RESTORE_MAX)
+                .unwrap_or(false);
+            if small && let Ok(data) = std::fs::read(entry.path()) {
+                buf.insert(rel, data);
+            }
+        }
+        ok
+    }
+
     fn new(case_path: &str) -> Self {
         let dir = std::path::Path::new(case_path)
             .parent()
@@ -522,39 +571,45 @@ impl CorpusGuard {
             .unwrap_or_else(|| PathBuf::from("."));
         let mut names = BTreeSet::new();
         let mut buf = BTreeMap::new();
-        let snapshot_ok = match std::fs::read_dir(&dir) {
-            Ok(rd) => {
-                for entry in rd.flatten() {
-                    let p = entry.path();
-                    let name = entry.file_name().to_string_lossy().into_owned();
-                    if !p.is_file() {
-                        // Track pre-existing DIRECTORIES by name too, so Drop
-                        // can tell a run-created one (e.g. the
-                        // `<CircuitName>/DI_yr_*` demand-interval tree a
-                        // `Set DemandInterval=True` + `CloseDI` deck writes)
-                        // from a vendored fixture subdir — only the former is
-                        // removed.
-                        names.insert(name);
-                        continue;
-                    }
-                    let small = entry
-                        .metadata()
-                        .map(|m| m.len() <= RESTORE_MAX)
-                        .unwrap_or(false);
-                    if small && let Ok(data) = std::fs::read(&p) {
-                        buf.insert(name.clone(), data);
-                    }
-                    names.insert(name);
-                }
-                true
-            }
-            Err(_) => false,
-        };
+        let snapshot_ok = Self::snapshot(&dir, "", &mut names, &mut buf);
         Self {
             dir,
             names,
             buf,
             snapshot_ok,
+        }
+    }
+
+    /// Post-run sweep: remove every entry under `dir` whose relative path is
+    /// absent from the pre-run snapshot. A run-created directory is removed
+    /// wholesale (never descended); a pre-existing directory is recursed to
+    /// find run-created files inside it.
+    fn sweep_created(&self, dir: &std::path::Path, prefix: &str) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let rel = if prefix.is_empty() {
+                name
+            } else {
+                format!("{prefix}/{name}")
+            };
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if self.names.contains(&rel) {
+                if is_dir {
+                    self.sweep_created(&entry.path(), &rel); // pre-existing dir
+                }
+                continue; // pre-existing file (or fixture subdir, handled above)
+            }
+            if is_dir {
+                // Run-created directory (the DI `<CircuitName>/` tree). The
+                // engines never create junctions/symlinks here, and only paths
+                // absent from the pre-run snapshot are ever removed.
+                let _ = std::fs::remove_dir_all(entry.path());
+            } else {
+                let _ = std::fs::remove_file(entry.path()); // created by the run
+            }
         }
     }
 }
@@ -566,24 +621,7 @@ impl Drop for CorpusGuard {
         if !self.snapshot_ok {
             return;
         }
-        let Ok(rd) = std::fs::read_dir(&self.dir) else {
-            return;
-        };
-        for entry in rd.flatten() {
-            let p = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if self.names.contains(&name) {
-                continue; // pre-existing (file or fixture subdir)
-            }
-            if p.is_file() {
-                let _ = std::fs::remove_file(&p); // created by the run
-            } else {
-                // A run-created directory (the DI `<CircuitName>/` tree). The
-                // engines never create junctions/symlinks here, and only names
-                // absent from the pre-run snapshot are ever removed.
-                let _ = std::fs::remove_dir_all(&p);
-            }
-        }
+        self.sweep_created(&self.dir.clone(), "");
         for (name, data) in &self.buf {
             // rewrite only if the run actually changed it
             let p = self.dir.join(name);
