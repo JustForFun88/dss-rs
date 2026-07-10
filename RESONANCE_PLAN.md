@@ -134,6 +134,14 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   condition estimate. The refinement trigger must therefore be the **residual norm**
   (cheap: one mat-vec on the unscaled `A`), not `rcond` alone.
 
+  **Divergence guard (measured 2026-07-10, AutoTrans family / `u·κ ≳ 1` in action):**
+  on `Test/AutoTrans/Auto1bus.dss` (assembled-Y κ≈1e12: mvasc3=2e6 source + 1e-6 Ω
+  switches + floating delta tertiary) ONE refinement step made the tertiary-subspace
+  answer **worse by 6 orders** (1.3e-3 V → 1492 V vs KLU) while helping the LOW bus.
+  The refinement loop must therefore verify the residual norm actually DECREASED after
+  each step and roll the step back (keep the pre-step `x`) otherwise — "apply refinement
+  when the residual is large" alone is not safe near a genuinely singular subspace.
+
   **Confirmed by the standard numerical-LA literature (this is a named, textbook
   technique, not a homegrown trick).** Both texts describe exactly the three-step
   process `r = b − A·x; solve A·d = r; x += d`:
