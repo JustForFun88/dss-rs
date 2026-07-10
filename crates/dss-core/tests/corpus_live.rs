@@ -1091,13 +1091,14 @@ fn corpus_live_solvable_cases_match_oracle() {
         // proved clean under triage. The heavy `large`-kind decks (8500-Node /
         // ckt5 / EPRI / IEEE123 / ADiakoptics / 4Bus-YYD) stay OFF: their
         // per-element property dump (thousands of elements × ~50 props) is too
-        // slow for the mandatory gate — the pilot sweeps them instead. Target-rev
-        // cases stay off too (a different engine revision renders property strings
-        // differently — the known bracket/echo class, gated only vs pinned capi).
-        // `kind`/`oracle` are explicit greppable tags — a coverage inventory, not
-        // a silent skip.
+        // slow for the mandatory gate — the pilot sweeps them instead (the
+        // `large_floating_delta` IEEE123-scale tier is excluded for the same
+        // reason, hence the prefix match). Target-rev cases stay off too (a
+        // different engine revision renders property strings differently — the
+        // known bracket/echo class, gated only vs pinned capi). `kind`/`oracle`
+        // are explicit greppable tags — a coverage inventory, not a silent skip.
         let mut cc = c.clone();
-        if cc.oracle.is_none() && cc.kind != "large" {
+        if cc.oracle.is_none() && !cc.kind.starts_with("large") {
             cc.compare_all_properties = true;
             props_gated += 1;
         }

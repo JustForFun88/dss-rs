@@ -706,6 +706,17 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "selected_elements": [
+    "storage.mystorage",
+    "pvsystem.mypv",
+    "transformer.tsto1",
+    "transformer.tpv1"
+   ]
+  },
+  {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
    "kind": "feeder",
    "n_steps": 1
