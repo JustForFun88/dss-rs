@@ -9,6 +9,89 @@
 
 Last updated: 2026-07-10.
 
+**WP8.8 Phase-8 exit COMPLETE (2026-07-10), gate-green — PHASE 8 IS COMPLETE.**
+All five exit steps ran; per the port-don't-defer rule the sweep also closed the
+whole corpus-used executive-command tail on the way out. **Next: Phase 9
+exotics — optional; stopping here is a complete usable simulator**
+(PORTING_PLAN cumulative note). Remaining named work: actor mode
+(`MULTITHREADING_PLAN.md` M2), A-Diakoptics, Pstcalc, WPG.19 (file-backed
+`File=` arrays — now the proven sole blocker of the whole ckt24/SolarRamp
+family), WPG.20 (MMF save), `JSON_EXPORT_PLAN.md`, `RESONANCE_PLAN.md` WP-R1.
+Details:
+
+- **Step 1 (marker sweep).** Every stale marker settled: **(a)** `show powers
+  e` now emits the three exact Pascal whitespace layouts (Sources `%s %4d`, PC
+  `:6:1` + `kW   +j  kvar` header + `'  TERMINAL TOTAL '` label) — the WP8.4
+  byte-pass `TODO(WP8)` is gone; **(b)** the **AutoTrans `Ntimes = Nphases`
+  arms** of `WriteTerminalCurrents` (`ShowResults.pas:604`, with the
+  per-terminal `Inc(k, Ntimes)` block-skip), `ShowPowers` case 1 (`:1190` —
+  the post-loop `Inc` there is DEAD, terminal 2 re-reads the first conductor
+  block; reproduced) and `ShowNodeCurrentSum` (`:3636`) are ported and pinned
+  by three new oracle goldens on a well-conditioned AutoTrans snapshot
+  (`gen_show_autotrans`; all passed first run); **(c)**
+  `max_bus_name_length`'s byte-pass note settled as final (the upstream
+  effective-width quirk is nondeterministic → NOT reproduced, UB rule);
+  **(d)** the **dynamics-leave `InvalidateAllPCElements`** is ported
+  (`set_mode.rs`): Pascal `OK_for_Dynamics` raises `SystemYChanged` on leaving
+  dynamics (Circuit.pas:2331) — real since WP7.7 machines + WPG.13/17 GFM have
+  mode-dependent YPrims (the old "inert" note predated them); harmonics-leave
+  now raises it unconditionally like Pascal; **(e)** 3 stale `TODO(WP7.7)`
+  retagged on-demand.
+- **Step 2 (cmd_coverage + tail ports).** Newly ported, each oracle-probed
+  live and pinned by 9 new unit tests (`exec/tests/exec_tail.rs`, 18 total):
+  Enable/Disable (named = the edit path, `*` = bare `Set_Enabled`; unknown /
+  DSS_OBJECT classes are SILENT upstream), SetkVBase (kvll/kvln/positional,
+  `Bus x not found.` GlobalResult), Losses (`%10.5g` pair off the ACTIVE
+  element; the ActiveCktElement-on-New side effect is not reproduced —
+  documented, the corpus use is `select`+`losses`), Summary (GlobalResult text
+  byte-exact incl. the `Control Mode =` missing space and the literal
+  `(**** %%)` arm), Reconductor (`isPathBetween`/`TraceAndEdit` over the
+  meter-zone `parent_pd` chain; errors 28701-28707 verbatim), the
+  step-solution family `_InitSnap/_SolveNoControl/_SampleControls/
+  _DoControlActions/_ShowControlQueue/_SolveDirect/_SolvePFlow`, `var`
+  (`DoVarCmd`: define/echo/list + err 28725 — the parser-vars machinery
+  already existed), and the pre-circuit utilities Fileedit/Classes/
+  Userclasses/CD/DOScmd (live in the PRE-circuit dispatch upstream,
+  `ExecCommands.pas:301-335`; the post-circuit case only holds commented-out
+  duplicates — Classes walks the Pascal class order via the Dump table) +
+  `Set/Get ShowExport` (`AutoShowExport`, GUI-consumer no-op). **Documented
+  residual:** the `DSS_CAPI_PM` actor family — commands NewActor/SolveAll/
+  Abort/Clone (10 corpus uses) + options ActiveActor/CPU/Parallel/
+  ConcatenateReports (115 uses), owner MULTITHREADING_PLAN M2; zero-corpus-use
+  query verbs (Voltages/…/Zsc*) and AlignFile/CvrtLoadshapes on-demand;
+  DI_plot/CompareCases/YearlyCurves stay loud (upstream NIL-callback UB).
+  Fixed a `cmd_coverage.py` misread (the last `cmd::` arm swallowed the
+  catch-all and reported not-ported).
+- **Steps 3-4 (checks, gate, final classify).** All 12 `wp:"WP8.*"` manifest
+  cases `pending:false`; every `report_decks/` deck wired into
+  `gen_reports.py`. Full gate green twice (34 binaries, 0 failures; live
+  corpus 217 → **226** decks). Final `DSS_LIVE_CLASSIFY` over the 11
+  documented cases + the 24 decks the tail ports unblocked: **+9 solvable_now
+  (217→226, 67.5% of entry points)** — Dynamic_Kundur (var), K1 Master_NoPV
+  (SetkVBase), Paulo ×2 (AddBusMarker), WampServer testcommandline (var),
+  Run_NEV (Export/Select/Show), and the three **8500-node runners**
+  Run_8500Node/Run_8500Node_Unbal/GFM Run_8500Node_Unbal (Export/Show). 9
+  decks re-sorted to `skipped_unsupported` on their TRUE blocker (the whole
+  mm-ckt24 family + Run_Ckt24 + Storage-Quasi Run_Demo1 + P174 SolarRamp →
+  WPG.19 file-backed arrays; ckt5-7proc → SolveAll actor script, which also
+  kills the one-shot oracle). **New findings (honest, kept
+  needs_investigation):** the 4 DOCTechNote decks run on both engines but
+  exceed the feeder band (~2e-3 V abs ≈ 2.4e-7 rel node V — same order as the
+  proven zero-seq floors; root-cause per the no-rationalizing rule before any
+  move); IEEE118Bus master joins the oracle_nonconvergence class (the pinned
+  oracle itself diverges). Counts: needs_investigation 35→16 (11 documented +
+  4 DOC + 118Bus), unsupported 64→50, COVERAGE.md regenerated (bijection 915).
+- **CorpusGuard extended RECURSIVE on both sides** (Rust `corpus_live.rs` +
+  Python `corpus_guard.py`, the STATUS WP8.8 candidate): run-created files
+  inside pre-existing fixture subdirs are now tracked by relative path and
+  removed; an incomplete snapshot walk still disables deletion wholesale (the
+  war-story bias). Writes OUTSIDE the case-dir tree (manual `dss-cli` runs)
+  stay git-backstop territory — TESTING.md updated. Verified live across the
+  full gate + all classify probes: `git status tests/corpus` clean.
+- **Step 5.** PORTING_PLAN §Phase 8 marked COMPLETE (executed marker + the
+  actor-residual pointer); this STATUS record; phase records live in
+  `docs/phase-records/phase-8.md`.
+
 **needs_investigation burn-down, round 2 — AutoTrans family (2026-07-10,
 user-directed "проверь автотрансформатор построчно").** Element EXONERATED
 with bit-level proof: on all probed family decks the assembled system Y is
@@ -53,12 +136,17 @@ pseudo-switch (Y≈1e8 S) turns a <2-f64-ulp cross-engine (V1−V2) difference
 into dI = 6.5e-4 A on a 375 A flow (arithmetic bit-floor; the f32-looking
 values are the coarse dyadic near-cancellation grid, both engines produce
 them). Remaining 11: 10 oracle-blocked (timeouts/non-convergence — nothing to
-fix port-side) + ieee9500_base — re-triaged cross-engine on the user's
-question: NO engine solves it as vendored (pinned oracle, official EPRI r3723
-/ r4088 / r4133 all converged=False at the deck's own maxiter=1000 and NaN
-out; the Rust port NaNs identically — lineage-consistent, tag
-`deck_unsolvable_all_engines`). Full proofs: TOLERANCE_NOTES
-§floating-zeroseq, §ultra-switch, §near-ideal-source.
+fix port-side) + ieee9500_base — ROOT-CAUSED on the user's question: the deck
+DATA is pathological — its 480 V DER microgrid island sits at the edge of
+voltage collapse and `Storage.battery1` (charging) / `battery2` (idling) tip
+the snapshot over the fixed-point stability boundary (|V| at M2001-ESS1 grows
+~×2000/iteration to NaN). NO engine solves it as vendored (pinned oracle,
+official EPRI r3723/r4088/r4133, Rust — all diverge identically); with both
+storages disabled it converges on the oracle AND the Rust port in the SAME
+121 iterations (battery1=discharging: 130) — an iteration-exact parity data
+point on an extremely marginal system. Tag `deck_unsolvable_all_engines`;
+deck/scenario bug upstream, nothing to fix port-side. Full proofs:
+TOLERANCE_NOTES §floating-zeroseq, §ultra-switch, §near-ideal-source.
 
 **Round 2c — user-directed migration ("перенеси в solvable — мы же всё равно
 решаем эти схемы", 2026-07-10).** With the floor proven by decomposition
@@ -176,8 +264,9 @@ needs_investigation 44→43. COVERAGE: solvable_now **184
 `dss-cli` run wrote outputs (DI files / monitor CSVs) NEXT TO the vendored
 decks — the CorpusGuard redirect covers the harness's Rust side but not the
 classify oracle process cwd; extend it before the next classify pass (WP8.8
-candidate). Merge to `main` remains explicit-request-only. **Next: WP8.8
-(Phase-8 exit).**
+candidate — DONE at WP8.8: recursive CorpusGuard on both sides). Merge to
+`main` remains explicit-request-only. WP8.8 executed 2026-07-10 (see the §1
+frontier record) — **Phase 8 COMPLETE; next = Phase 9 (optional).**
 
 **GFM audit settlement, part 1 (2026-07-09; both auditors: 0 Critical/Major on
 the GFM math — every numeric pin independently reproduced on the oracle).**

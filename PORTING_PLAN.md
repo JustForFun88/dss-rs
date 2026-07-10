@@ -322,7 +322,19 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
    gate: dynamics-mode monitor trajectories, 1e-5 rel.
 6. Faultstudy + AutoAdd modes, `Feeder.pas`.
 
-### Phase 8 — Reporting, exports, Save, full Executive (~12%)
+### Phase 8 — Reporting, exports, Save, full Executive (~12%) — **COMPLETE (2026-07-10)**
+
+> **Executed** (`PHASE8_PLAN.md` WP8.1–WP8.8; records in `STATUS.md` +
+> `docs/phase-records/phase-8.md`). The WP8.8 exit sweep additionally ported the
+> whole corpus-used executive tail (Enable/Disable, SetkVBase, Losses, Summary,
+> Reconductor, the `_InitSnap…_SolvePFlow` step-solution family, `var`,
+> Fileedit/Classes/Userclasses/CD/DOScmd, `Set/Get ShowExport`), the AutoTrans
+> arms of the element-form Show reports, and the dynamics/harmonics-leave
+> `InvalidateAllPCElements` rebuild trigger. `tools/cmd_coverage.py` proves the
+> only corpus-used residual is the `DSS_CAPI_PM` actor family
+> (NewActor/SolveAll/Abort/Clone + ActiveActor/CPU/Parallel/ConcatenateReports)
+> — owner: `MULTITHREADING_PLAN.md` stage M2 (actor mode).
+
 - Scope: `ShowResults.pas` (3.4k), `ExportResults.pas` (3.4k), `Show/ExportOptions`,
   remaining `ExecHelper`/`ExecCommands` long tail (batchedit, interpolate, distribute,
   reduce, …), `Circuit.Save`, `DumpProperties`, `Utilities.pas` leftovers, full ReduceAlgs.

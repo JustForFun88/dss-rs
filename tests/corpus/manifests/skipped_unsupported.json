@@ -7,19 +7,14 @@
    "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit no longer blocks. Rust engine error: \"CapControl.cap1ctrl.ControlSignal: this property is not ported yet (Phase 3 slice)\" -> the CapControl then samples with no monitored element set and the solve aborts."
   },
   {
-   "path": "Test/Dynamic_Kundur.dss",
-   "tag": "unsupported_command=var",
-   "note": "Test/Dynamic_Kundur.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Invalid inline math entry: \\\"@Zbase\\\"\", \"Unknown solution mode. (not ported in"
-  },
-  {
    "path": "Test/Source012Test.dss",
    "tag": "unsupported_unknown",
    "note": "Test/Source012Test.dss: Rust engine errors after compile: [\"Unknown Command: \\\"\\u{feff}Clear\\\"\"]"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
-   "tag": "unsupported_command=Plot; unsupported_feature=file-backed-arrays",
-   "note": "file-backed numeric arrays (\"file=\") are not supported yet"
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss: Rust engine errors after compile: [\"LoadShape.ls_phasea: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"LoadShape.ls_phasea: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile=\\\" inside Mult/PMult/QMult w"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
@@ -27,44 +22,14 @@
    "note": "file-backed numeric arrays (\"file=\") are not supported yet"
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss",
-   "tag": "unsupported_command=Show,SolveAll",
-   "note": "Unknown parameter \"CPU\" for Set Command"
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss",
-   "tag": "unsupported_command=SetkVBase",
-   "note": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is "
-  },
-  {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",
    "tag": "unsupported_feature=Export-CIM100",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): Uuids/Export Uuids (WP8.6) no longer blocks. Rust engine error: \"Export \\\"CIM100\\\" is not ported yet (Phase 8).\" — the CIM XML exporter itself (GAPS_PLAN WPG.18) is a separate, larger unported feature."
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): Uuids/Export Uuids (WP8.6) no longer blocks. Rust engine error: \"Export \\\"CIM100\\\" is not ported yet (Phase 8).\" \u2014 the CIM XML exporter itself (GAPS_PLAN WPG.18) is a separate, larger unported feature."
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
    "tag": "unsupported_class=Fuse,PVSystem,Recloser,Relay,Storage",
    "note": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss: Rust engine errors after compile: [\"Set option \\\"EarthModel\\\" is not ported yet.\", \"New Command: Object Type \\\"Relay\\\" not found.\", \"New Command: Object Type \\\"Fuse\\\" not found.\", \"New Command: Object Type \\\"Recloser\\\" not found.\", \"New Command: Object"
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
-   "tag": "unsupported_command=var",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Show no longer block (all ported); Fault/relay classes are also ported (stale tag). Remaining blocker: Command \"var\" is not ported yet (inline @-variable substitution), which cascades into \"Invalid inline math entry\" errors."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
-   "tag": "unsupported_command=var",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): same as 1_1.dss — BatchEdit/Close/Show/Fault/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
-   "tag": "unsupported_command=var",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Open/Show/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
-   "tag": "unsupported_command=var",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit/Close/Show/Fault/Relay/relay all resolved; blocked only by the unported \"var\" command (inline @-variable substitution)."
   },
   {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
@@ -79,7 +44,7 @@
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
    "tag": "unsupported_feature=file-backed-arrays; unsupported_command=Export",
-   "note": "Version8/Distrib/Examples/ExpControl/Master.dss: Runs to completion on the Rust engine (5 circuits x 86400-step 1s daily; hour=24, converged; 27.2s debug / 2.3s release). Blocked by file-backed LoadShape arrays (Cloud/Clear shapes stay empty) and Export monitors. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug — see STATUS §1f."
+   "note": "Version8/Distrib/Examples/ExpControl/Master.dss: Runs to completion on the Rust engine (5 circuits x 86400-step 1s daily; hour=24, converged; 27.2s debug / 2.3s release). Blocked by file-backed LoadShape arrays (Cloud/Clear shapes stay empty) and Export monitors. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
@@ -128,38 +93,38 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
-   "tag": "unsupported_command=var",
-   "note": "Command \"var\" is not ported yet."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss: Rust engine errors after compile: [\"LoadShape.ls_phaseb: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"LoadShape.ls_phaseb: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
-   "tag": "unsupported_command=var",
-   "note": "Command \"var\" is not ported yet."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss: Rust engine errors after compile: [\"LoadShape.ls_phaseb: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"LoadShape.ls_phaseb: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile="
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
-   "tag": "unsupported_command=var",
-   "note": "Command \"var\" is not ported yet."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss: Rust engine errors after compile: [\"LoadShape.ls_phaseb: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"LoadShape.ls_phaseb: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile="
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
-   "tag": "unsupported_command=var",
-   "note": "Command \"var\" is not ported yet."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss: Rust engine errors after compile: [\"LoadShape.ls_phaseb: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"LoadShape.ls_phaseb: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile="
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
-   "tag": "unsupported_command=var",
-   "note": "Command \"var\" is not ported yet."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss: Rust engine errors after compile: [\"LoadShape.ls_phaseb: LoadShape has no data to be normalized. Check for previous errors. (61107)\", \"LoadShape.ls_phaseb: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
-   "tag": "unsupported_command=var",
-   "note": "Command \"var\" is not ported yet."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss: Rust engine errors after compile: [\"LoadShape.ls_phasea: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile=\\\" inside Mult/PMult/QMult without MemoryMapping=Yes) are not supported yet (WPG.19).\", \"LoadShape.ls_p"
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
    "tag": "unsupported_feature=file-backed-arrays",
-   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Runs to completion on the Rust engine (yearly, 100 steps; hour=100, converged; 6.3s debug / 1.1s release). WPG.17 resolved the two former blockers — Set/Get TotalTime and the active LS_PhaseA memory-mapped shape (mult=(sngfile=mySGL.sng) MemoryMapping=Yes). Now blocked ONLY by the non-MM file-backed arrays LS_PhaseB/C/ThreePhase/Other_Bus_Load (mult=(file=…) action=normalize), which are WPG.1's File= item — still NOT_PORTED (LOUD error). Retagged (not re-classified) reflecting the WPG.17 feature additions; NOT solvable_now until File= lands. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact, not a bug — see STATUS §1f."
+   "note": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss: Runs to completion on the Rust engine (yearly, 100 steps; hour=100, converged; 6.3s debug / 1.1s release). WPG.17 resolved the two former blockers \u2014 Set/Get TotalTime and the active LS_PhaseA memory-mapped shape (mult=(sngfile=mySGL.sng) MemoryMapping=Yes). Now blocked ONLY by the non-MM file-backed arrays LS_PhaseB/C/ThreePhase/Other_Bus_Load (mult=(file=\u2026) action=normalize), which are WPG.1's File= item \u2014 still NOT_PORTED (LOUD error). Retagged (not re-classified) reflecting the WPG.17 feature additions; NOT solvable_now until File= lands. WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact, not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -214,37 +179,22 @@
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
    "tag": "unsupported_feature=file-backed-arrays; deferred=gfm-WP7.7",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks — deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
    "tag": "unsupported_feature=file-backed-arrays; deferred=gfm-WP7.7",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks — deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
    "tag": "unsupported_feature=file-backed-arrays; deferred=gfm-WP7.7",
-   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks — deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
-   "tag": "unsupported_command=Export,Show",
-   "note": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Comman"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
-   "tag": "unsupported_command=AddBusMarker,Export",
-   "note": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck runs to completion (daily, hour=24, converged, 42 solves); blocked by AddBusMarker and Export monitors (Phase 8)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss",
-   "tag": "unsupported_command=AddBusMarker",
-   "note": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss: Rust engine errors after compile: [\"Command \\\"AddBusMarker\\\" is not ported yet.\"]"
+   "note": "Re-probed 2026-07-07 (WP8.6 step7): BatchEdit (WP8.6) no longer blocks \u2014 deck compiles and solves further, then aborts at the InvControl GFM combi mode: sampling InvControl.stoctrl raises 'mode=7 combi=0 is deferred to WP7.7 (GFM)'. Tracked-open per MEMORY (GFM grid-forming mode). Also blocked by file-backed numeric arrays (File=), not ported yet."
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
-   "tag": "unsupported_command=CloseDI; unsupported_feature=file-backed-arrays",
-   "note": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss: Re-probed 2026-07-03 (WP8.2 Issue-1 follow-up): the pre-WP7.4 unsupported_class=Storage tag was stale (Storage/StorageController are ported). Deck runs to completion (daily, hour=24, converged, 197 solves); blocked by file-backed LoadShape arrays and CloseDI (the old unsupported_command=Plot was stale too - Plot is a silent no-op)."
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss: Rust engine errors after compile: [\"LoadShape.dispatchshape: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile=\\\" inside Mult/PMult/QMult without MemoryMapping=Yes) are not supported yet (WPG.19).\"]"
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
@@ -262,19 +212,14 @@
    "note": "UPFC + UPFCControl are ported (Phase 7); the snapshot is oracle-gated in exec/tests/upfc.rs. The deck stays unsolvable: it uses file-backed loadshapes (pmult=[file=...], not supported yet) and ends in show/plot (Phase 8)."
   },
   {
-   "path": "Version8/Distrib/Examples/WampServer/testcommandline.dss",
-   "tag": "unsupported_command=var",
-   "note": "Version8/Distrib/Examples/WampServer/testcommandline.dss: Rust engine errors after compile: [\"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Command \\\"var\\\" is not ported yet.\", \"Invalid inline m"
-  },
-  {
    "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
    "tag": "unsupported_unknown",
    "note": "Version8/Distrib/Examples/civinlar model/regulator.dss: Rust engine errors after compile: [\"LoadShape.ldc_2007: LoadShape has no data to be normalized. Check for previous errors. (61107)\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
-   "tag": "unsupported_command=Plot",
-   "note": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"Command \\\"Plot\\\" is not ported yet.\"]"
+   "tag": "unsupported_feature=file-backed-arrays",
+   "note": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS: Rust engine errors after compile: [\"LoadShape.solarramp: file-backed numeric arrays (\\\"file=\\\"/\\\"sngfile=\\\"/\\\"dblfile=\\\" inside Mult/PMult/QMult without MemoryMapping=Yes) are not supported yet (WPG.19).\"]"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
@@ -289,22 +234,7 @@
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
    "tag": "unsupported_feature=file-backed-arrays",
-   "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS: Runs to completion on the Rust engine (2900-step 1s duty on IEEE8500; converged; 127.9s debug / 3.4s release — genuinely slow in debug but finite). Sole blocker: file-backed LoadShape array (Plot/Visualize are silent no-ops, so the old unsupported_command=Plot tag was stale). WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug — see STATUS §1f."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss",
-   "tag": "unsupported_command=Export,Show",
-   "note": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported yet.\", "
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss",
-   "tag": "unsupported_command=Export,Show",
-   "note": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss: Rust engine errors after compile: [\"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Command \\\"Show\\\" is not ported yet.\", \"Set option \\\"ShowExport\\\" is not ported yet.\", \"Command \\\"Export\\\" is not ported y"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
-   "tag": "unsupported_command=SetkVBase",
-   "note": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss: Rust engine errors after compile: [\"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not ported yet.\", \"Command \\\"SetkVBase\\\" is not "
+   "note": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS: Runs to completion on the Rust engine (2900-step 1s duty on IEEE8500; converged; 127.9s debug / 3.4s release \u2014 genuinely slow in debug but finite). Sole blocker: file-backed LoadShape array (Plot/Visualize are silent no-ops, so the old unsupported_command=Plot tag was stale). WP8.2 Issue-1 'hang >40s' disproven 2026-07-03: watchdog artifact (debug-build wall-clock + CPU contention inside the probe process), not a bug \u2014 see STATUS \u00a71f."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
@@ -312,14 +242,14 @@
    "note": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"file=\\\") are not supported yet\", \"file-backed numeri"
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
-   "tag": "unsupported_command=Export,Select,Show",
-   "note": "Command \"Show\" is not ported yet."
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS",
    "tag": "unsupported_feature=file-backed-arrays",
    "note": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS: Rust engine errors after compile: [\"file-backed numeric arrays (\\\"sngfile=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"dblfile=\\\") are not supported yet\", \"file-backed numeric arrays (\\\"dblfile=\\\") are not support"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss",
+   "tag": "unsupported_command=SolveAll",
+   "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify): a 7-actor DSS_CAPI_PM script (NewActor/SolveAll) -- the actor family is the documented Phase-9/MULTITHREADING_PLAN-M2 residual; the one-shot oracle server dies running it (no JSON response), so no live compare is possible either. Rust refuses SolveAll loudly."
   }
  ]
 }
