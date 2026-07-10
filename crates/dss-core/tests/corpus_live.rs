@@ -526,10 +526,17 @@ impl CorpusGuard {
             Ok(rd) => {
                 for entry in rd.flatten() {
                     let p = entry.path();
+                    let name = entry.file_name().to_string_lossy().into_owned();
                     if !p.is_file() {
+                        // Track pre-existing DIRECTORIES by name too, so Drop
+                        // can tell a run-created one (e.g. the
+                        // `<CircuitName>/DI_yr_*` demand-interval tree a
+                        // `Set DemandInterval=True` + `CloseDI` deck writes)
+                        // from a vendored fixture subdir — only the former is
+                        // removed.
+                        names.insert(name);
                         continue;
                     }
-                    let name = entry.file_name().to_string_lossy().into_owned();
                     let small = entry
                         .metadata()
                         .map(|m| m.len() <= RESTORE_MAX)
@@ -564,12 +571,17 @@ impl Drop for CorpusGuard {
         };
         for entry in rd.flatten() {
             let p = entry.path();
-            if !p.is_file() {
-                continue;
-            }
             let name = entry.file_name().to_string_lossy().into_owned();
-            if !self.names.contains(&name) {
+            if self.names.contains(&name) {
+                continue; // pre-existing (file or fixture subdir)
+            }
+            if p.is_file() {
                 let _ = std::fs::remove_file(&p); // created by the run
+            } else {
+                // A run-created directory (the DI `<CircuitName>/` tree). The
+                // engines never create junctions/symlinks here, and only names
+                // absent from the pre-run snapshot are ever removed.
+                let _ = std::fs::remove_dir_all(&p);
             }
         }
         for (name, data) in &self.buf {

@@ -20,6 +20,17 @@ installed** — the live gate calls it in-process and fails (not skips) without
 it. Nothing here has an `#[ignore]` or an env gate that could green on zero
 matches.
 
+The dev/test profile carries `opt-level = 3` overrides for the engine crates
+and all dependencies (workspace `Cargo.toml`): the live gate runs
+yearly/8500-node decks through the engine, and unoptimized codegen makes a
+single yearly EPRI-feeder deck cost ~14 min (~×10). Test binaries themselves
+stay at opt 0; float results are opt-level-independent (no fast-math in Rust —
+pinned empirically by the corpus-wide exact-iteration-count contract). The
+safety knobs are orthogonal to opt-level and stay on: slice bounds checks are
+never removed at any opt-level, and `overflow-checks`/`debug-assertions` are
+pinned `true` explicitly in the overrides — the reason the gate uses this
+instead of `--release` (which sets overflow-checks=false).
+
 ## The layers
 
 | layer | what it checks | where | oracle |
