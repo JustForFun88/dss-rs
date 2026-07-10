@@ -53,8 +53,8 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
-   "tag": "oracle_timeout",
-   "note": "RE-TRIAGED 2026-07-10: the pinned oracle does NOT converge (1000 iterations, 0.4s -- no timeout involved); the Rust engine also diverges to NaN on this deck. The earlier 'oracle produced no JSON response' was a secondary serialization glitch of the non-converged state, not the root cause. Nothing to gate against port-side; same disposition as the other oracle_nonconvergence cases."
+   "tag": "deck_unsolvable_all_engines",
+   "note": "RE-TRIAGED 2026-07-10, cross-engine: NO engine solves this deck as vendored. Pinned oracle (dss_capi 0.14.5), official EPRI OpenDSS r3723 (9.8), r4088 (10.2), r4133 (11.0 latest) all hit converged=False at maxiter=1000 (~0.5s, no timeout) and diverge to NaN (oracle: 18986/18990 V components NaN); the Rust port diverges to NaN identically -- full lineage-consistent behavior, nothing to fix or gate against. The deck itself sets maxiter=1000. The earlier 'oracle produced no JSON response' was a secondary serialization glitch of the NaN state, not the root cause."
   }
  ]
 }
