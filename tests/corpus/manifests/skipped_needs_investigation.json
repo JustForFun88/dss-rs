@@ -85,6 +85,11 @@
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
    "tag": "live_mismatch_regcontrol_ldc_tap",
    "note": "WPG.19 (2026-07-11) removed the former blocker (non-MM file-backed arrays LS_PhaseB/C/ThreePhase/Other_Bus_Load, mult=(file=...) action=normalize): the deck now COMPILES + CONVERGES (yearly, number=100; hour=100, 2 iters, 7522 nodes) and its full complex node V matches the pinned oracle to 5.6e-8 rel max / 2.8e-8 median (faer-vs-KLU floor) after the entire 100-step trajectory -- so the load shapes are read/driven identically. NEW true blocker (live mismatch, NOT WPG.19): the regulator-controlled substation transformer diverges at the per-element current level -- Transformer.SubXFMR (Regcontrol.SubXFMR_Regulator winding=2 vreg=123 band=3 R=7 LDC, delay=45) currents differ |diff|=7.2e-4 A (~4.7e-5 rel) at step 0 after the yearly trajectory, exceeding the large-tier current tolerance while V stays regulated to floor. This is the known RegControl/LDC tap-trajectory divergence family (MEMORY: AutoTrans/RegControl stale tap, needs_investigation), unrelated to the file arrays. Not forced into solvable_now. Also note the regcontrol has debugtrace=yes (writes REG_subxfmr_regulator.csv each run)."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "tag": "live_mismatch_regcontrol_ldc_tap",
+   "note": "Re-classified WPG.19/20 audit-settlement (2026-07-11): the prior tag (unsupported_feature=file-backed-arrays, note asserting 'not supported yet (WPG.19)') is now FALSE -- WPG.19 ported non-MM file-backed numeric arrays and this deck (redirect main_template.dss with LS_PhaseA-nomm.dss, mult=(file=...) read from txt) now COMPILES + CONVERGES via the CLI (7522 nodes, 2 iterations, max err 7.8e-5), zero errors. It drives the same ckt24 circuit (set mode=yearly number=100) with the same substation regulator as the -mm sibling master_ckt24.dss, so it inherits the same real blocker: the RegControl/LDC tap-trajectory current divergence on Transformer.SubXFMR / Regcontrol.SubXFMR_Regulator (see the sibling entry above). Not a file-array feature gap. Not forced into solvable_now."
   }
  ]
 }

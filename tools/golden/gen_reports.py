@@ -2701,6 +2701,24 @@ BINSAVE_MMF_FILES = [
 ]
 # Files that must NOT be written (Assigned(dQ)=false for `md` — no qmult).
 BINSAVE_MMF_ABSENT = ["md_Q.sng", "md_Q.dbl"]
+# Per-action `GlobalResult` decomposition (datapath-relative filenames + their
+# `<obj>=[<ftag>=…]` tags), single-sourced here for the meta AND the generator's
+# self-check against the captured oracle string (audit settlement). The Rust
+# runner (`golden_reports.rs::binsave_mmf_matches_oracle`) rebuilds the identical
+# form against its own scratch dir; the Q clause is joined by `AppendGlobalResult`'s
+# `', '` + the clause's leading space -> `,  ` (comma + two spaces).
+BINSAVE_MMF_RESULT_FILES = [
+    ["mp_P.sng", "mp_Q.sng"],
+    ["mp_P.dbl", "mp_Q.dbl"],
+    ["md_P.sng"],
+    ["md_P.dbl"],
+]
+BINSAVE_MMF_RESULT_TAGS = [
+    ["mult", "sngfile", "Qmult", "sngfile"],
+    ["mult", "dblfile", "Qmult", "dblfile"],
+    ["mult", "sngfile"],
+    ["mult", "dblfile"],
+]
 
 
 def gen_loadshape_binsave(d) -> None:
@@ -2759,6 +2777,28 @@ def gen_loadshape_binsave_mmf(d) -> None:
         for absent in BINSAVE_MMF_ABSENT:
             if (Path(tmp) / absent).exists():
                 sys.exit(f"binsave_mmf: expected NO {absent} (Assigned(dQ) false)")
+        # Audit settlement: verify the hand-written result_files/result_tags
+        # (which the Rust test rebuilds the expected GlobalResult from) actually
+        # reproduce the TRUE oracle GlobalResult captured above — otherwise a
+        # wrong tag/joiner would pass unchecked, making the Rust clause
+        # Rust-vs-handwritten instead of Rust-vs-oracle. The oracle emits
+        # `<datapath>\<file>` where <datapath> is the forward-slashed tmp we set.
+        dp = tmp.replace(chr(92), "/")
+        for i, res in enumerate(results):
+            files = BINSAVE_MMF_RESULT_FILES[i]
+            tags = BINSAVE_MMF_RESULT_TAGS[i]
+            if len(tags) != 2 * len(files):
+                sys.exit(f"binsave_mmf: malformed result_tags for action {i}")
+            exp = ""
+            for k, fname in enumerate(files):
+                obj_tag, ftag = tags[2 * k], tags[2 * k + 1]
+                clause = f"{obj_tag}=[{ftag}={dp}\\{fname}]"
+                exp += clause if k == 0 else f",  {clause}"
+            if exp != res:
+                sys.exit(
+                    f"binsave_mmf: reconstructed GlobalResult {exp!r} != "
+                    f"oracle {res!r} (action {i}: {BINSAVE_MMF_ACTIONS[i]!r})"
+                )
     finally:
         d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
         shutil.rmtree(tmp, ignore_errors=True)
@@ -2774,18 +2814,8 @@ def gen_loadshape_binsave_mmf(d) -> None:
         "absent": BINSAVE_MMF_ABSENT,
         # GlobalResult per action, captured from the datapath-relative oracle run;
         # the Rust runner rebuilds the paths against its own scratch dir.
-        "result_files": [
-            ["mp_P.sng", "mp_Q.sng"],
-            ["mp_P.dbl", "mp_Q.dbl"],
-            ["md_P.sng"],
-            ["md_P.dbl"],
-        ],
-        "result_tags": [
-            ["mult", "sngfile", "Qmult", "sngfile"],
-            ["mult", "dblfile", "Qmult", "dblfile"],
-            ["mult", "sngfile"],
-            ["mult", "dblfile"],
-        ],
+        "result_files": BINSAVE_MMF_RESULT_FILES,
+        "result_tags": BINSAVE_MMF_RESULT_TAGS,
     }
     (OUT_DIR / "loadshape_binsave_mmf.meta.json").write_text(
         json.dumps(meta, indent=2) + "\n", newline="\n"

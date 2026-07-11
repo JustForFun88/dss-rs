@@ -954,11 +954,20 @@ pub fn parse_dbl_array_file_spec(s: &str) -> Option<DblArrayFileSpec> {
 /// Pascal `InterpretDblArray` `file=` text branch (`Utilities.pas:493-524`):
 /// read up to `max` rows from `content`, optionally skipping one `header` line,
 /// taking the 1-based comma/space-delimited `column` from each row. Returns the
-/// values actually read; a file shorter than `max` yields fewer values (the
-/// Pascal short-file `Result := i-1`), and the caller shrinks its element count
-/// to `.len()`. Byte-position faithful to Pascal's `(F.Position + 1) < F.Size`
-/// read guard.
-pub fn read_dbl_array_text(content: &str, column: i32, header: bool, max: usize) -> Vec<f64> {
+/// values actually read plus the 1-based row that raised a numeric-conversion
+/// error, if any. A file shorter than `max` yields fewer values (the Pascal
+/// short-file `Result := i-1`), and the caller shrinks its element count to
+/// `.len()`. A malformed numeric token raises in Pascal (`DoSimpleMsg` #705,
+/// then `Result := i-1; Break`, `Utilities.pas:515-521`) — the same stop-and-
+/// shrink: reading stops at that row, the returned length is `i-1`, and the
+/// row index is returned so the caller can emit the #705 diagnostic. Byte-
+/// position faithful to Pascal's `(F.Position + 1) < F.Size` read guard.
+pub fn read_dbl_array_text(
+    content: &str,
+    column: i32,
+    header: bool,
+    max: usize,
+) -> (Vec<f64>, Option<usize>) {
     let bytes = content.as_bytes();
     let size = bytes.len();
     let mut pos = 0usize;
@@ -973,7 +982,8 @@ pub fn read_dbl_array_text(content: &str, column: i32, header: bool, max: usize)
     }
 
     let mut out = Vec::new();
-    for _ in 0..max {
+    let mut error_row = None;
+    for i in 0..max {
         // Pascal reads a row only while `(F.Position + 1) < F.Size`; otherwise it
         // stops (`Result := i - 1; Break`).
         if pos + 1 >= size {
@@ -986,12 +996,21 @@ pub fn read_dbl_array_text(content: &str, column: i32, header: bool, max: usize)
         for _ in 0..column.max(0) {
             parser.next_param(&vars);
         }
-        // A missing column yields an empty token → 0.0 (Pascal `DblValue`); a
-        // malformed token would raise in Pascal (error 705, `Result := i - 1`),
-        // which no gated deck reaches — we default to 0.0 rather than abort.
-        out.push(parser.make_double(&vars).unwrap_or(0.0));
+        // A missing column yields an empty token → 0.0 (Pascal `DblValue`). A
+        // malformed token raises in Pascal (`DoSimpleMsg` #705, `Result := i-1;
+        // Break`, `Utilities.pas:515-521`) — reproduce the stop-and-shrink: record
+        // the 1-based row and break so the returned length equals `i-1` and the
+        // caller shrinks its count (proven vs the pinned oracle: `mult=(file=…)`
+        // with row 3 = `abc` yields npts=2, mult=[0.1,0.2] + a #705 error).
+        match parser.make_double(&vars) {
+            Ok(v) => out.push(v),
+            Err(_) => {
+                error_row = Some(i + 1);
+                break;
+            }
+        }
     }
-    out
+    (out, error_row)
 }
 
 /// Read one line from `bytes` starting at `*pos`, advancing `*pos` past the
