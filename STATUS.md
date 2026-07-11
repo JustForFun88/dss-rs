@@ -47,6 +47,25 @@ ActiveActor/CPU/Parallel options) + `CapControl.ControlSignal` — explicitly ou
 - **A-Diakoptics Part II** — deliberately outside final acceptance; early-start was
   user-ordered (2026-07-11), owner DIAKOPTICS_PSTCALC_PLAN Part II.
 
+**CF-D (substation-transformer current root-cause, 2026-07-12).** Root-caused the
+"RegControl/LDC SubXFMR" family — the label was **wrong** (RegControl + delta-wye
+transformer exonerated on every member). The real cause is **ultra-switch
+conditioning** at the substation-transformer bus (a 1e-8 Ω "switch" line, Y≈1e10 S)
+and, for the CIM decks, the **Carson earth-model line-constant libm floor**. Per-deck
+verdict (proofs: TOLERANCE_NOTES.md §ultra-switch / §conditioning_floor; scratchpad
+probes):
+
+| deck(s) | verdict | evidence |
+|---|---|---|
+| ckt24 `Run_Ckt24` + `master_ckt24` + 7 MM `ckt24` variants | **floor → solvable_now `large_ultra_switch`** | `Line.Other_Feeders` r1=1e-8 (Y≈1e10 S) → SubXFMR current 7.2e-4 A = ultra-switch `Y·(V1−V2)` image (< i_abs 2e-3); node V + Y at floor; regulator lands identical tap |
+| CIM `IEEE13_CDPSM` | **floor → solvable_now `large`** | differs from passing `Test/IEEE13_CDPSM` only by `set earthmodel=carson`; V rel 7.7e-8 < `large` 1e-7 (Carson line-constant floor) |
+| `SecondaryTestCircuit_modified` | **proven floor, documented (not banded)** | cond(Y)=9.79e11 (two 1 mm BUSBAR lines Y≈1e10); Y **bit-identical**, Vsource inj `Yprim·E` **bit-identical**, load base = 7 figs; 3-solver spread faer/KLU/scipy 0.5–0.8 V (gap 0.758 V inside it); residual parity 4.40e-2 vs 4.56e-2. 0.55 V (2e-5) too wide to band; stays `needs_investigation` (conditioning_floor) |
+| CIM `IEEE13_Assets` | **floor, documented (no band fits)** | Carson floor + short line (Length=0.0568); V rel 4.18e-7 — above `large` (1e-7), below `large_near_ideal_source` (5e-6); stays `needs_investigation` (conditioning_floor) |
+| GFM_IEEE8500 Snap/Daily/DailySmallerPV, Storage `Run_Demo1` (TC-3) | **near-floor → solvable_now `large`** | first-failing node V rel 1.5e-8–3.7e-8 < `large` 1e-7 (classify tripped only at feeder tier); faer-vs-KLU floor |
+
+Net: `solvable_now` **245 → 259** (14 migrated); `needs_investigation` retains the
+2 documented conditioning floors + the LVTestCase real gap + oracle-side blocks.
+
 **FA settle — audit findings settled (2026-07-11).** Six Minor findings from the
 code/tests audits; none contradicted a §6 criterion. Three fixed, two recorded as
 deliberate no-fix, and #6 folded into the #3 fix:
