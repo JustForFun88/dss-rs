@@ -1,0 +1,12 @@
+{
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "deck": null,
+  "post": [
+    "solve"
+  ],
+  "calc": [
+    "CalcIncMatrix"
+  ],
+  "report": "IncMatrix",
+  "fixture": "ieee13nodeckt"
+}

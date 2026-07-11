@@ -1,0 +1,13 @@
+{
+  "master": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+  "deck": null,
+  "post": [
+    "solve"
+  ],
+  "calc": [
+    "CalcIncMatrix",
+    "CalcLaplacian"
+  ],
+  "report": "Laplacian",
+  "fixture": "ieee123"
+}

@@ -1,0 +1,6 @@
+B2N Incidence Matrix Column Names (Buses) and their level within the matrix
+Bus Name,Bus Level
+sourcebus,0
+a,0
+b,0
+c,3
