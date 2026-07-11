@@ -9,6 +9,7 @@ use crate::circuit::{CAPADD, Circuit, GENADD};
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
+use crate::support::sparse_math::SparseComplex;
 
 use super::{ActiveY, NEWTONSOLVE, SolveEnv, SolveMode, SolveResult, sys_ctx};
 
@@ -299,7 +300,7 @@ pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
 /// Pascal `TSolutionObj.SetGeneratordQdV`: for model-3 (PV) generators, seed
 /// the `dQ/dV` slope from the system Y diagonal, then re-establish the
 /// zero-load snapshot if any was found.
-fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     let gens: Vec<ElemRef> = ckt.generators.clone();
     let gen_disp_save = ckt.generator_dispatch_reference;
     ckt.generator_dispatch_reference = 1000.0; // turn all generators on
@@ -457,6 +458,95 @@ pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     ckt.solution.iteration = total_iterations; // "so that it reports a more interesting number"
+    Ok(())
+}
+
+/// Pascal `TSolutionObj.SolveAD(ActorID, Initialize)` (Solution.pas:1263): the
+/// **child** side of one A-Diakoptics stage. Under plan D3 the parent context is
+/// passed explicitly (no `ActiveCircuit[1]` global): the child solves its own
+/// `hY` with its own injection currents **into the coordinator's NodeV**
+/// (`parent_node_v`) at its `LocalBusIdx[0]` offset; `parent_ic` is the
+/// coordinator's `Ic`.
+///
+/// - `Initialize = true` (SOLVE_AD1): zero + source injections (+PC injections
+///   when `adiak_pcinj`, or in dynamics/harmonics), Y check.
+/// - `Initialize = false` (SOLVE_AD2): `UpdateISrc` — add the coordinator's
+///   boundary-current correction, then re-solve.
+// Wired by `Solve_Diakoptics` in WP-AD.3 Stage 2b (the coordinator drive loop).
+#[allow(dead_code)]
+pub(crate) fn solve_ad(
+    ckt: &mut Circuit,
+    env: &mut SolveEnv,
+    initialize: bool,
+    adiak_pcinj: bool,
+    parent_node_v: &mut [Complex64],
+    parent_ic: &SparseComplex,
+) -> SolveResult {
+    if initialize {
+        ckt.solution.zero_inj_curr();
+        get_source_inj_currents(ckt, env);
+        if adiak_pcinj {
+            ckt.solution.loads_need_updating = true; // force loads to update once
+            get_pc_inj_curr(ckt, env);
+        } else if ckt.solution.is_dynamic_model || ckt.solution.is_harmonic_model {
+            ckt.solution.loads_need_updating = true;
+            get_pc_inj_curr(ckt, env);
+        }
+        if ckt.solution.system_y_changed {
+            build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
+        }
+    } else {
+        update_isrc(ckt, parent_ic);
+    }
+
+    // `SolveSystem(ActiveCircuit[1].Solution.NodeV, ActorID)` — solve the child's
+    // system into the parent's NodeV at the child's contiguous offset.
+    ad_solve_into_parent(ckt, parent_node_v)?;
+    ckt.solution.loads_need_updating = false;
+    ckt.solution.last_solution_was_direct = true;
+    ckt.is_solved = true;
+    Ok(())
+}
+
+/// Pascal `UpdateISrc` (Solution.pas:3116): for each of this child's AD injection
+/// buses, add the negated coordinator `Ic` boundary current into `Currents`.
+///
+/// NOTE(upstream-quirk): the Pascal `Found` flag is initialized ONCE before the
+/// outer loop (Solution.pas:3125), not per bus — so an `AD_ISrcIdx` that is
+/// absent from `Ic` (its contour product was dropped by the D5 `re≠0 AND im≠0`
+/// filter) reuses the previous iteration's `idx`, reading a stale/out-of-range
+/// `Ic` entry. That is the UB class (plan D5): we do a fresh per-bus lookup and
+/// skip a miss (the boundary buses of a well-formed tear are always present).
+#[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
+fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
+    let sol = &mut ckt.solution;
+    for (i, &ibus) in sol.ad_ibus.iter().enumerate() {
+        let target = sol.ad_isrc_idx[i];
+        if let Some(cd) = parent_ic.cdata.iter().find(|c| c.row == target)
+            && let Some(slot) = sol.currents.get_mut(ibus)
+        {
+            *slot += -cd.value; // cmulreal(Ic, -1) + cadd
+        }
+    }
+}
+
+/// Pascal `SolveSystem(ActiveCircuit[1].Solution.NodeV, ActorID)` for a child
+/// (Solution.pas:2658): `SolveSparseSet(hY, @V[LocalBusIdx[0]], @Currents[1])` —
+/// solve the child's own factored `hY` and write the `NumNodes`-long solution
+/// **contiguously** into the parent NodeV starting at `LocalBusIdx[0]` (the tear
+/// guarantees each zone's nodes are a contiguous run in the interconnected
+/// numbering).
+#[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
+fn ad_solve_into_parent(ckt: &mut Circuit, parent_node_v: &mut [Complex64]) -> SolveResult {
+    let n = ckt.num_nodes;
+    let base = ckt.solution.local_bus_idx.first().copied().unwrap_or(1);
+    let mut x = vec![Complex64::ZERO; n];
+    ckt.solution.solve_system_into(&mut x)?;
+    for (j, &v) in x.iter().enumerate() {
+        if let Some(slot) = parent_node_v.get_mut(base + j) {
+            *slot = v;
+        }
+    }
     Ok(())
 }
 

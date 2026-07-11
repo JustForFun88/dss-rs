@@ -341,6 +341,7 @@ impl Dss {
             cim: crate::cim::CimExporter::default(),
             dss_objs: Vec::new(),
             daisy_size: 1.0, // DSSClass.pas:1283
+            ad_children: Vec::new(),
             plot_callback: None,
         };
         dss.create_default_dss_items();

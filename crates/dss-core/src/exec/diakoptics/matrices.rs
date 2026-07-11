@@ -22,10 +22,6 @@ use super::ad_find_element;
 use crate::exec::Dss;
 use crate::support::cmatrix::CMatrix;
 
-// The matrix builders are driven by the `ADiakopticsInit` state machine, which
-// lands in the next WP-AD.3 staged commit; until then only the unit tests below
-// exercise them.
-#[allow(dead_code)]
 impl Dss {
     /// Pascal `Calc_C_Matrix(PLinks, NLinks)` (Diakoptics.pas:314): builds the
     /// coordinator's `Contours` matrix — one `±1` phase column per link,

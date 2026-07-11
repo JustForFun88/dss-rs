@@ -66,6 +66,10 @@ pub struct AdTearing {
     /// `VIndex` (Circuit.pas:231): the offset of this sub-circuit's bus 1 in the
     /// interconnected node list (set by `SendIdx2Actors` in WP-AD.3).
     pub v_index: i32,
+    /// Transient: `set ADiakoptics=yes` sets this so `do_set_cmd` runs
+    /// `ADiakopticsInit` after its option-loop field borrow ends (the init needs
+    /// `&mut Dss`, not just the circuit). Never persisted.
+    pub pending_ad_init: bool,
 
     /// `Contours` (Circuit.pas:224) — WP-AD.3 placeholder.
     pub contours: SparseComplex,
