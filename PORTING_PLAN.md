@@ -355,7 +355,13 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
 > `Dss::register_plot_callback` for GUI hosts). Named follow-ups: WPG.19
 > (non-MM `File=` arrays), WPG.20 (MMF-shape save), `JSON_EXPORT_PLAN.md`
 > (user-deferred JSON output). The remaining Phase-9 scope below is the
-> A-Diakoptics/actor/Pstcalc residue.
+> A-Diakoptics/actor/Pstcalc residue — the actor half lives in
+> `MULTITHREADING_PLAN.md` (M2); the A-Diakoptics + Pstcalc halves now have their
+> own execution plan, **`DIAKOPTICS_PSTCALC_PLAN.md`** (2026-07-11): Part I
+> (Pstcalc command, Monitor mode-4 flicker, incidence matrix + Sparse_Math) is
+> oracle-gated and runs pre-acceptance; Part II (the A-Diakoptics engine) runs
+> last, gated rust-vs-rust because the pinned oracle build has
+> `DSS_CAPI_ADIAKOPTICS` compiled out. Ordering in `PLAN_SEQUENCE.md`.
 
 - ~~`ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle)~~ —
   **moved to `GAPS_PLAN.md` WPG.18** (byte-exact golden XML gate via the
@@ -363,11 +369,14 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
 - ~~A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
   gate: numerically identical to single-actor results.~~ — **moved to
   `MULTITHREADING_PLAN.md` (2026-07-06):** actor mode = stage M2 there (same
-  std::thread + channels design, gate unchanged); A-Diakoptics explicitly deferred
-  (out of initial scope). Runs last in `PLAN_SEQUENCE.md`.
+  std::thread + channels design, gate unchanged); A-Diakoptics, deferred there,
+  is now **`DIAKOPTICS_PSTCALC_PLAN.md` Part II (2026-07-11)** — runs last in
+  `PLAN_SEQUENCE.md` (early-start after M2).
 - ~~GIC elements (`GICLine`, `GICsource`, `GICTransformer`)~~ — **moved to
-  `GAPS_PLAN.md` WPG.16**; `Pstcalc` flicker (if not
-  already pulled in by Monitor); plotting callbacks as a data-only `PlotSink` trait.
+  `GAPS_PLAN.md` WPG.16**; ~~`Pstcalc` flicker (if not
+  already pulled in by Monitor)~~ — **moved to `DIAKOPTICS_PSTCALC_PLAN.md` Part I
+  (WP-PF.1 command + WP-PF.2 Monitor mode 4, oracle-gated, pre-acceptance)**;
+  plotting callbacks as a data-only `PlotSink` trait.
 
 **Cumulative**: P0–P3 ≈ 35% → working vertical slice; P0–P6 ≈ 67% → production-usable
 simulator; P7–P8 → full behavior parity; P9 → 1:1 including exotics.
