@@ -824,6 +824,13 @@ impl Dss {
                 return;
             }
         };
+        // Pascal `DoRedirect` loads the deck with `TStringList.LoadFromFile`
+        // (ExecHelper.pas:433), whose UTF-8 stream reader strips a leading
+        // byte-order mark (EF BB BF) before the first line. Without this the BOM
+        // glues onto the first token ("Unknown Command \u{feff}Clear") and the deck
+        // builds a subtly wrong circuit. Every Redirect/Compile file passes through
+        // here, so nested redirects are covered too.
+        let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
 
         // Change directory to the file's path in case it loads more files.
         let save_dir = self.current_dir.clone();
