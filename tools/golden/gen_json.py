@@ -261,6 +261,28 @@ DECKS = [
         ],
     },
     {
+        "name": "circuit_positive_seq",
+        # Pins the three PreCommands conditionals that no other circuit deck
+        # reaches: the `CktModel=` empty-value TODO(compat) quirk (positive
+        # sequence → Pascal `OrdinalToString(Integer(True)=-1)` = ''),
+        # `AllowDuplicates=True` and `LongLineCorrection=True`. Also sets fractional
+        # ueweight/lossweight at `%8.2f` rounding boundaries (0.125→0.13,
+        # 2.675→2.68) to pin the FPC-faithful fixed formatter (15-sig intermediate
+        # + ties-away rounding) that the default weight 1.0 elsewhere cannot catch.
+        # SkipBuses keeps the golden focused on the Pre/PostCommands.
+        "commands": [
+            "new circuit.probe basekv=12.47",
+            "set cktmodel=positive",
+            "set allowduplicates=yes",
+            "set longlinecorrection=yes",
+            "set ueweight=0.125",
+            "set lossweight=2.675",
+            "makebuslist",
+        ],
+        "captures": [("circuit", "")],
+        "combos": [("skip_buses", SKIP_BUSES)],
+    },
+    {
         "name": "escape_micro",
         # A bus value carrying a quote, a slash and a backslash — pins fpjson
         # StringToJSON escaping end-to-end (`"`->\", `\`->\\, `/` unescaped).
