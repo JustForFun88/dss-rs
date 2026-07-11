@@ -9,6 +9,7 @@ use crate::elements::meter::meter_element::{MeteredKind, MeteredSnapshot};
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -35,6 +36,49 @@ impl CktElement for Monitor {
     /// zero-current source so it does not perturb Newton iteration).
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TMonitorObj.MakePosSequence` (`Meters/Monitor.pas:652`): resync
+    /// the monitor to the metered element's bus / phase / conductor counts, run
+    /// the per-mode buffer reallocation, then rebuild the header
+    /// (`ClearMonitorStream`) and mark it valid, ending with the base bus rename
+    /// (`inherited`). Pascal NIL-guards `MeteredElement`; `ctx.monitored` is
+    /// `None` in the same case.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(m) = &ctx.monitored {
+            // Setbus(1, MeteredElement.GetBus(MeteredTerminal))
+            let mt = self.med.metered_terminal as usize;
+            let bus = mt
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.med.cd.set_bus(1, &bus);
+            // FNphases := MeteredElement.NPhases; Nconds := MeteredElement.Nconds
+            self.med.cd.nphases = m.nphases;
+            self.med.cd.set_nconds(m.nconds);
+            // Pascal `case Mode and MODEMASK`: mode 3 resizes StateBuffer to
+            // NumVariables, mode 4 reallocs FlickerBuffer, mode 5 reallocs
+            // SolutionBuffer, else reallocs CurrentBuffer (Yorder) / VoltageBuffer
+            // (NConds). This port keeps no persistent per-sample buffers
+            // (`TakeSample` sizes its scratch on demand from the metered snapshot
+            // / `record_size`), so these reallocs have no field to touch; the
+            // mode-3 NumVariables record size is applied by `ClearMonitorStream`
+            // below through the metered snapshot.
+            //
+            // ClearMonitorStream (`DoMakePosSeq` runs in the non-harmonic
+            // power-flow pass, so the time columns are hour/t(sec)).
+            self.clear_monitor_stream(false);
+            self.valid_monitor = true;
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.med.metered_element
     }
 }
 
@@ -285,5 +329,79 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
         num_variables,
         // Pascal `VariableName(i)` for i := 1..NumVariables (1-based).
         variable_names: (1..=num_variables).map(|i| elem.variable_name(i)).collect(),
+    }
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+
+    fn snap(nphases: usize, nconds: usize, num_variables: usize) -> MeteredSnapshot {
+        MeteredSnapshot {
+            full_name: "line.l1".into(),
+            nphases,
+            nconds,
+            nterms: 2,
+            yorder: nconds * 2,
+            buses: vec!["b1".into(), "b2".into()],
+            num_variables,
+            variable_names: (1..=num_variables).map(|i| format!("v{i}")).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn ctx1(nphases: usize, nconds: usize, yorder: usize) -> PosSeqCtx {
+        PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                bus_names: vec!["b1".into(), "b2".into()],
+                nphases,
+                nconds,
+                yorder,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// Pascal `TMonitorObj.MakePosSequence` (Monitor.pas:652): resync to the
+    /// metered element, rebuild the header (ClearMonitorStream), mark valid.
+    /// Mode 0 → general V/I header, record_size = 2·nconds·2 for 1 conductor = 4.
+    #[test]
+    fn mode0_resyncs_and_rebuilds_header() {
+        let mut m = Monitor::new("mon1");
+        m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
+        m.med.metered_snap = Some(snap(1, 1, 0));
+        let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
+        assert_eq!(m.cd().nphases, 1);
+        assert_eq!(m.cd().nconds, 1);
+        assert_eq!(m.get_bus_name(1), "b1");
+        assert_eq!(m.num_channels(), 4);
+        assert!(plan.run_base && plan.actions.is_empty());
+        assert_eq!(m.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+
+    /// Mode 3 (state variables): ClearMonitorStream sets `RecordSize` to the
+    /// metered element's `NumVariables` (StateBuffer resize in Pascal).
+    #[test]
+    fn mode3_record_size_is_num_variables() {
+        let mut m = Monitor::new("mon1");
+        m.mode = 3;
+        m.med.metered_element = Some(ElemRef { cls: 2, idx: 5 });
+        m.med.metered_snap = Some(snap(1, 1, 2));
+        let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
+        assert_eq!(m.num_channels(), 2); // NumVariables
+        assert!(m.header().contains(&"v1".to_string()));
+        assert!(plan.run_base);
+    }
+
+    /// Pascal NIL guard: no metered element ⇒ only the base rename runs.
+    #[test]
+    fn nil_metered_element_runs_base_only() {
+        let mut m = Monitor::new("mon1");
+        let np = m.cd().nphases;
+        let plan = m.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(m.cd().nphases, np);
+        assert!(plan.run_base);
     }
 }
