@@ -8,7 +8,7 @@ use crate::support::mathutil::{
 use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
-use crate::obj::base::MmfKind;
+use crate::obj::base::{InterpLoad, InterpTarget, MmfKind};
 
 use super::{INTERP_EDGE, LoadShapeObj, store_array};
 
@@ -399,16 +399,19 @@ impl LoadShapeObj {
     pub(super) fn queue_shape_save(&mut self, sng: bool, errors: &mut Vec<String>) {
         // Pascal `UseFloat64` (LoadShape.pas:1888/1946): ensure the f64 arrays.
         self.use_float64();
-        // NOT_PORTED: an MMF-backed shape saves via `InterpretDblArrayMMF`
-        // (LoadShape.pas:1898-1905/1956-1963), a path that is not ported. Refuse
-        // loudly rather than emit possibly-wrong bytes. Owner: LoadShape MMF pass.
-        if self.use_mmf {
-            errors.push(format!(
-                "LoadShape.{}: Action=SngSave/DblSave on a MemoryMapping (MMF) shape is not ported.",
-                self.data.name()
-            ));
-            return;
-        }
+        // MMF (`MemoryMapping=Yes`): Pascal re-reads each value at save time via
+        // `InterpretDblArrayMMF` (P `:1898-1905`/`:1956-1963`, Q `:1921-1927`/
+        // `:1982-1988`). This port already eagerly read the whole MMF file into
+        // `p_mult` (and `q_mult` when a `qmult=` MMF directive was given) at
+        // directive time (`read_mmf_raw`/`finish_mmf`, `:952-963`) using the
+        // identical record semantics, so the non-MMF snapshot below emits the
+        // same bytes and `q_mult.is_some()` matches Pascal `Assigned(dQ)`
+        // (`CustomSetRaw` `:791-802` allocates a 2-elem `dQ` sentinel iff a
+        // `qmult=` MMF directive was given). Oracle-probed 2026-07-11
+        // (dss-python 0.15.7): Case A (P sng-src + `qmult` sng-src) → `_P`+`_Q`
+        // bytes = the f32-narrowed values; Case B (no `qmult`) → only `_P`, no
+        // `_Q` file, `GlobalResult` has no `Qmult=` clause. No separate MMF path
+        // needed — the guard is gone.
         let n = self.n();
         // Pascal `if not Assigned(dP)` → `DoSimpleMsg('%s P multipliers not
         // defined.', [FullName], 622/623)` then `Exit`.
@@ -960,5 +963,51 @@ impl LoadShapeObj {
             }
         };
         self.finish_mmf(values, qside);
+    }
+
+    /// Apply a non-memory-mapped `InterpretDblArray` LoadShape directive
+    /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)`, Pascal
+    /// `CustomSetRaw`, `LoadShape.pas:749-810`, WPG.19). Runs `UseFloat64` first
+    /// (Pascal `:767/779/804`), reads with the `Utilities.pas` file grammar
+    /// capped at the current `NumPoints`, then stores per the Pascal shrink rule:
+    /// `mult`/`Pmult` shrink `NumPoints := result` (`:770`); `qmult`/`hour` leave
+    /// it unchanged (the return is ignored, `:781/806`). A short `qmult`/`hour`
+    /// file leaves an uninitialized tail upstream (`ReAllocmem` UB, not
+    /// reproduced per CLAUDE.md): we store only the prefix read.
+    pub(super) fn apply_interp_file(&mut self, il: &InterpLoad, bytes: &[u8]) {
+        self.use_float64();
+        let max = self.n();
+        let values = match il.kind {
+            MmfKind::Text => {
+                let content = String::from_utf8_lossy(bytes);
+                let (vals, err_row) =
+                    crate::util::read_dbl_array_text(&content, il.column, il.header, max);
+                if let Some(row) = err_row {
+                    // Pascal `DoSimpleMsg(#705)` then stop-and-shrink
+                    // (`Utilities.pas:515-521`); `vals` already holds only `i-1`.
+                    self.data.push_error(format!(
+                        "LoadShape.{}: (#705) Error reading {row}-th numeric array \
+                         value from file.",
+                        self.data.name()
+                    ));
+                }
+                vals
+            }
+            MmfKind::Float32 => crate::util::read_le_f32_array(bytes, max),
+            MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),
+        };
+        let count = values.len();
+        match il.target {
+            InterpTarget::PMult => {
+                self.p_mult = store_array(values);
+                self.num_points = count as i32;
+            }
+            InterpTarget::QMult => {
+                self.q_mult = store_array(values);
+            }
+            InterpTarget::Hour => {
+                self.hour = store_array(values);
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 //! Small string/format helpers from Pascal `Common/Utilities.pas`, ported
 //! on demand (only what the engine paths implemented so far actually use).
 
+use crate::obj::base::MmfKind;
 use dss_parser::{Parser, ParserError, ParserVars};
 use num_complex::Complex64;
 
@@ -872,15 +873,197 @@ pub fn get_dss_array_i32(n: usize, ints: Option<&[i32]>) -> String {
     result
 }
 
+/// A recognized file-backed numeric-array directive (Pascal `InterpretDblArray`,
+/// `Utilities.pas:461-566`): `file=` plain text (optionally `column=`/`header=`),
+/// `dblfile=` a raw little-endian `f64` stream, `sngfile=` a raw little-endian
+/// `f32` stream (widened to `f64`). Recognized at property-parse time by
+/// [`parse_dbl_array_file_spec`]; the actual file read is deferred to the
+/// executive (which has the filesystem + `LastResultFile`), running the grammar
+/// with [`read_dbl_array_text`] / [`read_le_f32_array`] / [`read_le_f64_array`].
+#[derive(Debug, Clone)]
+pub struct DblArrayFileSpec {
+    pub kind: MmfKind,
+    /// The filename exactly as written (may be the literal `%result%`, which the
+    /// executive resolves against `DSS.LastResultFile`).
+    pub filename: String,
+    /// 1-based comma/space column (`file=` only; `1` otherwise).
+    pub column: i32,
+    /// Skip one header line (`file=` `header=yes` only).
+    pub header: bool,
+}
+
+/// Pascal `InterpretDblArray` directive recognizer (`Utilities.pas:454-566`):
+/// parse the leading `file=`/`dblfile=`/`sngfile=` token and, for `file=`, the
+/// `column=`/`header=` options in either order (`CompareTextShortest`). Returns
+/// `None` for a plain numeric list (the caller then parses it with
+/// [`interpret_dbl_array`]). Uses a private scratch parser mirroring Pascal's
+/// `DSS.AuxParser`.
+pub fn parse_dbl_array_file_spec(s: &str) -> Option<DblArrayFileSpec> {
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    parser.set_auto_increment(false);
+    parser.set_cmd_string(s);
+    let parm_name = parser.next_param(&vars);
+    let param = parser.make_string(&vars);
+
+    // Pascal: `file` is an exact (case-insensitive) match; `dblfile`/`sngfile`
+    // use shortest-prefix, both guarded by a non-empty parameter name.
+    if parm_name.eq_ignore_ascii_case("file") {
+        let filename = param;
+        let mut column = 1;
+        let mut header = false;
+        // Options may be in either order (`Utilities.pas:481-491`).
+        loop {
+            let pn = parser.next_param(&vars);
+            let pv = parser.make_string(&vars);
+            if pv.is_empty() {
+                break;
+            }
+            if compare_text_shortest_eq(&pn, "column") {
+                column = parser.make_integer(&vars).unwrap_or(1);
+            }
+            if compare_text_shortest_eq(&pn, "header") {
+                header = interpret_yes_no(&pv);
+            }
+        }
+        Some(DblArrayFileSpec {
+            kind: MmfKind::Text,
+            filename,
+            column,
+            header,
+        })
+    } else if !parm_name.is_empty() && compare_text_shortest_eq(&parm_name, "dblfile") {
+        Some(DblArrayFileSpec {
+            kind: MmfKind::Float64,
+            filename: param,
+            column: 1,
+            header: false,
+        })
+    } else if !parm_name.is_empty() && compare_text_shortest_eq(&parm_name, "sngfile") {
+        Some(DblArrayFileSpec {
+            kind: MmfKind::Float32,
+            filename: param,
+            column: 1,
+            header: false,
+        })
+    } else {
+        None
+    }
+}
+
+/// Pascal `InterpretDblArray` `file=` text branch (`Utilities.pas:493-524`):
+/// read up to `max` rows from `content`, optionally skipping one `header` line,
+/// taking the 1-based comma/space-delimited `column` from each row. Returns the
+/// values actually read plus the 1-based row that raised a numeric-conversion
+/// error, if any. A file shorter than `max` yields fewer values (the Pascal
+/// short-file `Result := i-1`), and the caller shrinks its element count to
+/// `.len()`. A malformed numeric token raises in Pascal (`DoSimpleMsg` #705,
+/// then `Result := i-1; Break`, `Utilities.pas:515-521`) — the same stop-and-
+/// shrink: reading stops at that row, the returned length is `i-1`, and the
+/// row index is returned so the caller can emit the #705 diagnostic. Byte-
+/// position faithful to Pascal's `(F.Position + 1) < F.Size` read guard.
+pub fn read_dbl_array_text(
+    content: &str,
+    column: i32,
+    header: bool,
+    max: usize,
+) -> (Vec<f64>, Option<usize>) {
+    let bytes = content.as_bytes();
+    let size = bytes.len();
+    let mut pos = 0usize;
+    let mut parser = Parser::new();
+    parser.set_auto_increment(false);
+    let vars = ParserVars::new();
+
+    if header {
+        // Pascal `if CSVHeader then FSReadln(F, InputLine)` — skip one line
+        // unconditionally (no size guard).
+        read_line_advance(bytes, &mut pos);
+    }
+
+    let mut out = Vec::new();
+    let mut error_row = None;
+    for i in 0..max {
+        // Pascal reads a row only while `(F.Position + 1) < F.Size`; otherwise it
+        // stops (`Result := i - 1; Break`).
+        if pos + 1 >= size {
+            break;
+        }
+        let line = read_line_advance(bytes, &mut pos);
+        let line_str = String::from_utf8_lossy(line);
+        parser.set_cmd_string(&line_str);
+        // Advance `column` params (1-based), then take the current token's value.
+        for _ in 0..column.max(0) {
+            parser.next_param(&vars);
+        }
+        // A missing column yields an empty token → 0.0 (Pascal `DblValue`). A
+        // malformed token raises in Pascal (`DoSimpleMsg` #705, `Result := i-1;
+        // Break`, `Utilities.pas:515-521`) — reproduce the stop-and-shrink: record
+        // the 1-based row and break so the returned length equals `i-1` and the
+        // caller shrinks its count (proven vs the pinned oracle: `mult=(file=…)`
+        // with row 3 = `abc` yields npts=2, mult=[0.1,0.2] + a #705 error).
+        match parser.make_double(&vars) {
+            Ok(v) => out.push(v),
+            Err(_) => {
+                error_row = Some(i + 1);
+                break;
+            }
+        }
+    }
+    (out, error_row)
+}
+
+/// Read one line from `bytes` starting at `*pos`, advancing `*pos` past the
+/// terminating `\n` (or to EOF); the returned slice excludes the `\r\n`/`\n`.
+fn read_line_advance<'a>(bytes: &'a [u8], pos: &mut usize) -> &'a [u8] {
+    let start = *pos;
+    let mut end = start;
+    while end < bytes.len() && bytes[end] != b'\n' {
+        end += 1;
+    }
+    let mut line_end = end;
+    if line_end > start && bytes[line_end - 1] == b'\r' {
+        line_end -= 1;
+    }
+    *pos = if end < bytes.len() { end + 1 } else { end };
+    &bytes[start..line_end]
+}
+
+/// Pascal `InterpretDblArray` `sngfile=` branch (`Utilities.pas:545-565`): read
+/// `min(max, size/4)` little-endian `f32` records, each widened to `f64` (this
+/// is the flat-array path — NOT the LoadShape `ReadSngFile` `UseFloat32` /
+/// `(hour,mult)`-pair path).
+pub fn read_le_f32_array(bytes: &[u8], max: usize) -> Vec<f64> {
+    let k = (bytes.len() / 4).min(max);
+    bytes[..k * 4]
+        .chunks_exact(4)
+        .map(|c| f64::from(f32::from_le_bytes(c.try_into().unwrap())))
+        .collect()
+}
+
+/// Pascal `InterpretDblArray` `dblfile=` branch (`Utilities.pas:532-543`): read
+/// `min(max, size/8)` little-endian `f64` records.
+pub fn read_le_f64_array(bytes: &[u8], max: usize) -> Vec<f64> {
+    let k = (bytes.len() / 8).min(max);
+    bytes[..k * 8]
+        .chunks_exact(8)
+        .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+        .collect()
+}
+
 /// Pascal `InterpretDblArray`, list-of-numbers path: read exactly
 /// `max_values` doubles out of `s` into `out`, filling with zeros when the
 /// string runs short (the parser returns 0 for an empty token). The outer
 /// `Edit` parser has already stripped the surrounding `()`/`[]`, so `s` is a
 /// bare delimiter-separated list; values may themselves be quoted RPN.
 ///
-/// The `file=`/`dblfile=`/`sngfile=` spellings (file-backed arrays) are not
-/// ported yet — they error out with a clear message rather than parsing the
-/// keyword as a number.
+/// The file-backed spellings (`file=`/`dblfile=`/`sngfile=`) are recognized and
+/// deferred *by the caller* ([`parse_dbl_array_file_spec`] in the property
+/// engine, before this function is reached). This function keeps the reject as a
+/// defensive net for the property paths that Pascal routes through
+/// `ParseAsVector` — which do NOT support a file spec (e.g. `DoubleVArrayProperty`
+/// `XSCArray`): there a file directive is a genuine input error, not a silent
+/// parse of the keyword as 0.
 ///
 /// `out` must be at least `max_values` long. Returns the number of slots
 /// written (always `max_values` for the list path, matching the original).
@@ -983,6 +1166,29 @@ mod tests {
         // monitor header label is ever empty — so it is not asserted here.)
         assert_eq!(comma_text(&["a,b".into()]), "\"a,b\"");
         assert_eq!(comma_text(&["say \"hi\"".into()]), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn read_dbl_array_text_stops_and_shrinks_on_bad_token() {
+        // Oracle-proven (dss-python 0.15.7): a `mult=(file=…)` whose row 3 is
+        // `abc` raises `#705`, sets `Result := i-1` and BREAKs — the shape ends
+        // up npts=2, mult=[0.1,0.2] (Pascal `Utilities.pas:515-521`).
+        let (vals, err) = read_dbl_array_text("0.1\n0.2\nabc\n0.4\n", 1, false, 8);
+        assert_eq!(vals, vec![0.1, 0.2]);
+        assert_eq!(err, Some(3)); // 1-based failing row -> caller emits #705
+    }
+
+    #[test]
+    fn read_dbl_array_text_short_file_shrinks_without_error() {
+        // A clean file shorter than `max` yields fewer values (the short-file
+        // `Result := i-1` via the `(F.Position+1) < F.Size` guard) and NO error.
+        let (vals, err) = read_dbl_array_text("1\n2\n3\n", 1, false, 8);
+        assert_eq!(vals, vec![1.0, 2.0, 3.0]);
+        assert_eq!(err, None);
+        // An empty/missing column stays 0.0 (Pascal `DblValue`), not an error.
+        let (vals, err) = read_dbl_array_text("1,\n2,\n", 2, false, 8);
+        assert_eq!(vals, vec![0.0, 0.0]);
+        assert_eq!(err, None);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::obj::base::DssObject;
+use crate::obj::base::{DssObject, MmfKind};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
@@ -741,24 +741,63 @@ fn action_save_p_undefined_errors() {
 }
 
 #[test]
-fn action_save_mmf_refuses_loudly() {
-    // The MMF-backed save path (`InterpretDblArrayMMF`,
-    // LoadShape.pas:1898-1905) is NOT_PORTED: the guard must refuse loudly and
-    // queue nothing (audit settlement pins the guard so it cannot silently
-    // "improve" into wrong bytes).
-    let (_cls, mut obj, errs) = edited(&[
-        ("npts", "2"),
-        ("interval", "1"),
-        ("mult", "1 2"),
-        ("memorymapping", "yes"),
-        ("action", "sngsave"),
-    ]);
-    assert!(
-        errs.iter()
-            .any(|e| e.contains("MemoryMapping") && e.contains("not ported")),
-        "{errs:?}"
+fn action_save_mmf_queues_eager_read_values() {
+    // WPG.20: an MMF-backed save is no longer refused. The eager MMF read
+    // (`read_mmf_raw`/`finish_mmf`) has already populated `p_mult` (and `q_mult`
+    // iff a `qmult=` MMF directive was given, matching Pascal `Assigned(dQ)`), so
+    // `queue_shape_save` snapshots the f32-narrowed values byte-for-byte like the
+    // oracle's `InterpretDblArrayMMF` re-read (probed 2026-07-11). The
+    // byte-exact-vs-oracle coverage lives in `golden_reports.rs`; here we pin the
+    // queue contents + Q-gating.
+
+    // Case A: MMF P + MMF qmult -> both P and Q queued.
+    let (_cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1"), ("memorymapping", "yes")]);
+    obj.read_mmf_raw(
+        &sng_bytes(&[0.5, 0.75, 1.0, 0.8]),
+        MmfKind::Float32,
+        1,
+        false,
     );
-    assert!(obj.take_shape_saves().is_empty());
+    obj.read_mmf_raw(&sng_bytes(&[0.1, 0.2, 0.3, 0.4]), MmfKind::Float32, 1, true);
+    let mut errs = Vec::new();
+    obj.queue_shape_save(true, &mut errs);
+    assert!(errs.is_empty(), "MMF save must not error: {errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(s.sng);
+    assert!(s.p_suffix);
+    assert_eq!(s.result_tag, "mult");
+    // f32-narrowed then widened, exactly like the oracle's sng-source read.
+    assert_eq!(
+        s.values,
+        vec![0.5, 0.75, 1.0, f64::from(0.8f32)],
+        "P = eager f32→f64 read"
+    );
+    assert_eq!(
+        s.q_values.as_deref(),
+        Some([0.1f32, 0.2, 0.3, 0.4].map(f64::from).as_slice()),
+        "Q queued because a qmult MMF directive was given (Assigned(dQ))"
+    );
+
+    // Case B: MMF P, NO qmult -> only P queued (Assigned(dQ) false).
+    let (_cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1"), ("memorymapping", "yes")]);
+    obj.read_mmf_raw(
+        &sng_bytes(&[0.5, 0.75, 1.0, 0.8]),
+        MmfKind::Float32,
+        1,
+        false,
+    );
+    let mut errs = Vec::new();
+    obj.queue_shape_save(false, &mut errs);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    assert!(!saves[0].sng, "dblsave");
+    assert!(
+        saves[0].q_values.is_none(),
+        "no qmult MMF directive -> no _Q file"
+    );
 }
 
 // -------------------------------------------------------------------------
@@ -942,21 +981,117 @@ fn mmf_pqcsv_dump_quirk_through_executive() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// Without MemoryMapping, a `mult=(sngfile=…)` file directive is the non-MM
-/// `File=` array feature (WPG.19, GAPS_PLAN closure addendum) — still NOT_PORTED, so a loud error is
-/// recorded (and a plain numeric list is unaffected).
+/// WPG.19: without MemoryMapping, `mult=(file=…)` / `(sngfile=…)` / `(dblfile=…)`
+/// read the file through the Pascal `InterpretDblArray` grammar
+/// (`Common/Utilities.pas:461-566`) — covering column select, header skip, the
+/// binary formats, the short-file `NumPoints` shrink, and `action=normalize`
+/// running AFTER the read. All values probed against the pinned oracle.
 #[test]
-fn non_mmf_file_directive_is_loud_not_ported() {
+fn non_mmf_file_directive_reads_the_file() {
     use crate::exec::Dss;
+    let dir = std::env::temp_dir().join(format!("dss_wpg19_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("c.csv"), "0.4\n0.55\n0.75\n0.95\n").unwrap();
+    std::fs::write(dir.join("col.csv"), "0,0.4\n1,0.55\n2,0.75\n3,0.95\n").unwrap();
+    std::fs::write(dir.join("hdr.csv"), "header\n0.4\n0.55\n0.75\n0.95\n").unwrap();
+    std::fs::write(dir.join("short.csv"), "0.4\n0.55\n").unwrap(); // 2 of npts=4
+    std::fs::write(dir.join("norm.csv"), "0.5\n1.0\n2.0\n1.5\n").unwrap(); // peak 2.0
+    std::fs::write(
+        dir.join("v.sng"),
+        [0.4f32, 0.55, 0.75, 0.95]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("v.dbl"),
+        [0.4f64, 0.55, 0.75, 0.95]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.p");
-    dss.command("New LoadShape.d npts=3 interval=1 mult=(sngfile=x.sng)");
-    assert!(
-        dss.errors().iter().any(|e| e.contains("not supported yet")),
-        "expected a WPG.19 not-ported error, got {:?}",
-        dss.errors()
+    let d = dir.to_string_lossy().replace('\\', "/");
+    dss.command(&format!(
+        "New LoadShape.a npts=4 interval=1 mult=(file=\"{d}/c.csv\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.b npts=4 interval=1 mult=(file=\"{d}/col.csv\", column=2)"
+    ));
+    dss.command(&format!(
+        "New LoadShape.c npts=4 interval=1 mult=(file=\"{d}/hdr.csv\", header=yes)"
+    ));
+    dss.command(&format!(
+        "New LoadShape.e npts=4 interval=1 mult=(sngfile=\"{d}/v.sng\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.f npts=4 interval=1 mult=(dblfile=\"{d}/v.dbl\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.g npts=4 interval=1 mult=(file=\"{d}/short.csv\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.h npts=4 interval=1 mult=(file=\"{d}/norm.csv\") action=normalize"
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let mut q = |cmd: &str| {
+        dss.command(cmd);
+        dss.result().to_string()
+    };
+    assert_eq!(
+        q("? Loadshape.a.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "file= single column"
     );
+    assert_eq!(
+        q("? Loadshape.b.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "column=2 (1-based)"
+    );
+    assert_eq!(
+        q("? Loadshape.c.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "header=yes skips one line"
+    );
+    // sngfile widens f32 -> f64 (single-precision representable values).
+    assert_eq!(
+        q("? Loadshape.e.mult"),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071]",
+        "sngfile= widens f32"
+    );
+    assert_eq!(
+        q("? Loadshape.f.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "dblfile= raw f64"
+    );
+    // Short file (2 rows, npts=4) shrinks NumPoints to 2 (Pascal Result := i-1).
+    assert_eq!(q("? Loadshape.g.npts"), "2", "short file shrinks NumPoints");
+    assert_eq!(
+        q("? Loadshape.g.mult"),
+        "[ 0.4 0.55]",
+        "short file keeps the prefix"
+    );
+    // action=normalize runs AFTER the read: peak 2.0 -> divide by 2.0.
+    assert_eq!(q("? Loadshape.h.npts"), "4");
+    assert_eq!(
+        q("? Loadshape.h.mult"),
+        "[ 0.25 0.5 1 0.75]",
+        "normalize follows the file read"
+    );
+
+    // A plain numeric list is unaffected by the WPG.19 interception.
+    dss.command("New LoadShape.lst npts=3 interval=1 mult=(0.1 0.2 0.3)");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? Loadshape.lst.mult");
+    assert_eq!(dss.result(), "[ 0.1 0.2 0.3]");
+
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Audit settlement (Major): Pascal `SetMaxPandQ` exits FIRST under

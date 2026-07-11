@@ -1,0 +1,48 @@
+! GAPS deck (WPG.19): non-memory-mapped file-backed numeric arrays — the Pascal
+! InterpretDblArray file grammar (Common/Utilities.pas:461-566) for array
+! properties WITHOUT MemoryMapping=Yes. This is the last blocker of the ckt24
+! MemoryMappingLoadShapes family (LS_PhaseB/C use mult=(file=...) ln).
+!
+! Covered:
+!   - mult=(file=...)                     single column
+!   - mult=(file=..., column=2)           1-based column select
+!   - mult=(file=..., header=yes)         skip one header line
+!   - mult=(sngfile=...) / mult=(dblfile) inline binary directives
+!   - short file (5 rows, npts=8)         NumPoints shrinks to 5
+!   - mult=(file=...) ln                  normalize runs AFTER the file read
+!   - Spectrum %mag=(file=...)            generic-class DoubleArray file (SITE 2)
+!   - XYcurve Yarray=(file=...)           generic-class DoubleArray file (SITE 2)
+! Fixtures (committed) regenerate via tools/decks/gen_shape_filearr_fixtures.py.
+Clear
+New Circuit.gaps_filearr basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.ls_file  npts=8 interval=1 mult=(file=fa_c8.csv)
+New Loadshape.ls_col   npts=8 interval=1 mult=(file=fa_2col.csv, column=2)
+New Loadshape.ls_hdr   npts=8 interval=1 mult=(file=fa_hdr.csv, header=yes)
+New Loadshape.ls_sng   npts=8 interval=1 mult=(sngfile=fa8.sng)
+New Loadshape.ls_dbl   npts=8 interval=1 mult=(dblfile=fa8.dbl)
+! Short file: only 5 rows -> NumPoints shrinks 8 -> 5 (Pascal Result := i-1).
+New Loadshape.ls_short npts=8 interval=1 mult=(file=fa5.csv)
+! action=normalize runs AFTER the file read: peak 2.0 -> /2 (matches ckt24).
+New Loadshape.ls_norm  npts=8 interval=1 mult=(file=fa_norm.csv) action=normalize
+! Generic-class DoubleArray file= paths (SITE 2: DSSObjectHelper InterpretDblArray).
+New Spectrum.sp NumHarm=4 harmonic=(1 3 5 7) %mag=(file=spec_mag.csv) angle=(0 0 0 0)
+New XYcurve.xyc npts=4 Xarray=(0 1 2 3) Yarray=(file=xy_y.csv)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Load.ld_file  bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=ls_file
+New Load.ld_col   bus1=b1 phases=3 kv=12.47 kw=400 pf=0.92 model=1 daily=ls_col
+New Load.ld_hdr   bus1=b1 phases=3 kv=12.47 kw=200 pf=0.93 model=1 daily=ls_hdr
+New Load.ld_sng   bus1=b1 phases=3 kv=12.47 kw=150 pf=0.95 model=1 daily=ls_sng
+New Load.ld_dbl   bus1=b1 phases=3 kv=12.47 kw=120 pf=0.94 model=1 daily=ls_dbl
+New Load.ld_short bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95 model=1 daily=ls_short
+New Load.ld_norm  bus1=b1 phases=3 kv=12.47 kw=90  pf=0.92 model=1 daily=ls_norm
+New Monitor.m_file  element=Load.ld_file  terminal=1 mode=1 ppolar=no
+New Monitor.m_col   element=Load.ld_col   terminal=1 mode=1 ppolar=no
+New Monitor.m_hdr   element=Load.ld_hdr   terminal=1 mode=1 ppolar=no
+New Monitor.m_sng   element=Load.ld_sng   terminal=1 mode=1 ppolar=no
+New Monitor.m_dbl   element=Load.ld_dbl   terminal=1 mode=1 ppolar=no
+New Monitor.m_short element=Load.ld_short terminal=1 mode=1 ppolar=no
+New Monitor.m_norm  element=Load.ld_norm  terminal=1 mode=1 ppolar=no
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set mode=daily stepsize=1h number=8
+Solve

@@ -1736,6 +1736,7 @@ const MODES_REQUIRED: &[&str] = &[
     // cover every feature deck, not only the pre-WPG.17 set).
     "xycurve_files/xycurve_files.dss",
     "shape_mmf/shape_mmf.dss",
+    "shape_filearr/shape_filearr.dss",
     "generaltime.dss",
     "ld1.dss",
     "ld2.dss",

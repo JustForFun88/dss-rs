@@ -7,7 +7,111 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-10.
+Last updated: 2026-07-11.
+
+**WPG.19/20 audit settlement (2026-07-11), gate-green.** Two auditors + the full
+gate; every finding verified against the Pascal spec and the pinned oracle, all
+real ones fixed 1:1 (no fudging):
+- **`InterpretDblArray` malformed-token silent 0.0 → stop-and-shrink + #705
+  (fixed).** `util::read_dbl_array_text` swallowed a non-numeric file token
+  (`unwrap_or(0.0)`, kept reading, no diagnostic) where Pascal raises `DoSimpleMsg`
+  #705, sets `Result := i-1` and BREAKs (`Utilities.pas:515-521`). Oracle-proven
+  (`mult=(file=…)` with row 3 = `abc` → npts shrinks to 2, mult=[0.1,0.2], #705).
+  Now returns `(Vec<f64>, Option<usize>)`; both callers (`compute::apply_interp_file`,
+  `command::apply_generic_dbl_array_file`) stop at the bad row (length = `i-1`,
+  count shrinks) and `push_error` the #705 diagnostic.
+- **Stale manifest `master_ckt24-nomm.dss` (fixed).** Was tagged
+  `unsupported_feature=file-backed-arrays` with a now-FALSE note ("not supported yet
+  (WPG.19)"); the deck compiles+converges via the CLI (7522 nodes, 2 iters, 0
+  errors). Re-tagged `skipped_unsupported → skipped_needs_investigation`
+  (`live_mismatch_regcontrol_ldc_tap`), sharing the -mm sibling's real SubXFMR
+  RegControl/LDC blocker.
+- **Trailing-newline restored** on the four manifests edited this branch
+  (`solvable_now`, `skipped_needs_investigation`, `skipped_unsupported`,
+  `modes/manifest.json`).
+- **`binsave_mmf` generator self-check added.** `gen_loadshape_binsave_mmf` now
+  rebuilds the expected `GlobalResult` from the hand-written `result_files`/
+  `result_tags` (hoisted to single-sourced constants) and `sys.exit`s if it != the
+  captured oracle string — closing the Rust-vs-handwritten gap (proven to bite on a
+  wrong tag; goldens byte-unchanged).
+- **Full gate green.** fmt + clippy clean; `cargo test --workspace` exit 0 (914 unit
+  + corpus_live all green). NOTE: `modes_cases_match_oracle` needs the opt-in EPRI
+  Oddie venv (`tools/opendss/.venv`, gitignored → absent in this worktree); run with
+  `DSS_OPENDSS_PYTHON` pointing at main's venv, or it panics environmentally (pre-
+  existing `r4133` case, unrelated to WPG.19/20).
+
+**WPG.20 port — MMF-shape binary save (`Action=SngSave/DblSave` under
+`MemoryMapping=Yes`) (2026-07-11), gate-green (golden_reports + load_shape unit).**
+The trio-era LOUD-NOT_PORTED refusal in `load_shape/compute.rs::queue_shape_save`
+is removed. **Mandatory oracle probe first** (dss-python 0.15.7, per the
+STATUS-mandated `Assigned(dQ)`-under-MMF question): **Case A** — an MMF LoadShape
+with `mult=(sngfile=…) qmult=(sngfile=…)` under `action=sngsave`/`dblsave` writes
+BOTH `<name>_P` and `<name>_Q`; the bytes equal the f32-narrowed source values
+(sng file = f32 as-is; dbl file = those f32 widened to f64), and `GlobalResult` is
+`mult=[…],  Qmult=[…]`. **Case B** — an MMF LoadShape WITHOUT `qmult` writes ONLY
+`<name>_P` (NO `_Q` file; `GlobalResult` has no `Qmult=` clause) — confirming
+`Assigned(dQ)` is true iff a `qmult=` MMF directive was given (Pascal
+`CustomSetRaw` :791-802 allocs a 2-elem `dQ` sentinel). **Key invariant verified:**
+the port's eager MMF read (`read_mmf_raw`/`finish_mmf`) already populated `p_mult`
+and (iff `qmult=` given) `q_mult` with the identical record semantics the oracle's
+save-time `InterpretDblArrayMMF` re-read uses, and `q_mult.is_some()` == Pascal
+`Assigned(dQ)`. So **guard removal alone is correct** — the existing non-MMF
+snapshot body emits byte-exact bytes; no separate `InterpretDblArrayMMF` re-read
+path was needed. Pinned by a new byte-exact golden `binsave_mmf_matches_oracle` (6
+`.bin` goldens: `mp` = sng-P + sng-Q → both `_P`/`_Q`; `md` = dbl-P + no-Q → only
+`_P`, `md_Q.*` asserted ABSENT) via `gen_reports.py::gen_loadshape_binsave_mmf`
+(MMF source fixtures `tools/golden/report_decks/binsave_mmf_{p,q}.{sng,dbl}`,
+`@FIXTURES@`-token-resolved on both engines) + exact per-action `GlobalResult`
+rebuilt against scratch, and the load_shape unit test
+`action_save_mmf_queues_eager_read_values` (replaces the old
+`action_save_mmf_refuses_loudly`). Nothing left NOT_PORTED in the shape-save path.
+
+**WPG.19 port — non-MemoryMapped file-backed numeric arrays (2026-07-11),
+gate-green (modes + load_shape + props_roundtrip).** The Pascal `InterpretDblArray`
+`file=`/`sngfile=`/`dblfile=` grammar (`Common/Utilities.pas:461-566`) for array
+properties WITHOUT `MemoryMapping=Yes` — the proven sole blocker of the whole
+ckt24 `MemoryMappingLoadShapes` family. **Two sites:** (1) LoadShape
+`Mult`/`PMult`/`QMult`/`Hour` via `set_f64_array_raw` (`load_shape/accessors.rs`)
+— now handles the non-MM directive (Hour too; Pascal `CustomSetRaw` has no MMF
+branch for Hour), deferred as a `FileLoad::interp` and applied by
+`apply_interp_file` (`compute.rs`) with the Pascal shrink rule: **mult/pmult
+shrink `NumPoints`** (`:770`), **qmult/hour do NOT** (`:781/806`; their short-file
+UB tail is not reproduced). (2) the generic double-array property path
+(`class_props/parse.rs` + `DSSObjectHelper.pas:616-636`) — a file directive on
+ANY class (`Spectrum %mag`, `XYcurve Xarray/Yarray`, …) is queued on
+`DssObjData` (`GenericDblArrayFile`), read in the executive drain
+(`exec/command.rs::apply_generic_dbl_array_file`) and applied via the typed
+accessors with the generic `integerPtr^ := InterpretDblArray(...)` size-prop
+shrink (probe-proven: `Spectrum NumHarm 8→4` on a 4-row `%mag` file). **Ordering
+fix:** `action=normalize`/`ln` runs AFTER the (now-deferred) file read — probe-
+proven the oracle normalizes the *read* peak — so `do_action` defers Normalize to
+`run_deferred_actions` (drained after the file loads) when a file directive is
+pending; a numeric `mult` still normalizes inline (no regression). `%result%`
+resolves to `LastResultFile` in the drain (ported; not gate-committed to avoid
+`Export`-content coupling — proven only in the oracle probe). New live-gate deck
+`tests/corpus/modes/shape_filearr/` (fixtures via
+`tools/decks/gen_shape_filearr_fixtures.py`): covers file/column=2/header=yes/
+sngfile/dblfile/short-shrink/normalize + the two SITE-2 generics; oracle-validated
+(compiles+solves+converges, 2 iters; full fingerprint bit-identical across two
+oracle processes `6225f27521de809e`; feature-sensitive — stripping the directives
+empties the shapes and the daily solve access-violates on the oracle). All 33
+modes decks match the oracle (property-parity ON). **Corpus re-classify (honest,
+NOT forced):** `Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss`
+(yearly, 100 steps, 7522 nodes) now compiles + converges (2 iters, hour=100) and
+its full complex node V matches the oracle to **5.6e-8 rel max** (median 2.8e-8,
+faer-vs-KLU floor) after the entire 100-step trajectory — so WPG.19 reads/drives
+the load shapes identically and its former blocker is gone. But the full live gate
+(`kind="large"`) exposed a **new, deeper true blocker unrelated to WPG.19**: the
+regulator-controlled substation transformer `Transformer.SubXFMR`
+(`Regcontrol.SubXFMR_Regulator` winding=2 vreg=123 band=3 R=7 LDC delay=45)
+diverges at the per-element **current** level — |diff| 7.2e-4 A (~4.7e-5 rel) at
+step 0, exceeding the large-tier current tolerance while V stays regulated to
+floor: the known RegControl/LDC tap-trajectory divergence family (MEMORY:
+AutoTrans/RegControl stale tap). So it was **reclassified
+`skipped_unsupported → skipped_needs_investigation`** (live-mismatch bucket, not
+`solvable_now`); `solvable_now` stays 226 (67.5%). The 7 sibling ckt24 masters
+(base + `-mm-*`/`-nomm`/`Run_Ckt24`) share the same former WPG.19 blocker (now
+gone) and stay tagged pending individual triage.
 
 **WP8.8 Phase-8 exit COMPLETE (2026-07-10), gate-green — PHASE 8 IS COMPLETE.**
 All five exit steps ran; per the port-don't-defer rule the sweep also closed the
@@ -344,7 +448,9 @@ the deck's `Get totaltime` line is non-gating decoration (wall-clock timers are
 never numerically compared — documented in the manifest note). Open follow-up
 (loud, honest): `Action=SngSave/DblSave` on an MMF shape keeps the trio-era
 NOT_PORTED refusal — removing it needs an oracle probe of the MMF-save Q-side
-semantics (`Assigned(dQ)` under MMF) before the bytes can be trusted.
+semantics (`Assigned(dQ)` under MMF) before the bytes can be trusted. **[CLOSED
+2026-07-11 by WPG.20 — probed, guard removed, byte-exact golden landed; see the
+WPG.20 record at the top.]**
 
 **WPG.17 port: LoadShape MemoryMapping + Set/Get TotalTime (2026-07-09).**
 Ported the two former `master_ckt24` blockers. **(a) LoadShape `MemoryMapping=Yes`**
@@ -392,6 +498,8 @@ so it queues a new `ShapeSave` (obj/base) drained in `edit_active` — mirrors t
 TShape/PriceShape write the bare `<name>`; raw little-endian f32/f64. Pinned by a
 **byte-exact** golden (`binsave_matches_oracle`, 8 `.bin` goldens via new
 `gen_reports.py::gen_loadshape_binsave`). MMF-backed save stays LOUD-NOT_PORTED.
+**[Superseded 2026-07-11 by WPG.20 — MMF-backed save is now ported + byte-exact
+goldened; see the WPG.20 record at the top.]**
 **(2)** `PreserveNodeVoltages` (`Ymatrix.pas:298/449`): `update_vbus`/
 `restore_node_v_from_vbus` (Solution.pas:2377/2392) now bracket `build_y_matrix`
 (was an inert NOT_PORTED note); net no-op while node count is stable (harmonics/

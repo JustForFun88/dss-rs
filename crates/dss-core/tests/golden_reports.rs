@@ -591,6 +591,105 @@ fn binsave_matches_oracle() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Meta for the WPG.20 MMF-backed binary-save golden. Adds `absent` (files that
+/// must NOT be emitted — the `Assigned(dQ)=false` case) and the per-action
+/// `GlobalResult` decomposition (`result_files`/`result_tags`) so the Rust
+/// runner rebuilds each expected result against its own scratch path.
+#[derive(Debug, Deserialize)]
+struct BinSaveMmfMeta {
+    deck: Vec<String>,
+    actions: Vec<String>,
+    files: Vec<BinSaveFile>,
+    absent: Vec<String>,
+    result_files: Vec<Vec<String>>,
+    result_tags: Vec<Vec<String>>,
+}
+
+/// WPG.20: MMF-backed (`MemoryMapping=Yes`) `Action=SngSave/DblSave`. Under MMF
+/// the multipliers live in a memory-mapped file; the oracle re-reads each value
+/// through `InterpretDblArrayMMF` at save time (Pascal `SaveToDblFile`/
+/// `SaveToSngFile`, LoadShape.pas:1898-1905/1956-1963 P, :1921-1927/:1982-1988
+/// Q). The port eagerly read the file into `p_mult`/`q_mult` at directive time
+/// (`read_mmf_raw`), so the same non-MMF snapshot emits the identical bytes.
+/// Byte-exact `Vec<u8>` compare of every `_P`/`_Q` file, PLUS: (a) the `_Q`-gating
+/// — `md` has no `qmult` so `md_Q.*` must be ABSENT (Pascal `Assigned(dQ)` false);
+/// (b) the exact per-action `GlobalResult` (`mult=[…],  Qmult=[…]`, the Q clause
+/// joined with comma+two-spaces, probe-proven). The MMF source files resolve via
+/// the `@FIXTURES@` token on both engines.
+#[test]
+fn binsave_mmf_matches_oracle() {
+    let dir = reports_dir();
+    let meta: BinSaveMmfMeta = {
+        let p = dir.join("loadshape_binsave_mmf.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+
+    // Forward slashes; no canonicalize (its `\\?\` prefix breaks the parser).
+    let fixtures = fixtures_dir().to_string_lossy().replace('\\', "/");
+    let scratch = scratch_dir("binsave_mmf");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(&c.replace("@FIXTURES@", &fixtures));
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    assert!(
+        dss.errors().is_empty(),
+        "binsave_mmf setup: {:?}",
+        dss.errors()
+    );
+
+    // Rebuild the expected per-action `GlobalResult` against this scratch dir:
+    // `tag=[ftag=path]`, the Q clause joined by `AppendGlobalResult`'s `', '` plus
+    // the clause's own leading space -> `],  Qmult=[` (comma + TWO spaces).
+    let p = |n: &str| scratch.join(n).display().to_string();
+    assert_eq!(meta.actions.len(), meta.result_files.len());
+    assert_eq!(meta.actions.len(), meta.result_tags.len());
+    for (i, c) in meta.actions.iter().enumerate() {
+        let files = &meta.result_files[i];
+        let tags = &meta.result_tags[i];
+        assert_eq!(tags.len(), 2 * files.len());
+        let mut exp = String::new();
+        for (k, f) in files.iter().enumerate() {
+            let obj_tag = &tags[2 * k]; // mult / Qmult
+            let ftag = &tags[2 * k + 1]; // sngfile / dblfile
+            if k == 0 {
+                exp.push_str(&format!("{obj_tag}=[{ftag}={}]", p(f)));
+            } else {
+                // AppendGlobalResult joiner ', ' + clause leading space.
+                exp.push_str(&format!(",  {obj_tag}=[{ftag}={}]", p(f)));
+            }
+        }
+        dss.command(c);
+        assert_eq!(&dss.result(), &exp, "GlobalResult after {c:?}");
+    }
+    assert!(dss.errors().is_empty(), "binsave_mmf: {:?}", dss.errors());
+
+    // The `Assigned(dQ)=false` case: no `_Q` file for the qmult-less shape.
+    for a in &meta.absent {
+        assert!(
+            !scratch.join(a).exists(),
+            "binsave_mmf: {a} must NOT be written (Assigned(dQ) false)"
+        );
+    }
+
+    for f in &meta.files {
+        let golden = std::fs::read(dir.join(&f.golden))
+            .unwrap_or_else(|e| panic!("read golden {}: {e}", f.golden));
+        let produced = std::fs::read(scratch.join(&f.produced))
+            .unwrap_or_else(|e| panic!("read produced {}: {e}", f.produced));
+        assert_eq!(
+            produced, golden,
+            "binsave_mmf: bytes differ for {} (golden {})",
+            f.produced, f.golden
+        );
+    }
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// Compile a **heavy** master once and diff several reports against the oracle,
 /// avoiding a per-report recompile (IEEE 8500 is ~6100 devices / 8531 nodes).
 /// Each `(stem, policy)` reads its own `<stem>.meta.json`; all must agree on the

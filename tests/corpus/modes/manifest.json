@@ -154,6 +154,88 @@
    "notes": "WPG.17 LoadShape MemoryMapping=Yes + Set/Get TotalTime. Self-contained (no var, no non-MM File=). sngfile/dblfile/raw mult=(sngfile=) MMF are fixed-interval = I/O-only (numerically identical to non-MM, exercising the sng/dbl/raw MMF readers); the ls_pq shape is the feature axis: its P column is exponent notation and the MMF text accept-set drops sign/exponent, so ld_pq draws 501 kW (P mult 5.01) at hour 8 under MMF vs 50 kW (0.50) without it. Under MMF the array props dump the (<directive>) round-trip. Oracle-validated (pinned dss-python 0.15.7): compiles+solves+converges; AllBusVmag fingerprint bit-identical across TWO separate oracle processes (38c28c752fa5ecae); feature-sensitive \u2014 flipping MemoryMapping off the pq shape changes the fingerprint to e363c3929e7d692f (ld_pq_P 167->16.7 W/phase). The trailing Set/Get totaltime exercises the option surface (inert for the compared fingerprint)."
   },
   {
+   "path": "shape_filearr/shape_filearr.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Loadshape.ls_file",
+     "props": [
+      "npts",
+      "interval",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_col",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_hdr",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_sng",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_dbl",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_short",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_norm",
+     "props": [
+      "npts",
+      "mult",
+      "pmax"
+     ]
+    },
+    {
+     "element": "Spectrum.sp",
+     "props": [
+      "NumHarm",
+      "harmonic",
+      "%mag",
+      "angle"
+     ]
+    },
+    {
+     "element": "XYcurve.xyc",
+     "props": [
+      "npts",
+      "Xarray",
+      "Yarray"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.19",
+   "notes": "WPG.19 non-memory-mapped file-backed numeric arrays (Pascal InterpretDblArray, Common/Utilities.pas:461-566) for array properties WITHOUT MemoryMapping=Yes \u2014 the last blocker of the ckt24 MemoryMappingLoadShapes family (LS_PhaseB/C use mult=(file=...) action=normalize). Covers, on a LoadShape: mult=(file=) single column, column=2 (1-based), header=yes (skip 1 line), sngfile=/dblfile= inline binary directives, a short file (5 rows, npts=8) that shrinks NumPoints to 5 (Pascal Result:=i-1), and action=normalize which runs AFTER the file read (fa_norm peak 2.0 -> mult /2 = [0.25 0.5 1 0.75 0.4 0.2 0.6 0.3]). SITE 2 (generic DSSObjectHelper double-array path): Spectrum %mag=(file=) and XYcurve Yarray=(file=). Oracle-validated (pinned dss-python 0.15.7): compiles+solves+converges (2 iters); full fingerprint (converged/iters, YNodeVarray, 7 monitor channel sets, loadshape npts+mult, Spectrum %mag/NumHarm, XYcurve Yarray) bit-identical across TWO separate oracle processes (6225f27521de809e); feature-sensitive \u2014 stripping every mult=(file=) directive leaves empty shapes and the daily solve raises an access violation on the oracle (materially different). Fixtures regenerate via tools/decks/gen_shape_filearr_fixtures.py."
+  },
+  {
    "path": "generaltime.dss",
    "kind": "micro",
    "n_steps": 8,

@@ -1,6 +1,6 @@
 # Corpus coverage
 
-_Generated 2026-07-10 10:48:43 UTC by
+_Generated 2026-07-11 04:28:53 UTC by
 `tools/corpus/coverage_report.py`. Do not edit by hand._
 
 Live oracle-comparison coverage of the vendored `electricdss-tst` corpus
@@ -11,9 +11,9 @@ one manifest (enforced by `corpus_manifest.rs`).
 |---|---|
 | `missing_dependency` | 10 |
 | `not_an_entry_point` | 580 |
-| `skipped_needs_investigation` | 16 |
+| `skipped_needs_investigation` | 17 |
 | `skipped_oracle_issue` | 33 |
-| `skipped_unsupported` | 50 |
+| `skipped_unsupported` | 49 |
 | `solvable_now` | 226 |
 | **total** | **915** |
 
