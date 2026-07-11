@@ -317,6 +317,65 @@ fn makeposseq_generator_xdp_trips_kva_divide() {
     )));
 }
 
+// --- CF-C Port 2: UserModel/UserData property surface (warn + fallback) ---
+
+/// Edit one property through the real property engine, returning any messages
+/// the side effect queued on the object.
+fn edit_gen_prop(g: &mut Generator, name: &str, value: &str) -> Vec<String> {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let idx = cls.property_index(name).expect("known Generator property");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+    };
+    cls.edit_property(g, idx, value, &mut eng).unwrap();
+    // The "Not Loaded" diagnostic is queued on the object (push_error), not on
+    // the PropEngine error sink; drain both so callers see everything.
+    let mut msgs = errors;
+    msgs.extend(g.cd.obj.take_errors());
+    msgs
+}
+
+/// `UserModel=<dll>` parses (no longer a hard NOT_PORTED error), stores the name
+/// for the dump, and warns that the DLL is not loaded (safe-Rust fallback).
+#[test]
+fn user_model_stores_and_warns_not_loaded() {
+    let mut g = gen_3ph();
+    let msgs = edit_gen_prop(&mut g, "UserModel", "Indmach012a");
+    assert_eq!(g.user_model_name, "Indmach012a");
+    assert_eq!(g.get_string(prop::USERMODEL), "Indmach012a"); // dump parity
+    assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
+    assert!(msgs[0].contains("Not Loaded"));
+    assert!(msgs[0].contains("Indmach012a"));
+    assert!(msgs[0].contains("built-in model"));
+}
+
+/// `UserData` stores (for the dump) and — since no user model exists — is a
+/// silent no-op (Pascal `if UserModel.Exists then Edit`).
+#[test]
+fn user_data_stores_without_warning() {
+    let mut g = gen_3ph();
+    let msgs = edit_gen_prop(&mut g, "UserData", "(rs=0.03 xs=0.08)");
+    assert_eq!(g.user_data, "(rs=0.03 xs=0.08)");
+    assert_eq!(g.get_string(prop::USERDATA), "(rs=0.03 xs=0.08)");
+    assert!(msgs.is_empty(), "UserData must not warn: {msgs:?}");
+}
+
+/// Pascal `Set_Name` bails on a blank / `none` name — no warning.
+#[test]
+fn user_model_none_does_not_warn() {
+    let mut g = gen_3ph();
+    let msgs = edit_gen_prop(&mut g, "UserModel", "none");
+    assert!(msgs.is_empty(), "none must not warn: {msgs:?}");
+}
+
 /// 1-phase generator: V stays base kV, and NO power split (oldPhases==1).
 #[test]
 fn makeposseq_generator_single_phase() {

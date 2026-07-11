@@ -29,6 +29,45 @@ exclusively Phase-9 actor/parallel mode (SolveAll/NewActor/Clone/Abort +
 ActiveActor/CPU/Parallel options) + `CapControl.ControlSignal` — explicitly outside
 1:1 acceptance (PORTING_PLAN §"stopping before Phase 9 = complete simulator").
 
+### CF-C — CapControl FOLLOWCONTROL + user-model property surface (2026-07-12)
+
+Corpus-completeness fix round. **solvable_now 245 → 248.**
+
+- **Port 1 (CapControl `Type=follow` / `ControlSignal`).** The FOLLOWCONTROL
+  machinery was present but a control-dispatch bug (`solution/controls/dispatch.rs`)
+  aborted the sample with "Monitored element not set" whenever a CapControl had no
+  monitored element — but Pascal `RecalcElementData` (CapControl.pas l.598-609)
+  leaves `MonitoredElement = NIL` for TIME/FOLLOW and uses `effElement :=
+  ControlledElement`. Fix: `monitored.unwrap_or(target)` (self-monitor), since every
+  other control type without a monitored element already errors at parse. Migrated
+  `Test/CapControlFollow.dss` skipped_unsupported → solvable_now (24-step daily walk,
+  Cap1Mon/Cap2Mon power channels + full V compare pin the FOLLOW switching schedule
+  vs the pinned oracle; `compare_eventlog` deliberately not used — the deck solves
+  the whole day at compile with eventlog off, so a post-compile eventlog is logged
+  asymmetrically at the arm/fire boundary). +4 FOLLOW sample-arm unit tests.
+- **Port 2 (Generator UserModel/UserData + Storage DynaDLL/DynaData surface).**
+  Removed `NOT_PORTED` from these four props; they now parse, store, and dump. The
+  `UserModel`/`DynaDLL` side effects emit a non-fatal "Not Loaded" diagnostic and
+  fall back to the built-in model — matching the official Direct DLL's warn-and-solve
+  (Pascal `TGenUserModel`/`TStoreDynaModel.Set_Name`, DoSimpleMsg 570/1570), never
+  loading a DLL (loader permanently out of scope, `forbid(unsafe_code)`). The DLL
+  loader remains out of scope; ShaftModel/ShaftData + Storage UserModel/UserData stay
+  NOT_PORTED (no owned deck exercises them). +6 surface unit tests.
+  - Harness: new `expect_warnings` field on `SolvableCase` (corpus_live) tolerates a
+    deck's declared non-fatal diagnostics (asserts each fires and nothing else errors),
+    mirroring `expect_solve_abort`.
+  - **Migrated** (vs `oracle: "r3723"`, since the pinned oracle raises #1570):
+    `SimpleStorageTest.dss`, `SimpleStorageTest-1ph.dss` (Rust iter 2 == r3723 iter 2).
+  - **Parked** in skipped_needs_investigation (4 Generator model=6 UserModel decks:
+    `indmachtest/Master`, Kersting4wire ×3): the dss-python-over-Oddie r3723/r4133
+    harness **raises #567** ("model designated to use user-written model, but
+    user-written model is not defined") at solve — the DoSimpleMsg is non-fatal in the
+    raw DLL (hence T-A's "r3723 YES" raw probes) but fatal through dss-python, so no
+    oracle channel yields a checkpoint. Rust reproduces Pascal `DoUserModel` 1:1
+    (Yprim-only + #567/iter) and converges via the built-in fallback. Also Kersting
+    iter 3 > raw-r3723 2 and Kersting4wireIndMotor rel 2.9e-4 stay open. Unblocking
+    needs an oracle harness that tolerates the #567/#570 DoSimpleMsg.
+
 **Named non-blocking residuals** (all documented, bounded, correctly classified,
 **outside** solvable_now — the acceptance names them):
 - **RegControl/LDC `SubXFMR` family** (port-side, tagged `live_mismatch` "BUG until

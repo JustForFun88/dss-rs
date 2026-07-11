@@ -678,6 +678,35 @@ fn corpus_guard_restores_case_dir_recursively() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// Reconcile the engine's accumulated error log against a deck's declared
+/// non-fatal `expect_warnings` (see the field doc): every actual error must
+/// match some expected substring, and every expected substring must appear.
+/// With an empty list this is exactly `errors().is_empty()`.
+fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
+    let errors = dss.errors();
+    if expect.is_empty() {
+        assert!(
+            errors.is_empty(),
+            "{ctx}: unexpected Rust engine errors: {errors:?}"
+        );
+        return;
+    }
+    let unexpected: Vec<&String> = errors
+        .iter()
+        .filter(|e| !expect.iter().any(|w| e.contains(w.as_str())))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "{ctx}: Rust engine errors not covered by expect_warnings: {unexpected:?}"
+    );
+    for w in expect {
+        assert!(
+            errors.iter().any(|e| e.contains(w.as_str())),
+            "{ctx}: expected warning {w:?} never fired (actual: {errors:?})"
+        );
+    }
+}
+
 /// Compile + solve one case on both engines and compare every captured field at
 /// every step. `c.selected_elements` is the YPrim focus set (`["*"]` = every
 /// element); element currents/powers/losses are compared for *all* elements.
@@ -712,18 +741,26 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
     for c in post {
         dss.command(c);
     }
-    assert!(
-        dss.errors().is_empty(),
-        "{label}: Rust engine errors after compile: {:?}",
-        dss.errors()
-    );
+    // A deck may deliberately produce non-fatal warnings the port reproduces
+    // 1:1 (CF-C Port 2: a user-written model DLL is not loadable in safe Rust,
+    // so the engine warns and falls back to the built-in model — exactly the
+    // official Direct DLL's warn-and-solve, which is why these decks gate vs
+    // `oracle: "r3723"`). `expect_warnings` lists the substrings those messages
+    // must contain: every actual error must match one (else it is an unexpected
+    // failure), and every declared substring must actually appear (else the
+    // warning silently stopped firing). Empty list ⇒ zero errors, as before.
+    assert_expected_warnings(&dss, &c.expect_warnings, &format!("{label}: after compile"));
+    // The warnings fire once at compile and then persist in the accumulating
+    // error log; per step we require NO NEW errors beyond that baseline.
+    let baseline_errors = dss.errors().len();
 
     for (i, cp) in oc.checkpoints.iter().enumerate() {
         dss.command("solve");
-        assert!(
-            dss.errors().is_empty(),
-            "{label} step {i}: Rust engine errors: {:?}",
-            dss.errors()
+        assert_eq!(
+            dss.errors().len(),
+            baseline_errors,
+            "{label} step {i}: new Rust engine errors: {:?}",
+            &dss.errors()[baseline_errors.min(dss.errors().len())..]
         );
         // WPG.5: capture `DSS.GlobalResult` right after the solve — the `?`-query
         // probes below overwrite it (each `?` clears + resets GlobalResult).
@@ -1076,6 +1113,14 @@ struct SolvableCase {
     /// `WP8.*` → PHASE8_PLAN.md). Mandatory while `pending` is true.
     #[serde(default)]
     wp: Option<String>,
+    /// Non-fatal warnings this deck's compile deliberately produces, which the
+    /// port reproduces 1:1 (CF-C Port 2: a user-written model DLL that safe Rust
+    /// cannot load — the engine warns and falls back to the built-in model, like
+    /// the official Direct DLL). Each string is a substring an actual engine
+    /// error must contain; every actual error must match one, and every listed
+    /// substring must actually appear. Empty ⇒ zero errors are tolerated.
+    #[serde(default)]
+    expect_warnings: Vec<String>,
     /// Target oracle for this case's live compare (UPGRADE_PLAN.md): absent =
     /// the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle; `"capi015"` =
     /// the dss_capi 0.15.x-line oracle; `"r3723"|"r4088"|"r4133"` = an

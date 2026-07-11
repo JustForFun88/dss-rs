@@ -146,10 +146,17 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Xdpp"),
         PropDef::double("H"),
         PropDef::double("D"),
-        // User-written model DLLs are never ported (safe-Rust); stored + dumped
-        // but setting one is a hard error.
-        PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
-        PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
+        // User-written model DLLs are never *loaded* in safe Rust (the loader is
+        // permanently out of scope — forbid(unsafe_code)). CF-C Port 2 ports the
+        // property SURFACE: `UserModel`/`UserData` parse, store, and dump; the
+        // `UserModel` side effect emits a non-fatal "Not Loaded" diagnostic and
+        // falls back to the built-in model — matching the official Direct DLL
+        // (Generator.pas TGenUserModel.Set_Name l.166, DoSimpleMsg 570), which
+        // warns and solves through, not the pinned oracle (which raises #570).
+        PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
+        PropDef::string("UserData"),
+        // ShaftModel/ShaftData: no owned deck exercises them; the DLL loader is
+        // still out of scope, so they remain a hard error until a deck needs them.
         PropDef::string("ShaftModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("ShaftData").flags(PropFlags::NOT_PORTED),
         PropDef::double("DutyStart"),
@@ -323,6 +330,28 @@ fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
 }
 
 impl Generator {
+    /// CF-C Port 2 — the `UserModel` side effect (Pascal
+    /// `TGenUserModel.Set_Name`, Generator.pas/GenUserModel.pas l.140-166).
+    /// Safe Rust never loads the DLL, so the load always "fails". `Set_Name`
+    /// bails silently on an empty / `none` name; for any real name it emits the
+    /// non-fatal `DoSimpleMsg(... 'Not Loaded' ..., 570)` and leaves `Exists`
+    /// false, so the generator keeps using its built-in model. The message is a
+    /// warn-level diagnostic (matching the official Direct DLL's severity, NOT
+    /// the pinned oracle's hard raise); the `DSS Directory = ...` tail is
+    /// omitted (environment-dependent and unreachable from a property side
+    /// effect). The DLL loader is permanently out of scope, documented here.
+    fn warn_user_model_not_loaded(&mut self) {
+        let name = self.user_model_name.trim().to_string();
+        if name.is_empty() || name.eq_ignore_ascii_case("none") {
+            return; // Pascal Set_Name `Exit` on blank / 'none'
+        }
+        let full = format!("Generator.{}", self.cd.obj.name());
+        self.cd.obj.push_error(format!(
+            "Generator User Model {name} Not Loaded (user-written model DLL loading is out of \
+             scope in safe Rust). {full} falls back to its built-in model."
+        ));
+    }
+
     /// Pascal `TGeneratorObj.Create`.
     pub fn new(name: &str) -> Self {
         let mut cd = CktElementData::new(name, prop::NUM_PROPS);
