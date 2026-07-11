@@ -1187,7 +1187,12 @@ fn parse_switch_class(
     line_ref: crate::elements::traits::ElemRef,
     line_norm_amps: f64,
 ) -> (String, f64, f64) {
-    let controls_by_class = |class: &str| -> Option<f64> {
+    // Does any control of `class` drive this line? Returns the matched control's
+    // `ElemRef` so a class-specific property can be read afterwards (never reads
+    // any property here — Relay/Recloser have no double at Fuse's prop-6 slot, so
+    // an unconditional `get_f64(6)` would panic on them; Pascal reads
+    // `RatedCurrent` only inside the Fuse branch).
+    let controlling = |class: &str| -> Option<crate::elements::traits::ElemRef> {
         for &c in &ckt.controls {
             if !classes[c.cls]
                 .props
@@ -1199,19 +1204,20 @@ fn parse_switch_class(
             let ctrl = &classes[c.cls].objects[c.idx];
             let controlled = ctrl.as_ckt_element().and_then(|e| e.controlled_element());
             if controlled == Some(line_ref) {
-                // Return the Fuse RatedCurrent (prop 6); ignored for Relay/Recloser.
-                return Some(ctrl.get_f64(6));
+                return Some(c);
             }
         }
         None
     };
-    if let Some(rated_current) = controls_by_class("Fuse") {
+    if let Some(c) = controlling("Fuse") {
+        // Fuse wins: rated = RatedCurrent (prop 6), breaking = 0.
+        let rated_current = classes[c.cls].objects[c.idx].get_f64(6);
         return ("Fuse".to_string(), rated_current, 0.0);
     }
-    if controls_by_class("Relay").is_some() {
+    if controlling("Relay").is_some() {
         return ("Breaker".to_string(), line_norm_amps, line_norm_amps);
     }
-    if controls_by_class("Recloser").is_some() {
+    if controlling("Recloser").is_some() {
         return ("Recloser".to_string(), line_norm_amps, line_norm_amps);
     }
     (

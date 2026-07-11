@@ -89,3 +89,78 @@ fn add_hashed_uuid_rejects_garbage() {
     cim.write_hashed_uuids(&mut out);
     assert!(out.is_empty(), "failed add left state behind: {out}");
 }
+
+/// Regression for the `IEEE13_CDPSM` panic: `ParseSwitchClass` must classify a
+/// **Relay**-controlled switch as `Breaker` without reading any Relay double
+/// property. The previous code read `get_f64(6)` for every matched control
+/// class; Fuse prop 6 is `RatedCurrent` (a double), but Relay prop 6 is
+/// `PhaseCurve` (a curve reference) — so the export panicked
+/// `unreachable!("Relay has no double property 6")` on any Relay-guarded switch
+/// (`ExportCIMXML.pas:451` reads `RatedCurrent` only inside the Fuse branch).
+#[test]
+fn parse_switch_class_relay_does_not_read_relay_double() {
+    use crate::exec::Dss;
+
+    let scratch = std::env::temp_dir().join("dss_cim_relay_switch_regression");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.relayswitch basekv=115 bus1=sourcebus phases=3");
+    dss.command("new line.brkr1 phases=3 bus1=sourcebus bus2=b2 switch=y");
+    dss.command(
+        "new relay.brkr1 monitoredobj=line.brkr1 type=current phasetrip=1200 groundtrip=600",
+    );
+    dss.command("set voltagebases=[115]");
+    dss.command("calcv");
+    dss.command("solve");
+    dss.command(&format!(
+        "set datapath=\"{}\"",
+        scratch.to_string_lossy().replace('\\', "/")
+    ));
+    // Before the fix this line panicked (`unreachable!`) inside the export.
+    dss.command("export cim100");
+    assert!(
+        dss.errors().is_empty(),
+        "export cim100 with a Relay-controlled switch errored: {:?}",
+        dss.errors()
+    );
+
+    // The Relay-guarded switch is exported as a Breaker.
+    let produced = std::fs::read_dir(&scratch)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().to_lowercase().ends_with("_cim100x.xml"))
+                .unwrap_or(false)
+        })
+        .expect("CIM100 output file produced");
+    let xml = std::fs::read_to_string(&produced).unwrap();
+    // The deck has exactly one switch (`line.brkr1 switch=y`), Relay-guarded, so
+    // the export must contain exactly one `<cim:Breaker …>` element — and must NOT
+    // fall back to Fuse or Recloser. An exact-count (not a substring) check catches
+    // both a dropped/duplicated switch and a misclassification. `<cim:Breaker `
+    // (trailing space) matches the opening tag only, not the `</cim:Breaker>` close.
+    let breaker_opens = xml.matches("<cim:Breaker ").count();
+    assert_eq!(
+        breaker_opens,
+        1,
+        "expected exactly one <cim:Breaker> element (the Relay-guarded switch), \
+         found {breaker_opens} in {}",
+        produced.display()
+    );
+    assert!(
+        !xml.contains("<cim:Fuse "),
+        "Relay-guarded switch misclassified as Fuse in {}",
+        produced.display()
+    );
+    assert!(
+        !xml.contains("<cim:Recloser "),
+        "Relay-guarded switch misclassified as Recloser in {}",
+        produced.display()
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}

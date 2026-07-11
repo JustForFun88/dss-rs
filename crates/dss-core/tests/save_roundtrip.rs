@@ -54,6 +54,24 @@ fn snapshot(dss: &Dss) -> (Vec<(String, f64, f64)>, i32) {
     (v, ckt.solution.iteration)
 }
 
+/// The discrete control state — every RegControl tap number + every Capacitor's
+/// per-step on/off vector, sorted by name. This must round-trip **exactly** on
+/// every deck (a discrete decision, no float floor), so it is asserted equal
+/// pre/post for all feeders. It is what keeps the IEEE-8500 case a real gate
+/// despite that deck's inherent continuous-voltage Save floor (see
+/// `save_roundtrip_ieee8500`): a regulator/cap regression shifts a tap or a bank
+/// and fails here even when the loosened node-V band would not catch it.
+type DiscreteState = (
+    std::collections::BTreeMap<String, i32>,
+    std::collections::BTreeMap<String, Vec<i32>>,
+);
+fn discrete_state(dss: &Dss) -> DiscreteState {
+    (
+        dss.regcontrol_tap_numbers().into_iter().collect(),
+        dss.capacitor_states().into_iter().collect(),
+    )
+}
+
 /// Solve `master`, `save circuit` to a scratch dir, `clear`, re-compile the
 /// emitted `Master.dss`, re-solve, and assert node voltages (≤1e-6 rel) +
 /// iteration count match the pre-save solution.
@@ -69,6 +87,19 @@ fn snapshot(dss: &Dss) -> (Vec<(String, f64, f64)>, i32) {
 /// iteration count must be identical (proving the recompiled circuit converges
 /// to the same operating point in the same way — a structural-identity check).
 fn round_trip(tag: &str, master: PathBuf) {
+    round_trip_full(tag, master, &[], &[], 1e-6);
+}
+
+/// General round-trip driver. `pre_only` are commands applied **once**, right
+/// after the initial compile — element-creating setup (e.g. `New Energymeter…`)
+/// that gets serialized into the saved deck, so it must NOT be replayed after the
+/// re-compile (the emitted tree already carries it). `both` are option commands
+/// (`Set Maxiterations=…`) that `Save` does NOT persist, so they are re-applied
+/// on both the pre-save and post-recompile solves to reach the same fixpoint.
+/// `vtol` is the node-voltage relative tolerance (1e-6 for the clean-round-trip
+/// feeders; a proven Save-precision floor for IEEE-8500, see that test). Discrete
+/// control state (reg taps + cap banks) is always compared **exactly**.
+fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str], vtol: f64) {
     assert!(master.is_file(), "missing master: {}", master.display());
     let out = scratch_dir(tag);
 
@@ -78,8 +109,15 @@ fn round_trip(tag: &str, master: PathBuf) {
         "compile \"{}\"",
         master.to_string_lossy().replace('\\', "/")
     ));
+    for c in pre_only {
+        dss.command(c);
+    }
+    for c in both {
+        dss.command(c);
+    }
     // Settle then warm re-solve: some masters embed `Solve` (IEEE13/37), some do
-    // not (IEEE123), so solve twice to guarantee a warm re-solve on both sides.
+    // not (IEEE123/34/8500), so solve twice to guarantee a warm re-solve on both
+    // sides.
     dss.command("solve");
     dss.command("solve");
     assert!(
@@ -88,6 +126,7 @@ fn round_trip(tag: &str, master: PathBuf) {
         dss.errors()
     );
     let (pre, pre_iter) = snapshot(&dss);
+    let pre_discrete = discrete_state(&dss);
     assert!(!pre.is_empty(), "{tag}: no nodes pre-save");
 
     dss.command(&format!(
@@ -108,6 +147,11 @@ fn round_trip(tag: &str, master: PathBuf) {
         "compile \"{}\"",
         emitted_master.to_string_lossy().replace('\\', "/")
     ));
+    // Re-apply only the non-persisted option commands (element-creating `pre_only`
+    // setup is already in the emitted deck — replaying it would duplicate).
+    for c in both {
+        dss.command(c);
+    }
     // Cold solve settles regulator taps to the same fixpoint, then a warm
     // re-solve gives the count comparable to the pre-save warm re-solve.
     dss.command("solve");
@@ -123,6 +167,7 @@ fn round_trip(tag: &str, master: PathBuf) {
         dss.errors()
     );
     let (post, post_iter) = snapshot(&dss);
+    let post_discrete = discrete_state(&dss);
 
     // Iteration count exact (warm re-solve on both sides).
     assert_eq!(
@@ -130,7 +175,19 @@ fn round_trip(tag: &str, master: PathBuf) {
         "{tag}: warm-re-solve iteration count changed across save round-trip ({pre_iter} -> {post_iter})"
     );
 
-    // Node voltages ≤1e-6 rel (matched by node name).
+    // Discrete control state exact (reg tap numbers + capacitor bank states) —
+    // no float floor on a discrete decision, so this is checked at exact equality
+    // on every deck including IEEE-8500.
+    assert_eq!(
+        pre_discrete.0, post_discrete.0,
+        "{tag}: RegControl tap numbers changed across save round-trip"
+    );
+    assert_eq!(
+        pre_discrete.1, post_discrete.1,
+        "{tag}: Capacitor bank states changed across save round-trip"
+    );
+
+    // Node voltages within `vtol` rel (matched by node name).
     use std::collections::HashMap;
     let post_map: HashMap<&str, (f64, f64)> = post
         .iter()
@@ -152,8 +209,8 @@ fn round_trip(tag: &str, master: PathBuf) {
         let d = ((post_re - pre_re).powi(2) + (post_im - pre_im).powi(2)).sqrt();
         let rel = if mag > 0.0 { d / mag } else { d };
         assert!(
-            rel <= 1e-6,
-            "{tag}: node {name} voltage diverged rel={rel:.3e} \
+            rel <= vtol,
+            "{tag}: node {name} voltage diverged rel={rel:.3e} (>{vtol:.1e}) \
              (pre={pre_re:.6}+j{pre_im:.6}, post={post_re:.6}+j{post_im:.6})"
         );
     }
@@ -182,6 +239,72 @@ fn save_roundtrip_ieee123() {
     round_trip(
         "ieee123",
         corpus("Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss"),
+    );
+}
+
+/// IEEE 34-bus (PORTING_PLAN §6 literal acceptance). `ieee34Mod1.dss` is a
+/// `not_an_entry_point` fragment (its `Run_IEEE34Mod1.dss` driver adds the meter
+/// then solves), so we compile it and attach `Energymeter.M1` on `Line.L1` (the
+/// same meter the canonical run uses) before solving. That meter is `pre_only`,
+/// so it serializes into the emitted `EnergyMeter.dss` and the round-trip also
+/// exercises the meter-zone save/re-parse path. Six RegControls settle taps on the
+/// cold solve; the warm-re-solve iteration count and node V (≤1e-6 rel) must
+/// round-trip.
+#[test]
+fn save_roundtrip_ieee34() {
+    round_trip_full(
+        "ieee34",
+        corpus("Version8/Distrib/IEEETestCases/34Bus/ieee34Mod1.dss"),
+        &["New Energymeter.M1 Line.L1 1"],
+        &[],
+        1e-6,
+    );
+}
+
+/// The IEEE-8500 node-voltage round-trip floor, **proven inherent to
+/// `Save circuit` by the oracle** (see below) — NOT a port slack.
+const IEEE8500_SAVE_VTOL: f64 = 3e-4;
+
+/// IEEE 8500-Node (PORTING_PLAN §6 literal acceptance; 8531 nodes / ~6100
+/// devices). The unmodified `Master.dss` embeds no `Solve` and needs
+/// `Maxiterations=20` to converge (as `Run_8500Node.dss` sets); that option is
+/// NOT persisted by `Save`, so it is applied on both the pre-save and
+/// post-recompile solves (`both`).
+///
+/// Unlike the four clean-round-trip feeders above, IEEE-8500's node voltages do
+/// **not** round-trip to 1e-6 — and this is an inherent property of OpenDSS
+/// `Save circuit`, not the port. `Save` re-emits derived quantities (e.g. the
+/// substation source reactor `X=(1.051 0.88 0.001 3 * - - 115 12.47 / sqr *)`,
+/// and every `%g`-rendered parameter) at 15 significant digits; the sub-ulp
+/// re-parse perturbation is then **amplified** by the ~thousand service loads
+/// operating in their `Model=1`/`Vminpu=0.88` constant-Z region into a
+/// worst-case ~2.02e-4 rel shift at the deepest 0.208 kV secondary nodes. The
+/// pinned dss-python oracle (0.15.7) reproduces this **bit-for-bit**: its own
+/// `Save`→recompile→resolve of this deck yields the identical worst node
+/// (`SX3312692A.1`, 2.022253e-4) and the identical pre/post total power
+/// (−11983.486783 → −11983.420712 kW) that our engine produces — so the port is
+/// faithful and 1e-6 is simply unachievable here for either engine. Reproducible
+/// probe: `python tools/golden/probe_save_roundtrip_8500.py` (pinned oracle,
+/// 2026-07-11); numbers recorded in `tests/TOLERANCE_NOTES.md`
+/// §"`Save circuit` round-trip floor — IEEE-8500".
+///
+/// The gate stays strong despite the loosened band: iteration count is exact,
+/// and the **discrete** control state — all 12 RegControl tap numbers + all 10
+/// capacitor bank states — is asserted **exactly** (in `round_trip_full`). A real
+/// regulator/cap/element regression moves a tap, a bank, or the whole profile by
+/// far more than 3e-4 and fails; the 3e-4 band only absorbs the proven,
+/// deterministic Save-precision floor (~1.5× over the observed 2.02e-4).
+///
+/// Runs in the default suite: the four solves + save + recompile measure ~0.34 s
+/// under the test profile's opt-3 engine (measured 2026-07-11) — no expensive gate.
+#[test]
+fn save_roundtrip_ieee8500() {
+    round_trip_full(
+        "ieee8500",
+        corpus("Version8/Distrib/IEEETestCases/8500-Node/Master.dss"),
+        &[],
+        &["Set Maxiterations=20"],
+        IEEE8500_SAVE_VTOL,
     );
 }
 

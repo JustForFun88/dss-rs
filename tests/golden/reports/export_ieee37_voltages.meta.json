@@ -1,0 +1,9 @@
+{
+  "report": "voltages",
+  "master": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
+  "post": [
+    "solve"
+  ],
+  "fixture": "ieee37",
+  "suffix": "EXP_VOLTAGES.csv"
+}
