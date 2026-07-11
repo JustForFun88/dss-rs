@@ -191,6 +191,10 @@ pub(crate) mod cmd {
     pub const BUSCOORDS: usize = 58;
     pub const LATLONGCOORDS: usize = 94;
     pub const MAKE_BUS_LIST: usize = 59;
+    /// `MakePosSeq` (`ExecCommands.pas`): the 60th `TExecCommand`, dispatched to
+    /// `TExecHelper.DoMakePosSeq`. (The array position is 60 — index 59 in
+    /// `EXEC_COMMANDS`, right after `MakeBusList`.)
+    pub const MAKE_POS_SEQ: usize = 60;
     pub const INTERPOLATE: usize = 62;
     pub const ALIGN_FILE: usize = 63;
     pub const DI_PLOT: usize = 69;
