@@ -398,6 +398,84 @@ fn event_log_records_close_when_enabled() {
     assert!(line.contains("**CLOSED**"));
 }
 
+// --- FOLLOWCONTROL sample arm (CF-C Port 1; CapControl.pas Sample l.1151) ---
+
+use crate::elements::general::load_shape::LoadShapeObj;
+
+/// FOLLOW with no ControlSignal aborts the solve (Pascal `DoSimpleMsg` 10362 +
+/// `DSS.SolutionAbort := True`): `sample` returns `true` (the dispatcher lifts
+/// it to `solution_abort`), records the message, and does not switch.
+#[test]
+fn follow_without_control_signal_requests_abort() {
+    let mut cc = CapControl::new("cc");
+    cc.control_type = ctrl_type::FOLLOW;
+    cc.ctrl_signal_shape = None;
+    let mut cap = MockCap::one_step(true);
+    let mut mon = MockMon::new(3);
+    let mut sc = Scratch::new();
+    let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    assert!(abort, "no ControlSignal must request solution abort");
+    assert!(!cc.should_switch);
+    assert_eq!(sc.errors.len(), 1);
+    assert!(sc.errors[0].contains("Aborting solution"));
+    assert!(sc.errors[0].contains("Follow"));
+}
+
+/// FOLLOW signal nonzero (wants ON) while the bank is OPEN → arm CLOSE.
+#[test]
+fn follow_signal_on_arms_close_when_open() {
+    let mut cc = CapControl::new("cc");
+    cc.control_type = ctrl_type::FOLLOW;
+    cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![1.0]));
+    let mut cap = MockCap::one_step(false); // bank open → PresentState OPEN
+    let mut mon = MockMon::new(3);
+    let mut sc = Scratch::new();
+    let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    assert!(!abort);
+    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert!(cc.should_switch);
+    assert!(cc.armed);
+    assert_eq!(cc.ccd.time_delay, 15.0); // ONDelay
+}
+
+/// FOLLOW signal zero (wants OFF) while the bank is CLOSED → arm OPEN.
+#[test]
+fn follow_signal_off_arms_open_when_closed() {
+    let mut cc = CapControl::new("cc");
+    cc.control_type = ctrl_type::FOLLOW;
+    cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![0.0]));
+    let mut cap = MockCap::one_step(true); // bank closed → PresentState CLOSE
+    let mut mon = MockMon::new(3);
+    let mut sc = Scratch::new();
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    assert_eq!(cc.pending_change, CTRL_OPEN);
+    assert!(cc.should_switch);
+    assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
+}
+
+/// FOLLOW signal matching the present state does NOT switch, and — unlike every
+/// other control type — leaves `PendingChange` untouched (Pascal has no `else`
+/// resetting it to CTRL_NONE in the FOLLOW arm). Seed a non-NONE pending and
+/// assert it survives.
+#[test]
+fn follow_signal_matching_state_leaves_pending_untouched() {
+    let mut cc = CapControl::new("cc");
+    cc.control_type = ctrl_type::FOLLOW;
+    cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![1.0]));
+    cc.set_pending_change(CTRL_CLOSE); // sentinel that the FOLLOW arm must not clear
+    let mut cap = MockCap::one_step(true); // closed; signal wants ON → no switch
+    let mut mon = MockMon::new(3);
+    let mut sc = Scratch::new();
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    assert!(!cc.should_switch);
+    // The no-`else` quirk: pending stays CTRL_CLOSE (not reset to CTRL_NONE).
+    // With should_switch false and pending != NONE, the arm/disarm block also
+    // leaves the queue empty (armed was false).
+    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert!(!cc.armed);
+    assert!(sc.queue.is_empty());
+}
+
 #[test]
 fn pf_1to2_maps_leading_above_one() {
     // Lagging (im>0): PF in [0,1]. Leading (im<0): PF in [1,2].
