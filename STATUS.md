@@ -153,6 +153,186 @@ all 24 (independent cross-check + induced-cut self-consistency).
 Stage B (tearing / `.graph` engine round-trip, `Create_MeTIS_Zones`) can now build
 on the completed `part_graph_kway`.
 
+**WP-AD.2 Stage B — tearing machinery, COMPLETE (2026-07-11, gate-green).**
+Behavioral spec = official r3723 Delphi (`Common/Circuit.pas`, plan D10). The
+partition + zone machinery (part 1) plus the torn-file emission + zone meters +
+PConn (this WP) are both landed; the earlier follow-up deferral is CLOSED (see the
+Stage-B completion record below). Landed:
+- **Circuit AD fields** (`circuit/tearing.rs::AdTearing`, wired as `Circuit.ad`):
+  `Coverage`/`Actual_Coverage`, `Num_SubCkts` (ctor default `CPU_Cores-1`, D6),
+  `Link_Branches`, `PConn_Names`/`PConn_Voltages`, `Locations`, `BusZones`,
+  `MeTISZones`, `UseUserLinks`, `VIndex`, and the `SparseComplex` matrix slots
+  `Contours/ContoursT/ZLL/ZCT/ZCC/Y4/Ic` as typed WP-AD.3 placeholders
+  (Circuit.pas:205–231/321).
+- **`Create_MeTIS_graph`** 1:1 (`exec/tearing.rs::build_metis_graph`,
+  Circuit.pas:1213): incidence (hierarchical `Calc_Inc_Matrix_Org`) → per-column
+  dedup of parallel branches → phase-count edge weights (Transformer weight 1).
+  The OpenDSS `.graph` text writer (`support/partition.rs::write_opendss_graph`)
+  reproduces the byte-exact quirky format incl. the dropped column-0 line
+  (`NOTE(upstream-quirk)`).
+- **`support/partition.rs`** — the file round-trip glue over `dss-metis`
+  in-process (`NOTE(subst-metis)`: exec→in-process + METIS 4.0→5.2.1 step; the
+  upstream `GetNumEdges` repair loop is not ported — our edge count is exact
+  because we partition the canonical symmetric graph, not the header-corrupted
+  text). Writes `<graph>.part.<N>` in kmetis output format. dss-core now depends
+  on `dss-metis`.
+- **`Create_MeTIS_Zones`** parsing 1:1 (Circuit.pas:1350): the D5 first-line-swap
+  quirk (`NOTE(upstream-quirk)`), the ≥2-consecutive-bus zone rule, `Locations`/
+  `BusZones` fill, the final `inc(Locations[j])`.
+- **`Tear_Circuit` both branches** (Circuit.pas:1880): auto (`dss-metis`) and the
+  official manual-links branch (`get_PDE_Bus1_Location`, `get_line_bus`);
+  `Link_Branches` from `Locations` via `get_IncMatrix_Row` (the +1-adjusted
+  offset reproduced). Result string `"Sub-Circuits Created: N"` (Diakoptics.pas:526).
+- **Executive surface**: the `Tear_Circuit`/`AggregateProfiles` commands and the
+  `Num_SubCircuits`/`Coverage`/`LinkBranches`/`UseMyLinkBranches`/`ADiakoptics`
+  options are **compiled out of the vendored/oracle build** (§0.2), so they are
+  absent from `EXEC_COMMANDS`/`EXEC_OPTIONS` (which the oracle-pinned `Dump
+  commands` golden mirrors byte-exact). Registered here by **dispatch
+  interception** (`command.rs`, `set_cmd.rs`, `get_cmd.rs`) as a recorded
+  departure — the engine behaves like a `DSS_CAPI_ADIAKOPTICS` build without
+  perturbing that golden. `set ADiakoptics` and `AggregateProfiles` are scoped
+  refusals pointing at WP-AD.3/AD.5.
+- Tests: `crates/dss-core/tests/adiakoptics.rs` — synthesized radial 3-phase midi
+  (~40-bus) + macro (~200-bus) feeders, `set Num_SubCircuits=2/3; Tear_Circuit`,
+  asserting zone count + `GlobalResult`, link branches are 3-phase Lines,
+  balanced `.part.N`; manual-links cut; 1-zone request; option set/get round-trip.
+  Unit tests in `support/partition.rs` + `exec/tearing.rs` (graph text byte-exact,
+  other-terminal pairing, zones split, class-prefix).
+
+**Stage-B completion — torn-file emission + zone meters + PConn (2026-07-11,
+this WP, gate-green).** Closes the earlier follow-up deferral. `Tear_Circuit` now
+runs the full official `ADiakoptics_Tearing(AddISrc=False)` orchestration
+(Diakoptics.pas:511–534) and writes the on-disk `Torn_Circuit/` sub-project tree.
+- **Zone `EnergyMeter` placement + `PConn` capture** (`exec/tearing.rs::
+  place_zone_meters`, Circuit.pas:1941–2032): a prior-solve gate (`converged_flag`
+  — errors honestly if the power flow never converged, since PConn reads
+  `Solution.NodeV`); disables all pre-existing meters; per location derives the
+  link PDE (`Inc_Mat_Rows[get_IncMatrix_Row]`), the point-of-connection bus via
+  `get_Line_Bus(link,2)` (**Lines-only** search — a non-Line link reports error
+  5008 "Line not found", matching official), the 3-phase `PConn_Voltages`
+  (`ctopolardeg(NodeV)` → mag/1000, angle°), and issues `New EnergyMeter.Zone_<i+1>
+  element=<PDE> terminal=1 option=R action=C`. The vestigial `Term_volts[0] -
+  Term_volts[1]` |V| difference (computed-but-never-read in r3723; terminal is
+  hard-coded 1) is documented `NOTE(upstream-quirk)` and not reproduced (D5).
+- **Torn-file emission** (`exec/tearing_save.rs`): `Save_SubCircuits` (fresh
+  `Torn_Circuit` dir + reuse of `exec/save_circuit.rs` `save circuit`),
+  `Format_SubCircuits` (`Master_Interconnected.dss` support-line filter +
+  per-zone `Master.dss` + per-zone `VSource.dss` from the measured PConn via
+  `fmt_g(v,8)` = FPC `floattostrF(ffGeneral,8,3)`), `AppendIsources` (the
+  A-Diakoptics `AddISrc=TRUE` edge sources — ported though the tear path passes
+  FALSE), `Disable_All_DER` verbatim (WP-AD.3 caller). `NOTE(subst-metis)`: the
+  filter is matched case-insensitively and the zone-header cut is anchored on the
+  `New Circuit` line, because our round-trip-faithful save master casing/header
+  differs from the official DSS `Save` — the structure otherwise matches the
+  vendored official `ckt24/Torn_Circuit` reference exactly (validated by eye).
+- **Gates** (`tests/adiakoptics.rs`, committed fixtures `tests/data/adiakoptics/
+  {midi,macro}.dss` reusable by AD.3/AD.4): committed byte-stable Torn_Circuit
+  golden (`tests/golden/adiakoptics/midi_torn_tree.txt`, regen
+  `DSS_REGEN_AD_GOLDEN=1`); round-trip compile+solve of the interconnected + every
+  per-zone master (converged, sane voltages); zone-**connectivity** recompute from
+  `.graph` adjacency + `.part.N` labels; link branches asserted as real 3-phase
+  `Line` elements via the engine (not a name-prefix check); negative paths
+  (transformer manual link → "Line not found"; tear before solve → honest error);
+  + the pre-existing count/balance/dedup/option tests migrated onto the fixtures.
+  A `#[ignore]`d `ckt24_graph_diagnostic` records the vendored `.graph` shape.
+Gate: fmt + workspace clippy (`-D warnings`) clean; `cargo test --workspace`
+(pinned live oracle) exit 0.
+
+**Stage-B completion — audit settlement (2026-07-12, gate-green).** Two auditors
+(code + tests) filed 7 findings against the completion; each settled against the
+official r3723 Delphi source (D10).
+- **Zone masters dropped `Set DefaultBaseFreq` (Minor, real bug — FIXED).** Our
+  round-trip-faithful save emits `Set DefaultBaseFreq` *before* `New Circuit`
+  (a `NOTE(subst-metis)` addition the official `SaveMasterFile` omits, so the
+  circuit picks it up at `TDSSCircuit.Create`, `Fundamental := DefaultBaseFreq`,
+  Circuit.pas:416). Zone-`k` masters anchored their global section on the
+  `New Circuit` line, so that pre-header line was dropped — zone-1 and
+  `Master_Interconnected.dss` kept the deck frequency while zones 2+ silently
+  defaulted to 60 Hz (latent for any non-60 Hz AD deck; not triggered by the
+  all-60 Hz fixtures). Fixed: `tearing_save.rs::zone_pre_header` re-emits the
+  `Clear`…`New Circuit` header lines before each `New Circuit.Zone_k` so all
+  sub-circuits are frequency-consistent. Golden regenerated (one added line in
+  `zone_2/Master.dss`); new unit test `zone_pre_header_carries_default_base_freq`.
+- **PConn boundary sources pinned only by the self-golden (Major — FIXED).**
+  Added `pconn_sources_match_solved_nodev`: an **independent** numeric cross-check
+  that re-derives each zone's point-of-connection from the link `Line`'s bus-2 and
+  its boundary voltage from the *solved* `NodeV` (public bus API), then asserts the
+  **emitted** `VSource.dss` `basekv`/`angle` match (with a ~7.2 kV L-N sanity
+  bound ruling out a `/1000` slip). Catches wrong-terminal / wrong-bus / angle-sign
+  / scale errors the byte-golden alone would freeze in.
+- **`VSource.dss` case-insensitivity dependency (Minor — recorded, no fix).** The
+  boundary source is written to `VSource.dss` (capital S, 1:1 with official
+  `Format_SubCircuits`) while the copied support redirect names `Vsource.dss`;
+  these coincide only on a case-insensitive FS (Windows/NTFS = the official DSS +
+  this project platform, D10). Inherited verbatim from upstream — changing the
+  emitted case would diverge from official. Documented `NOTE(upstream-quirk)` at
+  `write_zone_vsources`.
+- **`get_Line_Bus` not-found path (Minor — recorded, no fix, D5).** Official falls
+  through to the *restored* previously-active element's bus (a stale, state-
+  dependent read, Circuit.pas:1204–1206); the port yields an empty
+  point-of-connection + the honest 5008 error instead. D5: state-dependent reads
+  not reproduced. Comment added at the call site.
+- **No cross-check vs the vendored official `Torn_Circuit` reference (Minor —
+  tracked TODO(WP-AD.3)).** The D9(b) reference-fixture harvest (cross-checking the
+  two deliberate `Format_SubCircuits` deviations against
+  `Examples/ADiakoptics/ckt24/Torn_Circuit/**`) is WP-AD.3 scope; TODO marker added
+  at `torn_tree_matches_golden`.
+- **`ckt24_graph_diagnostic` builds no our-side graph (Minor — tracked
+  TODO(WP-AD.5)).** Plan-sanctioned log-only; the "our vs vendored" `.graph` diff
+  needs the ckt24 master-prefix compile driver (WP-AD.5). TODO marker added.
+- **Round-trip is solvability-smoke (Minor — deferral made explicit).** Numeric
+  AD↔normal equivalence at the §AD tier is D7/AD.3; the boundary values themselves
+  are now numerically pinned by `pconn_sources_match_solved_nodev`. TODO(WP-AD.3)
+  noted at `torn_tree_roundtrip_solves`.
+Gate: fmt + workspace clippy (`-D warnings`) clean; `cargo test --workspace` exit 0.
+
+**WP-AD.2 Stage B — audit settlement (2026-07-11, gate-green).** Two auditors
+(code + tests) filed 11 findings; each settled empirically against the r3723
+Delphi source (D10) and probed on the r3723 binary via the Oddie bridge (D9a).
+- **`set LinkBranches` off-by-one (Major/Critical, real bug — fixed).** The
+  official setter reserves an empty index-0 reference placeholder
+  (`ExecOptions.pas:842–844`: `setlength(Link_Branches, Count+1); for i:=1 to
+  Count do Link_Branches[i]:=myList[i-1]`); both `Tear_Circuit` branches skip
+  index 0 and the sub-circuit count is `length(Link_Branches)`. The Rust setter
+  stored a 0-based list with no placeholder, so a single user link tore to **1**
+  sub-circuit, not 2. Oddie-probed r3723: `[line.main10]` → "Sub-Circuits
+  Created: 2", `[line.main5, line.main10]` → 3. Fixed by prepending the empty
+  placeholder in the `linkbranches` setter. `get LinkBranches` also corrected to
+  the official per-element `AppendGlobalResult` form (placeholder vanishes, no
+  brackets — `line.main10`), matching the probe.
+- **Vacuous manual-links test (Critical — fixed).** The old test only asserted
+  `get LinkBranches` echoed the set value. Rewritten to pin the empirically
+  confirmed cut counts (1 link → 2, 2 links → 3) and the exact `get` echo — now
+  a real regression guard for the placeholder + manual-cut path.
+- **`Create_MeTIS_graph` weight/dedup unexercised (Major — fixed).** Added a
+  transformer + parallel-line feeder test that reads the emitted `.graph` and
+  pins the Transformer-weight-1 rule, the 3-phase Line weight, and the
+  parallel-branch dedup (5 branches → 4 distinct edges in the header).
+- **Zone balance not asserted (Major — fixed).** The 3-zone and macro tests now
+  assert per-zone balance (catches a 1-vs-N partition that a bare non-empty
+  check missed). Full zone-*connectivity* recompute rides on the deferred
+  torn-file round-trip (below), where each zone is compiled and solved.
+- **`Num_SubCkts` default `.max(1)` clamp (Minor — fixed).** Removed; now
+  `CPU_Cores-1` verbatim (Circuit.pas:606; D6 → never gated).
+- **`nphases_bus2` misnomer + `unwrap_or(0)` (Minor — fixed/recorded).** Renamed
+  to `pde_bus2_name`; the `unwrap_or(0)` weight-on-unresolved-row divergence from
+  Pascal's stale-`ActiveCktElement` read is documented as unreachable
+  (`NOTE(upstream)`), a defined 0 preferred over a stale-state read.
+- **D5 first-line swap on the un-dropped canonical partition (Minor —
+  recorded, no fix).** Plan-sanctioned (D5 reproduce the swap 1:1; D2 partition
+  the full canonical graph in-process; D2 accepts auto-tear zone shapes differ
+  from upstream). The swap is fixture-pinned deliberately; the future
+  `Torn_Circuit` self-golden will pin it by intent, not accident.
+- **Torn-file emission ~40% of Stage B was deferred (Major — now CLOSED).**
+  Deliverables 5–6 (zone `EnergyMeter` placement, `PConn_Voltages` capture,
+  `Save_SubCircuits`/`Format_SubCircuits`/`AppendIsources`/`Disable_All_DER`, the
+  committed `Torn_Circuit/` fixture golden + round-trip compile/solve tests) were
+  the outstanding Stage-B work at settlement time. They are now landed — see the
+  "Stage-B completion" record above (`exec/tearing_save.rs`, the meter/PConn loop
+  in `place_zone_meters`, and the fixture golden + round-trip/connectivity gates).
+  The terminal-orientation |V| difference is documented `NOTE(upstream-quirk)` as
+  vestigial dead code in r3723 (not reproduced, D5).
+
 **WP-AD.2 Stage A — audit settlement (2026-07-11, gate-green).** Two auditors
 (code + tests) filed 6 Minor findings; each settled empirically against the C spec
 (`.inputs/METIS`,`.inputs/GKlib`) via the offline gcc-13.2.0 reference build. Real
