@@ -230,11 +230,19 @@ impl Dss {
                         }
                         child.command("set controlmode=off");
                         child.command("solve");
+                        // Pascal (Diakoptics.pas:644): break the loop only on
+                        // `SolutionAbort`. A benign `DoSimpleMsg` child message
+                        // does NOT set `SolutionAbort` upstream, so we must NOT
+                        // trip on `errors()` (that would spuriously fail init on a
+                        // zone master that emits a non-fatal message where official
+                        // proceeds). The extra `is_none_or` arm is the Rust analog
+                        // of the same guard: a total compile failure leaves the
+                        // child with no circuit (Pascal would have a nil actor
+                        // circuit), which we treat as aborted.
                         let aborted = child
                             .circuit
                             .as_ref()
-                            .is_some_and(|c| c.solution.solution_abort)
-                            || !child.errors().is_empty();
+                            .is_none_or(|c| c.solution.solution_abort);
                         self.ad_children.push(child);
                         if aborted {
                             error_code = 1;
@@ -344,17 +352,30 @@ impl Dss {
     }
 
     /// Pascal `get_Statistics()` (Diakoptics.pas:90): the per-zone node-count
-    /// reduction/imbalance summary (`%4.2f`-class `floattostrf(…, ffgeneral,4,2)`).
-    /// Machine-independent only because every AD test fixes the zone count (D6).
+    /// reduction/imbalance summary. Machine-independent only because every AD
+    /// test fixes the zone count (D6).
+    ///
+    /// D4 numeric fidelity: Pascal declares `unbalance, ASize : Array of single`
+    /// and `GReduct/MaxImbal/AvgImbal : Double`, so each node count and each
+    /// `(1 - ASize/MaxSize)·100` imbalance is truncated to **f32** before the
+    /// `MaxValue`/`mean` widen the result back to f64. Reproduced 1:1 (the node
+    /// counts are exact in either width, so this only matters at the last f32-ulp
+    /// — but the value golden pins the faithful string). Formatting is
+    /// `floattostrf(x, ffgeneral, 4, 2)` = [`crate::util::fmt_g`]`(x, 4)` — the
+    /// FPC-bit-exact general formatter (`tests/golden/fmt_battery.csv`); the
+    /// `Digits=2` argument only sizes the exponent, unreachable for the 0–100
+    /// percentage domain that always prints in fixed notation.
     pub(crate) fn get_statistics(&self) -> String {
-        // ASize[k] = NumNodes of each child (actors 2..NumOfActors).
-        let a_size: Vec<f64> = self
+        use crate::util::fmt_g;
+        // ASize[k] = NumNodes of each child (actors 2..NumOfActors), stored as
+        // single (Pascal `ASize : Array of single`).
+        let a_size: Vec<f32> = self
             .ad_children
             .iter()
             .map(|c| {
                 c.circuit
                     .as_ref()
-                    .map(|k| k.num_nodes as f64)
+                    .map(|k| k.num_nodes as f32)
                     .unwrap_or(0.0)
             })
             .collect();
@@ -363,52 +384,40 @@ impl Dss {
             .as_ref()
             .map(|c| c.num_nodes as f64)
             .unwrap_or(0.0);
-        let max_size = a_size.iter().cloned().fold(f64::MIN, f64::max);
+        // MaxValue(ASize) : single. The counts are exact, so the widened f64 of
+        // this max is the same value Pascal divides by.
+        let max_size = a_size.iter().cloned().fold(f32::MIN, f32::max);
         let g_reduct = if coord_nodes != 0.0 {
-            (1.0 - max_size / coord_nodes) * 100.0
+            (1.0 - max_size as f64 / coord_nodes) * 100.0
         } else {
             0.0
         };
-        let unbalance: Vec<f64> = a_size
+        // unbalance[idx] := (1 - ASize[idx]/MaxValue(ASize))·100 — the whole RHS
+        // is evaluated and stored in `single` (f32) before Max/mean read it.
+        let unbalance: Vec<f32> = a_size
             .iter()
             .map(|&s| {
                 if max_size != 0.0 {
-                    (1.0 - s / max_size) * 100.0
+                    (1.0f32 - s / max_size) * 100.0f32
                 } else {
                     0.0
                 }
             })
             .collect();
-        let max_imbal = unbalance.iter().cloned().fold(f64::MIN, f64::max);
+        // MaxImbal := MaxValue(unbalance) : single → Double.
+        let max_imbal = unbalance.iter().cloned().fold(f32::MIN, f32::max) as f64;
+        // AvgImbal := mean(unbalance) — Math.sum accumulates the singles into a
+        // float (Double), then divides by the count.
         let avg_imbal = if unbalance.is_empty() {
             0.0
         } else {
-            unbalance.iter().sum::<f64>() / unbalance.len() as f64
+            unbalance.iter().map(|&v| v as f64).sum::<f64>() / unbalance.len() as f64
         };
         format!(
             "\r\nCircuit reduction    (%): {}\r\nMax imbalance       (%): {}\r\nAverage imbalance(%): {}\r\n",
-            fmt_g42(g_reduct),
-            fmt_g42(max_imbal),
-            fmt_g42(avg_imbal),
+            fmt_g(g_reduct, 4),
+            fmt_g(max_imbal, 4),
+            fmt_g(avg_imbal, 4),
         )
-    }
-}
-
-/// Pascal `floattostrf(x, ffgeneral, 4, 2)`: general format, 4 significant digits.
-/// For the small percentages `get_Statistics` produces this matches Rust's `{}`
-/// after rounding to 4 significant figures.
-fn fmt_g42(x: f64) -> String {
-    if x == 0.0 {
-        return "0".to_string();
-    }
-    // 4 significant digits (ffGeneral Precision=4), trailing zeros trimmed.
-    let mag = x.abs().log10().floor() as i32;
-    let decimals = (3 - mag).max(0) as usize;
-    let s = format!("{x:.decimals$}");
-    // Trim trailing zeros / dot (ffGeneral drops them).
-    if s.contains('.') {
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    } else {
-        s
     }
 }

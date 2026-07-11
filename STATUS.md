@@ -101,11 +101,15 @@ options + get_Statistics ✅ · **(2b) the AD solve stitch (pending r3723 probe)
 `report/export/adiakoptics.rs`, official `ExportResults.pas:3541–3627`) —
 compressed-coordinate CSV (`Row,Col,Value(Real), Value(Imag)`; Contours is real-part
 only, `Row,Col,Value`), default files `ZLL.csv`/`ZCC.csv`/`C.csv`/`Y4.csv`, values
-via FPC `float_to_str`. **Silent no-op when `ADiakoptics=false`** (Pascal
-`if ADiakoptics`, enforced at the `export_ad` dispatch — no file, `GlobalResult`
-untouched). 4 gates: header + field counts vs the built matrices, Contours ±1
-real-only, and the false-flag no-op. Keywords registered in `EXPORT_OPTIONS` as a
-recorded departure (compiled out of the pinned oracle, §0.2).
+via FPC `float_to_str`. **When `ADiakoptics=false`** the export *body* is a no-op
+(Pascal `if ADiakoptics` — no file, `GlobalResult` untouched), but `DoExportCmd`'s
+tail (`ExportOptions.pas:503–507`) still sets `LastResultFile`/`@lastfile`/
+`@lastexportfile` to the resolved (never-written) path **unconditionally** — now
+reproduced 1:1 (was previously a total no-op). Gates: header + per-line VALUE match
+vs the built matrices (ZLL/ZCC/Y4 float fields, not just the field count), Contours
+±1 real-only, and the false-flag path (last-file set, no file on disk, empty
+GlobalResult). Keywords registered in `EXPORT_OPTIONS` as a recorded departure
+(compiled out of the pinned oracle, §0.2).
 
 **Stage 1 (gate-green):** the four matrix builders in `exec/diakoptics/matrices.rs`
 — 1:1 port of official `Diakoptics.pas` (D10): `Calc_C_Matrix` (contours, substring
@@ -125,9 +129,12 @@ Master_Interconnected.dss` into the coordinator + build each child zone engine
 `SendIdx2Actors` + close links + `get_Statistics` + the progress-string summary.
 Options wired: `set ADiakoptics=yes` → init (deferred past `do_set_cmd`'s field
 borrow via a `pending_ad_init` flag); `=no` clears the flag only; `get ADiakoptics`;
-`Solve` resets `AD_Init`. 7 integration gates on the midi feeder (2 zones): flag flip
+`Solve` resets `AD_Init`. Integration gates on the midi feeder (2 zones): flag flip
 + summary, Contours ±1-per-column, ZLL block, **Y4·ZCC ≈ I to 1e-6 with ZCT populated
-(369 nz)**, deterministic statistics (46.34% reduction / 13.64% max imbalance),
+(369 nz)** + the D1(a) `ZCC = CᵀZCT + ZLL` re-derivation recomputed on the real init
+(non-circular, catches a bad transpose/RHS/ZLL that `Y4·ZCC≈I` cannot), the
+`get_Statistics` **value golden** (46.34% reduction / 13.64% max imbalance / 6.818%
+avg; `fmt_g`=`floattostrf(ffgeneral,4)` + Pascal f32-array narrowing per D4),
 `=no` clears flag-only, and init-without-prior-solve fails. The CPU clamp
 (`Num_SubCkts ≤ CPU_Cores−2`) is ported → AD gates assume ≥4 cores (D6).
 
@@ -146,6 +153,39 @@ non-singular (KLU regularization? a retained reference?) must be measured on r37
 Note: our torn-coordinator `Calc_ZCC` solve DID populate ZCT (faer factored the
 opened-link Y without erroring); whether that matches KLU physically is the D9(b)
 EPRI-IEEE-13 reference comparison (Stage 3/2b).
+
+**WP-AD.3 audit settle (opus-xhigh).** Findings settled empirically against official
+r3723:
+- *get_Statistics formatting (Major, fixed):* hand-rolled `fmt_g42` replaced with the
+  FPC-bit-exact `crate::util::fmt_g(x, 4)` = `floattostrf(ffgeneral,4)`; and the
+  `unbalance/ASize : Array of single` f32 narrowing reproduced per D4 (`GReduct/
+  MaxImbal/AvgImbal : Double`). Output unchanged on midi (46.34/13.64/6.818), now
+  pinned as a **value golden** (was determinism+substring only).
+- *AD-off export (Minor, fixed):* the `export_ad` no-op was total; Pascal
+  `DoExportCmd`'s tail still runs `SetLastResultFile`+`@lastexportfile` (only gated by
+  `Not AbortExport`). Now sets the last-file state to the resolved never-written path,
+  body still skipped — truly 1:1; test + doc corrected.
+- *State-2 child abort (Minor, aligned):* the check added `!errors().is_empty()` on top
+  of `SolutionAbort`; Pascal (Diakoptics.pas:644) breaks on `SolutionAbort` only, and a
+  benign `DoSimpleMsg` child message does not set it — so the extra arm would spuriously
+  fail init where official proceeds. Narrowed to `SolutionAbort` + a no-circuit clause
+  (the Rust analog of a nil child actor after a total compile failure).
+- *D5 drop quirks unpinned (Major, fixed):* the fixture R+jX topology never yields a
+  drop-eligible entry, so the integration assertions held vacuously. The two quirks are
+  now extracted to `zct_keep`/`y4_keep` and pinned directly by unit tests fed
+  drop-eligible values (the doubled-`.re` Y4 bug: `re=0,im≠0` dropped) — a "cleanup" to
+  `re≠0 OR im≠0` fails them.
+- *ZCC assembly baseline (Major, partially fixed):* only the circular `Y4·ZCC≈I` existed;
+  added the non-circular D1(a) `ZCC = CᵀZCT + ZLL` re-derivation to BOTH the unit test
+  and the real init. The `ad_children` field doc was corrected (it is rebuilt each init,
+  not cleared by `=no`/`Clear`).
+- **Deferred (Stage 4, honestly open):** the EPRI first-party IEEE-13 CSVs
+  (`.../References/SolveDirect/ADiakoptics_matrixes/ieee13nodeckt_{ZCC,ZLL,Y4}.csv`, D9b)
+  and the r3723 `gen_ad_reference.py` IEEE_123 harvest (D9c) are vendored/planned but not
+  yet consumed — the AD matrices still have no *external* trusted-baseline value
+  comparison (only in-test re-derivation + inverter self-consistency). Tracked as the
+  remaining Stage-4 numeric gate, alongside the Stage-2b AD solve stitch and D7
+  calibration.
 
 **WP-AD.1 — incidence matrix + Sparse_Math + exports 53–57 (2026-07-11), gate-green.**
 `support/sparse_math.rs` (SparseInt/SparseComplex 1:1 COO: insert

@@ -163,7 +163,11 @@ pub struct Dss {
     /// owned by the coordinator per plan D3 (`children: Vec<Dss>`, sequential —
     /// no threads, no shared state). Empty until `set ADiakoptics=yes` runs
     /// `ADiakopticsInit`; `child[0]` is Pascal actor 2 (the feeder-head zone 1),
-    /// `child[k-2]` is actor `k`. Cleared by `set ADiakoptics=no` and `Clear`.
+    /// `child[k-2]` is actor `k`. Rebuilt from scratch each init (cleared then
+    /// repopulated in state 2, `diakoptics/engine.rs`); `set ADiakoptics=no`
+    /// (flag-only, per §WP-AD.3) and `Clear` leave the vector intact — the stale
+    /// children are inert (they are only read while `Solution.ADiakoptics` is
+    /// true, which a re-init re-establishes after clearing them).
     ad_children: Vec<Dss>,
     /// `DSS.DSSPlotCallback` (`Common/DSSClass.pas:658`). Native replacement for
     /// the C export `DSS_RegisterPlotCallback` (`CAPI_DSS.pas:267`). `None` =>

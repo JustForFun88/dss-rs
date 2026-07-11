@@ -35,14 +35,48 @@ fn links_with_placeholder(names: &[&str]) -> Vec<String> {
 
 /// A dense row-major `n×n` copy of a sparse-complex matrix.
 fn to_dense(m: &SparseComplex, n: usize) -> Vec<Complex64> {
-    let mut d = vec![Complex64::ZERO; n * n];
+    to_dense_rc(m, n, n)
+}
+
+/// A dense row-major `nrows×ncols` copy of a sparse-complex matrix.
+fn to_dense_rc(m: &SparseComplex, nrows: usize, ncols: usize) -> Vec<Complex64> {
+    let mut d = vec![Complex64::ZERO; nrows * ncols];
     for cd in &m.cdata {
         let (r, c) = (cd.row as usize, cd.col as usize);
-        if r < n && c < n {
-            d[r * n + c] = cd.value;
+        if r < nrows && c < ncols {
+            d[r * ncols + c] = cd.value;
         }
     }
     d
+}
+
+// The D5 drop quirks (`zct_keep`/`y4_keep`) pinned directly on the predicates:
+// the fixture topology (3-phase R+jX lines) never yields a drop-eligible entry,
+// so an integration-level assertion holds vacuously — these exercise the exact
+// keep/drop decision the reproduction turns on.
+#[test]
+fn d5_zct_keep_drops_exactly_one_zero_part() {
+    // re≠0 AND im≠0 → kept.
+    assert!(zct_keep(Complex64::new(1.0, -2.0)));
+    // exactly one zero part → dropped (the Diakoptics.pas:274 quirk).
+    assert!(!zct_keep(Complex64::new(0.0, 5.0)), "re=0 dropped");
+    assert!(!zct_keep(Complex64::new(3.0, 0.0)), "im=0 dropped");
+    // both zero → dropped.
+    assert!(!zct_keep(Complex64::new(0.0, 0.0)));
+}
+
+#[test]
+fn d5_y4_keep_ignores_imag_part() {
+    // kept iff re≠0 (the doubled-`.re` bug never consults `.im`).
+    assert!(y4_keep(Complex64::new(1.0, 0.0)));
+    assert!(y4_keep(Complex64::new(-4.0, 9.0)));
+    // re=0, im≠0 → dropped BECAUSE `.im` is not tested (a corrected
+    // `re≠0 OR im≠0` would KEEP this — the assertion pins the quirk).
+    assert!(
+        !y4_keep(Complex64::new(0.0, 7.0)),
+        "re=0,im≠0 dropped by the doubled-.re bug"
+    );
+    assert!(!y4_keep(Complex64::new(0.0, 0.0)));
 }
 
 fn dense_mul(a: &[Complex64], b: &[Complex64], n: usize) -> Vec<Complex64> {
@@ -168,17 +202,43 @@ fn y4_is_zcc_inverse_modulo_d5_drops() {
     dss.calc_y4();
 
     let ckt = dss.circuit().unwrap();
+    let nn = ckt.num_nodes; // rows of Contours / ZCT
     let n = ckt.ad.zcc.nrows() as usize;
     assert_eq!(n, 3, "ZCC is (real-links × 3) square");
     // ZCC = Contoursᵀ·ZCT + ZLL is square with the same order.
     assert_eq!(ckt.ad.zcc.ncols() as usize, n);
 
-    // D1 invariant: Y4·ZCC ≈ I (dense; avoids the SparseComplex.multiply drop
+    // D1 invariant (a): ZCC assembly re-derived INDEPENDENTLY of the builder's
+    // own SparseComplex.transpose/multiply/add — a dense `Contoursᵀ·ZCT + ZLL`
+    // recomputed from the stored (already D5-dropped) Contours/ZCT/ZLL. This
+    // catches a wrong transpose, wrong per-column RHS, or wrong ZLL addition
+    // that the circular `Y4·ZCC≈I` (Y4 := invert(ZCC)) cannot.
+    let c_dense = to_dense_rc(&ckt.ad.contours, nn, n); // nn×3
+    let zct_dense = to_dense_rc(&ckt.ad.zct, nn, n); // nn×3
+    let zll_dense = to_dense(&ckt.ad.zll, n); // 3×3
+    let zcc = to_dense(&ckt.ad.zcc, n);
+    for i in 0..n {
+        for j in 0..n {
+            // (Cᵀ·ZCT)[i,j] = Σ_k C[k,i]·ZCT[k,j]  (plain transpose; Contours is
+            // real ±1 so conjugation is moot).
+            let mut s = Complex64::ZERO;
+            for k in 0..nn {
+                s += c_dense[k * n + i] * zct_dense[k * n + j];
+            }
+            s += zll_dense[i * n + j];
+            let got = zcc[i * n + j];
+            assert!(
+                (got - s).norm() < 1e-7,
+                "ZCC[{i},{j}] builder={got} vs CᵀZCT+ZLL={s}"
+            );
+        }
+    }
+
+    // D1 invariant (b): Y4·ZCC ≈ I (dense; avoids the SparseComplex.multiply drop
     // quirk so we test the invert itself). The D5 Y4 drop only removes entries
     // with re == 0, of which a real impedance inverse has none — so the dense
     // product is the identity to invert precision.
     let y4 = to_dense(&ckt.ad.y4, n);
-    let zcc = to_dense(&ckt.ad.zcc, n);
     let prod = dense_mul(&y4, &zcc, n);
     for i in 0..n {
         for j in 0..n {
@@ -191,10 +251,13 @@ fn y4_is_zcc_inverse_modulo_d5_drops() {
         }
     }
 
-    // D5 drop pattern asserted explicitly: every STORED Y4 entry has re ≠ 0
-    // (the `re<>0 AND re<>0` test keeps only nonzero-real entries; a pure-
-    // imaginary inverse entry would be dropped — none arise here).
+    // The D5 Y4 keep predicate is pinned directly by `d5_y4_keep_ignores_imag_part`;
+    // here we confirm the built matrix is consistent with it (every stored entry
+    // has re ≠ 0 — a real-impedance inverse has no pure-imaginary entry to drop).
     for cd in &ckt.ad.y4.cdata {
-        assert_ne!(cd.value.re, 0.0, "Y4 stores only nonzero-real entries (D5)");
+        assert!(
+            y4_keep(cd.value),
+            "every stored Y4 entry satisfies y4_keep (D5)"
+        );
     }
 }

@@ -22,6 +22,24 @@ use super::ad_find_element;
 use crate::exec::Dss;
 use crate::support::cmatrix::CMatrix;
 
+/// NOTE(upstream-quirk): the ZCT keep test (Diakoptics.pas:274) is
+/// `(CTemp.re <> 0) and (CTemp.im <> 0)` — a solved column entry with **exactly
+/// one** zero part (`re=0 xor im=0`) is dropped. Part II has no oracle, so this
+/// predicate is pinned directly by the unit tests (a "cleanup" to `re≠0 OR
+/// im≠0` would change it). Reproduced 1:1.
+fn zct_keep(v: Complex64) -> bool {
+    v.re != 0.0 && v.im != 0.0
+}
+
+/// NOTE(upstream-quirk): the Y4 keep test (Diakoptics.pas:201) is
+/// `(value.re <> 0) and (value.re <> 0)` — `.re` is tested **twice**, so `.im`
+/// is never consulted and a Y4 entry with `re=0, im≠0` is dropped. Reproduced
+/// 1:1 (the doubled `.re` IS the upstream bug); unit-test-pinned.
+#[allow(clippy::eq_op)]
+fn y4_keep(v: Complex64) -> bool {
+    v.re != 0.0 && v.re != 0.0
+}
+
 impl Dss {
     /// Pascal `Calc_C_Matrix(PLinks, NLinks)` (Diakoptics.pas:314): builds the
     /// coordinator's `Contours` matrix — one `±1` phase column per link,
@@ -258,12 +276,9 @@ impl Dss {
                 break;
             }
 
-            // Insert into ZCT with the D5 drop test.
+            // Insert into ZCT with the D5 drop test ([`zct_keep`]).
             for (k, v) in zvector.iter().enumerate() {
-                // NOTE(upstream-quirk): ZCT keeps `ZVector[idx]` only when
-                // `re≠0 AND im≠0` (Diakoptics.pas:274) — an entry with exactly
-                // one zero part is dropped. Reproduced; fixture-pinned.
-                if v.re != 0.0 && v.im != 0.0 {
+                if zct_keep(*v) {
                     ckt.ad.zct.insert(k as i32, idx2, *v);
                 }
             }
@@ -307,13 +322,8 @@ impl Dss {
         for idx in 0..n {
             for c in 0..n {
                 let value = temp.get(idx, c);
-                // NOTE(upstream-quirk): the drop test is `(value.re <> 0) and
-                // (value.re <> 0)` — `.re` tested TWICE (Diakoptics.pas:201), so
-                // a Y4 entry with `re = 0, im ≠ 0` is dropped. Reproduced 1:1
-                // (`value.re` twice, deliberately); fixture-pinned.
-                #[allow(clippy::eq_op)] // the doubled `.re` IS the upstream bug.
-                let keep = value.re != 0.0 && value.re != 0.0;
-                if keep {
+                // D5 double-`.re` drop ([`y4_keep`]).
+                if y4_keep(value) {
                     ckt.ad.y4.insert(idx as i32, c as i32, value);
                 }
             }

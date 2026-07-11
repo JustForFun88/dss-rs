@@ -488,11 +488,15 @@ impl Dss {
         self.write_export(explicit, default_name, &content);
     }
 
-    /// An A-Diakoptics matrix export (58–61): identical to [`Self::export_with`]
-    /// but a **silent no-op** when `Solution.ADiakoptics` is false — the Pascal
-    /// procedure wraps its whole body (file write + `GlobalResult`) in
-    /// `if ADiakoptics then …`, so an inactive AD state writes nothing and leaves
-    /// `GlobalResult`/`LastResultFile` untouched (1:1, `ExportResults.pas:3546`).
+    /// An A-Diakoptics matrix export (58–61). The Pascal *procedure* body (file
+    /// write + `GlobalResult := FileNm`) is wrapped in `if ADiakoptics then …`
+    /// (`ExportResults.pas:3546`), so an inactive AD state writes nothing and
+    /// leaves `GlobalResult` untouched. But `DoExportCmd`'s tail
+    /// (`ExportOptions.pas:503–507`) still runs `SetLastResultFile(FileName)` +
+    /// `ParserVars.Add('@lastexportfile', FileName)` **unconditionally** (gated
+    /// only by `Not AbortExport`, which stays false for a known keyword). So even
+    /// with AD off the executive's last-file state points at the (uncreated)
+    /// `ZLL.csv`/… path — reproduced here 1:1.
     fn export_ad(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
         if self
             .circuit
@@ -500,6 +504,27 @@ impl Dss {
             .is_some_and(|c| c.solution.adiakoptics)
         {
             self.export_with(explicit, default_name, f);
+        } else {
+            // Body skipped (no file, `GlobalResult` untouched), but the
+            // DoExportCmd tail still points the last-file state at the resolved
+            // (never-written) path.
+            let case = self
+                .circuit
+                .as_ref()
+                .map(|c| c.case_name.clone())
+                .unwrap_or_default();
+            let circuit_name_ = format!("{case}_");
+            let path = crate::report::output::export_path(
+                &self.output_directory,
+                &self.current_dir,
+                &circuit_name_,
+                explicit,
+                default_name,
+            );
+            let p = path.to_string_lossy().into_owned();
+            self.last_result_file = p.clone();
+            self.vars.add("@lastfile", &p);
+            self.vars.add("@lastexportfile", &p);
         }
     }
 
