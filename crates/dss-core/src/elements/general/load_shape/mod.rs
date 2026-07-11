@@ -230,6 +230,18 @@ impl LoadShapeObj {
     pub fn max_q(&self) -> f64 {
         self.max_q
     }
+
+    /// Test-only constructor: a fixed-interval curve straight from a P-multiplier
+    /// vector (`npts = p.len()`), bypassing the parser. Used by consumers'
+    /// unit tests that need a live shape (e.g. CapControl FOLLOW sampling).
+    #[cfg(test)]
+    pub(crate) fn fixed_interval_for_test(name: &str, interval: f64, p: Vec<f64>) -> Self {
+        let mut s = Self::new(name);
+        s.num_points = p.len() as i32;
+        s.interval = interval;
+        s.p_mult = Some(p);
+        s
+    }
 }
 
 /// Pascal `ReAllocmem` semantics for the data setters: an empty parse result is

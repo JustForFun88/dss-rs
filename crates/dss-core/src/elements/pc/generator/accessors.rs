@@ -510,6 +510,18 @@ impl DssObject for Generator {
             // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
             // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
             DYNAMICEQ => self.dyneq.on_dynamic_eq_set(),
+            // Pascal `TProp.UserModel` side effect (Generator.pas l.752):
+            // `UserModel.Name := UserModelNameStr` → `TGenUserModel.Set_Name`.
+            // Safe Rust never loads the DLL (forbid(unsafe_code); the loader is
+            // permanently out of scope). `Set_Name` bails silently on an empty /
+            // "none" name; any other name means the `LoadLibrary` "fails", so it
+            // hits `DoSimpleMsg(... 'Not Loaded' ..., 570)` and `Exists` stays
+            // false — the generator falls back to the built-in model (CF-C Port 2).
+            // This mirrors the official Direct DLL's non-fatal warn-and-solve.
+            USERMODEL => self.warn_user_model_not_loaded(),
+            // `TProp.UserData` (l.754): `if UserModel.Exists then UserModel.Edit`.
+            // The model never exists here, so — exactly like Pascal — this is a
+            // no-op beyond storing the string for the dump.
             _ => {}
         }
     }

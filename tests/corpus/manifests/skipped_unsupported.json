@@ -2,11 +2,6 @@
  "comment": "Entry points using a class/command/mode the port lacks. Required tag: unsupported_class=.. | unsupported_command=.. | unsupported_mode=.. | missing_feature=..",
  "cases": [
   {
-   "path": "Test/CapControlFollow.dss",
-   "tag": "unsupported_property=CapControl.ControlSignal",
-   "note": "Re-probed 2026-07-11 (FA fix 1 classify re-sweep): still blocked. CapControl.ControlSignal is not ported -> the CapControl samples with no monitored element set and the solve aborts (\"Monitored element not set\" -> \"Solution aborted\"). Genuine unported property."
-  },
-  {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss",
    "tag": "unsupported_command=SolveAll",
    "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-B U4). 7-actor DSS_CAPI_PM script (NewActor/SolveAll/Set CPU/ActiveActor). Rust refuses SolveAll and the actor family loudly. The pinned one-shot oracle server dies (no JSON), and r3723 segfaults under the Oddie bridge on multi-actor -- no live compare possible on any channel. Unblocks with M2."
