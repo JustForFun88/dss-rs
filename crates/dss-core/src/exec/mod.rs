@@ -159,6 +159,12 @@ pub struct Dss {
     /// a GUI daisy-plot marker radius written into the plot-callback payload.
     /// Lives on the DSS context, not the circuit.
     daisy_size: f64,
+    /// The A-Diakoptics child engines (Pascal `ActiveCircuit[2..NumOfActors]`),
+    /// owned by the coordinator per plan D3 (`children: Vec<Dss>`, sequential —
+    /// no threads, no shared state). Empty until `set ADiakoptics=yes` runs
+    /// `ADiakopticsInit`; `child[0]` is Pascal actor 2 (the feeder-head zone 1),
+    /// `child[k-2]` is actor `k`. Cleared by `set ADiakoptics=no` and `Clear`.
+    ad_children: Vec<Dss>,
     /// `DSS.DSSPlotCallback` (`Common/DSSClass.pas:658`). Native replacement for
     /// the C export `DSS_RegisterPlotCallback` (`CAPI_DSS.pas:267`). `None` =>
     /// `Plot` is a total no-op and `DoVisualizeCmd` skips its JSON emission —

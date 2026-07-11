@@ -308,12 +308,14 @@ pub(crate) fn try_set_ad_option(
             true
         }
         "adiakoptics" => {
-            // NOT_PORTED (scoped): the A-Diakoptics init state machine is
-            // WP-AD.3. `Tear_Circuit` and the tearing options are WP-AD.2.
-            errors.push(
-                "set ADiakoptics is not ported yet (A-Diakoptics init/solve is WP-AD.3)."
-                    .to_string(),
-            );
+            // Official ExecOptions.pas:1100–1112: set true → `ADiakopticsInit`
+            // (deferred to `do_set_cmd`, which has `&mut Dss`); clear → flag only.
+            let _ = errors;
+            if interpret_yes_no(param) {
+                ckt.ad.pending_ad_init = true;
+            } else {
+                ckt.solution.adiakoptics = false; // clear = flag only (plan §WP-AD.3)
+            }
             true
         }
         _ => false,
@@ -351,6 +353,17 @@ pub(crate) fn try_get_ad_option(ckt: &Circuit, param_name: &str, result: &mut St
         }
         "usemylinkbranches" => {
             super::helpers::append_result(result, if ckt.ad.use_user_links { "Yes" } else { "No" });
+            true
+        }
+        "adiakoptics" => {
+            super::helpers::append_result(
+                result,
+                if ckt.solution.adiakoptics {
+                    "Yes"
+                } else {
+                    "No"
+                },
+            );
             true
         }
         _ => false,
@@ -413,7 +426,7 @@ impl Dss {
     /// redefine buses, so the automatic `bus_name_redefined` path in
     /// `build_y_matrix` would not fire; we call `do_reset_meter_zones` directly
     /// (as `exec/reduce.rs` does) so `SaveFeeders` sees each new meter's zone.
-    fn reset_meter_zones_for_tear(&mut self) {
+    pub(super) fn reset_meter_zones_for_tear(&mut self) {
         let Dss {
             classes, circuit, ..
         } = self;
@@ -430,7 +443,7 @@ impl Dss {
     /// `Locations`, then the shared [`Self::place_zone_meters`] runs the meter
     /// placement + `PConn` capture loop (Circuit.pas:1941–2032) and returns the
     /// sub-circuit count.
-    fn tear_circuit(&mut self) -> Result<i32, TearError> {
+    pub(super) fn tear_circuit(&mut self) -> Result<i32, TearError> {
         let use_user = self
             .circuit
             .as_ref()

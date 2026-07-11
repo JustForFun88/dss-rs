@@ -93,18 +93,49 @@ document the oracle mode-4 crash in `investigations/` (deterministic upstream cr
 not reproduced — the Rust port post-processes correctly).
 
 **WP-AD.3 — A-Diakoptics engine (in progress, staged; branch `wp-ad3`).**
-Stage list: (1) matrices ✅ · (2) init machine + solve paths · (3) exports 58–61 ·
-(4) D7 calibration + EPRI/r3723 refs. **Stage 1 landed (gate-green):** the four
-matrix builders in `exec/diakoptics/matrices.rs` — 1:1 port of official
-`Diakoptics.pas` (D10): `Calc_C_Matrix` (contours, substring node lookup D5),
-`Calc_ZLL` (inverted 3×3 link-Yprim self-block on the block diagonal),
-`Calc_ZCC` (per-column `Y_torn·z=c` via the cached `dss-sparse` factorization →
-ZCT, then `ZCC = Contoursᵀ·ZCT + ZLL`, `re≠0 AND im≠0` drop D5), `Calc_Y4`
-(`ZCC⁻¹` via `CMatrix::invert`, the double-`.re` drop D5) + the `AdMsg` enum +
-`ad_find_element` (SetElementActive). 4 unit tests recompute the D1 invariants on
-a tiny inline link feeder (Contours one +1/−1 per column; ZLL = inverted self-block;
-Y4·ZCC ≈ I dense; the Y4 re≠0 drop pattern asserted). `NOTE(upstream-quirk)` at each
-D5 site. Matrix builders `#[allow(dead_code)]` until Stage 2's init machine wires them.
+Stage list: (1) matrices ✅ · (2a) init machine + matrices-on-real-coordinator +
+options + get_Statistics ✅ · **(2b) the AD solve stitch (pending r3723 probe)** ·
+(3) exports 58–61 · (4) D7 calibration + EPRI/r3723 refs.
+
+**Stage 1 (gate-green):** the four matrix builders in `exec/diakoptics/matrices.rs`
+— 1:1 port of official `Diakoptics.pas` (D10): `Calc_C_Matrix` (contours, substring
+node lookup D5), `Calc_ZLL` (inverted 3×3 link-Yprim self-block), `Calc_ZCC`
+(per-column `Y_torn·z=c` via the cached `dss-sparse` factorization → ZCT, then
+`ZCC = Contoursᵀ·ZCT + ZLL`, `re≠0 AND im≠0` drop D5), `Calc_Y4` (`ZCC⁻¹` via
+`CMatrix::invert`, the double-`.re` drop D5) + `AdMsg` + `ad_find_element`. 4 unit
+tests recompute the D1 invariants on a tiny inline link feeder. `NOTE(upstream-quirk)`
+at each D5 site.
+
+**Stage 2a (gate-green):** the `ADiakopticsInit` state machine (`exec/diakoptics/
+engine.rs`, `Diakoptics.pas:541`) — states 0–9: tear (`ADiakoptics_Tearing`, shared
+with the `Tear_Circuit` cmd) → `ClearAll` + recompile `Torn_Circuit/
+Master_Interconnected.dss` into the coordinator + build each child zone engine
+(`ad_children: Vec<Dss>`, D3 ownership) + disable `zone_*` meters + open link branches
++ build the torn Y + `Calc_C/ZLL/ZCC/Y4` on the REAL interconnected coordinator +
+`SendIdx2Actors` + close links + `get_Statistics` + the progress-string summary.
+Options wired: `set ADiakoptics=yes` → init (deferred past `do_set_cmd`'s field
+borrow via a `pending_ad_init` flag); `=no` clears the flag only; `get ADiakoptics`;
+`Solve` resets `AD_Init`. 7 integration gates on the midi feeder (2 zones): flag flip
++ summary, Contours ±1-per-column, ZLL block, **Y4·ZCC ≈ I to 1e-6 with ZCT populated
+(369 nz)**, deterministic statistics (46.34% reduction / 13.64% max imbalance),
+`=no` clears flag-only, and init-without-prior-solve fails. The CPU clamp
+(`Num_SubCkts ≤ CPU_Cores−2`) is ported → AD gates assume ≥4 cores (D6).
+
+**Stage 2b (NOT started — the AD solve stitch).** `Solve_Diakoptics`/`SolveAD`/
+`UpdateISrc`/`Start_Diakoptics`/`IndexBuses` + the coordinator solve driver + the D7
+equivalence gate. The child-side `solve_ad`/`update_isrc`/`ad_solve_into_parent` and
+the per-child index fields (`local_bus_idx`/`ad_ibus`/`ad_isrc_idx`) are ported and
+`#[allow(dead_code)]` in `solution/solution/power_flow.rs`, awaiting the driver.
+`Dss::ad_solve` (the `Solve`-with-`ADiakoptics` dispatch) currently records an honest
+"Stage 2b pending" error rather than run a guessed stitch. **Open question to settle
+with an r3723 Oddie probe before implementing (do NOT guess):** `Start_Diakoptics`
+disables each zone's artificial VSources (`source`/`vph_2`/`vph_3`) and its feeder-head
+link, driving the boundary purely through the `Ic` current injection — a radial
+single-cut zone then has no voltage/ground reference, so how the child Y stays
+non-singular (KLU regularization? a retained reference?) must be measured on r3723.
+Note: our torn-coordinator `Calc_ZCC` solve DID populate ZCT (faer factored the
+opened-link Y without erroring); whether that matches KLU physically is the D9(b)
+EPRI-IEEE-13 reference comparison (Stage 3/2b).
 
 **WP-AD.1 — incidence matrix + Sparse_Math + exports 53–57 (2026-07-11), gate-green.**
 `support/sparse_math.rs` (SparseInt/SparseComplex 1:1 COO: insert

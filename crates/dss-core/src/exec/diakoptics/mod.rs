@@ -22,7 +22,9 @@
 //! `Notify_Main`) are deliberately absent — allocated-but-never-read scaffolding
 //! (plan D5).
 
+mod engine;
 mod matrices;
+mod solve;
 
 use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
@@ -55,7 +57,6 @@ pub(crate) enum AdMsg {
 /// names that resolve (a link is a real `Line` in the interconnected model), so
 /// the miss path is unreachable; we return `None` rather than reproduce the
 /// stale-state read (plan D5).
-#[allow(dead_code)] // wired in by the init state machine (next staged commit).
 pub(crate) fn ad_find_element<'a>(
     classes: &'a [DssClass],
     full_name: &str,

@@ -423,13 +423,10 @@ fn set_get_ad_options_roundtrip() {
     dss.command("get UseMyLinkBranches");
     assert_eq!(dss.result(), "Yes");
 
-    // `set ADiakoptics` is a scoped refusal (WP-AD.3), not an unknown-parameter.
-    dss.command("set ADiakoptics=True");
-    assert!(
-        dss.errors().iter().any(|e| e.contains("WP-AD.3")),
-        "expected scoped ADiakoptics refusal, got {:?}",
-        dss.errors()
-    );
+    // `get ADiakoptics` reflects the flag (default off before init). The real
+    // `set ADiakoptics=yes` init is covered by `adiakoptics_init_*` above.
+    dss.command("get ADiakoptics");
+    assert_eq!(dss.result(), "No", "ADiakoptics off before init");
 }
 
 /// `Tear_Circuit` reads `Solution.NodeV` at each point of connection, so it
@@ -806,4 +803,220 @@ fn ckt24_graph_diagnostic() {
          (WP-AD.5 driver territory); this diagnostic records the vendored artifact shape. \
          Divergence is expected (D2: METIS 4.0 kmetis vs the 5.2.1 port)."
     );
+}
+
+// ===========================================================================
+// WP-AD.3 Stage 2 — `ADiakopticsInit` state machine (init + matrices + options
+// + get_Statistics). Rust-only (plan D8). The per-iteration AD solve is Stage 2b
+// (see `exec/diakoptics/solve.rs`); these gates validate the init machine
+// end-to-end: ClearAll + recompile the interconnected coordinator + build the
+// child zones + open link branches + Contours/ZLL/ZCC/Y4 on the REAL torn
+// coordinator, with the D1 invariants recomputed in-test.
+// ===========================================================================
+
+use num_complex::Complex64;
+
+/// Dense row-major `n*n` copy of a (row,col,value) triple list.
+fn ad_dense(cdata: &[(i32, i32, Complex64)], n: usize) -> Vec<Complex64> {
+    let mut d = vec![Complex64::new(0.0, 0.0); n * n];
+    for &(r, c, v) in cdata {
+        if (r as usize) < n && (c as usize) < n {
+            d[r as usize * n + c as usize] = v;
+        }
+    }
+    d
+}
+
+/// Run the full A-Diakoptics init on the midi feeder (2 zones); returns the Dss
+/// (coordinator = the interconnected model with Contours/ZLL/ZCC/Y4 built).
+fn init_midi_ad(scratch: &Path) -> Dss {
+    let mut dss = Dss::new();
+    compile_fixture(&mut dss, "midi", scratch);
+    dss.command("set Num_SubCircuits=2");
+    dss.command("set ADiakoptics=yes");
+    dss
+}
+
+#[test]
+fn adiakoptics_init_flips_flag_and_reports_summary() {
+    let scratch = scratch_dir("ad3_flag");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().expect("coordinator circuit");
+    assert!(
+        ckt.solution.adiakoptics,
+        "init failed; summary: {}",
+        dss.result()
+    );
+    assert!(
+        ckt.solution.parallel_enabled,
+        "parallel_enabled set on success"
+    );
+    assert!(!ckt.solution.adiak_init, "adiak_init cleared on success");
+    let summary = dss.result();
+    assert!(
+        summary.contains("Sub-Circuits Created"),
+        "summary: {summary}"
+    );
+    assert!(summary.contains("Building Contours"), "summary: {summary}");
+    assert!(
+        summary.contains("A-Diakoptics initialized"),
+        "summary: {summary}"
+    );
+}
+
+#[test]
+fn adiakoptics_init_contours_have_plus_minus_per_column() {
+    let scratch = scratch_dir("ad3_contours");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().unwrap();
+    let contours = &ckt.ad.contours;
+    assert_eq!(contours.ncols(), 3, "contour columns");
+    for col in 0..3 {
+        let entries: Vec<_> = contours.cdata.iter().filter(|cd| cd.col == col).collect();
+        assert_eq!(entries.len(), 2, "column {col}: two boundary nodes");
+        let plus = entries
+            .iter()
+            .filter(|cd| cd.value == Complex64::new(1.0, 0.0))
+            .count();
+        let minus = entries
+            .iter()
+            .filter(|cd| cd.value == Complex64::new(-1.0, 0.0))
+            .count();
+        assert_eq!((plus, minus), (1, 1), "column {col}: one +1 and one -1");
+        assert_ne!(entries[0].row, entries[1].row, "distinct boundary nodes");
+    }
+}
+
+#[test]
+fn adiakoptics_init_zll_is_link_block() {
+    let scratch = scratch_dir("ad3_zll");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().unwrap();
+    let zll = &ckt.ad.zll;
+    assert_eq!(zll.nzero(), 9, "3x3 dense ZLL block");
+    for cd in &zll.cdata {
+        assert!(
+            cd.row < 3 && cd.col < 3,
+            "entry inside the single link block"
+        );
+    }
+    assert!(
+        zll.cdata.iter().any(|c| c.value.norm() > 1e-9),
+        "ZLL block is non-zero"
+    );
+}
+
+#[test]
+fn adiakoptics_init_y4_inverts_zcc() {
+    let scratch = scratch_dir("ad3_y4");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().unwrap();
+    let n = ckt.ad.zcc.nrows() as usize;
+    assert_eq!(n, 3, "ZCC order = real-links x 3");
+    assert_eq!(ckt.ad.y4.nrows() as usize, n, "Y4 same order");
+    // The torn-Y per-column solve populates ZCT (a full response, not a
+    // degenerate empty), so ZCC carries the CᵀZCT coupling, not just ZLL.
+    assert!(ckt.ad.zct.nzero() > 0, "ZCT populated by the torn-Y solve");
+    assert_eq!(ckt.ad.zcc.nzero(), 9, "ZCC is a full 3×3");
+
+    let y4 = ad_dense(
+        &ckt.ad
+            .y4
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    let zcc = ad_dense(
+        &ckt.ad
+            .zcc
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    for i in 0..n {
+        for j in 0..n {
+            let mut s = Complex64::new(0.0, 0.0);
+            for k in 0..n {
+                s += y4[i * n + k] * zcc[k * n + j];
+            }
+            let want = if i == j { 1.0 } else { 0.0 };
+            assert!(
+                (s.re - want).abs() < 1e-6 && s.im.abs() < 1e-6,
+                "Y4.ZCC[{i},{j}] = {s} (want {want})"
+            );
+        }
+    }
+    for cd in &ckt.ad.y4.cdata {
+        assert_ne!(cd.value.re, 0.0, "Y4 stores only nonzero-real entries (D5)");
+    }
+}
+
+#[test]
+fn adiakoptics_get_flag_and_stats_deterministic() {
+    let scratch = scratch_dir("ad3_stats");
+    let mut dss = init_midi_ad(&scratch);
+    // Capture the init summary's statistics BEFORE any further command overwrites
+    // `GlobalResult`.
+    let stats1 = summary_stats(&dss);
+    dss.command("get ADiakoptics");
+    assert_eq!(dss.result(), "Yes", "get ADiakoptics after init");
+
+    let scratch2 = scratch_dir("ad3_stats2");
+    let dss2 = init_midi_ad(&scratch2);
+    let stats2 = summary_stats(&dss2);
+    assert_eq!(stats1, stats2, "statistics deterministic across runs");
+    assert!(
+        stats1.contains("Circuit reduction"),
+        "stats block present: {stats1}"
+    );
+}
+
+#[test]
+fn adiakoptics_set_no_clears_flag_only() {
+    let scratch = scratch_dir("ad3_clear");
+    let mut dss = init_midi_ad(&scratch);
+    assert!(dss.circuit().unwrap().solution.adiakoptics);
+    dss.command("set ADiakoptics=no");
+    assert!(!dss.circuit().unwrap().solution.adiakoptics, "flag cleared");
+    assert_eq!(
+        dss.circuit().unwrap().ad.contours.ncols(),
+        3,
+        "matrices retained (clear = flag only)"
+    );
+}
+
+#[test]
+fn adiakoptics_init_without_prior_solve_fails() {
+    let scratch = scratch_dir("ad3_nosolve");
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", fixture("midi").display()));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("set Num_SubCircuits=2");
+    dss.command("set ADiakoptics=yes");
+    assert!(
+        !dss.circuit().unwrap().solution.adiakoptics,
+        "init must fail without a converged prior solve"
+    );
+    assert!(
+        dss.result().contains("errors found"),
+        "summary: {}",
+        dss.result()
+    );
+}
+
+/// The deterministic partitioning-statistics lines of the init summary.
+fn summary_stats(dss: &Dss) -> String {
+    dss.result()
+        .lines()
+        .filter(|l| {
+            l.contains("Circuit reduction")
+                || l.contains("Max imbalance")
+                || l.contains("Average imbalance")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
