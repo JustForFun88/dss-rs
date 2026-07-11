@@ -158,6 +158,78 @@ fn complex_multiply_dimension_mismatch_sentinel() {
 }
 
 #[test]
+fn complex_multiply_computes_product_and_drops_non_biquadrant() {
+    // A = [[1, i], [1, 1]], B = [[1, i], [i, 1]] (row blocks column-sorted so the
+    // block-walk computes the true product). True product:
+    //   (0,0) = 1*1 + i*i   = 0+0i   -> dropped (both parts zero)
+    //   (0,1) = 1*i + i*1   = 0+2i   -> dropped (re == 0; the `re<>0 AND im<>0` quirk)
+    //   (1,0) = 1*1 + 1*i   = 1+1i   -> kept
+    //   (1,1) = 1*i + 1*1   = 1+1i   -> kept
+    // Hand-traced against Pascal `Sparse_Math.pas:868` and cross-checked with a
+    // faithful sim of the transpose+block-walk.
+    let mut a = SparseComplex::new();
+    a.insert(0, 0, c(1.0, 0.0));
+    a.insert(0, 1, c(0.0, 1.0));
+    a.insert(1, 0, c(1.0, 0.0));
+    a.insert(1, 1, c(1.0, 0.0));
+    let mut b = SparseComplex::new();
+    b.insert(0, 0, c(1.0, 0.0));
+    b.insert(0, 1, c(0.0, 1.0));
+    b.insert(1, 0, c(0.0, 1.0));
+    b.insert(1, 1, c(1.0, 0.0));
+    let p = a.multiply(&b);
+    assert_eq!(p.cdata.len(), 2);
+    assert_eq!((p.cdata[0].row, p.cdata[0].col), (1, 0));
+    assert_eq!(p.cdata[0].value, c(1.0, 1.0));
+    assert_eq!((p.cdata[1].row, p.cdata[1].col), (1, 1));
+    assert_eq!(p.cdata[1].value, c(1.0, 1.0));
+}
+
+#[test]
+fn complex_add_sums_and_drops_non_biquadrant() {
+    // A row {(0,0)=1+i, (0,1)=1+i}, B row {(0,0)=-1+3i, (0,1)=2+0i}; same dims.
+    //   (0,0): (1+i)+(-1+3i) = 0+4i -> dropped (re == 0; `re<>0 AND im<>0` quirk)
+    //   (0,1): (1+i)+(2+0i)  = 3+1i -> kept
+    // The merge loop consumes both cells, so the `cdata[apos+1]` tail loops never
+    // run. Hand-traced against Pascal `Sparse_Math.pas:654`.
+    let mut a = SparseComplex::new();
+    a.insert(0, 0, c(1.0, 1.0));
+    a.insert(0, 1, c(1.0, 1.0));
+    let mut b = SparseComplex::new();
+    b.insert(0, 0, c(-1.0, 3.0));
+    b.insert(0, 1, c(2.0, 0.0));
+    let s = a.add(&b);
+    assert_eq!(s.cdata.len(), 1);
+    assert_eq!((s.cdata[0].row, s.cdata[0].col), (0, 1));
+    assert_eq!(s.cdata[0].value, c(3.0, 1.0));
+}
+
+#[test]
+fn complex_add_dimension_mismatch_sentinel() {
+    let mut a = SparseComplex::new();
+    a.insert(0, 0, c(1.0, 1.0)); // 1x1 (row=0,col=0)
+    let mut b = SparseComplex::new();
+    b.insert(2, 2, c(1.0, 1.0)); // row=2,col=2
+    let s = a.add(&b);
+    assert_eq!(s.cdata.len(), 1);
+    assert_eq!(s.cdata[0].value, c(-1.0, 0.0));
+}
+
+#[test]
+fn complex_rank_counts_distinct_column_patterns() {
+    // `Rank` ignores values (R_equal compares column indices only). rows: 0:{0},
+    // 1:{0,1}, 2:{1}. row (max index) = 2, so the walk covers i in 0..2 only (the
+    // last row is not examined — the same upstream off-by-one as the int form).
+    // i=0 -> +1; i=1 cols {0,1} != row0 {0} -> +1. rank = 2.
+    let mut m = SparseComplex::new();
+    m.insert(0, 0, c(1.0, 0.0));
+    m.insert(1, 0, c(1.0, 0.0));
+    m.insert(1, 1, c(1.0, 0.0));
+    m.insert(2, 1, c(1.0, 0.0));
+    assert_eq!(m.rank(), 2);
+}
+
+#[test]
 fn reset_empties_the_store() {
     let mut m = SparseInt::new();
     m.insert(0, 0, 1);

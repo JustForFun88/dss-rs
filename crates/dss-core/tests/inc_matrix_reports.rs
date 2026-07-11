@@ -107,11 +107,36 @@ fn run(stem: &str) {
     assert!(dss.errors().is_empty(), "{stem}: errors {:?}", dss.errors());
 
     let produced = dss.last_result_file();
+    // Pin the oracle default filename per export keyword (Pascal
+    // `ExportOptions.pas:417-425`), mirroring the `golden_reports.rs` `ends_with`
+    // convention — a swapped/wrong default basename (the `Result.txt`→`.csv`
+    // regression class) would otherwise pass since content is keyed by the export
+    // function, not the filename.
+    let want = expected_basename(&meta.report);
+    assert!(
+        produced.to_lowercase().ends_with(want),
+        "{stem}: unexpected produced path {produced:?} (want …{want} for report {})",
+        meta.report
+    );
     let rust = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
 
     assert_bytes_eq(&oracle, &rust, stem);
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The oracle default output filename for each incidence-matrix export keyword
+/// (Pascal `ExportOptions.pas:417-425`, verbatim). Lowercased for the
+/// case-insensitive `ends_with` check.
+fn expected_basename(report: &str) -> &'static str {
+    match report.to_lowercase().as_str() {
+        "incmatrix" => "inc_matrix.csv",
+        "incmatrixrows" => "inc_matrix_rows.csv",
+        "incmatrixcols" => "inc_matrix_cols.csv",
+        "buslevels" => "bus_levels.csv",
+        "laplacian" => "laplacian.csv",
+        other => panic!("unknown incidence-matrix report keyword: {other:?}"),
+    }
 }
 
 /// Byte-exact line comparison (CRLF→LF normalized), with a per-line failure
