@@ -1,0 +1,9 @@
+{
+  "report": "powers",
+  "master": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+  "post": [
+    "solve"
+  ],
+  "fixture": "ieee123",
+  "suffix": "EXP_POWERS.csv"
+}
