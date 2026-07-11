@@ -265,17 +265,45 @@ file interface:
 `crates/dss-core/src/support/partition.rs` — **greedy graph-growing partitioning
 (GGP)** of the `.graph` adjacency (same vertex order as `Inc_Mat_Cols`, edge weights as
 written to the file), growing zones BFS-level-contiguously from the feeder head to
-`⌈NVertices/k⌉`, deterministic tie-break = ascending vertex index. GGP is the classic
-initial-partitioning baseline from the METIS literature (see §3 "Theory & references"
-for the citations and for why kmetis-identity is deliberately not a goal — the
-partition is not part of the behavioral contract). It writes `<graph>.part.<N>`
+`⌈NVertices/k⌉`, deterministic tie-break = ascending vertex index, followed by a
+**single deterministic FM-style boundary-refinement pass** (move a boundary vertex to
+the neighbor zone when it reduces edge-cut without breaking the balance bound or zone
+connectivity; Fiduccia–Mattheyses 1982) — together ≈300–400 lines, both algorithms
+from the METIS literature (§3 "Theory & references"). It writes `<graph>.part.<N>`
 (one zone id per line, same format kmetis emits) and `Create_MeTIS_Zones` consumes it
-unchanged. Consequences: partitions are *valid but not kmetis-identical* (nothing can
-gate kmetis-identity — no oracle); the edge count we write is exact, so the upstream
-"repair loop" (`GetNumEdges` + `TFileSearchReplace` header patch + retry) is
-**not ported** (document at the call site). Running a real external kmetis is out of
-scope permanently (no external binaries in the engine or tests). Mark the substitution
-in the module doc as `NOTE(subst-metis)` — greppable, like `TODO(compat)` but permanent.
+unchanged.
+
+Why not "just port METIS": we don't need the library, we need **one** entry point —
+the equivalent of `METIS_PartGraphKway` on a feeder-sized graph with k ∈ 2..8 — and
+partition identity is unattainable *in principle*: the `kmetis.exe` OpenDSS ships is
+METIS **4.0** (1998), while the vendored library source (`.inputs/METIS`, 5.2.1) is a
+different algorithm generation — two real METIS versions already disagree on the same
+graph, so "same `.part` bytes" was never a gateable target. What IS held: the partition
+is not part of the behavioral contract (any valid partition → the same fixpoint,
+probe-proven §0.2; reference comparisons align partitions via manual `LinkBranches`,
+D9c). Validity invariants (connected zones, balance report, 3-phase-Line cuts) are
+asserted by WP-AD.2 tests.
+
+- **Quality benchmark (not a gate):** WP-AD.2 runs an offline probe comparing our
+  partitioner's edge-cut/imbalance against `kmetis.exe` (from the D9 reference channel,
+  developer-side only) on the same `.graph` files (IEEE13/IEEE123/ckt24 + the
+  synthesized fixtures); numbers go to STATUS. Calibration: official kmetis itself
+  accepted 85% max imbalance on IEEE123 (§0.2 probe) — the quality bar is low.
+- **Tier 2 (optional, trigger-gated):** if the WP-AD.4 sweep shows GGP+FM
+  *systematically* failing validity or producing partitions so poor that AD-eligible
+  decks become ineligible where official kmetis succeeds, port the actual multilevel
+  k-way pipeline (SHEM coarsening → GGGP initial partition → greedy k-way refinement)
+  from the now-vendored spec — `.inputs/METIS/libmetis` (5.2.1 source) + the paper
+  `.inputs/Solve_books/metis.pdf` (Karypis & Kumar, SIAM JSC 1998) — as
+  `support/partition/metis.rs`, ~2–3k lines for that single path. Do NOT build this
+  preemptively: quality parity, never bit parity, and only on evidence.
+
+The edge count we write is exact, so the upstream "repair loop" (`GetNumEdges` +
+`TFileSearchReplace` header patch + retry) is **not ported** (document at the call
+site). Running a real external kmetis inside the engine or `cargo test` is out of
+scope permanently (no external binaries; the offline benchmark above is a
+developer-side probe in the D9 channel). Mark the substitution in the module doc as
+`NOTE(subst-metis)` — greppable, like `TODO(compat)` but permanent.
 
 **D3 — children without threads.** Upstream AD runs on PM actor threads that are
 barrier-synchronized after every message (`SendCmd2Actors` → `Wait4Actors`), i.e. the
@@ -549,16 +577,20 @@ transcription has a published/vendored basis:
 - **The executable spec** is `Diakoptics.pas` itself (D10) — cited per procedure in
   §0.1; the port transcribes its loops, it does not re-derive them.
 - **The auto-tear partitioner** (the one place upstream used an external tool):
-  METIS's multilevel k-way algorithm is published — G. Karypis & V. Kumar, *A Fast and
-  High Quality Multilevel Scheme for Partitioning Irregular Graphs*, SIAM J. Sci.
-  Comput. 20(1), 1998 (METIS 5.x source is Apache-2.0) — so a faithful pure-Rust port
-  is *possible* but deliberately out of scope: the partition is not part of the
-  behavioral contract (any valid partition yields the same fixpoint — probe-proven
-  §0.2, and reference comparisons align partitions via manual `LinkBranches`, D9c).
-  The D2 substitute is the classic **greedy graph-growing partitioning (GGP)** over
-  BFS level structures — the standard baseline described in the same Karypis–Kumar
-  paper (initial-partitioning phase), level structures per Cuthill–McKee (1969) — not
-  an invented heuristic.
+  METIS's multilevel k-way algorithm is published AND vendored — the paper is
+  `.inputs/Solve_books/metis.pdf` (G. Karypis & V. Kumar, *A Fast and High Quality
+  Multilevel Scheme for Partitioning Irregular Graphs*, SIAM J. Sci. Comput. 20(1),
+  1998) and the library source is `.inputs/METIS` (5.2.1, Apache-2.0) — so a faithful
+  pure-Rust port of the one needed entry (`METIS_PartGraphKway`) is a *bounded, spec'd
+  fallback* (D2 Tier 2), deliberately not built preemptively: the partition is not
+  part of the behavioral contract (any valid partition yields the same fixpoint —
+  probe-proven §0.2, and reference comparisons align partitions via manual
+  `LinkBranches`, D9c), and bit-parity is impossible anyway (OpenDSS ships METIS-4.0-era
+  `kmetis.exe`; 4.0 vs 5.2.1 already differ). The D2 default is the classic **greedy
+  graph-growing partitioning (GGP)** over BFS level structures + one **FM refinement
+  pass** — the standard baseline + refinement described in the same Karypis–Kumar
+  paper, level structures per Cuthill–McKee (1969), refinement per
+  Fiduccia–Mattheyses (1982) — not an invented heuristic.
 
 ### The algorithm in one page (orientation for every WP below)
 
