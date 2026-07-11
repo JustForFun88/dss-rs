@@ -381,7 +381,7 @@ PHASE7 convention).
 
 ---
 
-### WPG.1 — Shape file inputs [7%]
+### WPG.1 — Shape file inputs [7%] ✅
 
 **Pascal:** `General/LoadShape.pas` `DoSngFile`/`DoDblFile`/`DoCSVFile`(PQ
 variant `Do2ColCSVFile`?—confirm the PQCSVFile reader name at open),
@@ -401,7 +401,7 @@ classes.
 
 ---
 
-### WPG.2 — `SolveGeneralTime` (mode=Time) [5%]
+### WPG.2 — `SolveGeneralTime` (mode=Time) [5%] ✅
 
 **Pascal:** `Common/SolutionAlgs.pas` `SolveGeneralTime` (l.298 — ~25 lines:
 per-step `DefaultHourMult` → `SolveSnap` → `FinishTimeStep`).
@@ -417,7 +417,7 @@ tags, don't migrate).
 
 ---
 
-### WPG.3 — Load-duration modes LD1/LD2 + `Set LDCurve=` [8%]
+### WPG.3 — Load-duration modes LD1/LD2 + `Set LDCurve=` [8%] ✅
 
 **Pascal:** `SolutionAlgs.pas` `SolveLD1` (l.558)/`SolveLD2` (l.645);
 `ExecOptions` `LDCurve`; `Circuit.LoadDurCurveObj`.
@@ -439,7 +439,7 @@ tags, don't migrate).
 
 ---
 
-### WPG.4 — Monte Carlo modes M1/M2/M3/MF + the FPC RNG port [14%]
+### WPG.4 — Monte Carlo modes M1/M2/M3/MF + the FPC RNG port [14%] ✅
 
 **Pascal:** `SolutionAlgs.pas` `SolveMonte1/2/3` (l.367/418/491),
 `SolveMonteFault` (l.727) + `PickAFault` (l.703); `PCElements/Load.pas`
@@ -465,7 +465,7 @@ tags, don't migrate).
 
 ---
 
-### WPG.5 — AutoAdd solve mode [12%]
+### WPG.5 — AutoAdd solve mode [12%] ✅
 
 **Pascal:** `Common/AutoAdd.pas` (567 — `MakeBusList`, `Solve` capacity
 search, `ComputekWLosses_EEN`, `AppendToFile`/log, the winner `New
@@ -490,7 +490,7 @@ hook `power_flow.rs:82` already stubs).
 
 ---
 
-### WPG.6 — Newton algorithm [5%]
+### WPG.6 — Newton algorithm [5%] ✅
 
 **Pascal:** `Common/Solution.pas` `DoNewtonSolution` (+ `SetSize` of the
 Newton work arrays in `SolveSnap`'s init — find the exact allocation site at
@@ -506,7 +506,7 @@ converges on it).
 
 ---
 
-### WPG.7 — CapControl `type=Follow` + `ControlSignal` [5%]
+### WPG.7 — CapControl `type=Follow` + `ControlSignal` [5%] ✅
 
 **Pascal:** `Controls/CapControl.pas` FOLLOWCONTROL arm of `Sample` (l.598
 guard + the mode logic), `ControlSignal` DSSObjectReference (l.288).
@@ -519,7 +519,7 @@ step states exact.
 
 ---
 
-### WPG.8 — Reactor `RCurve`/`LCurve` [5%]
+### WPG.8 — Reactor `RCurve`/`LCurve` [5%] ✅
 
 **Pascal:** `PDElements/Reactor.pas` `RCurve`/`LCurve` fetch + their use in
 `CalcYPrim`'s frequency branch.
@@ -532,7 +532,7 @@ with the curves on).
 
 ---
 
-### WPG.9 — InvControl `ControlModel=Exponential` (TPICtrl) [6%]
+### WPG.9 — InvControl `ControlModel=Exponential` (TPICtrl) [6%] ✅
 
 **Pascal:** `Controls/InvControl.pas` `TPICtrl` (the PI controller record +
 `SolvePI`/`PIController` methods — locate at WP open) and every
@@ -545,7 +545,7 @@ byte-identical. Gate: the `invcontrol_expmodel.dss` live case goes
 
 ---
 
-### WPG.10 — InvControl VOLTWATT / VV_VW over Storage [8%]
+### WPG.10 — InvControl VOLTWATT / VV_VW over Storage [8%] ✅
 
 **Pascal:** `InvControl.pas` — the Storage-typed branches of the voltwatt
 active-power limit (charging vs discharging limit selection,
@@ -559,7 +559,7 @@ across the run), event logs equal.
 
 ---
 
-### WPG.11 — StorageController seasonal targets [5%]
+### WPG.11 — StorageController seasonal targets [5%] ✅
 
 **Pascal:** `Controls/StorageController.pas` `Get_DynamicTarget` (l.1020,
 0-based `SeasonTargets[trunc(SeasonSignal.GetYValue(intHour))]`), call sites
@@ -576,7 +576,7 @@ l.1100 (`THigh=1`)/l.1412 (`THigh=0`); `ExecOptions` 114/115.
 
 ---
 
-### WPG.12 — Relay `Generic` + `TD21` Sample [12%]
+### WPG.12 — Relay `Generic` + `TD21` Sample [12%] ✅
 
 **Pascal:** `Controls/Relay.pas` `GenericLogic` + `TD21Logic` (+ the
 `LookupVariable`/`MonitorVarIndex` PC-state resolution and the `RelayTarget`
@@ -601,7 +601,7 @@ the Generic-relay users in the `DG_Protection`/VCCS families. Steps:
 
 ---
 
-### WPG.13 — GFM grid-forming mode [18%] — **after WP8.6 (BatchEdit)**
+### WPG.13 — GFM grid-forming mode [18%] — **after WP8.6 (BatchEdit)** ✅
 
 **Pascal:** `PCElements/Storage.pas`/`PVsystem.pas` GFM branches
 (`CalcGFMVoltage`, `GFM_Mode` current/power dispatch, `CheckIfDelivering`),
@@ -627,7 +627,7 @@ are oracle-troubled (`Master-unbal` non-convergent, `Run_RecloserSiting`
 
 ---
 
-### WPG.14 — Isource [5%]
+### WPG.14 — Isource [5%] ✅
 
 **Pascal:** `PCElements/Isource.pas` (541 lines) — the ideal current source.
 Small and self-contained; the Rust source-element template is
@@ -697,7 +697,7 @@ Steps (in order; each cites the Pascal site to port loop-for-loop):
 
 ---
 
-### WPG.15 — AutoTrans [15%]
+### WPG.15 — AutoTrans [15%] ✅
 
 **Pascal:** `PDElements/AutoTrans.pas` (2065 lines). **Template: clone the
 ported Transformer module** (`elements/pd/transformer/` — mod/accessors/edit/
@@ -795,7 +795,7 @@ Port these AutoTrans-specific overrides loop-for-loop, citing lines:
 
 ---
 
-### WPG.16 — GIC family: GICTransformer, GICLine, GICsource [8%]
+### WPG.16 — GIC family: GICTransformer, GICLine, GICsource [8%] ✅
 
 **Pascal:** `PDElements/GICTransformer.pas` (595), `PCElements/GICLine.pas`
 (679), `PCElements/GICsource.pas` (478). One WP — the three are small,
@@ -867,7 +867,7 @@ Port in this order:
 
 ---
 
-### WPG.18 — CIM XML export (`Export CIM100`/`CIM100Fragments`) [20%] — after WP8.6 (UUID substrate) + WPG.15 (AutoTrans arm)
+### WPG.18 — CIM XML export (`Export CIM100`/`CIM100Fragments`) [20%] — after WP8.6 (UUID substrate) + WPG.15 (AutoTrans arm) ✅
 
 **Pascal:** `Common/ExportCIMXML.pas` (4790 lines — the whole unit), plus
 plumbing already owned elsewhere: the `Export` dispatch/option parse
@@ -1049,7 +1049,7 @@ known at authoring) and record the WP in STATUS §1 per the ritual.
 
 ---
 
-### WPG.17 — Exit sweep [2%]
+### WPG.17 — Exit sweep [2%] ✅
 
 1. `rg "no corpus case"` / `rg "NOT_PORTED"` / the §1 + §1b tables — every
    row either ported+gated here or explicitly re-owned (§1b "NOT in this
@@ -1076,15 +1076,22 @@ independent audit-code/audit-tests pair, merged and settled per the ritual.
 
 **Named follow-ups surfaced by the closure (owners, not silent leftovers):**
 
-- **WPG.19 (open): non-MM file-backed numeric arrays** — Pascal
+- **WPG.19 ✅ (DONE 2026-07-11, merged `7860582`): non-MM file-backed numeric arrays** — Pascal
   `InterpretDblArray`'s `(file=…)`/`(sngfile=…)`/`(dblfile=…)` directive for
   array props WITHOUT `MemoryMapping=Yes` (`Utilities.pas`); surfaced as the
   remaining blocker of `MemoryMappingLoadShapes/ckt24` (`LS_PhaseB/C…`).
   Loud `NOT_PORTED` at `load_shape/accessors.rs::set_f64_array_raw`.
-- **WPG.20 (open): MMF-shape binary save** — `Action=SngSave/DblSave` on a
+  → **Ported** both sites (`set_f64_array_raw` + generic `util.rs::interpret_dbl_array`),
+  incl. the Pascal `#705` stop-and-shrink; new live deck `modes/shape_filearr`;
+  ckt24 unblocked but honestly kept `needs_investigation` on a deeper RegControl/LDC
+  tap-current divergence (not forced). Full record in STATUS.md.
+- **WPG.20 ✅ (DONE 2026-07-11, merged `7860582`): MMF-shape binary save** — `Action=SngSave/DblSave` on a
   `MemoryMapping=Yes` LoadShape keeps a loud refusal; removing it needs an
   oracle probe of the MMF-save Q-side semantics (`Assigned(dQ)` under MMF)
   before the emitted bytes can be trusted.
+  → **Ported**: oracle-probed `Assigned(dQ)` (Case A/B), guard removed; the eager MMF
+  read already populates `q_mult`, so the non-MMF snapshot body emits byte-exact bytes;
+  new byte-exact golden `binsave_mmf_matches_oracle`. Full record in STATUS.md.
 - **JSON output** (`Obj_ToJSON`/`Batch_ToJSON`/`Obj_Circuit_ToJSON_` +
   `joptions`; `FromJSON` import and `CAPI_Schema` behind it) — user-deferred
   2026-07-09; the implementation-ready plan is **`JSON_EXPORT_PLAN.md`**
