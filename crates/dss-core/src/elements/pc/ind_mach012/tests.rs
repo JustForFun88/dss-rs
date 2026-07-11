@@ -52,3 +52,15 @@ fn recalc_sets_impedances() {
     assert!((m.yeq.im + 1.0 / z_base).abs() < 1e-12);
     assert_eq!(m.yeq.re, 0.0);
 }
+
+/// IndMach012 `MakePosSequence` is an EMPTY Pascal body (IndMach012.pas:1424-1426):
+/// no property edits and no `inherited` call → `PosSeqPlan::no_base()`.
+#[test]
+fn makeposseq_indmach012_is_no_base_and_empty() {
+    use crate::elements::pos_seq::PosSeqCtx;
+    use crate::elements::traits::CktElement;
+    let mut m = IndMach012::new("m1");
+    let plan = m.make_pos_sequence(&PosSeqCtx::default());
+    assert!(!plan.run_base);
+    assert!(plan.actions.is_empty());
+}
