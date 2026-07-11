@@ -140,3 +140,26 @@ fn get_currents_is_negated_injection() {
     // Terminal 1 phase A: Curr = -BaseCurr = -5∠0.
     assert!((curr[0] - Complex64::new(-5.0, 0.0)).norm() < 1e-9);
 }
+
+/// Isource, multi-phase (default 3) → bare `Phases := 1` edit + run_base
+/// (Pascal `TIsourceObj.MakePosSequence`, Isource.pas:500-505).
+#[test]
+fn makeposseq_isource_multiphase_sets_phases_1() {
+    use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+    let mut isrc = Isource::new("i1");
+    assert!(isrc.cd.nphases > 1);
+    let plan = isrc.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    assert_eq!(plan.actions, vec![PosSeqAction::SetI32(prop::PHASES, 1)]);
+}
+
+/// Isource, already single phase → base-only (no actions), still run_base.
+#[test]
+fn makeposseq_isource_single_phase_is_base_only() {
+    use crate::elements::pos_seq::PosSeqCtx;
+    let mut isrc = Isource::new("i1");
+    isrc.cd.nphases = 1;
+    let plan = isrc.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    assert!(plan.actions.is_empty());
+}

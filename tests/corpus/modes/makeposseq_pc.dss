@@ -1,9 +1,13 @@
 ! makeposseq_pc.dss — PC-element MakePosSequence coverage (WPG.21).
 ! Load (wye / delta+xfkVA / 1-phase), Generator x4 (the PrpSequence-read
 ! permutations: plain kW+pf, kVA=, MVA=, min/maxkvar=), PVSystem, Storage,
-! a second VSource, an Isource, and a VSConverter. build -> solve ->
+! a second VSource, and a (1-phase) Isource. build -> solve ->
 ! makeposseq -> solve, then a SECOND makeposseq + solve (pins the ÷3-again
 ! kvar/kVA quirk and overall idempotency of the conversion).
+! Note: no VSConverter here — it is excluded from live decks because of the
+! known upstream GetCurrents state-mutating bug (see CLAUDE.md known-bugs list).
+! Its MakePosSequence override (Phases:=2, Ndc:=1) is covered instead by the
+! `pos_seq_tests` unit test in `pc/vs_converter/accessors.rs`.
 clear
 set defaultbasefrequency=60
 new circuit.psq_pc basekv=12.47 pu=1.0 phases=3 bus1=src
