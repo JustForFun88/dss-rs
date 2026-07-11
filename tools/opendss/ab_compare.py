@@ -12,6 +12,8 @@ because the two dss-python versions cannot share a venv/process, and Oddie
 wraps one DLL per process):
 
     capi           the pinned dss-python 0.15.7 oracle (tools/golden/PIN.txt)
+    capi015        dss-python 0.16.0b2 (Oddie venv) driving its bundled dss_capi
+                   0.15.0b4 backend (OpenDSS SVN r4103 — the 0.15.x/r4088 line)
     oddie:r4133    an EPRI OpenDSSDirect.dll revision (tools/opendss/revisions.json)
     oddie:@<path>  a direct DLL path (no version pin check)
 
@@ -68,6 +70,14 @@ class EngineProc:
         if spec == "capi":
             self.python = python_capi
             self.env["DSS_ORACLE_ENGINE"] = "capi"
+        elif spec == "capi015":
+            # dss_capi 0.15.x-line oracle: dss-python 0.16.0b2 (fastdss) from the
+            # Oddie venv driving its bundled 0.15.0b4 backend (OpenDSS SVN r4103).
+            # Same interpreter as oddie:* (the venv), engine bound via env.
+            self.python = python_oddie
+            self.env["DSS_ORACLE_ENGINE"] = "capi015"
+            self.env.pop("DSS_OPENDSS_REV", None)
+            self.env.pop("DSS_OPENDSS_DLL", None)
         elif spec.startswith("oddie:"):
             self.python = python_oddie
             self.env["DSS_ORACLE_ENGINE"] = "oddie"
@@ -79,7 +89,7 @@ class EngineProc:
                 self.env["DSS_OPENDSS_REV"] = arg
                 self.env.pop("DSS_OPENDSS_DLL", None)
         else:
-            sys.exit(f"bad engine spec {spec!r} (capi | oddie:<rev> | oddie:@<dll>)")
+            sys.exit(f"bad engine spec {spec!r} (capi | capi015 | oddie:<rev> | oddie:@<dll>)")
         self.proc: subprocess.Popen | None = None
         self.q: queue.Queue[str | None] = queue.Queue()
         self.engine_info: dict = {}
@@ -444,7 +454,7 @@ def apply_known_diffs(rec: dict, entries: list[dict], revs: set[str]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--a", required=True, help="engine A: capi | oddie:<rev> | oddie:@<dll>")
+    ap.add_argument("--a", required=True, help="engine A: capi | capi015 | oddie:<rev> | oddie:@<dll>")
     ap.add_argument("--b", required=True, help="engine B (the reference side of rel diffs)")
     ap.add_argument(
         "--manifest",
