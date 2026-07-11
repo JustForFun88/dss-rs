@@ -112,6 +112,9 @@ fn run_deck(stem: &str) {
             "batch" => dss
                 .class_batch_to_json(&cap.target, opts)
                 .unwrap_or_else(|| panic!("{}: class {} not found", golden.name, cap.target)),
+            "circuit" => dss
+                .circuit_to_json(opts)
+                .unwrap_or_else(|| panic!("{}: no active circuit", golden.name)),
             other => panic!("{}: unknown capture kind {other}", golden.name),
         };
         assert_eq!(
@@ -160,4 +163,19 @@ fn json_escape_micro() {
 #[test]
 fn json_ieee13_samples() {
     run_deck("ieee13_samples");
+}
+
+#[test]
+fn json_circuit_micro() {
+    run_deck("circuit_micro");
+}
+
+#[test]
+fn json_circuit_edited_default() {
+    run_deck("circuit_edited_default");
+}
+
+#[test]
+fn json_circuit_ieee13() {
+    run_deck("circuit_ieee13");
 }
