@@ -96,7 +96,11 @@ impl AdTearing {
         Self {
             coverage: 0.9,
             actual_coverage: -1.0,
-            num_sub_ckts: (cpu_cores - 1).max(1),
+            // `Num_SubCkts := CPU_Cores-1` verbatim (Circuit.pas:606) — no
+            // clamp, so a 1-core host yields 0 exactly as upstream. Plan D6:
+            // every AD test fixes `Num_SubCircuits` explicitly, so this default
+            // is never gated.
+            num_sub_ckts: cpu_cores - 1,
             ..Default::default()
         }
     }
