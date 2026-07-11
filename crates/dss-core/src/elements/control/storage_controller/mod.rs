@@ -28,8 +28,10 @@
 //! + the [`StorageDispatchEnv::season_rating`]/[`StorageDispatchEnv::
 //! season_rating_idx`] call-site guards.
 //!
+//! `MakePosSequence` is ported (WPG.21): the monitored-element phase/conductor/
+//! bus resync (see [`accessors`]).
+//!
 //! **Deliberately NOT_PORTED:**
-//! - `MakePosSequence` — positive-sequence reduction isn't supported yet.
 //! - the parse-time 37201 ("No unassigned Storage Elements") for a *Storage-less*
 //!   circuit: Pascal emits it in `RecalcElementData`; here the fleet resolves
 //!   lazily at first `Sample`, so a default empty fleet is a silent no-op (same

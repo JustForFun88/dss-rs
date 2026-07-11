@@ -5,6 +5,7 @@
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::RefSnapshot;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -34,6 +35,42 @@ impl CktElement for EspvlControl {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TESPVLControlObj.MakePosSequence`
+    /// (`Controls/ESPVLControl.pas:357`). **NIL-deref hazard** (Access violation
+    /// #303, probe `S4`, `docs/wpg21_makeposseq_probes.md`): a *fleet* control
+    /// whose `ControlledElement` is always NIL, yet the body guards on
+    /// `MonitoredElement` then dereferences `ControlledElement.NPhases`. Per
+    /// CLAUDE.md UB is never reproduced: when `ctx.controlled` is `None`,
+    /// safe-skip the whole block.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        // Pascal guards on `MonitoredElement <> NIL` then derefs `ControlledElement`;
+        // act only when BOTH are resolved.
+        if let Some((c, m)) = ctx.controlled.as_ref().zip(ctx.monitored.as_ref()) {
+            // FNphases := ControlledElement.NPhases; Nconds := FNphases
+            self.ccd.cd.nphases = c.nphases;
+            self.ccd.cd.set_nconds(c.nphases);
+            // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
+            let t = self.ccd.element_terminal as usize;
+            let bus = t
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+        }
+        // else: either MonitoredElement is NIL (Pascal skips the block) or it is
+        // set while ControlledElement is NIL — the crash config, where Pascal
+        // derefs NIL and faults (#303). Both collapse to a safe no-op here.
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 

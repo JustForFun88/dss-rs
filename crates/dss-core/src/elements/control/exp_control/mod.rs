@@ -26,7 +26,10 @@
 //! pattern. **ExpControl controls only PVSystem** (never Storage), so the env is
 //! PVSystem-typed.
 //!
-//! **NOT_PORTED:** `MakePosSequence` (deferred everywhere since Phase 6).
+//! `MakePosSequence` is ported (WPG.21) as a NIL-deref-safe partial: the defined
+//! `FNphases := 3; Nconds := 3` resync plus the resolved-DER bus adopt, with the
+//! empty-list `MonitoredElement` deref safe-skipped (Access violation,
+//! `docs/wpg21_makeposseq_probes.md`; CLAUDE.md forbids reproducing it).
 
 mod accessors;
 mod compute;
