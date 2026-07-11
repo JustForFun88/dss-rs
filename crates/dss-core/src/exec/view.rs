@@ -3,7 +3,9 @@
 //! Split out of `exec/mod.rs`.
 
 use super::*;
-use crate::report::export::json::{JsonOpts, build as json_build, serialize as json_serialize};
+use crate::report::export::json::{
+    JsonOpts, build as json_build, circuit as json_circuit, serialize as json_serialize,
+};
 
 /// A monitor's recorded buffer for the golden/test harness (dss-python
 /// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
@@ -347,6 +349,26 @@ impl Dss {
             opts,
         );
         Some(json_serialize(&json, opts))
+    }
+
+    /// AltDSS whole-circuit JSON dump — Pascal `Obj_Circuit_ToJSON_`
+    /// (`CAPI_Obj.pas:2513-2672`). Returns `None` when no circuit exists
+    /// (`New circuit.` has not run). The circuit is **always** serialized pretty
+    /// (`FormatJSON()`, indent 2), regardless of `opts.PRETTY`; `opts` selects the
+    /// timestamp/bus/default-object filtering and the per-object sweep (default
+    /// vs `Full`). Every embedded object is rendered by the same
+    /// `obj_to_json_data` as [`Dss::obj_to_json`].
+    pub fn circuit_to_json(&self, opts: JsonOpts) -> Option<String> {
+        let ckt = self.circuit.as_ref()?;
+        Some(json_circuit::circuit_to_json(
+            ckt,
+            &self.classes,
+            &self.class_by_name,
+            &self.enums,
+            self.default_base_freq,
+            self.default_earth_model,
+            opts,
+        ))
     }
 
     /// Read a bus's short-circuit results after a FaultStudy solve — the
