@@ -311,3 +311,57 @@ fn kvar_absorption_clamp_then_backoff() {
         pv.base.kw_out
     );
 }
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// 3-phase PVSystem: V line-neutral, kVA ÷ phases, PF set to nominal.
+#[test]
+fn makeposseq_pv_three_phase() {
+    let mut pv = PVSystem::new("pv");
+    pv.base.connection = Connection::Wye;
+    pv.cd.nphases = 3;
+    pv.kv_pvsystem_base = 12.47;
+    pv.f_kva_rating = 150.0;
+    pv.base.pf_nominal = 1.0;
+
+    let plan = pv.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KVA, 150.0 / 3.0),
+            PosSeqAction::SetF64(prop::PF, 1.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}
+
+/// 1-phase PVSystem: base kV kept, no kVA/PF split.
+#[test]
+fn makeposseq_pv_single_phase() {
+    let mut pv = PVSystem::new("pv");
+    pv.base.connection = Connection::Wye;
+    pv.cd.nphases = 1;
+    pv.kv_pvsystem_base = 7.2;
+    pv.f_kva_rating = 150.0;
+
+    let plan = pv.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 7.2),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}

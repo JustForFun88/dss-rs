@@ -215,3 +215,122 @@ fn take_sample_accumulates_energy() {
     assert!((g.registers[REG_MAXKW] - 1000.0).abs() < 1e-6);
     assert!((g.registers[REG_HOURS] - 1.0).abs() < 1e-9);
 }
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// 3-phase, kw=200 pf=0.95 kva=250, maxkvar=120 minkvar=-60; no props marked.
+fn gen_3ph() -> Generator {
+    let mut g = Generator::new("g");
+    g.connection = Connection::Wye;
+    g.cd.nphases = 3;
+    g.kv_generator_base = 12.47;
+    g.kw_base = 200.0;
+    g.pf_nominal = 0.95;
+    g.kva_rating = 250.0;
+    g.kvar_max = 120.0;
+    g.kvar_min = -60.0;
+    g
+}
+
+fn common_head(v: f64) -> Vec<PosSeqAction> {
+    vec![
+        PosSeqAction::BeginEdit,
+        PosSeqAction::SetI32(prop::PHASES, 1),
+        PosSeqAction::SetI32(prop::CONN, 0),
+        PosSeqAction::SetF64(prop::KV, v),
+        PosSeqAction::SetF64(prop::KW, 200.0 / 3.0),
+        PosSeqAction::SetF64(prop::PF, 0.95),
+    ]
+}
+
+/// Plain (kW+pf only, nothing else marked): kW/pf ÷ phases, no kvar/kVA/MVA.
+#[test]
+fn makeposseq_generator_plain() {
+    let mut g = gen_3ph();
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect);
+}
+
+/// `kVA=` set (PrpSequence slot 23). The upstream `had_kVA` guard reads slot 26
+/// (`Xdp`), so this does NOT trigger a kVA divide — kVA stays as-is (oracle:
+/// `g_kva` keeps kVA=250). Pins the `generator.pas:2744` wrong-index quirk.
+#[test]
+fn makeposseq_generator_kva_set_is_ignored_wrong_index() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::KVA); // slot 23
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect, "kVA= must not divide (reads slot 26)");
+    assert!(!plan.actions.iter().any(|a| matches!(
+        a,
+        PosSeqAction::SetF64(i, _) if *i == prop::KVA
+    )));
+}
+
+/// `MVA=` set (slot 24). `had_MVA` reads slot 27 (`Xdpp`) → no MVA action.
+#[test]
+fn makeposseq_generator_mva_set_is_ignored_wrong_index() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::MVA); // slot 24
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect);
+}
+
+/// `maxkvar=`/`minkvar=` set (slots 19/20 — the CORRECT indices): `had_kvars`
+/// fires, emitting minkvar then maxkvar ÷ phases (120→40, -60→-20).
+#[test]
+fn makeposseq_generator_kvars_divided() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::MAXKVAR); // slot 19
+    g.cd.obj.set_as_next_seq(prop::MINKVAR); // slot 20
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::SetF64(prop::MINKVAR, -60.0 / 3.0)); // -20
+    expect.push(PosSeqAction::SetF64(prop::MAXKVAR, 120.0 / 3.0)); // 40
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect);
+}
+
+/// Setting `Xdp=` (slot 26) is what actually trips `had_kVA` — the wrong-index
+/// quirk in reverse: kVA IS divided even though the user never touched kVA.
+#[test]
+fn makeposseq_generator_xdp_trips_kva_divide() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::XDP); // slot 26 == the buggy had_kVA index
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.actions.iter().any(|a| matches!(
+        a,
+        PosSeqAction::SetF64(i, val) if *i == prop::KVA && (*val - 250.0 / 3.0).abs() < 1e-9
+    )));
+}
+
+/// 1-phase generator: V stays base kV, and NO power split (oldPhases==1).
+#[test]
+fn makeposseq_generator_single_phase() {
+    let mut g = gen_3ph();
+    g.cd.nphases = 1;
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 12.47), // NOT /√3
+            PosSeqAction::EndEdit,
+        ]
+    );
+}

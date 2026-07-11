@@ -7,9 +7,11 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 use super::{Connection, Generator, default_recalc_ctx, nconds_for_connection, prop};
 
@@ -23,6 +25,64 @@ impl CktElement for Generator {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
+    }
+
+    /// Pascal `TGeneratorObj.MakePosSequence` (`generator.pas:2726`). Single
+    /// phase, line-neutral; a multi-phase generator's power is divided by the
+    /// phase count (PF preserved), and — conditionally — its kvar limits, kVA
+    /// and MVA ratings.
+    ///
+    /// TODO(compat): the `had_kVA`/`had_MVA` guards read `PrpSequence[26]` and
+    /// `[27]` (`generator.pas:2744-2745`). Those hard-coded ordinals point at
+    /// `Xdp`/`Xdpp` in the current `TGeneratorProp` enum — NOT `kVA`/`MVA`
+    /// (ordinals 23/24). So setting `kVA=`/`MVA=` never triggers the divide
+    /// (oracle: `g_kva` keeps `kVA=250`); only setting `Xdp=`/`Xdpp=` does.
+    /// `had_kvars` reads `[19]`/`[20]` (`Maxkvar`/`Minkvar`), which are correct.
+    /// Reproduced 1:1 via the raw indices; the clean fix is `ord(TProp.kVA)` etc.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        // Make sure voltage is line-neutral.
+        let v = if self.cd.nphases > 1 || self.connection != Connection::Wye {
+            self.kv_generator_base / sqrt3()
+        } else {
+            self.kv_generator_base
+        };
+
+        let old_phases = self.cd.nphases;
+        let mut actions = vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+        ];
+
+        if old_phases > 1 {
+            let nph = self.cd.nphases as f64;
+            // TODO(compat): raw PrpSequence indices — see method doc.
+            let had_kva = self.cd.obj.prp_specified(26); // upstream: intends kVA (23)
+            let had_mva = self.cd.obj.prp_specified(27); // upstream: intends MVA (24)
+            let had_kvars = self.cd.obj.prp_specified(19) || self.cd.obj.prp_specified(20);
+
+            let kw_new = self.kw_base / nph;
+            let pf_new = self.pf_nominal;
+            actions.push(PosSeqAction::SetF64(prop::KW, kw_new));
+            actions.push(PosSeqAction::SetF64(prop::PF, pf_new));
+            if had_kvars {
+                actions.push(PosSeqAction::SetF64(prop::MINKVAR, self.kvar_min / nph));
+                actions.push(PosSeqAction::SetF64(prop::MAXKVAR, self.kvar_max / nph));
+            }
+            if had_kva {
+                actions.push(PosSeqAction::SetF64(prop::KVA, self.kva_rating / nph));
+            }
+            if had_mva {
+                actions.push(PosSeqAction::SetF64(
+                    prop::MVA,
+                    self.kva_rating / 1000.0 / nph,
+                ));
+            }
+        }
+
+        actions.push(PosSeqAction::EndEdit);
+        PosSeqPlan::with_actions(actions)
     }
 
     /// Pascal `TGeneratorObj.CalcYPrim`.
