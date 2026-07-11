@@ -255,55 +255,60 @@ don't-rationalize-conditioning rule applies with full force: an AD↔normal gap 
 calibrated tier is a port bug, and the tighten-tolerance experiment (D7) is a permanent
 test, not a one-off.
 
-**D2 — METIS substitution (auto-tear path only).** The spec's auto-tearing shells out
-to an external `kmetis` executable — external binaries stay out of the Rust engine and
-its tests. The official manual path (`set LinkBranches=` + `UseMyLinkBranches`, D10)
-is ported 1:1 and needs no partitioner at all; D2 covers only the *automatic* path:
-port `Create_MeTIS_graph` and the `.part.<N>` **file formats and parsing 1:1**, and
-replace the external partitioner with a deterministic pure-Rust one behind the same
-file interface:
-`crates/dss-core/src/support/partition.rs` — **greedy graph-growing partitioning
-(GGP)** of the `.graph` adjacency (same vertex order as `Inc_Mat_Cols`, edge weights as
-written to the file), growing zones BFS-level-contiguously from the feeder head to
-`⌈NVertices/k⌉`, deterministic tie-break = ascending vertex index, followed by a
-**single deterministic FM-style boundary-refinement pass** (move a boundary vertex to
-the neighbor zone when it reduces edge-cut without breaking the balance bound or zone
-connectivity; Fiduccia–Mattheyses 1982) — together ≈300–400 lines, both algorithms
-from the METIS literature (§3 "Theory & references"). It writes `<graph>.part.<N>`
-(one zone id per line, same format kmetis emits) and `Create_MeTIS_Zones` consumes it
-unchanged.
+**D2 — the auto-tear partitioner is a 1:1 port of METIS 5.2.1 (user decision
+2026-07-11; supersedes the earlier GGP+FM substitute).** No invented replacement: the
+automatic path ports the actual `METIS_PartGraphKway` pipeline from the vendored spec —
+`.inputs/METIS` (5.2.1, Apache-2.0) + the paper `.inputs/Solve_books/metis.pdf`
+(Karypis & Kumar, SIAM JSC 1998) — into a new crate **`crates/dss-metis`**
+(`#![forbid(unsafe_code)]`, a *source* port like everything else in this project —
+never linking the C). The official manual path (`set LinkBranches=` +
+`UseMyLinkBranches`, D10) needs no partitioner at all; D2 covers only auto-tear.
 
-Why not "just port METIS": we don't need the library, we need **one** entry point —
-the equivalent of `METIS_PartGraphKway` on a feeder-sized graph with k ∈ 2..8 — and
-partition identity is unattainable *in principle*: the `kmetis.exe` OpenDSS ships is
-METIS **4.0** (1998), while the vendored library source (`.inputs/METIS`, 5.2.1) is a
-different algorithm generation — two real METIS versions already disagree on the same
-graph, so "same `.part` bytes" was never a gateable target. What IS held: the partition
-is not part of the behavioral contract (any valid partition → the same fixpoint,
-probe-proven §0.2; reference comparisons align partitions via manual `LinkBranches`,
-D9c). Validity invariants (connected zones, balance report, 3-phase-Line cuts) are
-asserted by WP-AD.2 tests.
+Scope = the one call path kmetis-style partitioning uses, not the whole library:
 
-- **Quality benchmark (not a gate):** WP-AD.2 runs an offline probe comparing our
-  partitioner's edge-cut/imbalance against `kmetis.exe` (from the D9 reference channel,
-  developer-side only) on the same `.graph` files (IEEE13/IEEE123/ckt24 + the
-  synthesized fixtures); numbers go to STATUS. Calibration: official kmetis itself
-  accepted 85% max imbalance on IEEE123 (§0.2 probe) — the quality bar is low.
-- **Tier 2 (optional, trigger-gated):** if the WP-AD.4 sweep shows GGP+FM
-  *systematically* failing validity or producing partitions so poor that AD-eligible
-  decks become ineligible where official kmetis succeeds, port the actual multilevel
-  k-way pipeline (SHEM coarsening → GGGP initial partition → greedy k-way refinement)
-  from the now-vendored spec — `.inputs/METIS/libmetis` (5.2.1 source) + the paper
-  `.inputs/Solve_books/metis.pdf` (Karypis & Kumar, SIAM JSC 1998) — as
-  `support/partition/metis.rs`, ~2–3k lines for that single path. Do NOT build this
-  preemptively: quality parity, never bit parity, and only on evidence.
+- entry `kmetis.c` (`METIS_PartGraphKway` → `MlevelKWayPartitioning`);
+- coarsening `coarsen.c` (SHEM matching + contraction);
+- initial partitioning `initpart.c` + its recursive-bisection bootstrap
+  (`pmetis.c` slice, `fm.c` 2-way FM, `balance.c`, `refine.c`, `bucketsort.c`);
+- uncoarsening `kwayrefine.c` + greedy k-way refinement `kwayfm.c`;
+- support as reached: `graph.c`, `options.c` (**defaults = gpmetis CLI defaults**,
+  fixed seed), `util.c`, `mcutil.c`, `contig.c`/`minconn.c` only if the default option
+  path reaches them;
+- the GKlib primitives the path uses — the deterministic GKRAND RNG
+  (`irand`/`irandArrayPermute`), priority queues, sorts — ported from GKlib source.
+  **Prerequisite: vendor GKlib** (KarypisLab/GKlib at the commit the METIS 5.2.1
+  submodule pins — `.inputs/METIS/.gitmodules` exists but the tree is empty) into
+  `.inputs/GKlib`; without it the RNG/pqueue spec is unreadable → the source-integrity
+  gate applies.
 
-The edge count we write is exact, so the upstream "repair loop" (`GetNumEdges` +
-`TFileSearchReplace` header patch + retry) is **not ported** (document at the call
-site). Running a real external kmetis inside the engine or `cargo test` is out of
-scope permanently (no external binaries; the offline benchmark above is a
-developer-side probe in the D9 channel). Mark the substitution in the module doc as
-`NOTE(subst-metis)` — greppable, like `TODO(compat)` but permanent.
+The path is on the order of 6–8k lines of C → a bounded, mechanical port under the
+same discipline as the Pascal (loop-for-loop, RNG ported too, so partitions are
+deterministic and platform-independent — stronger than the C build, whose determinism
+depends on `USE_GKRAND`).
+
+**Gate — bit-exact against the C original (the reliability this decision buys):**
+`tools/golden/gen_metis_reference.md` documents the offline procedure — build the
+vendored C METIS 5.2.1 (`USE_GKRAND`, default seed) once on the dev machine, run
+`gpmetis` over the committed `.graph` fixtures (IEEE13/IEEE123/ckt24 + the synthesized
+feeders; k ∈ {2,3,4,8}), commit the `.part.N` outputs as goldens; `dss-metis` tests
+replay **bit-exact**. No C is compiled in CI or `cargo test` — goldens are committed
+artifacts, regenerated only manually (the dss-python-goldens discipline). Partition
+validity invariants (connected zones, ≥2-bus zones, balance stats) ride in WP-AD.2
+stage B.
+
+Engine integration keeps the Pascal-visible file round-trip 1:1: `Create_MeTIS_graph`
+writes `.graph`, the engine calls `dss-metis` **in-process** instead of spawning an
+exe, writes `<graph>.part.<N>` in the same format, and `Create_MeTIS_Zones` parses it
+unchanged. The upstream repair loop (`GetNumEdges` + `TFileSearchReplace` header patch
++ retry) is not ported — our edge count is exact; `NOTE(subst-metis)` at the call site
+now marks only the exec-vs-in-process difference and the 4.0→5.2.1 version step.
+
+Known, accepted delta: OpenDSS ships a METIS **4.0**-era `kmetis.exe`; 4.0-vs-5.2.1
+partitions can differ on the same graph, so auto-tear zone shapes may differ from
+official OpenDSS runs. Irrelevant to the gates: the fixpoint is partition-independent
+(probe-proven §0.2), and every cross-engine reference comparison aligns partitions via
+manual `LinkBranches` (D9c). Optional diagnostic: edge-cut/balance comparison vs the
+reference channel's `kmetis.exe` (developer-side, never in `cargo test`).
 
 **D3 — children without threads.** Upstream AD runs on PM actor threads that are
 barrier-synchronized after every message (`SendCmd2Actors` → `Wait4Actors`), i.e. the
@@ -577,20 +582,16 @@ transcription has a published/vendored basis:
 - **The executable spec** is `Diakoptics.pas` itself (D10) — cited per procedure in
   §0.1; the port transcribes its loops, it does not re-derive them.
 - **The auto-tear partitioner** (the one place upstream used an external tool):
-  METIS's multilevel k-way algorithm is published AND vendored — the paper is
-  `.inputs/Solve_books/metis.pdf` (G. Karypis & V. Kumar, *A Fast and High Quality
-  Multilevel Scheme for Partitioning Irregular Graphs*, SIAM J. Sci. Comput. 20(1),
-  1998) and the library source is `.inputs/METIS` (5.2.1, Apache-2.0) — so a faithful
-  pure-Rust port of the one needed entry (`METIS_PartGraphKway`) is a *bounded, spec'd
-  fallback* (D2 Tier 2), deliberately not built preemptively: the partition is not
-  part of the behavioral contract (any valid partition yields the same fixpoint —
-  probe-proven §0.2, and reference comparisons align partitions via manual
-  `LinkBranches`, D9c), and bit-parity is impossible anyway (OpenDSS ships METIS-4.0-era
-  `kmetis.exe`; 4.0 vs 5.2.1 already differ). The D2 default is the classic **greedy
-  graph-growing partitioning (GGP)** over BFS level structures + one **FM refinement
-  pass** — the standard baseline + refinement described in the same Karypis–Kumar
-  paper, level structures per Cuthill–McKee (1969), refinement per
-  Fiduccia–Mattheyses (1982) — not an invented heuristic.
+  ported 1:1 from the vendored METIS itself (D2) — the spec is `.inputs/METIS`
+  (5.2.1 source, Apache-2.0) + the paper `.inputs/Solve_books/metis.pdf` (G. Karypis &
+  V. Kumar, *A Fast and High Quality Multilevel Scheme for Partitioning Irregular
+  Graphs*, SIAM J. Sci. Comput. 20(1), 1998), and the port is gated **bit-exact**
+  against `.part` outputs of the C original (offline-generated committed goldens).
+  Nothing is invented; the only accepted delta is the version step (OpenDSS ships a
+  METIS-**4.0**-era `kmetis.exe`, so official auto-tear zone shapes can differ), which
+  is outside the behavioral contract anyway: any valid partition yields the same
+  fixpoint (probe-proven §0.2), and reference comparisons align partitions via manual
+  `LinkBranches` (D9c).
 
 ### The algorithm in one page (orientation for every WP below)
 
@@ -640,13 +641,23 @@ Newton is **not** AD-aware):
 
 ### WP-AD.2 — tearing (`Tear_Circuit` + the partitioner + torn files)
 
-**Scope** (behavioral spec = official r3723 per D10; the dss_capi rewrite as the
-structure map). Circuit AD fields (§0.1); `Create_MeTIS_graph` 1:1 (needs WP-AD.1's
-`Calc_Inc_Matrix_Org` + Laplacian; the parallel-branch dedup loop and the
-Transformer-weight-1 rule verbatim); `support/partition.rs` per **D2**;
-`Create_MeTIS_Zones` parsing 1:1 (including the D5 line-swap quirk, the ≥2-bus zone
-rule, the final `inc(Locations[j])`); `Tear_Circuit(UseUserLinks)` — **both branches**:
-auto (partitioner) and the official manual-links branch (`get_PDE_Bus1_Location`,
+Two self-contained stages (each runs the full per-step ritual):
+
+**Stage A — the `dss-metis` crate (D2).** Port the `METIS_PartGraphKway` path from
+`.inputs/METIS` 5.2.1 (+ the GKlib primitives it uses — vendor `.inputs/GKlib` first,
+see D2) into `crates/dss-metis`. Gate: **bit-exact** `.part` goldens vs the C original
+(offline generation procedure `tools/golden/gen_metis_reference.md`) over the
+committed `.graph` fixtures at k ∈ {2,3,4,8}, plus crate-level unit tests (RNG
+sequence pins vs C GKRAND, matching/refinement invariants).
+
+**Stage B — the tearing machinery** (behavioral spec = official r3723 per D10; the
+dss_capi rewrite as the structure map). Circuit AD fields (§0.1); `Create_MeTIS_graph`
+1:1 (needs WP-AD.1's `Calc_Inc_Matrix_Org` + Laplacian; the parallel-branch dedup loop
+and the Transformer-weight-1 rule verbatim); `support/partition.rs` = the file
+round-trip glue over `dss-metis` per **D2**; `Create_MeTIS_Zones` parsing 1:1
+(including the D5 line-swap quirk, the ≥2-bus zone rule, the final
+`inc(Locations[j])`); `Tear_Circuit(UseUserLinks)` — **both branches**: auto
+(`dss-metis`) and the official manual-links branch (`get_PDE_Bus1_Location`,
 `get_line_bus`; official `Circuit.pas` ~1918–1990) — terminal orientation by |V|
 difference, `PConn_Voltages`, zone meters; `Save_SubCircuits`/`Format_SubCircuits`/
 `AppendIsources`/`Disable_All_DER`; register the `Tear_Circuit` command (dispatch →
@@ -818,7 +829,7 @@ Audit tier applies to **both** spawned auditors (`/audit-code` + `/audit-tests`)
 | WP-PF.1 | `opus-medium+` | `opus-high+` | sequence-exact f64 filter cascade + FPC probes; mechanical once probed |
 | WP-PF.2 | `opus-medium+` | `opus-high+` | f32 fidelity + in-place stream rewrite semantics |
 | WP-AD.1 | `opus-medium+` | `opus-high+` | COO-ordering-sensitive sparse ops + hierarchical incidence ordering, but fully oracle-pinned |
-| WP-AD.2 | `opus-high+` | `opus-high+` | partitioner design (D2) + multi-file emission fidelity, self-goldened |
+| WP-AD.2 | `opus-high+` | `opus-high+` | stage A: METIS 5.2.1 path port (D2, bit-exact vs the C original); stage B: tearing + multi-file emission fidelity, self-goldened |
 | WP-AD.3 | **`opus-xhigh`** | **`opus-xhigh`** | the design step: ownership inversion (D3), no-oracle numerics, D7 calibration |
 | WP-AD.4 | `opus-medium+` | `opus-high+` | sweep mechanics + per-deck triage at fixed contracts |
 | WP-AD.5 | `opus-medium+` | `opus-high+` | AggregateProfiles is sizable but fixture-gated; probe work is inventory |
