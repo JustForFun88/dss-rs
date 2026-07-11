@@ -44,6 +44,16 @@ pub struct DssObjData {
     /// preloads it. `MakeLike` does not copy it (Pascal copies fields, not
     /// `pUuid`), and our class `make_like` impls never touch `DssObjData`.
     uuid: Option<crate::cim::Uuid>,
+    /// WPG.19 — generic file-backed numeric-array directives (`%mag=(file=…)`,
+    /// `Yarray=(sngfile=…)`, …) queued by the generic `DoubleArray` property
+    /// path for any class (Pascal `DSSObjectHelper.pas:616-636` routes every
+    /// double-array property through `InterpretDblArray`). Drained by the
+    /// default [`DssObject::take_generic_dbl_array_files`] — read through
+    /// `data_mut()`, so it works for every class regardless of whether it
+    /// overrides the LoadShape-style [`DssObject::take_file_loads`]. LoadShape's
+    /// own `Mult`/`Hour`/`QMult` file directives never reach here (they are
+    /// intercepted by `set_f64_array_raw` and queued as [`FileLoad`]s instead).
+    pending_dbl_array_files: Vec<GenericDblArrayFile>,
 }
 
 impl DssObjData {
@@ -55,7 +65,20 @@ impl DssObjData {
             deferred_abort: false,
             has_been_saved: false,
             uuid: None,
+            pending_dbl_array_files: Vec::new(),
         }
+    }
+
+    /// Queue a generic file-backed numeric-array directive (WPG.19). The
+    /// executive drains it after the edit (it has the filesystem +
+    /// `LastResultFile`) and applies the read via the object's typed accessors.
+    pub fn queue_dbl_array_file(&mut self, f: GenericDblArrayFile) {
+        self.pending_dbl_array_files.push(f);
+    }
+
+    /// Drain the queued generic double-array file directives.
+    pub fn take_dbl_array_files(&mut self) -> Vec<GenericDblArrayFile> {
+        std::mem::take(&mut self.pending_dbl_array_files)
     }
 
     /// Pascal `Flg.HasBeenSaved in obj.Flags` (the `WriteClassFile` skip).
@@ -285,6 +308,12 @@ pub struct FileLoad {
     /// (`SngFile`/`DblFile`/`CSVFile`/`PQCSVFile`), whose MMF handling the
     /// readers key off `prop` + the object's `use_mmf` flag.
     pub mmf: Option<MmfLoad>,
+    /// When `Some`, this is a non-memory-mapped `InterpretDblArray` directive
+    /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)` WITHOUT
+    /// `MemoryMapping=Yes`, WPG.19) queued by LoadShape `CustomSetRaw`
+    /// (`LoadShape.pas:746-811`). The kind / column / header / P-Q-Hour target
+    /// travel here; the reader runs the `Utilities.pas` file grammar.
+    pub interp: Option<InterpLoad>,
 }
 
 /// The three memory-mapped LoadShape file kinds (Pascal `TLSFileType`,
@@ -310,6 +339,62 @@ pub struct MmfLoad {
     pub qside: bool,
 }
 
+/// Which LoadShape array a non-MM `InterpretDblArray` directive targets
+/// (Pascal `CustomSetRaw`, `LoadShape.pas:749/772/784`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterpTarget {
+    /// `mult`/`Pmult` → `dP`; a short file **shrinks** `NumPoints`
+    /// (`NumPoints := InterpretDblArray(...)`, `:770`).
+    PMult,
+    /// `qmult` → `dQ`; a short file does **not** shrink `NumPoints` (the return
+    /// is ignored, `:806`).
+    QMult,
+    /// `hour` → `dH`; a short file does **not** shrink `NumPoints` (`:781`).
+    Hour,
+}
+
+/// Metadata for a non-memory-mapped `InterpretDblArray` LoadShape array
+/// directive (see [`FileLoad::interp`], WPG.19).
+#[derive(Debug, Clone)]
+pub struct InterpLoad {
+    /// `file=`/`sngfile=`/`dblfile=` record kind.
+    pub kind: MmfKind,
+    /// 1-based comma/space column ([`MmfKind::Text`] only).
+    pub column: i32,
+    /// Skip one header line ([`MmfKind::Text`] `header=yes` only).
+    pub header: bool,
+    /// The destination array.
+    pub target: InterpTarget,
+}
+
+/// A generic file-backed numeric-array directive queued by the generic
+/// `DoubleArray` property path (WPG.19, Pascal `DSSObjectHelper.pas:616-636`).
+/// The executive reads the file and applies it via the object's typed accessors
+/// ([`DssObject::set_f64_array`] + a `set_i32(size_prop, count)` shrink), then
+/// re-applies `Round`/scale/non-zero exactly like the inline list path.
+#[derive(Debug, Clone)]
+pub struct GenericDblArrayFile {
+    /// The array property being written.
+    pub prop: usize,
+    /// The count property (`integerPtr^`) shrunk to the number of values read
+    /// (Pascal `integerPtr^ := InterpretDblArray(...)`).
+    pub size_prop: usize,
+    /// `file=`/`sngfile=`/`dblfile=` record kind.
+    pub kind: MmfKind,
+    /// The filename exactly as written (may be `%result%`).
+    pub filename: String,
+    /// 1-based column ([`MmfKind::Text`] only).
+    pub column: i32,
+    /// Skip one header line ([`MmfKind::Text`] `header=yes` only).
+    pub header: bool,
+    /// Pascal `TPropertyFlag.ApplyRound` — round each value after reading.
+    pub apply_round: bool,
+    /// Pascal per-property scale (`PropertyScale`), applied after reading.
+    pub scale: f64,
+    /// Pascal `TPropertyFlag.NonPositive`-style guard — reject a zero element.
+    pub non_zero: bool,
+}
+
 impl FileLoad {
     /// A text (line-oriented, e.g. `CSVFile`) deferred load.
     pub fn text(prop: usize, filename: impl Into<String>) -> Self {
@@ -318,6 +403,7 @@ impl FileLoad {
             filename: filename.into(),
             binary: false,
             mmf: None,
+            interp: None,
         }
     }
     /// A binary (raw byte stream, `SngFile`/`DblFile`) deferred load.
@@ -327,6 +413,7 @@ impl FileLoad {
             filename: filename.into(),
             binary: true,
             mmf: None,
+            interp: None,
         }
     }
     /// A raw memory-mapped array directive (`mult=(sngfile=…)`) load; always
@@ -337,6 +424,21 @@ impl FileLoad {
             filename: filename.into(),
             binary: true,
             mmf: Some(mmf),
+            interp: None,
+        }
+    }
+    /// A non-memory-mapped `InterpretDblArray` LoadShape directive
+    /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)`, WPG.19). Text
+    /// kinds read line-oriented ([`DssObject::apply_file_load`]); binary kinds
+    /// read raw bytes ([`DssObject::apply_binary_file_load`]).
+    pub fn interp(prop: usize, filename: impl Into<String>, interp: InterpLoad) -> Self {
+        let binary = interp.kind != MmfKind::Text;
+        Self {
+            prop,
+            filename: filename.into(),
+            binary,
+            mmf: None,
+            interp: Some(interp),
         }
     }
 }
@@ -703,6 +805,23 @@ pub trait DssObject {
     /// `GlobalResult`. Default empty.
     fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
         Vec::new()
+    }
+
+    /// Drain the generic file-backed numeric-array directives (WPG.19) queued on
+    /// this object's [`DssObjData`]. Read through `data_mut()`, so the default
+    /// works for every class — even the shape classes that override
+    /// [`Self::take_file_loads`] for their own file properties.
+    fn take_generic_dbl_array_files(&mut self) -> Vec<GenericDblArrayFile> {
+        self.data_mut().take_dbl_array_files()
+    }
+
+    /// Run any actions the object deferred until after its file loads resolved
+    /// (WPG.19: LoadShape `action=normalize`/`ln`, which must see the file data —
+    /// Pascal reads the file *inline* at the `mult=` position, so `Normalize`
+    /// naturally follows; our deferred read makes it run here instead). Called by
+    /// the executive after the file loads and before `end_edit`. Default: no-op.
+    fn run_deferred_actions(&mut self, errors: &mut Vec<String>) {
+        let _ = errors;
     }
 
     /// Apply a resolved file's full contents to this object (the data side of a

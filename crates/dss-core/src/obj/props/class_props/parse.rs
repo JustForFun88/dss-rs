@@ -301,6 +301,28 @@ impl ClassProps {
                 if obj.set_f64_array_raw(idx, value) {
                     return Ok(0);
                 }
+                // WPG.19: a file-backed directive (`%mag=(file=…)`,
+                // `Yarray=(sngfile=…)`) on the generic double-array path (Pascal
+                // `DSSObjectHelper.pas:616-636` routes every double-array property
+                // through `InterpretDblArray`). The read needs the filesystem +
+                // `LastResultFile`, unreachable here, so queue it for the
+                // executive; it reads the file, applies the shrink + round/scale/
+                // non-zero, and writes the array via the typed accessors.
+                if let Some(spec) = crate::util::parse_dbl_array_file_spec(value) {
+                    obj.data_mut()
+                        .queue_dbl_array_file(crate::obj::base::GenericDblArrayFile {
+                            prop: idx,
+                            size_prop: pd.size_prop,
+                            kind: spec.kind,
+                            filename: spec.filename,
+                            column: spec.column,
+                            header: spec.header,
+                            apply_round: pd.flags.contains(PropFlags::APPLY_ROUND),
+                            scale: pd.scale,
+                            non_zero: pd.flags.contains(PropFlags::NON_ZERO),
+                        });
+                    return Ok(0);
+                }
                 let max = obj.get_i32(pd.size_prop).max(0) as usize;
                 let mut buf = vec![0.0; max];
                 interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;

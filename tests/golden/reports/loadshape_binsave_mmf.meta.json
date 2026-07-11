@@ -1,0 +1,82 @@
+{
+  "report": "loadshape_binsave_mmf",
+  "deck": [
+    "new circuit.binsavemmf basekv=12.47 bus1=src",
+    "new loadshape.mp npts=4 interval=1 MemoryMapping=Yes mult=(sngfile=@FIXTURES@/binsave_mmf_p.sng) qmult=(sngfile=@FIXTURES@/binsave_mmf_q.sng)",
+    "new loadshape.md npts=4 interval=1 MemoryMapping=Yes mult=(dblfile=@FIXTURES@/binsave_mmf_p.dbl)"
+  ],
+  "actions": [
+    "edit loadshape.mp action=sngsave",
+    "edit loadshape.mp action=dblsave",
+    "edit loadshape.md action=sngsave",
+    "edit loadshape.md action=dblsave"
+  ],
+  "files": [
+    {
+      "produced": "mp_P.sng",
+      "golden": "loadshape_binsave_mmf_mp_p_sng.bin"
+    },
+    {
+      "produced": "mp_Q.sng",
+      "golden": "loadshape_binsave_mmf_mp_q_sng.bin"
+    },
+    {
+      "produced": "mp_P.dbl",
+      "golden": "loadshape_binsave_mmf_mp_p_dbl.bin"
+    },
+    {
+      "produced": "mp_Q.dbl",
+      "golden": "loadshape_binsave_mmf_mp_q_dbl.bin"
+    },
+    {
+      "produced": "md_P.sng",
+      "golden": "loadshape_binsave_mmf_md_p_sng.bin"
+    },
+    {
+      "produced": "md_P.dbl",
+      "golden": "loadshape_binsave_mmf_md_p_dbl.bin"
+    }
+  ],
+  "absent": [
+    "md_Q.sng",
+    "md_Q.dbl"
+  ],
+  "result_files": [
+    [
+      "mp_P.sng",
+      "mp_Q.sng"
+    ],
+    [
+      "mp_P.dbl",
+      "mp_Q.dbl"
+    ],
+    [
+      "md_P.sng"
+    ],
+    [
+      "md_P.dbl"
+    ]
+  ],
+  "result_tags": [
+    [
+      "mult",
+      "sngfile",
+      "Qmult",
+      "sngfile"
+    ],
+    [
+      "mult",
+      "dblfile",
+      "Qmult",
+      "dblfile"
+    ],
+    [
+      "mult",
+      "sngfile"
+    ],
+    [
+      "mult",
+      "dblfile"
+    ]
+  ]
+}

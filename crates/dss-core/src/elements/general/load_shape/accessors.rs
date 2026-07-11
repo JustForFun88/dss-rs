@@ -2,44 +2,15 @@
 //! accessors, the `Action` handler, file-load plumbing, `PropertySideEffects`,
 //! `EndEdit` and `MakeLike`.
 
-use crate::obj::base::{DssObjData, DssObject, FileLoad, MmfKind, MmfLoad, ShapeSave};
+use crate::obj::base::{
+    DssObjData, DssObject, FileLoad, InterpLoad, InterpTarget, MmfLoad, ShapeSave,
+};
 
 use super::prop::{
     CSVFILE, DBLFILE, HOUR, INTERPOLATION, INTERVAL, MEAN, MEMORYMAPPING, MINTERVAL, MULT, NPTS,
     PBASE, PMAX, PMULT, PQCSVFILE, QBASE, QMAX, QMULT, SINTERVAL, SNGFILE, STDDEV, USEACTUAL,
 };
 use super::{LoadShapeObj, store_array};
-
-/// Parse a LoadShape array file directive (`sngfile=…` / `dblfile=…` /
-/// `file=… column=N`) as the Pascal `LoadFileFeatures` AuxParser does. Returns
-/// `None` for a plain numeric list (no leading `file`/`sngfile`/`dblfile`
-/// token), which then flows to the ordinary numeric parser.
-fn parse_mmf_directive(value: &str) -> Option<(MmfKind, String, i32)> {
-    let mut tokens = value.split_whitespace();
-    let (key, val) = tokens.next()?.split_once('=')?;
-    let kind = match key.to_ascii_lowercase().as_str() {
-        "sngfile" => MmfKind::Float32,
-        "dblfile" => MmfKind::Float64,
-        "file" => MmfKind::Text,
-        _ => return None,
-    };
-    let mut column = 1;
-    if kind == MmfKind::Text {
-        // Pascal scans the remaining params for `column=` (CompareTextShortest).
-        for tok in tokens {
-            if let Some((k, v)) = tok.split_once('=')
-                && !k.is_empty()
-                && "column".starts_with(&k.to_ascii_lowercase())
-            {
-                column = v.parse().unwrap_or(1);
-            }
-        }
-    }
-    // Pascal reads the filename with `AuxParser.StrValue`, which strips a
-    // surrounding quote pair (corpus filenames have no embedded spaces).
-    let filename = val.trim_matches(|c| c == '"' || c == '\'').to_string();
-    Some((kind, filename, column))
-}
 
 impl DssObject for LoadShapeObj {
     fn data(&self) -> &DssObjData {
@@ -169,22 +140,27 @@ impl DssObject for LoadShapeObj {
         }
     }
 
-    /// Pascal `TLoadShapeObj.CustomSetRaw` for `Mult`/`PMult`/`QMult`
-    /// (`LoadShape.pas:746-811`): intercept the `sngfile=`/`dblfile=`/`file=`
+    /// Pascal `TLoadShapeObj.CustomSetRaw` for `Mult`/`PMult`/`QMult`/`Hour`
+    /// (`LoadShape.pas:746-811`): intercept the `file=`/`sngfile=`/`dblfile=`
     /// file directives that the numeric parser cannot read. Under
-    /// `MemoryMapping=Yes` the directive queues an eager MMF read (the `UseMMF`
-    /// branch); without it, a file directive is the non-MM `File=` array feature
-    /// (WPG.19, the GAPS closure follow-up) — still NOT_PORTED, so surface a loud error. A plain numeric list
-    /// returns `false` and flows to `ParseAsVector` unchanged.
+    /// `MemoryMapping=Yes` a `Mult`/`PMult`/`QMult` directive queues an eager MMF
+    /// read (the `UseMMF` branch; `Hour` has no MMF branch upstream). Otherwise
+    /// it queues a deferred non-MM `InterpretDblArray` read (WPG.19). A plain
+    /// numeric list returns `false` and flows to `ParseAsVector` unchanged.
     fn set_f64_array_raw(&mut self, idx: usize, raw: &str) -> bool {
-        if !matches!(idx, MULT | PMULT | QMULT) {
+        if !matches!(idx, MULT | PMULT | QMULT | HOUR) {
             return false;
         }
-        let Some((kind, filename, column)) = parse_mmf_directive(raw) else {
+        let Some(spec) = crate::util::parse_dbl_array_file_spec(raw) else {
             return false;
         };
+        let is_hour = idx == HOUR;
         let qside = idx == QMULT;
-        if self.use_mmf {
+
+        // Pascal `Hour` (`:772-783`) never has a `UseMMF` branch — it always
+        // uses the traditional `InterpretDblArray`, so it takes the non-MM path
+        // even under memory mapping.
+        if self.use_mmf && !is_hour {
             // Pascal stores `mmFileCmd(Q) := S` (the raw directive) for the
             // property round-trip, then eager-reads the file.
             if qside {
@@ -194,24 +170,38 @@ impl DssObject for LoadShapeObj {
             }
             self.pending_file_loads.push(FileLoad::mmf_raw(
                 idx,
-                filename,
+                spec.filename,
                 MmfLoad {
-                    kind,
-                    column,
+                    kind: spec.kind,
+                    column: spec.column,
                     qside,
                 },
             ));
-        } else {
-            // NOT_PORTED(LoadShape non-MM `File=` numeric arrays — WPG.19, GAPS_PLAN closure addendum): a
-            // `mult=(file=…)` without MemoryMapping reads a file into `dP` via
-            // `InterpretDblArray`; the file-directive reader is a separate item.
-            self.data.push_error(format!(
-                "LoadShape.{}: file-backed numeric arrays \
-                 (\"file=\"/\"sngfile=\"/\"dblfile=\" inside Mult/PMult/QMult without \
-                 MemoryMapping=Yes) are not supported yet (WPG.19).",
-                self.data.name()
-            ));
+            return true;
         }
+
+        // Non-MM `InterpretDblArray` directive (WPG.19). Deferred like the MMF
+        // path — the property hook has no filesystem / `LastResultFile` reach; the
+        // executive reads the file and calls `apply_file_load` (text) /
+        // `apply_binary_file_load` (binary), which run the file grammar into
+        // `dP`/`dQ`/`dH` with the Pascal shrink rule.
+        let target = if is_hour {
+            InterpTarget::Hour
+        } else if qside {
+            InterpTarget::QMult
+        } else {
+            InterpTarget::PMult
+        };
+        self.pending_file_loads.push(FileLoad::interp(
+            idx,
+            spec.filename,
+            InterpLoad {
+                kind: spec.kind,
+                column: spec.column,
+                header: spec.header,
+                target,
+            },
+        ));
         true
     }
 
@@ -233,7 +223,19 @@ impl DssObject for LoadShapeObj {
     /// Normalize=0, DblSave=1, SngSave=2 — `LoadShape.pas:264-267/326-336`).
     fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
         match ordinal {
-            0 => self.normalize(errors), // Normalize
+            // Normalize: Pascal runs it inline, right after the (inline) file
+            // read. When a file directive is still pending (`mult=(file=…) ln`,
+            // WPG.19), defer it to `run_deferred_actions` so it sees the loaded
+            // data — otherwise it would normalize an empty array (error 61107)
+            // that the deferred read then overwrites. With no pending load
+            // (numeric `mult`), the array is already set, so run inline as before.
+            0 => {
+                if self.pending_file_loads.is_empty() {
+                    self.normalize(errors);
+                } else {
+                    self.pending_normalize = true;
+                }
+            }
             // DblSave(1)/SngSave(2): queue the binary write (Pascal
             // `SaveToDblFile`/`SaveToSngFile`, LoadShape.pas:1880/1939).
             1 => self.queue_shape_save(false, errors),
@@ -246,6 +248,16 @@ impl DssObject for LoadShapeObj {
         std::mem::take(&mut self.pending_file_loads)
     }
 
+    /// WPG.19: run the `action=normalize`/`ln` that was deferred until the file
+    /// directive resolved (Pascal `Normalize` follows the inline `mult=(file=…)`
+    /// read; our deferred read makes it run here, after the executive applied the
+    /// file load).
+    fn run_deferred_actions(&mut self, errors: &mut Vec<String>) {
+        if std::mem::take(&mut self.pending_normalize) {
+            self.normalize(errors);
+        }
+    }
+
     fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
         std::mem::take(&mut self.pending_shape_saves)
     }
@@ -256,6 +268,11 @@ impl DssObject for LoadShapeObj {
     /// for PQ the overwritten `'file='+FileName+' column=2'`, `LoadShape.pas:
     /// 954-963`; `mmFileCmdQ` is never set for PQ, so QMult dumps `()`).
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+        // WPG.19 non-MM `mult=(file=…)`/`hour=(file=…)` directive.
+        if let Some(il) = &load.interp {
+            self.apply_interp_file(il, content.as_bytes());
+            return;
+        }
         match load.prop {
             CSVFILE => {
                 if self.use_mmf {
@@ -284,6 +301,11 @@ impl DssObject for LoadShapeObj {
     ) {
         if let Some(mmf) = &load.mmf {
             self.read_mmf_raw(content, mmf.kind, mmf.column, mmf.qside);
+            return;
+        }
+        // WPG.19 non-MM `mult=(sngfile=…)`/`qmult=(dblfile=…)` directive.
+        if let Some(il) = &load.interp {
+            self.apply_interp_file(il, content);
             return;
         }
         match load.prop {
