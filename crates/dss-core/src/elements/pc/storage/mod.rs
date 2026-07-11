@@ -22,8 +22,9 @@
 //! (`DoHarmonicMode`/`InitHarmonics`), the dynamics state machinery
 //! (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the state-variable
 //! interface `NumVariables`/`Get_Variable`/`VariableName`), the user-written DLL
-//! models (`UserModel`/`DynaModel`, never ported), and `MakePosSequence` are
-//! deferred to WP7.6/7.7 (harmonics/dynamics), matching the PVSystem deferrals.
+//! models (`UserModel`/`DynaModel`, never ported) are deferred to WP7.6/7.7
+//! (harmonics/dynamics), matching the PVSystem deferrals. `MakePosSequence` is
+//! in `accessors` (WPG.21).
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: shape multipliers, the state machine
