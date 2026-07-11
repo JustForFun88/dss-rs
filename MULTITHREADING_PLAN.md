@@ -207,8 +207,12 @@ enum ActorMsg { Command(String), Solve, Query(String, Sender<String>), Shutdown 
   green with the pool code merely present; (c) a stress test: 8 actors × different corpus
   decks concurrently, results equal to sequential runs.
 - **Out of initial scope:** A-Diakoptics (circuit tearing across actors). It is a separate
-  numerical method (Y-partitioning + boundary exchange), not a threading feature; revisit
-  only if a real use case demands it. Actor mode does not depend on it.
+  numerical method (Y-partitioning + boundary exchange), not a threading feature; actor
+  mode does not depend on it. It now has its own execution plan —
+  **`DIAKOPTICS_PSTCALC_PLAN.md` Part II** (2026-07-11), which runs after this plan's M2
+  (early-start allowed; M3/M4 are not prerequisites) and reuses M2's ownership idioms:
+  sequential coordinator-owned children first, optional threaded fan-out (its WP-AD.6)
+  gated bitwise against the sequential path.
 
 This stage is where the practical wins live for the actual upstream use cases: parameter
 sweeps, 8760-hour studies split across actors, contingency fan-outs, Monte Carlo (when

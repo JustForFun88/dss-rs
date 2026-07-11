@@ -7,12 +7,19 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
 
 ```
 ── PORTING (pre-acceptance) ────────────────────────────────────────────────────────
- 1. PHASE8_PLAN.md            ← CURRENT (branch phase-8-reporting; WP8.5 in progress)
- 2. GAPS_PLAN.md              WPG.* long tail (incl. WPG.16 GIC, WPG.18 CIM XML) —
-                              closes the remaining PORTING_PLAN Phase-9 scope
+ 1. PHASE8_PLAN.md            COMPLETE (branch phase-8-reporting; WP8.8 exit done)
+ 2. GAPS_PLAN.md              WPG.1–18 COMPLETE (2026-07-09); follow-ups WPG.19
+                              (non-MM `File=` arrays) + WPG.20 (MMF-shape save)
+                              ← CURRENT (in flight)
+ 3. DIAKOPTICS_PSTCALC_PLAN.md **Part I** (WP-PF.1 `Pstcalc` command, WP-PF.2
+                              Monitor mode-4 flicker, WP-AD.1 incidence matrix +
+                              Sparse_Math + exports 53–57) — the oracle-visible
+                              half of the Phase-9 A-Diakoptics/Pstcalc residue;
+                              runs after WPG.19/20 (WP-PF.2's corpus-demo golden
+                              touches WPG.19's `File=` arrays). In acceptance scope.
  ═ FINAL ACCEPTANCE (PORTING_PLAN §6) ═
 ── POST-ACCEPTANCE (upgrade, then refactor & improvement era) ──────────────────────
- 3. UPGRADE_PLAN.md           Rung 1 (WP-U1.*: dss_capi 0.15.x / r4088-line parity,
+ 4. UPGRADE_PLAN.md           Rung 1 (WP-U1.*: dss_capi 0.15.x / r4088-line parity,
                               spec = .inputs/dss_capi_with_git@0.15.x, oracle capi015)
                               then Rung 2 (WP-U2.*: OpenDSS 11.0.0.1 / r4133 parity,
                               spec = Delphi diff, oracle oddie:r4133). Its WP-U0 test
@@ -22,18 +29,26 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               inherit it. Runs FIRST post-acceptance: freshest porting
                               context, avoids double-touching code DE_PASCALIZE would
                               refactor, and lets Stage F pin r4133-parity (not r3723).
- 4. DE_PASCALIZE_PLAN.md      Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
+ 5. DE_PASCALIZE_PLAN.md      Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
                               proven by the still-stable goldens), then Stage F —
                               the `oracle-parity` feature split (absorbs the
                               TODO(compat) sweep; creates the two CI lanes; parity
                               target = r4133 per UPGRADE_PLAN §5)
- 5. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
+ 6. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
                               needs Stage F), WP-R2 resonance analysis, WP-R3 diagnostics
                               (UPGRADE_PLAN §1.3-1 already grants target-rev cases the
                               iterations-≤ policy WP-R1 needs)
- 6. MULTITHREADING_PLAN.md    M0–M4 (actor mode, intra-solve rayon, faer parallelism) —
-                              last, per PORTING_PLAN; M3 needs DE_PASCALIZE R2 arenas,
-                              M3c needs Stage F
+ 7. MULTITHREADING_PLAN.md    M0–M4 (actor mode, intra-solve rayon, faer parallelism);
+                              M3 needs DE_PASCALIZE R2 arenas, M3c needs Stage F
+ 8. DIAKOPTICS_PSTCALC_PLAN.md **Part II** (WP-AD.2–AD.6: A-Diakoptics tearing,
+                              solve engine, the corpus-wide AD↔normal sweep,
+                              AggregateProfiles, optional threaded children) — last.
+                              **No oracle exists for it** (the pinned capi build has
+                              `DSS_CAPI_ADIAKOPTICS` compiled out — errors #130), so
+                              it gates rust-vs-rust (AD solve ≡ normal solve) and is
+                              deliberately outside final acceptance. Early-start:
+                              may begin as soon as MULTITHREADING **M2** lands
+                              (M3/M4 are not prerequisites).
 ```
 
 Early-start exceptions (allowed out of order because they are independent and cheap):
@@ -41,6 +56,9 @@ Early-start exceptions (allowed out of order because they are independent and ch
   DE_PASCALIZE R1 (it *is* DE_PASCALIZE P7).
 - `MULTITHREADING` **M1** (criterion benchmark baseline) may land any time — it should
   exist *before* DE_PASCALIZE Part III to catch perf regressions there too.
+- `DIAKOPTICS_PSTCALC` **Part II** may start right after MULTITHREADING **M2** —
+  it does not wait for M3/M4 (its WP-AD.6 threading stretch is the only piece that
+  consumes M2, and only optionally).
 
 Universal discipline: the **per-step ritual** (gate green → STATUS+commit → parallel
 `/audit-code` + `/audit-tests` → STATUS review → stop and report in Russian) originates in
@@ -88,14 +106,17 @@ mid-plan — only the user can (`/model` + effort). What IS automatic:
 Tier map at a glance (full tables live in each plan; the audit tier always applies to
 **both** spawned auditors, `/audit-code` and `/audit-tests`):
 - **`opus-xhigh`**: DE_PASCALIZE **R1**, **Stage F**, **P15 item 2**; MULTITHREADING
-  **M2**; RESONANCE **WP-R2**.
+  **M2**; RESONANCE **WP-R2**; DIAKOPTICS_PSTCALC **WP-AD.3** (the no-oracle AD solve
+  engine — audits there are `opus-xhigh` too).
 - **`opus-high+`**: DE_PASCALIZE R2, P10, P15 (rest); MULTITHREADING M3a/M3b/M3d/M4;
-  RESONANCE WP-R1; GAPS **WPG.13** (GFM). Audits everywhere are `opus-high+` minimum,
+  RESONANCE WP-R1; GAPS **WPG.13** (GFM); DIAKOPTICS_PSTCALC **WP-AD.2** (partitioner +
+  torn-file emission) and **WP-AD.6**. Audits everywhere are `opus-high+` minimum,
   `opus-xhigh` on the xhigh-exec stages.
 - **`opus-medium+`**: everything else in the post-acceptance plans (R0/R3, Part II,
   P8/P9/P11–P14, P3, M0/M1/M3c, WP-R3) — mechanical-with-guardrails: named pinning
   tests, forbidden-move lists, and the "when stuck: leave green, record in STATUS,
-  surface" escape protocol.
+  surface" escape protocol. DIAKOPTICS_PSTCALC's remaining WPs sit here too:
+  **WP-PF.1/PF.2, WP-AD.1** (pre-acceptance Part I) and **WP-AD.4/AD.5**.
 - **Porting plans (`PHASE8_PLAN` §0, `GAPS_PLAN` §0-tiers)** carry their own per-WP
   tables: mostly `sonnet-high+` (deliberately Sonnet-executable, pre-validated decks),
   with `opus-medium+` on the non-mechanical spots (WP8.5 step 5, WP8.7; the numeric
