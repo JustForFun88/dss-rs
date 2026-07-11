@@ -57,6 +57,7 @@ mod distribute;
 mod get_cmd;
 mod helpers;
 mod plot;
+mod pstcalc;
 mod reconductor;
 mod reduce;
 pub(crate) mod registry;
