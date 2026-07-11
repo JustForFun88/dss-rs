@@ -118,7 +118,14 @@ impl ClassProps {
             }
             PropType::DoubleArray => {
                 let n = obj.get_i32(pd.size_prop).max(0) as usize;
-                opt_array_f64(obj.get_f64_array(idx), n, pd.scale)
+                if n == 0 && pd.flags.contains(PropFlags::ALLOW_NONE) {
+                    // AllowNone + count 0 → null. Pascal applies this to
+                    // DoubleArray/DoubleDArray/DoubleVArray alike
+                    // (DSSObjectHelper.pas:1218, shared block).
+                    Json::Null
+                } else {
+                    opt_array_f64(obj.get_f64_array(idx), n, pd.scale)
+                }
             }
             PropType::DoubleVArray => {
                 let n = obj.array_size(idx);
@@ -132,7 +139,14 @@ impl ClassProps {
             PropType::DoubleFArray => opt_array_f64(obj.get_f64_array(idx), pd.size_prop, pd.scale),
             PropType::DoublePoints => {
                 // DoubleDArrayProperty (ReadByFunction) → the interleaved points.
-                array_f64(obj.get_points(), 1.0)
+                let pts = obj.get_points();
+                if pts.is_empty() && pd.flags.contains(PropFlags::ALLOW_NONE) {
+                    // AllowNone + count 0 → null (shared DoubleArray block,
+                    // DSSObjectHelper.pas:1218).
+                    Json::Null
+                } else {
+                    array_f64(pts, 1.0)
+                }
             }
             PropType::DoubleArrayOnStruct => {
                 // DoubleArrayOnStructArrayProperty: one field per struct entry.
@@ -219,6 +233,28 @@ impl ClassProps {
                             .collect(),
                     ),
                 }
+            }
+            PropType::ObjectRef if on_array => {
+                // DSSObjectReferenceProperty + OnArray flag → an array of the
+                // referenced objects, FullName or Name per
+                // `FullNameAsArray`/any-class-ref/`FullNames`
+                // (DSSObjectHelper.pas:1169-1194). Distinct from the dedicated
+                // `ObjectRefArray` type below, which keys off `FullNameAsJSONArray`.
+                let use_full = full_names
+                    || pd.object_class == Some("")
+                    || pd.flags.contains(PropFlags::FULL_NAME_AS_ARRAY);
+                Json::Arr(
+                    obj.get_object_ref_names(idx)
+                        .into_iter()
+                        .map(|n| {
+                            if use_full {
+                                Json::Str(self.object_full_name(pd, &n))
+                            } else {
+                                Json::Str(n)
+                            }
+                        })
+                        .collect(),
+                )
             }
             PropType::ObjectRef => {
                 let name = obj.get_string(idx);

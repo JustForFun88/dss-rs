@@ -81,13 +81,22 @@ impl JsonOpts {
         self.0
     }
 
-    /// Build from a raw `DSSJSONOptions` integer, keeping only the representable
-    /// bits 0–10. Bits 11–13 (`State`/`Debug`/`Edit`) are silently masked off —
-    /// they are not on the export surface (§6); a raw-bits entry point is the one
-    /// place that could receive them, and dropping them matches the oracle's
-    /// silent no-op for `State`/`Debug`.
+    /// Build from a raw `DSSJSONOptions` integer (the representable bits 0–10).
+    ///
+    /// This is the one raw-bits entry point, so — per JSON_EXPORT_PLAN §6 — it
+    /// must **error loudly**, never silently ignore, when it receives a bit that
+    /// is not on the export surface. Bits 11–13 (`State`/`Debug`/`Edit`) are
+    /// NOT_PORTED (`State`/`Debug` are commented out upstream as a silent no-op,
+    /// `Edit` is the JSON-import-only internal flag); passing any of them is a
+    /// programming error and panics rather than being quietly dropped.
     pub fn from_bits(bits: u32) -> Self {
-        Self(bits & 0x7FF)
+        assert_eq!(
+            bits & !0x7FF,
+            0,
+            "DSSJSONOptions bits 11-13 (State/Debug/Edit) are not representable on \
+             the JSON export surface (NOT_PORTED, JSON_EXPORT_PLAN §6)"
+        );
+        Self(bits)
     }
 }
 

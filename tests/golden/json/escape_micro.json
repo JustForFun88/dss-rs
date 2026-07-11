@@ -4,6 +4,18 @@
     "new circuit.probe basekv=12.47",
     "new load.esc bus1='a\"b/c\\d' kV=12.47 kW=1"
   ],
+  "combo_names": [
+    "default",
+    "full",
+    "full_pretty",
+    "pretty",
+    "include_class",
+    "enum_as_int",
+    "full_names",
+    "full_include_class",
+    "full_skip_redundant",
+    "lowercase_keys"
+  ],
   "captures": [
     {
       "kind": "obj",
@@ -29,6 +41,20 @@
     {
       "kind": "obj",
       "target": "load.esc",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "{\r\n  \"Name\" : \"esc\",\r\n  \"Bus1\" : \"a\\\"b/c\\\\d\",\r\n  \"kV\" : 1.2470000000000001E+001,\r\n  \"kW\" : 1.0000000000000000E+000,\r\n  \"PF\" : 8.8000000000000000E-001\r\n}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "include_class",
+      "bits": 64,
+      "expected": "{\"DSSClass\":\"Load\",\"Name\":\"esc\",\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
       "opts": "enum_as_int",
       "bits": 4,
       "expected": "{\"Name\":\"esc\",\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001}"
@@ -46,6 +72,13 @@
       "opts": "full_include_class",
       "bits": 65,
       "expected": "{\"DSSClass\":\"Load\",\"Name\":\"esc\",\"Phases\":3,\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001,\"Model\":1,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Growth\":null,\"Conn\":\"wye\",\"kvar\":5.3974282213808722E-001,\"RNeut\":-1.0000000000000000E+000,\"XNeut\":0.0000000000000000E+000,\"Status\":\"Variable\",\"Class\":1,\"VMinpu\":9.4999999999999996E-001,\"VMaxpu\":1.0500000000000000E+000,\"VMinNorm\":0.0000000000000000E+000,\"VMinEmerg\":0.0000000000000000E+000,\"XfkVA\":0.0000000000000000E+000,\"AllocationFactor\":5.0000000000000000E-001,\"kVA\":1.1363636363636365E+000,\"pctMean\":5.0000000000000000E+001,\"pctStdDev\":1.0000000000000000E+001,\"CVRWatts\":1.0000000000000000E+000,\"CVRVars\":2.0000000000000000E+000,\"kWh\":0.0000000000000000E+000,\"kWhDays\":3.0000000000000000E+001,\"CFactor\":4.0000000000000000E+000,\"CVRCurve\":null,\"NumCust\":1,\"ZIPV\":[0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000],\"pctSeriesRL\":5.0000000000000000E+001,\"RelWeight\":1.0000000000000000E+000,\"VLowpu\":5.0000000000000000E-001,\"puXHarm\":0.0000000000000000E+000,\"XRHarm\":6.0000000000000000E+000,\"Spectrum\":\"defaultload\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "full_skip_redundant",
+      "bits": 3,
+      "expected": "{\"Name\":\"esc\",\"Phases\":3,\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001,\"Model\":1,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Growth\":null,\"Conn\":\"wye\",\"kvar\":5.3974282213808722E-001,\"RNeut\":-1.0000000000000000E+000,\"XNeut\":0.0000000000000000E+000,\"Status\":\"Variable\",\"Class\":1,\"VMinpu\":9.4999999999999996E-001,\"VMaxpu\":1.0500000000000000E+000,\"VMinNorm\":0.0000000000000000E+000,\"VMinEmerg\":0.0000000000000000E+000,\"XfkVA\":0.0000000000000000E+000,\"AllocationFactor\":5.0000000000000000E-001,\"kVA\":1.1363636363636365E+000,\"pctMean\":5.0000000000000000E+001,\"pctStdDev\":1.0000000000000000E+001,\"CVRWatts\":1.0000000000000000E+000,\"CVRVars\":2.0000000000000000E+000,\"kWh\":0.0000000000000000E+000,\"kWhDays\":3.0000000000000000E+001,\"CFactor\":4.0000000000000000E+000,\"CVRCurve\":null,\"NumCust\":1,\"ZIPV\":[0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000],\"pctSeriesRL\":5.0000000000000000E+001,\"RelWeight\":1.0000000000000000E+000,\"VLowpu\":5.0000000000000000E-001,\"puXHarm\":0.0000000000000000E+000,\"XRHarm\":6.0000000000000000E+000,\"Spectrum\":\"defaultload\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
     },
     {
       "kind": "obj",

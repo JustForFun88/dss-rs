@@ -258,6 +258,59 @@ fn object_ref_array_full_name_as_json_array() {
 }
 
 #[test]
+fn object_ref_on_array_branch() {
+    // DSSObjectReferenceProperty + the `OnArray` flag renders an ARRAY of the
+    // referenced names (DSSObjectHelper.pas:1169-1194), not the scalar form.
+    let cls = props(vec![
+        PropDef::object_ref_class("LineCode", "Codes").flags(PropFlags::ON_ARRAY),
+    ]);
+    let mut obj = Mock::new(cls.num_properties());
+    // Empty → [].
+    assert_eq!(render(&cls, &obj, 1, JsonOpts::NONE).unwrap(), "[]");
+    obj.str_list = vec!["c1".into(), "c2".into()];
+    // Default: plain names.
+    assert_eq!(
+        render(&cls, &obj, 1, JsonOpts::NONE).unwrap(),
+        r#"["c1","c2"]"#
+    );
+    // FullNames → `Class.Name` each.
+    assert_eq!(
+        render(&cls, &obj, 1, JsonOpts::FULL_NAMES).unwrap(),
+        r#"["LineCode.c1","LineCode.c2"]"#
+    );
+    // FULL_NAME_AS_ARRAY forces FullName regardless of the FullNames option.
+    let cls2 = props(vec![
+        PropDef::object_ref_class("LineCode", "Codes")
+            .flags(PropFlags::ON_ARRAY | PropFlags::FULL_NAME_AS_ARRAY),
+    ]);
+    assert_eq!(
+        render(&cls2, &obj, 1, JsonOpts::NONE).unwrap(),
+        r#"["LineCode.c1","LineCode.c2"]"#
+    );
+}
+
+#[test]
+fn double_array_allow_none_null() {
+    // AllowNone applies to the DoubleArray arm too (not only DoubleVArray) —
+    // Pascal shares the `AllowNone and Norder=0 → null` block across
+    // DoubleArray/DoubleDArray/DoubleVArray (DSSObjectHelper.pas:1218).
+    let cls = props(vec![
+        PropDef::integer("N"),
+        PropDef::double_array("A", 1).flags(PropFlags::ALLOW_NONE),
+    ]);
+    let mut obj = Mock::new(cls.num_properties());
+    obj.i32s[1] = 0; // count 0 + AllowNone → null (not `[]`).
+    assert_eq!(render(&cls, &obj, 2, JsonOpts::NONE).unwrap(), "null");
+    // count > 0 → the array as usual.
+    obj.i32s[1] = 2;
+    obj.f64_arr = Some(vec![1.0, 2.0]);
+    assert_eq!(
+        render(&cls, &obj, 2, JsonOpts::NONE).unwrap(),
+        "[1.0000000000000000E+000,2.0000000000000000E+000]"
+    );
+}
+
+#[test]
 fn not_ported_and_make_like_arms() {
     // `ClassProps::new` appends the `Like` (MakeLike) prop automatically, so
     // prop 1 = X, prop 2 = Like.

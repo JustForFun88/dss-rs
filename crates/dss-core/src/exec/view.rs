@@ -306,8 +306,18 @@ impl Dss {
     /// (`CAPI_Obj.pas:762-784`). `full_name` is a `Class.name` (case-insensitive,
     /// `@var`-aware like [`Dss::element_properties`]); `None` if no such object
     /// exists. `opts` selects the sweep (default filled-only vs `Full`), the key
-    /// naming, and the compact/pretty layout. This is a pure read of the parsed
-    /// model (no solve state), so it may be called before any solve.
+    /// naming, and the compact/pretty layout.
+    ///
+    /// The default sweep dumps only *set* properties, which are all pure reads of
+    /// the parsed model — safe before any solve. `Full` additionally renders
+    /// read-only function properties; the handful flagged `READS_VTERMINAL`
+    /// (Transformer/AutoTrans `WdgCurrents`) read the element's `Vterminal`
+    /// cache, so under `Full` after a solve they reflect whatever that cache last
+    /// held. Unlike [`Dss::element_properties`] this `&self` method cannot run the
+    /// `refresh_vterminal_if_marked` choke point; reproducing those solve-state
+    /// strings byte-exactly is deferred (the "Full transformer WdgCurrents JSON"
+    /// follow-up — the Stage-A goldens never render them, `skip_full`). No
+    /// default-mode output is affected.
     pub fn obj_to_json(&self, full_name: &str, opts: JsonOpts) -> Option<String> {
         let (class_name, name) = {
             let mut p = Parser::new();

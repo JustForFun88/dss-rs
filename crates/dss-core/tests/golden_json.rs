@@ -42,6 +42,7 @@ struct DeckGolden {
     commands: Vec<String>,
     #[serde(default)]
     master: Option<String>,
+    combo_names: Vec<String>,
     captures: Vec<Capture>,
 }
 
@@ -73,6 +74,33 @@ fn run_deck(stem: &str) {
     }
     for c in &golden.commands {
         dss.command(c);
+    }
+
+    // Coverage guard: every (kind,target) must carry exactly the deck's declared
+    // combo set. Catches a silently dropped/renamed combo in the generator that
+    // would otherwise just shrink coverage while the byte checks stay green.
+    assert!(
+        !golden.combo_names.is_empty(),
+        "{}: no combos declared",
+        golden.name
+    );
+    let mut by_target: std::collections::BTreeMap<(&str, &str), Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for cap in &golden.captures {
+        by_target
+            .entry((cap.kind.as_str(), cap.target.as_str()))
+            .or_default()
+            .push(cap.opts.as_str());
+    }
+    for ((kind, target), mut got) in by_target {
+        got.sort_unstable();
+        let mut want: Vec<&str> = golden.combo_names.iter().map(String::as_str).collect();
+        want.sort_unstable();
+        assert_eq!(
+            got, want,
+            "{}: {kind} {target} combos {got:?} != declared {want:?}",
+            golden.name
+        );
     }
 
     for cap in &golden.captures {
@@ -117,6 +145,11 @@ fn json_vsource_micro() {
 #[test]
 fn json_transformer_micro() {
     run_deck("transformer_micro");
+}
+
+#[test]
+fn json_batch_micro() {
+    run_deck("batch_micro");
 }
 
 #[test]
