@@ -36,6 +36,27 @@ quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
 - **Migrated** (live-compared, green): `LVTestCase/Master` + `Test/Source012Test`
   (pinned oracle, full property parity); `EPRITestCircuits/ckt5/Run_ckt5` +
   `ckt7/RunDSS_ckt7` (`oracle: r3723`, `post: set mode=snapshot`).
+- **Audit settle (3 Minor findings).** (1) *Fixed:* the undefined-monitor Export
+  warning now carries the `CRLF + Parser.CmdString` suffix, matching the full
+  Pascal `#250 'Monitor "%s" not found. %s'` (`ExportOptions.pas:497`, official
+  r3723 `:441`) — the port had dropped the `%s`; verified the other not-found
+  messages (Bus #219, EnergyMeter #220, Object #256) genuinely carry no suffix,
+  so only the two Monitor sites did, and the port already reproduces `CmdString`
+  suffixes at command.rs #240/#267. Written to `last_result` only (not
+  gate-compared on this path; overwritten by later `?`-probes). (2) *No-fix,
+  proven:* EARLY_ABORT `Redirect_Abort` is not set on this warning — verified
+  vendored dss_capi sets it unconditionally (`DSSGlobals.pas:291`, default True
+  `:781`) but official r3723 only sets it inside `IF Not NoFormsAllowed` on a
+  dialog abort (`:606-611`), so headless it never fires; the port matches r3723,
+  which is also identical for ckt5/ckt7 since Export is the deck's last command,
+  and it is not a regression (pre-PR code did not set `redirect_abort` either).
+  (3) *No-fix, proven:* `post=[set mode=snapshot]` on ckt5/ckt7 is a symmetric
+  migration idiom — the harness applies `post` to BOTH engines
+  (`corpus_live.rs:712`, `oracle.run_case`) before its forced solve, converting
+  the post-yearly extra solve to a single well-defined snapshot instead of a
+  redundant second 8760-step run; the yearly trajectory is not deep-compared
+  (records not flagged `check_meters_monitors`), a bounded coverage note, not a
+  criterion weakening.
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the

@@ -763,21 +763,27 @@ impl Dss {
             }) {
                 Some(&r) => vec![r],
                 None => {
-                    // #250 `'Monitor "%s" not found.'`. The OFFICIAL OpenDSS
-                    // `DoSimpleMsg(S, ErrNum)` 2-arg variant (r3723
-                    // DSSGlobals.pas:600-620) is NON-fatal: with `NoFormsAllowed`
-                    // it only sets `LastErrorMessage`/`ErrorNumber` and
-                    // `AppendGlobalResultCRLF(S)` — it does NOT set `SolutionAbort`
-                    // and does NOT raise, so the script continues to the next
-                    // command. (The Direct DLL thus warns and solves through a
-                    // typo'd monitor name — as in EPRI ckt5/ckt7's Run decks.)
-                    // dss_capi reworked this same #250 to raise, which is why the
-                    // pinned oracle aborts here; we match the official behavior
-                    // class — record the warning on `GlobalResult` (CRLF-joined,
-                    // like `AppendGlobalResultCRLF`) and continue, rather than
-                    // pushing a hard error. Only THIS undefined-export path is
-                    // relaxed; every other DoSimpleMsg site is unchanged.
-                    let msg = format!("Monitor \"{name}\" not found.");
+                    // #250 `'Monitor "%s" not found. %s'` where the trailing
+                    // `%s` = `CRLF + Parser.CmdString` (`ExportOptions.pas:497`,
+                    // matched by official r3723 `ExportOptions.pas:441`). The
+                    // OFFICIAL OpenDSS `DoSimpleMsg(S, ErrNum)` 2-arg variant
+                    // (r3723 DSSGlobals.pas:600-620) is NON-fatal: with
+                    // `NoFormsAllowed` it only sets `LastErrorMessage`/
+                    // `ErrorNumber` and `AppendGlobalResultCRLF(S)` — it does NOT
+                    // set `SolutionAbort` and does NOT raise, so the script
+                    // continues to the next command. (The Direct DLL thus warns
+                    // and solves through a typo'd monitor name — as in EPRI
+                    // ckt5/ckt7's Run decks.) dss_capi reworked this same #250 to
+                    // raise, which is why the pinned oracle aborts here; we match
+                    // the official behavior class — record the full warning `S`
+                    // on `GlobalResult` (CRLF-joined, like `AppendGlobalResultCRLF`)
+                    // and continue, rather than pushing a hard error. Only THIS
+                    // undefined-export path is relaxed; every other DoSimpleMsg
+                    // site is unchanged. The `CRLF + CmdString` suffix mirrors the
+                    // port's other CmdString-carrying messages (command.rs #240/
+                    // #267).
+                    let cmd = self.parser.cmd_string().to_string();
+                    let msg = format!("Monitor \"{name}\" not found. \r\n{cmd}");
                     if self.last_result.is_empty() {
                         self.last_result = msg;
                     } else {
