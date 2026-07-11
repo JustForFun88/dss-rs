@@ -93,6 +93,9 @@ impl Rng {
 
     /// `irand()` — `GK_MKRANDOM` `FPRFX##rand` for `RNGT = idx_t` (4 bytes, so the
     /// `sizeof(RNGT) <= sizeof(int32_t)` branch): returns `gk_randint32()`.
+    /// Not on the `part_graph_kway` path (which draws via `irandInRange`/
+    /// `irandArrayPermute`), retained to complete the `GK_MKRANDOM` API.
+    #[allow(dead_code)]
     pub fn irand(&mut self) -> Idx {
         self.randint32() as Idx
     }
@@ -141,7 +144,10 @@ impl Rng {
         }
     }
 
-    /// `irandArrayPermuteFine(n, p, flag)` (`gk_mkrandom.h:111`).
+    /// `irandArrayPermuteFine(n, p, flag)` (`gk_mkrandom.h:111`). Not on the
+    /// `part_graph_kway` path; retained (and unit-tested) to complete the
+    /// `GK_MKRANDOM` API.
+    #[allow(dead_code)]
     pub fn rand_array_permute_fine(&mut self, n: Idx, p: &mut [Idx], flag: i32) {
         let n_us = n as usize;
         if flag == 1 {

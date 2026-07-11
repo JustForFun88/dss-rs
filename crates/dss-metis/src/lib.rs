@@ -22,22 +22,36 @@
 //! independent by construction. No `HashMap` iteration-order dependence exists on
 //! the numeric path.
 //!
-//! # Status (WP-AD.2 Stage A)
-//! Landed and gated:
-//! - [`rng`] — the GKRAND MT19937-64 generator and the `GK_MKRANDOM` operations
-//!   (`randint32/64`, `rand_in_range`, `rand_array_permute[_fine]`), pinned
-//!   bit-exact against values harvested from the C build.
-//! - [`graph`] — the METIS `.graph` reader/writer and the internal CSR
-//!   [`graph::Graph`], matching `programs/io.c::ReadGraph`/`WriteGraph`.
+//! # Status (WP-AD.2 Stage A — complete)
+//! The full `METIS_PartGraphKway` -> `MlevelKWayPartitioning` pipeline is ported
+//! and replays every committed `.part.N` golden **bit-exact** (k in {2,3,4,8}
+//! over all fixtures; `tests/golden_part.rs`):
+//! - `rng` — the GKRAND MT19937-64 generator + `GK_MKRANDOM` ops, pinned to the
+//!   C build.
+//! - [`graph`] — the METIS `.graph` reader/writer + internal CSR
+//!   ([`graph::Graph`]), matching `programs/io.c::ReadGraph`/`WriteGraph`.
+//! - `pqueue` — the GKlib bucket-locator binary heap (`rpq`, `gk_mkpqueue.h`).
+//! - `sort` — the GKlib inline quicksort (`ikvsorti`, `gk_mksort.h`).
+//! - `part` — [`part_graph_kway`]: `SetupCtrl`/`CheckParams` (`options.c`),
+//!   `SetupGraph` (`graph.c`), `CoarsenGraph` SHEM/RM + 2-hop + contraction
+//!   (`coarsen.c`), `MlevelKWayPartitioning`/`InitKWayPartitioning` (`kmetis.c`),
+//!   the recursive-bisection bootstrap (`pmetis.c`/`initpart.c`/`fm.c`/
+//!   `balance.c`/`bucketsort.c`), and greedy k-way refinement (`kwayrefine.c`/
+//!   `kwayfm.c`).
 //!
-//! The coarsen -> initial-partition -> k-way-refine pipeline
-//! (`part_graph_kway`) is the tracked continuation of this WP; its bit-exact
-//! `.part` goldens (k in {2,3,4,8} over the committed fixtures) are already
-//! generated and committed under `tests/golden/` as the ready oracle. See
-//! `STATUS.md` §WP-AD.2 and `tools/golden/gen_metis_reference.md`.
+//! Reachability decisions (default option path, `ncon == 1`): `contig`/`minconn`
+//! (`contig.c`/`minconn.c`), the volume objective, `BlockKWayPartitioning`
+//! (`dbglvl & 512`), `dropedges`, and every multi-constraint routine are **not
+//! reached** and not ported — documented at their call sites and in
+//! `part::mod`. See `STATUS.md` §WP-AD.2 and `tools/golden/gen_metis_reference.md`.
 
 pub mod graph;
+mod part;
+mod pqueue;
 pub mod rng;
+mod sort;
+
+pub use part::part_graph_kway;
 
 /// C `idx_t` at `IDXTYPEWIDTH=32`.
 pub type Idx = i32;
@@ -58,6 +72,8 @@ pub mod defaults {
     use super::Idx;
     /// `KMETIS_DEFAULT_UFACTOR` (`libmetis/defs.h`).
     pub const KMETIS_DEFAULT_UFACTOR: Idx = 30;
+    /// `PMETIS_DEFAULT_UFACTOR` (`libmetis/defs.h`).
+    pub const PMETIS_DEFAULT_UFACTOR: Idx = 1;
     /// Seed used by `InitRandom(-1)` — `libmetis/util.c:23` maps `-1 -> 4321`.
     pub const DEFAULT_SEED: u64 = 4321;
     /// `ncuts` for the default kway path.
