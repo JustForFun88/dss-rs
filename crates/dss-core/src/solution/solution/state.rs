@@ -211,6 +211,10 @@ pub struct Solution {
     pub control_queue: ControlQueue,
     /// `DSS.EventStrings`, surfaced as `Solution.EventLog` to dss-python.
     pub event_log: EventLog,
+    /// Branch-to-node incidence matrix + Laplacian (Pascal `IncMat`/`Laplacian`/
+    /// `Inc_Mat_Rows`/`Inc_Mat_Cols`/`Inc_Mat_levels`), built by the
+    /// `CalcIncMatrix`/`CalcIncMatrix_O`/`CalcLaplacian` commands (WP-AD.1).
+    pub inc_matrix: crate::solution::inc_matrix::IncMatrixState,
 }
 
 impl Solution {
@@ -275,6 +279,7 @@ impl Solution {
             do_all_harmonics: true,
             control_queue: ControlQueue::new(),
             event_log: EventLog::new(),
+            inc_matrix: crate::solution::inc_matrix::IncMatrixState::default(),
         }
     }
 

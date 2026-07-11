@@ -248,6 +248,10 @@ impl Dss {
             | cmd::SHOW_CONTROL_QUEUE
             | cmd::SOLVE_DIRECT
             | cmd::SOLVE_PFLOW => self.do_step_solution_cmd(pointer),
+            // Incidence matrix commands (WP-AD.1, Pascal `ExecCommands.pas:406-433`).
+            cmd::CALC_INC_MATRIX => self.do_calc_inc_matrix(false),
+            cmd::CALC_INC_MATRIX_O => self.do_calc_inc_matrix(true),
+            cmd::CALC_LAPLACIAN => self.do_calc_laplacian(),
             _ => self.not_ported_command(pointer),
         }
     }
@@ -324,6 +328,40 @@ impl Dss {
         let name = EXEC_COMMANDS.get(pointer - 1).copied().unwrap_or("?");
         self.errors
             .push(format!("Command \"{name}\" is not ported yet."));
+    }
+
+    /// Pascal `ExecCommands.pas` `ord(Cmd.CalcIncMatrix)` / `CalcIncMatrix_O`
+    /// (`Solution.Calc_Inc_Matrix` / `Calc_Inc_Matrix_Org`): build the
+    /// branch-to-node incidence matrix, flat or hierarchically organized (WP-AD.1).
+    fn do_calc_inc_matrix(&mut self, organized: bool) {
+        let Some(ckt) = self.circuit.as_mut() else {
+            return;
+        };
+        if organized {
+            crate::solution::inc_matrix::calc_inc_matrix_org(&mut self.classes, ckt);
+        } else {
+            crate::solution::inc_matrix::calc_inc_matrix(&self.classes, ckt);
+        }
+    }
+
+    /// Pascal `ExecCommands.pas` `ord(Cmd.CalcLaplacian)`: `Laplacian :=
+    /// IncMat.Transpose(); Laplacian := Laplacian.multiply(IncMat)`. The NIL guard
+    /// (error 8877) fires when no incidence matrix has been calculated yet — the
+    /// message text (including the upstream "Indidence" typo) is verbatim.
+    fn do_calc_laplacian(&mut self) {
+        let Some(ckt) = self.circuit.as_mut() else {
+            return;
+        };
+        let st = &mut ckt.solution.inc_matrix;
+        let Some(inc_mat) = st.inc_mat.as_ref() else {
+            self.errors.push(
+                "Indidence matrix is not present. Please run either \"CalcIncMatrix\" or \"CalcIncMatrix_O\" first."
+                    .to_string(),
+            );
+            return;
+        };
+        let laplacian = inc_mat.transpose().multiply(inc_mat);
+        st.laplacian = Some(laplacian);
     }
 
     /// Pascal `GetObjClassAndName`: read the `class.name` token (optionally

@@ -408,6 +408,23 @@ impl Dss {
             46 => self.export_with(&explicit, "EXP_YNodeList.csv", export::export_ynode_list),
             47 => self.export_with(&explicit, "EXP_YVoltages.csv", export::export_y_voltages),
             48 => self.export_with(&explicit, "EXP_YCurrents.csv", export::export_y_currents),
+            // Incidence matrix exports (WP-AD.1). All read-only over the
+            // `CalcIncMatrix*`-built state; none is in the solve-guard set. The
+            // default filenames match Pascal `ExportOptions.pas:416-425` verbatim
+            // (`Inc_Matrix.csv`, not `EXP_*`).
+            53 => self.export_with(&explicit, "Inc_Matrix.csv", export::export_inc_matrix),
+            54 => self.export_with(
+                &explicit,
+                "Inc_Matrix_Rows.csv",
+                export::export_inc_matrix_rows,
+            ),
+            55 => self.export_with(
+                &explicit,
+                "Inc_Matrix_Cols.csv",
+                export::export_inc_matrix_cols,
+            ),
+            56 => self.export_with(&explicit, "Bus_Levels.csv", export::export_bus_levels),
+            57 => self.export_with(&explicit, "Laplacian.csv", export::export_laplacian),
             20 => {
                 // `Export CIM100Fragments` (Pascal `ExportCDPSM(..., Combined =
                 // FALSE)`): the `Separate = true` per-profile file split. A

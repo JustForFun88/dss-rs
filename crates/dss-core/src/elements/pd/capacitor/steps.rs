@@ -30,6 +30,15 @@ impl Capacitor {
         self.fnumsteps
     }
 
+    /// Pascal `TCapacitorObj.NumTerminals` (property, `Capacitor.pas:157` =
+    /// `NumTerm`): the "is this a **series** (2-terminal) capacitor" flag — `2`
+    /// only when `bus2` was explicitly defined, else `1` (the constructor default,
+    /// a grounded shunt cap). Distinct from the generic `Nterms` (always 2). Used
+    /// by the incidence-matrix series-capacitor filter.
+    pub fn num_terminals(&self) -> i32 {
+        self.num_term
+    }
+
     /// Pascal `TCapacitorObj.Connection` (`FConnection`: `0` = Wye, `1` = Delta).
     /// Read-only accessor for the CIM export (`ShuntConnectionKindNode`).
     pub fn connection(&self) -> i32 {

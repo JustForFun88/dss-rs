@@ -5,6 +5,7 @@ pub mod control_queue;
 pub(crate) mod controls;
 pub mod event_log;
 pub(crate) mod faults;
+pub mod inc_matrix;
 pub(crate) mod meters;
 pub(crate) mod monitors;
 pub mod solution;
