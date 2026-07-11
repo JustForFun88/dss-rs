@@ -595,6 +595,13 @@ impl Dss {
             // found → error 5008 and no point-of-connection bus. Reproduced: the
             // honest "Line not found" surfaces here (the ZLL 3-phase-Line cut
             // constraint is otherwise enforced downstream at AD init, D5).
+            //
+            // NOTE: on the not-found path official `get_Line_Bus` falls through to
+            // `Result := ActiveCktElement.GetBus(NBus)` of the *restored*
+            // previously-active element (Circuit.pas:1204–1206) — a stale,
+            // wrong-but-non-empty bus name that depends on prior traversal state.
+            // Per D5 that state-dependent read is NOT reproduced; the port yields
+            // an empty point of connection (and the 5008 error) instead.
             let bare = pde.split_once('.').map(|(_, n)| n).unwrap_or(pde.as_str());
             let raw_bus = match line_bus(&self.classes, bare, 2) {
                 Some(b) => b,

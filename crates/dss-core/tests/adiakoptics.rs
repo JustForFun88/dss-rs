@@ -555,6 +555,13 @@ fn serialize_tree(root: &Path) -> String {
 /// self-golden pins the D2 partitioner + `Format_SubCircuits` (the
 /// `Master_Interconnected.dss` filtering rules, per-zone `Master.dss`, and per-zone
 /// `VSource.dss` measured values). Regenerate with `DSS_REGEN_AD_GOLDEN=1`.
+///
+/// TODO(WP-AD.3): this pins the tree structurally against our own emission (a
+/// self-golden). Cross-checking the two deliberate `Format_SubCircuits`
+/// deviations (case-insensitive filter, `New Circuit`-anchored zone cut) against
+/// the vendored first-party `Examples/ADiakoptics/ckt24/Torn_Circuit/**`
+/// reference is the D9(b) reference-fixture harvest, scheduled for WP-AD.3. The
+/// PConn numbers are independently validated by `pconn_sources_match_solved_nodev`.
 #[test]
 fn torn_tree_matches_golden() {
     let scratch = scratch_dir("golden");
@@ -588,8 +595,116 @@ fn torn_tree_matches_golden() {
     );
 }
 
+/// Parse the phase-1 `basekv`/`angle` from an emitted `VSource.dss` (the first
+/// `Edit Vsource.source …` line).
+fn parse_vsource_phase1(path: &Path) -> (f64, f64) {
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let line = text.lines().next().unwrap_or("");
+    let grab = |key: &str| -> f64 {
+        line.split_whitespace()
+            .find_map(|t| t.strip_prefix(key))
+            .unwrap_or_else(|| panic!("no {key} in {line:?}"))
+            .parse::<f64>()
+            .unwrap_or_else(|e| panic!("parse {key} in {line:?}: {e}"))
+    };
+    (grab("basekv="), grab("angle="))
+}
+
+/// **Independent numeric cross-check of the PConn boundary sources** (not the
+/// self-golden). For every zone, re-derive the point-of-connection bus from the
+/// link `Line`'s bus-2 and the boundary voltage from the *solved* `NodeV` (public
+/// bus API), then assert the **emitted** `VSource.dss` `basekv`/`angle` match.
+/// This catches a wrong-terminal, wrong-bus, angle-sign, or `/1000`-scale error
+/// in the PConn capture that the byte-golden alone would freeze in forever.
+#[test]
+fn pconn_sources_match_solved_nodev() {
+    use dss_core::support::complexutil::c_to_polar_deg;
+    let scratch = scratch_dir("pconn");
+    let mut dss = Dss::new();
+    compile_fixture(&mut dss, "midi", &scratch); // compiles + base solve
+    dss.command("set Num_SubCircuits=2");
+    dss.command("Tear_Circuit");
+    assert!(dss.errors().is_empty(), "tear errors: {:?}", dss.errors());
+
+    let (links, pconn): (Vec<String>, Vec<String>) = {
+        let ad = &dss.circuit().unwrap().ad;
+        (ad.link_branches.clone(), ad.pconn_names.clone())
+    };
+    assert!(pconn.len() >= 2, "expected >=2 zones, got {}", pconn.len());
+
+    // Independent expectation from the solved NodeV at each pconn bus, phase 1
+    // (read before any &mut call so nothing can perturb the operating point).
+    let expected: Vec<(f64, f64)> = {
+        let ckt = dss.circuit().unwrap();
+        pconn
+            .iter()
+            .map(|bus| {
+                let idx = ckt
+                    .bus_list
+                    .find(bus)
+                    .unwrap_or_else(|| panic!("pconn bus {bus:?} not in bus list"));
+                let b = &ckt.buses[idx];
+                let nref = b.find_idx(1).map(|ni| b.get_ref(ni)).unwrap_or(0);
+                let v = ckt.solution.node_v.get(nref).copied().unwrap_or_default();
+                let p = c_to_polar_deg(v);
+                (p.mag / 1000.0, p.ang)
+            })
+            .collect()
+    };
+
+    // Independent point-of-connection: pconn[i] must equal link[i]'s bus-2.
+    for i in 1..links.len() {
+        let props = dss
+            .element_properties(&links[i])
+            .unwrap_or_else(|| panic!("link {} does not resolve", links[i]));
+        let bus2 = props
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("bus2"))
+            .map(|(_, v)| v.split('.').next().unwrap_or("").to_string())
+            .unwrap_or_default();
+        assert!(
+            pconn[i].eq_ignore_ascii_case(&bus2),
+            "zone {i}: point-of-connection {:?} != link {} bus-2 {:?}",
+            pconn[i],
+            links[i],
+            bus2
+        );
+    }
+
+    // The emitted VSource files must carry those measured voltages.
+    let torn = scratch.join("Torn_Circuit");
+    for (i, (want_kv, want_ang)) in expected.iter().enumerate() {
+        let vfile = if i == 0 {
+            torn.join("VSource.dss")
+        } else {
+            torn.join(format!("zone_{}", i + 1)).join("VSource.dss")
+        };
+        let (basekv, angle) = parse_vsource_phase1(&vfile);
+        // Physical sanity: a ~7.2 kV L-N boundary (rules out a /1 or /1000 slip).
+        assert!(
+            *want_kv > 6.0 && *want_kv < 8.0,
+            "zone {i}: |V|/1000 = {want_kv} not ~7.2 kV L-N"
+        );
+        // Emitted values are `fmt_g(_, 8)`-rounded → compare at ~8 sig digits.
+        assert!(
+            (basekv - want_kv).abs() <= 1e-5 * want_kv.max(1.0),
+            "zone {i}: emitted basekv {basekv} != solved |V|/1000 {want_kv}"
+        );
+        assert!(
+            (angle - want_ang).abs() <= 1e-4,
+            "zone {i}: emitted angle {angle} != solved angle {want_ang}"
+        );
+    }
+}
+
 /// Round trip: each emitted sub-project compiles and solves on our own engine —
 /// the interconnected model (full circuit) and every per-zone standalone model.
+///
+/// TODO(WP-AD.3): this is a *solvability* smoke check (converged + a >1 kV node);
+/// full numeric AD↔normal equivalence at the §AD tolerance tier is deferred to
+/// WP-AD.3/D7. The boundary-source values themselves are numerically pinned by
+/// `pconn_sources_match_solved_nodev` above.
 #[test]
 fn torn_tree_roundtrip_solves() {
     let scratch = scratch_dir("roundtrip");
@@ -683,6 +798,9 @@ fn ckt24_graph_diagnostic() {
         "vendored line count: {}",
         vtext.lines().filter(|l| !l.trim().is_empty()).count()
     );
+    // TODO(WP-AD.5): build our ckt24 `.graph` and diff it against the vendored
+    // artifact here. That needs the ckt24 master-prefix compile driver, which
+    // lands in WP-AD.5; today this diagnostic only records the vendored side.
     eprintln!(
         "NOTE: a full our-vs-vendored .graph diff requires compiling the ckt24 master \
          (WP-AD.5 driver territory); this diagnostic records the vendored artifact shape. \
