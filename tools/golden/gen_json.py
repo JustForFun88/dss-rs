@@ -34,6 +34,9 @@ PRETTY = 16
 EXCLUDE_DISABLED = 32
 INCLUDE_DSS_CLASS = 64
 LOWERCASE_KEYS = 128
+INCLUDE_DEFAULT_OBJS = 256
+SKIP_TIMESTAMP = 512
+SKIP_BUSES = 1024
 
 COMBOS = [
     ("default", 0),
@@ -51,6 +54,19 @@ COMBOS = [
     # R1/X1/R0/X0 defer to Z1/Z0 and drop out).
     ("full_skip_redundant", FULL | SKIP_REDUNDANT),
     ("lowercase_keys", LOWERCASE_KEYS),
+]
+
+# Whole-circuit (`ActiveCircuit.ToJSON`) combos — always captured with
+# SkipTimestamp (the `! Last saved by …` stamp embeds the build revision + wall
+# clock, so it can never be a deterministic golden). The circuit is ALWAYS pretty
+# regardless of the Pretty bit, so `full_pretty` is the redundancy check.
+CIRCUIT_COMBOS = [
+    ("default", 0),
+    ("full", FULL),
+    ("full_pretty", FULL | PRETTY),
+    ("skip_buses", SKIP_BUSES),
+    ("include_default", INCLUDE_DEFAULT_OBJS),
+    ("enum_as_int", ENUM_AS_INT),
 ]
 
 # Each deck: a name, the command script (run after `clear`), and a list of
@@ -186,6 +202,65 @@ DECKS = [
         ],
     },
     {
+        "name": "circuit_micro",
+        # Whole-circuit dump: bus coordinates (X/Y), Keep, kVLN (post
+        # CalcVoltageBases), open terminals (saveOpenTerminalsJSON: a whole
+        # terminal + a single conductor), and class-ordering across LineCode /
+        # Line / Vsource / Load. Every class here is Full-safe (sym-component
+        # line, no transformer / matrix line / capacitor — the Stage-A + Stage-B
+        # Full-render deferrals: transformer WdgCurrents, matrix-line sym scalars
+        # → null, capacitor CMatrix computed under Full). Capacitor's default-mode
+        # dump is covered by circuit_ieee13 instead.
+        "commands": [
+            "new circuit.probe basekv=12.47 bus1=sourcebus",
+            "new linecode.lc1 nphases=3 r1=0.05 x1=0.1 c1=3 r0=0.15 x0=0.4",
+            "new line.ln1 bus1=sourcebus bus2=b2 linecode=lc1 length=1.2",
+            "new line.ln2 bus1=b2 bus2=b3 phases=3 r1=0.05 x1=0.1 r0=0.15 x0=0.4 c1=3 c0=1.5 length=0.8",
+            "new load.l1 bus1=b3.1.2.3 kV=12.47 kW=10 pf=0.95",
+            "makebuslist",
+            "setbusxy bus=sourcebus x=100.5 y=-200.25",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "set keep=[b2]",
+            # A whole terminal open + a single conductor open.
+            "open line.ln1 term=2",
+            "open line.ln2 term=1 cond=2",
+        ],
+        "captures": [("circuit", "")],
+        "combos": CIRCUIT_COMBOS,
+    },
+    {
+        "name": "circuit_edited_default",
+        # DefaultAndUnedited: editing one default object (spectrum.defaultload)
+        # clears its flag, so it — and only it — rejoins the default dump, while
+        # the other 6 spectra + the default LoadShape/GrowthShape/TCC_Curves stay
+        # hidden. IncludeDefaultObjs then brings them all back.
+        "commands": [
+            "new circuit.probe basekv=12.47",
+            "edit spectrum.defaultload %mag=(100 1.5 20 14 1 9 7)",
+            "makebuslist",
+        ],
+        "captures": [("circuit", "")],
+        "combos": [("default", 0), ("include_default", INCLUDE_DEFAULT_OBJS)],
+    },
+    {
+        "name": "circuit_ieee13",
+        # The unmodified IEEE13 feeder, whole-circuit. Full is excluded
+        # (`skip_full`): IEEE13 has a transformer (WdgCurrents Full solve-state
+        # deferral) and matrix-model LineCodes (sym scalars → `null` under Full),
+        # both Stage-A deferrals. Default / SkipBuses / IncludeDefaultObjs /
+        # EnumAsInt exercise the bus array, the class sweep and the naming on real
+        # data.
+        "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+        "captures": [("circuit", "")],
+        "combos": [
+            ("default", 0),
+            ("skip_buses", SKIP_BUSES),
+            ("include_default", INCLUDE_DEFAULT_OBJS),
+            ("enum_as_int", ENUM_AS_INT),
+        ],
+    },
+    {
         "name": "escape_micro",
         # A bus value carrying a quote, a slash and a backslash — pins fpjson
         # StringToJSON escaping end-to-end (`"`->\", `\`->\\, `/` unescaped).
@@ -230,6 +305,11 @@ def capture_batch(d, cls: str, bits: int) -> str:
     return d.ActiveCircuit.ActiveClass.ToJSON(bits)
 
 
+def capture_circuit(d, bits: int) -> str:
+    # Always SkipTimestamp (the `! Last saved by …` stamp is non-deterministic).
+    return d.ActiveCircuit.ToJSON(bits | SKIP_TIMESTAMP)
+
+
 def run_deck(d, au, lib, deck: dict) -> dict:
     d.Text.Command = "clear"
     master = deck.get("master")
@@ -250,14 +330,19 @@ def run_deck(d, au, lib, deck: dict) -> dict:
                 continue
             if kind == "obj":
                 text = capture_obj(d, au, lib, target, bits)
+            elif kind == "circuit":
+                text = capture_circuit(d, bits)
             else:
                 text = capture_batch(d, target, bits)
+            # The circuit capture always sets SkipTimestamp; record the effective
+            # bits so the Rust driver replays with the identical option set.
+            eff_bits = bits | SKIP_TIMESTAMP if kind == "circuit" else bits
             captures.append(
                 {
                     "kind": kind,
                     "target": target,
                     "opts": combo_name,
-                    "bits": bits,
+                    "bits": eff_bits,
                     "expected": text,
                 }
             )
