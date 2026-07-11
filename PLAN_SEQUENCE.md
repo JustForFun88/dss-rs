@@ -44,7 +44,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               solve engine, the corpus-wide AD↔normal sweep,
                               AggregateProfiles, optional threaded children) — last.
                               **The pinned oracle can't run it** (`DSS_CAPI_ADIAKOPTICS`
-                              compiled out — errors #130), so it gates rust-vs-rust
+                              compiled out — errors #130); behavioral spec = the
+                              official Delphi source (r3723 trunk, byte-identical
+                              through r4133 — plan D10), gated rust-vs-rust
                               (AD solve ≡ normal solve) + the official-EPRI r3723
                               reference channel (Oddie; A-Diakoptics probe-proven
                               working there 2026-07-11 — plan §0.2/D9), and is

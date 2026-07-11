@@ -12,13 +12,17 @@ Two parts with **different oracles, gates and timing** (see §0 for why):
   mode-4 flicker, WP-AD.1 incidence matrix + `Sparse_Math`. All three are compiled into
   the pinned oracle → normal golden/live gating. They belong to final-acceptance scope.
 - **Part II (no pinned oracle, post-acceptance):** WP-AD.2–WP-AD.6, the A-Diakoptics
-  engine. The pinned oracle build has this code **compiled out** (§0.2) — the gate is
+  engine. The pinned oracle build has this code **compiled out** (§0.2), and the
+  **behavioral spec is therefore the official Delphi source** —
+  `.inputs/electricdss-code-r3723-trunk/Version8/Source` (byte-identical across
+  r3723/r4088/r4133), the exact code the reference binaries execute; the vendored
+  dss_capi rewrite serves as the architectural adapter map (D10). The gate is
   Rust-vs-Rust equivalence (A-Diakoptics solve ≡ normal solve on the same deck) across
   the whole corpus, plus structural invariants, fixture goldens, and the
-  **official-EPRI reference channel** (D9): the vendored official r3723/r4088/r4133
-  binaries DO run A-Diakoptics (probe-proven, §0.2) and serve as the behavioral
-  reference — dev probes, committed reference fixtures, partition injection, and a few
-  `oracle:"r3723"` mandatory-gate cases.
+  **official-EPRI reference channel** (D9): the vendored official binaries DO run
+  A-Diakoptics (probe-proven, §0.2) and serve as the behavioral reference — dev
+  probes, committed reference fixtures, partition alignment via manual link branches,
+  and a few `oracle:"r3723"` mandatory-gate cases.
 
 Sequencing lives in `PLAN_SEQUENCE.md`: Part I = porting stage 3 (after the GAPS
 follow-ups WPG.19/20), Part II = the final stage after `MULTITHREADING_PLAN` M2
@@ -27,9 +31,10 @@ follow-ups WPG.19/20), Part II = the final stage after `MULTITHREADING_PLAN` M2
 ## Source-integrity gate — ritual step 0 (before the model-tier check)
 
 The Pascal we port FROM — `.inputs/dss_capi` (186 `.pas` files), plus
-`.inputs/electricdss-tst` for oracle/live work — is the **specification**. Before doing
-anything, and re-checked continuously (not only at kickoff), confirm that folder exists
-and is non-empty. If it has vanished — missing or empty — at **any** point in the work,
+`.inputs/electricdss-tst` for oracle/live work, plus **for Part II** the official
+Delphi spec `.inputs/electricdss-code-r3723-trunk/Version8/Source` (D10) — is the
+**specification**. Before doing anything, and re-checked continuously (not only at
+kickoff), confirm those folders exist and are non-empty. If it has vanished — missing or empty — at **any** point in the work,
 **STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
 "port" a source you cannot read. Tell the user the vendored source is gone and must be
 re-vendored, then wait. Reply exactly:
@@ -108,9 +113,24 @@ divergence — far worse than stopping. This gate runs **ahead of the tier/refus
 | `Common/Solution.pas` | 2593–2611, 2670–2721 | actor-loop handling of INIT/AD1/AD2/GETCTRLMODE; `SolveAD(Initialize)` (phase 1: zero + source inj (+PC inj if `ADiak_PCInj` or dynamic/harmonic) + Y check + solve; phase 2: `UpdateISrc` + solve); `SendCmd2Actors` (barrier: `Wait4Actors(AD_ACTORS)`) |
 | `Common/Solution.pas` | 2724–2756, 2777–2813, 2855–2927 | `Start_Diakoptics` (disable the feeder-head PDE in every child but the first; disable artificial `source`/`vph_2`/`vph_3` VSources), `VoltInActor1` (`NodeIdx + LocalBusIdx[0] − 1`), `UpdateISrc` (adds `−Ic[row]` into `Currents[AD_IBus[i]]`), `IndexBuses` (child node → parent node index map; `AD_IBus`/`AD_ISrcIdx` from `Contours` rows) |
 | `Common/Ymatrix.pas` | 430–434 | AD-gated `Node_dV`/`Ic_Local` allocation — dead scaffolding (never read; see D5) |
-| `Executive/ExecOptions.pas` | 152–158, 742–753, 1100–1112 | options `Coverage`, `Num_SubCircuits`, `ADiakoptics` (set → `ADiakopticsInit` / clear flag), `LinkBranches` (**get-only** in the vendored source — there is NO `set LinkBranches`/`UseMyLinkBranches`; that is a newer official-OpenDSS feature, out of scope) |
+| `Executive/ExecOptions.pas` | 152–158, 742–753, 1100–1112 | options `Coverage`, `Num_SubCircuits`, `ADiakoptics` (set → `ADiakopticsInit` / clear flag), `LinkBranches` (get-only **in the rewrite**; the official spec has the setter + `UseMyLinkBranches` — ported per D10, see the Part II spec addendum below) |
 | `Executive/ExecCommands.pas` | 147–151, 406–433, 448–450, 667–669 | commands `AggregateProfiles`, `Tear_Circuit` (AD-gated); `CalcIncMatrix`/`CalcIncMatrix_O`/`CalcLaplacian` (ungated), `Refine_BusLevels` (AD-gated); `Solve` resets `AD_Init` |
 | `Common/MeTIS_Exec.pas` | whole unit | `RunMeTIS` is `{$IFNDEF FPC}` — **Delphi-only, never compiled in the FPC spec build**; under FPC `Create_MeTIS_Zones` uses `Process.ParseCommand` to run `kmetis`. `GetNumEdges` + `TFileSearchReplace` implement the "wrong edge count → patch the .graph header and retry" repair loop |
+
+**Part II spec addendum (D10) — the official Delphi coordinates.** For every row above
+that belongs to Part II, the *behavioral* authority is the same unit in
+`.inputs/electricdss-code-r3723-trunk/Version8/Source` (byte-identical in the r4088 and
+r4133 trunks; sha256-verified 2026-07-11). Key coordinates there: `Common/Diakoptics.pas`
+(whole unit; `ADiakopticsInit` at 541, `Calc_Y4` quirk at 201, `Calc_ZCC` quirk at 274);
+`Common/Circuit.pas` — `AppendIsources` ~1040, `Format_SubCircuits`, `Save_SubCircuits`,
+`Create_MeTIS_graph`/`Create_MeTIS_Zones`, **`Tear_Circuit(UseUserLinks)` at ~1918** with
+the manual-links branch (`get_PDE_Bus1_Location` at 1928, `get_line_bus` at 1986) that
+the dss_capi rewrite dropped; `Executive/ExecOptions.pas` — options `Num_SubCircuits`
+(120), `ADiakoptics` (122), **`LinkBranches` get *and set* (124, setter at 842–849)**,
+Coverage, **`UseMyLinkBranches` (134)**, plus `GETCTRLMODE` propagation on
+`set controlmode` (675/708); `Common/MeTIS_Exec.pas` — `RunMeTIS` IS compiled (Delphi).
+The vendored dss_capi rows above remain the map of how the same code looks in
+TDSSContext form — the shape the Rust port follows.
 
 ### §0.2 The build-flag fact (why Part II has no oracle)
 
@@ -150,14 +170,36 @@ because it sits beside the loaded DLL) on the corpus `IEEE_123_Bus-G` demo:
 `Line.l10, Line.l73`, `get NumActors=4`, the full init-summary text incl. partitioning
 statistics), `Export ZCC/Y4/ZLL` produce files, `.graph`/`.graph.part.3` written, AD
 snapshot solve converges in 3 iterations. **AD vs normal solve, controls off: max
-rel |ΔV| = 2.6e-4 over all 278 nodes** (= the convergence-tolerance-bounded fixpoint
-agreement D7 predicts). With `controlmode=Static` the same comparison shows 8.7e-2 —
-regulator-tap state diverges between the runs, which is exactly why WP-AD.4 defaults
-control decks to `pf`. Both D5 numeric quirks (`Calc_Y4` double-`.re`, `Calc_ZCC`
-`re≠0 AND im≠0`) are present verbatim in official r3723 — the vendored rewrite
-inherited them — so 1:1 reproduction also matches the official binaries. Official
-r3723 additionally has `set LinkBranches=`/`UseMyLinkBranches` (options the vendored
-0.14.5 rewrite dropped; out of port scope, but usable on the *reference* side).
+rel |ΔV| = 2.6e-4 over all 278 nodes, stable across repeated runs** (= the
+convergence-tolerance-bounded fixpoint agreement D7 predicts). With
+`controlmode=Static` the same comparison shows 8.7e-2 — regulator-tap state diverges
+between the runs, which is exactly why WP-AD.4 defaults control decks to `pf`. Both D5
+numeric quirks (`Calc_Y4` double-`.re` at official:201, `Calc_ZCC` `re≠0 AND im≠0` at
+official:274) are present verbatim in official r3723 — the vendored rewrite inherited
+them — so 1:1 reproduction also matches the official binaries.
+
+Two operational findings from the probe, **binding for every D9 use**:
+
+- **`solve` is asynchronous in the official PM/AD engine** — reading results without a
+  trailing `wait` races the actor threads: the probe reproducibly captured a whole zone
+  as zeros (rel |ΔV| = 1.0 at nodes 96–99, coordinator still reporting `Converged`)
+  until `wait` was added after `solve`; with `wait`, four consecutive runs agree
+  bitwise-stably at 2.639e-4. The ckt24 demo scripts `wait` after every solve for this
+  reason. Every D9 harness/probe/fixture-generator MUST `wait` after each `solve`
+  against an official rev before reading anything.
+- `kmetis.exe`/`pmetis.exe` are found because they sit in `DSSDirectory` = the loaded
+  DLL's own directory — hence they are now vendored into `tools/opendss/bin/<rev>/`
+  alongside the DLLs (`vendor_binaries.py` extended 2026-07-11; probe re-verified
+  against the vendored `bin/r3723` copy).
+
+Additional spec facts (sha256-verified 2026-07-11): official `Diakoptics.pas` and
+`Pstcalc.pas` are **byte-identical across r3723/r4088/r4133** — Part II carries zero
+upgrade deltas (recorded in `UPGRADE_PLAN.md` §0); the dss_capi `0.14.5 → 0.15.x`
+deltas for both units are mechanical renames only. Official r3723 additionally has
+`set LinkBranches=` (setter) + `UseMyLinkBranches` + the `Tear_Circuit(UseUserLinks)`
+manual-partitioning branch, which the vendored 0.14.5 rewrite dropped — **in port
+scope per D10** (it is official behavior, it is what the ckt24/EPRI-Ckt5 corpus decks
+use, and it is the clean partition-alignment mechanism for D9).
 
 ### §0.3 Where the Rust tree stands today (inventoried 2026-07-11)
 
@@ -213,11 +255,13 @@ don't-rationalize-conditioning rule applies with full force: an AD↔normal gap 
 calibrated tier is a port bug, and the tighten-tolerance experiment (D7) is a permanent
 test, not a one-off.
 
-**D2 — METIS substitution.** The spec path shells out to an external `kmetis`
-executable that is not vendored, not pure Rust, and (under FPC) not even wrapped by
-`RunMeTIS` (Delphi-only). Decision: port `Create_MeTIS_graph` and the `.part.<N>`
-**file formats and parsing 1:1**, and replace the external partitioner with a
-deterministic pure-Rust one behind the same file interface:
+**D2 — METIS substitution (auto-tear path only).** The spec's auto-tearing shells out
+to an external `kmetis` executable — external binaries stay out of the Rust engine and
+its tests. The official manual path (`set LinkBranches=` + `UseMyLinkBranches`, D10)
+is ported 1:1 and needs no partitioner at all; D2 covers only the *automatic* path:
+port `Create_MeTIS_graph` and the `.part.<N>` **file formats and parsing 1:1**, and
+replace the external partitioner with a deterministic pure-Rust one behind the same
+file interface:
 `crates/dss-core/src/support/partition.rs` — greedy BFS k-way partitioning of the
 `.graph` adjacency (same vertex order as `Inc_Mat_Cols`, edge weights as written to the
 file), growing zones level-contiguously from the feeder head to `⌈NVertices/k⌉`,
@@ -321,13 +365,14 @@ the designated AD reference. Four uses, in increasing strength:
   Caveat recorded per fixture: the vendored 0.14.5 AD source is a refactor of official
   V8 — before pinning any value byte-level, diff the two `Diakoptics.pas` at the site
   in question and record the delta (probe already proved the Y4/ZCC quirks identical).
-- *(c) Partition injection (test-only hook)* — our `Create_MeTIS_Zones` reads
-  `.part.<N>` from disk; the tearing module exposes a test-only way to supply a
-  pre-existing `.part` file instead of running the D2 partitioner (an
-  `#[cfg(test)]`/env-guarded injection point, not a user option). Feeding official
-  r3723's `.part` file makes the partitions **identical**, which upgrades the (b)
-  fixtures from "same fixpoint" to direct matrix-level comparisons of
-  `Contours/ZLL/ZCC/Y4` and torn-file structure.
+- *(c) Partition alignment via manual link branches* — official behavior (D10, in port
+  scope): `set LinkBranches=[…] UseMyLinkBranches=True` forces the tearing on an
+  explicit link list on **both** engines. The reference recipe: run official r3723 with
+  kmetis auto-tear, read `get LinkBranches`, then drive official AND Rust with that
+  explicit list — partitions become **identical**, upgrading the (b) fixtures from
+  "same fixpoint" to direct matrix-level comparisons of `Contours/ZLL/ZCC/Y4` and
+  torn-file structure. (No test-only injection hook needed — the official option IS the
+  mechanism.)
 - *(d) Mandatory-gate AD cases* — the WP-U0 precedent (manifest `oracle:` field) allows
   a **small, named** set of AD sweep cases to carry `oracle: "r3723"`: the runner
   replays the same AD preamble on both engines and compares post-AD voltages/powers at
@@ -337,9 +382,38 @@ the designated AD reference. Four uses, in increasing strength:
   else in the sweep stays rust-vs-rust. The broad `corpus_live_opendss`-style AD sweep
   against r3723 remains opt-in/report-only, consistent with the channel's charter.
 
-Infra prerequisite (WP-AD.2): extend `tools/opendss/vendor_binaries.py` to also vendor
-`kmetis.exe` + `pmetis.exe` into `bin/<rev>/` (checksums in `bin/SHA256SUMS`) — the DLL
-finds kmetis next to itself; today only the `.inputs` x64 dirs have it.
+Infra (landed 2026-07-11): `vendor_binaries.py` vendors `kmetis.exe` + `pmetis.exe`
+into `bin/<rev>/` (checksums in `bin/SHA256SUMS`) — the DLL finds them in its own
+directory; probe re-verified against the vendored copy. Operational rule (probe-proven,
+§0.2): every `solve` on an official rev is followed by `wait` before reading results —
+the PM solve is asynchronous and skipping the barrier silently yields a zeroed zone.
+
+**D10 — Part II's behavioral spec is the official Delphi source.** The vendored
+dss_capi 0.14.5 `{$IFDEF DSS_CAPI_ADIAKOPTICS}` code is a **rewrite that never shipped
+in any executable build** (§0.2); the only A-Diakoptics that ever ran is
+`.inputs/electricdss-code-r3723-trunk/Version8/Source` — byte-identical in the r4088
+and r4133 trunks (sha256-verified 2026-07-11, recorded in `UPGRADE_PLAN.md` §0), and
+exactly what the D9 reference binaries execute. Therefore, for Part II:
+
+- **Behavioral authority = official r3723** (`Diakoptics.pas` + the `Circuit.pas`
+  tearing procedures + `Solution.pas` AD members + `ExecOptions` AD options +
+  `MeTIS_Exec.pas`). Pascal citations in Rust doc comments cite the official unit;
+  where the vendored rewrite differs behaviorally, official wins and the difference is
+  recorded at the port site.
+- **The vendored dss_capi rewrite = the architectural adapter map**: it shows the same
+  algorithm re-plumbed onto `TDSSContext` — the exact shape our Rust `Dss` mirrors
+  (explicit context instead of `ActiveCircuit[ActorID]` globals). Executors read
+  official first for behavior, the rewrite second for structure. Known adapter-level
+  deltas (inventoried 2026-07-11): the rewrite dropped `set LinkBranches`/
+  `UseMyLinkBranches`/`Tear_Circuit(UseUserLinks)` (**ported per official**), and its
+  `0.14.5 → 0.15.x` evolution is mechanical renames only.
+- **Sha-watch**: the official-unit hashes (`Diakoptics.pas` FE316B…, `Pstcalc.pas`
+  352512…, 12-hex prefixes) are recorded here; any future re-vendor or upgrade rung
+  re-checks them — a changed hash reopens the delta question before any AD code is
+  touched.
+- Scope consequence: the port's AD command surface = official r3723's (incl. manual
+  link branches), not the rewrite's reduced one. The `Coverage` option and
+  `Refine_BusLevels` remain per the corresponding official code.
 
 ---
 
@@ -491,12 +565,15 @@ Newton is **not** AD-aware):
 
 ### WP-AD.2 — tearing (`Tear_Circuit` + the partitioner + torn files)
 
-**Scope.** Circuit AD fields (§0.1); `Create_MeTIS_graph` 1:1 (needs WP-AD.1's
+**Scope** (behavioral spec = official r3723 per D10; the dss_capi rewrite as the
+structure map). Circuit AD fields (§0.1); `Create_MeTIS_graph` 1:1 (needs WP-AD.1's
 `Calc_Inc_Matrix_Org` + Laplacian; the parallel-branch dedup loop and the
 Transformer-weight-1 rule verbatim); `support/partition.rs` per **D2**;
 `Create_MeTIS_Zones` parsing 1:1 (including the D5 line-swap quirk, the ≥2-bus zone
-rule, the final `inc(Locations[j])`); `Tear_Circuit` (terminal orientation by |V|
-difference, `PConn_Voltages`, zone meters); `Save_SubCircuits`/`Format_SubCircuits`/
+rule, the final `inc(Locations[j])`); `Tear_Circuit(UseUserLinks)` — **both branches**:
+auto (partitioner) and the official manual-links branch (`get_PDE_Bus1_Location`,
+`get_line_bus`; official `Circuit.pas` ~1918–1990) — terminal orientation by |V|
+difference, `PConn_Voltages`, zone meters; `Save_SubCircuits`/`Format_SubCircuits`/
 `AppendIsources`/`Disable_All_DER`; register the `Tear_Circuit` command (dispatch →
 `ADiakoptics_Tearing(DSS, False)` = tearing without ISources).
 
@@ -529,9 +606,11 @@ error accumulation into the progress string, `Parallel_enabled`/`ADiak_Init` fla
 `dss-sparse` cached factorization); `SendIdx2Actors`/`Start_Diakoptics`/`IndexBuses`;
 `Solve_Diakoptics`/`SolveAD`/`UpdateISrc`/`VoltInActor1`; the solve-path branches
 (`DoNormalSolution`, `SolveDirect`, `SolveYDirect`, `SolveCircuit` Y-skip, `Converged`,
-`VDiff`, `SolveSystem` offset write, `CheckControls` AD branch + `GetCtrlMode`);
-`set/get Coverage|Num_SubCircuits|ADiakoptics|LinkBranches` (get-only for
-LinkBranches!); `Export ZLL/ZCC/Contours/Y4` (register 58–61, formats per
+`VDiff`, `SolveSystem` offset write, `CheckControls` AD branch + `GetCtrlMode`, and the
+official `set controlmode` → `GETCTRLMODE` propagation);
+`set/get Coverage|Num_SubCircuits|ADiakoptics|LinkBranches` — LinkBranches **get and
+set** plus `UseMyLinkBranches`, per official r3723 (D10; the rewrite's get-only
+reduction is superseded); `Export ZLL/ZCC/Contours/Y4` (register 58–61, formats per
 `ExportResults.pas:3401–3485`, silent no-op when `ADiakoptics=false` — 1:1);
 `get_Statistics`; `Solve` resetting `AD_Init`.
 
@@ -539,12 +618,13 @@ LinkBranches!); `Export ZLL/ZCC/Contours/Y4` (register 58–61, formats per
 - Fixture goldens for `Contours`/`ZLL`/`ZCC`/`Y4` on the midi feeder (2 zones), with
   the D1 invariants recomputed in-test (ZCCᵀ reconstruction, `‖Y4·ZCC − I‖` bound
   modulo the D5 drop quirks — assert the dropped-entry pattern explicitly).
-- **Official-reference comparison (D9 b+c):** harvest r3723's `.part`/matrices/voltages
-  for the IEEE_123_Bus-G demo via `gen_ad_reference.py`; inject the official `.part`
-  file (identical partition) and compare our `Contours/ZLL/ZCC/Y4` and post-AD node
-  voltages against the committed reference (tier from the D7 calibration; any
-  vendored-source-vs-official code delta found while triaging goes into the fixture's
-  caveat note).
+- **Official-reference comparison (D9 b+c):** harvest r3723's
+  `LinkBranches`/matrices/voltages for the IEEE_123_Bus-G demo via
+  `gen_ad_reference.py` (with `wait` after every solve — §0.2); replay with the same
+  explicit `set LinkBranches=[…] UseMyLinkBranches=True` on the Rust side (identical
+  partition) and compare our `Contours/ZLL/ZCC/Y4` and post-AD node voltages against
+  the committed reference (tier from the D7 calibration; any official-vs-rewrite code
+  delta found while triaging is recorded per D10 at the port site).
 - Export format tests for all four (against the committed fixtures).
 - **Equivalence gates** per D7 on three synthesized fixtures (midi snap, midi
   daily-24-step, macro yearly-168-step): round-trip leg + AD leg, tier calibrated and
@@ -621,10 +701,12 @@ counts recorded in STATUS (like the solvable_now counts).
   `Disable_All_DER`; `AggregateProfiles` (+ its `Aggregate`-command registration),
   fixture-golden for the emitted `Aggregated_model/` on the midi feeder.
 - ckt24 driver test (in `adiakoptics.rs`, reading the vendored deck): compile the
-  original `master_ckt24.dss` **prefix** (up to the normal yearly block), then
-  auto-tear at `Num_SubCircuits=2` and `4`, AD-solve `mode=yearly number=24`, compare
-  vs the normal solve per D7 (this is the real-corpus macro gate; 168-step variant
-  behind `DSS_EXPENSIVE_TESTS=1` if runtime demands).
+  original `master_ckt24.dss` **prefix** (up to the normal yearly block), then run the
+  deck's own manual-partition cases as written — `set LinkBranches=[…]` +
+  `UseMyLinkBranches=True` for 2 and 4 zones (in scope per D10) — AD-solve
+  `mode=yearly number=24`, compare vs the normal solve per D7 (the real-corpus macro
+  gate; 168-step variant behind `DSS_EXPENSIVE_TESTS=1` if runtime demands). An
+  auto-tear variant (`Num_SubCircuits=2`, D2 partitioner) rides alongside.
 - EPRI reference channel hardening (the D9 probe already answered the feasibility
   question — 2026-07-11, §0.2): land `tools/opendss/gen_ad_reference.py` + its
   regeneration procedure in `tools/opendss/README.md`; vendor `kmetis.exe`/`pmetis.exe`

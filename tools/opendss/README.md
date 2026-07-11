@@ -31,7 +31,9 @@ machine-global (one version at a time).
 | `r4133` | 11.0.0.1 "Charlottesville" | latest official release, no dss_capi yet |
 
 Binaries live in `bin/<rev>/` (`OpenDSSDirect.dll` + `KLUSolve.dll`, its only
-non-system import + `License.txt`), vendored from `.inputs/electricdss-code-
+non-system import, + `kmetis.exe`/`pmetis.exe` — the METIS partitioners the
+engine spawns from the DLL's own directory when A-Diakoptics tears a circuit —
++ `License.txt`), vendored from `.inputs/electricdss-code-
 r*-trunk/Version8/Distrib/x64/` by `vendor_binaries.py` (checksums in
 `bin/SHA256SUMS`). `DSSProgress.exe` is not vendored, so progress popups are
 impossible.
@@ -166,3 +168,12 @@ dss_capi 0.15.0b4, not the pinned 0.14.5 oracle — inventory only.** See
   shapes, property-value formatting (`"[ 1900 1500 2300]"` vs `"1900 1500
   2300"`), iteration-count deltas, plus genuine engine differences listed in
   dss_capi `docs/known_differences.md`.
+- **A-Diakoptics runs here** (probe-proven 2026-07-11; the pinned capi oracle
+  can't run it — `DSS_CAPI_ADIAKOPTICS` compiled out). Two hard rules when
+  driving it (see `DIAKOPTICS_PSTCALC_PLAN.md` D9/D10): (1) the PM/AD `solve`
+  is **asynchronous** — always issue `wait` after every `solve` before reading
+  results, or a zone can be captured as zeros while the coordinator still
+  reports Converged; (2) `kmetis.exe` must sit next to the loaded DLL (it does,
+  in `bin/<rev>/` and in the `.inputs` x64 dirs). Copy decks to a temp dir
+  first — `set ADiakoptics=True` writes `Torn_Circuit/` + `.graph`/`.part.*`
+  beside the model (corpus-pollution hazard).
