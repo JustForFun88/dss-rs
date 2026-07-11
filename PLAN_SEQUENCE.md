@@ -10,13 +10,12 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
  1. PHASE8_PLAN.md            COMPLETE (branch phase-8-reporting; WP8.8 exit done)
  2. GAPS_PLAN.md              COMPLETE — WPG.1–18 (2026-07-09) + follow-ups
                               WPG.19/20 merged 2026-07-11 (`7860582`)
- 3. DIAKOPTICS_PSTCALC_PLAN.md **Part I** (WP-PF.1 `Pstcalc` command, WP-PF.2
-                              Monitor mode-4 flicker, WP-AD.1 incidence matrix +
-                              Sparse_Math + exports 53–57) ← NEXT — the
-                              oracle-visible half of the Phase-9
-                              A-Diakoptics/Pstcalc residue (WPG.19's `File=`
-                              arrays, which WP-PF.2's corpus-demo golden needs,
-                              are in). In acceptance scope.
+ 3. DIAKOPTICS_PSTCALC_PLAN.md **Part I** COMPLETE (2026-07-11) — WP-PF.1
+                              `Pstcalc` command, WP-PF.2 Monitor mode-4 flicker,
+                              WP-AD.1 incidence matrix + Sparse_Math + exports
+                              53–57; ultracode round, merged `be2cfc7`/`e96caaa`,
+                              records in STATUS.md. The porting era's plans are
+                              now all executed ⇒ next = FINAL ACCEPTANCE below.
  ═ FINAL ACCEPTANCE (PORTING_PLAN §6) ═
 ── POST-ACCEPTANCE (upgrade, then refactor & improvement era) ──────────────────────
  4. UPGRADE_PLAN.md           Rung 1 (WP-U1.*: dss_capi 0.15.x / r4088-line parity,
