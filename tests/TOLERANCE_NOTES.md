@@ -24,8 +24,13 @@ tiers tolerances by **conditioning**, not size:
   A-Diakoptics torn zones / inverter cases / IEEE123 / 4Bus-YYD). Also the safe
   default for an unrecognized `kind`.
 - **large_floating_delta** — `large` plus one documented exception: `v_abs`
-  5e-4 V (see §floating-delta below). Currently one deck
-  (`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`).
+  5e-4 V (see §floating-delta below). The whole-IEEE123 grid-forming-inverter
+  (GFM) family (11 decks): the original decomposition-proven
+  `GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS` plus the CF-B-migrated GFM IEEE123
+  snapshots (`GFMSnap`, `GFMSnap-A/-B/-C`) and daily/whole-day trajectories
+  (`GFMDaily`, `GFMDailySwapRef`, `GFMWholeDaily`, the AmpsLimit variants, the
+  IBRDynamics `CannotPickUpLoad`). All share the identical floating-delta
+  topology — the proof and the coverage argument are in §floating-delta below.
 - **large_near_ideal_source** — `large` plus two documented exceptions:
   `v_rel` 5e-6 and `i_abs` 0.1 A (see §near-ideal-source below). The 9-deck
   AutoTrans validation family + the 2 `PV_currentkvarLimit_*` decks (Thevenin
@@ -81,6 +86,32 @@ L-L (differential) voltages — immune to the common mode — and stay gated at
 the `large` floors, as do Y/YPrim/injection. Fix owner: `RESONANCE_PLAN.md`
 WP-R1 (one iterative-refinement step measures 9.4e-6 V vs KLU — 3× under the
 `large`-band); when it lands, retighten this tier back to `large`.
+
+**Family admission (CF-B, 2026-07-12).** The tier now also gates the rest of
+the whole-IEEE123 GFM family — the `GFM_IEEE123` / `GFM_AmpsLimit_123` /
+`IBRDynamics_Cases/GFM_IEEE123` snapshots (`GFMSnap-A/-B/-C`) and the
+daily/whole-day trajectories (`GFMDaily`, `GFMDailySwapRef`, `GFMWholeDaily`,
+the AmpsLimit variants, `CannotPickUpLoad`). **What is proven vs what is
+inherited:** the decomposition above (bitwise Y/RHS/residual audit, 100%
+common mode) was performed on `GFMSnap.DSS`; the other decks are the *same
+physical circuit* (the whole IEEE123 feeder with delta-connected Storage/PV
+GFM inverters and no zero-sequence ground path) driven to a different operating
+point — snapshot vs a scripted daily trajectory whose gated compare is the
+final converged step. They are admitted under that precedent, **not** an
+independent per-deck decomposition of each trajectory. This is honest and safe
+because the floor is widened on **exactly one channel** (`v_abs`) and every
+channel that could expose a real model/tap/control divergence is held at its
+tight floor and is *immune to the common mode*: the assembled Y at `y_rel`
+1e-8 (deterministic stamps, today bit-identical), the injection, the **exact**
+iteration count, and the DER currents/powers (differential-voltage functions)
+at the `large` floors. A daily deck whose regulators or GFM controllers landed
+a different state, or whose model drifted, would move a tap / an iteration
+count / a differential current far above these floors and fail loudly — the
+5e-4 V common-mode band absorbs only the proven un-pinnable zero-sequence
+junk, which the topology guarantees is present in every family member. Each
+deck was additionally validated live-green against the pinned oracle before
+migration (see the per-deck notes in `solvable_now.json`). If WP-R1 ever
+retightens this tier, the whole family retightens with it.
 
 ### floating-zeroseq (`large_floating_zeroseq`): weakly-pinned common modes
 
