@@ -2900,6 +2900,36 @@
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEELineCodes.DSS",
    "tag": "include_assembler",
    "note": "redirects/compiles other files; included by: Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss, Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss",
+   "tag": "include_fragment",
+   "note": "CF-B reclassify (T-A #32). Defines `New Circuit.ckt7` but is a fragment redirected by Master_ckt7.dss (which sets datapath and redirects the LoadShapes it needs first); standalone it fails #401 (LoadShape \"25609_A\" not found). Both engines fail standalone -- an included fragment, not a standalone entry point."
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Substation.dss",
+   "tag": "include_fragment",
+   "note": "CF-B reclassify (T-A #33). Defines `New Circuit.J1` but is a fragment redirected by Master_noPV.dss / Master_withPV.dss (which set datapath and redirect the LoadShapes first); standalone it fails #401 (LoadShape \"AggLoadProfile\" not found). Both engines fail standalone."
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS",
+   "tag": "include_fragment",
+   "note": "CF-B reclassify (T-A #18). A-Diakoptics distribution sub-model with its `New Circuit.ckt5` commented out (coupled into the transmission system, no VSource); included by ../Master.dss (line 43: `Redirect Distribution\\master.dss`). Standalone it fails #265 (must create a circuit first). Not a standalone entry point."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/MultstepDG.DSS",
+   "tag": "helper",
+   "note": "CF-B reclassify (T-A #31). How-to script snippet with no `New Circuit` (documents staging 5 DG units back online after an outage using dutycycle mode + enable/disable scripts); not a standalone entry point. Both engines fail #301 (must create a circuit first)."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS",
+   "tag": "include_assembler",
+   "note": "CF-B reclassify (T-A #30). Redirect stub (`redirect ../IEEELineCodes.DSS`), no `New Circuit`; the shared LineCode-library assembler included by ieee34Mod1.dss / ieee34Mod2.dss. Not run standalone (both engines fail #265)."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss",
+   "tag": "include_fragment",
+   "note": "CF-B reclassify (T-B D5). Self-documented reusable TEMPLATE master: it defines `New Circuit.ckt24` but line 21 runs `Redirect \"@loadshape_script_dss\"`, a DSS variable set by the actual master scripts (the 7 master_ckt24-mm-*.dss + master_ckt24-nomm.dss, which set the var then redirect this file). Standalone the unset variable makes the Redirect fail (#242). A template/include, not a standalone entry point."
   }
  ]
 }

@@ -58,6 +58,88 @@ quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
   (records not flagged `check_meters_monitors`), a bounded coverage note, not a
   criterion weakening.
 
+**CF-B (corpus disposition: official-oracle migrations + reclassifications)
+2026-07-11, gate-green.** A corpus-completeness round: migrate decks the pinned
+0.14.5 oracle can't gate (it *raises* on headless `Show`/`ShowCurrents`) to the
+official EPRI **r3723** oracle via the Oddie bridge, promote the floor-proven
+whole-IEEE123 GFM decks, and fix misfiled classifications. Every migration was
+validated live through the real harness (`corpus_live_solvable_cases_match_oracle`),
+not the triage ballpark. What landed:
+- **+3 r3723-gated** (T-A #29/#27/#28): `4Bus-YYD/YYD-Master`, `34Bus/Run_IEEE34Mod1`,
+  `Run_IEEE34Mod2` — r3723 treats the decks' headless `Show`/`ShowCurrents` as
+  non-fatal and solves through, matching Rust (full-model compare green). Iteration
+  caveat reconciled: the harness compares the deck's *final* forced-tap
+  `Controlmode=OFF` solve, where Rust iterations **== r3723** (the triage's 4-vs-2 was
+  the first controlled run's control-loop count, not the gated solve → the Rust≤oracle
+  policy is not violated).
+- **+10 large_floating_delta** (T-B U1a/U1b, pinned oracle): 4 GFM snapshots + 6 GFM
+  daily/whole-day trajectories on IEEE123 — all live-green at the floating-delta
+  common-mode floor. 4 of the 14 GFM/GFL trajectory decks are **above-band** and went
+  to `needs_investigation` with per-deck first-divergence facts (2 GFL-daily source-node
+  phase gaps ~2.8e-3; 2 GFM-daily islanded-section gaps 9.1e-1 / 1.2e-2) — NOT forced.
+- **Reclassify → not_an_entry_point (+6)**: 5 fragments/stubs (T-A #30/#31/#32/#33/#18:
+  34Bus/IEEELineCodes stub, MultstepDG how-to, ckt7+epri_dpv Substation fragments, TnD
+  Distribution sub-model) + ckt24 `main_template.dss` (T-B D5 template via unset
+  `@loadshape_script_dss`) — each verified by grepping its including master.
+- **Note refreshes only** (no migration): 7 D1–D4 `missing_dependency` (hardcoded
+  foreign abs-path / genuinely-absent file / off-by-one vendored stub / wrong filename,
+  BOTH engines fail); the blocked families (6 AD masters → WP-AD.3; ckt5+actor family →
+  M2, r3723 segfaults multi-actor; WindGen ×2 + NCIM → UPGRADE, solve on r4133;
+  IEEE118 → r4133-only convergence). The 3 #485 recloser/Torn decks moved to
+  `needs_investigation` (control-settling: Rust settles without #485 where the official
+  engine hits it).
+
+Population (before → after; total 915 conserved):
+
+| manifest | before | after |
+|---|---|---|
+| solvable_now | 245 | **258** |
+| skipped_oracle_issue | 33 | 22 |
+| skipped_unsupported | 17 | 3 |
+| missing_dependency | 10 | 9 |
+| skipped_needs_investigation | 30 | 37 |
+| not_an_entry_point | 580 | 586 |
+
+Coverage: **245/335 (73.1%) → 258/329 (78.4%)** of entry-point decks. Full gate green
+(`corpus_live` all 258 solvable cases match, incl. the 3 new r3723-gated). The
+`population.lock.json` is regenerated locally to run the gate but left uncommitted (the
+coordinator regenerates at merge).
+
+**CF-B settle (audit findings, 2026-07-12).** Six findings triaged empirically; no
+engine code changed (this is a manifest/doc-only branch).
+- **`large_floating_delta` doc was stale (Minor, fixed).** `TOLERANCE_NOTES.md` still
+  said "Currently one deck" while CF-B grew the tier to 11 (the whole-IEEE123 GFM
+  family). Updated the tier-list entry + §floating-delta to list the family and state
+  honestly *what is proven vs inherited*: the bitwise decomposition proof stands for the
+  original `GFMSnap` deck; the CF-B daily/snapshot members are the SAME floating-delta
+  circuit admitted under that precedent (not a per-deck decomposition), safe because
+  `v_abs` alone is widened and every common-mode-immune channel (Y at 1e-8, exact
+  iterations, differential currents/powers at `large`) stays the sentinel.
+- **corpus_live "258/258 green" reproducible (Major → refuted).** Re-ran the mandatory
+  `corpus_live_solvable_cases_match_oracle` clean here: **1 passed; 0 failed, 216.83s,
+  258 cases matched** — the run reached and validated the CF-B tail migrations. The
+  auditor's one-off failure was on the pre-existing (base-3cca7d3) `StoCtrl_Current_PeakShave/master.dss`
+  DIVerbose *yearly* deck erroring on its `ckt7/DI_yr_0/` output dir — a Windows
+  file-handle/AV race in the oracle→Rust corpus-dir handoff on that deck's DI output,
+  NOT a CF-B change (CF-B touched zero code and zero StoCtrl entries) and not
+  deterministic here. Recorded as a pre-existing gate-infra transient for coordinator
+  awareness; deliberately NOT "fixed" by touching engine code on a manifest-only branch
+  (would mask nothing here and needs its own audit).
+- **Committed lock stale vs manifests (Minor ×2, expected).** The committed
+  `population.lock.json` still carries base counts (solvable_now 245); the regenerated
+  258-lock is left uncommitted per the brief. The branch as-committed therefore trips
+  `population_lock_matches_manifests` until the lock is regenerated — a **hard merge-time
+  dependency**: the coordinator MUST run `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p
+  dss-core --test population_lock` before/at merge. The settle gate was witnessed with
+  the regenerated lock in the working tree.
+- **Full-gate witnessed (Minor, done).** `cargo fmt --all --check` + `cargo clippy
+  --workspace --all-targets -D warnings` + `cargo test --workspace` all exit 0 (pinned
+  dss-python 0.15.7; regenerated lock in working tree, not committed).
+- **Manifest edits coverage-neutral-or-positive (positive, confirmed).** Population
+  conserved at 915 with a clean bijection (0 dups); 13 decks ADDED to the live-compared
+  `solvable_now`; the GFM promotions reuse the existing tier keeping i/y at the tight
+  `large` floors. No looser-band-in-place, no probe/step/meter cut.
+
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
 3-branch fix round + FA settle) returned `criteria_met=true`, `blocking_items=[]`.

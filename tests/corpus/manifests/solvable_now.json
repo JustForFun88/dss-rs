@@ -1451,6 +1451,87 @@
    ],
    "n_steps": 1,
    "oracle": "r3723"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #29). The pinned oracle raises #303 on the deck's headless `Show` commands; the official EPRI r3723 engine treats them as non-fatal and solves through, matching Rust -- validated live through the harness via the Oddie bridge (full-model compare green). Rust compiles the whole deck (Show/Export/fileedit are headless no-ops) with zero errors; the gated final solve is the deck's Direct-mode SLG-fault-at-B2 (loads disabled) solve, on which Rust iterations == r3723 (Rust<=oracle policy holds with equality)."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #27). Pinned oracle raises #303 on headless `Show`; r3723 solves through, matching Rust -- validated live. The gated final state is the deck's SECOND `Compile ieee34Mod1.dss` run: forced regulator taps + `Set Controlmode=OFF`, i.e. a plain power flow with no control loop. Rust iterations == r3723 there (no fewer-iteration NOTE emitted). Iteration caveat reconciled: the triage's Rust-4-vs-r3723-2 was the FIRST (controlled) run's control-iteration count, NOT the like-for-like gated final solve the harness compares -- so the Rust<=oracle policy is not actually violated."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #28). Pinned oracle raises #2190 on headless `ShowCurrents`; r3723 solves through, matching Rust -- validated live. Gated final state = the deck's SECOND `Compile ieee34Mod2.dss` run (forced taps + `Set Controlmode=OFF`, maxcontroliter=300); Rust iterations == r3723 on that plain final solve. Same iteration reconciliation as Mod1: the 4-vs-2 caveat was the first controlled run, not the gated final solve."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot; floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS, TOLERANCE_NOTES section floating-delta). Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (7 RegControls at maxtapchange=1 + Storage/PV GFM, AmpLimit); floating-delta common-mode floor. Validated live green vs the pinned oracle -- `compile` runs the full scripted daily trajectory, the gated solve captures the final converged state."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (7 RegControls at maxtapchange=1 + Storage/PV GFM); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap; floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM whole-day trajectory; floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (cannot-pick-up-load scenario); floating-delta common-mode floor. Validated live green vs the pinned oracle."
   }
  ]
 }
