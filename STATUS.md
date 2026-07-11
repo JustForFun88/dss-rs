@@ -238,6 +238,54 @@ runs the full official `ADiakoptics_Tearing(AddISrc=False)` orchestration
 Gate: fmt + workspace clippy (`-D warnings`) clean; `cargo test --workspace`
 (pinned live oracle) exit 0.
 
+**Stage-B completion — audit settlement (2026-07-12, gate-green).** Two auditors
+(code + tests) filed 7 findings against the completion; each settled against the
+official r3723 Delphi source (D10).
+- **Zone masters dropped `Set DefaultBaseFreq` (Minor, real bug — FIXED).** Our
+  round-trip-faithful save emits `Set DefaultBaseFreq` *before* `New Circuit`
+  (a `NOTE(subst-metis)` addition the official `SaveMasterFile` omits, so the
+  circuit picks it up at `TDSSCircuit.Create`, `Fundamental := DefaultBaseFreq`,
+  Circuit.pas:416). Zone-`k` masters anchored their global section on the
+  `New Circuit` line, so that pre-header line was dropped — zone-1 and
+  `Master_Interconnected.dss` kept the deck frequency while zones 2+ silently
+  defaulted to 60 Hz (latent for any non-60 Hz AD deck; not triggered by the
+  all-60 Hz fixtures). Fixed: `tearing_save.rs::zone_pre_header` re-emits the
+  `Clear`…`New Circuit` header lines before each `New Circuit.Zone_k` so all
+  sub-circuits are frequency-consistent. Golden regenerated (one added line in
+  `zone_2/Master.dss`); new unit test `zone_pre_header_carries_default_base_freq`.
+- **PConn boundary sources pinned only by the self-golden (Major — FIXED).**
+  Added `pconn_sources_match_solved_nodev`: an **independent** numeric cross-check
+  that re-derives each zone's point-of-connection from the link `Line`'s bus-2 and
+  its boundary voltage from the *solved* `NodeV` (public bus API), then asserts the
+  **emitted** `VSource.dss` `basekv`/`angle` match (with a ~7.2 kV L-N sanity
+  bound ruling out a `/1000` slip). Catches wrong-terminal / wrong-bus / angle-sign
+  / scale errors the byte-golden alone would freeze in.
+- **`VSource.dss` case-insensitivity dependency (Minor — recorded, no fix).** The
+  boundary source is written to `VSource.dss` (capital S, 1:1 with official
+  `Format_SubCircuits`) while the copied support redirect names `Vsource.dss`;
+  these coincide only on a case-insensitive FS (Windows/NTFS = the official DSS +
+  this project platform, D10). Inherited verbatim from upstream — changing the
+  emitted case would diverge from official. Documented `NOTE(upstream-quirk)` at
+  `write_zone_vsources`.
+- **`get_Line_Bus` not-found path (Minor — recorded, no fix, D5).** Official falls
+  through to the *restored* previously-active element's bus (a stale, state-
+  dependent read, Circuit.pas:1204–1206); the port yields an empty
+  point-of-connection + the honest 5008 error instead. D5: state-dependent reads
+  not reproduced. Comment added at the call site.
+- **No cross-check vs the vendored official `Torn_Circuit` reference (Minor —
+  tracked TODO(WP-AD.3)).** The D9(b) reference-fixture harvest (cross-checking the
+  two deliberate `Format_SubCircuits` deviations against
+  `Examples/ADiakoptics/ckt24/Torn_Circuit/**`) is WP-AD.3 scope; TODO marker added
+  at `torn_tree_matches_golden`.
+- **`ckt24_graph_diagnostic` builds no our-side graph (Minor — tracked
+  TODO(WP-AD.5)).** Plan-sanctioned log-only; the "our vs vendored" `.graph` diff
+  needs the ckt24 master-prefix compile driver (WP-AD.5). TODO marker added.
+- **Round-trip is solvability-smoke (Minor — deferral made explicit).** Numeric
+  AD↔normal equivalence at the §AD tier is D7/AD.3; the boundary values themselves
+  are now numerically pinned by `pconn_sources_match_solved_nodev`. TODO(WP-AD.3)
+  noted at `torn_tree_roundtrip_solves`.
+Gate: fmt + workspace clippy (`-D warnings`) clean; `cargo test --workspace` exit 0.
+
 **WP-AD.2 Stage B — audit settlement (2026-07-11, gate-green).** Two auditors
 (code + tests) filed 11 findings; each settled empirically against the r3723
 Delphi source (D10) and probed on the r3723 binary via the Oddie bridge (D9a).
