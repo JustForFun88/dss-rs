@@ -8,7 +8,7 @@
 use crate::obj::base::DssObject;
 use dss_parser::{ParserError, val_f64, val_i32};
 
-use super::{PropDef, PropEngine, PropFlags};
+use super::{PropDef, PropEngine, PropFlags, PropType};
 
 /// Pascal `ParseObjPropertyValue.GetDouble`: try FPC `Val` first, falling back
 /// to the parser (so RPN expressions like `"2 3 *"` work) by wrapping in `()`.
@@ -144,7 +144,20 @@ pub(super) fn set_obj_double(
     if value != 0.0 && f.contains(PropFlags::INVERSE_VALUE) {
         value = 1.0 / value;
     }
-    obj.set_f64(idx, value);
+    // Pascal `SetObjDouble`'s trailing `case PropertyType` writes ONLY the
+    // scalar double types (`DoubleProperty` / `DoubleOnArrayProperty` /
+    // `DoubleOnStructArrayProperty`); every array/matrix type falls through with
+    // no write. The string edit path only reaches here for `PropType::Double`,
+    // but the MakePosSequence typed setter (`ClassProps::set_prop_f64`) may aim a
+    // `SetDouble` at a `DoubleArrayProperty` — e.g. `TCapacitorObj.MakePosSequence`
+    // does `SetDouble(ord(TProp.Cuf), Cs - Cm)` on the `Cuf` array. Upstream that
+    // is a silent no-op on the value (oracle-verified: `cuf` is unchanged across
+    // `makeposseq`); the seq-mark + side effects still run (in the caller, since
+    // `ErrorNumber` stays 0). Mirror the fall-through: skip the write for the
+    // non-scalar types instead of panicking in the element's scalar `set_f64`.
+    if pd.ptype == PropType::Double {
+        obj.set_f64(idx, value);
+    }
 }
 
 /// Pascal `GetObjDouble`: divide by scale on the way out (and invert under

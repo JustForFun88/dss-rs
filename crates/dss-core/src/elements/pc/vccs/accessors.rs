@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -24,6 +25,17 @@ impl CktElement for Vccs {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TVCCSObj.MakePosSequence` (vccs.pas:495-500): a multi-phase VCCS
+    /// collapses to `Phases := 1` (a bare single edit), then `inherited` (the
+    /// base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
     }
 
     /// Pascal `TVCCSObj.CalcYPrim` — build only zero matrices (an ideal current

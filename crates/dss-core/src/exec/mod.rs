@@ -56,6 +56,7 @@ mod construct;
 mod distribute;
 mod get_cmd;
 mod helpers;
+mod make_pos_seq;
 mod plot;
 mod reconductor;
 mod reduce;

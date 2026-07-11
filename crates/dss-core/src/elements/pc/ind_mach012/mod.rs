@@ -17,9 +17,9 @@
 //!   variables the Monitor mode-3 path consumes.
 //! - [`accessors`]: the `CktElement` / `DssObject` trait impls.
 //!
-//! NOT_PORTED: the `DebugTrace` CSV trace file (no file I/O), `MakePosSequence`
-//! (empty in Pascal anyway), and the `IndMach012SwitchOpen` Open/Close flag is
-//! carried but never set — exactly the latent state shared with Generator's
+//! NOT_PORTED: the `DebugTrace` CSV trace file (no file I/O), and the
+//! `IndMach012SwitchOpen` Open/Close flag is carried but never set — exactly the
+//! latent state shared with Generator's
 //! `gen_switch_open` (the protection Open/Close path is not yet wired to PC
 //! elements' switch flag).
 

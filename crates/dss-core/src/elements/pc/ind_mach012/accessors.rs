@@ -8,6 +8,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::generator::{Connection, default_recalc_ctx};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::mathutil::power_factor;
@@ -24,6 +25,13 @@ impl CktElement for IndMach012 {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
+    }
+
+    /// Pascal `TIndMach012Obj.MakePosSequence` (IndMach012.pas:1424-1426): an
+    /// EMPTY body with NO `inherited` — the machine is left completely untouched
+    /// (not even the base bus rename runs).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        PosSeqPlan::no_base()
     }
 
     /// Pascal `TIndMach012Obj.CalcYPrim`.
