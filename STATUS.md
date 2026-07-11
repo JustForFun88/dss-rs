@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-11.
+Last updated: 2026-07-12.
 
 **CF-B (corpus disposition: official-oracle migrations + reclassifications)
 2026-07-11, gate-green.** A corpus-completeness round: migrate decks the pinned
@@ -55,6 +55,41 @@ Coverage: **245/335 (73.1%) → 258/329 (78.4%)** of entry-point decks. Full gat
 (`corpus_live` all 258 solvable cases match, incl. the 3 new r3723-gated). The
 `population.lock.json` is regenerated locally to run the gate but left uncommitted (the
 coordinator regenerates at merge).
+
+**CF-B settle (audit findings, 2026-07-12).** Six findings triaged empirically; no
+engine code changed (this is a manifest/doc-only branch).
+- **`large_floating_delta` doc was stale (Minor, fixed).** `TOLERANCE_NOTES.md` still
+  said "Currently one deck" while CF-B grew the tier to 11 (the whole-IEEE123 GFM
+  family). Updated the tier-list entry + §floating-delta to list the family and state
+  honestly *what is proven vs inherited*: the bitwise decomposition proof stands for the
+  original `GFMSnap` deck; the CF-B daily/snapshot members are the SAME floating-delta
+  circuit admitted under that precedent (not a per-deck decomposition), safe because
+  `v_abs` alone is widened and every common-mode-immune channel (Y at 1e-8, exact
+  iterations, differential currents/powers at `large`) stays the sentinel.
+- **corpus_live "258/258 green" reproducible (Major → refuted).** Re-ran the mandatory
+  `corpus_live_solvable_cases_match_oracle` clean here: **1 passed; 0 failed, 216.83s,
+  258 cases matched** — the run reached and validated the CF-B tail migrations. The
+  auditor's one-off failure was on the pre-existing (base-3cca7d3) `StoCtrl_Current_PeakShave/master.dss`
+  DIVerbose *yearly* deck erroring on its `ckt7/DI_yr_0/` output dir — a Windows
+  file-handle/AV race in the oracle→Rust corpus-dir handoff on that deck's DI output,
+  NOT a CF-B change (CF-B touched zero code and zero StoCtrl entries) and not
+  deterministic here. Recorded as a pre-existing gate-infra transient for coordinator
+  awareness; deliberately NOT "fixed" by touching engine code on a manifest-only branch
+  (would mask nothing here and needs its own audit).
+- **Committed lock stale vs manifests (Minor ×2, expected).** The committed
+  `population.lock.json` still carries base counts (solvable_now 245); the regenerated
+  258-lock is left uncommitted per the brief. The branch as-committed therefore trips
+  `population_lock_matches_manifests` until the lock is regenerated — a **hard merge-time
+  dependency**: the coordinator MUST run `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p
+  dss-core --test population_lock` before/at merge. The settle gate was witnessed with
+  the regenerated lock in the working tree.
+- **Full-gate witnessed (Minor, done).** `cargo fmt --all --check` + `cargo clippy
+  --workspace --all-targets -D warnings` + `cargo test --workspace` all exit 0 (pinned
+  dss-python 0.15.7; regenerated lock in working tree, not committed).
+- **Manifest edits coverage-neutral-or-positive (positive, confirmed).** Population
+  conserved at 915 with a clean bijection (0 dups); 13 decks ADDED to the live-compared
+  `solvable_now`; the GFM promotions reuse the existing tier keeping i/y at the tight
+  `large` floors. No looser-band-in-place, no probe/step/meter cut.
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
