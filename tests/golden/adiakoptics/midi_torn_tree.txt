@@ -167,6 +167,7 @@ New "Load.lm35" Bus1=m35 Phases=3 kV=12.47 kW=120 PF=0.95 Model=1
 New "Load.lm36" Bus1=m36 Phases=3 kV=12.47 kW=120 PF=0.95 Model=1
 === zone_2/Master.dss ===
 Clear
+Set DefaultBaseFreq=60
 New Circuit.Zone_2
 
 Set EarthModel=Deri
