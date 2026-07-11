@@ -17,10 +17,6 @@
 //!   ordering the generic dump path can't select for a `NON_PCPD_ELEM`
 //!   `TPCElement` — see that file's header for why.
 //!
-//! NOT_PORTED: `MakePosSequence` (sets `phases := 1`) — the positive-sequence
-//! reduction command isn't supported yet (same as every other PC element in
-//! this port).
-//!
 //! TODO(compat): Pascal `TIsourceObj.PropertySideEffects` (`Isource.pas:221`)
 //! never sets `Bus2Defined := TRUE` on the `Bus2` case — unlike
 //! `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`), which does. So an

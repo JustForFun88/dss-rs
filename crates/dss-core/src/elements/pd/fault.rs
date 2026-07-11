@@ -35,6 +35,7 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
@@ -267,6 +268,17 @@ impl CktElement for Fault {
     /// Pascal `RecalcElementData`: nothing to do (the YPrim is built directly
     /// from `G`/`Gmatrix`).
     fn recalc_element_data(&mut self, _sys: &SysCtx) {}
+
+    /// Pascal `TFaultObj.MakePosSequence` (Fault.pas:604-609): a multi-phase
+    /// fault collapses to `Phases := 1` (a bare single edit), then `inherited`
+    /// (the base bus rename). A 1-phase fault only runs the base rename.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
+    }
 
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     /// Fault's own `FaultRate` defaults to 0, so this is 0 — a fault never
