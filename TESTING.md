@@ -104,12 +104,17 @@ be silently neutralized by moving a deck out of `solvable_now` into a skip bucke
 `cargo test` stays green while real coverage shrinks in a one-line manifest edit.
 
 `tests/corpus/manifests/population.lock.json` is a committed fingerprint of the
-population — per-manifest case counts, the full sorted `solvable_now` path list,
-and the three synthetic family case counts. `population_lock.rs` (unconditional,
-plain `cargo test`) rebuilds that fingerprint from the current manifests and
-asserts it equals the lock; any drift — a path leaving `solvable_now`, any count
-change — fails with a diff and the one-command regeneration path, so a shrink
-lands as a **reviewable diff in the lock file**, never unnoticed.
+population — per-manifest case counts; for every `solvable_now` case its path **and
+a per-case rigor fingerprint** (kind/tolerance-tier, oracle target, `n_steps`, and
+every compare-depth flag — selected_elements/meters-monitors/probes/variables/
+eventlog/ctrlqueue/all-properties/global-result/autoadd-log/pending/solve-abort);
+and the three synthetic families' case counts **and path lists**. `population_lock.rs`
+(unconditional, plain `cargo test`) rebuilds that fingerprint from the current
+manifests and asserts it equals the lock; any drift — a path leaving `solvable_now`,
+a **retained deck weakened in place** (kind flipped to a looser band, steps/probes/
+meters cut — a value-fingerprint change), a family deck swapped at equal count, or
+any count change — fails with a precise diff and the one-command regeneration path,
+so a shrink lands as a **reviewable diff in the lock file**, never unnoticed.
 
 **Regenerate the population lock** (deliberate — after intentionally re-classifying
 decks, never to silence an unreviewed failure):

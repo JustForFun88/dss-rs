@@ -488,6 +488,14 @@ Final acceptance for the 1:1 port: all electricdss-tst cases covered by
 out-of-tolerance values and exact discrete-state matches, plus `save_roundtrip` and
 export-diff suites green on IEEE 13/34/37/123/8500.
 
+> **EXECUTED 2026-07-11 (branch `final-acceptance`), on explicit user request.** A
+> max-effort referee returned `criteria_met=true` / `blocking_items=[]`: `corpus_live`
+> live-compares all 245 solvable_now decks (zero out-of-tolerance, exact discrete
+> state) + the 3 family suites, `corpus_manifest` bijection green; `save_roundtrip`
+> 6/6 and `golden_reports` 193/0 on IEEE 13/34/37/123/8500; full gate exit 0. The
+> criteria→evidence table, named non-blocking residuals + owners, and the settled
+> audit findings are the top entry of `STATUS.md` §1.
+
 > **Update (2026-07-06) — verification after acceptance.** Final acceptance itself is
 > unchanged (it runs on the 1:1 engine — the configuration that becomes the
 > `oracle-parity` build). From `DE_PASCALIZE_PLAN.md` Stage F onward, verification is

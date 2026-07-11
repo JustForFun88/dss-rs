@@ -139,9 +139,27 @@ fn parse_switch_class_relay_does_not_read_relay_double() {
         })
         .expect("CIM100 output file produced");
     let xml = std::fs::read_to_string(&produced).unwrap();
+    // The deck has exactly one switch (`line.brkr1 switch=y`), Relay-guarded, so
+    // the export must contain exactly one `<cim:Breaker …>` element — and must NOT
+    // fall back to Fuse or Recloser. An exact-count (not a substring) check catches
+    // both a dropped/duplicated switch and a misclassification. `<cim:Breaker `
+    // (trailing space) matches the opening tag only, not the `</cim:Breaker>` close.
+    let breaker_opens = xml.matches("<cim:Breaker ").count();
+    assert_eq!(
+        breaker_opens,
+        1,
+        "expected exactly one <cim:Breaker> element (the Relay-guarded switch), \
+         found {breaker_opens} in {}",
+        produced.display()
+    );
     assert!(
-        xml.contains("cim:Breaker"),
-        "Relay-controlled switch not classified as Breaker in {}",
+        !xml.contains("<cim:Fuse "),
+        "Relay-guarded switch misclassified as Fuse in {}",
+        produced.display()
+    );
+    assert!(
+        !xml.contains("<cim:Recloser "),
+        "Relay-guarded switch misclassified as Recloser in {}",
         produced.display()
     );
     std::fs::remove_dir_all(&scratch).ok();
