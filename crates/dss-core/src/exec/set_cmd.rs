@@ -308,6 +308,10 @@ impl Dss {
                         }
                     }
                     opt::ALLOW_DUPLICATES => ckt.duplicates_allowed = interpret_yes_no(&param),
+                    opt::LONG_LINE_CORRECTION => {
+                        // Pascal `ExecOptions.pas:738`.
+                        ckt.long_line_correction = interpret_yes_no(&param);
+                    }
                     opt::ZONE_LOCK => ckt.zones_locked = interpret_yes_no(&param),
                     opt::UE_WEIGHT => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
