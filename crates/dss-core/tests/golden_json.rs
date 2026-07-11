@@ -179,3 +179,8 @@ fn json_circuit_edited_default() {
 fn json_circuit_ieee13() {
     run_deck("circuit_ieee13");
 }
+
+#[test]
+fn json_circuit_positive_seq() {
+    run_deck("circuit_positive_seq");
+}

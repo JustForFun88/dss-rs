@@ -2619,6 +2619,49 @@ single-object / class-batch / whole-circuit surfaces.
   dump via `circuit_ieee13`. The WdgCurrents Full refresh, JSON **import**
   (`Obj_Circuit_FromJSON_`), and `CAPI_Schema` stay NOT_PORTED (§6) — named follow-ups.
 
+**JSON export Stage B settle (2026-07-12, branch `wp-json-a`), gate-green.** Audit
+of the Stage-B commits (code + tests) surfaced 8 findings; settled empirically
+against the pinned oracle. **Two real fixes + one gap ported + one faithful 1:1
+tweak; four refuted/recorded no-fix.**
+- **[Major, FIXED] The `CktModel=`/`AllowDuplicates`/`LongLineCorrection` PreCommands
+  branches were pinned by no golden** — the `Set CktModel=` empty-value TODO(compat)
+  quirk (positive-sequence) fired in zero decks, so a refactor emitting `Positive`
+  would pass silently (CLAUDE.md: every TODO(compat) is golden-pinned). New deck
+  `circuit_positive_seq` (`set cktmodel=positive`/`allowduplicates=yes`/
+  `longlinecorrection=yes`) byte-pins all three (oracle: `Set CktModel=`,
+  `Set AllowDuplicates=True`, `Set LongLineCorrection=True`).
+- **[gap ported] `Set/Get LongLineCorrection` was unwired** — the field existed but no
+  `Set` handler, so the port could never emit that PreCommands line (would have failed
+  the new golden). Added `opt::LONG_LINE_CORRECTION = 118` + Set/Get arms
+  (`ExecOptions.pas:738/1096`, the oracle's `DSS_CAPI_PM` band). Now settable, so the
+  positive-seq golden reproduces.
+- **[Minor, FIXED] `%8.2f` (ueweight/lossweight) used Rust-native `{:.2}`, not byte-exact
+  to FPC** — oracle-probed 28 fractional weights: FPC renders the value at **15
+  significant digits** then rounds **ties-away-from-zero**, so `0.125→0.13` (Rust's
+  ties-to-even gives `0.12`), `2.675→2.68` (15-sig intermediate `2.675…`, not the true
+  `2.6749…` Rust rounds to `2.67`), `99999.995→100000.00`. A real, reachable, unpinned
+  byte gap (weights are settable to fractions). New `report::format::fixed_w_fpc` (+ 29-pair
+  unit test vs the oracle) replaces `fixed_w` on the two JSON PostCommands; pinned by
+  `circuit_positive_seq` (`ueweight=0.125→"    0.13"`, `lossweight=2.675→"    2.68"`).
+  `fixed_w` is unchanged (its faithful-not-exact native rounding is correct for the
+  value-parsed Show tables).
+- **[Minor, faithful 1:1] `get_dss_array([])` rendered `[]` where Pascal returns `''`**
+  (nil/empty `ArrayOfDouble`). Made faithful (empty slice → `""`). Confirmed UNREACHABLE:
+  `set voltagebases=()` is an oracle no-op (LegalVoltageBases keeps its defaults) and
+  `set harmonics=()` still yields `do_all_harmonics` → `Set harmonics=ALL`; not
+  golden-pinnable, faithful only.
+- **[Minor, refuted] `DefaultAndUnedited` cleared only in `edit_active_inner`, narrower
+  than Pascal `BeginEdit`** — verified the only property-mutation paths in the port are
+  the Edit command (→ `edit_active_inner`, clears the flag) and the WPG.21 typed setters,
+  which are called **exclusively** from `make_pos_seq.rs` over circuit elements — never the
+  four DSS_OBJECT default-shape classes. No bypass exists → no defect.
+- **[Minor ×3, recorded no-fix]** the non-SkipTimestamp save-stamp comment is a deliberate
+  deterministic substitution for the oracle's wall-clock line (inherently un-goldenable,
+  documented at the site, JSON import NOT_PORTED so it is an inert `!` comment); the
+  synthetic-class Full circuit deferral (transformer WdgCurrents / matrix-line sym→null /
+  capacitor CMatrix under Full) is the tracked Stage-A deferral; the `enum_as_int` combo on
+  `circuit_micro` is redundant (real discrimination is on `circuit_ieee13`) — harmless.
+
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
 IEEE1547; scaffolding/EnergySource/DER/loads/ECP; caps/CapControl/reactors/lines/
