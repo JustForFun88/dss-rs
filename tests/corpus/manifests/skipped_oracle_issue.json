@@ -22,16 +22,6 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5.dss failed: Some(\"TypeError: cannot unpack non-iterable NoneType object\")"
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
-   "tag": "oracle_error_#250",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss failed: Some(\"DSSException: (#250) Monitor \\\"ckt5mon\\\" not found. \\r\\nExport monitor ckt5mon \\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\"
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
-   "tag": "oracle_error_#250",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss failed: Some(\"DSSException: (#250) Monitor \\\"ckt7mon_p\\\" not found. \\r\\nExport monitor ckt7mon_p  \\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricd"
-  },
-  {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss",
    "tag": "oracle_error_#401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss failed: Some(\"DSSException: (#401) Load.25609_a.Yearly: LoadShape object \\\"25609_A\\\" not found.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electric"

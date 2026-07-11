@@ -204,6 +204,16 @@ impl LineCodeObj {
     pub fn base_frequency(&self) -> f64 {
         self.base_frequency
     }
+
+    /// Seed the base frequency inherited from the circuit at creation (Pascal
+    /// `TLineCodeObj.Create`: `BaseFrequency := ActiveCircuit.Fundamental`,
+    /// LineCode.pas:493). Set before `edit`, whose `EndEdit` recomputes the
+    /// frequency-dependent shunt admittance at this frequency; a later `basefreq=`
+    /// property still overrides. Only differs from 60 Hz when the deck ran
+    /// `Set DefaultBaseFrequency=` before `New circuit`.
+    pub fn set_base_frequency(&mut self, f: f64) {
+        self.base_frequency = f;
+    }
     pub fn sym_components_model(&self) -> bool {
         self.sym_components_model
     }
