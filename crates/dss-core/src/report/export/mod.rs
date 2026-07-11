@@ -12,6 +12,7 @@
 //!   so they take the disjoint `(&mut [DssClass], &Circuit, &SysCtx, &[node_v])`
 //!   borrow (the `Dss::snapshot_elements` pattern) via [`for_each_enabled_elem`].
 
+mod adiakoptics;
 mod alloc_factors;
 mod bus_coords;
 mod capacity;
@@ -48,6 +49,7 @@ mod y_voltages;
 mod ynode_list;
 mod yprims;
 
+pub(crate) use adiakoptics::{export_contours, export_y4, export_zcc, export_zll};
 pub(crate) use alloc_factors::export_alloc_factors;
 pub use bus_coords::export_bus_coords;
 pub(crate) use capacity::export_capacity;
