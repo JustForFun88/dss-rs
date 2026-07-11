@@ -1,5 +1,5 @@
 use super::*;
-use crate::obj::base::DssObject;
+use crate::obj::base::{DssObject, MmfKind};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
@@ -741,24 +741,63 @@ fn action_save_p_undefined_errors() {
 }
 
 #[test]
-fn action_save_mmf_refuses_loudly() {
-    // The MMF-backed save path (`InterpretDblArrayMMF`,
-    // LoadShape.pas:1898-1905) is NOT_PORTED: the guard must refuse loudly and
-    // queue nothing (audit settlement pins the guard so it cannot silently
-    // "improve" into wrong bytes).
-    let (_cls, mut obj, errs) = edited(&[
-        ("npts", "2"),
-        ("interval", "1"),
-        ("mult", "1 2"),
-        ("memorymapping", "yes"),
-        ("action", "sngsave"),
-    ]);
-    assert!(
-        errs.iter()
-            .any(|e| e.contains("MemoryMapping") && e.contains("not ported")),
-        "{errs:?}"
+fn action_save_mmf_queues_eager_read_values() {
+    // WPG.20: an MMF-backed save is no longer refused. The eager MMF read
+    // (`read_mmf_raw`/`finish_mmf`) has already populated `p_mult` (and `q_mult`
+    // iff a `qmult=` MMF directive was given, matching Pascal `Assigned(dQ)`), so
+    // `queue_shape_save` snapshots the f32-narrowed values byte-for-byte like the
+    // oracle's `InterpretDblArrayMMF` re-read (probed 2026-07-11). The
+    // byte-exact-vs-oracle coverage lives in `golden_reports.rs`; here we pin the
+    // queue contents + Q-gating.
+
+    // Case A: MMF P + MMF qmult -> both P and Q queued.
+    let (_cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1"), ("memorymapping", "yes")]);
+    obj.read_mmf_raw(
+        &sng_bytes(&[0.5, 0.75, 1.0, 0.8]),
+        MmfKind::Float32,
+        1,
+        false,
     );
-    assert!(obj.take_shape_saves().is_empty());
+    obj.read_mmf_raw(&sng_bytes(&[0.1, 0.2, 0.3, 0.4]), MmfKind::Float32, 1, true);
+    let mut errs = Vec::new();
+    obj.queue_shape_save(true, &mut errs);
+    assert!(errs.is_empty(), "MMF save must not error: {errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(s.sng);
+    assert!(s.p_suffix);
+    assert_eq!(s.result_tag, "mult");
+    // f32-narrowed then widened, exactly like the oracle's sng-source read.
+    assert_eq!(
+        s.values,
+        vec![0.5, 0.75, 1.0, f64::from(0.8f32)],
+        "P = eager f32→f64 read"
+    );
+    assert_eq!(
+        s.q_values.as_deref(),
+        Some([0.1f32, 0.2, 0.3, 0.4].map(f64::from).as_slice()),
+        "Q queued because a qmult MMF directive was given (Assigned(dQ))"
+    );
+
+    // Case B: MMF P, NO qmult -> only P queued (Assigned(dQ) false).
+    let (_cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1"), ("memorymapping", "yes")]);
+    obj.read_mmf_raw(
+        &sng_bytes(&[0.5, 0.75, 1.0, 0.8]),
+        MmfKind::Float32,
+        1,
+        false,
+    );
+    let mut errs = Vec::new();
+    obj.queue_shape_save(false, &mut errs);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    assert!(!saves[0].sng, "dblsave");
+    assert!(
+        saves[0].q_values.is_none(),
+        "no qmult MMF directive -> no _Q file"
+    );
 }
 
 // -------------------------------------------------------------------------

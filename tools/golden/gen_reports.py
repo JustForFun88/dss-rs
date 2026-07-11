@@ -2665,6 +2665,44 @@ BINSAVE_FILES = [
 ]
 
 
+# --- WPG.20: MMF-backed (MemoryMapping=Yes) SngSave/DblSave --------------------
+# Under `MemoryMapping=Yes` the P/Q multipliers live in a memory-mapped file, not
+# a script array; `SaveToDblFile`/`SaveToSngFile` re-read each value through
+# `InterpretDblArrayMMF` (LoadShape.pas:1898-1905/1956-1963 P; 1921-1927/1982-1988
+# Q). The Q file is written iff `Assigned(dQ)` — i.e. a `qmult=` MMF directive was
+# given (`CustomSetRaw` :791-802 allocates a 2-elem `dQ` sentinel so `Assigned` is
+# true; the actual bytes come from re-reading `mmViewQ`). The MMF source fixtures
+# (`@FIXTURES@/binsave_mmf_*.sng/.dbl`) resolve on BOTH engines. `mp` = P sng-src +
+# Q sng-src (both `_P`/`_Q` written); `md` = P dbl-src, no `qmult` (only `_P`, no
+# `_Q` — the `Assigned(dQ)=false` case). Oracle-probed 2026-07-11: bytes equal the
+# f32-narrowed (sng-src) / raw-f64 (dbl-src) values, and no `md_Q.*` is emitted.
+BINSAVE_MMF_DECK = [
+    "new circuit.binsavemmf basekv=12.47 bus1=src",
+    "new loadshape.mp npts=4 interval=1 MemoryMapping=Yes "
+    "mult=(sngfile=@FIXTURES@/binsave_mmf_p.sng) "
+    "qmult=(sngfile=@FIXTURES@/binsave_mmf_q.sng)",
+    "new loadshape.md npts=4 interval=1 MemoryMapping=Yes "
+    "mult=(dblfile=@FIXTURES@/binsave_mmf_p.dbl)",
+]
+BINSAVE_MMF_ACTIONS = [
+    "edit loadshape.mp action=sngsave",
+    "edit loadshape.mp action=dblsave",
+    "edit loadshape.md action=sngsave",
+    "edit loadshape.md action=dblsave",
+]
+# (produced filename in the datapath, golden basename under tests/golden/reports)
+BINSAVE_MMF_FILES = [
+    ("mp_P.sng", "loadshape_binsave_mmf_mp_p_sng.bin"),
+    ("mp_Q.sng", "loadshape_binsave_mmf_mp_q_sng.bin"),
+    ("mp_P.dbl", "loadshape_binsave_mmf_mp_p_dbl.bin"),
+    ("mp_Q.dbl", "loadshape_binsave_mmf_mp_q_dbl.bin"),
+    ("md_P.sng", "loadshape_binsave_mmf_md_p_sng.bin"),
+    ("md_P.dbl", "loadshape_binsave_mmf_md_p_dbl.bin"),
+]
+# Files that must NOT be written (Assigned(dQ)=false for `md` — no qmult).
+BINSAVE_MMF_ABSENT = ["md_Q.sng", "md_Q.dbl"]
+
+
 def gen_loadshape_binsave(d) -> None:
     """Capture the oracle's SngSave/DblSave binary outputs for LoadShape,
     TShape and PriceShape as raw bytes."""
@@ -2697,6 +2735,66 @@ def gen_loadshape_binsave(d) -> None:
     )
     total = sum(len(b) for b in produced_bytes.values())
     print(f"wrote {len(BINSAVE_FILES)} binsave goldens ({total} bytes total)")
+
+    gen_loadshape_binsave_mmf(d)
+
+
+def gen_loadshape_binsave_mmf(d) -> None:
+    """WPG.20: capture the MMF-backed (MemoryMapping=Yes) SngSave/DblSave bytes,
+    including the `Assigned(dQ)`-gated Q-file emission."""
+    tmp = tempfile.mkdtemp(prefix="dss_gen_binsave_mmf_")
+    fixtures = FIXTURES_DIR.as_posix()
+    produced_bytes: dict[str, bytes] = {}
+    results: list[str] = []
+    try:
+        d.Text.Command = "clear"
+        for c in BINSAVE_MMF_DECK:
+            d.Text.Command = c.replace("@FIXTURES@", fixtures)
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for c in BINSAVE_MMF_ACTIONS:
+            d.Text.Command = c
+            results.append(d.Text.Result)
+        for produced, golden in BINSAVE_MMF_FILES:
+            produced_bytes[golden] = (Path(tmp) / produced).read_bytes()
+        for absent in BINSAVE_MMF_ABSENT:
+            if (Path(tmp) / absent).exists():
+                sys.exit(f"binsave_mmf: expected NO {absent} (Assigned(dQ) false)")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for _produced, golden in BINSAVE_MMF_FILES:
+        (OUT_DIR / golden).write_bytes(produced_bytes[golden])
+    meta = {
+        "report": "loadshape_binsave_mmf",
+        "deck": BINSAVE_MMF_DECK,  # token form; both engines resolve @FIXTURES@
+        "actions": BINSAVE_MMF_ACTIONS,
+        "files": [{"produced": p, "golden": g} for p, g in BINSAVE_MMF_FILES],
+        "absent": BINSAVE_MMF_ABSENT,
+        # GlobalResult per action, captured from the datapath-relative oracle run;
+        # the Rust runner rebuilds the paths against its own scratch dir.
+        "result_files": [
+            ["mp_P.sng", "mp_Q.sng"],
+            ["mp_P.dbl", "mp_Q.dbl"],
+            ["md_P.sng"],
+            ["md_P.dbl"],
+        ],
+        "result_tags": [
+            ["mult", "sngfile", "Qmult", "sngfile"],
+            ["mult", "dblfile", "Qmult", "dblfile"],
+            ["mult", "sngfile"],
+            ["mult", "dblfile"],
+        ],
+    }
+    (OUT_DIR / "loadshape_binsave_mmf.meta.json").write_text(
+        json.dumps(meta, indent=2) + "\n", newline="\n"
+    )
+    total = sum(len(b) for b in produced_bytes.values())
+    print(
+        f"wrote {len(BINSAVE_MMF_FILES)} binsave-mmf goldens ({total} bytes); "
+        f"GlobalResults: {results}"
+    )
 
 
 def main() -> None:
