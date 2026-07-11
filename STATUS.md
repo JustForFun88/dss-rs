@@ -107,6 +107,45 @@ from the pinned oracle: **0 diffs**; 21 tests incl. negative #8877; settle `351f
 added filename pins + 4 hand-traced complex-op unit tests. Audits: code NO FINDINGS;
 tests 2 Minor → fixed in settle. `Refine_BusLevels` stays refused (AD-gated → Part II).
 
+**WP-AD.2 Stage A — `dss-metis` crate foundation (2026-07-11), gate-green (partial).**
+New workspace crate `crates/dss-metis` (`#![forbid(unsafe_code)]`), the safe-Rust
+1:1 source port of the METIS 5.2.1 `METIS_PartGraphKway` path (plan D2). **Landed +
+gated this WP:**
+- `rng.rs` — the GKRAND MT19937-64 generator + the `GK_MKRANDOM` ops (`randint32/64`,
+  `rand_in_range`, `rand_array_permute[_fine]`), ported from `GKlib/src/random.c` +
+  `include/gk_mkrandom.h`; `InitRandom(-1)→isrand(4321)` (util.c:23) modeled. Pinned
+  **bit-exact** vs values harvested from the C build (GKlib `USE_GKRAND`) — 4 sequence
+  tests (randint32/64/randInRange @ seed 4321, randint32 @ seed 123) + permutation
+  invariants. This is the determinism keystone (the port carries its own RNG →
+  platform-independent partitions, stronger than the C's `USE_GKRAND` dependence).
+- `graph.rs` — the METIS `.graph` reader/writer + internal CSR `Graph`, ported from
+  `programs/io.c::ReadGraph`/`WriteGraph` (standard 1-based format, `fmt` flags,
+  0-based internal `adjncy`). Unit tests + golden-fixture symmetry/round-trip tests.
+- **Golden infra:** the C original was built OFFLINE (MinGW gcc 13.2.0 + cmake:
+  GKlib `USE_GKRAND` + libmetis static libs; minimal `gpmetis`-default driver since
+  the CLI needs `getrusage`). Committed fixtures `crates/dss-metis/tests/golden/`
+  (radial12/40/200, mesh120 synthesized feeder shapes + `ckt24norm` normalized from
+  the official `…/ADiakoptics/ckt24/ckt24_.graph`, kept raw under `provenance/`) and
+  their `.part.{2,3,4,8}` outputs (deterministic, verified stable across runs).
+  Procedure fully documented in `tools/golden/gen_metis_reference.md` (toolchain,
+  flags, seed=4321, widths 32/32, command lines). `part_goldens_*` tests assert each
+  committed golden is a valid low-cut k-way partition of its graph.
+- Format finding: the official OpenDSS `.graph` files are **0-based** with the
+  `Create_MeTIS_graph` line-drop/index quirks (Stage-B concerns) — not raw-consumable
+  by stock METIS; Stage-A fixtures use the canonical 1-based standard-METIS format the
+  C reader accepts, so the bit-exact gate is against unmodified METIS 5.2.1 semantics.
+
+**Explicit OPEN ITEM (WP-AD.2 Stage A continuation, primary handoff):** the
+coarsen→initial-partition→k-way-refine pipeline (`part_graph_kway`) is NOT yet ported
+— i.e. `CoarsenGraph`/SHEM (`coarsen.c`), `MlevelKWayPartitioning`+`InitKWayPartitioning`
+(`kmetis.c`), `METIS_PartGraphRecursive` (`pmetis.c`/`initpart.c`/`refine.c`/`fm.c`/
+`balance.c`/`bucketsort.c`), `RefineKWay`+greedy (`kwayrefine.c`/`kwayfm.c`), plus
+`SetupCtrl`/`SetupGraph` (`options.c`/`graph.c`) and the GKlib pqueue/sort primitives.
+The `.part` goldens are committed now as its ready bit-exact oracle. Landing unproven
+half-ported pipeline code was deliberately avoided (project rule: no stubs behind clean
+naming; a red bit-exact gate blocks commit). Stage B (tearing/file round-trip) depends
+on the completed `part_graph_kway`.
+
 **WPG.19/20 audit settlement (2026-07-11), gate-green.** Two auditors + the full
 gate; every finding verified against the Pascal spec and the pinned oracle, all
 real ones fixed 1:1 (no fudging):
