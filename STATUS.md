@@ -218,8 +218,10 @@ exotics — optional; stopping here is a complete usable simulator**
 (PORTING_PLAN cumulative note). Remaining named work: actor mode
 (`MULTITHREADING_PLAN.md` M2), A-Diakoptics, Pstcalc, WPG.19 (file-backed
 `File=` arrays — now the proven sole blocker of the whole ckt24/SolarRamp
-family), WPG.20 (MMF save), `JSON_EXPORT_PLAN.md`, `RESONANCE_PLAN.md` WP-R1.
-Details:
+family), WPG.20 (MMF save), `RESONANCE_PLAN.md` WP-R1. **`JSON_EXPORT_PLAN.md`
+Stage A + Stage B DONE (2026-07-12, branch `wp-json-a`)** — the full AltDSS JSON
+export (single object / class batch / whole circuit); only JSON **import** +
+`CAPI_Schema` remain (named §6 follow-ups). Details:
 
 - **Step 1 (marker sweep).** Every stale marker settled: **(a)** `show powers
   e` now emits the three exact Pascal whitespace layouts (Sources `%s %4d`, PC
@@ -2566,6 +2568,56 @@ whole-circuit remains deferred).
   - **[Minor] DoubleSymMatrix symmetric-blind fixture** — `line_matrix` now uses
     **distinct** diagonals (0.1/0.11, 0.2/0.22, 3/3.3) so the row/column indexing is
     pinned positionally.
+
+**JSON export Stage B (`Obj_Circuit_ToJSON_`) — 2026-07-12, branch `wp-json-a`.**
+Ported the whole-circuit AltDSS JSON dump per `JSON_EXPORT_PLAN.md` §4 Stage B
+(`CAPI_Obj.pas:2513-2672` + `saveOpenTerminalsJSON` `:2470-2511` + the bus renderer
+`alt_Bus_ToJSON_` `CAPI_Alt.pas:2820-2832`). JSON export is now complete for the
+single-object / class-batch / whole-circuit surfaces.
+
+- **New `report/export/json/circuit.rs`** — `circuit_to_json`: `$schema`, `Name`,
+  `DefaultBaseFreq` (float), `PreCommands`, `Bus[]`, `PostCommands`, then one key per
+  DSS class → array of `obj_to_json_data`, in **`PASCAL_CLASS_ORDER`** (the DSSClassList
+  order; the Rust registry groups DSS_OBJECT classes first internally). **Always
+  pretty** (`FormatJSON()`), regardless of `opts.PRETTY`. `Dss::circuit_to_json(&self,
+  opts) -> Option<String>` in `exec/view.rs` (None when no circuit).
+- **PreCommands** — optional save stamp (SkipTimestamp gates it; the port emits a fixed
+  deterministic comment, never a non-deterministic timestamp — never gated),
+  CktModel/AllowDuplicates/LongLineCorrection conditionals, EarthModel, VoltageBases
+  (`GetDSSArray`). **`Set CktModel=` is always empty when positive-sequence is on**
+  (`TODO(compat)`: `PositiveSequence` is a Pascal `LongBool`, `Integer(True) = -1`,
+  out of the enum's [0,1] range → `OrdinalToString` returns `''`; reproduced via
+  `ordinal_to_string(-1)`).
+- **PostCommands** — the 33 solution/options `Set …` strings with their exact FPC
+  formats + the `saveOpenTerminalsJSON` `Open …` lines. **6 `TODO(compat)` format
+  tags:** `%-g` (default-15-sig general), `%-.4g` (4-sig), `%8.2f` (width-8 fixed
+  2-decimal), `GetDSSArray` (` %g` per element), plus the CktModel LongBool quirk and
+  the module-level format note. Reuses the ported `report::format::{g, fixed_w}` and
+  `util::check_for_blanks`.
+- **`DefaultAndUnedited` flag** — new on `DssObjData` (`default_and_unedited`), set on
+  every LoadShape/GrowthShape/Spectrum/TCC_Curve object at the tail of
+  `create_default_dss_items` (Pascal `Executive.pas:207-217`), cleared on any edit
+  (Pascal `BeginEdit`, `DSSClass.pas:1598`) at the top of `edit_active_inner`. The
+  circuit dump omits these unless `IncludeDefaultObjs`. Byte-pinned both ways
+  (`circuit_edited_default`: editing `spectrum.defaultload` makes it — and only it —
+  rejoin the default dump; `include_default` brings all defaults back).
+- **Metadata (staged, this stage's classes):** **LoadShape** `Mult→PMult`,
+  `SInterval/MInterval→Interval` `redundant_with` (the default sweep was rendering
+  `Mult` where the oracle renders the deferred `PMult`). GrowthShape/Spectrum/TCC_Curve/
+  Capacitor/RegControl needed none beyond the already-present count-prop `SuppressJSON`.
+- **Gate:** 3 new circuit decks in `gen_json.py` / `golden_json.rs`, byte-green:
+  `circuit_micro` (bus X/Y + Keep + kVLN, open terminals — whole-terminal `Open Line.ln1
+  2` + single-conductor `Open Line.ln2 1 2`, LineCode/Line/Vsource/Load class order; the
+  full `{default, Full, Full|Pretty, SkipBuses, IncludeDefaultObjs, EnumAsInt}` combo
+  matrix, all Full-safe classes), `circuit_edited_default` (DefaultAndUnedited both
+  ways), `circuit_ieee13` (real feeder incl. Transformer/RegControl/Capacitor +
+  defaults; `{default, SkipBuses, IncludeDefaultObjs, EnumAsInt}`, Full excluded).
+- **Deferrals (recorded):** **Capacitor `CMatrix` under Full** renders the computed
+  sym-matrix on the oracle vs `null` in the pre-solve Rust dump — the same class as the
+  Stage-A transformer-WdgCurrents / matrix-line-sym-scalar Full deferrals; `circuit_micro`
+  therefore keeps its Full combos on Full-safe classes and covers Capacitor's default-mode
+  dump via `circuit_ieee13`. The WdgCurrents Full refresh, JSON **import**
+  (`Obj_Circuit_FromJSON_`), and `CAPI_Schema` stay NOT_PORTED (§6) — named follow-ups.
 
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
