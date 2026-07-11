@@ -7,7 +7,35 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-11.
+Last updated: 2026-07-12.
+
+**CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
+quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
+`cf-a`). `solvable_now` **245 → 249**.
+- **Base-frequency inheritance (TC-1).** `add_object` now seeds every circuit
+  element's `base_frequency` from the circuit fundamental at creation (Pascal
+  `TDSSCktElement.Create` `BaseFrequency := ActiveCircuit.Fundamental`,
+  CktElement.pas:203) instead of the hardcoded 60; VSource/Isource `src_frequency`
+  follows (`SrcFrequency := BaseFrequency`, VSource.pas:644 / Isource.pas:319); a
+  LineCode inherits it too (LineCode.pas:493). Monitor is the lone exception —
+  hard-pinned to 60 (Monitor.pas:472, oracle-verified). Fixes the European LV
+  feeder that had its source Vmag zeroed by a 60-vs-50 freq mismatch (the
+  previously-named LVTestCase residual is now resolved and migrated).
+- **UTF-8 BOM strip (TB-U3).** `do_redirect` strips a leading U+FEFF from every
+  compiled/redirected file (Pascal loads via `TStringList.LoadFromFile`); nested
+  redirects covered.
+- **Undefined-monitor export → warn (TA-3).** `export_monitors` reports a missing
+  named monitor on `GlobalResult` and continues (official Direct DLL
+  DoSimpleMsg-2-arg is non-fatal, r3723 DSSGlobals.pas:600) instead of a hard
+  error; dss_capi's #250-raise is the divergence. The oracle server tolerates the
+  same #250 during the deck `Compile` (`_TOLERATED_COMPILE_ERRNOS`).
+- **Bare-quote inline comment (TA-3).** `set …` get-only arms (ProcessTime/StepTime)
+  no longer evaluate their value token, matching Pascal's `else`-ignore no-op; a
+  trailing `' comment` (a begin-quote string, ParserDel.pas:270) landing on the
+  incremented pointer no longer triggers a spurious "Invalid inline math entry".
+- **Migrated** (live-compared, green): `LVTestCase/Master` + `Test/Source012Test`
+  (pinned oracle, full property parity); `EPRITestCircuits/ckt5/Run_ckt5` +
+  `ckt7/RunDSS_ckt7` (`oracle: r3723`, `post: set mode=snapshot`).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
