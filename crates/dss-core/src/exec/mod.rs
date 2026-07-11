@@ -53,6 +53,7 @@ pub(crate) use crate::util::{float_to_str, interpret_yes_no, parse_object_class_
 mod auto_add;
 mod command;
 mod construct;
+mod diakoptics;
 mod distribute;
 mod get_cmd;
 mod helpers;
