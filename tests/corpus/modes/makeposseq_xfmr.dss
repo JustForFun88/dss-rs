@@ -1,0 +1,46 @@
+! makeposseq_xfmr.dss — Transformer / AutoTrans MakePosSequence coverage (WPG.21).
+! 2-winding + 3-winding Transformer, an AutoTrans, and two 1-phase transformers
+! that exercise both OnPhase1 branches: one on `.1` (survives — kept, kV/√3 +
+! kVA/phase struct sets) and one on `.2` (NOT on phase 1 -> Enabled:=FALSE, the
+! disable path, Transformer.pas:1698). build -> solve -> makeposseq -> solve.
+clear
+set defaultbasefrequency=60
+new circuit.psq_xfmr basekv=115 pu=1.0 phases=3 bus1=src
+~ r1=0.2 x1=2.0 r0=0.6 x0=6.0
+
+! substation 2-winding transformer 115/12.47
+new transformer.sub phases=3 windings=2 xhl=8
+~ wdg=1 bus=src conn=delta kv=115 kva=20000
+~ wdg=2 bus=b1 conn=wye kv=12.47 kva=20000
+
+! 3-winding transformer 12.47/0.48/0.24
+new transformer.t3 phases=3 windings=3 xhl=6 xht=6 xlt=4
+~ wdg=1 bus=b1 conn=wye kv=12.47 kva=1000
+~ wdg=2 bus=b2 conn=wye kv=0.48 kva=500
+~ wdg=3 bus=b3 conn=delta kv=0.24 kva=500
+
+! AutoTrans (series/common auto connection, reactance XHX)
+new autotrans.at phases=3 windings=2 xhx=5
+~ wdg=1 bus=b4 conn=s kv=4.16 kva=2000
+~ wdg=2 bus=b1 conn=w kv=12.47 kva=2000
+
+! 1-phase transformer on phase 1 -> survives conversion
+new transformer.t1_ok phases=1 windings=2 xhl=2
+~ wdg=1 bus=b1.1 conn=wye kv=7.2 kva=100
+~ wdg=2 bus=b5.1 conn=wye kv=0.24 kva=100
+
+! 1-phase transformer NOT on phase 1 (.2) -> disabled by MakePosSequence
+new transformer.t1_off phases=1 windings=2 xhl=2
+~ wdg=1 bus=b1.2 conn=wye kv=7.2 kva=100
+~ wdg=2 bus=b6.2 conn=wye kv=0.24 kva=100
+
+new load.ld2 bus1=b2 phases=3 kv=0.48 kw=200 pf=0.95 model=1
+new load.ld4 bus1=b4 phases=3 kv=4.16 kw=300 pf=0.95 model=1
+new load.ld5 bus1=b5.1 phases=1 kv=0.24 kw=20 pf=0.95 model=1
+
+set voltagebases=[115, 12.47, 4.16, 0.48, 0.24, 7.2]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve
