@@ -163,6 +163,64 @@ ampere scale or in Y. (The EPRI_Ckt5-G torn pair clears the plain `large`
 floors — its worst pseudo-switch current diff is 1.03e-5 A — and stays kind
 `large`.)
 
+**The full (un-torn) ckt24 substation family (CF-D, 2026-07-12).** The whole
+EPRI ckt24 family — `EPRITestCircuits/ckt24/Run_Ckt24` + `master_ckt24`, and the
+seven `MemoryMappingLoadShapes/ckt24/master_ckt24{,-mm-csv-pq,-mm-dbl-p,-mm-sng-p,
+-mm-txt-p,-mm-txt-pq,-nomm}` file-array variants — carries the **same**
+`Line.Other_Feeders` (`r1=1e-8 x1=1e-9 Ω → Y≈1e10 S`) that stitches the
+substation transformer low side (`SubXfmr_LSB`) to `Feeders`. It was long
+mislabeled a "RegControl/LDC SubXFMR tap-current divergence" (STATUS open
+follow-up). CF-D root-cause proved that wrong: the node V is at the faer-vs-KLU
+floor (rel 1.8e-8 – 4.7e-8), the regulator lands the **identical** tap, and the
+"SubXFMR current" gate (|diff| 7.2e-4 A, ~4.7e-5 rel) is exactly the ultra-switch
+`Y·(V1−V2)` near-cancellation image through `Line.Other_Feeders` — the same
+class as the torn ckt24 already banded here (1.8 ulp × 1e10 S ≈ the measured
+7.2e-4 A, < the `i_abs` 2e-3 band). The regulator and the delta-wye substation
+transformer are exonerated. So the family migrates to `large_ultra_switch` with
+the existing band (V + Y stay tight; only the pseudo-switch current image is
+absorbed).
+
+### conditioning_floor (documented, NOT banded): SecondaryTestCircuit_modified
+
+`IEEETestCases/SecondaryTestCircuit_modified/Master.DSS` was also mislabeled the
+"RegControl/LDC SubXFMR" family. CF-D root-cause (2026-07-12) proved it is a
+**cross-solver conditioning floor**, not a RegControl/transformer bug, and — unlike
+the ckt24 family — its junk lands in the *voltage* (not just a switch current), too
+large for any existing band, so it stays documented in
+`skipped_needs_investigation.json` (the `floating_zeroseq_bus` precedent: a
+root-caused floor that cannot yet be banded honestly).
+
+- **Structure.** Two `Linecode.BUSBAR` lines (`r1=x1=r0=x0=1e-4 Ω/km`, `c=0`) at
+  `length=0.001 m` = ~1e-10 Ω → **Y ≈ 1e10 S** sit in series with the 46 kV
+  `Vsource` (`Line.MDV_SUB_1_HSB` source→SubXfmr-HV, `Line.SSswitch`
+  feederhead→BusPrim1). Assembled-Y condition number **9.79e11**.
+- **Symptom.** Step-0 entry-0 node V at BUSSOURCE/MDV_SUB_1_HSB |diff| = **0.553 V**
+  (rel 2.08e-5), with a uniform ~8e-4° angle offset; the regulated 12.47 kV bus
+  matches ~1e-6.
+- **Proof it is a floor, by decomposition (not a tolerance sweep):**
+  1. The **assembled system Y is BIT-IDENTICAL** between engines — all 570 CSC
+     entries, max |ΔY| = 0 (so the linear operator is not the difference).
+  2. The **Vsource injection** `Yprim·E` (backed out as `Yprim·[V,0] − Iterm`) is
+     **BIT-IDENTICAL** (max 2.3e-13 A, matrix-multiply noise) — the source EMF
+     matches; the `duty=SubVoltage` shape is applied identically.
+  3. Load base kW/kvar (derived from the `UseActual` duty shapes) match to 7 sig
+     figs; the constant-PQ branch is `conj(S/V)` on both.
+  4. **Cross-solver spread on the equivalent linear system** (the sanctioned
+     floor-proof, cf. §near-ideal-source): faer (Rust) vs KLU (oracle) = 0.758 V,
+     faer vs scipy(equilibrated) = 0.555 V, KLU vs scipy = 0.776 V — a tight
+     ~0.5–0.8 V triangle; the Rust↔oracle gap sits *inside* the cross-solver span.
+  5. **Residual parity:** ‖Y·V_rust − inj‖∞ = 4.40e-2 vs ‖Y·V_oracle − inj‖∞ =
+     4.56e-2 — neither engine's answer is cleaner; both sit at the same κ≈1e12 junk
+     floor, so even a perfectly refined Rust V would still miss the oracle's V by
+     the oracle's own junk.
+  6. The regulator lands the identical tap; disabling it and fixing the tap leaves
+     the 0.55 V gap **unchanged** (RegControl exonerated), and tightening
+     `tolerance` to 1e-10 leaves it byte-unchanged (not a convergence artifact).
+- **Why not banded:** admitting it needs `v_abs ≈ 1 V` (~4e-5 rel at the 46 kV
+  buses) — 33× the `large_floating_zeroseq` 3e-2 V and wide enough to mask a real
+  substation-transformer bug. The deck's 1 mm busbar lines are a modeling choice
+  that manufactures κ≈1e12; documented as a floor, not forced into `solvable_now`.
+
 ### near-ideal-source (`large_near_ideal_source`): cross-solver junk at κ≈1e12
 
 The AutoTrans validation family (`Test/AutoTrans/*` = `Version8/.../AutoTrans/*`

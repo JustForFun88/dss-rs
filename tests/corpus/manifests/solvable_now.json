@@ -1423,6 +1423,76 @@
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
+   "kind": "large",
+   "n_steps": 1
   }
  ]
 }
