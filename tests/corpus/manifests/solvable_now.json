@@ -42,6 +42,15 @@
    "n_steps": 1
   },
   {
+   "path": "Test/CapControlFollow.dss",
+   "kind": "feeder",
+   "post": ["set stepsize=1h number=1"],
+   "n_steps": 24,
+   "selected_elements": ["capacitor.cap1", "capacitor.cap2"],
+   "check_meters_monitors": true,
+   "note": "CF-C Port 1: CapControl Type=follow ControlSignal=LoadShape. Daily walk over the 24-pt Cap1Shape/Cap2Shape; the two banks switch on the loadshape schedule (cap1 hour 9 ON / hour 24 OFF; cap2 hour 14 ON). check_meters_monitors compares the Cap1Mon/Cap2Mon power channels per step (0 when the bank is open, nonzero when closed), which pins the FOLLOW switching schedule against the oracle. compare_eventlog is intentionally NOT used: the deck runs its own full-day `Solve` at compile (eventlog off), so a post-compile eventlog starts mid-trajectory and the arm/fire step boundary is logged asymmetrically vs the from-scratch oracle run — the switching itself is validated by the monitor power channels and the full per-step voltage compare. Pinned oracle supports FOLLOWCONTROL (not a target-rev feature)."
+  },
+  {
    "path": "Test/CapacitorConfigs.dss",
    "kind": "feeder",
    "n_steps": 1
