@@ -382,5 +382,17 @@ impl Dss {
             "default DSS items must parse cleanly: {:?}",
             self.errors
         );
+
+        // Pascal `CreateDefaultDSSItems` tail (`Executive.pas:207-217`): flag
+        // every object of these four classes `DefaultAndUnedited`, so the
+        // whole-circuit JSON dump omits them unless `IncludeDefaultObjs` is set.
+        // At this point only the built-in defaults exist in these classes.
+        for class_name in ["loadshape", "growthshape", "spectrum", "tcc_curve"] {
+            if let Some(&ci) = self.class_by_name.get(class_name) {
+                for obj in &mut self.classes[ci].objects {
+                    obj.data_mut().set_default_and_unedited(true);
+                }
+            }
+        }
     }
 }

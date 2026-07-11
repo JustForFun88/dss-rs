@@ -1164,6 +1164,12 @@ impl Dss {
             return;
         };
 
+        // Pascal `TDSSClass.BeginEdit` (`DSSClass.pas:1598`): any edit clears the
+        // `DefaultAndUnedited` flag, so an edited default object rejoins the
+        // whole-circuit JSON dump. Harmless on the initial `New` of the default
+        // items themselves (the flag is set afterwards by `CreateDefaultDSSItems`).
+        objects[oi].data_mut().set_default_and_unedited(false);
+
         let mut param_pointer: i64 = 0;
         let mut param_name = parser.next_param(vars);
         let mut param = parser.make_string(vars);
