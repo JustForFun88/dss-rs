@@ -19,6 +19,7 @@ mod counts;
 mod currents;
 mod elem;
 mod fault_study;
+mod inc_matrix;
 mod loads;
 mod logs;
 mod losses;
@@ -54,6 +55,10 @@ pub use counts::export_counts;
 pub(crate) use currents::export_currents;
 pub(crate) use elem::{export_elem_currents, export_elem_powers, export_elem_voltages};
 pub(crate) use fault_study::export_fault_study;
+pub(crate) use inc_matrix::{
+    export_bus_levels, export_inc_matrix, export_inc_matrix_cols, export_inc_matrix_rows,
+    export_laplacian,
+};
 pub(crate) use loads::export_loads;
 pub(crate) use logs::{export_error_log, export_event_log};
 pub(crate) use losses::export_losses;
