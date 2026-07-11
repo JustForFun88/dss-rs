@@ -239,6 +239,8 @@ impl Dss {
             cmd::SUMMARY => self.do_summary_cmd(),
             // Pascal `DoReconductorCmd` (ExecHelper.pas:4245).
             cmd::RECONDUCTOR => self.do_reconductor_cmd(),
+            // Pascal `DoPstCalc` (ExecHelper.pas:4778).
+            cmd::PSTCALC => self.do_pst_calc_cmd(),
             // The step-solution commands (`ExecCommands.pas:578-601`): direct
             // drivers over the solution internals.
             cmd::INIT_SNAP

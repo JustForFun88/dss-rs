@@ -674,6 +674,18 @@
      ]
     }
    ]
+  },
+  {
+   "path": "pstcalc_cmd.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP-PF.1",
+   "compare_global_result": true,
+   "note": "WP-PF.1: the IEC-868 `Pstcalc` executive command (ExecHelper.DoPstCalc over Shared/Pstcalc.pas). The deck solves a trivial 3-phase feeder, then runs one `Pstcalc` (700-point modulated-sine RMS array, dt=1 s, freq=60, 120 V lamp -> one 10-minute Pst value) at compile time. Live-gates that the command is ported and runs error-free on both engines (a not_ported/parse regression fails the post-compile no-error assert) plus full-model + property parity. The harness captures GlobalResult only AFTER its own solve, which clears the Pstcalc result, so compare_global_result compares the (empty) post-solve strings on both engines; the byte-exact Pst-value comparison over the full npts/shape/lamp/freq/dt matrix is the golden `golden_pstcalc.rs` (tests/golden/pstcalc/cmd_results.json)."
   }
  ]
 }
