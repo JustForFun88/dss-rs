@@ -281,10 +281,12 @@ const IEEE8500_SAVE_VTOL: f64 = 3e-4;
 /// worst-case ~2.02e-4 rel shift at the deepest 0.208 kV secondary nodes. The
 /// pinned dss-python oracle (0.15.7) reproduces this **bit-for-bit**: its own
 /// `Save`→recompile→resolve of this deck yields the identical worst node
-/// (`sx3312692a.1`, 2.022e-4) and the identical pre/post total power
+/// (`SX3312692A.1`, 2.022253e-4) and the identical pre/post total power
 /// (−11983.486783 → −11983.420712 kW) that our engine produces — so the port is
-/// faithful and 1e-6 is simply unachievable here for either engine. (Probe:
-/// `tools/golden` pinned oracle, 2026-07-11; TOLERANCE_NOTES.md.)
+/// faithful and 1e-6 is simply unachievable here for either engine. Reproducible
+/// probe: `python tools/golden/probe_save_roundtrip_8500.py` (pinned oracle,
+/// 2026-07-11); numbers recorded in `tests/TOLERANCE_NOTES.md`
+/// §"`Save circuit` round-trip floor — IEEE-8500".
 ///
 /// The gate stays strong despite the loosened band: iteration count is exact,
 /// and the **discrete** control state — all 12 RegControl tap numbers + all 10

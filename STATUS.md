@@ -9,6 +9,77 @@
 
 Last updated: 2026-07-11.
 
+**FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
+request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
+3-branch fix round + FA settle) returned `criteria_met=true`, `blocking_items=[]`.
+Verdict (quoted): *"ACCEPT — PORTING_PLAN section-6 criteria are met; all three
+prior blocking items (B1/B2/B3) are resolved with evidence I independently
+re-verified and re-ran in `…/worktrees/final-acceptance` (range de9630b..27d73e1)."*
+The §6 criteria map to evidence as:
+
+| §6 criterion | evidence (this branch, re-witnessed at settle) |
+|---|---|
+| all `cmd_coverage.py`-covered electricdss-tst cases through both engines, **zero out-of-tolerance**, **exact discrete state** | `corpus_live` 14/14 pass, 0 failed (~174 s): `corpus_live_solvable_cases_match_oracle` live-compares all **245 solvable_now** decks (full Y/V/I/P + injection + discrete state per step) at the calibrated floors; the 3 family suites (asymmetric/controls/modes) pass; `corpus_manifest` bijection PASS — **every** corpus `.dss` is in exactly one manifest, so nothing hides |
+| `save_roundtrip` green on IEEE 13/34/37/123/8500 | `save_roundtrip` **6/6** (13/34/37/123/8500 + structural file-set): discrete reg taps + cap banks and warm-re-solve iteration count **exact** on every deck incl. 8500; 8500 node-V band 3e-4 is an oracle-proven `Save circuit` floor (probe below), not a slack |
+| export-diff suites green on IEEE 13/34/37/123/8500 | `golden_reports` **193/0** — pinned-oracle goldens for IEEE 13 (V/I/P + seq + per-element) and 34/37/123/8500 |
+| gate | `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D warnings` clean; `cargo test --workspace` exit 0 (pinned dss-python oracle 0.15.7 / dss_capi 0.14.5) |
+
+Gated population: **245/335 solvable_now (73.1%)**. cmd_coverage's unported tail is
+exclusively Phase-9 actor/parallel mode (SolveAll/NewActor/Clone/Abort +
+ActiveActor/CPU/Parallel options) + `CapControl.ControlSignal` — explicitly outside
+1:1 acceptance (PORTING_PLAN §"stopping before Phase 9 = complete simulator").
+
+**Named non-blocking residuals** (all documented, bounded, correctly classified,
+**outside** solvable_now — the acceptance names them):
+- **RegControl/LDC `SubXFMR` family** (port-side, tagged `live_mismatch` "BUG until
+  a floor is proven"): ckt24 `Run_Ckt24`/`master` + 5 MemoryMapping siblings +
+  `IEEE13_Assets` (~1.0e-3) + Version8-CIM `IEEE13_CDPSM` (4.6e-6). Owner: root-cause
+  post-acceptance (UPGRADE/DE_PASCALIZE era).
+- **LVTestCase/Master** — real gap: Rust leaves node entry 0 unenergized. Owner: same.
+- **SecondaryTestCircuit_modified** (5.5e-1); **Storage-Quasi Run_Demo1** (1.1e-4);
+  **GFM_IEEE8500** daily/snap ×3 (1.4e-4…2.7e-4 above band) + 1 oracle-nonconvergence.
+- **Unported optionals** (skipped_unsupported): actor+parallel mode,
+  `CapControl.ControlSignal`, UTF-8-BOM strip, 14 deferred IEEE123-GFM-trajectory
+  decks. Owners: MULTITHREADING_PLAN M2+ (actor); GAPS follow-up (ControlSignal/BOM).
+- **Oracle-side blocks** (oracle_timeout/nonconvergence ×~40) and the known
+  **VSConverter GetCurrents self-alias** upstream bug (gated via
+  `exec/tests/vs_converter.rs`) — nothing to fix port-side.
+- **A-Diakoptics Part II** — deliberately outside final acceptance; early-start was
+  user-ordered (2026-07-11), owner DIAKOPTICS_PSTCALC_PLAN Part II.
+
+**FA settle — audit findings settled (2026-07-11).** Six Minor findings from the
+code/tests audits; none contradicted a §6 criterion. Three fixed, two recorded as
+deliberate no-fix, and #6 folded into the #3 fix:
+- **#1 (8500 save-floor proof prose-only, dangling citation) — FIXED.** Committed a
+  reproducible oracle-side probe `tools/golden/probe_save_roundtrip_8500.py` (pinned
+  dss-python) that reproduces the floor from the repo bytes: worst node `SX3312692A.1`
+  **2.022253e-4** (< the 3e-4 band), total power −11983.486783 → −11983.420712 kW,
+  iterations 2/2 exact, 8354/8531 nodes over 1e-6. Recorded the numbers in a new
+  `tests/TOLERANCE_NOTES.md` §"`Save circuit` round-trip floor — IEEE-8500" and fixed
+  the `save_roundtrip.rs` doc citation to point at it + the probe.
+- **#3/#6 (population_lock fingerprinted membership+counts only) — FIXED.** Extended
+  `population_lock.rs` to fingerprint **per-case rigor** for every solvable_now deck
+  (kind/tolerance-tier, oracle target, n_steps, and every compare-depth flag —
+  selected_elements/meters-monitors/probes/variables/eventlog/ctrlqueue/all-properties/
+  global-result/autoadd-log/pending/solve-abort) **and** the three families' **path
+  lists** (not just counts). Regenerated `population.lock.json`; verified the guard
+  now trips with a precise per-field diff on an in-place kind flip (feeder →
+  large_near_ideal_source), closing the "retained deck weakened in place" gap.
+- **#5 (CIM Breaker check was a weak substring) — FIXED.** The B1 regression now
+  asserts **exactly one** `<cim:Breaker>` element and **no** Fuse/Recloser
+  misclassification (was `xml.contains("cim:Breaker")`).
+- **#2 (fix1 commit-message over-generalized the +16 parks) — NO-FIX (recorded).**
+  Cosmetic; rewriting a merged commit message is not warranted. The per-deck manifest
+  tags/notes are individually honest and correctly differentiated (referee-confirmed).
+- **#4 (DSS_UPDATE_POPULATION_LOCK regen arm) — NO-FIX (recorded).** Confirmed the var
+  is **not** set in `.github/workflows/ci.yml` (only CARGO_TERM_COLOR +
+  DSS_ORACLE_TIMEOUT_SECS); this is the documented deliberate-regen path. Keep it out
+  of any future automated env block.
+
+Post-acceptance the `TODO(compat)` sweep + goldens regen run in one dedicated pass
+(PORTING_PLAN §4.1/§6); the named residuals are root-caused in the upgrade/refactor
+eras (PLAN_SEQUENCE stages 4–8).
+
 **FA fix 2 — divergence root-cause: DOCTechNote ×4 + GFMSnap (2026-07-11),
 gate-green.** Root-caused the five above-`large` Rust↔oracle divergences the
 WP8.8 classify left `needs_investigation` (per CLAUDE.md §"conditioning" +
