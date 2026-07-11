@@ -10,12 +10,12 @@
 //! where Pascal narrows (`AddDblToBuffer`).
 //!
 //! Modes ported (PHASE6_PLAN §2.3): 0 (V&I), 1 (powers), 2 (transformer tap),
-//! 3 (PCElement state vars), 5 (solution variables), 6 (capacitor steps), 9
-//! (losses), 11 (all terminal V&I) — plus the ±16/±32/±64 modifiers, residual,
-//! VIpolar/Ppolar. Modes 4 (flicker/Pstcalc), 7 (Storage), 8/10 (transformer
+//! 3 (PCElement state vars), 4 (flicker/Pst — WP-PF.2), 5 (solution variables),
+//! 6 (capacitor steps), 7 (Storage), 9 (losses), 11 (all terminal V&I) — plus
+//! the ±16/±32/±64 modifiers, residual, VIpolar/Ppolar. Modes 8/10 (transformer
 //! winding currents/voltages) and 12 (LL voltages) build their **header** but
-//! defer the sample body (Phase 6+/7); the gate exercises 0/1/2/5. File
-//! save/`TranslateToCSV` is Phase 8.
+//! defer the sample body (Phase 6+/7). File save/`TranslateToCSV` is Phase 8;
+//! the mode-4 flicker post-process (`DoFlickerCalculations`) is in `post.rs`.
 //!
 //! Split into submodules mirroring `load/`, `generator/`, `vsource/`:
 //! - this `mod.rs` — property ordinals, `class_props`, the `Monitor` struct,
@@ -33,6 +33,7 @@ use crate::obj::props::{ClassProps, PropDef};
 mod accessors;
 mod dump;
 mod header;
+mod post;
 mod sample;
 
 const MODEMASK: i32 = 15;
@@ -125,6 +126,11 @@ pub struct Monitor {
     valid_monitor: bool,
     hour: i32,
     sec: f64,
+    /// Pascal `IsProcessed` (`Monitor.pas:174`): the mode-4 post-process latch.
+    /// `PostProcess` runs `DoFlickerCalculations` once per fresh sample set (when
+    /// the stream is first closed/read), then latches `true`; `ResetIt`/
+    /// `ClearMonitorStream` clear it so a re-solved monitor reprocesses.
+    is_processed: bool,
 }
 
 /// Solution scalars the monitor reads at sample time (the `ActiveCircuit.
@@ -174,6 +180,7 @@ impl Monitor {
             valid_monitor: false,
             hour: 0,
             sec: 0.0,
+            is_processed: false,
         }
     }
 
@@ -214,6 +221,19 @@ impl Monitor {
             .map(|s| self.mon_buffer[s * stride + 2 + (i - 1)])
             .collect()
     }
+    /// The metered terminal's bus name (bare, node qualifiers stripped) — the
+    /// caller resolves its `kVBase` for the mode-4 flicker `Vbase`
+    /// (`DoFlickerCalculations`, `Monitor.pas:1655-1656`). `None` if unset or not
+    /// a mode-4 monitor.
+    pub fn metered_bus_name(&self) -> Option<String> {
+        if (self.mode & MODEMASK) != 4 {
+            return None;
+        }
+        let snap = self.med.metered_snap.as_ref()?;
+        let full = snap.buses.get(self.med.metered_terminal as usize - 1)?;
+        Some(full.split('.').next().unwrap_or(full).to_string())
+    }
+
     /// `dblHour`: the per-sample hour values (record slot 0), **flushed**
     /// samples only — see [`Self::channel`].
     pub fn dbl_hour(&self) -> Vec<f64> {
@@ -250,8 +270,11 @@ impl Monitor {
     /// `FireOffEditor` leg is the GUI no-op; `GlobalResult` is set by the
     /// caller (`export.rs`). The body itself iterates every sample taken so
     /// far (`sample_count`), independent of the flush cursor.
-    pub fn to_csv(&mut self) -> String {
+    pub fn to_csv(&mut self, kv_base: f64) -> String {
         self.save(); // Pascal `Save;` — flush pending, so Channel() reads full data next
+        // Pascal `TranslateToCSV` calls `CloseMonitorStream` (→ `PostProcess` →
+        // `DoFlickerCalculations` for mode 4) before serializing (Monitor.pas:1714).
+        self.post_process(kv_base);
         let mut out = String::new();
         out.push_str(&crate::util::comma_text(&self.header));
         out.push('\n');
@@ -319,7 +342,7 @@ mod tests {
     fn to_csv_flushes_like_pascal_save() {
         let mut m = staged_monitor(3);
         assert_eq!(m.channel(1), vec![0.0]); // unflushed before export
-        let csv = m.to_csv();
+        let csv = m.to_csv(0.0); // not mode 4 -> kv_base unused
         // Body carries all three samples (values 10/11/12).
         assert_eq!(csv.lines().count(), 4); // header + 3 rows
         assert!(csv.contains("10") && csv.contains("11") && csv.contains("12"));

@@ -1651,6 +1651,9 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "midi_energymeter.dss",
     "midi_monitor.dss",
     "midi_sensor.dss",
+    // WP-PF.2 Monitor mode-4 (flicker) sample-path decks.
+    "monitor_pst.dss",
+    "midi_monitor_pst.dss",
     // pending (unported control / time-series features; wp names the WP)
     "capcontrol_follow.dss",
     "invcontrol_expmodel.dss",
