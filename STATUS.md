@@ -9,6 +9,32 @@
 
 Last updated: 2026-07-11.
 
+**WPG.20 port — MMF-shape binary save (`Action=SngSave/DblSave` under
+`MemoryMapping=Yes`) (2026-07-11), gate-green (golden_reports + load_shape unit).**
+The trio-era LOUD-NOT_PORTED refusal in `load_shape/compute.rs::queue_shape_save`
+is removed. **Mandatory oracle probe first** (dss-python 0.15.7, per the
+STATUS-mandated `Assigned(dQ)`-under-MMF question): **Case A** — an MMF LoadShape
+with `mult=(sngfile=…) qmult=(sngfile=…)` under `action=sngsave`/`dblsave` writes
+BOTH `<name>_P` and `<name>_Q`; the bytes equal the f32-narrowed source values
+(sng file = f32 as-is; dbl file = those f32 widened to f64), and `GlobalResult` is
+`mult=[…],  Qmult=[…]`. **Case B** — an MMF LoadShape WITHOUT `qmult` writes ONLY
+`<name>_P` (NO `_Q` file; `GlobalResult` has no `Qmult=` clause) — confirming
+`Assigned(dQ)` is true iff a `qmult=` MMF directive was given (Pascal
+`CustomSetRaw` :791-802 allocs a 2-elem `dQ` sentinel). **Key invariant verified:**
+the port's eager MMF read (`read_mmf_raw`/`finish_mmf`) already populated `p_mult`
+and (iff `qmult=` given) `q_mult` with the identical record semantics the oracle's
+save-time `InterpretDblArrayMMF` re-read uses, and `q_mult.is_some()` == Pascal
+`Assigned(dQ)`. So **guard removal alone is correct** — the existing non-MMF
+snapshot body emits byte-exact bytes; no separate `InterpretDblArrayMMF` re-read
+path was needed. Pinned by a new byte-exact golden `binsave_mmf_matches_oracle` (6
+`.bin` goldens: `mp` = sng-P + sng-Q → both `_P`/`_Q`; `md` = dbl-P + no-Q → only
+`_P`, `md_Q.*` asserted ABSENT) via `gen_reports.py::gen_loadshape_binsave_mmf`
+(MMF source fixtures `tools/golden/report_decks/binsave_mmf_{p,q}.{sng,dbl}`,
+`@FIXTURES@`-token-resolved on both engines) + exact per-action `GlobalResult`
+rebuilt against scratch, and the load_shape unit test
+`action_save_mmf_queues_eager_read_values` (replaces the old
+`action_save_mmf_refuses_loudly`). Nothing left NOT_PORTED in the shape-save path.
+
 **WPG.19 port — non-MemoryMapped file-backed numeric arrays (2026-07-11),
 gate-green (modes + load_shape + props_roundtrip).** The Pascal `InterpretDblArray`
 `file=`/`sngfile=`/`dblfile=` grammar (`Common/Utilities.pas:461-566`) for array
@@ -391,7 +417,9 @@ the deck's `Get totaltime` line is non-gating decoration (wall-clock timers are
 never numerically compared — documented in the manifest note). Open follow-up
 (loud, honest): `Action=SngSave/DblSave` on an MMF shape keeps the trio-era
 NOT_PORTED refusal — removing it needs an oracle probe of the MMF-save Q-side
-semantics (`Assigned(dQ)` under MMF) before the bytes can be trusted.
+semantics (`Assigned(dQ)` under MMF) before the bytes can be trusted. **[CLOSED
+2026-07-11 by WPG.20 — probed, guard removed, byte-exact golden landed; see the
+WPG.20 record at the top.]**
 
 **WPG.17 port: LoadShape MemoryMapping + Set/Get TotalTime (2026-07-09).**
 Ported the two former `master_ckt24` blockers. **(a) LoadShape `MemoryMapping=Yes`**
@@ -439,6 +467,8 @@ so it queues a new `ShapeSave` (obj/base) drained in `edit_active` — mirrors t
 TShape/PriceShape write the bare `<name>`; raw little-endian f32/f64. Pinned by a
 **byte-exact** golden (`binsave_matches_oracle`, 8 `.bin` goldens via new
 `gen_reports.py::gen_loadshape_binsave`). MMF-backed save stays LOUD-NOT_PORTED.
+**[Superseded 2026-07-11 by WPG.20 — MMF-backed save is now ported + byte-exact
+goldened; see the WPG.20 record at the top.]**
 **(2)** `PreserveNodeVoltages` (`Ymatrix.pas:298/449`): `update_vbus`/
 `restore_node_v_from_vbus` (Solution.pas:2377/2392) now bracket `build_y_matrix`
 (was an inert NOT_PORTED note); net no-op while node count is stable (harmonics/
