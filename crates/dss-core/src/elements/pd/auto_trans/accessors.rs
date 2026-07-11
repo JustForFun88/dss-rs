@@ -7,9 +7,11 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::transformer::ControlledTransformer;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 use super::{AutoTrans, prop, xsc_size};
 
@@ -179,6 +181,81 @@ impl CktElement for AutoTrans {
 
         self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
+    }
+
+    /// Pascal `TAutoTransObj.MakePosSequence` (AutoTrans.pas:1724-1791). The
+    /// autotransformer mirror of `TTransfObj.MakePosSequence`: the sole
+    /// difference is the kV test compares the winding connection against
+    /// `TAutoTransConnection.Wye` (code 0, Common/Wye) rather than the plain
+    /// transformer wye — numerically identical here (both wye = 0), so the
+    /// converted values match. `new_conns` are all Wye (0) and buses are kept
+    /// verbatim; for a 1/2-phase auto any winding off phase 1 disables it (no
+    /// `inherited`).
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        use prop::*;
+
+        let nw = self.num_windings.max(0) as usize;
+        let nphases = self.cd.nphases;
+
+        // First, determine if we can convert this one. For 1- or 2-phase, any
+        // winding not connected to phase one → disable and bail (no inherited).
+        if nphases == 1 || nphases == 2 {
+            for iw in 1..=nw {
+                let nodes = ctx.terminal_nodes.get(iw - 1);
+                let on_phase1 = match nodes {
+                    None => true, // no parsed nodes (N = 0) → treated as phase 1
+                    Some(list) if list.is_empty() => true,
+                    Some(list) => list.contains(&1),
+                };
+                if !on_phase1 {
+                    // We won't use this one.
+                    return PosSeqPlan {
+                        actions: vec![PosSeqAction::Disable],
+                        run_base: false,
+                    };
+                }
+            }
+        }
+
+        // Construct the positive-sequence definition: all Common/Wye (0), buses
+        // as-is, kV = kVLL/√3 unless the winding is single-phase wye, kVA /
+        // NormHkVA / EmergHkVA per phase.
+        let new_conns: Vec<i32> = vec![0; nw];
+        let new_buses: Vec<String> = (1..=nw).map(|i| self.cd.get_bus(i).to_string()).collect();
+        let new_kvs: Vec<Option<f64>> = self
+            .windings
+            .iter()
+            .take(nw)
+            .map(|w| {
+                // Pascal: (NPhases > 1) or (Connection <> TAutoTransConnection.Wye)
+                if nphases > 1 || w.connection != 0 {
+                    Some(w.kvll / sqrt3())
+                } else {
+                    Some(w.kvll)
+                }
+            })
+            .collect();
+        let new_kvas: Vec<Option<f64>> = self
+            .windings
+            .iter()
+            .take(nw)
+            .map(|w| Some(w.kva / nphases as f64))
+            .collect();
+        let new_norm = self.norm_max_hkva / nphases as f64;
+        let new_emerg = self.emerg_max_hkva / nphases as f64;
+
+        let actions = vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(PHASES, 1),
+            PosSeqAction::SetStructI32s(CONNS, new_conns),
+            PosSeqAction::SetStructBuses(new_buses),
+            PosSeqAction::SetStructF64s(KVS, new_kvs),
+            PosSeqAction::SetStructF64s(KVAS, new_kvas),
+            PosSeqAction::SetF64(NORMHKVA, new_norm),
+            PosSeqAction::SetF64(EMERGHKVA, new_emerg),
+            PosSeqAction::EndEdit,
+        ];
+        PosSeqPlan::with_actions(actions)
     }
 }
 
