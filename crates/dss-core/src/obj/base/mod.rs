@@ -44,6 +44,13 @@ pub struct DssObjData {
     /// preloads it. `MakeLike` does not copy it (Pascal copies fields, not
     /// `pUuid`), and our class `make_like` impls never touch `DssObjData`.
     uuid: Option<crate::cim::Uuid>,
+    /// Pascal `Flg.DefaultAndUnedited` (`DSSClass.pas:136`): set on every object
+    /// auto-created by `CreateDefaultDSSItems` (the built-in default
+    /// LoadShape/GrowthShape/Spectrum/TCC_Curve) and cleared the moment the
+    /// object is edited (`TDSSClass.BeginEdit`, `:1598`). The whole-circuit
+    /// JSON dump omits these unless `IncludeDefaultObjs` is set
+    /// (`CAPI_Obj.pas:2644`); nothing else reads it.
+    default_and_unedited: bool,
     /// WPG.19 — generic file-backed numeric-array directives (`%mag=(file=…)`,
     /// `Yarray=(sngfile=…)`, …) queued by the generic `DoubleArray` property
     /// path for any class (Pascal `DSSObjectHelper.pas:616-636` routes every
@@ -64,9 +71,22 @@ impl DssObjData {
             deferred_errors: Vec::new(),
             deferred_abort: false,
             has_been_saved: false,
+            default_and_unedited: false,
             uuid: None,
             pending_dbl_array_files: Vec::new(),
         }
+    }
+
+    /// Pascal `Flg.DefaultAndUnedited in obj.Flags`: whether this is a still-
+    /// unedited default DSS item (drives the whole-circuit JSON dump filter).
+    pub fn default_and_unedited(&self) -> bool {
+        self.default_and_unedited
+    }
+
+    /// Pascal `Include(obj.Flags, Flg.DefaultAndUnedited)` — set by
+    /// `CreateDefaultDSSItems` on the built-in default objects.
+    pub fn set_default_and_unedited(&mut self, v: bool) {
+        self.default_and_unedited = v;
     }
 
     /// Queue a generic file-backed numeric-array directive (WPG.19). The
