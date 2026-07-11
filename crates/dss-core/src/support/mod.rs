@@ -9,4 +9,5 @@ pub mod hashlist;
 pub mod line_constants;
 pub mod line_units;
 pub mod mathutil;
+pub mod pstcalc;
 pub mod sparse_math;
