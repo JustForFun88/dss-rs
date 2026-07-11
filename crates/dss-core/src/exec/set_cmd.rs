@@ -84,9 +84,23 @@ impl Dss {
                 }
 
                 match pointer {
-                    0 => errors.push(format!(
-                        "Unknown parameter \"{param_name}\" for Set Command"
-                    )),
+                    0 => {
+                        // A-Diakoptics options (`Num_SubCircuits`, `Coverage`,
+                        // `LinkBranches`, `UseMyLinkBranches`, `ADiakoptics`) are
+                        // compiled out of the vendored/oracle build (§0.2) so they
+                        // are absent from the oracle-pinned `EXEC_OPTIONS`; handled
+                        // here as a recorded departure (WP-AD.2/AD.3).
+                        if !crate::exec::tearing::try_set_ad_option(
+                            ckt,
+                            &param_name,
+                            &param,
+                            errors,
+                        ) {
+                            errors.push(format!(
+                                "Unknown parameter \"{param_name}\" for Set Command"
+                            ));
+                        }
+                    }
                     opt::HOUR => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.int_hour = v;

@@ -153,6 +153,67 @@ all 24 (independent cross-check + induced-cut self-consistency).
 Stage B (tearing / `.graph` engine round-trip, `Create_MeTIS_Zones`) can now build
 on the completed `part_graph_kway`.
 
+**WP-AD.2 Stage B — tearing machinery, partial (2026-07-11, gate-green: fmt +
+clippy + dss-core suites; see caveat).** Behavioral spec = official r3723 Delphi
+(`Common/Circuit.pas`, plan D10). Landed:
+- **Circuit AD fields** (`circuit/tearing.rs::AdTearing`, wired as `Circuit.ad`):
+  `Coverage`/`Actual_Coverage`, `Num_SubCkts` (ctor default `CPU_Cores-1`, D6),
+  `Link_Branches`, `PConn_Names`/`PConn_Voltages`, `Locations`, `BusZones`,
+  `MeTISZones`, `UseUserLinks`, `VIndex`, and the `SparseComplex` matrix slots
+  `Contours/ContoursT/ZLL/ZCT/ZCC/Y4/Ic` as typed WP-AD.3 placeholders
+  (Circuit.pas:205–231/321).
+- **`Create_MeTIS_graph`** 1:1 (`exec/tearing.rs::build_metis_graph`,
+  Circuit.pas:1213): incidence (hierarchical `Calc_Inc_Matrix_Org`) → per-column
+  dedup of parallel branches → phase-count edge weights (Transformer weight 1).
+  The OpenDSS `.graph` text writer (`support/partition.rs::write_opendss_graph`)
+  reproduces the byte-exact quirky format incl. the dropped column-0 line
+  (`NOTE(upstream-quirk)`).
+- **`support/partition.rs`** — the file round-trip glue over `dss-metis`
+  in-process (`NOTE(subst-metis)`: exec→in-process + METIS 4.0→5.2.1 step; the
+  upstream `GetNumEdges` repair loop is not ported — our edge count is exact
+  because we partition the canonical symmetric graph, not the header-corrupted
+  text). Writes `<graph>.part.<N>` in kmetis output format. dss-core now depends
+  on `dss-metis`.
+- **`Create_MeTIS_Zones`** parsing 1:1 (Circuit.pas:1350): the D5 first-line-swap
+  quirk (`NOTE(upstream-quirk)`), the ≥2-consecutive-bus zone rule, `Locations`/
+  `BusZones` fill, the final `inc(Locations[j])`.
+- **`Tear_Circuit` both branches** (Circuit.pas:1880): auto (`dss-metis`) and the
+  official manual-links branch (`get_PDE_Bus1_Location`, `get_line_bus`);
+  `Link_Branches` from `Locations` via `get_IncMatrix_Row` (the +1-adjusted
+  offset reproduced). Result string `"Sub-Circuits Created: N"` (Diakoptics.pas:526).
+- **Executive surface**: the `Tear_Circuit`/`AggregateProfiles` commands and the
+  `Num_SubCircuits`/`Coverage`/`LinkBranches`/`UseMyLinkBranches`/`ADiakoptics`
+  options are **compiled out of the vendored/oracle build** (§0.2), so they are
+  absent from `EXEC_COMMANDS`/`EXEC_OPTIONS` (which the oracle-pinned `Dump
+  commands` golden mirrors byte-exact). Registered here by **dispatch
+  interception** (`command.rs`, `set_cmd.rs`, `get_cmd.rs`) as a recorded
+  departure — the engine behaves like a `DSS_CAPI_ADIAKOPTICS` build without
+  perturbing that golden. `set ADiakoptics` and `AggregateProfiles` are scoped
+  refusals pointing at WP-AD.3/AD.5.
+- Tests: `crates/dss-core/tests/adiakoptics.rs` — synthesized radial 3-phase midi
+  (~40-bus) + macro (~200-bus) feeders, `set Num_SubCircuits=2/3; Tear_Circuit`,
+  asserting zone count + `GlobalResult`, link branches are 3-phase Lines,
+  balanced `.part.N`; manual-links cut; 1-zone request; option set/get round-trip.
+  Unit tests in `support/partition.rs` + `exec/tearing.rs` (graph text byte-exact,
+  other-terminal pairing, zones split, class-prefix).
+
+**Deferred to a WP-AD.2 Stage-B follow-up (recorded here, NOT silently dropped):**
+- Per-zone `EnergyMeter` placement + terminal orientation (node-1 |V| compare) +
+  `PConn_Voltages` capture (Circuit.pas:1954–2032) — needs prior-solve `NodeV`.
+- `Save_SubCircuits`/`Format_SubCircuits`/`AppendIsources`/`Disable_All_DER`
+  (the `Torn_Circuit/` multi-file emission) — needs `save circuit` integration +
+  per-zone `VSource.dss`; and the committed Torn_Circuit fixture golden +
+  round-trip compile/solve tests that ride on it.
+These are the parts that make `Tear_Circuit` produce the on-disk sub-circuit
+project tree; the current command computes the partition, zones, link branches,
+and the `.graph`/`.part.N` artifacts + result string. **Caveat on gate:** fmt,
+workspace clippy (`-D warnings`), and all dss-core lib + `adiakoptics` +
+`inc_matrix_reports` + `golden_reports::dump3_commands` suites verified green;
+the full `cargo test --workspace` (live-oracle corpus) was not witnessed to
+completion in this session — the changes are additive (new module/fields +
+previously-unknown-command/option interception) so cross-suite risk is low, but
+the coordinator/auditors should confirm the full workspace run.
+
 **WP-AD.2 Stage A — audit settlement (2026-07-11, gate-green).** Two auditors
 (code + tests) filed 6 Minor findings; each settled empirically against the C spec
 (`.inputs/METIS`,`.inputs/GKlib`) via the offline gcc-13.2.0 reference build. Real
