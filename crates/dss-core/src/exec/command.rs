@@ -1084,6 +1084,7 @@ impl Dss {
             current_dir,
             output_directory,
             last_result,
+            last_result_file,
             ..
         } = self;
         // Split the registry so the active class is borrowed mutably for the
@@ -1420,10 +1421,25 @@ impl Dss {
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it
         // here — before `end_edit`, so derived state like `SetMaxPandQ` sees the
-        // loaded data). Paths resolve relative to `current_dir`, like Redirect.
+        // loaded data). Paths resolve relative to `current_dir`, like Redirect;
+        // the literal `%result%` resolves to `LastResultFile` (Pascal
+        // `InterpretDblArray`, `Utilities.pas:464-465`).
+        let resolve = |filename: &str| -> std::path::PathBuf {
+            let name = if filename.eq_ignore_ascii_case("%result%") {
+                last_result_file.as_str()
+            } else {
+                filename
+            };
+            let p = std::path::Path::new(name);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                current_dir.join(name)
+            }
+        };
         let file_loads = objects[oi].take_file_loads();
         for fl in &file_loads {
-            let path = current_dir.join(&fl.filename);
+            let path = resolve(&fl.filename);
             if fl.binary {
                 match std::fs::read(&path) {
                     Ok(bytes) => objects[oi].apply_binary_file_load(fl, &bytes, errors),
@@ -1438,6 +1454,28 @@ impl Dss {
                 }
             }
         }
+
+        // WPG.19: generic file-backed numeric-array directives (`%mag=(file=…)`,
+        // `Yarray=(sngfile=…)`) queued by the generic double-array property path
+        // (Pascal `DSSObjectHelper.pas:616-636`). Read the file and apply the
+        // `InterpretDblArray` grammar (short-file shrink + `Round`/scale/non-zero)
+        // through the object's typed accessors.
+        let generic_files = objects[oi].take_generic_dbl_array_files();
+        for gf in &generic_files {
+            let path = resolve(&gf.filename);
+            match std::fs::read(&path) {
+                Ok(bytes) => apply_generic_dbl_array_file(&mut *objects[oi], gf, &bytes, errors),
+                // Pascal error 70401 (`InterpretDblArray`: "CSV file could not be
+                // opened") / 70501 / 70502.
+                Err(_) => errors.push(format!("File \"{}\" could not be opened.", gf.filename)),
+            }
+        }
+
+        // WPG.19: actions the object deferred until its file loads resolved
+        // (LoadShape `action=normalize`/`ln`; Pascal runs it inline right after
+        // the file read). Run before `end_edit` so `SetMaxPandQ` sees normalized
+        // data.
+        objects[oi].run_deferred_actions(errors);
 
         // Deferred binary shape saves (LoadShape/TShape/PriceShape
         // `Action=SngSave/DblSave`): the `Action` property hook cannot reach
@@ -1567,6 +1605,55 @@ impl Dss {
             }
         }
     }
+}
+
+/// Apply a resolved generic file-backed numeric-array directive (WPG.19, Pascal
+/// `DSSObjectHelper.pas:616-636`): read the file with the `InterpretDblArray`
+/// grammar (short-file shrink), then re-apply `Round`/scale/non-zero exactly like
+/// the inline list path (`parse.rs`), and write the array + shrunk count through
+/// the object's typed accessors. The read is capped at the current count
+/// property so Pascal's in-place shrink of one array is visible to a later one
+/// (e.g. `%mag` shrinking `NumHarm` before `angle` reads).
+fn apply_generic_dbl_array_file(
+    obj: &mut dyn crate::obj::base::DssObject,
+    gf: &crate::obj::base::GenericDblArrayFile,
+    bytes: &[u8],
+    errors: &mut Vec<String>,
+) {
+    use crate::obj::base::MmfKind;
+    let max = obj.get_i32(gf.size_prop).max(0) as usize;
+    let mut vals = match gf.kind {
+        MmfKind::Text => {
+            let content = String::from_utf8_lossy(bytes);
+            crate::util::read_dbl_array_text(&content, gf.column, gf.header, max)
+        }
+        MmfKind::Float32 => crate::util::read_le_f32_array(bytes, max),
+        MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),
+    };
+    if gf.apply_round {
+        // TODO(compat): FPC `Round` ties-to-even (see the inline list path in
+        // `class_props/parse.rs`); array magnitudes are always in Int64 range.
+        for v in &mut vals {
+            *v = v.round_ties_even();
+        }
+    }
+    if gf.non_zero && vals.contains(&0.0) {
+        errors.push(format!(
+            "{}: file-backed array elements cannot be zero.",
+            obj.data().name()
+        ));
+        return;
+    }
+    if gf.scale != 1.0 {
+        for v in &mut vals {
+            *v *= gf.scale;
+        }
+    }
+    let count = vals.len() as i32;
+    obj.set_f64_array(gf.prop, vals);
+    // Pascal `integerPtr^ := InterpretDblArray(...)`: shrink the count property to
+    // the number of values read.
+    obj.set_i32(gf.size_prop, count);
 }
 
 /// Write a queued [`ShapeSave`] to `OutputDirectory` and set `GlobalResult`

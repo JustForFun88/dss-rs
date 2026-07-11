@@ -162,6 +162,11 @@ pub struct LoadShapeObj {
     /// Deferred binary saves queued by `Action=SngSave/DblSave` (drained by the
     /// executive, which owns `OutputDirectory`/`GlobalResult`).
     pending_shape_saves: Vec<crate::obj::base::ShapeSave>,
+    /// WPG.19: `action=normalize`/`ln` requested while a file directive is still
+    /// pending (`mult=(file=…) ln`). Pascal reads the file inline, so `Normalize`
+    /// sees the data; our deferred read makes it run in `run_deferred_actions`
+    /// (after the file loads). `false` ⇒ normalize ran inline (numeric mult).
+    pending_normalize: bool,
 }
 
 impl LoadShapeObj {
@@ -196,6 +201,7 @@ impl LoadShapeObj {
             pqcsvfile: String::new(),
             pending_file_loads: Vec::new(),
             pending_shape_saves: Vec::new(),
+            pending_normalize: false,
         }
     }
 
