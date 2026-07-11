@@ -130,6 +130,45 @@ fn flicker_constant_input_zero_pst_and_window_count() {
     assert_eq!(ppst[2], -1.0, "no third window over 1300 s");
 }
 
+/// Fractional (non-f32-exact) duty step: `ts = 0.1 s`, the regime the integer
+/// corpus decks never exercise. This pins the `Double`-arithmetic model of the
+/// two loop-control expressions (`trunc(600.0/ts)` and `(t - tPst) >= 600.0`):
+///
+/// * `600.0 / 0.1_f32` differs by division rounding — f32 gives `6000`, but
+///   `600.0_f64 / (0.1_f32 as f64) = 5999.99991` truncates to `5999`, so the
+///   port sizes `hst = trunc(600/ts)+1 = 6000`, **exactly** Delphi's
+///   `SetLength(hst, ...)` (Win64 `Extended` ≡ `Double`). The histogram must
+///   still be large enough for the fullest window (`ihst` reaches 5999 here), so
+///   this also guards against an out-of-bounds write in the fractional regime.
+/// * `(t - tPst)` is exact in f32 by Sterbenz's lemma (`t`/`tPst` always within
+///   a factor of 2 near a 600 s boundary), so the window boundary lands
+///   identically in f32 and f64 — the port fires exactly one window over 610 s.
+#[test]
+fn flicker_fractional_step_matches_double_model() {
+    let n = 6100; // times 0.1 .. 610.0 s -> crosses the 600 s boundary once
+    let times: Vec<f32> = (1..=n).map(|i| (i as f32) * 0.1).collect();
+    // A mild sinusoidal ripple so the percentile machinery runs non-trivially
+    // over the full 6000-sample histogram (not the DC-only degenerate path).
+    let mut prms: Vec<f32> = (0..n)
+        .map(|i| 1000.0 + 5.0 * ((i as f32) * 0.05).sin())
+        .collect();
+    // Npst = 1 + trunc(610/600) = 2 (Double model); the 2nd slot never fills.
+    let mut ppst = vec![-1.0f32; 2];
+
+    // Must not panic (the f64 `hst_len = 6000` exactly covers `ihst`'s reach).
+    flicker_meter(60.0, 1000.0, &times, &mut prms, &mut ppst);
+
+    // Exactly one 600 s window completes; its Pst is finite and non-negative.
+    assert!(
+        ppst[0].is_finite() && ppst[0] >= 0.0,
+        "first-window Pst not finite/non-negative: {}",
+        ppst[0]
+    );
+    assert_eq!(ppst[1], -1.0, "no second window completes within 610 s");
+    // The flicker levels were computed for every sample (in place).
+    assert!(prms.iter().all(|v| v.is_finite()));
+}
+
 /// A degenerate <2-sample stream has no defined step (`ts := pT[2]-pT[1]`) — the
 /// port bails out rather than reading out of bounds.
 #[test]

@@ -156,9 +156,18 @@ impl DssObject for Monitor {
         }
     }
 
-    /// Pascal `DoAction`: Clear/Reset → `ResetIt`; Save/TakeSample/Process are
-    /// meaningful only via the `Sample` command / solution loop (they need the
-    /// live metered element + node voltages), so they no-op here.
+    /// Pascal `DoAction` (`Monitor.pas:289-304`): Clear/Reset (ordinal 0) →
+    /// `ResetIt`. The other three actions all need context this parse-time edit
+    /// hook does not hold, so — like every other meter's `do_action` (cf.
+    /// `EnergyMeter`) — they are driven from the executive and no-op here:
+    /// `TakeSample` (2) needs the live solution/node voltages; `Save` (1) needs
+    /// the output file; `Process` (3) → `PostProcess` → `DoFlickerCalculations`
+    /// needs the circuit to resolve the metered-bus `kVBase` (the `Vbase`
+    /// normalizer). The port already runs `PostProcess` on the path that matters
+    /// — `Export`/`Show Monitor` → `to_csv`, which resolves `kv_base` from the
+    /// circuit — so the flicker rewrite is covered; the pinned dss_capi oracle
+    /// cannot gate `Process` anyway (its `DoFlickerCalculations` segfaults on the
+    /// `Terminals` OOB, so `Monitors.Process()` hard-crashes).
     fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
         if ordinal == 0 {
             // `Action=Clear/Reset` runs at parse time with no solution context,
