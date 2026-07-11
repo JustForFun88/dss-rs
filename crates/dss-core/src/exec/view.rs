@@ -3,6 +3,7 @@
 //! Split out of `exec/mod.rs`.
 
 use super::*;
+use crate::report::export::json::{JsonOpts, build as json_build, serialize as json_serialize};
 
 /// A monitor's recorded buffer for the golden/test harness (dss-python
 /// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
@@ -299,6 +300,43 @@ impl Dss {
             out.push((pname, value));
         }
         Some(out)
+    }
+
+    /// AltDSS single-object JSON dump — Pascal `Obj_ToJSON_`
+    /// (`CAPI_Obj.pas:762-784`). `full_name` is a `Class.name` (case-insensitive,
+    /// `@var`-aware like [`Dss::element_properties`]); `None` if no such object
+    /// exists. `opts` selects the sweep (default filled-only vs `Full`), the key
+    /// naming, and the compact/pretty layout. This is a pure read of the parsed
+    /// model (no solve state), so it may be called before any solve.
+    pub fn obj_to_json(&self, full_name: &str, opts: JsonOpts) -> Option<String> {
+        let (class_name, name) = {
+            let mut p = Parser::new();
+            parse_object_class_and_name(&mut p, &self.vars, full_name)
+        };
+        let &ci = self.class_by_name.get(&class_name.to_lowercase())?;
+        let &oi = self.classes[ci].name_to_idx.get(&name.to_lowercase())?;
+        let json = json_build::obj_to_json_data(
+            &self.classes[ci].props,
+            self.classes[ci].objects[oi].as_ref(),
+            &self.enums,
+            opts,
+        );
+        Some(json_serialize(&json, opts))
+    }
+
+    /// AltDSS class-batch JSON dump — Pascal `Batch_ToJSON` over every object of
+    /// a class (the `IActiveClass.ToJSON` oracle surface, `CAPI_Obj.pas:1201-
+    /// 1254`). `class` is the class name (case-insensitive); `None` if unknown.
+    /// An empty class serializes to `[]`.
+    pub fn class_batch_to_json(&self, class: &str, opts: JsonOpts) -> Option<String> {
+        let &ci = self.class_by_name.get(&class.to_lowercase())?;
+        let json = json_build::batch_to_json(
+            &self.classes[ci].props,
+            &self.classes[ci].objects,
+            &self.enums,
+            opts,
+        );
+        Some(json_serialize(&json, opts))
     }
 
     /// Read a bus's short-circuit results after a FaultStudy solve — the

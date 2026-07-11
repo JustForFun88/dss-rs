@@ -9,6 +9,9 @@
 //! parser (`parse_into`) is in [`parse`] and the `?`/`DumpProperties` renderer
 //! (`get_value`) in [`value`].
 
+mod json;
+#[cfg(test)]
+mod json_tests;
 mod parse;
 mod typed;
 mod value;
