@@ -275,11 +275,19 @@ Scope = the one call path kmetis-style partitioning uses, not the whole library:
   fixed seed), `util.c`, `mcutil.c`, `contig.c`/`minconn.c` only if the default option
   path reaches them;
 - the GKlib primitives the path uses — the deterministic GKRAND RNG
-  (`irand`/`irandArrayPermute`), priority queues, sorts — ported from GKlib source.
-  **Prerequisite: vendor GKlib** (KarypisLab/GKlib at the commit the METIS 5.2.1
-  submodule pins — `.inputs/METIS/.gitmodules` exists but the tree is empty) into
-  `.inputs/GKlib`; without it the RNG/pqueue spec is unreadable → the source-integrity
-  gate applies.
+  (`irand`/`irandArrayPermute`), priority queues, sorts — ported from GKlib source:
+  **vendored 2026-07-11 at `.inputs/GKlib`** (clone of KarypisLab/GKlib, commit
+  `3b7d61b`; the needed spec files are `src/random.c`/`pqueue.c`/`sort.c` + the macro
+  templates `include/gk_mkrandom.h`/`gk_mkpqueue.h`/`gk_mksort.h` that METIS's
+  `libmetis/gklib.c` instantiates). Part of the Part II source-integrity gate.
+
+Spec pins (sha-watch, D10 discipline): `.inputs/METIS` @ `272d4a9`, `.inputs/GKlib` @
+`3b7d61b`. Note: the vendored METIS checkout carries local performance commits on top
+of upstream 5.2.1 (its own history documents them as bit-identical). This does not
+weaken the gate — the `.part` goldens are generated from **this exact tree**, so the
+port and its spec are self-consistent by construction; upstream-exactness was already a
+non-goal (the kmetis-4.0 version step). If the tree is ever updated, regenerate the
+goldens deliberately and re-record the pins.
 
 The path is on the order of 6–8k lines of C → a bounded, mechanical port under the
 same discipline as the Pascal (loop-for-loop, RNG ported too, so partitions are
