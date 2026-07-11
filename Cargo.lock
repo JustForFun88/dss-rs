@@ -209,6 +209,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dss-metis"
+version = "0.1.0"
+
+[[package]]
 name = "dss-parser"
 version = "0.1.0"
 dependencies = [

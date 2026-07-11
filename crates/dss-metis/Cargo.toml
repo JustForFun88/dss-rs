@@ -1,0 +1,12 @@
+[package]
+name = "dss-metis"
+version = "0.1.0"
+edition = "2024"
+
+# 1:1 safe-Rust source port of the METIS 5.2.1 `METIS_PartGraphKway` call path
+# (DIAKOPTICS_PSTCALC_PLAN.md D2 / WP-AD.2 Stage A). No C is linked; the vendored
+# `.inputs/METIS` + `.inputs/GKlib` sources are the spec. Goldens are generated
+# offline from the C original (see tools/golden/gen_metis_reference.md) and
+# replayed bit-exact by the tests; no C runs in `cargo test` or CI.
+
+[dependencies]
