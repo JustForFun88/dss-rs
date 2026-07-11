@@ -346,8 +346,10 @@ exotics — optional; stopping here is a complete usable simulator**
 (PORTING_PLAN cumulative note). Remaining named work: actor mode
 (`MULTITHREADING_PLAN.md` M2), A-Diakoptics, Pstcalc, WPG.19 (file-backed
 `File=` arrays — now the proven sole blocker of the whole ckt24/SolarRamp
-family), WPG.20 (MMF save), `JSON_EXPORT_PLAN.md`, `RESONANCE_PLAN.md` WP-R1.
-Details:
+family), WPG.20 (MMF save), `RESONANCE_PLAN.md` WP-R1. **`JSON_EXPORT_PLAN.md`
+Stage A + Stage B DONE (2026-07-12, branch `wp-json-a`)** — the full AltDSS JSON
+export (single object / class batch / whole circuit); only JSON **import** +
+`CAPI_Schema` remain (named §6 follow-ups). Details:
 
 - **Step 1 (marker sweep).** Every stale marker settled: **(a)** `show powers
   e` now emits the three exact Pascal whitespace layouts (Sources `%s %4d`, PC
@@ -2645,6 +2647,186 @@ FINAL ACCEPTANCE referee items.
     entry 6 node V |diff|=4.60e-6 > allowed 1.599e-6). Per the no-fudging rule it is a
     divergence-to-investigate, not a green case.
   - `solvable_now` 226→**241 (71.9% of entry points)**; `COVERAGE.md` regenerated.
+
+**JSON export Stage A (`Obj_ToJSON` / `Batch_ToJSON`) — 2026-07-11, branch
+`wp-json-a`.** Ported the AltDSS single-object + class-batch JSON model dump per
+`JSON_EXPORT_PLAN.md` §4 Stage A (the GUI-facing machine-readable surface; Stage B
+whole-circuit remains deferred).
+
+- **New `report/export/json/`** — an ordered `Json` tree + `JsonOpts` (bits 0–10
+  only; State/Debug/Edit not representable, §6); `fpjson_float` (FPC `Str(Double)`
+  17-sig-digit scientific `1.2470000000000001E+001`, `TODO(compat)`); `write_compact`
+  (`foSingleLine*+foSkipWhiteSpace`) + `write_pretty` (`FormatJSON([],2)`); fpjson
+  `StringToJSON` escaping (`"`→\", `\`→\\, `/` NOT escaped — probed). Two Windows
+  fpjson quirks pinned: pretty uses the RTL **CRLF** line break (`TODO(compat)`), and
+  an **empty container in pretty is `[`+CRLF+indent+`]`**, not inline `[]`.
+- **`obj/props/class_props/json.rs`** — `get_json_value`, a loop-for-loop port of
+  `GetObjPropertyJSONValue` (`DSSObjectHelper.pas:968-1518`): full `PropType` matrix,
+  the `preferArray`/`array_alternative` recursion, the `PropertyOffset=-1` guard
+  (NOT_PORTED/SILENT_READ_ONLY→omit), NaN/Inf→null, on-struct scalars→per-winding
+  array under `ON_ARRAY`.
+- **`report/export/json/build.rs`** — `obj_to_json_data` (`Obj_ToJSONData`): the
+  Name/DSSClass header, the default set-order sweep with the redundant/array-alt
+  `iPropNext2` deferral, the `Full` sweep, skip flags; `batch_to_json`
+  (`Batch_ToJSON`, `ExcludeDisabled`; `IncludeDefaultObjs`/`DefaultAndUnedited` is a
+  no-op — no Rust default-object flag, a Stage-B dep).
+- **`exec/view.rs`** — public `Dss::obj_to_json` + `class_batch_to_json` (`&self`).
+  The default sweep is a pure pre-solve read; `Full` may render `READS_VTERMINAL`
+  function strings (Transformer `WdgCurrents`) from the Vterminal cache without the
+  `refresh_vterminal_if_marked` choke point — a recorded deferral (never in default
+  output; `skip_full` in the goldens).
+- **Metadata (`PropDef`/`PropFlags`)** — new `redundant_with`/`array_alternative`/
+  `json_name` fields + `json_key()` derivation (`%→pct`, `-→__`; LowercaseKeys →
+  AnsiLowerCase of the modern name) + flags `ALT_INDEX`/`INTEGER_STRUCT_INDEX`/
+  `ON_ARRAY`/`FULL_NAME_AS_JSON_ARRAY`/`FULL_NAME_AS_ARRAY`. Populated for the
+  golden-covered classes only (staged): **Transformer** (kV/kVA/Tap/%R/Bus/Conn
+  array-alternatives + kVs/…/Conns/XHL/XHT/XLT redundancy + Wdg IntegerStructIndex +
+  Rneut/Xneut/Max/MinTap/RdcOhms/NumTaps ON_ARRAY), **Line** (Wires→`Conductors`
+  json_name + FullNameAsJSONArray, cncables/tscables + B1/B0 redundancy, Seasons
+  SuppressJSON), **LineCode** (B1/B0→C1/C0), **Vsource** (R1/X1→Z1, R0/X0→Z0). Load
+  needs none.
+- **Line set-order fix (found + fixed here):** the pinned oracle marks
+  `Seasons/Ratings/NormAmps/EmergAmps` **set** after a `linecode=` fetch (confirmed
+  via its Save + JSON output); the Rust `fetch_line_code` cleared them (wrong branch,
+  inconsistent with the already-correct `fetch_line_spacing`). Now it re-marks them in
+  the `LINECODE` side effect (runs after the linecode's own `SetAsNextSeq`, so they
+  sort after it — the oracle's order).
+- **Gate:** `tools/golden/gen_json.py` (byte goldens under `tests/golden/json/`) +
+  `crates/dss-core/tests/golden_json.rs` (byte-equality, in `cargo test --workspace`).
+  **8 decks, all byte-green:** load/line/line_matrix/vsource/transformer/escape/
+  **batch** micro decks + IEEE13 element samples (Line/Transformer/Load/LineCode).
+  The 10-combo matrix {0, Full, Full|Pretty, **Pretty**, **IncludeDSSClass**,
+  EnumAsInt, FullNames, Full|IncludeDSSClass, **Full|SkipRedundant**, LowercaseKeys}
+  runs on every deck (Full-family excluded on the `skip_full` decks); `batch_micro`
+  runs a custom {default, Pretty, ExcludeDisabled, ExcludeDisabled|Pretty} set. The
+  driver asserts each capture carries the deck's full declared combo set (a
+  coverage guard against a silently dropped combo). Plus fpjson-writer/float/escape
+  unit tests + 13 synthetic per-`PropType`-arm tests.
+- **Deferrals (recorded):** transformer **Full** and matrix-model-line **Full** are
+  golden-tested in default-family combos only — Full exposes the transformer
+  `WdgCurrents` result string (solve state) and a matrix-model line's sym-scalar
+  NaN→`null` getter, both out of the pre-solve dump path; the `DynInit` `TDynEqPCE`
+  tail and whole-circuit `circuit_to_json` (Stage B) stay NOT_PORTED (§6).
+- **Audit settle (2026-07-11), gate-green.** Findings settled empirically against
+  Pascal + the pinned oracle:
+  - **[Major] ON_ARRAY per-winding arms were untested** (only reachable in the
+    `skip_full` transformer Full render). Fixed by *setting* the transformer's
+    `RDCOhms/MaxTap/MinTap/NumTaps/RNeut` in `transformer_micro` so the **default**
+    sweep renders each as a per-winding array — probed on the oracle, byte-pinned;
+    covers both the DoubleOnStructArray and IntegerOnStructArray JSON arms.
+  - **[Minor] `JsonOpts::from_bits` silently masked bits 11–13** (plan §6 requires a
+    raw-bits entry to error loudly). Now it `assert!`s no non-representable bit is
+    set (State/Debug/Edit → panic, NOT_PORTED), never silent.
+  - **[Minor] empty-batch pretty** — REFUTED: the oracle `IActiveClass.ToJSON`
+    surface returns `[\r\n]` for an empty class in pretty (it does **not** take the
+    C-API `batchSize=0 → '[]'` shortcut), which the Rust path already matches. Pinned
+    by the new `batch_micro` empty-`Capacitor` capture (default `[]`, pretty `[\r\n]`).
+  - **[Minor] ObjectRef `OnArray` sub-branch** (DSSObjectHelper.pas:1169-1194) and
+    **AllowNone→null on DoubleArray/DoublePoints** (l.1218 shared block) were ported
+    (no golden-covered class uses them; synthetic arm tests added).
+  - **[Minor] Line `fetch_line_code` seq-clear** — REFUTED as a divergence: the WP
+    change (ratings marked set) is golden-proven; probing the unusual
+    `r1=… linecode=…` order shows the oracle also drops R1/X1, matching the
+    (pre-existing) Rust clear — no oracle gap.
+  - **[Minor] SkipRedundant / ExcludeDisabled / default-Pretty / bare-IncludeDSSClass
+    untested** — added as combos/decks above (vsource `Full|SkipRedundant` drops
+    R1/X1/R0/X0; `batch_micro` ExcludeDisabled drops a disabled load).
+  - **[Minor] DoubleSymMatrix symmetric-blind fixture** — `line_matrix` now uses
+    **distinct** diagonals (0.1/0.11, 0.2/0.22, 3/3.3) so the row/column indexing is
+    pinned positionally.
+
+**JSON export Stage B (`Obj_Circuit_ToJSON_`) — 2026-07-12, branch `wp-json-a`.**
+Ported the whole-circuit AltDSS JSON dump per `JSON_EXPORT_PLAN.md` §4 Stage B
+(`CAPI_Obj.pas:2513-2672` + `saveOpenTerminalsJSON` `:2470-2511` + the bus renderer
+`alt_Bus_ToJSON_` `CAPI_Alt.pas:2820-2832`). JSON export is now complete for the
+single-object / class-batch / whole-circuit surfaces.
+
+- **New `report/export/json/circuit.rs`** — `circuit_to_json`: `$schema`, `Name`,
+  `DefaultBaseFreq` (float), `PreCommands`, `Bus[]`, `PostCommands`, then one key per
+  DSS class → array of `obj_to_json_data`, in **`PASCAL_CLASS_ORDER`** (the DSSClassList
+  order; the Rust registry groups DSS_OBJECT classes first internally). **Always
+  pretty** (`FormatJSON()`), regardless of `opts.PRETTY`. `Dss::circuit_to_json(&self,
+  opts) -> Option<String>` in `exec/view.rs` (None when no circuit).
+- **PreCommands** — optional save stamp (SkipTimestamp gates it; the port emits a fixed
+  deterministic comment, never a non-deterministic timestamp — never gated),
+  CktModel/AllowDuplicates/LongLineCorrection conditionals, EarthModel, VoltageBases
+  (`GetDSSArray`). **`Set CktModel=` is always empty when positive-sequence is on**
+  (`TODO(compat)`: `PositiveSequence` is a Pascal `LongBool`, `Integer(True) = -1`,
+  out of the enum's [0,1] range → `OrdinalToString` returns `''`; reproduced via
+  `ordinal_to_string(-1)`).
+- **PostCommands** — the 33 solution/options `Set …` strings with their exact FPC
+  formats + the `saveOpenTerminalsJSON` `Open …` lines. **6 `TODO(compat)` format
+  tags:** `%-g` (default-15-sig general), `%-.4g` (4-sig), `%8.2f` (width-8 fixed
+  2-decimal), `GetDSSArray` (` %g` per element), plus the CktModel LongBool quirk and
+  the module-level format note. Reuses the ported `report::format::{g, fixed_w}` and
+  `util::check_for_blanks`.
+- **`DefaultAndUnedited` flag** — new on `DssObjData` (`default_and_unedited`), set on
+  every LoadShape/GrowthShape/Spectrum/TCC_Curve object at the tail of
+  `create_default_dss_items` (Pascal `Executive.pas:207-217`), cleared on any edit
+  (Pascal `BeginEdit`, `DSSClass.pas:1598`) at the top of `edit_active_inner`. The
+  circuit dump omits these unless `IncludeDefaultObjs`. Byte-pinned both ways
+  (`circuit_edited_default`: editing `spectrum.defaultload` makes it — and only it —
+  rejoin the default dump; `include_default` brings all defaults back).
+- **Metadata (staged, this stage's classes):** **LoadShape** `Mult→PMult`,
+  `SInterval/MInterval→Interval` `redundant_with` (the default sweep was rendering
+  `Mult` where the oracle renders the deferred `PMult`). GrowthShape/Spectrum/TCC_Curve/
+  Capacitor/RegControl needed none beyond the already-present count-prop `SuppressJSON`.
+- **Gate:** 3 new circuit decks in `gen_json.py` / `golden_json.rs`, byte-green:
+  `circuit_micro` (bus X/Y + Keep + kVLN, open terminals — whole-terminal `Open Line.ln1
+  2` + single-conductor `Open Line.ln2 1 2`, LineCode/Line/Vsource/Load class order; the
+  full `{default, Full, Full|Pretty, SkipBuses, IncludeDefaultObjs, EnumAsInt}` combo
+  matrix, all Full-safe classes), `circuit_edited_default` (DefaultAndUnedited both
+  ways), `circuit_ieee13` (real feeder incl. Transformer/RegControl/Capacitor +
+  defaults; `{default, SkipBuses, IncludeDefaultObjs, EnumAsInt}`, Full excluded).
+- **Deferrals (recorded):** **Capacitor `CMatrix` under Full** renders the computed
+  sym-matrix on the oracle vs `null` in the pre-solve Rust dump — the same class as the
+  Stage-A transformer-WdgCurrents / matrix-line-sym-scalar Full deferrals; `circuit_micro`
+  therefore keeps its Full combos on Full-safe classes and covers Capacitor's default-mode
+  dump via `circuit_ieee13`. The WdgCurrents Full refresh, JSON **import**
+  (`Obj_Circuit_FromJSON_`), and `CAPI_Schema` stay NOT_PORTED (§6) — named follow-ups.
+
+**JSON export Stage B settle (2026-07-12, branch `wp-json-a`), gate-green.** Audit
+of the Stage-B commits (code + tests) surfaced 8 findings; settled empirically
+against the pinned oracle. **Two real fixes + one gap ported + one faithful 1:1
+tweak; four refuted/recorded no-fix.**
+- **[Major, FIXED] The `CktModel=`/`AllowDuplicates`/`LongLineCorrection` PreCommands
+  branches were pinned by no golden** — the `Set CktModel=` empty-value TODO(compat)
+  quirk (positive-sequence) fired in zero decks, so a refactor emitting `Positive`
+  would pass silently (CLAUDE.md: every TODO(compat) is golden-pinned). New deck
+  `circuit_positive_seq` (`set cktmodel=positive`/`allowduplicates=yes`/
+  `longlinecorrection=yes`) byte-pins all three (oracle: `Set CktModel=`,
+  `Set AllowDuplicates=True`, `Set LongLineCorrection=True`).
+- **[gap ported] `Set/Get LongLineCorrection` was unwired** — the field existed but no
+  `Set` handler, so the port could never emit that PreCommands line (would have failed
+  the new golden). Added `opt::LONG_LINE_CORRECTION = 118` + Set/Get arms
+  (`ExecOptions.pas:738/1096`, the oracle's `DSS_CAPI_PM` band). Now settable, so the
+  positive-seq golden reproduces.
+- **[Minor, FIXED] `%8.2f` (ueweight/lossweight) used Rust-native `{:.2}`, not byte-exact
+  to FPC** — oracle-probed 28 fractional weights: FPC renders the value at **15
+  significant digits** then rounds **ties-away-from-zero**, so `0.125→0.13` (Rust's
+  ties-to-even gives `0.12`), `2.675→2.68` (15-sig intermediate `2.675…`, not the true
+  `2.6749…` Rust rounds to `2.67`), `99999.995→100000.00`. A real, reachable, unpinned
+  byte gap (weights are settable to fractions). New `report::format::fixed_w_fpc` (+ 29-pair
+  unit test vs the oracle) replaces `fixed_w` on the two JSON PostCommands; pinned by
+  `circuit_positive_seq` (`ueweight=0.125→"    0.13"`, `lossweight=2.675→"    2.68"`).
+  `fixed_w` is unchanged (its faithful-not-exact native rounding is correct for the
+  value-parsed Show tables).
+- **[Minor, faithful 1:1] `get_dss_array([])` rendered `[]` where Pascal returns `''`**
+  (nil/empty `ArrayOfDouble`). Made faithful (empty slice → `""`). Confirmed UNREACHABLE:
+  `set voltagebases=()` is an oracle no-op (LegalVoltageBases keeps its defaults) and
+  `set harmonics=()` still yields `do_all_harmonics` → `Set harmonics=ALL`; not
+  golden-pinnable, faithful only.
+- **[Minor, refuted] `DefaultAndUnedited` cleared only in `edit_active_inner`, narrower
+  than Pascal `BeginEdit`** — verified the only property-mutation paths in the port are
+  the Edit command (→ `edit_active_inner`, clears the flag) and the WPG.21 typed setters,
+  which are called **exclusively** from `make_pos_seq.rs` over circuit elements — never the
+  four DSS_OBJECT default-shape classes. No bypass exists → no defect.
+- **[Minor ×3, recorded no-fix]** the non-SkipTimestamp save-stamp comment is a deliberate
+  deterministic substitution for the oracle's wall-clock line (inherently un-goldenable,
+  documented at the site, JSON import NOT_PORTED so it is an inert `!` comment); the
+  synthetic-class Full circuit deferral (transformer WdgCurrents / matrix-line sym→null /
+  capacitor CMatrix under Full) is the tracked Stage-A deferral; the `enum_as_int` combo on
+  `circuit_micro` is redundant (real discrimination is on `circuit_ieee13`) — harmless.
 
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
