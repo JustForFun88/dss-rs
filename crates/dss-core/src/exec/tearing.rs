@@ -18,9 +18,14 @@ use std::path::PathBuf;
 
 /// Look up the phase count of a PDE by its `Class.Name` (mirrors
 /// `SetElementActive(MyName); ActiveCktElement.NPhases`). Returns `None` when
-/// the element cannot be resolved (the caller treats it as the upstream
-/// silent-`SetElementActive`-miss, weight falling through to whatever the
-/// class special-case decides).
+/// the element cannot be resolved.
+///
+/// NOTE(upstream): on a `SetElementActive` miss Pascal leaves `ActiveCktElement`
+/// at its *prior* value, so a caller reading `NPhases` would see whatever was
+/// last active — not 0. `build_metis_graph`'s `unwrap_or(0)` weight therefore
+/// diverges on an unresolved row, but this is unreachable for a well-formed
+/// incidence matrix (every `Inc_Mat_Row` is a real, resolvable PDE), so it has
+/// no numeric effect; we prefer a defined 0 over reproducing a stale-state read.
 fn nphases_of(classes: &[DssClass], full_name: &str) -> Option<usize> {
     let lower = full_name.to_lowercase();
     let (cls_name, obj_name) = match lower.split_once('.') {
@@ -278,7 +283,24 @@ pub(crate) fn try_set_ad_option(
             true
         }
         "linkbranches" => {
-            ckt.ad.link_branches = parse_element_list(param);
+            // Official ExecOptions.pas:842–844: `setlength(Link_Branches,
+            // myList.Count + 1); for i := 1 to myList.Count do Link_Branches[i]
+            // := myList[i-1]`. Index 0 is an empty **reference placeholder**;
+            // the user's cuts occupy 1..=Count. Both `Tear_Circuit` branches
+            // skip index 0, and `Num_pieces`/`Result` are driven off the full
+            // length — so the placeholder is what makes N user links yield N+1
+            // sub-circuits (empirically confirmed vs r3723: `[line.main10]` →
+            // "Sub-Circuits Created: 2"; `[l5, l10]` → 3).
+            //
+            // NOTE(upstream): the `myList.Count <= CPU_Cores-3` guard (error
+            // 7009) is deliberately NOT ported — it makes the setter
+            // core-count-dependent, which plan D6 forbids for reproducible AD
+            // tests. The placeholder is the count-affecting behavior.
+            let items = parse_element_list(param);
+            let mut lb = Vec::with_capacity(items.len() + 1);
+            lb.push(String::new());
+            lb.extend(items);
+            ckt.ad.link_branches = lb;
             true
         }
         "usemylinkbranches" => {
@@ -316,8 +338,15 @@ pub(crate) fn try_get_ad_option(ckt: &Circuit, param_name: &str, result: &mut St
             true
         }
         "linkbranches" => {
-            let joined = ckt.ad.link_branches.join(", ");
-            super::helpers::append_result(result, &format!("[{joined}]"));
+            // Official ExecOptions.pas:1093–1095: `for i := 0 to
+            // High(Link_Branches) do AppendGlobalResult(Link_Branches[i])`.
+            // `AppendGlobalResult('')` on an empty result leaves it empty
+            // (DSSGlobals.pas:798–802), so the index-0 placeholder vanishes and
+            // the output is the non-empty cuts, comma-space separated, with no
+            // brackets — matching r3723 (`get LinkBranches` → `line.main10`).
+            for link in &ckt.ad.link_branches {
+                super::helpers::append_result(result, link);
+            }
             true
         }
         "usemylinkbranches" => {
@@ -454,7 +483,7 @@ impl Dss {
         let Some(ckt) = self.circuit.as_ref() else {
             return 0;
         };
-        let bus2 = match nphases_bus2(&self.classes, pde) {
+        let bus2 = match pde_bus2_name(&self.classes, pde) {
             Some(b) => b,
             None => return ckt.solution.inc_matrix.cols.len() as i32,
         };
@@ -470,8 +499,9 @@ impl Dss {
 
 /// The dot-stripped **bus 2** name of a PDE by `Class.Name`
 /// (`SetElementActive(myPDE); ActiveCktElement.GetBus(2)`), or `None` when the
-/// element cannot be resolved.
-fn nphases_bus2(classes: &[DssClass], full_name: &str) -> Option<String> {
+/// element cannot be resolved. Used by `get_PDE_Bus1_Location` (the Pascal name
+/// says bus 1 but reads bus 2 — Solution.pas:1707).
+fn pde_bus2_name(classes: &[DssClass], full_name: &str) -> Option<String> {
     let lower = full_name.to_lowercase();
     let (cls_name, obj_name) = match lower.split_once('.') {
         Some((c, n)) => (Some(c), n),

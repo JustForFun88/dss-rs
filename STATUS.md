@@ -214,6 +214,54 @@ completion in this session — the changes are additive (new module/fields +
 previously-unknown-command/option interception) so cross-suite risk is low, but
 the coordinator/auditors should confirm the full workspace run.
 
+**WP-AD.2 Stage B — audit settlement (2026-07-11, gate-green).** Two auditors
+(code + tests) filed 11 findings; each settled empirically against the r3723
+Delphi source (D10) and probed on the r3723 binary via the Oddie bridge (D9a).
+- **`set LinkBranches` off-by-one (Major/Critical, real bug — fixed).** The
+  official setter reserves an empty index-0 reference placeholder
+  (`ExecOptions.pas:842–844`: `setlength(Link_Branches, Count+1); for i:=1 to
+  Count do Link_Branches[i]:=myList[i-1]`); both `Tear_Circuit` branches skip
+  index 0 and the sub-circuit count is `length(Link_Branches)`. The Rust setter
+  stored a 0-based list with no placeholder, so a single user link tore to **1**
+  sub-circuit, not 2. Oddie-probed r3723: `[line.main10]` → "Sub-Circuits
+  Created: 2", `[line.main5, line.main10]` → 3. Fixed by prepending the empty
+  placeholder in the `linkbranches` setter. `get LinkBranches` also corrected to
+  the official per-element `AppendGlobalResult` form (placeholder vanishes, no
+  brackets — `line.main10`), matching the probe.
+- **Vacuous manual-links test (Critical — fixed).** The old test only asserted
+  `get LinkBranches` echoed the set value. Rewritten to pin the empirically
+  confirmed cut counts (1 link → 2, 2 links → 3) and the exact `get` echo — now
+  a real regression guard for the placeholder + manual-cut path.
+- **`Create_MeTIS_graph` weight/dedup unexercised (Major — fixed).** Added a
+  transformer + parallel-line feeder test that reads the emitted `.graph` and
+  pins the Transformer-weight-1 rule, the 3-phase Line weight, and the
+  parallel-branch dedup (5 branches → 4 distinct edges in the header).
+- **Zone balance not asserted (Major — fixed).** The 3-zone and macro tests now
+  assert per-zone balance (catches a 1-vs-N partition that a bare non-empty
+  check missed). Full zone-*connectivity* recompute rides on the deferred
+  torn-file round-trip (below), where each zone is compiled and solved.
+- **`Num_SubCkts` default `.max(1)` clamp (Minor — fixed).** Removed; now
+  `CPU_Cores-1` verbatim (Circuit.pas:606; D6 → never gated).
+- **`nphases_bus2` misnomer + `unwrap_or(0)` (Minor — fixed/recorded).** Renamed
+  to `pde_bus2_name`; the `unwrap_or(0)` weight-on-unresolved-row divergence from
+  Pascal's stale-`ActiveCktElement` read is documented as unreachable
+  (`NOTE(upstream)`), a defined 0 preferred over a stale-state read.
+- **D5 first-line swap on the un-dropped canonical partition (Minor —
+  recorded, no fix).** Plan-sanctioned (D5 reproduce the swap 1:1; D2 partition
+  the full canonical graph in-process; D2 accepts auto-tear zone shapes differ
+  from upstream). The swap is fixture-pinned deliberately; the future
+  `Torn_Circuit` self-golden will pin it by intent, not accident.
+- **Torn-file emission ~40% of Stage B still deferred (Major — recorded, no
+  fix).** Deliverables 5–6 (zone `EnergyMeter` placement, terminal orientation
+  by |V|, `PConn_Voltages` capture, `Save_SubCircuits`/`Format_SubCircuits`/
+  `AppendIsources`/`Disable_All_DER`, the committed `Torn_Circuit/` fixture
+  golden + round-trip compile/solve tests) remain the outstanding Stage-B work,
+  as recorded above — they need `save circuit` integration + prior-solve `NodeV`
+  and are a substantial follow-up (≈300 lines of Pascal + a byte-stable golden).
+  `Tear_Circuit`'s "Sub-Circuits Created: N" is the official success string
+  (Diakoptics.pas:526); the missing file emission is the honest, documented
+  deferral, not a silent drop.
+
 **WP-AD.2 Stage A — audit settlement (2026-07-11, gate-green).** Two auditors
 (code + tests) filed 6 Minor findings; each settled empirically against the C spec
 (`.inputs/METIS`,`.inputs/GKlib`) via the offline gcc-13.2.0 reference build. Real

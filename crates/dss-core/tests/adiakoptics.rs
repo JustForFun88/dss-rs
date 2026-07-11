@@ -152,6 +152,13 @@ fn tear_midi_three_zones() {
     labels.sort_unstable();
     labels.dedup();
     assert_eq!(labels, vec![0, 1, 2], "expected 3 zone labels");
+    // Balanced: no zone below ~1/6 of the buses (catches a lopsided partition
+    // regression that leaves 3 labels present but one zone near-empty).
+    let n = part.len();
+    for z in 0..3 {
+        let sz = part.iter().filter(|&&l| l == z).count();
+        assert!(sz * 6 >= n, "zone {z} too small: {sz} of {n}");
+    }
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -176,35 +183,74 @@ fn tear_macro_two_zones() {
     );
     let z0 = part.iter().filter(|&&l| l == 0).count();
     let z1 = part.len() - z0;
-    assert!(z0 > 0 && z1 > 0, "both zones non-empty");
+    // Balanced 2-way split — neither zone below 25% (a 1-vs-199 partition
+    // regression fails here, where a bare non-empty check would pass).
+    let n = part.len();
+    assert!(
+        z0 * 4 >= n && z1 * 4 >= n,
+        "unbalanced macro partition: {z0} vs {z1} of {n}"
+    );
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// The manual-links branch: `set LinkBranches=[...] UseMyLinkBranches=True`
+/// drives the cut count. Each user link is a cut, so N link branches yield N+1
+/// sub-circuits — the official setter reserves an empty index-0 reference
+/// placeholder (ExecOptions.pas:842–844) and `Tear_Circuit` returns
+/// `length(Locations) = length(Link_Branches) = N+1`. Both counts and the
+/// `get LinkBranches` echo are empirically pinned against the r3723 binary
+/// (Oddie bridge): `[line.main10]` → "Sub-Circuits Created: 2", `[line.main5,
+/// line.main10]` → 3, and `get LinkBranches` drops the placeholder
+/// (`line.main10`, no brackets). This is the regression that caught the missing
+/// index-0 placeholder (which made a single link tear to 1, not 2).
 #[test]
-fn tear_manual_link_branches_uses_requested_cut() {
-    let name = "tearman";
-    let scratch = scratch_dir("manual");
-    let mut dss = Dss::new();
-    build(&mut dss, &radial_feeder(name, 20, 0), &scratch);
+fn tear_manual_link_branches_use_requested_cuts() {
+    // One cut at a specific 3-phase trunk line → two sub-circuits.
+    {
+        let name = "tearman1";
+        let scratch = scratch_dir("manual1");
+        let mut dss = Dss::new();
+        build(&mut dss, &radial_feeder(name, 20, 0), &scratch);
 
-    // Force the cut at a specific 3-phase trunk line.
-    dss.command("set LinkBranches=[line.main10]");
-    dss.command("set UseMyLinkBranches=True");
-    dss.command("Tear_Circuit");
-    assert!(
-        dss.errors().is_empty(),
-        "manual tear errors: {:?}",
-        dss.errors()
-    );
+        dss.command("set LinkBranches=[line.main10]");
+        // The placeholder makes the stored list length 2, but `get` hides it.
+        dss.command("get LinkBranches");
+        assert_eq!(dss.result(), "line.main10");
 
-    // The requested link branch is preserved (get LinkBranches echoes it).
-    dss.command("get LinkBranches");
-    assert!(
-        dss.result().to_lowercase().contains("line.main10"),
-        "manual link not used: {}",
-        dss.result()
-    );
-    std::fs::remove_dir_all(&scratch).ok();
+        dss.command("set UseMyLinkBranches=True");
+        dss.command("Tear_Circuit");
+        assert!(
+            dss.errors().is_empty(),
+            "manual tear errors: {:?}",
+            dss.errors()
+        );
+        // N=1 link → N+1=2 sub-circuits (regression guard for the placeholder).
+        assert_eq!(dss.result(), "Sub-Circuits Created: 2");
+        std::fs::remove_dir_all(&scratch).ok();
+    }
+
+    // Two cuts → three sub-circuits: the count scales with the requested list,
+    // proving the manual list actually drives the tear (not a fixed value).
+    {
+        let name = "tearman2";
+        let scratch = scratch_dir("manual2");
+        let mut dss = Dss::new();
+        build(&mut dss, &radial_feeder(name, 20, 0), &scratch);
+
+        dss.command("set LinkBranches=[line.main5, line.main10]");
+        dss.command("get LinkBranches");
+        assert_eq!(dss.result(), "line.main5, line.main10");
+
+        dss.command("set UseMyLinkBranches=True");
+        dss.command("Tear_Circuit");
+        assert!(
+            dss.errors().is_empty(),
+            "manual tear errors: {:?}",
+            dss.errors()
+        );
+        assert_eq!(dss.result(), "Sub-Circuits Created: 3");
+        std::fs::remove_dir_all(&scratch).ok();
+    }
 }
 
 #[test]
@@ -223,6 +269,98 @@ fn one_zone_request_is_handled() {
 
     let part = read_part(&scratch, name, 1);
     assert!(part.iter().all(|&l| l == 0), "1-zone: all labels zero");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Read the emitted `<name>_.graph` file as `(n_cols, num_edges, weights)` —
+/// the header fields plus every edge-weight token across the adjacency lines.
+fn read_graph(scratch: &std::path::Path, name: &str) -> (i32, i32, Vec<i32>) {
+    let p = scratch.join(format!("{name}_.graph"));
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let mut lines = text.lines();
+    let header: Vec<i32> = lines
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .map(|t| t.parse().unwrap())
+        .collect();
+    // Adjacency lines are `neigh weight neigh weight ...`; collect the weights
+    // (every second token).
+    let mut weights = Vec::new();
+    for line in lines {
+        let toks: Vec<i32> = line
+            .split_whitespace()
+            .map(|t| t.parse().unwrap())
+            .collect();
+        for pair in toks.chunks(2) {
+            if pair.len() == 2 {
+                weights.push(pair[1]);
+            }
+        }
+    }
+    (header[0], header[1], weights)
+}
+
+/// `Create_MeTIS_graph` edge weighting + parallel-branch dedup
+/// (Circuit.pas:1213, plan §WP-AD.2). Exercises the two branches the all-Line
+/// radial fixtures never hit: the **Transformer-weight-1** rule and the
+/// **parallel-branch dedup** loop. A `Transformer` edge must weigh 1 regardless
+/// of its phase count (here a 3-phase transformer), while `Line` edges weigh
+/// their phase count (3); two parallel lines between the same buses collapse to
+/// a single edge, so the header edge count is below the raw branch-object count.
+#[test]
+fn metis_graph_transformer_weight1_and_parallel_dedup() {
+    let name = "teargraph";
+    let scratch = scratch_dir("graph");
+    let mut dss = Dss::new();
+    let deck = vec![
+        "clear".to_string(),
+        format!("new circuit.{name} basekv=12.47 phases=3 bus1=sourcebus"),
+        "new linecode.lc nphases=3 r1=0.15 x1=0.35 r0=0.45 x0=1.05 c1=0 c0=0 units=km".to_string(),
+        "new line.l1 bus1=sourcebus bus2=m1 linecode=lc length=0.1 units=km".to_string(),
+        // 3-phase transformer — NPhases=3, but the graph must weight it 1.
+        "new transformer.tx phases=3 windings=2 buses=[m1 m2] conns=[wye wye] \
+         kvs=[12.47 4.16] kvas=[5000 5000] xhl=6"
+            .to_string(),
+        "new line.l2 bus1=m2 bus2=m3 linecode=lc length=0.1 units=km".to_string(),
+        // Parallel pair between m3 and m4 → deduped to one edge.
+        "new line.l3a bus1=m3 bus2=m4 linecode=lc length=0.1 units=km".to_string(),
+        "new line.l3b bus1=m3 bus2=m4 linecode=lc length=0.1 units=km".to_string(),
+        "new load.load1 bus1=m4 phases=3 kv=4.16 kw=100 pf=0.95 model=1".to_string(),
+        "set voltagebases=[12.47 4.16]".to_string(),
+        "calcv".to_string(),
+        "solve".to_string(),
+    ];
+    build(&mut dss, &deck, &scratch);
+
+    dss.command("set Num_SubCircuits=2");
+    dss.command("Tear_Circuit");
+    assert!(dss.errors().is_empty(), "tear errors: {:?}", dss.errors());
+
+    let (_n_cols, num_edges, weights) = read_graph(&scratch, name);
+
+    // Transformer-weight-1 rule fired (present alongside 3-phase Line weights).
+    assert!(
+        weights.contains(&1),
+        "expected a Transformer edge of weight 1, weights={weights:?}"
+    );
+    assert!(
+        weights.contains(&3),
+        "expected 3-phase Line edges of weight 3, weights={weights:?}"
+    );
+    // No other weights (all branches are either 3-phase Lines or the xfmr).
+    assert!(
+        weights.iter().all(|&w| w == 1 || w == 3),
+        "unexpected edge weight, weights={weights:?}"
+    );
+
+    // Parallel dedup: 5 branch objects (l1, tx, l2, l3a, l3b) collapse to 4
+    // distinct edges — l3a/l3b share the (m3,m4) pair. The header edge count is
+    // the distinct-edge count, strictly below the 5 raw branches.
+    assert_eq!(
+        num_edges, 4,
+        "expected 4 distinct edges after parallel dedup, got {num_edges}"
+    );
     std::fs::remove_dir_all(&scratch).ok();
 }
 
