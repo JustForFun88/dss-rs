@@ -1169,6 +1169,29 @@ mod tests {
     }
 
     #[test]
+    fn read_dbl_array_text_stops_and_shrinks_on_bad_token() {
+        // Oracle-proven (dss-python 0.15.7): a `mult=(file=…)` whose row 3 is
+        // `abc` raises `#705`, sets `Result := i-1` and BREAKs — the shape ends
+        // up npts=2, mult=[0.1,0.2] (Pascal `Utilities.pas:515-521`).
+        let (vals, err) = read_dbl_array_text("0.1\n0.2\nabc\n0.4\n", 1, false, 8);
+        assert_eq!(vals, vec![0.1, 0.2]);
+        assert_eq!(err, Some(3)); // 1-based failing row -> caller emits #705
+    }
+
+    #[test]
+    fn read_dbl_array_text_short_file_shrinks_without_error() {
+        // A clean file shorter than `max` yields fewer values (the short-file
+        // `Result := i-1` via the `(F.Position+1) < F.Size` guard) and NO error.
+        let (vals, err) = read_dbl_array_text("1\n2\n3\n", 1, false, 8);
+        assert_eq!(vals, vec![1.0, 2.0, 3.0]);
+        assert_eq!(err, None);
+        // An empty/missing column stays 0.0 (Pascal `DblValue`), not an error.
+        let (vals, err) = read_dbl_array_text("1,\n2,\n", 2, false, 8);
+        assert_eq!(vals, vec![0.0, 0.0]);
+        assert_eq!(err, None);
+    }
+
+    #[test]
     fn yes_no() {
         assert!(interpret_yes_no("yes"));
         assert!(interpret_yes_no("Y"));
