@@ -50,21 +50,60 @@ ActiveActor/CPU/Parallel options) + `CapControl.ControlSignal` — explicitly ou
 **CF-D (substation-transformer current root-cause, 2026-07-12).** Root-caused the
 "RegControl/LDC SubXFMR" family — the label was **wrong** (RegControl + delta-wye
 transformer exonerated on every member). The real cause is **ultra-switch
-conditioning** at the substation-transformer bus (a 1e-8 Ω "switch" line, Y≈1e10 S)
+conditioning** at the substation-transformer bus (a 1e-8 Ω "switch" line, Y≈1e8 S)
 and, for the CIM decks, the **Carson earth-model line-constant libm floor**. Per-deck
-verdict (proofs: TOLERANCE_NOTES.md §ultra-switch / §conditioning_floor; scratchpad
-probes):
+verdict (proofs: TOLERANCE_NOTES.md §ultra-switch / §conditioning_floor). The
+ckt24 switch (`Line.Other_Feeders`, r1=1e-8 Ω at default length 1) has Y≈**1e8** S,
+not the 1e10 S the CF-D commit 6200fe0 message stated (a 100× typo, corrected on
+settle; only SecondaryTest's 1 mm `MDV_SUB_1_HSB` busbar genuinely reaches Y≈1e10):
 
 | deck(s) | verdict | evidence |
 |---|---|---|
-| ckt24 `Run_Ckt24` + `master_ckt24` + 7 MM `ckt24` variants | **floor → solvable_now `large_ultra_switch`** | `Line.Other_Feeders` r1=1e-8 (Y≈1e10 S) → SubXFMR current 7.2e-4 A = ultra-switch `Y·(V1−V2)` image (< i_abs 2e-3); node V + Y at floor; regulator lands identical tap |
-| CIM `IEEE13_CDPSM` | **floor → solvable_now `large`** | differs from passing `Test/IEEE13_CDPSM` only by `set earthmodel=carson`; V rel 7.7e-8 < `large` 1e-7 (Carson line-constant floor) |
-| `SecondaryTestCircuit_modified` | **proven floor, documented (not banded)** | cond(Y)=9.79e11 (two 1 mm BUSBAR lines Y≈1e10); Y **bit-identical**, Vsource inj `Yprim·E` **bit-identical**, load base = 7 figs; 3-solver spread faer/KLU/scipy 0.5–0.8 V (gap 0.758 V inside it); residual parity 4.40e-2 vs 4.56e-2. 0.55 V (2e-5) too wide to band; stays `needs_investigation` (conditioning_floor) |
+| ckt24 `Run_Ckt24` + `master_ckt24` + 7 MM `ckt24` variants | **floor → solvable_now `large_ultra_switch`** | `Line.Other_Feeders` r1=1e-8 at default length 1 (Y≈1e8 S) → SubXFMR current 7.2e-4 A = ultra-switch `Y·(V1−V2)` image = `1.8·ulp(2e4 V)·1e8 S` = 6.5e-4-class (< i_abs 2e-3); node V + Y at floor; regulator lands identical tap; per-element decomposition (`DSS_DUMP_IDIFF`, CF-D settle): two dominant diffs family-wide — `Line.other_feeders` 7.1e-4–7.7e-4 A + `Transformer.subxfmr` 5.1e-4–7.2e-4 A (same switch image), both <2e-3; third tier ≤7.4e-5 A |
+| CIM `IEEE13_CDPSM` | **floor → solvable_now `large`** | differs from passing `Test/IEEE13_CDPSM` only by `set earthmodel=carson`; V rel 7.7e-8 < `large` 1e-7 (Carson line-constant floor); worst meaningful per-element current diff 4.3e-6 A / rel 1.1e-7 @ `Line.fuse1` (~23× under `i_abs`) |
+| `SecondaryTestCircuit_modified` | **proven floor, documented (not banded)** | cond(Y)=9.79e11 (the 1 mm `MDV_SUB_1_HSB` BUSBAR line Y≈1e10 dominates; `SSswitch` is 1 m, Y≈1e7); Y **bit-identical**, Vsource inj `Yprim·E` **bit-identical**, load base = 7 figs; 3-solver spread faer/KLU/scipy 0.5–0.8 V (gap 0.758 V inside it); residual parity 4.40e-2 vs 4.56e-2. 0.55 V (2e-5) too wide to band; stays `needs_investigation` (conditioning_floor) |
 | CIM `IEEE13_Assets` | **floor, documented (no band fits)** | Carson floor + short line (Length=0.0568); V rel 4.18e-7 — above `large` (1e-7), below `large_near_ideal_source` (5e-6); stays `needs_investigation` (conditioning_floor) |
-| GFM_IEEE8500 Snap/Daily/DailySmallerPV, Storage `Run_Demo1` (TC-3) | **near-floor → solvable_now `large`** | first-failing node V rel 1.5e-8–3.7e-8 < `large` 1e-7 (classify tripped only at feeder tier); faer-vs-KLU floor |
+| GFM_IEEE8500 Snap/Daily/DailySmallerPV, Storage `Run_Demo1` (TC-3) | **near-floor → solvable_now `large`** | first-failing node V rel 1.5e-8–3.7e-8 < `large` 1e-7; **per-element current decomposition** (`DSS_DUMP_IDIFF`, CF-D settle): worst `|dI|` GFM ≤4.0e-7 A @ `Line.hvmv_sub_connector` (~250× under `i_abs` 1e-4 — islanded-node V offset is common-mode, currents stay sub-µA), Storage 9.1e-5 A (0.91× floor, tightest); all decompose to faer-vs-KLU floor, no element above band (TOLERANCE_NOTES §TC-3) |
 
 Net: `solvable_now` **245 → 259** (14 migrated); `needs_investigation` retains the
 2 documented conditioning floors + the LVTestCase real gap + oracle-side blocks.
+
+**CF-D settle — audit findings settled (2026-07-12).** Six Minor findings (code +
+tests audits); none overturned a verdict — all documentation-rigor. Two fixed, two
+strengthened with committed empirical evidence, one recorded no-fix, one hand-off
+caveat:
+- **#1/#4 (ckt24 floor-proof stated `Y≈1e10 S`, a 100× error) — FIXED.** The
+  ckt24 `Line.Other_Feeders` (r1=1e-8 Ω at default length 1) has **Y≈1e8 S**, not
+  the `1e10 S` the note/commit-6200fe0 message stated (cross-contaminated from
+  SecondaryTest's genuine 1e10 busbar). The arithmetic closes only at 1e8
+  (`1.8·ulp(2e4 V)·1e8 S = 6.5e-4 A`, matching the pre-existing `harness/mod.rs`
+  band note and the measured 7.2e-4 A); at 1e10 it would be 6.5e-2 A. Corrected in
+  TOLERANCE_NOTES §ultra-switch, STATUS, and the manifest. Band/gate/verdict
+  unaffected.
+- **#3 (SecondaryTest "each busbar length=0.001 m → Y≈1e10 S" imprecise) — FIXED.**
+  Only `Line.MDV_SUB_1_HSB` is length=0.001 m (→ Y≈1e10 S, drives κ); `Line.SSswitch`
+  is length=1 m (→ Y≈1e7 S). Corrected in TOLERANCE_NOTES §conditioning_floor,
+  STATUS, and the manifest note (verified against `Substation.DSS`).
+- **#2/#5 (per-element current decomposition not recorded for the TC-3 near-floor
+  + ckt24 families) — STRENGTHENED with committed evidence.** Ran the deciding
+  diagnostic (`DSS_DUMP_IDIFF` live probe, worst per-element `|dI|` vs the pinned
+  oracle) the triage had flagged as not-yet-done: ckt24 family worst 7.2e-4–7.7e-4
+  A all on `Line.other_feeders`/`Transformer.subxfmr` (< `i_abs` 2e-3); GFM ≤4.0e-7
+  A (~250× under floor, currents sub-µA while node V shifts at floor = common-mode);
+  Storage 9.1e-5 A (0.91× floor); CDPSM 4.3e-6 A. Every element decomposes to the
+  floor → migrations shown honest, not asserted. Recorded in TOLERANCE_NOTES §TC-3
+  and the per-deck table above.
+- **#3-b (SecondaryTest/IEEE13_Assets floor proofs rest on scratchpad probes) —
+  NO-FIX (rationale recorded).** Both decks stay SKIPPED (`conditioning_floor`), so
+  no gate depends on them; their cross-solver-spread proof follows the accepted
+  `large_near_ideal_source` in-tree-prose convention. Not reproduced into a
+  committed probe (matches project precedent); the floor verdict is unchanged.
+- **#6 (committed tree not gate-green until the lock is regenerated) — hand-off
+  caveat, by design.** `population.lock.json` is deliberately NOT committed (brief);
+  after merging all CF branches the coordinator must run
+  `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock`. The
+  settle gate below was witnessed with a locally-regenerated lock (solvable_now 259,
+  skipped 16), reverted before commit.
 
 **FA settle — audit findings settled (2026-07-11).** Six Minor findings from the
 code/tests audits; none contradicted a §6 criterion. Three fixed, two recorded as
