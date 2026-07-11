@@ -182,3 +182,100 @@ Oddie (EPRI-binary bridge, `src/altdss_oddie/` ≈17k lines C — dss-rs already
 - Golden-sensitive default-behavior changes (would move existing 0.14.5 goldens if adopted): B1 (Capacitor Cmatrix ×1.000001), B2 (658.85 Carson constant), D1–D16, E2. Adopting any of these means regenerating goldens against a 0.15.x oracle — i.e., these belong to a coordinated oracle-bump, not piecemeal fixes.
 - Opt-in/off-by-default items (no golden movement): B3/C1 new line-constant paths (defaults preserve old numerics), C2 PermissiveProperties (note: **default is the new strict behavior** — parser-error surface changes even without the flag!), C10, A3 (only when used).
 - Explicitly skippable: A4 (disabled), A5 (ifdef'd off), F, G, and the upstream features 0.15.x itself hasn't ported (Recloser/Relay/SwtControl r4079–r4116 overhaul, pyControl component, conditional BatchEdit, Fuse CurveMultiplier).
+
+---
+
+## WP-U0.2 sweep reconciliation (2026-07-11)
+
+Empirical check of this inventory against the `capi ↔ capi015` sweep (378
+cases: 334 match, 17 diverged, 27 error). Full analysis:
+`docs/upgrade/sweeps/capi_vs_capi015.md`. Legend: **[witness]** = a corpus deck
+observably moves; **[no corpus witness — synthesize (WP-U…)]** = real per source
+but no corpus deck exercises it (needs a synthesized deck at its WP). **Bucket
+letters are THIS file's** unless suffixed `-r3723` (= `delta_r3723_r4088.md`'s
+buckets, which use the same letters for different items — e.g. RegControl
+reverse/idle is `B4-r3723`/`C5`-here, the force-hook `StateVar` is
+`A5-r3723`/`A3`-here; this file's own B4 = harmonics-abort, A5 = A-Diakoptics).
+
+**Confirmed by a corpus witness:**
+- **B1** Capacitor Cmatrix ×1.000001 — **[witness]** `Local/Mon_voltage_*-2`,
+  `YYD-Master-step1` (Y-fingerprint ~1.3–1.8e-6, solved V unchanged).
+- **B2 / D1** SimpleCarson `658.85` (and/or **B3** CN-cable) — **[witness]**
+  `Test/Cable_constants.DSS` (Yf 2.6e-6).
+- **B5** GFM `Isc1` ×1000 removal — **[witness]** `gfm_micro/gfm_invcontrol/
+  gfm_dynamics/pv_gfm_dynamics` (Yf 3.6e-3, op-point stable).
+- **C2** PermissiveProperties strict default + **B7** parser strict — **[witness,
+  dominant]** 16 decks flip solve→parse-error (kW-zero `#2025111`,
+  read-only `#2024101`, CSV/array `#2024110`/`#20241024`/`#20241011`, spectrum
+  `#65001` — 16 decks). Confirms C2's "default is the new strict behavior."
+  Ledger L2. (Separately: 2 `#58614` crash decks + 8 `#303`/timeout intrinsic.)
+- **C5** RegControl `FwdThreshold` / reverse-idle rework (= **B4-r3723** in
+  `delta_r3723_r4088.md`; *not* this file's B4, which is harmonics-abort) —
+  **[witness]** `midi_controls` (iter 68→78, reg-tap + xfmr discrete state
+  differ).
+- **D1–D4** InvControl cluster — **[witness]** `midi_invcontrol` (iter 66→106,
+  V 3.4e-2).
+- **D10** StorageController + **E2** SeasonalRating — **[witness]**
+  `storagecontroller_seasonal` (Yf 2.1e-5 + event-log line-count).
+- **D14** DynamicExp RPN-index fix — **[witness]** `Dynamic_KundurDynExp`
+  (V **0.87** — the largest Rung-1 move).
+
+**Real per source but NO corpus witness — synthesize:**
+- **A1** NCIM (`Algorithm=NCIM` opt-in) — no corpus deck. **synthesize (WP-U1.7)**.
+- **A2** WindGen 0.15.x form — no corpus deck defines it. **synthesize (WP-U1.8)**.
+- **A3** PCE force hooks (`InjCurrent`/`ITerminal`/`Yprim`; `StateVar` = the
+  **A5-r3723** option — *not* this file's A5, which is A-Diakoptics/out-of-scope)
+  — opt-in, no witness. **synthesize (WP-U1.9)**.
+- **B3/C1** new line-constant paths (`EpsRMedium`/`HeightOffset`/equivalent
+  spacing/`SemiconLayer`/CNTS) — defaults preserve numerics, no corpus deck sets
+  the new props. **synthesize (WP-U1.4)**.
+- **C4** `Solve/Clear all`, **C6** Transformer BH curves, **C7** `TCC_Curve.none`,
+  **D15** `LookupVariable` case-insensitivity — no witness. **synthesize
+  (WP-U1.1/U1.6)**.
+- **D9/D16** meter/allocation disabled-skip — needs a disabled-meter deck.
+  **synthesize (WP-U1.5)**.
+- **D3** sqrt-guard, **D7** IBR `IMaxPPhase`, **D8** X23/X13 trap-zero, **D2/D4**
+  InvControl edge fixes — edge-only, partially inside `midi_invcontrol`; each WP
+  adds a targeted deck. **synthesize (WP-U1.2/U1.3)**.
+
+The following in-scope rows were verified against the sweep to have **no
+observable corpus witness** (the sweep exercises the deck but the fix does not
+move any channel the sweep compares, or no corpus deck exercises it at all) —
+each must be synthesized at its WP:
+- **B4** (this file's B4) Harmonics init-failure **abort** — error-path only; no
+  corpus deck fails harmonics init. **synthesize (WP-U1.6)**.
+- **C8** InvControl `VV_RefReactivePower` removal + `MonBus` validation errors —
+  no corpus deck sets `VV_RefReactivePower` (grep of the corpus = 0 hits), so it
+  can only surface as a synthesized parse-error/validation deck. **synthesize
+  (WP-U1.3)**.
+- **C11** `New`/class-command always activates the selected class — command
+  semantics, no numeric channel. **synthesize (WP-U1.1)**.
+- **D6** Transformer seasonal `AmpRatings` drop of the `1.1×` factor — **NUMERIC
+  but report-only** (Export/Show Overloads under `SeasonalRating=Yes`). Two
+  reasons it is unwitnessed: (a) `ab_compare` compares no overload/export channel
+  at all — the solved V/I/Y are unchanged by a rating; (b) the only seasonal
+  witness present, `storagecontroller_seasonal`, is **storage+line** seasonal, not
+  transformer `AmpRatings`. A WP-U1.2/U1.5 author must **not** treat "seasonal =
+  witnessed" — a dedicated transformer-seasonal deck with an **overload-report
+  assertion** is required. **synthesize (WP-U1.2)**.
+- **D11** CapControl `PTPhase`/`CTPhase` > Nphases validation scope — needs a
+  capcontrol deck with an out-of-range phase. **synthesize (WP-U1.6)**.
+- **D12** SwtControl `Normal`/`State` → `NormalState`/`PresentState` mapping fix —
+  no corpus deck exercises the mis-mapped path. **synthesize (WP-U1.6)**.
+- **D13** LoadShape MMF (memory-mapped) fixes — the only MMF corpus deck
+  (`modes/shape_mmf`) **crashes `#58614`** on the 0.15.x oracle (B9 below), so the
+  fix is masked and cannot be witnessed here. **synthesize (WP-U1.6)** with a
+  non-crashing MMF deck.
+- **E1** Monitor header quote removal + `MonitorHeader` flag — **format-only**;
+  the sweep's numeric-token gating drops it by design (no numeric witness). Ledger
+  L3. **synthesize/verify at the format level (WP-U1.5)**.
+
+**Observed diff with NO inventory row — ADDED:**
+- **B9 (new)** Binary/MMF shape + XYcurve file parsing **access-violation crash**
+  (`#58614`) in dss_capi **0.15.0b4**, absent in 0.14.5. Decks
+  `modes/shape_binfiles` (`g4.csv` GrowthShape), `modes/shape_mmf`,
+  `modes/xycurve_files` (`rc.csv`). A 0.15.x-era regression in binary/memory-mapped
+  shape parsing — the same crash also fires in EPRI r4088/r4133 (see
+  `delta_r4088_r4133.md`). **No port action** (the Rust engine reads these
+  files correctly); recorded so the oracle-side crash is not mistaken for a port
+  bug, and because it forced the modes family to be swept one-case-per-process.
