@@ -23,7 +23,7 @@ use crate::circuit::Circuit;
 use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::report::format::{fixed_w, g};
+use crate::report::format::{fixed_w_fpc, g};
 use crate::report::save::dump::commands::PASCAL_CLASS_ORDER;
 
 use super::build::obj_to_json_data;
@@ -43,7 +43,16 @@ fn str_y_or_n(b: bool) -> &'static str {
 ///
 /// TODO(compat): the `%g` fidelity (15-significant general format). The clean fix
 /// is a canonical numeric format; the goldens pin this exact spelling.
+///
+/// Pascal returns the empty string (not `[]`) for a NIL/empty array (`dbls = NIL`
+/// → `Result := ''`); the empty `ArrayOfDouble` overload passes `@dbls[0] = NIL`.
+/// Reproduced 1:1. Unreachable via current commands (LegalVoltageBases keeps its
+/// DSS defaults and `set voltagebases=()` is a no-op; the harmonic list defaults
+/// to `do_all_harmonics`), so it is not exercised by a golden — faithful only.
 fn get_dss_array(dbls: &[f64]) -> String {
+    if dbls.is_empty() {
+        return String::new();
+    }
     let mut s = String::from("[");
     for &v in dbls {
         s.push(' ');
@@ -266,8 +275,14 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
         ));
         push(format!("Set zonelock={}", str_y_or_n(ckt.zones_locked)));
         // `%8.2f` = width-8 fixed 2-decimal, right-justified (TODO(compat)).
-        push(format!("Set ueweight={}", fixed_w(ckt.ue_weight, 8, 2)));
-        push(format!("Set lossweight={}", fixed_w(ckt.loss_weight, 8, 2)));
+        // Byte-exact FPC `ffFixed`: 15-sig intermediate + ties-away rounding
+        // (see `fixed_w_fpc`); pinned by `circuit_positive_seq`'s fractional
+        // weights, which Rust's native `{:.2}` renders differently.
+        push(format!("Set ueweight={}", fixed_w_fpc(ckt.ue_weight, 8, 2)));
+        push(format!(
+            "Set lossweight={}",
+            fixed_w_fpc(ckt.loss_weight, 8, 2)
+        ));
         push(format!("Set ueregs={}", int_array_to_string(&ckt.ue_regs)));
         push(format!(
             "Set lossregs={}",
