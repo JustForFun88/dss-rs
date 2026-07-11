@@ -395,6 +395,37 @@ mod make_pos_seq_tests {
         assert!(plan.run_base);
     }
 
+    /// Mode 4 (flicker): ClearMonitorStream sets `RecordSize = 2·nphases`
+    /// (Flk/Pst pair per phase) — resynced to the metered element's phase count.
+    #[test]
+    fn mode4_record_size_is_two_per_phase() {
+        let mut m = Monitor::new("mon1");
+        m.mode = 4;
+        m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
+        m.med.metered_snap = Some(snap(1, 1, 0));
+        let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
+        assert_eq!(m.cd().nphases, 1);
+        assert_eq!(m.num_channels(), 2); // 2·nphases
+        assert!(m.header().contains(&"Flk1".to_string()));
+        assert!(m.header().contains(&"Pst1".to_string()));
+        assert!(plan.run_base);
+    }
+
+    /// Mode 5 (solution vars): ClearMonitorStream sets `RecordSize` to the fixed
+    /// NUM_SOLUTION_VARS = 12 (independent of the metered element).
+    #[test]
+    fn mode5_record_size_is_num_solution_vars() {
+        let mut m = Monitor::new("mon1");
+        m.mode = 5;
+        m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
+        m.med.metered_snap = Some(snap(1, 1, 0));
+        let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
+        assert_eq!(m.num_channels(), 12); // NUM_SOLUTION_VARS
+        assert!(m.header().contains(&"TotalIterations".to_string()));
+        assert!(m.header().contains(&"Frequency".to_string()));
+        assert!(plan.run_base);
+    }
+
     /// Pascal NIL guard: no metered element ⇒ only the base rename runs.
     #[test]
     fn nil_metered_element_runs_base_only() {

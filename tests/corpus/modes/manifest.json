@@ -854,7 +854,7 @@
    ],
    "pending": false,
    "wp": "WPG.21",
-   "note": "MakePosSequence PC coverage: Load wye/delta+xfkVA/1ph (ld_wye kv 12.47->7.19956, kw 400->44.444), Generator x4 exercising the PrpSequence reads (g_plain kW+pf; g_kva kVA=250 kept; g_mva MVA=; g_kvar maxkvar 120->40 / minkvar -60->-20, ALL /phases), PVSystem, Storage, 2nd VSource, Isource. Ends with a SECOND makeposseq+solve (idempotency + the ÷3-again quirk). VSConverter DELIBERATELY EXCLUDED (its upstream GetCurrents bug forbids a live full-model compare, CLAUDE.md known-bugs; its MakePosSequence is a trivial no-op override). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 3 iters, 4 nodes); feature-sensitive. Pending until WPG.21 A2."
+   "note": "MakePosSequence PC coverage: Load wye/delta+xfkVA/1ph (ld_wye kv 12.47->7.19956, kw 400->44.444), Generator x4 exercising the PrpSequence reads (g_plain kW+pf; g_kva kVA=250 kept; g_mva MVA=; g_kvar maxkvar 120->40 / minkvar -60->-20, ALL /phases), PVSystem, Storage, 2nd VSource, Isource. Ends with a SECOND makeposseq+solve (idempotency + the ÷3-again quirk). VSConverter DELIBERATELY EXCLUDED (its upstream GetCurrents state-mutating bug forbids a live full-model compare, CLAUDE.md known-bugs); its MakePosSequence override is NOT a no-op (it forces Phases:=2, Ndc:=1 when nphases!=2) and is covered by the pos_seq_tests unit test in pc/vs_converter/accessors.rs. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 3 iters, 4 nodes); feature-sensitive. Pending until WPG.21 A2."
   },
   {
    "path": "makeposseq_ctrl.dss",

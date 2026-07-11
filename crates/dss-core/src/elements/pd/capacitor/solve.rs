@@ -310,6 +310,17 @@ impl CktElement for Capacitor {
                     vec![
                         PosSeqAction::BeginEdit,
                         PosSeqAction::SetI32(PHASES, 1),
+                        // TODO(compat): Pascal `SetDouble(ord(TProp.Cuf), Cs - Cm)`
+                        // aims a scalar `SetObjDouble` at `Cuf`, which is a
+                        // `DoubleArrayProperty`. Upstream `SetObjDouble`'s trailing
+                        // `case PropertyType` writes only the scalar double types, so
+                        // the array `Cuf` is silently NOT written (oracle-verified:
+                        // `cuf` unchanged across `makeposseq`); only the seq-mark +
+                        // Begin/End side effects run. We emit the action to preserve
+                        // that side-effect shape, and the applier's `set_obj_double`
+                        // mirrors the fall-through by skipping the write for non-scalar
+                        // types (see `obj/props/setters.rs:147-160`). Clean fix once
+                        // the 1:1 port is done: drop this discarded write entirely.
                         PosSeqAction::SetF64(CUF, cs - cm),
                         PosSeqAction::EndEdit,
                     ]

@@ -483,6 +483,10 @@ mod make_pos_seq_tests {
     #[test]
     fn empty_pvsystem_list_applies_3phase_and_safe_skips_setbus() {
         let mut ec = ExpControl::new("ec1");
+        // Force a non-3 phase/cond count so the `FNphases := 3; Nconds := 3`
+        // assignment is load-bearing (not just the constructor default).
+        ec.ccd.cd.nphases = 1;
+        ec.ccd.cd.nconds = 1;
         let bus = ec.ccd.cd.get_bus(1).to_string();
         let plan = ec.make_pos_sequence(&PosSeqCtx::default());
         assert_eq!(ec.ccd.cd.nphases, 3);
