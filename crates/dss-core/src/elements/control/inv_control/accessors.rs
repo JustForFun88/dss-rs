@@ -7,6 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -176,6 +177,42 @@ impl CktElement for InvControl {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TInvControlObj.MakePosSequence` (`Controls/InvControl.pas:943`).
+    /// **NIL-deref hazard** (Access violation #303, probes `1`/`S1`,
+    /// `docs/wpg21_makeposseq_probes.md`): with an empty DER list Pascal's
+    /// `Setbus(1, MonitoredElement.GetBus(..))` dereferences the NIL
+    /// `MonitoredElement`; in dss-python 0.15.7 even the *populated* case faults
+    /// (at object creation). Per CLAUDE.md UB is never reproduced. We transcribe
+    /// the *defined* scalar resync (`FNphases := 3; Nconds := 3`) and safe-skip
+    /// the NIL-deref `Setbus` when no monitored element is resolved; when a
+    /// monitored DER *is* resolved (the populated path), adopt its `Firstbus` /
+    /// phase count. The empty-list `RecalcElementData` (DER-list rebuild) needs
+    /// solve context and sits on the crash path, so it is not reproduced here.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        // FNphases := 3; Nconds := 3 (defined; independent of the DER list).
+        self.ccd.cd.nphases = 3;
+        self.ccd.cd.set_nconds(3);
+        if let Some(m) = &ctx.monitored {
+            // Populated path: MonitoredElement := 1st DER; Setbus(1,
+            // MonitoredElement.Firstbus); FNphases := MonitoredElement.NPhases;
+            // Nconds := Nphases.
+            let bus = m.bus_names.first().cloned().unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+            self.ccd.cd.nphases = m.nphases;
+            self.ccd.cd.set_nconds(m.nphases);
+        }
+        // else: MonitoredElement is NIL — Pascal's Setbus derefs it and faults
+        // (#303). Safe-skip the Setbus (the 3/3 resync above still applies).
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 

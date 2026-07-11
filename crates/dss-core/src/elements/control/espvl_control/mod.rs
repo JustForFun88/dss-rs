@@ -46,8 +46,9 @@
 //!   a NIL deref. This port iterates the resolved subset instead (same divergence
 //!   GenDispatcher documents), so it cannot crash; `FListSize`/`TotalWeight` still
 //!   reflect the full list.
-//! - `MakePosSequence` is not ported (positive-sequence reduction is unsupported,
-//!   and the upstream body dereferences the always-NIL `ControlledElement`).
+//! - `MakePosSequence` is ported as a NIL-deref-safe no-op (the upstream body
+//!   dereferences the always-NIL `ControlledElement` — Access violation,
+//!   `docs/wpg21_makeposseq_probes.md`; CLAUDE.md forbids reproducing it).
 //!
 //! The ESPVLControl "fleet" is the ESPVLControl class itself, reached through the
 //! class registry behind [`EspvlDispatchEnv`] (`solution/controls/dispatch.rs`),
