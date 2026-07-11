@@ -9,6 +9,41 @@
 
 Last updated: 2026-07-11.
 
+**FA fix 2 — divergence root-cause: DOCTechNote ×4 + GFMSnap (2026-07-11),
+gate-green.** Root-caused the five above-`large` Rust↔oracle divergences the
+WP8.8 classify left `needs_investigation` (per CLAUDE.md §"conditioning" +
+§"cancellation floor" — decomposition, no tolerance fudging). Per-case verdict:
+
+| case | verdict | evidence |
+|---|---|---|
+| `DOCTechNote/1_1` | **floor** → solvable_now `large_floating_zeroseq` | common mode 2.39e-3 V; L-L rel 1.36e-10; 0/1170 nodes fail `large` after per-bus shift removal |
+| `DOCTechNote/1_2` | **floor** → same | common mode 2.39e-3 V; L-L rel 1.29e-10; 0/1170 fail |
+| `DOCTechNote/2_1` | **floor** → same | common mode 1.81e-3 V; L-L rel 1.30e-10; 0/1170 fail |
+| `DOCTechNote/2_2` | **floor** → same | common mode 2.85e-3 V; L-L rel 1.54e-10; 0/1170 fail |
+| `GFMSnap` | **already floor-proven, gate-green; re-verified** | L-L rel 2.27e-10 confirms §floating-delta's 2.3e-10; 0/284 fail; gap 9.03e-5 V; no manifest change |
+
+Root cause (DOCTechNote ×4): the decks `Redirect` LVTestCaseNorthAmerican
+`Master.dss` (delta-delta substation + delta-primary distribution
+transformers → the whole 13.8 kV MV system floats in zero-seq, already a proven
+`large_floating_zeroseq` member) and add one perturbation each — an LV SLG fault
+(1_1/1_2), a network-protector breaker open (2_1), or OC relays + an MV L-L
+fault under `controlmode=event` (2_2). None adds an MV zero-seq ground path, so
+the MV common mode stays un-pinnable solver junk. Decomposition (full 1170-node
+dump both engines): the gap is 100% per-bus zero-sequence common mode
+(1.8e-3…2.85e-3 V, well inside the 3e-2 band; ~2.2e-7…3.6e-7 rel at 8 kV) — the
+L-L (differential) voltages agree to ≤1.4e-10 rel and removing each bus's mean
+shift leaves **0/1170** nodes above `large`. Un-pinnable, not iteration-driven:
+at `ConvergenceTolerance 1e-10` the gap is byte-unchanged while Rust can no
+longer converge (residual floors out in the near-null direction); at the default
+tolerance both engines converge in the identical iteration count. Y
+bit-identical, injections match, iterations equal, element currents/powers
+within `large` — verified by the `run_and_compare` full compare passing at
+`large_floating_zeroseq`. Recorded: tests/TOLERANCE_NOTES.md §floating-zeroseq
+(new DOCTechNote bullet), harness `tol_for` comment. No tolerance/tier value
+changed (reused the existing `large_floating_zeroseq` band); no `TODO(compat)`
+(floors are not compat quirks). solvable_now 226 → **230**;
+needs_investigation 18 → 14.
+
 **WPG.21 port — MakePosSequence + 6 synthesized decks (2026-07-11), gate-green
 (fmt/clippy/`cargo test --workspace` incl. `modes_cases_match_oracle`).** The last
 GAPS_PLAN §1b "on-demand" deferral closed as an ultracode round (5 opus worktree
@@ -312,7 +347,8 @@ Details:
   CorpusGuard self-test (`corpus_guard_restores_case_dir_recursively` —
   vendored preserved, overwrite restored, subdir/DI-tree pollution swept).
   Owed follow-up (recorded): root-cause the DOCTechNote×4 live_mismatch
-  (~2.4e-7 rel) per the no-rationalizing rule.
+  (~2.4e-7 rel) per the no-rationalizing rule. **→ DONE (FA fix 2, 2026-07-11):
+  proven zero-seq common-mode floor, migrated to `large_floating_zeroseq`.**
 
 **needs_investigation burn-down, round 2 — AutoTrans family (2026-07-10,
 user-directed "проверь автотрансформатор построчно").** Element EXONERATED

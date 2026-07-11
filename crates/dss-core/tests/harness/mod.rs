@@ -430,10 +430,15 @@ pub fn tol_for(kind: &str) -> Tolerances {
         // mode is pinned by the ppm anti-float adders alone, with measured
         // amplification 1.4e10 (TestDDRegulator REGBUS2) / 4.2e11 (DG_Prot_Fdr
         // dead-end BG) / ~1e8 across the whole delta-delta-fed 13.8 kV system
-        // of LVTestCaseNorthAmerican. The V gap is 100% common mode (per-bus
-        // differential ≤1e-5 V, within the `large` floors; DG_Prot bit-level
-        // ≤1.3e-13), Y agrees to ≤1.3e-15 rel (libm last-ulp on geometry
-        // decks; bit-identical on DDReg/DG_Prot), injections/iterations match.
+        // of LVTestCaseNorthAmerican (and the DOCTechNote/{1_1,1_2,2_1,2_2}
+        // decks built on it: an LV SLG / MV L-L fault / breaker-open never
+        // adds an MV zero-seq ground path, so the 13.8 kV system still floats;
+        // common mode 1.8e-3…2.85e-3 V, L-L agreement ≤1.4e-10 rel, 0/1170
+        // nodes above `large` after removing the per-bus shift). The V gap is
+        // 100% common mode (per-bus differential ≤1e-5 V, within the `large`
+        // floors; DG_Prot bit-level ≤1.3e-13), Y agrees to ≤1.3e-15 rel (libm
+        // last-ulp on geometry decks; bit-identical on DDReg/DG_Prot),
+        // injections/iterations match.
         // `v_abs` 3e-2 = worst measured common mode (1.06e-2, DG_Prot) ×2.8;
         // at the smallest affected buses (346 V) that is still 8.7e-5 rel.
         // Element currents/powers are functions of the DIFFERENTIAL voltages —

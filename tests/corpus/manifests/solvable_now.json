@@ -346,6 +346,26 @@
    "compare_eventlog": true
   },
   {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
    "kind": "feeder",
    "n_steps": 1
