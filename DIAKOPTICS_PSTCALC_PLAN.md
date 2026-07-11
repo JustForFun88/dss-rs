@@ -282,12 +282,13 @@ Scope = the one call path kmetis-style partitioning uses, not the whole library:
   `libmetis/gklib.c` instantiates). Part of the Part II source-integrity gate.
 
 Spec pins (sha-watch, D10 discipline): `.inputs/METIS` @ `272d4a9`, `.inputs/GKlib` @
-`3b7d61b`. Note: the vendored METIS checkout carries local performance commits on top
-of upstream 5.2.1 (its own history documents them as bit-identical). This does not
-weaken the gate — the `.part` goldens are generated from **this exact tree**, so the
-port and its spec are self-consistent by construction; upstream-exactness was already a
-non-goal (the kmetis-4.0 version step). If the tree is ever updated, regenerate the
-goldens deliberately and re-record the pins.
+`3b7d61b`. Provenance verified 2026-07-11 by fetching: `272d4a9` **is** upstream
+KarypisLab/METIS `origin/master` (zero divergence either way) = release tag `v5.2.1`
+plus 39 upstream commits (KarypisLab's own post-release work, documented by them as
+bit-identical perf changes; version header still 5.2.1). The `.part` goldens are
+generated from **this exact tree**, so the port and its spec are self-consistent by
+construction. If a pristine-release spec is ever preferred, `git checkout v5.2.1` and
+regenerate the goldens deliberately; either way, any tree update re-records the pins.
 
 The path is on the order of 6–8k lines of C → a bounded, mechanical port under the
 same discipline as the Pascal (loop-for-loop, RNG ported too, so partitions are
