@@ -22,16 +22,6 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS failed: Some(\"DSSException: (#130) Unknown parameter \\\"Num_SubCircuits\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricds"
   },
   {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "oracle_error_#485",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS",
-   "tag": "oracle_error_#265",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-r"
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss",
    "tag": "oracle_error_#130",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss failed: Some(\"DSSException: (#130) Unknown parameter \\\"LinkBranches\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\"
@@ -47,19 +37,9 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-p.dss failed: Some(\"DSSException: (#482) Error Encountered in Solve: Division by zero\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\e"
   },
   {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
-   "tag": "oracle_error_#485",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
-  },
-  {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
    "tag": "oracle_error_#24713",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss failed: Some(\"DSSException: (#24713) Error: Unknown Export command: \\\"deltaf\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-ts"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/MultstepDG.DSS",
-   "tag": "oracle_error_#301",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Scripts/MultstepDG.DSS failed: Some(\"DSSException: (#301) You must create a new circuit object first: \\\"new circuit.mycktname\\\" to execute this command.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\"
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsc0test.dss",
@@ -88,31 +68,6 @@
    "path": "Version8/Distrib/IEEETestCases/123Bus/WindRampRevRegTest.DSS",
    "tag": "oracle_error_#70401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/WindRampRevRegTest.DSS failed: Some(\"DSSException: (#70401) CSV file \\\"Windoutput.txt\\\" could not be opened\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS",
-   "tag": "oracle_error_#265",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
-   "tag": "oracle_error_#303",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss failed: Some(\"DSSException: (#303) Error 303 Reported From OpenDSS Intrinsic Function: \\r\\nProcessCommand: Exception Raised While Processing DSS Command: \\r\\ns"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
-   "tag": "oracle_error_#2190",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss failed: Some(\"DSSException: (#2190) Exception raised in ShowCurrents: Unable to create file \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
-   "tag": "oracle_error_#303",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS failed: Some(\"DSSException: (#303) Error 303 Reported From OpenDSS Intrinsic Function: \\r\\nProcessCommand: Exception Raised While Processing DSS Command: \\r\\nSh"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
-   "tag": "oracle_error_#485",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings.\")"
   }
  ]
 }
