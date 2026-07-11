@@ -182,3 +182,61 @@ Oddie (EPRI-binary bridge, `src/altdss_oddie/` ≈17k lines C — dss-rs already
 - Golden-sensitive default-behavior changes (would move existing 0.14.5 goldens if adopted): B1 (Capacitor Cmatrix ×1.000001), B2 (658.85 Carson constant), D1–D16, E2. Adopting any of these means regenerating goldens against a 0.15.x oracle — i.e., these belong to a coordinated oracle-bump, not piecemeal fixes.
 - Opt-in/off-by-default items (no golden movement): B3/C1 new line-constant paths (defaults preserve old numerics), C2 PermissiveProperties (note: **default is the new strict behavior** — parser-error surface changes even without the flag!), C10, A3 (only when used).
 - Explicitly skippable: A4 (disabled), A5 (ifdef'd off), F, G, and the upstream features 0.15.x itself hasn't ported (Recloser/Relay/SwtControl r4079–r4116 overhaul, pyControl component, conditional BatchEdit, Fuse CurveMultiplier).
+
+---
+
+## WP-U0.2 sweep reconciliation (2026-07-11)
+
+Empirical check of this inventory against the `capi ↔ capi015` sweep (378
+cases: 334 match, 17 diverged, 27 error). Full analysis:
+`docs/upgrade/sweeps/capi_vs_capi015.md`. Legend: **[witness]** = a corpus deck
+observably moves; **[no corpus witness — synthesize (WP-U…)]** = real per source
+but no corpus deck exercises it (needs a synthesized deck at its WP).
+
+**Confirmed by a corpus witness:**
+- **B1** Capacitor Cmatrix ×1.000001 — **[witness]** `Local/Mon_voltage_*-2`,
+  `YYD-Master-step1` (Y-fingerprint ~1.3–1.8e-6, solved V unchanged).
+- **B2 / D1** SimpleCarson `658.85` (and/or **B3** CN-cable) — **[witness]**
+  `Test/Cable_constants.DSS` (Yf 2.6e-6).
+- **B5** GFM `Isc1` ×1000 removal — **[witness]** `gfm_micro/gfm_invcontrol/
+  gfm_dynamics/pv_gfm_dynamics` (Yf 3.6e-3, op-point stable).
+- **C2** PermissiveProperties strict default + **B7** parser strict — **[witness,
+  dominant]** 16 decks flip solve→parse-error (kW-zero `#2025111`,
+  read-only `#2024101`, CSV/array `#2024110`/`#20241024`/`#20241011`, spectrum
+  `#65001` — 16 decks). Confirms C2's "default is the new strict behavior."
+  Ledger L2. (Separately: 2 `#58614` crash decks + 8 `#303`/timeout intrinsic.)
+- **C5 / B4** RegControl reverse/idle rework — **[witness]** `midi_controls`
+  (iter 68→78, reg-tap + xfmr discrete state differ).
+- **D1–D4** InvControl cluster — **[witness]** `midi_invcontrol` (iter 66→106,
+  V 3.4e-2).
+- **D10** StorageController + **E2** SeasonalRating — **[witness]**
+  `storagecontroller_seasonal` (Yf 2.1e-5 + event-log line-count).
+- **D14** DynamicExp RPN-index fix — **[witness]** `Dynamic_KundurDynExp`
+  (V **0.87** — the largest Rung-1 move).
+
+**Real per source but NO corpus witness — synthesize:**
+- **A1** NCIM (`Algorithm=NCIM` opt-in) — no corpus deck. **synthesize (WP-U1.7)**.
+- **A2** WindGen 0.15.x form — no corpus deck defines it. **synthesize (WP-U1.8)**.
+- **A3/A5** force hooks (`InjCurrent`/`ITerminal`/`Yprim`/`StateVar`) — opt-in,
+  no witness. **synthesize (WP-U1.9)**.
+- **B3/C1** new line-constant paths (`EpsRMedium`/`HeightOffset`/equivalent
+  spacing/`SemiconLayer`/CNTS) — defaults preserve numerics, no corpus deck sets
+  the new props. **synthesize (WP-U1.4)**.
+- **C4** `Solve/Clear all`, **C6** Transformer BH curves, **C7** `TCC_Curve.none`,
+  **D15** `LookupVariable` case-insensitivity — no witness. **synthesize
+  (WP-U1.1/U1.6)**.
+- **D9/D16** meter/allocation disabled-skip — needs a disabled-meter deck.
+  **synthesize (WP-U1.5)**.
+- **D3** sqrt-guard, **D7** IBR `IMaxPPhase`, **D8** X23/X13 trap-zero, **D2/D4**
+  InvControl edge fixes — edge-only, partially inside `midi_invcontrol`; each WP
+  adds a targeted deck. **synthesize (WP-U1.2/U1.3)**.
+
+**Observed diff with NO inventory row — ADDED:**
+- **B9 (new)** Binary/MMF shape + XYcurve file parsing **access-violation crash**
+  (`#58614`) in dss_capi **0.15.0b4**, absent in 0.14.5. Decks
+  `modes/shape_binfiles` (`g4.csv` GrowthShape), `modes/shape_mmf`,
+  `modes/xycurve_files` (`rc.csv`). A 0.15.x-era regression in binary/memory-mapped
+  shape parsing — the same crash also fires in EPRI r4088/r4133 (see
+  `delta_r4088_r4133.md`). **No port action** (the Rust engine reads these
+  files correctly); recorded so the oracle-side crash is not mistaken for a port
+  bug, and because it forced the modes family to be swept one-case-per-process.
