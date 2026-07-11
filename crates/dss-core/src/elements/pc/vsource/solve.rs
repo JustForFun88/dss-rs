@@ -6,6 +6,7 @@ use num_complex::Complex64;
 use super::{VSource, get_vmag};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{CALPHA, EPSILON, quad_solver, sqrt3};
@@ -171,6 +172,23 @@ impl CktElement for VSource {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TVsourceObj.MakePosSequence` (`VSource.pas:1201`). Single phase,
+    /// line-neutral base kV (`kVBase / SQRT3`), keeping the R1/X1 sequence
+    /// impedance.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use super::prop;
+
+        let kv_new = self.kv_base / sqrt3();
+        PosSeqPlan::with_actions(vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetF64(prop::BASEKV, kv_new),
+            PosSeqAction::SetF64(prop::R1, self.r1),
+            PosSeqAction::SetF64(prop::X1, self.x1),
+            PosSeqAction::EndEdit,
+        ])
     }
 
     /// Pascal `TVsourceObj.CalcYPrim`: build only YPrim_Series.

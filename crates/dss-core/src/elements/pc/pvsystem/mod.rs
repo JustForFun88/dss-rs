@@ -18,9 +18,9 @@
 //! harmonic injection (`DoHarmonicMode`/`InitHarmonics`), the dynamics state
 //! machinery (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the
 //! state-variable interface `NumVariables`/`Get_Variable`/`VariableName`), the
-//! user-written DLL model (`DoUserModel`, model 3 — never ported), and
-//! `MakePosSequence` are deferred to WP7.6/7.7 (harmonics/dynamics) per
-//! PHASE7_PLAN §2.4/§2.5, matching the Generator deferrals.
+//! user-written DLL model (`DoUserModel`, model 3 — never ported) are deferred
+//! to WP7.6/7.7 (harmonics/dynamics) per PHASE7_PLAN §2.4/§2.5, matching the
+//! Generator deferrals. `MakePosSequence` is in `accessors` (WPG.21).
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: shape/temperature multipliers, `ComputePanelPower` /
