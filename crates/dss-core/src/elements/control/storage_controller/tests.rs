@@ -897,3 +897,45 @@ fn sample_logs_event_when_eventlog_enabled() {
         env.events
     );
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TStorageControllerObj.MakePosSequence` (StorageController.pas:834):
+    /// phases/conds + bus from the monitored element (probe `S6`: makeposseq-safe).
+    #[test]
+    fn resyncs_to_monitored() {
+        let mut sc = StorageController::new("sc1");
+        sc.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 4 });
+        sc.ccd.element_terminal = 1;
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                bus_names: vec!["b1".into(), "b2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = sc.make_pos_sequence(&ctx);
+        assert_eq!(sc.ccd.cd.nphases, 1);
+        assert_eq!(sc.ccd.cd.nconds, 1);
+        assert_eq!(sc.get_bus_name(1), "b1");
+        assert!(plan.run_base && plan.actions.is_empty());
+        assert_eq!(sc.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 4 }));
+    }
+
+    #[test]
+    fn nil_monitored_runs_base_only() {
+        let mut sc = StorageController::new("sc1");
+        let np = sc.ccd.cd.nphases;
+        let plan = sc.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(sc.ccd.cd.nphases, np);
+        assert!(plan.run_base);
+    }
+}

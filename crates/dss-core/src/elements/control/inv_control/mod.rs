@@ -29,8 +29,9 @@
 //! PVSystem/Storage fleet resolution), `RecalcElementData`'s
 //! bus/monitored-element setup, the `monBus` per-bus node parsing
 //! (`FMonBuses`/`FMonBusesNodes` — consumed only by `Sample`'s `GetMonVoltage`),
-//! and the entire `Sample`/`DoPendingAction`/`Reset` dispatch. **NOT_PORTED:**
-//! `MakePosSequence`.
+//! and the entire `Sample`/`DoPendingAction`/`Reset` dispatch. `MakePosSequence`
+//! is ported (WPG.21) as a NIL-deref-safe partial (the defined 3-phase resync +
+//! resolved-DER bus adopt, empty-list deref safe-skipped — see [`accessors`]).
 
 mod accessors;
 mod compute;

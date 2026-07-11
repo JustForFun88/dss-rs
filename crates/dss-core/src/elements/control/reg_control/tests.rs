@@ -337,3 +337,60 @@ fn maxtapchange_zero_zeroes_pending_and_exits() {
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(sc.queue.is_empty());
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TRegControlObj.MakePosSequence` (RegControl.pas:1266): Enabled +
+    /// phases from the controlled transformer, terminal bus at ElementTerminal.
+    #[test]
+    fn resyncs_to_controlled_transformer() {
+        let mut rc = RegControl::new("rc1");
+        rc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        rc.ccd.element_terminal = 2;
+        rc.using_regulated_bus = false;
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                enabled: false,
+                bus_names: vec!["w1".into(), "w2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = rc.make_pos_sequence(&ctx);
+        assert_eq!(rc.ccd.cd.nphases, 1);
+        assert_eq!(rc.ccd.cd.nconds, 1);
+        assert!(!rc.ccd.cd.enabled); // FEnabled := ControlledElement.Enabled
+        assert_eq!(rc.get_bus_name(1), "w2"); // GetBus(ElementTerminal=2)
+        assert!(plan.run_base && plan.actions.is_empty());
+    }
+
+    /// UsingRegulatedBus ⇒ FNphases := 1, Nconds := 1, Setbus to RegulatedBus.
+    #[test]
+    fn regulated_bus_forces_single_phase() {
+        let mut rc = RegControl::new("rc1");
+        rc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        rc.using_regulated_bus = true;
+        rc.regulated_bus = "remotebus".into();
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 3,
+                nconds: 3,
+                enabled: true,
+                bus_names: vec!["w1".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        rc.make_pos_sequence(&ctx);
+        assert_eq!(rc.ccd.cd.nphases, 1);
+        assert_eq!(rc.ccd.cd.nconds, 1);
+        assert_eq!(rc.get_bus_name(1), "remotebus");
+    }
+}

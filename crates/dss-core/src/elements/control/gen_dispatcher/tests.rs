@@ -277,3 +277,38 @@ fn make_like_copies_only_terminal_and_monitored() {
     assert_eq!(dst.f_kw_limit, 8000.0);
     assert_eq!(dst.f_kw_band, 100.0);
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+
+    /// Pascal `TGenDispatcherObj.MakePosSequence` (GenDispatcher.pas:263) is a
+    /// NIL-deref hazard: `element=` set (MonitoredElement <> NIL) makes it deref
+    /// the always-NIL `ControlledElement` (Access violation #303, probe `3a`).
+    /// CLAUDE.md forbids reproducing UB → safe-skip: no mutation, no panic.
+    #[test]
+    fn crash_config_element_set_is_safe_skip() {
+        let mut gd = GenDispatcher::new("gd1");
+        gd.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 }); // element= set
+        // ControlledElement is always NIL for a fleet control → ctx.controlled None.
+        let (np, nc) = (gd.ccd.cd.nphases, gd.ccd.cd.nconds);
+        let bus = gd.ccd.cd.get_bus(1).to_string();
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["b1".into()],
+                ..Default::default()
+            }),
+            controlled: None,
+            ..Default::default()
+        };
+        let plan = gd.make_pos_sequence(&ctx); // must not panic
+        assert_eq!((gd.ccd.cd.nphases, gd.ccd.cd.nconds), (np, nc)); // untouched
+        assert_eq!(gd.ccd.cd.get_bus(1), bus); // Setbus safe-skipped
+        assert!(plan.run_base); // inherited still runs
+        assert_eq!(gd.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+}

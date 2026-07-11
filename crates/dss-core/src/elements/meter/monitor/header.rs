@@ -80,7 +80,7 @@ impl Monitor {
     /// `RecordSize` + the per-mode header strings. The two leading time columns
     /// are labelled `Freq`/`Harmonic` when the solution is in harmonics mode
     /// (`IsHarmonicModel`), else `hour`/`t(sec)` (`Monitor.pas` l.709).
-    fn clear_monitor_stream(&mut self, is_harmonic: bool) {
+    pub(super) fn clear_monitor_stream(&mut self, is_harmonic: bool) {
         self.header.clear();
         self.sample_count = 0;
         // Pascal `MonitorStream.Clear` (Monitor.pas:703): the flushed history is
