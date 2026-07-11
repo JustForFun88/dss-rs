@@ -11,10 +11,14 @@ Two parts with **different oracles, gates and timing** (see §0 for why):
 - **Part I (oracle-gated, pre-acceptance):** WP-PF.1 `Pstcalc` command, WP-PF.2 Monitor
   mode-4 flicker, WP-AD.1 incidence matrix + `Sparse_Math`. All three are compiled into
   the pinned oracle → normal golden/live gating. They belong to final-acceptance scope.
-- **Part II (no oracle, post-acceptance):** WP-AD.2–WP-AD.6, the A-Diakoptics engine.
-  The pinned oracle build has this code **compiled out** (§0.2) — the gate is
+- **Part II (no pinned oracle, post-acceptance):** WP-AD.2–WP-AD.6, the A-Diakoptics
+  engine. The pinned oracle build has this code **compiled out** (§0.2) — the gate is
   Rust-vs-Rust equivalence (A-Diakoptics solve ≡ normal solve on the same deck) across
-  the whole corpus, plus structural invariants and fixture goldens.
+  the whole corpus, plus structural invariants, fixture goldens, and the
+  **official-EPRI reference channel** (D9): the vendored official r3723/r4088/r4133
+  binaries DO run A-Diakoptics (probe-proven, §0.2) and serve as the behavioral
+  reference — dev probes, committed reference fixtures, partition injection, and a few
+  `oracle:"r3723"` mandatory-gate cases.
 
 Sequencing lives in `PLAN_SEQUENCE.md`: Part I = porting stage 3 (after the GAPS
 follow-ups WPG.19/20), Part II = the final stage after `MULTITHREADING_PLAN` M2
@@ -125,16 +129,35 @@ Consequences (binding):
 
 - **Part I is normal porting**: `Pstcalc`, Monitor mode 4, the incidence-matrix layer
   and exports 53–57 are all *in* the oracle → golden + live gates as usual.
-- **Part II cannot be oracle-gated, ever, with this PIN.** The Pascal **source** is still
-  the spec (it is present and readable); the gates are defined in D1/D7. Implementing a
-  surface the reference *binary* refuses is a deliberate, recorded departure — the Rust
+- **Part II cannot be gated by the PINNED oracle.** The Pascal **source** is still
+  the spec (it is present and readable); the gates are defined in D1/D7/D9. Implementing
+  a surface the pinned *binary* refuses is a deliberate, recorded departure — the Rust
   engine behaves like a hypothetical `DSS_CAPI_ADIAKOPTICS` build. The corpus AD master
-  decks **stay** in `skipped_oracle_issue.json` for the live oracle gate (the oracle
-  still errors on them); their Rust-side coverage comes from the new rust-only gates.
-- The upstream `.graph`/`Torn_Circuit` artifacts vendored in
-  `tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/ckt24/` were
-  produced by *official OpenDSS* (a different lineage than the vendored 0.14.5 source) —
-  useful as **diagnostic cross-checks only**, never as byte gates.
+  decks **stay** in `skipped_oracle_issue.json` for the pinned-oracle live gate (that
+  oracle still errors on them); their Rust-side coverage comes from the new AD gates.
+- The upstream `.graph`/`.part.N`/`Torn_Circuit`/`EXP_*` artifacts vendored in
+  `tests/corpus/electricdss-tst/…/Examples/ADiakoptics/{ckt24,IEEE_123_Bus-G,…}` were
+  produced by *official OpenDSS* — usable as diagnostic cross-checks and (via D9's
+  partition injection) as real references, never as blind byte gates.
+
+**Probe result (2026-07-11) — the official EPRI binaries DO run A-Diakoptics.** All
+three vendored official trees (`.inputs/electricdss-code-r{3723,4088,4133}-trunk`)
+contain `Version8/Source/Common/Diakoptics.pas` **and** ship `kmetis.exe`/`pmetis.exe`
+next to `OpenDSSDirect.dll` in `Version8/Distrib/x64/`. A live probe through the
+existing Oddie bridge (`dss.IOddieDSS(library_path=<r3723 x64 DLL>)` — kmetis is found
+because it sits beside the loaded DLL) on the corpus `IEEE_123_Bus-G` demo:
+`set Num_SubCircuits=3; set ADiakoptics=True` → init succeeds (3 sub-circuits, links
+`Line.l10, Line.l73`, `get NumActors=4`, the full init-summary text incl. partitioning
+statistics), `Export ZCC/Y4/ZLL` produce files, `.graph`/`.graph.part.3` written, AD
+snapshot solve converges in 3 iterations. **AD vs normal solve, controls off: max
+rel |ΔV| = 2.6e-4 over all 278 nodes** (= the convergence-tolerance-bounded fixpoint
+agreement D7 predicts). With `controlmode=Static` the same comparison shows 8.7e-2 —
+regulator-tap state diverges between the runs, which is exactly why WP-AD.4 defaults
+control decks to `pf`. Both D5 numeric quirks (`Calc_Y4` double-`.re`, `Calc_ZCC`
+`re≠0 AND im≠0`) are present verbatim in official r3723 — the vendored rewrite
+inherited them — so 1:1 reproduction also matches the official binaries. Official
+r3723 additionally has `set LinkBranches=`/`UseMyLinkBranches` (options the vendored
+0.14.5 rewrite dropped; out of port scope, but usable on the *reference* side).
 
 ### §0.3 Where the Rust tree stands today (inventoried 2026-07-11)
 
@@ -175,7 +198,8 @@ Consequences (binding):
 
 ## §1 Binding decision records
 
-**D1 — A-Diakoptics gates (no oracle).** Three mandatory legs, all rust-only:
+**D1 — A-Diakoptics gates (no pinned oracle).** Three mandatory rust-only legs, plus
+the official-EPRI reference channel (D9) as the fourth, behavioral leg:
 (1) *source fidelity* — loop-for-loop transcription of the `{$IFDEF DSS_CAPI_ADIAKOPTICS}`
 code with Pascal citations in doc comments, audited against §0.1; (2) *structural
 invariants + fixture goldens* — committed fixtures for `Contours`/`ZLL`/`ZCC`/`Y4` on
@@ -272,12 +296,50 @@ solved normally" vs "deck + AD preamble" mixes two effects; the gate separates t
    The tighten-proof (b) stays in the suite as a permanent test. The tier is never
    loosened afterwards (CLAUDE.md no-fudging rule).
 
-**D8 — manifests and lifecycle.** Family decks stay oracle-gated exactly as today —
-**no deck in a family manifest ever contains AD commands** (the oracle would error
-#130). AD coverage is orthogonal: a mandatory `ad` field on every family-manifest case
-plus `tests/corpus/manifests/ad_sweep.json` for the vendored corpus (WP-AD.4). Decks
-that must run literal AD commands (tearing fixtures, export formats, statistics) live
-as command sequences inside `crates/dss-core/tests/adiakoptics.rs`, not as corpus decks.
+**D8 — manifests and lifecycle.** Family decks stay pinned-oracle-gated exactly as
+today — **no deck in a family manifest ever contains AD commands against the pinned
+oracle** (it would error #130). AD coverage is orthogonal: a mandatory `ad` field on
+every family-manifest case plus `tests/corpus/manifests/ad_sweep.json` for the vendored
+corpus (WP-AD.4). Decks that must run literal AD commands (tearing fixtures, export
+formats, statistics) live as command sequences inside
+`crates/dss-core/tests/adiakoptics.rs`, not as corpus decks. The one exception is D9(d):
+AD cases whose manifest `oracle` names an official rev — those replay AD on both sides.
+
+**D9 — the official-EPRI A-Diakoptics reference channel (probe-proven 2026-07-11,
+see §0.2).** The official r3723/r4088/r4133 binaries run AD end-to-end through the
+existing Oddie bridge; r3723 (the 0.14.5-lineage rev, `known_diffs` fully triaged) is
+the designated AD reference. Four uses, in increasing strength:
+
+- *(a) Dev-time probes* — any behavioral question during WP-AD.2/AD.3 is settled by
+  driving the r3723 DLL (the `ad_probe.py` pattern: base solve → `set ADiakoptics=True`
+  → inspect summary/`get LinkBranches`/exports/voltages), never by guessing. This is
+  the AD analogue of `probe_val.py`.
+- *(b) Committed reference fixtures* — a `tools/opendss/gen_ad_reference.py` script
+  harvests, from r3723, per-fixture-deck: the init summary, `LinkBranches`,
+  `.graph`/`.part.N`, `ZCC/Y4/ZLL/Contours` CSVs and post-AD node voltages; outputs are
+  committed (checksummed, regenerated only manually — the same discipline as goldens).
+  Caveat recorded per fixture: the vendored 0.14.5 AD source is a refactor of official
+  V8 — before pinning any value byte-level, diff the two `Diakoptics.pas` at the site
+  in question and record the delta (probe already proved the Y4/ZCC quirks identical).
+- *(c) Partition injection (test-only hook)* — our `Create_MeTIS_Zones` reads
+  `.part.<N>` from disk; the tearing module exposes a test-only way to supply a
+  pre-existing `.part` file instead of running the D2 partitioner (an
+  `#[cfg(test)]`/env-guarded injection point, not a user option). Feeding official
+  r3723's `.part` file makes the partitions **identical**, which upgrades the (b)
+  fixtures from "same fixpoint" to direct matrix-level comparisons of
+  `Contours/ZLL/ZCC/Y4` and torn-file structure.
+- *(d) Mandatory-gate AD cases* — the WP-U0 precedent (manifest `oracle:` field) allows
+  a **small, named** set of AD sweep cases to carry `oracle: "r3723"`: the runner
+  replays the same AD preamble on both engines and compares post-AD voltages/powers at
+  the AD tier (partitions differ — kmetis vs D2 — so matrix/`LinkBranches`/statistics
+  comparisons are excluded for these cases; iteration policy ≤ as per WP-U0). Start
+  with 3–5 cases (IEEE123 demo, ckt24 auto-tear, one synthesized fixture); everything
+  else in the sweep stays rust-vs-rust. The broad `corpus_live_opendss`-style AD sweep
+  against r3723 remains opt-in/report-only, consistent with the channel's charter.
+
+Infra prerequisite (WP-AD.2): extend `tools/opendss/vendor_binaries.py` to also vendor
+`kmetis.exe` + `pmetis.exe` into `bin/<rev>/` (checksums in `bin/SHA256SUMS`) — the DLL
+finds kmetis next to itself; today only the `.inputs` x64 dirs have it.
 
 ---
 
@@ -477,6 +539,12 @@ LinkBranches!); `Export ZLL/ZCC/Contours/Y4` (register 58–61, formats per
 - Fixture goldens for `Contours`/`ZLL`/`ZCC`/`Y4` on the midi feeder (2 zones), with
   the D1 invariants recomputed in-test (ZCCᵀ reconstruction, `‖Y4·ZCC − I‖` bound
   modulo the D5 drop quirks — assert the dropped-entry pattern explicitly).
+- **Official-reference comparison (D9 b+c):** harvest r3723's `.part`/matrices/voltages
+  for the IEEE_123_Bus-G demo via `gen_ad_reference.py`; inject the official `.part`
+  file (identical partition) and compare our `Contours/ZLL/ZCC/Y4` and post-AD node
+  voltages against the committed reference (tier from the D7 calibration; any
+  vendored-source-vs-official code delta found while triaging goes into the fixture's
+  caveat note).
 - Export format tests for all four (against the committed fixtures).
 - **Equivalence gates** per D7 on three synthesized fixtures (midi snap, midi
   daily-24-step, macro yearly-168-step): round-trip leg + AD leg, tier calibrated and
@@ -518,6 +586,10 @@ involved, so it runs everywhere `cargo test` runs).
   the ckt24 recipe. Output dirs are per-case temps (Torn_Circuit lands there).
 - An `ad: full|pf` case whose AD init **fails** at runtime = test failure (the
   disposition is a promise, like `pending`), with the init summary in the message.
+- **D9(d) cases:** 3–5 named sweep cases additionally carry `oracle: "r3723"` — the AD
+  preamble replays on the official engine too, and Rust-AD is compared against
+  official-AD (voltages/powers at the AD tier; partition-dependent artifacts excluded).
+  These ride the existing WP-U0 target-rev machinery in the mandatory gate.
 
 **Initial disposition catalogue** (starting point; WP-AD.4's work is largely moving
 decks from `off:unclassified` upward, deck by deck, with evidence):
@@ -553,11 +625,13 @@ counts recorded in STATUS (like the solvable_now counts).
   auto-tear at `Num_SubCircuits=2` and `4`, AD-solve `mode=yearly number=24`, compare
   vs the normal solve per D7 (this is the real-corpus macro gate; 168-step variant
   behind `DSS_EXPENSIVE_TESTS=1` if runtime demands).
-- EPRI channel probe (opt-in, report-only, never gating): determine whether the
-  official r3723/r4088/r4133 binaries under `tools/opendss/` expose
-  `set ADiakoptics` + ship `kmetis.exe`; if yes, add an `ab_compare.py` AD case and
-  record findings in `tools/opendss/README.md` + `known_diffs.json`; if no, record
-  that. Either way STATUS gets the inventory note.
+- EPRI reference channel hardening (the D9 probe already answered the feasibility
+  question — 2026-07-11, §0.2): land `tools/opendss/gen_ad_reference.py` + its
+  regeneration procedure in `tools/opendss/README.md`; vendor `kmetis.exe`/`pmetis.exe`
+  via `vendor_binaries.py` (if not already done in WP-AD.2); add AD divergence classes
+  (if any) to `tests/corpus/known_diffs.json`; optionally extend the opt-in
+  `corpus_live_opendss` sweep with an AD leg (report-only). STATUS gets the inventory
+  note either way.
 - Exit sweep: no `NOT_PORTED`/refusal left on the §0.1 surface; `help_catalog.rs`
   Tear_Circuit "not supported" note updated to reflect the Rust-side support;
   `NOTE(subst-metis)`/`NOTE(upstream-quirk)` markers greppable and inventoried in
