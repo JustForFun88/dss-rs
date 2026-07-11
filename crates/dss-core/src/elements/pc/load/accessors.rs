@@ -9,9 +9,11 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 use super::{
     Connection, Load, LoadModel, LoadSpec, default_recalc_ctx, nconds_for_connection, prop,
@@ -27,6 +29,43 @@ impl CktElement for Load {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
+    }
+
+    /// Pascal `TLoadObj.MakePosSequence` (`Load.pas:2215`). Convert to a single
+    /// phase, line-neutral wye load carrying one third of the total power.
+    ///
+    /// TODO(compat): the power divisor is a hard-coded `3.0`, NOT `Fnphases`
+    /// (upstream "assume load is distributed equally among the 3 phases", RCD
+    /// 2016). A second `makeposseq` therefore divides again (400 → 133.33 →
+    /// 44.44), pinned by `tests/corpus/modes/makeposseq_pc.dss`.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use super::prop;
+
+        // Make sure voltage is line-neutral.
+        let v = if self.cd.nphases > 1 || self.connection != Connection::Wye {
+            self.kv_load_base / sqrt3()
+        } else {
+            self.kv_load_base
+        };
+
+        let new_kw = self.kw_base / 3.0;
+        let new_kvar = self.kvar_base / 3.0;
+        let new_kva = self.connected_kva / 3.0; // ConnectedKVA (== XfkVA)
+
+        let mut actions = vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW, new_kw),
+            PosSeqAction::SetF64(prop::KVAR, new_kvar),
+        ];
+        if new_kva > 0.0 {
+            actions.push(PosSeqAction::SetF64(prop::XFKVA, new_kva));
+        }
+        actions.push(PosSeqAction::EndEdit);
+
+        PosSeqPlan::with_actions(actions)
     }
 
     /// Pascal `TLoadObj.CalcYPrim`.
