@@ -19,7 +19,7 @@
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5.dss",
    "tag": "oracle_error",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5.dss failed: Some(\"TypeError: cannot unpack non-iterable NoneType object\")"
+   "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-A #41). Multi-ACTOR DSS_CAPI_PM script (NewActor / Set CPU / ActiveActor). Rust refuses the actor family loudly. The pinned one-shot oracle server dies (TypeError: cannot unpack non-iterable NoneType). Also verified: r3723 SEGFAULTS under the Oddie bridge on multi-actor -- so no official-engine compare is possible either. Unblocks with M2."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
@@ -34,27 +34,22 @@
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS",
    "tag": "oracle_error_#130",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS failed: Some(\"DSSException: (#130) Unknown parameter \\\"Num_SubCircuits\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-t"
+   "note": "BLOCKED_PENDING WP-AD.3 (CF-B item 8a, T-A #13). AD master: the base snapshot solve matches on BOTH engines (Rust YES 6 iters, r3723 YES 6). Only the `Set Num_SubCircuits`/`LinkBranches`/`ADiakoptics`/`ActiveActor`/`CPU` A-Diakoptics block is unrunnable on Rust (Part II, not ported) and unknown to the pinned oracle (#130 Unknown parameter Num_SubCircuits). Becomes an r3723-gated citizen once WP-AD.3 lands."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss",
    "tag": "oracle_error_#130",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Master_ckt7.dss failed: Some(\"DSSException: (#130) Unknown parameter \\\"LinkBranches\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss"
+   "note": "BLOCKED_PENDING WP-AD.3 (CF-B item 8a, T-A #14). AD master: base snapshot solve matches on both engines (Rust YES 5, r3723 YES 5). Only the A-Diakoptics `LinkBranches`/`Num_SubCircuits`/actor block is unrunnable on Rust (Part II) and unknown to the pinned oracle (#130 Unknown parameter LinkBranches). r3723-gated once WP-AD.3 lands."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS",
    "tag": "oracle_error_#130",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Master.DSS failed: Some(\"DSSException: (#130) Unknown parameter \\\"Num_SubCircuits\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricds"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "oracle_error_#485",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
+   "note": "BLOCKED_PENDING WP-AD.3 (CF-B item 8a, T-A #15). AD master: base solve matches on both engines (Rust YES 3, r3723 YES 2); the full AD deck is confirmed to run on r3723 (converged 2 iters). Only the `Num_SubCircuits`/`ADiakoptics` block is unrunnable on Rust (Part II) and unknown to the pinned oracle (#130). r3723-gated once WP-AD.3 lands."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss",
    "tag": "oracle_error_#130",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss failed: Some(\"DSSException: (#130) Unknown parameter \\\"LinkBranches\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\"
+   "note": "BLOCKED_PENDING WP-AD.3 (CF-B item 8a, T-A #16). AD master: base snapshot solve matches on both engines (Rust YES 3, r3723 YES 3). Only the A-Diakoptics `LinkBranches`/`Num_SubCircuits`/actor block is unrunnable on Rust (Part II) and unknown to the pinned oracle (#130 Unknown parameter LinkBranches). r3723-gated once WP-AD.3 lands. (Distinct from the MemoryMappingLoadShapes/ckt24 family.)"
   },
   {
    "path": "Version8/Distrib/Examples/Celso_Example/DSSFiles/IEEE123Master.dss",
@@ -67,14 +62,9 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-p.dss failed: Some(\"DSSException: (#482) Error Encountered in Solve: Division by zero\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\e"
   },
   {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
-   "tag": "oracle_error_#485",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
-  },
-  {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
    "tag": "oracle_error_#24713",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss failed: Some(\"DSSException: (#24713) Error: Unknown Export command: \\\"deltaf\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-ts"
+   "note": "BLOCKED_PENDING UPGRADE (CF-B item 8c, T-A #39). Uses NCIM Export sub-commands (`Export deltaf`/`deltaz`/`jacobian`) absent from both the pinned 0.14.5 oracle (#24713 Unknown Export command) and the Rust port; the model itself solves on r4133 (YES, 1 iter, 33 nodes). Migratable once the NCIM export commands are ported (UPGRADE)."
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsc0test.dss",
@@ -87,12 +77,12 @@
   {
    "path": "Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/Run_IEEE123Bus_GFLDaily.DSS",
    "tag": "oracle_error_#263",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/Run_IEEE123Bus_GFLDaily.DSS failed: Some(\"DSSException: (#263) New Command: Object Type \\\"WindGen\\\" not found. \\r\\nNew WindGen.wtg1 phases=3 bus1=WindGB k"
+   "note": "BLOCKED_PENDING UPGRADE (CF-B item 8c, T-A #37). Uses the `WindGen` element, which is newer than the pinned dss_capi 0.14.5 (pinned oracle raises #263 Object Type \"WindGen\" not found) and not in the Rust port. Solves on the newer r4133 line; migratable only once WindGen is ported (UPGRADE WP-U1.7/U1.8)."
   },
   {
    "path": "Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/Run_IEEE123Bus_GFLDaily.DSS",
    "tag": "oracle_error_#263",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/Run_IEEE123Bus_GFLDaily.DSS failed: Some(\"DSSException: (#263) New Command: Object Type \\\"WindGen\\\" not found. \\r\\nNew WindGen.wtg1 phases=3 bus1=WindGB kV=0.69 k"
+   "note": "BLOCKED_PENDING UPGRADE (CF-B item 8c, T-A #38). Uses the `WindGen` element (newer than pinned 0.14.5; pinned oracle #263, absent from the Rust port). Solves on r4133; migratable once WindGen is ported (UPGRADE WP-U1.7/U1.8)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/WindRamp.DSS",
@@ -118,11 +108,6 @@
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
    "tag": "oracle_error_#570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss failed: Some(\"DSSException: (#570) Generator User Model IndMach012a Not Loaded. DSS Directory = E:\\\\RustProject\\\\dss-rs\\\\crates\\\\dss-core\\\\\\r\\n[fi"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
-   "tag": "oracle_error_#485",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings.\")"
   }
  ]
 }

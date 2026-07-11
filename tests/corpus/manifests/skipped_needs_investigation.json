@@ -14,12 +14,12 @@
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
    "tag": "oracle_timeout",
-   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss failed: Some(\"oracle timeout after 120s\")"
+   "note": "BLOCKED_PENDING WP-AD.3 + actor (CF-B item 8a, T-A #1). A-Diakoptics + actor + yearly T&D master (base = IEEE30). The pinned oracle times out (>120s) on it; not runnable on Rust (Part II AD block). Blocked on WP-AD.3 (and actor mode)."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS",
    "tag": "oracle_timeout",
-   "note": "live probe: oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Run_IEEE30.DSS failed: Some(\"oracle timeout after 120s\")"
+   "note": "BLOCKED_PENDING WP-AD.3 + actor (CF-B item 8a, T-A #2). Compiles the AD Transmission Master (base = IEEE30); pinned oracle times out (>120s), not runnable on Rust (Part II AD block). Blocked on WP-AD.3 (and actor mode)."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS",
@@ -134,7 +134,7 @@
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
    "tag": "oracle_nonconvergence",
-   "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify; unblocked by the SetkVBase port): the pinned oracle itself does not converge on this deck (persists across in-process retries) -- oracle-blocked, nothing to compare against; joins the documented oracle_nonconvergence class."
+   "note": "BLOCKED_PENDING UPGRADE (CF-B item 8d, T-A #11). Convergence is r4133-ONLY: the pinned 0.14.5 oracle does NOT converge (NO, 100 iters, persists across retries), r3723 also does NOT (NO, 100), and Rust does NOT (NO, 100) -- only the newer r4133 line converges (YES, 2 iters), an upstream solver change. No pinned-oracle compare possible and Rust must also solve; migratable only once the r4133 solver behavior is adopted (UPGRADE)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
@@ -170,6 +170,21 @@
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
    "tag": "live_mismatch",
    "note": "CF-B (T-B U1b, item 7). Whole-IEEE123 GFM daily trajectory with AmpLimit/SafeVoltage current limiting; validated live vs the pinned oracle at large_floating_delta and ABOVE-BAND: step 0 entry 230 Rust (971.396, 559.110) vs oracle (971.406, 559.116), |diff|=1.235e-2 > allowed 6.121e-4. Real divergence in the current-limited islanded GFM section. Needs investigation; not forced."
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
+   "tag": "live_mismatch_control_settling_#485",
+   "note": "CF-B (T-A #17, item 8e). #485 control-settling difference. The pinned oracle raises #485 (Max Control Iterations Exceeded) as a hard exception; r3723 hits the same #485 warning but settles to convergence in 30 control iterations, while Rust settles this A-Diakoptics IEEE_123 Torn/Interconnected model on a different control trajectory. No pinned-oracle compare is possible (it raises), and Rust vs r3723 control settling differs -- needs investigation (control-iteration/tap-settling family), not migrated."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
+   "tag": "live_mismatch_control_settling_#485",
+   "note": "CF-B (T-A #45, item 8e). #485 control-settling difference. Pinned oracle raises #485 (hard); r3723 hits the #485 warning then converges in 109 iterations; Rust solves cleanly in 67 iterations with NO #485 -- i.e. Rust settles the recloser-siting controls on a different trajectory than the official engine. No pinned-oracle compare (it raises). Needs investigation (control-settling), not migrated."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
+   "tag": "live_mismatch_control_settling_#485",
+   "note": "CF-B (T-A #44, item 8e). #485 control-settling difference. Pinned oracle raises #485 (hard); r3723 hits the #485 warning then converges in 109 iterations; Rust solves cleanly in 67 iterations with NO #485. Rust settles the recloser-siting controls differently than the official engine. No pinned-oracle compare. Needs investigation (control-settling), not migrated."
   }
  ]
 }
