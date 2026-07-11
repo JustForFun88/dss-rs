@@ -206,6 +206,39 @@ mod tests {
         }
     }
 
+    /// Pins the **exact unstable tie-break order** against the real
+    /// `GK_MKQSORT(ikv_t, …, ikey_lt)` macro from `GKlib/include/gk_mksort.h`.
+    /// The `.val` sequence below was harvested from that C macro compiled with
+    /// gcc 13.2.0 (`scratchpad/metis-build/qsortprobe.c`) for the input
+    /// `val=i, key=(i*7+3)%5, i in 0..30`. The equal-key order is glibc-qsort's,
+    /// not a stable sort's, and it is load-bearing (it feeds `Match_2HopAll`'s
+    /// candidate scan), so a different-but-still-sorted result would be a port bug
+    /// this test catches — unlike the sortedness-only checks below.
+    #[test]
+    fn matches_c_qsort_tie_break_order() {
+        let mut v: Vec<Ikv> = (0..30)
+            .map(|i| Ikv {
+                key: (i * 7 + 3) % 5,
+                val: i,
+            })
+            .collect();
+        ikvsorti(&mut v);
+        // C GK_MKQSORT `.val` order (harvested), keys ascending with the exact
+        // unstable ordering among equal keys.
+        let want_val: [i32; 30] = [
+            21, 16, 6, 11, 26, 1, // key 0
+            24, 19, 29, 14, 4, 9, // key 1
+            22, 17, 7, 2, 27, 12, // key 2
+            25, 10, 20, 5, 15, 0, // key 3
+            18, 23, 3, 8, 13, 28, // key 4
+        ];
+        let got_val: Vec<i32> = v.iter().map(|e| e.val).collect();
+        assert_eq!(
+            got_val, want_val,
+            "tie-break order diverged from C GK_MKQSORT"
+        );
+    }
+
     #[test]
     fn preserves_multiset() {
         let mut v: Vec<Ikv> = (0..50)

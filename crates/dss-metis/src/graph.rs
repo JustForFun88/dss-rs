@@ -46,10 +46,29 @@ pub enum GraphError {
     NonPositive,
     /// `fmt > 111`.
     BadFmt(Idx),
+    /// `ncon > 0` in the header but `fmt` does not request vertex weights
+    /// (`io.c:67`: "Make sure that the fmt parameter is set to either 10 or 11").
+    NconWithoutVwgt { ncon: Idx },
     /// A neighbor id was `< 1` or `> nvtxs`.
     EdgeOutOfBounds { vertex: Idx, edge: Idx },
     /// A weighted edge was missing its weight.
     MissingEdgeWeight { vertex: Idx },
+    /// A weighted edge carried a non-positive weight (`io.c:135`: the weight must
+    /// be positive).
+    NonPositiveEdgeWeight { vertex: Idx, edge: Idx, weight: Idx },
+    /// `readvs` was set but the vertex line had no vsize field (`io.c:100`).
+    MissingVsize { vertex: Idx },
+    /// A vertex size was `< 0` (`io.c:102`: the size must be `>= 0`).
+    NegativeVsize { vertex: Idx, size: Idx },
+    /// `readvw` was set but the vertex line lacked a weight for some constraint
+    /// (`io.c:112`).
+    MissingVwgt { vertex: Idx, constraint: Idx },
+    /// A vertex weight was `< 0` (`io.c:115`: the weight must be `>= 0`).
+    NegativeVwgt {
+        vertex: Idx,
+        constraint: Idx,
+        weight: Idx,
+    },
     /// EOF before all `nvtxs` adjacency lines were read.
     PrematureEof { vertex: Idx },
     /// The counted edges did not match the header (`k != nedges`).
@@ -62,12 +81,45 @@ impl std::fmt::Display for GraphError {
             GraphError::BadHeader => write!(f, "header must specify nvtxs and nedges"),
             GraphError::NonPositive => write!(f, "nvtxs and nedges must be positive"),
             GraphError::BadFmt(v) => write!(f, "cannot read file format [fmt={v}]"),
+            GraphError::NconWithoutVwgt { ncon } => write!(
+                f,
+                "ncon={ncon} but fmt does not specify vertex weights (set fmt to 10 or 11)"
+            ),
             GraphError::EdgeOutOfBounds { vertex, edge } => {
                 write!(f, "edge {edge} for vertex {vertex} is out of bounds")
             }
             GraphError::MissingEdgeWeight { vertex } => {
                 write!(f, "premature end of line for vertex {vertex}")
             }
+            GraphError::NonPositiveEdgeWeight {
+                vertex,
+                edge,
+                weight,
+            } => write!(
+                f,
+                "the weight ({weight}) for edge ({vertex}, {edge}) must be positive"
+            ),
+            GraphError::MissingVsize { vertex } => {
+                write!(
+                    f,
+                    "the line for vertex {vertex} does not have vsize information"
+                )
+            }
+            GraphError::NegativeVsize { vertex, size } => {
+                write!(f, "the size ({size}) for vertex {vertex} must be >= 0")
+            }
+            GraphError::MissingVwgt { vertex, constraint } => write!(
+                f,
+                "the line for vertex {vertex} does not have enough weights for constraint {constraint}"
+            ),
+            GraphError::NegativeVwgt {
+                vertex,
+                constraint,
+                weight,
+            } => write!(
+                f,
+                "the weight ({weight}) for vertex {vertex} and constraint {constraint} must be >= 0"
+            ),
             GraphError::PrematureEof { vertex } => {
                 write!(f, "premature end of input while reading vertex {vertex}")
             }
@@ -96,16 +148,26 @@ impl Graph {
             }
         };
 
-        let hf: Vec<Idx> = header
-            .split_whitespace()
-            .filter_map(|t| t.parse::<Idx>().ok())
-            .collect();
+        // `sscanf(line, "%d %d %d %d", &nvtxs, &nedges, &fmt, &ncon)` (io.c:46):
+        // reads up to four integer fields, stopping at the first token that is not
+        // an integer, and returns the count assigned. Mirror the field-counting
+        // (a non-numeric token ends the header — later fields keep their `0`
+        // init) rather than silently skipping non-numeric tokens.
+        let mut hf: Vec<Idx> = Vec::with_capacity(4);
+        for tok in header.split_whitespace().take(4) {
+            match tok.parse::<Idx>() {
+                Ok(v) => hf.push(v),
+                Err(_) => break,
+            }
+        }
         if hf.len() < 2 {
             return Err(GraphError::BadHeader);
         }
         let nvtxs = hf[0];
         let mut nedges = hf[1];
         let fmt = if hf.len() >= 3 { hf[2] } else { 0 };
+        // Raw header ncon (0 if absent): checked against readvw *before* the
+        // `ncon==0 ? 1` normalization, exactly as io.c does.
         let mut ncon = if hf.len() >= 4 { hf[3] } else { 0 };
 
         if nvtxs <= 0 || nedges <= 0 {
@@ -120,6 +182,11 @@ impl Graph {
         let readvs = (f3 / 100) % 10 == 1;
         let readvw = (f3 / 10) % 10 == 1;
         let readew = f3 % 10 == 1;
+
+        // io.c:67 — ncon requested but fmt has no vertex-weight digit.
+        if ncon > 0 && !readvw {
+            return Err(GraphError::NconWithoutVwgt { ncon });
+        }
 
         nedges *= 2;
         ncon = if ncon == 0 { 1 } else { ncon };
@@ -155,11 +222,43 @@ impl Graph {
 
             let mut toks = line.split_whitespace();
             if readvs {
-                vsize[i] = toks.next().and_then(|t| t.parse().ok()).unwrap_or(0);
+                // strtoidx + `newstr==curstr` guard + `vsize < 0` check (io.c:98).
+                let v = match toks.next().and_then(|t| t.parse::<Idx>().ok()) {
+                    Some(v) => v,
+                    None => {
+                        return Err(GraphError::MissingVsize {
+                            vertex: (i + 1) as Idx,
+                        });
+                    }
+                };
+                if v < 0 {
+                    return Err(GraphError::NegativeVsize {
+                        vertex: (i + 1) as Idx,
+                        size: v,
+                    });
+                }
+                vsize[i] = v;
             }
             if readvw {
+                // Per-constraint strtoidx + missing/`< 0` checks (io.c:109).
                 for l in 0..nc {
-                    vwgt[i * nc + l] = toks.next().and_then(|t| t.parse().ok()).unwrap_or(0);
+                    let w = match toks.next().and_then(|t| t.parse::<Idx>().ok()) {
+                        Some(w) => w,
+                        None => {
+                            return Err(GraphError::MissingVwgt {
+                                vertex: (i + 1) as Idx,
+                                constraint: l as Idx,
+                            });
+                        }
+                    };
+                    if w < 0 {
+                        return Err(GraphError::NegativeVwgt {
+                            vertex: (i + 1) as Idx,
+                            constraint: l as Idx,
+                            weight: w,
+                        });
+                    }
+                    vwgt[i * nc + l] = w;
                 }
             }
             while let Some(t) = toks.next() {
@@ -174,14 +273,23 @@ impl Graph {
                     });
                 }
                 let ewgt: Idx = if readew {
-                    match toks.next().and_then(|t| t.parse().ok()) {
+                    let w = match toks.next().and_then(|t| t.parse().ok()) {
                         Some(w) => w,
                         None => {
                             return Err(GraphError::MissingEdgeWeight {
                                 vertex: (i + 1) as Idx,
                             });
                         }
+                    };
+                    // io.c:135 — a weighted edge must carry a positive weight.
+                    if w <= 0 {
+                        return Err(GraphError::NonPositiveEdgeWeight {
+                            vertex: (i + 1) as Idx,
+                            edge,
+                            weight: w,
+                        });
                     }
+                    w
                 } else {
                     1
                 };
@@ -304,6 +412,46 @@ mod tests {
     fn edge_out_of_bounds_errors() {
         let e = Graph::from_metis_str("2 1 1\n3 1\n1 1\n").unwrap_err();
         assert!(matches!(e, GraphError::EdgeOutOfBounds { .. }));
+    }
+
+    #[test]
+    fn non_positive_edge_weight_errors() {
+        // io.c:135 — a weighted edge with a 0 or negative weight is rejected.
+        let z = Graph::from_metis_str("2 1 1\n2 0\n1 0\n").unwrap_err();
+        assert!(matches!(
+            z,
+            GraphError::NonPositiveEdgeWeight { weight: 0, .. }
+        ));
+        let n = Graph::from_metis_str("2 1 1\n2 -3\n1 -3\n").unwrap_err();
+        assert!(matches!(
+            n,
+            GraphError::NonPositiveEdgeWeight { weight: -3, .. }
+        ));
+    }
+
+    #[test]
+    fn negative_vertex_size_and_weight_error() {
+        // fmt=110 => readvs+readvw. Negative vsize / vwgt are rejected (io.c:102/115).
+        let vs = Graph::from_metis_str("2 1 110 1\n-1 1 2\n0 1 1\n").unwrap_err();
+        assert!(matches!(vs, GraphError::NegativeVsize { size: -1, .. }));
+        let vw = Graph::from_metis_str("2 1 110 1\n1 -1 2\n0 1 1\n").unwrap_err();
+        assert!(matches!(vw, GraphError::NegativeVwgt { weight: -1, .. }));
+    }
+
+    #[test]
+    fn ncon_without_vwgt_flag_errors() {
+        // io.c:67 — ncon specified but fmt (=1) has no vertex-weight digit.
+        let e = Graph::from_metis_str("2 1 1 2\n2 5\n1 5\n").unwrap_err();
+        assert!(matches!(e, GraphError::NconWithoutVwgt { ncon: 2 }));
+    }
+
+    #[test]
+    fn header_stops_at_first_non_integer_field() {
+        // sscanf field-counting: "2 1 x 1" assigns only nvtxs,nedges (fmt stays 0),
+        // so this parses as an unweighted graph rather than picking up the trailing 1.
+        let g = Graph::from_metis_str("2 1 x 1\n2\n1\n").unwrap();
+        assert_eq!(g.adjwgt, None);
+        assert_eq!(g.adjncy, vec![1, 0]);
     }
 
     #[test]

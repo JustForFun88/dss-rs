@@ -96,6 +96,14 @@ symmetric, `fmt=1` edge weights = phase counts 1/2/3):
   OpenDSS `Create_MeTIS_graph` line/index quirks (Stage-B concerns); `ckt24norm`
   is its topology re-emitted as a valid symmetric 1-based standard METIS graph
   so the stock C reader accepts it. Provenance kept alongside.
+- `mesh120u` — the **fmt=0 (unweighted)** variant of `mesh120`: same topology
+  with the edge weights dropped. With all edge weights equal, `CoarsenGraph`'s
+  `eqewgts` is true at level 0, so the port (and the C original) take the
+  **Match_RM** matching branch there instead of SHEM — this is the one committed
+  fixture that pins the RM coarsening path (all others are fmt=1, SHEM-only).
+  Derived deterministically by stripping the weight tokens from `mesh120.graph`
+  (`scratchpad/metis-build`, keep every other adjacency token); goldens from the
+  same `driver.exe` (fmt=0 => `adjwgt = NULL` => unit weights).
 
 ## Generating the `.part.N` goldens
 
@@ -121,3 +129,21 @@ The first 20 values of each stream are pinned as constants in
 `crates/dss-metis/src/rng.rs` (`#[cfg(test)]`), asserted bit-exact by the unit
 tests. Seed 4321 is METIS's `SEED=-1` default; seed 123 is the
 `parmetis`/`ometis` fixed seed, harvested for coverage.
+
+## GKlib primitive harvests (pin the isolating unit tests)
+
+Two load-bearing GKlib primitives are pinned in `#[cfg(test)]` unit tests by
+harvesting the C macros standalone (they instantiate the same header-only
+templates the port mirrors, so the output is oracle-grade, not self-referential):
+
+- `sort.rs::matches_c_qsort_tie_break_order` — the **unstable tie-break order**
+  of `GK_MKQSORT(ikv_t, …, ikey_lt)` (`GKlib/include/gk_mksort.h`).
+  `scratchpad/metis-build/qsortprobe.c` instantiates the macro and prints the
+  `.val` order for `val=i, key=(i*7+3)%5, i∈0..30`.
+- `pqueue.rs::matches_c_rpq_extraction_order` — the full extraction order (incl.
+  equal-key ties) of `GK_MKPQUEUE(rpq, …, key_gt)` (`GKlib/include/gk_mkpqueue.h`)
+  for a fixed insert/update/delete sequence. `scratchpad/metis-build/pqprobe.c`
+  instantiates the macro with malloc-based shims (`ASSERT` no-ops, matching the
+  `NDEBUG` release build) and prints the popped `val`s.
+
+Both probes compile with the same gcc 13.2.0 and `-I .inputs/GKlib/include`.

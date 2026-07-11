@@ -112,9 +112,9 @@ Workspace crate `crates/dss-metis` (`#![forbid(unsafe_code)]`), the safe-Rust 1:
 source port of the METIS 5.2.1 `METIS_PartGraphKway` -> `MlevelKWayPartitioning`
 path (plan D2). The **whole pipeline** is ported and the open item is closed:
 `part_graph_kway(xadj, adjncy, vwgt?, adjwgt?, nparts) -> (part, edgecut)` replays
-every committed `.part.N` golden **bit-exact** (k in {2,3,4,8} over all 5 fixtures =
-20/20; `tests/golden_part.rs`), and its returned edgecut equals the C driver's for
-all 20 (independent cross-check + induced-cut self-consistency).
+every committed `.part.N` golden **bit-exact** (k in {2,3,4,8} over all 6 fixtures =
+24/24; `tests/golden_part.rs`), and its returned edgecut equals the C driver's for
+all 24 (independent cross-check + induced-cut self-consistency).
 - `rng.rs` — GKRAND MT19937-64 + `GK_MKRANDOM` ops, pinned bit-exact vs the C build.
   The single global stream is re-seeded to 4321 at each `SetupCtrl` (kmetis entry,
   then again inside `InitKWayPartitioning`'s `METIS_PartGraphRecursive`), and
@@ -145,13 +145,49 @@ all 20 (independent cross-check + induced-cut self-consistency).
   disconnected 3-component graph forcing the BFS-restart, weighted+unweighted
   forcing SHEM vs RM, k up to 32) via a throwaway scratch harness (not committed) —
   0 divergences.
-- Golden infra unchanged: fixtures + `.part.{2,3,4,8}` generated OFFLINE from the C
-  original (MinGW gcc 13.2.0 + libmetis static, minimal gpmetis-default driver);
-  procedure in `tools/golden/gen_metis_reference.md`. The C original reproduces all
-  20 committed goldens bit-exact (re-verified this session).
+- Golden infra: fixtures + `.part.{2,3,4,8}` generated OFFLINE from the C original
+  (MinGW gcc 13.2.0 + libmetis static, minimal gpmetis-default driver); procedure
+  in `tools/golden/gen_metis_reference.md`. The C original reproduces all 24
+  committed goldens bit-exact.
 
 Stage B (tearing / `.graph` engine round-trip, `Create_MeTIS_Zones`) can now build
 on the completed `part_graph_kway`.
+
+**WP-AD.2 Stage A — audit settlement (2026-07-11, gate-green).** Two auditors
+(code + tests) filed 6 Minor findings; each settled empirically against the C spec
+(`.inputs/METIS`,`.inputs/GKlib`) via the offline gcc-13.2.0 reference build. Real
+fidelity/coverage gaps fixed 1:1, non-issues recorded:
+- **`graph.rs` reader dropped `io.c::ReadGraph` validation (fixed).** The cited
+  canonical reader errexits on non-positive edge weights (`io.c:135`), negative
+  `vsize`/`vwgt` (`io.c:102/115`), missing size/weight fields, and `ncon>0` without
+  a vwgt fmt digit (`io.c:67`); the port silently accepted them. Restored all
+  checks (new `GraphError` variants + tests). Also switched the header parse from
+  `filter_map` (skips non-numeric tokens) to `sscanf` field-counting (stops at the
+  first non-integer). No gate impact — all fixtures are well-formed; the throwaway
+  golden `driver.c` uses a permissive replica reader, but graph.rs cites and now
+  faithfully reproduces the *canonical* `io.c::ReadGraph`.
+- **RM coarsening path had no committed gate (fixed).** Added `mesh120u`, the
+  fmt=0 (unweighted) variant of `mesh120`: all-equal weights ⇒ `eqewgts` true ⇒
+  **Match_RM** at level 0 (the fmt=1 fixtures are SHEM-only). Its C `.part.{2,3,4,8}`
+  goldens replay bit-exact — the port's RM branch now matches the C original in the
+  committed suite (6 fixtures × 4 k = 24/24).
+- **`nparts==1` early return untested (fixed).** Added a direct unit test pinning
+  the all-zeros / zero-cut result (`kmetis.c:70,74`); the gpmetis driver rejects
+  `nparts<2`, so it cannot be golden-gated.
+- **`pqueue.rs` / `sort.rs` had no isolating unit tests (fixed).** Added
+  oracle-grade tests harvested from the real `GK_MKPQUEUE(rpq,…)` and
+  `GK_MKQSORT(ikv_t,…)` macros (standalone probes, gcc 13.2.0) pinning the exact
+  extraction / unstable-tie-break order — localizing a regression the end-to-end
+  golden replay would only surface as a label mismatch.
+- **Only 1/5 fixtures from a real feeder (no change — accepted).** Adequate for a
+  Stage-A METIS-in-isolation C-vs-Rust gate: the C reference is the oracle
+  regardless of graph origin, the port is bit-exact on 24 combos + one real graph
+  (`ckt24norm`) + 190 off-corpus combos, and Stage B owns the real DSS round-trip.
+  Recorded so breadth is tracked.
+- Invariant unit tests (matching maximality, coarsening weight conservation) from
+  the original brief remain covered transitively by the bit-exact golden replay
+  (any violation perturbs labels); left to the test-audit's discretion, not added
+  redundantly.
 
 **WPG.19/20 audit settlement (2026-07-11), gate-green.** Two auditors + the full
 gate; every finding verified against the Pascal spec and the pinned oracle, all

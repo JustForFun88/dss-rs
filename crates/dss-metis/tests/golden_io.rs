@@ -26,7 +26,17 @@ fn golden_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden")
 }
 
-const FIXTURES: &[&str] = &["radial12", "radial40", "radial200", "mesh120", "ckt24norm"];
+// `mesh120u` is the fmt=0 (unweighted) variant of `mesh120` — it exercises the
+// reader/validator/writer's `adjwgt == None` branches, which the fmt=1 fixtures
+// never hit.
+const FIXTURES: &[&str] = &[
+    "radial12",
+    "radial40",
+    "radial200",
+    "mesh120",
+    "mesh120u",
+    "ckt24norm",
+];
 const KS: &[Idx] = &[2, 3, 4, 8];
 
 fn load_graph(stem: &str) -> Graph {
