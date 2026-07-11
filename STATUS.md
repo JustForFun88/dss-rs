@@ -2480,6 +2480,59 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**JSON export Stage A (`Obj_ToJSON` / `Batch_ToJSON`) — 2026-07-11, branch
+`wp-json-a`.** Ported the AltDSS single-object + class-batch JSON model dump per
+`JSON_EXPORT_PLAN.md` §4 Stage A (the GUI-facing machine-readable surface; Stage B
+whole-circuit remains deferred).
+
+- **New `report/export/json/`** — an ordered `Json` tree + `JsonOpts` (bits 0–10
+  only; State/Debug/Edit not representable, §6); `fpjson_float` (FPC `Str(Double)`
+  17-sig-digit scientific `1.2470000000000001E+001`, `TODO(compat)`); `write_compact`
+  (`foSingleLine*+foSkipWhiteSpace`) + `write_pretty` (`FormatJSON([],2)`); fpjson
+  `StringToJSON` escaping (`"`→\", `\`→\\, `/` NOT escaped — probed). Two Windows
+  fpjson quirks pinned: pretty uses the RTL **CRLF** line break (`TODO(compat)`), and
+  an **empty container in pretty is `[`+CRLF+indent+`]`**, not inline `[]`.
+- **`obj/props/class_props/json.rs`** — `get_json_value`, a loop-for-loop port of
+  `GetObjPropertyJSONValue` (`DSSObjectHelper.pas:968-1518`): full `PropType` matrix,
+  the `preferArray`/`array_alternative` recursion, the `PropertyOffset=-1` guard
+  (NOT_PORTED/SILENT_READ_ONLY→omit), NaN/Inf→null, on-struct scalars→per-winding
+  array under `ON_ARRAY`.
+- **`report/export/json/build.rs`** — `obj_to_json_data` (`Obj_ToJSONData`): the
+  Name/DSSClass header, the default set-order sweep with the redundant/array-alt
+  `iPropNext2` deferral, the `Full` sweep, skip flags; `batch_to_json`
+  (`Batch_ToJSON`, `ExcludeDisabled`; `IncludeDefaultObjs`/`DefaultAndUnedited` is a
+  no-op — no Rust default-object flag, a Stage-B dep).
+- **`exec/view.rs`** — public `Dss::obj_to_json` + `class_batch_to_json` (pure
+  pre-solve reads, `&self`).
+- **Metadata (`PropDef`/`PropFlags`)** — new `redundant_with`/`array_alternative`/
+  `json_name` fields + `json_key()` derivation (`%→pct`, `-→__`; LowercaseKeys →
+  AnsiLowerCase of the modern name) + flags `ALT_INDEX`/`INTEGER_STRUCT_INDEX`/
+  `ON_ARRAY`/`FULL_NAME_AS_JSON_ARRAY`/`FULL_NAME_AS_ARRAY`. Populated for the
+  golden-covered classes only (staged): **Transformer** (kV/kVA/Tap/%R/Bus/Conn
+  array-alternatives + kVs/…/Conns/XHL/XHT/XLT redundancy + Wdg IntegerStructIndex +
+  Rneut/Xneut/Max/MinTap/RdcOhms/NumTaps ON_ARRAY), **Line** (Wires→`Conductors`
+  json_name + FullNameAsJSONArray, cncables/tscables + B1/B0 redundancy, Seasons
+  SuppressJSON), **LineCode** (B1/B0→C1/C0), **Vsource** (R1/X1→Z1, R0/X0→Z0). Load
+  needs none.
+- **Line set-order fix (found + fixed here):** the pinned oracle marks
+  `Seasons/Ratings/NormAmps/EmergAmps` **set** after a `linecode=` fetch (confirmed
+  via its Save + JSON output); the Rust `fetch_line_code` cleared them (wrong branch,
+  inconsistent with the already-correct `fetch_line_spacing`). Now it re-marks them in
+  the `LINECODE` side effect (runs after the linecode's own `SetAsNextSeq`, so they
+  sort after it — the oracle's order).
+- **Gate:** `tools/golden/gen_json.py` (byte goldens under `tests/golden/json/`) +
+  `crates/dss-core/tests/golden_json.rs` (byte-equality, in `cargo test --workspace`).
+  **7 decks × the 7 option combos {0, Full, Full|Pretty, EnumAsInt, FullNames,
+  Full|IncludeDSSClass, LowercaseKeys}, all byte-green:** load/line/line_matrix/
+  vsource/transformer/escape micro decks + IEEE13 element samples (Line/Transformer/
+  Load/LineCode). Plus fpjson-writer/float/escape unit tests + 11 synthetic
+  per-`PropType`-arm tests.
+- **Deferrals (recorded):** transformer **Full** and matrix-model-line **Full** are
+  golden-tested in default-family combos only — Full exposes the transformer
+  `WdgCurrents` result string (solve state) and a matrix-model line's sym-scalar
+  NaN→`null` getter, both out of the pre-solve dump path; the `DynInit` `TDynEqPCE`
+  tail and whole-circuit `circuit_to_json` (Stage B) stay NOT_PORTED (§6).
+
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
 IEEE1547; scaffolding/EnergySource/DER/loads/ECP; caps/CapControl/reactors/lines/

@@ -1,0 +1,63 @@
+{
+  "name": "escape_micro",
+  "commands": [
+    "new circuit.probe basekv=12.47",
+    "new load.esc bus1='a\"b/c\\d' kV=12.47 kW=1"
+  ],
+  "captures": [
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "default",
+      "bits": 0,
+      "expected": "{\"Name\":\"esc\",\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "full",
+      "bits": 1,
+      "expected": "{\"Name\":\"esc\",\"Phases\":3,\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001,\"Model\":1,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Growth\":null,\"Conn\":\"wye\",\"kvar\":5.3974282213808722E-001,\"RNeut\":-1.0000000000000000E+000,\"XNeut\":0.0000000000000000E+000,\"Status\":\"Variable\",\"Class\":1,\"VMinpu\":9.4999999999999996E-001,\"VMaxpu\":1.0500000000000000E+000,\"VMinNorm\":0.0000000000000000E+000,\"VMinEmerg\":0.0000000000000000E+000,\"XfkVA\":0.0000000000000000E+000,\"AllocationFactor\":5.0000000000000000E-001,\"kVA\":1.1363636363636365E+000,\"pctMean\":5.0000000000000000E+001,\"pctStdDev\":1.0000000000000000E+001,\"CVRWatts\":1.0000000000000000E+000,\"CVRVars\":2.0000000000000000E+000,\"kWh\":0.0000000000000000E+000,\"kWhDays\":3.0000000000000000E+001,\"CFactor\":4.0000000000000000E+000,\"CVRCurve\":null,\"NumCust\":1,\"ZIPV\":[0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000],\"pctSeriesRL\":5.0000000000000000E+001,\"RelWeight\":1.0000000000000000E+000,\"VLowpu\":5.0000000000000000E-001,\"puXHarm\":0.0000000000000000E+000,\"XRHarm\":6.0000000000000000E+000,\"Spectrum\":\"defaultload\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "full_pretty",
+      "bits": 17,
+      "expected": "{\r\n  \"Name\" : \"esc\",\r\n  \"Phases\" : 3,\r\n  \"Bus1\" : \"a\\\"b/c\\\\d\",\r\n  \"kV\" : 1.2470000000000001E+001,\r\n  \"kW\" : 1.0000000000000000E+000,\r\n  \"PF\" : 8.8000000000000000E-001,\r\n  \"Model\" : 1,\r\n  \"Yearly\" : null,\r\n  \"Daily\" : null,\r\n  \"Duty\" : null,\r\n  \"Growth\" : null,\r\n  \"Conn\" : \"wye\",\r\n  \"kvar\" : 5.3974282213808722E-001,\r\n  \"RNeut\" : -1.0000000000000000E+000,\r\n  \"XNeut\" : 0.0000000000000000E+000,\r\n  \"Status\" : \"Variable\",\r\n  \"Class\" : 1,\r\n  \"VMinpu\" : 9.4999999999999996E-001,\r\n  \"VMaxpu\" : 1.0500000000000000E+000,\r\n  \"VMinNorm\" : 0.0000000000000000E+000,\r\n  \"VMinEmerg\" : 0.0000000000000000E+000,\r\n  \"XfkVA\" : 0.0000000000000000E+000,\r\n  \"AllocationFactor\" : 5.0000000000000000E-001,\r\n  \"kVA\" : 1.1363636363636365E+000,\r\n  \"pctMean\" : 5.0000000000000000E+001,\r\n  \"pctStdDev\" : 1.0000000000000000E+001,\r\n  \"CVRWatts\" : 1.0000000000000000E+000,\r\n  \"CVRVars\" : 2.0000000000000000E+000,\r\n  \"kWh\" : 0.0000000000000000E+000,\r\n  \"kWhDays\" : 3.0000000000000000E+001,\r\n  \"CFactor\" : 4.0000000000000000E+000,\r\n  \"CVRCurve\" : null,\r\n  \"NumCust\" : 1,\r\n  \"ZIPV\" : [\r\n    0.0000000000000000E+000,\r\n    0.0000000000000000E+000,\r\n    0.0000000000000000E+000,\r\n    0.0000000000000000E+000,\r\n    0.0000000000000000E+000,\r\n    0.0000000000000000E+000,\r\n    0.0000000000000000E+000\r\n  ],\r\n  \"pctSeriesRL\" : 5.0000000000000000E+001,\r\n  \"RelWeight\" : 1.0000000000000000E+000,\r\n  \"VLowpu\" : 5.0000000000000000E-001,\r\n  \"puXHarm\" : 0.0000000000000000E+000,\r\n  \"XRHarm\" : 6.0000000000000000E+000,\r\n  \"Spectrum\" : \"defaultload\",\r\n  \"BaseFreq\" : 6.0000000000000000E+001,\r\n  \"Enabled\" : true,\r\n  \"Like\" : \"\"\r\n}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "enum_as_int",
+      "bits": 4,
+      "expected": "{\"Name\":\"esc\",\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "full_names",
+      "bits": 8,
+      "expected": "{\"Name\":\"esc\",\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "full_include_class",
+      "bits": 65,
+      "expected": "{\"DSSClass\":\"Load\",\"Name\":\"esc\",\"Phases\":3,\"Bus1\":\"a\\\"b/c\\\\d\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001,\"Model\":1,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Growth\":null,\"Conn\":\"wye\",\"kvar\":5.3974282213808722E-001,\"RNeut\":-1.0000000000000000E+000,\"XNeut\":0.0000000000000000E+000,\"Status\":\"Variable\",\"Class\":1,\"VMinpu\":9.4999999999999996E-001,\"VMaxpu\":1.0500000000000000E+000,\"VMinNorm\":0.0000000000000000E+000,\"VMinEmerg\":0.0000000000000000E+000,\"XfkVA\":0.0000000000000000E+000,\"AllocationFactor\":5.0000000000000000E-001,\"kVA\":1.1363636363636365E+000,\"pctMean\":5.0000000000000000E+001,\"pctStdDev\":1.0000000000000000E+001,\"CVRWatts\":1.0000000000000000E+000,\"CVRVars\":2.0000000000000000E+000,\"kWh\":0.0000000000000000E+000,\"kWhDays\":3.0000000000000000E+001,\"CFactor\":4.0000000000000000E+000,\"CVRCurve\":null,\"NumCust\":1,\"ZIPV\":[0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000],\"pctSeriesRL\":5.0000000000000000E+001,\"RelWeight\":1.0000000000000000E+000,\"VLowpu\":5.0000000000000000E-001,\"puXHarm\":0.0000000000000000E+000,\"XRHarm\":6.0000000000000000E+000,\"Spectrum\":\"defaultload\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "load.esc",
+      "opts": "lowercase_keys",
+      "bits": 128,
+      "expected": "{\"Name\":\"esc\",\"bus1\":\"a\\\"b/c\\\\d\",\"kv\":1.2470000000000001E+001,\"kw\":1.0000000000000000E+000,\"pf\":8.8000000000000000E-001}"
+    }
+  ],
+  "schema": 1,
+  "oracle": {
+    "dss_python": "0.15.7",
+    "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+  }
+}
