@@ -95,7 +95,17 @@ not reproduced — the Rust port post-processes correctly).
 **WP-AD.3 — A-Diakoptics engine (in progress, staged; branch `wp-ad3`).**
 Stage list: (1) matrices ✅ · (2a) init machine + matrices-on-real-coordinator +
 options + get_Statistics ✅ · **(2b) the AD solve stitch (pending r3723 probe)** ·
-(3) exports 58–61 · (4) D7 calibration + EPRI/r3723 refs.
+(3) exports 58–61 ✅ · (4) D7 calibration + EPRI/r3723 refs.
+
+**Stage 3 exports (gate-green):** `Export ZLL|ZCC|Contours|Y4` (keywords 58–61,
+`report/export/adiakoptics.rs`, official `ExportResults.pas:3541–3627`) —
+compressed-coordinate CSV (`Row,Col,Value(Real), Value(Imag)`; Contours is real-part
+only, `Row,Col,Value`), default files `ZLL.csv`/`ZCC.csv`/`C.csv`/`Y4.csv`, values
+via FPC `float_to_str`. **Silent no-op when `ADiakoptics=false`** (Pascal
+`if ADiakoptics`, enforced at the `export_ad` dispatch — no file, `GlobalResult`
+untouched). 4 gates: header + field counts vs the built matrices, Contours ±1
+real-only, and the false-flag no-op. Keywords registered in `EXPORT_OPTIONS` as a
+recorded departure (compiled out of the pinned oracle, §0.2).
 
 **Stage 1 (gate-green):** the four matrix builders in `exec/diakoptics/matrices.rs`
 — 1:1 port of official `Diakoptics.pas` (D10): `Calc_C_Matrix` (contours, substring

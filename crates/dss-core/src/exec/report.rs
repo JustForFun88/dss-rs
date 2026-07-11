@@ -425,6 +425,14 @@ impl Dss {
             ),
             56 => self.export_with(&explicit, "Bus_Levels.csv", export::export_bus_levels),
             57 => self.export_with(&explicit, "Laplacian.csv", export::export_laplacian),
+            // A-Diakoptics matrix exports (WP-AD.3): silent no-op unless
+            // `Solution.ADiakoptics` (Pascal `if ADiakoptics then …`). Default
+            // filenames per official `ExportOptions.pas:380-387` (keyword 60
+            // `Contours` → `C.csv`).
+            58 => self.export_ad(&explicit, "ZLL.csv", export::export_zll),
+            59 => self.export_ad(&explicit, "ZCC.csv", export::export_zcc),
+            60 => self.export_ad(&explicit, "C.csv", export::export_contours),
+            61 => self.export_ad(&explicit, "Y4.csv", export::export_y4),
             20 => {
                 // `Export CIM100Fragments` (Pascal `ExportCDPSM(..., Combined =
                 // FALSE)`): the `Separate = true` per-profile file split. A
@@ -478,6 +486,21 @@ impl Dss {
     fn export_with(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
         let content = f(self.circuit.as_ref().expect("post-circuit dispatch"));
         self.write_export(explicit, default_name, &content);
+    }
+
+    /// An A-Diakoptics matrix export (58–61): identical to [`Self::export_with`]
+    /// but a **silent no-op** when `Solution.ADiakoptics` is false — the Pascal
+    /// procedure wraps its whole body (file write + `GlobalResult`) in
+    /// `if ADiakoptics then …`, so an inactive AD state writes nothing and leaves
+    /// `GlobalResult`/`LastResultFile` untouched (1:1, `ExportResults.pas:3546`).
+    fn export_ad(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
+        if self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.solution.adiakoptics)
+        {
+            self.export_with(explicit, default_name, f);
+        }
     }
 
     /// Like [`Dss::export_with`] but for the **element** exports, which call the
