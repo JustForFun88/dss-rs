@@ -137,11 +137,6 @@
    "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify; unblocked by the SetkVBase port): the pinned oracle itself does not converge on this deck (persists across in-process retries) -- oracle-blocked, nothing to compare against; joins the documented oracle_nonconvergence class."
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
-   "tag": "live_mismatch",
-   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): file-backed arrays now ported; deck compiles, but the live compare shows a REAL divergence, not a near-floor: step 0 entry 0 Rust node V = (0,0) vs oracle (6664.39, -5.95) -- the Rust engine leaves entry 0 unenergized. Genuine bug/gap on the LV European test feeder; needs investigation."
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS",
    "tag": "live_mismatch",
    "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 0 node V |diff|=5.531e-1 > allowed 2.663e-4 (large). Secondary test circuit -- real above-band divergence."

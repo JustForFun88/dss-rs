@@ -1423,6 +1423,34 @@
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/Source012Test.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
+   "kind": "large",
+   "post": [
+    "set mode=snapshot"
+   ],
+   "n_steps": 1,
+   "oracle": "r3723"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+   "kind": "large",
+   "post": [
+    "set mode=snapshot"
+   ],
+   "n_steps": 1,
+   "oracle": "r3723"
   }
  ]
 }
