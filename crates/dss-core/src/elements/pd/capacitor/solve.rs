@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::Capacitor;
 use crate::elements::ckt::CktElementData;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -247,5 +248,78 @@ impl CktElement for Capacitor {
 
         self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
+    }
+
+    /// Pascal `TCapacitorObj.MakePosSequence` (Capacitor.pas:768-819). Collapse
+    /// a capacitor bank to its positive-sequence single-phase form (done for
+    /// 1-phase too). By `SpecType`:
+    /// - 1 (kvar): kV per the connection/phase rule, per-step kvar/3, `Phases:=1`.
+    /// - 2 (Cuf): a *bare* `Phases := 1` — a single Set with no surrounding
+    ///   `BeginEdit`/`EndEdit` (the applier auto-brackets it).
+    /// - 3 (CMatrix, only when multi-phase): average the self/mutual of `CMatrix`
+    ///   into `Cuf` (the mutual loop includes the 2..N diagonals, as in Pascal).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use super::prop::*;
+
+        let nphases = self.cd.nphases;
+
+        let actions = match self.spec_type {
+            1 => {
+                // kvar
+                let phase_kv = if nphases > 1 || self.connection != 0 {
+                    self.kvrating / sqrt3()
+                } else {
+                    self.kvrating
+                };
+                // do caps like a load: divide the total kvar equally among
+                // 3 phases, per step.
+                let nsteps = self.fnumsteps.max(0) as usize;
+                let new_kvars: Vec<Option<f64>> = (0..nsteps)
+                    .map(|i| Some(self.fkvarrating[i] / 3.0))
+                    .collect();
+                vec![
+                    PosSeqAction::BeginEdit,
+                    PosSeqAction::SetI32(PHASES, 1),
+                    PosSeqAction::SetF64(KV, phase_kv),
+                    PosSeqAction::SetStructF64s(KVAR, new_kvars),
+                    PosSeqAction::EndEdit,
+                ]
+            }
+            2 => {
+                // Bare single-set edit (no BeginEdit/EndEdit).
+                vec![PosSeqAction::SetI32(PHASES, 1)]
+            }
+            3 => {
+                if nphases > 1 {
+                    // C Matrix: average self/mutual → Cuf.
+                    let cmat = self.cmatrix.as_deref().expect("SpecType 3 CMatrix");
+                    let np = nphases;
+                    let npf = np as f64;
+                    let mut cs = 0.0; // Avg Self
+                    for i in 0..np {
+                        cs += cmat[i * np + i];
+                    }
+                    cs /= npf;
+                    let mut cm = 0.0; // Avg mutual (2..N diagonals included)
+                    for i0 in 1..np {
+                        for j0 in i0..np {
+                            cm += cmat[i0 * np + j0];
+                        }
+                    }
+                    cm /= npf * (npf - 1.0) / 2.0;
+                    vec![
+                        PosSeqAction::BeginEdit,
+                        PosSeqAction::SetI32(PHASES, 1),
+                        PosSeqAction::SetF64(CUF, cs - cm),
+                        PosSeqAction::EndEdit,
+                    ]
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
+        };
+
+        PosSeqPlan::with_actions(actions)
     }
 }
