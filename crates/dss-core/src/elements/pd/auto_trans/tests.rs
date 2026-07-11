@@ -61,3 +61,84 @@ fn term_ref_series_maps_h_and_x() {
     assert_eq!(t.term_ref[3], 7);
     assert_eq!(t.term_ref[4], 10);
 }
+
+// --- WPG.21 — TAutoTransObj.MakePosSequence (AutoTrans.pas:1724-1791) ---------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+fn unwrap_f64s(a: &PosSeqAction) -> Vec<f64> {
+    match a {
+        PosSeqAction::SetStructF64s(_, v) => v.iter().map(|o| o.expect("Some")).collect(),
+        other => panic!("expected SetStructF64s, got {other:?}"),
+    }
+}
+
+/// A 3-phase 2-winding autotransformer (deck `at`: series/wye 4.16/12.47). All
+/// windings Common/Wye (0), kV = kVLL/√3, kVA and NormHkVA/EmergHkVA per phase.
+#[test]
+fn make_pos_sequence_3ph_two_winding() {
+    let mut t = AutoTrans::new("at");
+    t.windings[0].connection = 2; // series
+    t.windings[0].kvll = 4.16;
+    t.windings[0].kva = 2000.0;
+    t.windings[1].connection = 0; // common/wye
+    t.windings[1].kvll = 12.47;
+    t.windings[1].kva = 2000.0;
+    t.cd.set_bus(1, "b4");
+    t.cd.set_bus(2, "b1");
+    let norm = t.norm_max_hkva;
+    let emerg = t.emerg_max_hkva;
+
+    let plan = t.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[0], BeginEdit);
+    assert_eq!(plan.actions[1], SetI32(prop::PHASES, 1));
+    assert_eq!(plan.actions[2], SetStructI32s(prop::CONNS, vec![0, 0]));
+    assert_eq!(
+        plan.actions[3],
+        SetStructBuses(vec!["b4".to_string(), "b1".to_string()])
+    );
+    let kvs = unwrap_f64s(&plan.actions[4]);
+    assert!((kvs[0] - 4.16 / sqrt3()).abs() < 1e-9, "kv0 {}", kvs[0]);
+    assert!((kvs[1] - 12.47 / sqrt3()).abs() < 1e-9, "kv1 {}", kvs[1]);
+    assert!((kvs[1] - 7.199_558).abs() < 1e-5);
+    let kvas = unwrap_f64s(&plan.actions[5]);
+    assert!((kvas[0] - 2000.0 / 3.0).abs() < 1e-9);
+    assert!((kvas[1] - 2000.0 / 3.0).abs() < 1e-9);
+    assert_eq!(plan.actions[6], SetF64(prop::NORMHKVA, norm / 3.0));
+    assert_eq!(plan.actions[7], SetF64(prop::EMERGHKVA, emerg / 3.0));
+    assert_eq!(plan.actions[8], EndEdit);
+    assert_eq!(plan.actions.len(), 9);
+}
+
+/// A 1-phase auto with a winding NOT on phase 1 is disabled (no `inherited`),
+/// mirroring the transformer disable path.
+#[test]
+fn make_pos_sequence_1ph_off_phase1_disables() {
+    let mut t = AutoTrans::new("at");
+    t.cd.nphases = 1;
+    let ctx = PosSeqCtx {
+        terminal_nodes: vec![vec![2], vec![2]],
+        ..Default::default()
+    };
+    let plan = t.make_pos_sequence(&ctx);
+    assert_eq!(plan.actions, vec![PosSeqAction::Disable]);
+    assert!(!plan.run_base);
+}
+
+/// A 1-phase auto with all windings on phase 1 converts (with `inherited`).
+#[test]
+fn make_pos_sequence_1ph_on_phase1_survives() {
+    let mut t = AutoTrans::new("at");
+    t.cd.nphases = 1;
+    let ctx = PosSeqCtx {
+        terminal_nodes: vec![vec![1], vec![1]],
+        ..Default::default()
+    };
+    let plan = t.make_pos_sequence(&ctx);
+    assert!(plan.run_base);
+    assert_eq!(plan.actions[0], PosSeqAction::BeginEdit);
+    assert_eq!(plan.actions[1], PosSeqAction::SetI32(prop::PHASES, 1));
+}
