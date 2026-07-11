@@ -499,6 +499,15 @@ impl Dss {
                 .as_any()
                 .downcast_ref::<transformer::Transformer>()
                 .expect("transformers list holds Transformers");
+            // The oracle's `Transformers.First/.Next` walk
+            // (`Generic_CktElement_Get_First/Next`) SKIPS disabled elements
+            // unless `DSS_CAPI_ITERATE_DISABLED = 1` (default 0); mirror that, or
+            // a deck that disables a transformer (e.g. `MakePosSequence`'s
+            // off-phase-1 winding disable, `makeposseq_xfmr.dss`) compares one
+            // extra tap row vs the oracle. Same rule as `regcontrol_tap_numbers`.
+            if !tr.cd().enabled {
+                continue;
+            }
             let n = tr.num_windings() as usize;
             let taps = (1..=n).map(|w| tr.present_tap(w)).collect();
             out.push((obj.data().name().to_string(), taps));
