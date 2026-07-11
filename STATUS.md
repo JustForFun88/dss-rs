@@ -153,9 +153,11 @@ all 24 (independent cross-check + induced-cut self-consistency).
 Stage B (tearing / `.graph` engine round-trip, `Create_MeTIS_Zones`) can now build
 on the completed `part_graph_kway`.
 
-**WP-AD.2 Stage B — tearing machinery, partial (2026-07-11, gate-green: fmt +
-clippy + dss-core suites; see caveat).** Behavioral spec = official r3723 Delphi
-(`Common/Circuit.pas`, plan D10). Landed:
+**WP-AD.2 Stage B — tearing machinery, COMPLETE (2026-07-11, gate-green).**
+Behavioral spec = official r3723 Delphi (`Common/Circuit.pas`, plan D10). The
+partition + zone machinery (part 1) plus the torn-file emission + zone meters +
+PConn (this WP) are both landed; the earlier follow-up deferral is CLOSED (see the
+Stage-B completion record below). Landed:
 - **Circuit AD fields** (`circuit/tearing.rs::AdTearing`, wired as `Circuit.ad`):
   `Coverage`/`Actual_Coverage`, `Num_SubCkts` (ctor default `CPU_Cores-1`, D6),
   `Link_Branches`, `PConn_Names`/`PConn_Voltages`, `Locations`, `BusZones`,
@@ -197,22 +199,44 @@ clippy + dss-core suites; see caveat).** Behavioral spec = official r3723 Delphi
   Unit tests in `support/partition.rs` + `exec/tearing.rs` (graph text byte-exact,
   other-terminal pairing, zones split, class-prefix).
 
-**Deferred to a WP-AD.2 Stage-B follow-up (recorded here, NOT silently dropped):**
-- Per-zone `EnergyMeter` placement + terminal orientation (node-1 |V| compare) +
-  `PConn_Voltages` capture (Circuit.pas:1954–2032) — needs prior-solve `NodeV`.
-- `Save_SubCircuits`/`Format_SubCircuits`/`AppendIsources`/`Disable_All_DER`
-  (the `Torn_Circuit/` multi-file emission) — needs `save circuit` integration +
-  per-zone `VSource.dss`; and the committed Torn_Circuit fixture golden +
-  round-trip compile/solve tests that ride on it.
-These are the parts that make `Tear_Circuit` produce the on-disk sub-circuit
-project tree; the current command computes the partition, zones, link branches,
-and the `.graph`/`.part.N` artifacts + result string. **Caveat on gate:** fmt,
-workspace clippy (`-D warnings`), and all dss-core lib + `adiakoptics` +
-`inc_matrix_reports` + `golden_reports::dump3_commands` suites verified green;
-the full `cargo test --workspace` (live-oracle corpus) was not witnessed to
-completion in this session — the changes are additive (new module/fields +
-previously-unknown-command/option interception) so cross-suite risk is low, but
-the coordinator/auditors should confirm the full workspace run.
+**Stage-B completion — torn-file emission + zone meters + PConn (2026-07-11,
+this WP, gate-green).** Closes the earlier follow-up deferral. `Tear_Circuit` now
+runs the full official `ADiakoptics_Tearing(AddISrc=False)` orchestration
+(Diakoptics.pas:511–534) and writes the on-disk `Torn_Circuit/` sub-project tree.
+- **Zone `EnergyMeter` placement + `PConn` capture** (`exec/tearing.rs::
+  place_zone_meters`, Circuit.pas:1941–2032): a prior-solve gate (`converged_flag`
+  — errors honestly if the power flow never converged, since PConn reads
+  `Solution.NodeV`); disables all pre-existing meters; per location derives the
+  link PDE (`Inc_Mat_Rows[get_IncMatrix_Row]`), the point-of-connection bus via
+  `get_Line_Bus(link,2)` (**Lines-only** search — a non-Line link reports error
+  5008 "Line not found", matching official), the 3-phase `PConn_Voltages`
+  (`ctopolardeg(NodeV)` → mag/1000, angle°), and issues `New EnergyMeter.Zone_<i+1>
+  element=<PDE> terminal=1 option=R action=C`. The vestigial `Term_volts[0] -
+  Term_volts[1]` |V| difference (computed-but-never-read in r3723; terminal is
+  hard-coded 1) is documented `NOTE(upstream-quirk)` and not reproduced (D5).
+- **Torn-file emission** (`exec/tearing_save.rs`): `Save_SubCircuits` (fresh
+  `Torn_Circuit` dir + reuse of `exec/save_circuit.rs` `save circuit`),
+  `Format_SubCircuits` (`Master_Interconnected.dss` support-line filter +
+  per-zone `Master.dss` + per-zone `VSource.dss` from the measured PConn via
+  `fmt_g(v,8)` = FPC `floattostrF(ffGeneral,8,3)`), `AppendIsources` (the
+  A-Diakoptics `AddISrc=TRUE` edge sources — ported though the tear path passes
+  FALSE), `Disable_All_DER` verbatim (WP-AD.3 caller). `NOTE(subst-metis)`: the
+  filter is matched case-insensitively and the zone-header cut is anchored on the
+  `New Circuit` line, because our round-trip-faithful save master casing/header
+  differs from the official DSS `Save` — the structure otherwise matches the
+  vendored official `ckt24/Torn_Circuit` reference exactly (validated by eye).
+- **Gates** (`tests/adiakoptics.rs`, committed fixtures `tests/data/adiakoptics/
+  {midi,macro}.dss` reusable by AD.3/AD.4): committed byte-stable Torn_Circuit
+  golden (`tests/golden/adiakoptics/midi_torn_tree.txt`, regen
+  `DSS_REGEN_AD_GOLDEN=1`); round-trip compile+solve of the interconnected + every
+  per-zone master (converged, sane voltages); zone-**connectivity** recompute from
+  `.graph` adjacency + `.part.N` labels; link branches asserted as real 3-phase
+  `Line` elements via the engine (not a name-prefix check); negative paths
+  (transformer manual link → "Line not found"; tear before solve → honest error);
+  + the pre-existing count/balance/dedup/option tests migrated onto the fixtures.
+  A `#[ignore]`d `ckt24_graph_diagnostic` records the vendored `.graph` shape.
+Gate: fmt + workspace clippy (`-D warnings`) clean; `cargo test --workspace`
+(pinned live oracle) exit 0.
 
 **WP-AD.2 Stage B — audit settlement (2026-07-11, gate-green).** Two auditors
 (code + tests) filed 11 findings; each settled empirically against the r3723
@@ -251,16 +275,15 @@ Delphi source (D10) and probed on the r3723 binary via the Oddie bridge (D9a).
   the full canonical graph in-process; D2 accepts auto-tear zone shapes differ
   from upstream). The swap is fixture-pinned deliberately; the future
   `Torn_Circuit` self-golden will pin it by intent, not accident.
-- **Torn-file emission ~40% of Stage B still deferred (Major — recorded, no
-  fix).** Deliverables 5–6 (zone `EnergyMeter` placement, terminal orientation
-  by |V|, `PConn_Voltages` capture, `Save_SubCircuits`/`Format_SubCircuits`/
-  `AppendIsources`/`Disable_All_DER`, the committed `Torn_Circuit/` fixture
-  golden + round-trip compile/solve tests) remain the outstanding Stage-B work,
-  as recorded above — they need `save circuit` integration + prior-solve `NodeV`
-  and are a substantial follow-up (≈300 lines of Pascal + a byte-stable golden).
-  `Tear_Circuit`'s "Sub-Circuits Created: N" is the official success string
-  (Diakoptics.pas:526); the missing file emission is the honest, documented
-  deferral, not a silent drop.
+- **Torn-file emission ~40% of Stage B was deferred (Major — now CLOSED).**
+  Deliverables 5–6 (zone `EnergyMeter` placement, `PConn_Voltages` capture,
+  `Save_SubCircuits`/`Format_SubCircuits`/`AppendIsources`/`Disable_All_DER`, the
+  committed `Torn_Circuit/` fixture golden + round-trip compile/solve tests) were
+  the outstanding Stage-B work at settlement time. They are now landed — see the
+  "Stage-B completion" record above (`exec/tearing_save.rs`, the meter/PConn loop
+  in `place_zone_meters`, and the fixture golden + round-trip/connectivity gates).
+  The terminal-orientation |V| difference is documented `NOTE(upstream-quirk)` as
+  vestigial dead code in r3723 (not reproduced, D5).
 
 **WP-AD.2 Stage A — audit settlement (2026-07-11, gate-green).** Two auditors
 (code + tests) filed 6 Minor findings; each settled empirically against the C spec
