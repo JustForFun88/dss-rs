@@ -7,8 +7,11 @@
 
 pub mod dyneq_pce;
 pub mod generator;
+pub mod gic_line;
+pub mod gic_source;
 pub mod ind_mach012;
 pub mod inv_based_pce;
+pub mod isource;
 pub mod load;
 pub mod pvsystem;
 pub mod storage;
@@ -18,8 +21,11 @@ pub mod vs_converter;
 pub mod vsource;
 
 pub use generator::Generator;
+pub use gic_line::GicLine;
+pub use gic_source::GicSource;
 pub use ind_mach012::IndMach012;
 pub use inv_based_pce::{InvBasedPce, InvBasedPceData};
+pub use isource::Isource;
 pub use load::Load;
 pub use pvsystem::PVSystem;
 pub use storage::Storage;

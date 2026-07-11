@@ -107,6 +107,19 @@ impl ElemStore for ClassStore<'_> {
         None
     }
 
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef> {
+        let lower = obj_name.to_lowercase();
+        for (ci, class) in self.classes.iter().enumerate() {
+            if !class.props.class_name().eq_ignore_ascii_case(class_name) {
+                continue;
+            }
+            if let Some(&oi) = class.name_to_idx.get(&lower) {
+                return Some(ElemRef { cls: ci, idx: oi });
+            }
+        }
+        None
+    }
+
     fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
         self.classes[r.cls].objects[r.idx].as_mut()
     }
@@ -210,6 +223,27 @@ impl<'a> ForeignClasses<'a> {
         let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
             c.objects
                 .iter()
+                .map(|o| o.as_ref())
+                .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
+        };
+        for c in self.left.iter().chain(self.right.iter()) {
+            if c.props.class_name().eq_ignore_ascii_case(class) {
+                return scan(c);
+            }
+        }
+        None
+    }
+
+    /// The LAST *enabled* object of a class, in creation order. Pascal's
+    /// InvControl/ExpControl `RecalcElementData` fleet loop assigns the
+    /// control's `FNphases := ControlledElement[i].NPhases` on EVERY member, so
+    /// the LAST one wins — the control's terminal shape follows the last fleet
+    /// member (the `MonitoredElement`/bus stays the first).
+    pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
+        let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
+            c.objects
+                .iter()
+                .rev()
                 .map(|o| o.as_ref())
                 .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
         };

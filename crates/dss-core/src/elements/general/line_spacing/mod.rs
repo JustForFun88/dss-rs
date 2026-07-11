@@ -21,11 +21,11 @@ const UNITS_FT: i32 = 5;
 
 define_properties! {
     class "LineSpacing", abbrev true, enums enums;
-    1 NCONDS  => PropDef::integer("nconds").flags(PropFlags::SUPPRESS_JSON);
-    2 NPHASES => PropDef::integer("nphases");
-    3 X       => PropDef::double_v_array("x");
-    4 H       => PropDef::double_v_array("h");
-    5 UNITS   => PropDef::mapped_string_enum("units", enums.units);
+    1 NCONDS  => PropDef::integer("NConds").flags(PropFlags::SUPPRESS_JSON);
+    2 NPHASES => PropDef::integer("NPhases");
+    3 X       => PropDef::double_v_array("X");
+    4 H       => PropDef::double_v_array("H");
+    5 UNITS   => PropDef::mapped_string_enum("Units", enums.units);
 }
 
 /// `TLineSpacingObj`. Pascal stores `FX`/`FY` as 1-based `pDoubleArray`s of

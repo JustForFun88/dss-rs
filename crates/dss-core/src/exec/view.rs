@@ -55,6 +55,10 @@ pub struct ElementSnapshot {
     pub powers: Vec<f64>,
     /// Amps, re/im interleaved per conductor and terminal (`Iterminal`).
     pub currents: Vec<f64>,
+    /// Element losses (W, var) — `TDSSCktElement.Get_Losses` (the dss-python
+    /// `CktElement.Losses` surface): `Σ NodeV[ref]·conj(Iterminal)` over all
+    /// conductors, ×3 under positive sequence.
+    pub loss_w: (f64, f64),
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -142,18 +146,57 @@ impl Dss {
             let yorder = elem.cd().yorder;
             let mut currents = vec![0.0; 2 * yorder];
             let mut powers = vec![0.0; 2 * yorder];
+            // Powers (and Losses, below) model the oracle's `Get_Powers` /
+            // `Get_Losses`, which route through the cache-aware `ComputeIterminal`;
+            // Currents model the fresh `CktElement.Currents` (`GetCurrents`,
+            // `CAPI_CktElement.pas`). The two `Iterminal` read paths agree after
+            // every fixed-point / direct / harmonic solve — the cache is invalid
+            // here so `compute_iterminal` recomputes fresh at the present `NodeV`,
+            // and the single-frequency reasoning in the block comment above holds.
+            //
+            // TODO(compat): after a Newton solve they diverge. `DoNewtonSolution`'s
+            // final `SumAllCurrents` stamps `Iterminal` at the pre-final voltage
+            // guess `NodeV_{n-1}` (the `NodeV -= dV` update follows it), so the
+            // cache-aware path (Powers/Losses) returns a one-step-stale current
+            // while `GetCurrents` (Currents) recomputes at the converged `NodeV_n`
+            // — a deterministic upstream quirk (`Vsource.pas` `GetCurrents` reads
+            // `NodeV` directly, whereas `CktElement.pas` `Get_Powers`/`Get_Losses`
+            // reuse `ComputeIterminal`). Clean fix: recompute `Iterminal` at
+            // `NodeV_n` for all three reads.
+            //
+            // GATE NOTE: this staleness is the ONLY feature-sensitive signal that
+            // distinguishes `algorithm=Newton` from the normal fixed-point on the
+            // `newton.dss` / `newton_feeder.dss` gates — both algorithms converge to
+            // the SAME voltages in the SAME iteration count, so only the Powers/
+            // Losses channel (this cache split) diverges when Newton silently falls
+            // back to `DoNormalSolution`. The de-compat pass that takes the clean
+            // fix above MUST add a replacement Newton-specific assertion, else those
+            // two decks stop verifying that Newton dispatch is wired at all.
+            //
+            // REMOVAL is NOT the usual "apply fix + regenerate goldens" (PORTING_PLAN
+            // §6): this quirk is pinned by the ALWAYS-ON LIVE oracle (the corpus_live
+            // `modes` gate — there is no golden for `newton*`), and the pinned
+            // dss-python permanently reports the stale post-Newton Powers. So making
+            // Powers fresh would make Rust DIVERGE from the live oracle (~4e-4 kW) →
+            // gate red, unregenerable. Eliminating it is a de-compat DECISION, not a
+            // local edit. Option (a) "bump the pinned oracle to a rev without the
+            // bug" is RULED OUT: the EPRI channel confirms the quirk is present in
+            // every vendored official rev incl. the latest — v9.8 (r3723), v10.2
+            // (r4088), v11.0 (r4133), all fingerprint 0.478 kVA, checked 2026-07-08.
+            // The remaining path (b): convert the `newton*` Powers/Losses compare to
+            // a documented live-gate exclusion (Rust intentionally more correct than
+            // the oracle, the VSConverter "gate around" pattern) plus the replacement
+            // Newton assertion above.
+            // See investigations/newton_stale_iterminal_bug_report.md.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.compute_iterminal(&sys, &node_v);
                 let cd = elem.cd();
                 for k in 0..yorder {
-                    let i = cd.iterminal[k];
-                    currents[2 * k] = i.re;
-                    currents[2 * k + 1] = i.im;
                     let n = cd.node_ref[k];
                     if n > 0 {
                         // S = V*conj(I) at the present (per-harmonic, in harmonics
                         // mode) solution frequency; see the block comment above.
-                        let mut s = node_v[n] * i.conj();
+                        let mut s = node_v[n] * cd.iterminal[k].conj();
                         if positive_seq {
                             // x3: balanced three-phase scaling of the single-phase
                             // power (Willems, "...What and Why?", sec. V.A, p. 3).
@@ -164,6 +207,20 @@ impl Dss {
                     }
                 }
             }
+            // The element's own losses path (`Get_Losses`) — the same cache-aware
+            // `ComputeIterminal` (stale after Newton), read BEFORE the fresh
+            // currents refresh below so it reuses the powers-path cache.
+            let loss = elem.losses(&sys, &node_v);
+            // Currents: fresh recompute from the converged `NodeV` (oracle
+            // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.
+            if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
+                elem.refresh_iterminal(&sys, &node_v);
+                let cd = elem.cd();
+                for k in 0..yorder {
+                    currents[2 * k] = cd.iterminal[k].re;
+                    currents[2 * k + 1] = cd.iterminal[k].im;
+                }
+            }
             let cd = elem.cd();
             let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
             out.push(ElementSnapshot {
@@ -172,6 +229,7 @@ impl Dss {
                 bus_names,
                 powers,
                 currents,
+                loss_w: (loss.re, loss.im),
             });
         }
         out
@@ -203,6 +261,44 @@ impl Dss {
             }
         }
         None
+    }
+
+    /// WP8.5b corpus property parity: every property of the named element,
+    /// rendered EXACTLY as the `?` executive query does (the choke-point
+    /// `refresh_vterminal_if_marked` then [`ClassProps::get_value`] — the
+    /// byte-proven WP8.5 Dump surface), as `(name, value)` pairs in
+    /// property-index order (`1..=num_properties`). `full_name` is a `Class.name`
+    /// (case-insensitive), resolved like [`Dss::do_query_cmd`] (no executive
+    /// round-trip). `None` if no such element exists. The oracle side reads
+    /// `Properties(p).Val` over `AllPropertyNames` (via `? name.prop`), so the two
+    /// compare property-for-property.
+    pub fn element_properties(&mut self, full_name: &str) -> Option<Vec<(String, String)>> {
+        // Split `Class.name` exactly as `do_query_cmd` does (the @var-aware
+        // splitter; a query name needs no other parser work).
+        let (class_name, name) = {
+            let mut p = Parser::new();
+            parse_object_class_and_name(&mut p, &self.vars, full_name)
+        };
+        let &ci = self.class_by_name.get(&class_name.to_lowercase())?;
+        if !self.classes[ci].set_active(&name) {
+            return None;
+        }
+        let oi = self.classes[ci].active.expect("just set active");
+        let n = self.classes[ci].props.num_properties();
+        let mut out = Vec::with_capacity(n);
+        for idx in 1..=n {
+            // Same choke point `do_query_cmd` uses: reload Vterminal from the
+            // solution for the properties that declare the need before rendering.
+            self.refresh_vterminal_if_marked(ci, oi, Some(idx));
+            let pname = self.classes[ci].props.property_name(idx).to_string();
+            let value = self.classes[ci].props.get_value(
+                self.classes[ci].objects[oi].as_ref(),
+                idx,
+                &self.enums,
+            );
+            out.push((pname, value));
+        }
+        Some(out)
     }
 
     /// Read a bus's short-circuit results after a FaultStudy solve — the
@@ -403,6 +499,15 @@ impl Dss {
                 .as_any()
                 .downcast_ref::<transformer::Transformer>()
                 .expect("transformers list holds Transformers");
+            // The oracle's `Transformers.First/.Next` walk
+            // (`Generic_CktElement_Get_First/Next`) SKIPS disabled elements
+            // unless `DSS_CAPI_ITERATE_DISABLED = 1` (default 0); mirror that, or
+            // a deck that disables a transformer (e.g. `MakePosSequence`'s
+            // off-phase-1 winding disable, `makeposseq_xfmr.dss`) compares one
+            // extra tap row vs the oracle. Same rule as `regcontrol_tap_numbers`.
+            if !tr.cd().enabled {
+                continue;
+            }
             let n = tr.num_windings() as usize;
             let taps = (1..=n).map(|w| tr.present_tap(w)).collect();
             out.push((obj.data().name().to_string(), taps));
@@ -422,6 +527,14 @@ impl Dss {
             let Some(rc) = obj.as_any().downcast_ref::<reg_control::RegControl>() else {
                 continue;
             };
+            // The oracle's `RegControls.First/.Next` iterator SKIPS disabled
+            // control elements (C-API `Get_First`/`Get_Next` walk the list with
+            // `if pelem.Enabled`; verified live — a disabled RegControl yields
+            // `First = 0`). Mirror that, or a deck that opens with
+            // `BatchEdit RegControl..* enabled=False` compares 12 taps vs 0.
+            if !rc.ccd.cd.enabled {
+                continue;
+            }
             // Pascal `Get_TapNum` reads the controlled transformer's *live*
             // `PresentTap[TapWinding]`; resolve it here so a direct
             // `Transformer.X.Taps=` edit (which bypasses the control's snapshot)
@@ -429,10 +542,11 @@ impl Dss {
             let num = rc
                 .controlled_ref()
                 .and_then(|tref| {
-                    self.classes[tref.cls].objects[tref.idx]
-                        .as_any()
-                        .downcast_ref::<transformer::Transformer>()
-                        .map(|tr| rc.tap_num_live(tr))
+                    // Either member of the Transformer/AutoTrans proxy.
+                    transformer::as_controlled_transformer(
+                        &*self.classes[tref.cls].objects[tref.idx],
+                    )
+                    .map(|tr| rc.tap_num_live(tr))
                 })
                 .unwrap_or_else(|| obj.get_i32(reg_control::prop::TAPNUM));
             out.push((obj.data().name().to_string(), num));
@@ -535,6 +649,30 @@ impl Dss {
             Some(ckt) => ckt.solution.event_log.entries(),
             None => &[],
         }
+    }
+
+    /// The pending control-action queue as the dss-python `CtrlQueue.Queue`
+    /// rows (Pascal `TControlQueue.QueueItem`, `ControlQueue.pas:557`:
+    /// `Format('%d, %d, %.9g, %d, %d, %s ', [handle, hour, sec, code, proxy,
+    /// ControlElement.Name])` — bare device name, trailing space). Empty after
+    /// a drained snapshot; time/dynamics modes leave future-scheduled actions
+    /// (e.g. recloser reclose shots) pending between steps.
+    pub fn control_queue_rows(&self) -> Vec<String> {
+        let Some(ckt) = &self.circuit else {
+            return Vec::new();
+        };
+        ckt.solution
+            .control_queue
+            .queue_rows()
+            .into_iter()
+            .map(|(handle, hour, sec, code, proxy, ctrl)| {
+                let name = self.classes[ctrl.cls].objects[ctrl.idx].data().name();
+                format!(
+                    "{handle}, {hour}, {}, {code}, {proxy}, {name} ",
+                    crate::util::fmt_g(sec, 9)
+                )
+            })
+            .collect()
     }
 
     /// Coordinate dump of the **assembled, unfactored** system Y matrix:

@@ -1,0 +1,14 @@
+{
+  "report": "transformer.t1",
+  "fixture": "dumpxfd",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpxfd basekv=115 bus1=src",
+    "new transformer.t1 phases=3 windings=2 xhl=6 buses=[src mid] conns=[delta wye] kvs=[115 4.16] kvas=[5000 5000]",
+    "new load.ld1 bus1=mid kv=4.16 kw=2000 pf=0.9 conn=wye",
+    "set voltagebases=[115 4.16]",
+    "calcv",
+    "solve",
+    "transformer.t1.enabled=no"
+  ]
+}

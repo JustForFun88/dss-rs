@@ -26,7 +26,7 @@ pub(crate) fn sample_do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -
 
 /// Pascal `SampleControlDevices` (l.1974): every enabled control element, in
 /// creation order, gets `Sample()`.
-fn sample_control_devices(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn sample_control_devices(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     let mut queue = std::mem::take(&mut ckt.solution.control_queue);
     let result = sample_control_devices_q(ckt, env, &mut queue);
     ckt.solution.control_queue = queue;

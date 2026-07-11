@@ -27,6 +27,13 @@ Rust side restarting the process and recording the case as a failure.
 Startup hard-asserts the pin in tools/golden/PIN.txt (dss-python 0.15.7); a wrong
 oracle version exits non-zero, never a silent pass.
 
+Engine selection (`make_engine`): `DSS_ORACLE_ENGINE=capi` (default, the pinned
+dss-python oracle above) or `oddie` — an official EPRI `OpenDSSDirect.dll`
+(`DSS_OPENDSS_REV` -> tools/opendss/revisions.json) driven through the AltDSS
+Oddie bridge from the separate venv pinned in tools/opendss/PIN_OPENDSS.txt.
+See tools/opendss/README.md. The capture surface is identical; `ping` echoes
+`{"oddie":true,"rev":...}` so the caller can verify which engine answered.
+
 Usage (normally spawned by the Rust gate; manual smoke test):
     echo {"cmd":"ping"} | python tools/oracle/oracle_server.py
 """
@@ -37,6 +44,7 @@ import json
 import os
 import sys
 import traceback
+from math import isqrt
 from pathlib import Path
 
 # Reuse the exact capture helpers the checkpoint goldens use, so both sides of
@@ -44,6 +52,12 @@ from pathlib import Path
 GOLDEN = Path(__file__).resolve().parent.parent / "golden"
 sys.path.insert(0, str(GOLDEN))
 import gen_checkpoints as gc  # noqa: E402
+
+# Resolved at import time — the EPRI engine chdirs the process on Compile
+# (`AllowChangeDir` is not settable through Oddie), so nothing may rely on
+# relative paths after the first `run` request.
+OPENDSS_DIR = Path(__file__).resolve().parent.parent / "opendss"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def log(msg: str) -> None:
@@ -57,15 +71,101 @@ def reply(obj: dict) -> None:
 
 
 def capture_all_elements(ckt) -> list:
-    """Every circuit element's terminal currents (A) and powers (kW/kvar).
+    """Every circuit element's terminal currents (A), powers (kW/kvar), and
+    losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path).
 
-    The plan mandates comparing *all* element currents/powers (not just the
-    selected set), so the live gate captures the whole element list here.
+    The plan mandates comparing *all* element currents/powers/losses (not just
+    the selected set), so the live gate captures the whole element list here.
     """
     out = []
     for name in ckt.AllElementNames:
-        out.append(gc.capture_element(ckt, name))
+        cap = gc.capture_element(ckt, name)
+        # capture_element leaves the element active; Losses reads it.
+        loss = ckt.ActiveCktElement.Losses
+        cap["loss_w"] = [float(loss[0]), float(loss[1])]
+        out.append(cap)
     return out
+
+
+def capture_probes(d, probes: list) -> list:
+    """Element-specific state via the generic property surface: for each
+    `{element, props: [...]}` spec, the `? element.prop` executive query
+    (CONTROL_COVERAGE_PLAN.md) — the same value string the Rust `?` query
+    renders, and the same read path `GetPropertyValue` backs `Properties(p).Val`
+    with for a `TDSSCktElement`. Routed through the query (not
+    `ActiveCktElement.Properties(p).Val`) because `SetActiveElement` only finds
+    `TDSSCktElement`s: it silently no-ops (returns -1, active element
+    unchanged) for a `DSS_OBJECT` class with no terminals — LoadShape/TShape/
+    PriceShape/GrowthShape/… (WPG.1) — which would otherwise read back
+    whatever CktElement happened to be active. Verified bit-identical to
+    `Properties(p).Val` for a CktElement probe."""
+    out = []
+    for spec in probes:
+        name = spec["element"]
+        for p in spec.get("props") or []:
+            d.Text.Command = f"? {name}.{p}"
+            out.append({"element": name, "prop": p, "value": str(d.Text.Result)})
+    return out
+
+
+def capture_all_properties(d, ckt) -> list:
+    """WP8.5b: EVERY circuit element's EVERY property value, as an ordered
+    `[[prop, str(Val)]]` list over the class's `AllPropertyNames` (property-index
+    order is the contract compared against the Rust `?`-surface).
+
+    Read exactly like `capture_probes`: the `? element.prop` executive query
+    (not `ActiveCktElement.Properties(p).Val`), which backs the same
+    `GetPropertyValue` path AND — the WPG.1 harness bug — activates the object
+    for BOTH `DSS_OBJECT` and `TDSSCktElement` classes, whereas `SetActiveElement`
+    silently no-ops for a terminal-less `DSS_OBJECT`. `AllElementNames` is only
+    circuit elements, but `? name.Like` (a read that activates the object without
+    needing to know a property name yet; the exact trick `gen_props.py` uses)
+    keeps the enumeration on the identical WPG.1-safe path so the property-name
+    list read matches the value reads. Runs AFTER `capture_all_elements`, so the
+    established element read order is preserved."""
+    out = []
+    for name in ckt.AllElementNames:
+        # Activate via the query path, then read the class property-name list off
+        # the now-active DSS object (ActiveDSSElement, not ActiveCktElement —
+        # covers DSS_OBJECT classes too).
+        d.Text.Command = f"? {name}.Like"
+        prop_names = list(ckt.ActiveDSSElement.AllPropertyNames)
+        props = []
+        for p in prop_names:
+            d.Text.Command = f"? {name}.{p}"
+            props.append([p, str(d.Text.Result)])
+        out.append({"element": name, "props": props})
+    return out
+
+
+def capture_variables(ckt, names: list) -> list:
+    """PC-element state variables (`AllVariableNames`/`AllVariableValues`) —
+    the live f64 state read (CLAUDE.md: the f32 monitor channel hides it)."""
+    out = []
+    for name in names:
+        ckt.SetActiveElement(name)
+        el = ckt.ActiveCktElement
+        out.append(
+            {
+                "name": name,
+                "var_names": [str(s) for s in el.AllVariableNames],
+                "values": [float(v) for v in el.AllVariableValues],
+            }
+        )
+    return out
+
+
+def capture_ctrlqueue(ckt) -> list:
+    """Pending control actions (`CtrlQueue.Queue` = `TControlQueue.QueueItem`
+    rows). Normalized here: the constant header row and the empty-queue
+    placeholder `'No events'` are dropped, so the result is exactly the pending
+    rows (`Handle, Hour, Sec, ActionCode, ProxyDevRef, Device`)."""
+    rows = [str(s) for s in ckt.CtrlQueue.Queue]
+    return [
+        r
+        for r in rows
+        if r.strip() and r.strip() != "No events" and not r.startswith("Handle,")
+    ]
 
 
 def capture_all_monitors(ckt) -> list:
@@ -102,9 +202,16 @@ def capture_all_meters(ckt) -> list:
     m = ckt.Meters
     i = m.First
     while i:
-        branches = list(m.AllBranchesInZone)
-        ends = list(m.AllEndElements)
-        pce = list(m.ZonePCE)
+        # An EMPTY string-array comes back as the C-API placeholder ['NONE']
+        # (DefaultResult, like CtrlQueue's 'No events') — filter it so an empty
+        # zone list compares as empty, not as a phantom one-element list.
+        def _lst(v):
+            xs = [str(s) for s in v]
+            return [] if xs == ["NONE"] else xs
+
+        branches = _lst(m.AllBranchesInZone)
+        ends = _lst(m.AllEndElements)
+        pce = _lst(m.ZonePCE)
         out.append(
             {
                 "name": m.Name,
@@ -130,55 +237,27 @@ def capture_all_meters(ckt) -> list:
 # the in-memory model, so those files are pure pollution of the vendored corpus.
 # Setting `DataPath` before `Compile` does NOT help — `Compile` resets it to the
 # case dir. So snapshot the case dir and restore it after each run instead.
-_RESTORE_MAX = 2 * 1024 * 1024  # buffer files up to 2 MiB for overwrite-restore
+# Lifted move-only into corpus_guard.py (2026-07-07) so the DSS-Python
+# validation harness (tools/opendss/dsspy_validation/) shares the identical,
+# empirically-hardened implementation.
+from corpus_guard import CorpusGuard as _CorpusGuard  # noqa: E402
 
 
-class _CorpusGuard:
-    """Restore the case's directory after a run: delete any file the run
-    created, and rewrite any small pre-existing file it overwrote. Large files
-    (> `_RESTORE_MAX`) are not buffered — OpenDSS only writes small text reports,
-    never the multi-MiB data files (loadshape CSVs, etc.)."""
-
-    def __init__(self, case_path: str):
-        self.dir = os.path.dirname(os.path.abspath(case_path))
-        self.names: set[str] = set()
-        self.buf: dict[str, bytes] = {}
-
-    def __enter__(self) -> "_CorpusGuard":
-        try:
-            for name in os.listdir(self.dir):
-                p = os.path.join(self.dir, name)
-                if not os.path.isfile(p):
-                    continue
-                self.names.add(name)
-                if os.path.getsize(p) <= _RESTORE_MAX:
-                    with open(p, "rb") as fh:
-                        self.buf[name] = fh.read()
-        except OSError:
-            pass
-        return self
-
-    def __exit__(self, *exc) -> bool:
-        try:
-            current = set(os.listdir(self.dir))
-        except OSError:
-            return False
-        for name in current - self.names:  # created by the run
-            try:
-                os.remove(os.path.join(self.dir, name))
-            except OSError:
-                pass
-        for name, data in self.buf.items():  # overwritten by the run
-            p = os.path.join(self.dir, name)
-            try:
-                with open(p, "rb") as fh:
-                    if fh.read() == data:
-                        continue
-                with open(p, "wb") as fh:
-                    fh.write(data)
-            except OSError:
-                pass
-        return False
+# The pinned engine (dss_capi 0.14.5) has a per-process nondeterminism: on a
+# fresh process's FIRST compile of a deck that rewires a transformer winding to
+# a new node mid-deck (`Test/YgD-Test.dss`, `Transformer.tr1.wdg=1
+# bus=HV.1.2.4`), the post-rewire solve sometimes (~16% of processes,
+# empirically; load-independent, PYTHONHASHSEED-independent) hits MaxIterations
+# and reports `Converged=false` with NO DSS error raised — an
+# uninitialized-memory-style bistability: both outcomes are bit-deterministic,
+# and a `clear` + recompile IN THE SAME PROCESS heals it (never observed to
+# persist past the 2nd recompile in 75 trials). The healed result is the one
+# deterministic fixpoint the Rust engine matches. So: when any checkpoint
+# reports non-convergence, retry the whole case in-process (loudly) before
+# returning. A case that legitimately fails to converge still fails after
+# `_RUN_ATTEMPTS` identical attempts — nothing is masked, only the engine's
+# fresh-process misfire is absorbed. (WP8.2 Issue-2 root cause; STATUS.md §1f.)
+_RUN_ATTEMPTS = 3
 
 
 def run_case(d, req: dict) -> dict:
@@ -189,53 +268,255 @@ def run_case(d, req: dict) -> dict:
     n_steps = int(req.get("n_steps", 1))
     selected = req.get("selected_elements") or []
     full_csc = bool(req.get("full_csc", True))
+    probes = req.get("probes") or []
+    variables = req.get("variables") or []
+    want_eventlog = bool(req.get("eventlog", False))
+    want_ctrlqueue = bool(req.get("ctrlqueue", False))
+    # WP8.5b corpus property parity: the full per-element property dump. Opt-in
+    # (heavy: elements x props x steps queries) — the Rust property gate and the
+    # env-gated `corpus_live_properties` pilot force it.
+    want_all_props = bool(req.get("all_properties", False))
+    # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
+    # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
+    # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
+    # it. The AutoAdd solve segfaults dss-python AT PROCESS EXIT (GAPS_PLAN.md
+    # 2.2); this one-shot server has already flushed its JSON reply by then, so
+    # the crash never loses the capture.
+    want_global_result = bool(req.get("global_result", False))
+    want_autoadd_log = bool(req.get("autoadd_log", False))
     # Monitors/meters are compared only for cases that deliberately define them in
     # deterministic modes (the daily IEEE13 case). Capturing every master's
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
 
-    node_order = None
-    checkpoints = []
     with _CorpusGuard(case_path):
-        d.Text.Command = "clear"
-        d.Text.Command = f'Compile "{case_path}"'
-        for c in post:
-            d.Text.Command = c
+        for attempt in range(1, _RUN_ATTEMPTS + 1):
+            node_order = None
+            checkpoints = []
+            d.Text.Command = "clear"
+            d.Text.Command = f'Compile "{case_path}"'
+            for c in post:
+                d.Text.Command = c
 
-        ckt = d.ActiveCircuit
-        for _ in range(n_steps):
-            d.Text.Command = "solve"
-            sol = ckt.Solution
-            if node_order is None:
-                node_order = list(ckt.YNodeOrder)
-            varray = list(ckt.YNodeVarray)
-            disc = gc.capture_discrete(ckt)
-            checkpoints.append(
-                {
-                    "dbl_hour": float(sol.dblHour),
-                    "iterations": int(sol.Iterations),
-                    "converged": bool(sol.Converged),
-                    "v_re": varray[0::2],
-                    "v_im": varray[1::2],
-                    "y": gc.capture_system_y(d) if full_csc else None,
-                    "y_fingerprint": gc.capture_fingerprint(d),
-                    "yprims": [gc.capture_yprim(ckt, nm) for nm in selected],
-                    "elements": capture_all_elements(ckt),
-                    "injection": gc.capture_injection(d),
-                    "transformers": disc["transformers"],
-                    "regcontrols": disc["regcontrols"],
-                    "capacitors": disc["capacitors"],
-                    "monitors": capture_all_monitors(ckt) if check_mm else [],
-                    "meters": capture_all_meters(ckt) if check_mm else [],
-                }
+            ckt = d.ActiveCircuit
+            for _ in range(n_steps):
+                d.Text.Command = "solve"
+                # WPG.5: read GlobalResult right after the solve, before any
+                # `?`-query capture below overwrites `Text.Result`.
+                global_result = str(d.Text.Result) if want_global_result else ""
+                # `selected_elements=["*"]` -> every element's YPrim (small decks;
+                # the Rust side then asserts the returned name set covers ALL
+                # YPrim-bearing elements instead of the fixed count). Control /
+                # meter elements have no YPrim (the API returns a 1-float stub) —
+                # skip them, mirroring the Rust `element_yprim() == None`.
+                # Rebuilt AFTER each solve so a deck that adds an element during
+                # the solve (WPG.5 AutoAdd appends `Generator.Gadd1`) is covered;
+                # for every other deck the pre/post-solve element set is identical.
+                if selected == ["*"]:
+                    sel = []
+                    for nm in ckt.AllElementNames:
+                        ckt.SetActiveElement(nm)
+                        flat = ckt.ActiveCktElement.Yprim
+                        n = isqrt(len(flat) // 2) if flat is not None else 0
+                        if n > 0 and 2 * n * n == len(flat):
+                            sel.append(nm)
+                else:
+                    sel = selected
+                sol = ckt.Solution
+                if node_order is None:
+                    node_order = list(ckt.YNodeOrder)
+                varray = list(ckt.YNodeVarray)
+                disc = gc.capture_discrete(ckt)
+                checkpoints.append(
+                    {
+                        "dbl_hour": float(sol.dblHour),
+                        "iterations": int(sol.Iterations),
+                        "converged": bool(sol.Converged),
+                        "v_re": varray[0::2],
+                        "v_im": varray[1::2],
+                        "y": gc.capture_system_y(d) if full_csc else None,
+                        "y_fingerprint": gc.capture_fingerprint(d),
+                        "yprims": [gc.capture_yprim(ckt, nm) for nm in sel],
+                        "elements": capture_all_elements(ckt),
+                        "injection": gc.capture_injection(d),
+                        "transformers": disc["transformers"],
+                        "regcontrols": disc["regcontrols"],
+                        "capacitors": disc["capacitors"],
+                        "monitors": capture_all_monitors(ckt) if check_mm else [],
+                        "meters": capture_all_meters(ckt) if check_mm else [],
+                        "probes": capture_probes(d, probes),
+                        "variables": capture_variables(ckt, variables),
+                        "eventlog": (
+                            [str(s) for s in sol.EventLog] if want_eventlog else []
+                        ),
+                        "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
+                        # WP8.5b: read LAST, after every established capture above,
+                        # so the property sweep's `?` queries never perturb any
+                        # other read's active-element state.
+                        "all_properties": (
+                            capture_all_properties(d, ckt) if want_all_props else []
+                        ),
+                        "global_result": global_result,
+                    }
+                )
+            bad = [i for i, cp in enumerate(checkpoints) if not cp["converged"]]
+            if not bad:
+                break
+            log(
+                f"oracle retry: {case_path} attempt {attempt}/{_RUN_ATTEMPTS} "
+                f"non-converged step(s) {bad} (pinned-engine fresh-process "
+                f"misfire, see run_case doc / STATUS.md §1f); "
+                + ("recompiling in-process" if attempt < _RUN_ATTEMPTS else "returning as-is")
             )
-    return {"node_order": node_order, "n_steps": n_steps, "checkpoints": checkpoints}
+
+        # WPG.5: read the `<CircuitName_>AutoAddLog.csv` written to the case
+        # dir (OutputDirectory := <case dir> after Compile). Read inside the
+        # `_CorpusGuard` scope, before it removes the file on exit.
+        autoadd_log = None
+        if want_autoadd_log:
+            log_path = os.path.join(
+                os.path.dirname(os.path.abspath(case_path)),
+                f"{ckt.Name}_AutoAddLog.csv",
+            )
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
+                    autoadd_log = fh.read()
+
+    return {
+        "node_order": node_order,
+        "n_steps": n_steps,
+        "checkpoints": checkpoints,
+        "autoadd_log": autoadd_log,
+    }
+
+
+def _oddie_get_y_sparse(d):
+    """Oddie-mode replacement for `gc._get_y_sparse`: the fastdss dss-python
+    (0.16.0b2) `getYSparse()` takes no `factor` argument (Oddie ignores the
+    flag; EPRI's `InitAndGetYparams` ALWAYS factors before the CSC export —
+    proven solution-neutral by `tools/opendss/smoke.py`'s bit-identical
+    YNodeVarray check). Same `BuildY` retry as the capi original."""
+    r = d.YMatrix.getYSparse()
+    if r is None:
+        d.Text.Command = "BuildY"
+        r = d.YMatrix.getYSparse()
+    if r is None:
+        raise RuntimeError("YMatrix.getYSparse returned None even after a BuildY retry")
+    return r
+
+
+def _read_pin_opendss() -> dict:
+    pins = {}
+    for line in (OPENDSS_DIR / "PIN_OPENDSS.txt").read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if "==" in line:
+            k, v = line.split("==", 1)
+            pins[k.strip()] = v.strip()
+    return pins
+
+
+def make_engine():
+    """Bind the oracle engine from `DSS_ORACLE_ENGINE`:
+
+    - "capi" (default) — the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle,
+      exactly as before (`gc.check_pin()` + the `dss.DSS` singleton);
+    - "capi015" — the dss_capi 0.15.x-line oracle: dss-python 0.16.0b2 (fastdss)
+      from the SAME separate venv the Oddie bridge uses (pinned in
+      tools/opendss/PIN_OPENDSS.txt), driving its own bundled dss_capi
+      0.15.0b4 backend (based on OpenDSS SVN r4103 — the 0.15.x/r4088 line).
+      This is the scriptable r4088-line oracle for the UPGRADE_PLAN target-rev
+      gates; `ping` echoes `{"capi015": true}` so the caller can verify.
+    - "oddie" — an OFFICIAL EPRI `OpenDSSDirect.dll` loaded by absolute path
+      through the AltDSS Oddie bridge (dss-python 0.16.0b2 `IOddieDSS`, the
+      separate venv pinned in tools/opendss/PIN_OPENDSS.txt). The revision
+      comes from `DSS_OPENDSS_REV` (looked up in tools/opendss/revisions.json,
+      whose `expect_version` must be non-empty — no silent pass), or a direct
+      `DSS_OPENDSS_DLL` path override (+ optional `DSS_OPENDSS_EXPECT`
+      version-substring check).
+    """
+    engine = os.environ.get("DSS_ORACLE_ENGINE", "capi")
+    if engine == "capi":
+        oracle = gc.check_pin()  # hard-asserts dss-python 0.15.7 / engine 0.14.5
+        from dss import DSS as d
+
+        return d, oracle
+    if engine == "capi015":
+        import dss
+
+        pin = _read_pin_opendss()
+        if dss.__version__ != pin["dss-python"]:
+            sys.exit(
+                f"dss-python {dss.__version__} != pinned {pin['dss-python']} "
+                "(tools/opendss/PIN_OPENDSS.txt — is DSS_ORACLE_PYTHON the Oddie venv?)"
+            )
+        from dss import DSS as d
+
+        ver = str(d.Version)
+        backend = pin.get("dss-python-backend", "")
+        if not backend:
+            sys.exit("PIN_OPENDSS.txt has no dss-python-backend pin (no silent pass)")
+        if backend not in ver:
+            sys.exit(f"engine {ver!r} does not contain pinned backend {backend!r}")
+        # fastdss getYSparse() drops the `factor` argument (same as Oddie).
+        gc._get_y_sparse = _oddie_get_y_sparse
+        return d, {"engine": ver, "capi015": True}
+    if engine != "oddie":
+        sys.exit(
+            f"unknown DSS_ORACLE_ENGINE={engine!r} (expected 'capi', 'capi015' or 'oddie')"
+        )
+
+    import dss
+
+    pin = _read_pin_opendss()
+    if dss.__version__ != pin["dss-python"]:
+        sys.exit(
+            f"dss-python {dss.__version__} != pinned {pin['dss-python']} "
+            "(tools/opendss/PIN_OPENDSS.txt — is DSS_ORACLE_PYTHON the Oddie venv?)"
+        )
+    rev = os.environ.get("DSS_OPENDSS_REV", "")
+    dll = os.environ.get("DSS_OPENDSS_DLL", "")
+    expect = os.environ.get("DSS_OPENDSS_EXPECT", "")
+    if not dll:
+        revs = json.loads((OPENDSS_DIR / "revisions.json").read_text())
+        if rev not in revs:
+            sys.exit(f"DSS_OPENDSS_REV={rev!r} not in revisions.json ({sorted(revs)})")
+        dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
+        expect = expect or revs[rev].get("expect_version", "")
+        if not expect:
+            sys.exit(
+                f"revisions.json expect_version for {rev} is empty — "
+                "run tools/opendss/smoke.py and pin it (no silent pass)"
+            )
+    from dss import IOddieDSS
+
+    d = IOddieDSS(library_path=dll)
+    ver = str(d.Version)
+    if expect and expect not in ver:
+        sys.exit(f"engine {ver!r} does not contain pinned {expect!r} (rev={rev!r})")
+    # Suppress dialogs BEFORE any Text command — an engine error message while
+    # forms are still allowed pops a modal dialog (main() sets this again;
+    # harmless).
+    d.AllowForms = False
+    # EPRI's Delphi `FireOffEditor` (Utilities.pas) ShellExecutes `DefaultEditor`
+    # on every `Show`/`Export` UNCONDITIONALLY — it has no NoFormsAllowed check,
+    # and `AllowEditor` is not settable through Oddie, so a corpus sweep would
+    # open hundreds of Notepads (empirically did). Point the editor at
+    # rundll32.exe — a GUI-subsystem no-op (no DLL entry point given -> exits
+    # silently, no window) — and stop the engine from persisting that override
+    # into the user's OpenDSS registry settings on dispose (`Set RegistryUpdate`,
+    # ExecOption[102] — the option name differs from the Pascal variable
+    # `UpdateRegistry`; identical in r3723/r4088/r4133).
+    d.Text.Command = "Set RegistryUpdate=No"
+    d.Text.Command = "Set Editor=rundll32.exe"
+    # fastdss getYSparse() signature differs; capture_system_y/capture_fingerprint
+    # route through gc._get_y_sparse, so rebind it for this process.
+    gc._get_y_sparse = _oddie_get_y_sparse
+    return d, {"engine": ver, "oddie": True, "rev": rev, "dll": dll}
 
 
 def main() -> None:
-    oracle = gc.check_pin()  # hard-asserts dss-python 0.15.7 / engine 0.14.5
-    from dss import DSS as d
+    d, oracle = make_engine()
 
     d.AllowForms = False
     # `Show`/`Export`/`FileEdit` call `FireOffEditor`, which opens the report in

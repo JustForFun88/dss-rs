@@ -1,0 +1,13 @@
+{
+  "report": "line.l2",
+  "fixture": "dumpllc",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpllc basekv=12.47 bus1=src",
+    "new linecode.lcm nphases=3 rmatrix=(0.1 | 0.03 0.1 | 0.03 0.03 0.1) xmatrix=(0.2 | 0.05 0.2 | 0.05 0.05 0.2) cmatrix=(3 | -1 3 | -1 -1 3) units=km",
+    "new line.l2 bus1=src bus2=b2 linecode=lcm length=1.5 units=km",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve"
+  ]
+}

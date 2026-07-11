@@ -1,0 +1,2 @@
+Meter, SectionID, SeqIndex, DeviceType, NumCustomers, NumBranches, AvgRepairHrs, TotalDownlineCust, SectFaultRate, SumFltRatesXRepairHrs, SumBranchFltRates, HeadBranch 
+m2, 1, 1, FUSE, 8, 1, 6, 8, 0.56, 1.8816, 0.3136, "Line.l3"

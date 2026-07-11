@@ -1,0 +1,10 @@
+{
+  "report": "cim100",
+  "circuit": "ieee123",
+  "fixture": "ieee123_fixture.csv",
+  "suffix": "CIM100x.xml",
+  "master": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+  "post": [
+    "solve"
+  ]
+}

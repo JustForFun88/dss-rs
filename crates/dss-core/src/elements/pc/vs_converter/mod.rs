@@ -51,30 +51,30 @@ pub mod prop {
 /// `TVSConverter.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("bus1", 1),
-        PropDef::double("kVac"),
-        PropDef::double("kVdc"),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
+        PropDef::double("kVAC"),
+        PropDef::double("kVDC"),
         PropDef::double("kW"),
-        PropDef::integer("Ndc"),
-        PropDef::double("Rac"),
-        PropDef::double("Xac"),
-        PropDef::double("m0"),
+        PropDef::integer("NDC"),
+        PropDef::double("RAC"),
+        PropDef::double("XAC"),
+        PropDef::double("M0"),
         PropDef::double("d0"),
-        PropDef::double("Mmin"),
-        PropDef::double("Mmax"),
-        PropDef::double("Iacmax"),
-        PropDef::double("Idcmax"),
-        PropDef::double("Vacref"),
-        PropDef::double("Pacref"),
-        PropDef::double("Qacref"),
-        PropDef::double("Vdcref"),
-        PropDef::mapped_string_enum("VscMode", enums.vsc_mode),
+        PropDef::double("MMin"),
+        PropDef::double("MMax"),
+        PropDef::double("IACMax"),
+        PropDef::double("IDCMax"),
+        PropDef::double("VACRef"),
+        PropDef::double("PACRef"),
+        PropDef::double("QACRef"),
+        PropDef::double("VDCRef"),
+        PropDef::mapped_string_enum("VSCMode", enums.vsc_mode),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("VSConverter", defs, true)
@@ -157,17 +157,26 @@ impl VsConverter {
         self.last_currents = vec![Complex64::ZERO; self.cd.yorder];
     }
 
-    /// Pascal `TVSConverterObj.GetInjCurrents` (l.418) — fill `self.cd.inj_current`
-    /// with the AC voltage-source injection (`YPrim·[Vsource; 0]`) plus the DC
-    /// power-balance current source. `node_v` supplies the terminal voltages.
+    /// Pascal `TVSConverterObj.GetInjCurrents` (l.418) — the solve path: fill
+    /// `self.cd.inj_current` via [`Self::compute_inj_currents`].
+    pub(super) fn get_inj_currents(&mut self, node_v: &[Complex64]) {
+        self.cd.inj_current = self.compute_inj_currents(node_v);
+    }
+
+    /// Pascal `TVSConverterObj.GetInjCurrents` (l.418) — compute the AC
+    /// voltage-source injection (`YPrim·[Vsource; 0]`) plus the DC power-balance
+    /// current source, **returning** the vector; `self.cd.inj_current` is left
+    /// untouched so the reporting path stays side-effect-free (Pascal's
+    /// `GetCurrents` writes into the scratch `ComplexBuffer`, never `InjCurrent`).
+    /// `node_v` supplies the terminal voltages.
     ///
     /// Order matters (and sets the converged iteration count): Pascal computes the
     /// terminal current `ITerminal = YPrim·VTerminal − InjCurrent` via
-    /// `TPCElement.GetTerminalCurrents` using the **previous** call's `InjCurrent`,
-    /// **before** this call overwrites it — a one-iteration lag the `Pac` power
-    /// estimate carries. Replicated here.
+    /// `TPCElement.GetTerminalCurrents` using the **previous** solve's
+    /// `InjCurrent`, **before** the new injection replaces it — a one-iteration
+    /// lag the `Pac` power estimate carries. Replicated here.
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
-    fn get_inj_currents(&mut self, node_v: &[Complex64]) {
+    pub(super) fn compute_inj_currents(&mut self, node_v: &[Complex64]) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
         let nac = nphases - self.ndc;
@@ -208,8 +217,9 @@ impl VsConverter {
         for i in 0..yorder {
             iterm[i] -= self.cd.inj_current[i];
         }
-        // Curr = YPrim · ComplexBuffer (the new AC source injection — overwrites).
-        yprim.mv_mult(&mut self.cd.inj_current, &cbuf);
+        // Curr = YPrim · ComplexBuffer (the new AC source injection).
+        let mut inj = vec![Complex64::ZERO; yorder];
+        yprim.mv_mult(&mut inj, &cbuf);
 
         // Pac = Σ ComplexBuffer[i] · conj(ITerminal[i]) over the AC conductors.
         let mut pac = 0.0;
@@ -228,8 +238,9 @@ impl VsConverter {
         if idc < -idclim {
             idc = -idclim;
         }
-        self.cd.inj_current[nphases - 1] = Complex64::new(idc, 0.0);
-        self.cd.inj_current[2 * nphases - 1] = Complex64::new(-idc, 0.0);
+        inj[nphases - 1] = Complex64::new(idc, 0.0);
+        inj[2 * nphases - 1] = Complex64::new(-idc, 0.0);
+        inj
     }
 }
 

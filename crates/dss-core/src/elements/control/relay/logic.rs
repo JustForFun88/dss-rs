@@ -5,16 +5,18 @@
 //! `RESET` actions exactly like the Pascal `*Logic` procedures.
 //!
 //! Ported here: `OvercurrentLogic`, `VoltageLogic`, `RevPowerLogic`,
-//! `NegSeq46Logic`, `NegSeq47Logic`, `DistanceLogic`,
-//! `DirectionalOvercurrentLogic` + `GetControlPower`. The dynamics-coupled
-//! `GenericLogic` / `TD21Logic` are deferred to WP7.7 (handled in
-//! [`super::Relay::sample`]).
+//! `NegSeq46Logic`, `NegSeq47Logic`, `GenericLogic`, `DistanceLogic`,
+//! `TD21Logic`, `DirectionalOvercurrentLogic` + `GetControlPower`. `GenericLogic`
+//! reads a monitored PC element's state variable; `TD21Logic` runs the per-cycle
+//! differential-distance ring buffer off the dynamics clock
+//! (`DynaVars.h`/`Frequency`/`IterationFlag`).
 
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, CtrlCtx};
 use crate::elements::traits::CktElement;
 use crate::support::complexutil::{cdang, pdeg_to_complex};
+use crate::support::dynamics::IterationFlag;
 use crate::support::mathutil::SymComp;
 
 use super::Relay;
@@ -349,6 +351,51 @@ impl Relay {
         }
     }
 
+    /// Pascal `TRelayObj.GenericLogic` — a `Generic` relay trips (one-shot to
+    /// lockout) when a monitored PC element's state variable leaves the
+    /// `[UnderTrip, OverTrip]` band. `MonitorVarIndex` was resolved in `recalc`
+    /// (`LookupVariable`); its value is read fresh from the live element
+    /// (`Variable[MonitorVarIndex]`).
+    pub(super) fn generic_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) {
+        // VarValue := TPCElement(MonitoredElement).Variable[MonitorVarIndex].
+        // Pascal `GetAllVariables[i-1] = Get_Variable(i)` (generator.pas l.2639),
+        // so read the whole state vector and index it — a control element carries
+        // no `Variable[]` of its own, and the Rust trait exposes the vector form.
+        let idx = self.monitor_var_index;
+        let var_value = if idx >= 1 {
+            let n = mon.num_variables();
+            let mut states = vec![0.0_f64; n];
+            mon.get_all_variables(ctx.sys, ctx.node_v, &mut states);
+            states.get((idx - 1) as usize).copied().unwrap_or(-9999.99)
+        } else {
+            -9999.99 // Pascal base `Get_Variable` error return
+        };
+
+        if var_value > self.over_trip || var_value < self.under_trip {
+            if !self.armed_for_open {
+                self.relay_target = if idx >= 1 {
+                    mon.variable_name(idx as usize)
+                } else {
+                    String::new()
+                };
+                ctx.queue.push_delay(
+                    ctx.int_hour,
+                    ctx.t,
+                    self.delay_time + self.breaker_time,
+                    CTRL_OPEN,
+                    0,
+                    ctx.self_ref,
+                );
+                self.operation_count = self.num_reclose + 1; // force a lockout
+                self.armed_for_open = true;
+            }
+        } else if self.armed_for_open {
+            // Back within bounds: reset and disarm.
+            self.push_reset(ctx);
+            self.armed_for_open = false;
+        }
+    }
+
     /// Pascal `TRelayObj.DistanceLogic` — mho-style loop-impedance reach (21).
     /// Rectangular characteristic on each phase/phase-phase loop; the closest
     /// in-reach loop sets the target and a definite-time trip.
@@ -470,6 +517,243 @@ impl Relay {
                 self.armed_for_close = false;
             }
         }
+    }
+
+    /// Pascal `TRelayObj.TD21Logic` — the differential (incremental) time-distance
+    /// relay (21). On the first dynamics step a per-cycle ring buffer of terminal
+    /// V/I is sized from `DynaVars.h`/`Frequency` (`round(1/60/dt + 0.5)` samples);
+    /// each `Sample` forms the pre-fault-referenced increments `dV`/`dI` (present
+    /// minus one-cycle-old), and — once a full cycle has elapsed since start or the
+    /// last operation (`td21_quiet <= 0`) — checks every phase / phase-phase loop
+    /// against a half-reach directional characteristic, arming a definite-time trip
+    /// on the closest in-reach loop. Runs only under dynamics (`DynaVars.h > 0`).
+    ///
+    /// Returns `true` when the coarse-time-step guard (error 388) fires: Pascal
+    /// `Relay.pas:1460` reports it via `DoErrorMsg`, which sets
+    /// `DSS.SolutionAbort := True` (`DSSGlobals.pas:265`) — the dispatch layer
+    /// lifts this into `Solution.SolutionAbort` so the run halts exactly where
+    /// the oracle does (the `Sample`-time analogue of CapControl's abort return).
+    pub(super) fn td21_logic(&mut self, mon: &mut dyn CktElement, ctx: &mut CtrlCtx) -> bool {
+        let (cond_offset, nphases) = self.mon_offset(mon);
+        let dt = ctx.sys.dyna_h;
+        // Pascal `DoErrorMsg(...,388)` sets `SolutionAbort := True` but does NOT
+        // `Exit` — the logic falls through. We mirror: record the request, keep
+        // running, and return it so the dispatch layer aborts the solution.
+        let mut solution_abort = false;
+        if dt > 0.0 {
+            if dt > 1.0 / ctx.sys.frequency {
+                ctx.errors.push(format!(
+                    "Relay: \"{}\": Has type TD21 with time step greater than one cycle. \
+                     Reduce time step, or change type to Distance. (Error 388)",
+                    self.ccd.cd.obj.name()
+                ));
+                solution_abort = true;
+            }
+            // Pascal `round(1/60/dt + 0.5)` (FPC banker's) — samples per ~one
+            // 60 Hz cycle. The `1/60` is a hard-coded literal upstream (not
+            // `1/Frequency`), reproduced verbatim.
+            let i = (1.0 / 60.0 / dt + 0.5).round_ties_even() as i32;
+            if i > self.td21_pt {
+                self.td21_i = 0; // ring index, incremented before first use
+                self.td21_pt = i;
+                self.td21_quiet = self.td21_pt + 1;
+                self.td21_stride = 2 * nphases as i32;
+                let (pt, stride) = (self.td21_pt as usize, self.td21_stride as usize);
+                self.td21_h = vec![Complex64::ZERO; stride * pt];
+                self.td21_dv = vec![Complex64::ZERO; nphases];
+                self.td21_uref = vec![Complex64::ZERO; nphases];
+                self.td21_di = vec![Complex64::ZERO; nphases];
+            }
+        }
+
+        if self.locked_out {
+            return solution_abort;
+        }
+
+        // Fault detection: any monitored phase current above `PhaseTrip`.
+        let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
+        mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
+        if self.dist_reverse {
+            for p in 0..nphases {
+                if let Some(c) = cbuffer.get_mut(cond_offset + p) {
+                    *c = -*c;
+                }
+            }
+        }
+        let cur = |p: usize| {
+            cbuffer
+                .get(cond_offset + p)
+                .copied()
+                .unwrap_or(Complex64::ZERO)
+        };
+        let i2fault = self.phase_trip * self.phase_trip;
+        let mut fault_detected = false;
+        for p in 0..nphases {
+            if cur(p).norm_sqr() > i2fault {
+                fault_detected = true;
+            }
+        }
+
+        let mut cvbuffer = vec![Complex64::ZERO; mon.cd().nconds.max(1)];
+        mon.get_term_voltages(
+            self.monitored_element_terminal.max(1) as usize,
+            ctx.node_v,
+            &mut cvbuffer,
+        );
+        let cv = |p: usize| cvbuffer.get(p).copied().unwrap_or(Complex64::ZERO);
+
+        // Defensive: the buffer is unallocated only when `dt <= 0` (Pascal would
+        // then `mod 0`-crash in the ring math below — a crash we do not reproduce;
+        // no corpus deck sets `stepsize <= 0`). `dt` defaults to 0.001, so this is
+        // never hit in practice.
+        if self.td21_pt < 1 {
+            return solution_abort;
+        }
+        let stride = self.td21_stride as usize;
+
+        // Prime the whole history with the present sample on the first pass.
+        if self.td21_i < 1 {
+            for s in 0..(self.td21_pt as usize) {
+                let ib = s * stride;
+                for p in 0..nphases {
+                    self.td21_h[ib + p] = cv(p);
+                    self.td21_h[ib + nphases + p] = cur(p);
+                }
+            }
+            self.td21_i = 1;
+        }
+
+        // Oldest sample = next write slot (1-based ring counter, Pascal semantics).
+        self.td21_next = (self.td21_i % self.td21_pt) + 1;
+
+        // Differential V/I vs the one-cycle-old reference sample.
+        let ib = (self.td21_next - 1) as usize * stride;
+        for p in 0..nphases {
+            self.td21_uref[p] = self.td21_h[ib + p];
+            self.td21_dv[p] = cv(p) - self.td21_h[ib + p];
+            self.td21_di[p] = cur(p) - self.td21_h[ib + nphases + p];
+        }
+
+        // Advance the ring + decrement quiet only on a predictor (new-time-step)
+        // iteration (`IterationFlag < 1`), not the corrector.
+        if ctx.sys.iteration_flag == IterationFlag::NewTimeStep {
+            let ib = (self.td21_i - 1) as usize * stride;
+            for p in 0..nphases {
+                self.td21_h[ib + p] = cv(p);
+                self.td21_h[ib + nphases + p] = cur(p);
+            }
+            self.td21_i = self.td21_next;
+            if self.td21_quiet > 0 {
+                self.td21_quiet -= 1;
+            }
+        }
+
+        if self.td21_quiet > 0 {
+            return solution_abort; // within the post-start / post-operation quiet window
+        }
+
+        // One cycle elapsed: run the differential distance sense.
+        let mut picked_up = false;
+        let mut min_distance = 1.0e30_f64;
+        let mut ires = Complex64::ZERO;
+        for p in 0..nphases {
+            ires += self.td21_di[p];
+        }
+        let k_ires = self.dist_k0 * ires;
+
+        let mut targets: Vec<String> = Vec::new();
+        for i in 0..nphases {
+            for j in i..nphases {
+                let (uref, vloop, iloop, zhsd) = if i == j {
+                    (
+                        self.td21_uref[i],
+                        self.td21_dv[i],
+                        self.td21_di[i] + k_ires,
+                        self.dist_z1 * self.mground, // Z0 folded into K0
+                    )
+                } else {
+                    (
+                        self.td21_uref[i] - self.td21_uref[j],
+                        self.td21_dv[i] - self.td21_dv[j],
+                        self.td21_di[i] - self.td21_di[j],
+                        self.dist_z1 * self.mphase,
+                    )
+                };
+                let i2 = iloop.norm_sqr();
+                let uref2 = uref.norm_sqr();
+                if fault_detected && i2 > 0.1 && uref2 > 0.1 {
+                    let zdir = -(vloop / iloop);
+                    if zdir.re > 0.0 && zdir.im > 0.0 {
+                        let uhsd = zhsd * iloop - vloop;
+                        let uhsd2 = uhsd.norm_sqr();
+                        if uhsd2 / uref2 > 1.0 {
+                            // this loop trips
+                            if i == j {
+                                targets.push(format!("G{}", i + 1));
+                            } else {
+                                targets.push(format!("P{}{}", i + 1, j + 1));
+                            }
+                            let fault_distance = 1.0 / (uhsd2 / uref2).sqrt();
+                            if fault_distance < min_distance {
+                                min_distance = fault_distance;
+                            }
+                            picked_up = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if picked_up {
+            if self.armed_for_reset {
+                ctx.queue.delete(self.last_event_handle);
+                self.armed_for_reset = false;
+            }
+            if !self.armed_for_open {
+                targets.sort();
+                self.relay_target = format!("TD21 {min_distance:.3} pu dist");
+                for tgt in &targets {
+                    self.relay_target.push(' ');
+                    self.relay_target.push_str(tgt);
+                }
+                self.last_event_handle = ctx.queue.push_delay(
+                    ctx.int_hour,
+                    ctx.t,
+                    self.delay_time + self.breaker_time,
+                    CTRL_OPEN,
+                    0,
+                    ctx.self_ref,
+                );
+                self.armed_for_open = true;
+                if self.operation_count <= self.num_reclose {
+                    let interval = self.reclose_interval();
+                    self.last_event_handle = ctx.queue.push_delay(
+                        ctx.int_hour,
+                        ctx.t,
+                        self.delay_time + self.breaker_time + interval,
+                        CTRL_CLOSE,
+                        0,
+                        ctx.self_ref,
+                    );
+                    self.armed_for_close = true;
+                }
+            }
+        }
+
+        if !fault_detected {
+            // Not picked up: reset if past the first operation, drop out if armed.
+            if self.operation_count > 1 && !self.armed_for_reset {
+                self.armed_for_reset = true;
+                self.last_event_handle = self.push_reset(ctx);
+            }
+            if self.armed_for_open {
+                self.td21_quiet = self.td21_pt + 1;
+                self.armed_for_open = false;
+                self.armed_for_close = false;
+            }
+        }
+
+        solution_abort
     }
 
     /// Pascal `TRelayObj.GetControlPower` — the net positive-sequence active

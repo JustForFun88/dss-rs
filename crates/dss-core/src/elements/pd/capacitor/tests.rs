@@ -11,6 +11,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -175,4 +176,116 @@ fn numsteps_splits_kvar() {
     assert_eq!(c.fkvarrating, vec![200.0, 200.0, 200.0]);
     assert_eq!(c.fstates, vec![1, 1, 1]);
     assert_eq!(c.flast_step_in_service, 3);
+}
+
+// --- WPG.21 — TCapacitorObj.MakePosSequence (Capacitor.pas:768-819) -----------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+
+/// SpecType 1 (kvar): kV = kVRating/√3 (multi-phase wye) and per-step kvar/3
+/// (deck `cap_kvar`: 600 kvar → [200], 12.47 kV → 7.1996).
+#[test]
+fn make_pos_sequence_kvar() {
+    let mut c = Capacitor::new("cap_kvar");
+    c.spec_type = 1;
+    c.kvrating = 12.47;
+    c.connection = 0;
+    c.fnumsteps = 1;
+    c.fkvarrating = vec![600.0];
+
+    let plan = c.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[0], BeginEdit);
+    assert_eq!(plan.actions[1], SetI32(prop::PHASES, 1));
+    match plan.actions[2].clone() {
+        SetF64(idx, kv) => {
+            assert_eq!(idx, prop::KV);
+            assert!((kv - 12.47 / sqrt3()).abs() < 1e-9);
+            assert!((kv - 7.199_558).abs() < 1e-5);
+        }
+        a => panic!("expected SetF64(KV), got {a:?}"),
+    }
+    match plan.actions[3].clone() {
+        SetStructF64s(idx, vals) => {
+            assert_eq!(idx, prop::KVAR);
+            assert_eq!(vals.len(), 1);
+            assert!((vals[0].unwrap() - 200.0).abs() < 1e-12);
+        }
+        a => panic!("expected SetStructF64s(KVAR), got {a:?}"),
+    }
+    assert_eq!(plan.actions[4], EndEdit);
+    assert_eq!(plan.actions.len(), 5);
+}
+
+/// A multi-step bank splits each step's kvar by 3.
+#[test]
+fn make_pos_sequence_kvar_multistep() {
+    let mut c = Capacitor::new("cap");
+    c.spec_type = 1;
+    c.kvrating = 12.47;
+    c.connection = 0;
+    c.fnumsteps = 2;
+    c.fkvarrating = vec![600.0, 300.0];
+
+    let plan = c.make_pos_sequence(&PosSeqCtx::default());
+    use PosSeqAction::*;
+    match plan.actions[3].clone() {
+        SetStructF64s(_, vals) => {
+            assert_eq!(vals.len(), 2);
+            assert!((vals[0].unwrap() - 200.0).abs() < 1e-12);
+            assert!((vals[1].unwrap() - 100.0).abs() < 1e-12);
+        }
+        a => panic!("expected SetStructF64s, got {a:?}"),
+    }
+}
+
+/// SpecType 2 (Cuf): a *bare* `Phases := 1` — one Set action, no BeginEdit/
+/// EndEdit brackets (the applier auto-wraps it).
+#[test]
+fn make_pos_sequence_cuf_bare_set() {
+    let mut c = Capacitor::new("cap");
+    c.spec_type = 2;
+    let plan = c.make_pos_sequence(&PosSeqCtx::default());
+    use PosSeqAction::*;
+    assert_eq!(plan.actions, vec![SetI32(prop::PHASES, 1)]);
+    assert!(plan.run_base);
+}
+
+/// SpecType 3 (CMatrix): average self/mutual → Cuf. Deck `cap_cmat`
+/// cmatrix=[10|-2 10|-2 -2 10] µF → Cs=10, Cm=6 → Cuf=4 µF (stored farads).
+#[test]
+fn make_pos_sequence_cmatrix() {
+    let mut c = Capacitor::new("cap_cmat");
+    c.spec_type = 3;
+    // Stored in farads (the property scale 1e-6 is applied at parse).
+    c.cmatrix = Some(vec![
+        10e-6, -2e-6, -2e-6, -2e-6, 10e-6, -2e-6, -2e-6, -2e-6, 10e-6,
+    ]);
+
+    let plan = c.make_pos_sequence(&PosSeqCtx::default());
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[0], BeginEdit);
+    assert_eq!(plan.actions[1], SetI32(prop::PHASES, 1));
+    match plan.actions[2].clone() {
+        SetF64(idx, cuf) => {
+            assert_eq!(idx, prop::CUF);
+            assert!((cuf - 4e-6).abs() < 1e-18, "cuf {cuf}");
+        }
+        a => panic!("expected SetF64(CUF), got {a:?}"),
+    }
+    assert_eq!(plan.actions[3], EndEdit);
+    assert_eq!(plan.actions.len(), 4);
+}
+
+/// SpecType 3 single-phase: the CMatrix branch is skipped → no actions at all
+/// (only `inherited`).
+#[test]
+fn make_pos_sequence_cmatrix_single_phase_is_base() {
+    let mut c = Capacitor::new("cap");
+    c.cd.nphases = 1;
+    c.spec_type = 3;
+    let plan = c.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.actions.is_empty());
+    assert!(plan.run_base);
 }

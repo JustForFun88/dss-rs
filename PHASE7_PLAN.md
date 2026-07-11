@@ -1,5 +1,20 @@
 # Phase 7 — Detailed Execution Plan: Extended Elements (DER, Protection, Line Constants, Harmonics, Dynamics)
 
+## Source-integrity gate — ritual step 0 (before the model-tier check)
+
+The Pascal we port FROM — `.inputs/dss_capi` (186 `.pas` files), plus
+`.inputs/electricdss-tst` for oracle/live work — is the **specification**. Before doing
+anything, and re-checked continuously (not only at kickoff), confirm that folder exists
+and is non-empty. If it has vanished — missing or empty — at **any** point in the work,
+**STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
+"port" a source you cannot read. Tell the user the vendored source is gone and must be
+re-vendored, then wait. Reply exactly:
+**«Исходник порта (`.inputs/dss_capi`) отсутствует или пуст — работа остановлена. Восстанови
+vendored-исходник (re-vendor) и повтори команду.»**
+No spec → nothing to port; fabricating one from memory is a silent, unverifiable
+divergence — far worse than stopping. This gate runs **ahead of the tier/refuse check**
+(`PLAN_SEQUENCE.md` §Model-tier protocol).
+
 > Companion to `PORTING_PLAN.md` §Phase 7; same status and rules of engagement as
 > `PHASE4_PLAN.md` §0 / `PHASE5_PLAN.md` / `PHASE6_PLAN.md` (Pascal is the spec;
 > probe the oracle, never guess FPC semantics; mark `TODO(compat)` for deliberate

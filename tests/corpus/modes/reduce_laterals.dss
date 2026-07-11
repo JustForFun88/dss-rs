@@ -1,0 +1,41 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the LATERALS strategy
+// (DoRemoveAll_1ph_Laterals, ReduceAlgs.pas:449): every 1-phase lateral
+// whose to-bus carries a single node is eliminated; with the default
+// `Set KeepLoad=Yes` (ReduceLateralsKeepLoad) its loads are re-parented
+// onto the lateral's head bus with `Bus1=<head> kV=<head kVLN>`
+// (:509-510). lat1/lat3 (single-node to-buses x1/x3) are removed; the
+// lat2a/lat2b pair lands on the SHARED bus x2 (nodes 1 and 3 ->
+// NumNodesThisBus=2), so both must be SKIPPED (:474).
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrl basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 c1=3.4 c0=1.6 units=km
+new linecode.lc1 nphases=1 r1=0.55 x1=0.71 c1=2.9 units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km
+new line.lat1 phases=1 bus1=b1.2 bus2=x1.2 linecode=lc1 length=0.4 units=km
+new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km
+new line.lat2a phases=1 bus1=b2.3 bus2=x2.3 linecode=lc1 length=0.2 units=km
+new line.lat2b phases=1 bus1=b2.1 bus2=x2.1 linecode=lc1 length=0.25 units=km
+new line.lat3 phases=1 bus1=b3.1 bus2=x3.1 linecode=lc1 length=0.3 units=km
+
+new load.lx1 bus1=x1.2 phases=1 conn=wye model=1 kv=7.2 kw=180 pf=0.9
+new load.lx2a bus1=x2.3 phases=1 conn=wye model=1 kv=7.2 kw=90 pf=0.92
+new load.lx2b bus1=x2.1 phases=1 conn=wye model=1 kv=7.2 kw=110 pf=0.9
+new load.lx3 bus1=x3.1 phases=1 conn=wye model=1 kv=7.2 kw=220 pf=0.88
+new load.lb3 bus1=b3 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.93
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set reduceoption=laterals
+reduce
+solve

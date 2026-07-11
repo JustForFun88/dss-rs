@@ -5,23 +5,23 @@ use super::*;
 
 define_properties! {
     class "WireData", abbrev true, enums enums;
-    1  RDC       => PropDef::double("Rdc")
+    1  RDC       => PropDef::double("RDC")
         .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
-    2  RAC       => PropDef::double("Rac").flags(PropFlags::DYNAMIC_DEFAULT);
-    3  RUNITS    => PropDef::mapped_string_enum("Runits", enums.units);
-    4  GMRAC     => PropDef::double("GMRac")
+    2  RAC       => PropDef::double("RAC").flags(PropFlags::DYNAMIC_DEFAULT);
+    3  RUNITS    => PropDef::mapped_string_enum("RUnits", enums.units);
+    4  GMRAC     => PropDef::double("GMRAC")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    5  GMRUNITS  => PropDef::mapped_string_enum("GMRunits", enums.units);
-    6  RADIUS    => PropDef::double("radius")
+    5  GMRUNITS  => PropDef::mapped_string_enum("GMRUnits", enums.units);
+    6  RADIUS    => PropDef::double("Radius")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    7  RADUNITS  => PropDef::mapped_string_enum("radunits", enums.units);
-    8  NORMAMPS  => PropDef::double("normamps").flags(PropFlags::DYNAMIC_DEFAULT);
-    9  EMERGAMPS => PropDef::double("emergamps").flags(PropFlags::DYNAMIC_DEFAULT);
-    10 DIAM      => PropDef::double("diam").scale(0.5)
+    7  RADUNITS  => PropDef::mapped_string_enum("RadUnits", enums.units);
+    8  NORMAMPS  => PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    9  EMERGAMPS => PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    10 DIAM      => PropDef::double("Diam").scale(0.5)
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::REDUNDANT);
     11 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     12 RATINGS   => PropDef::double_array("Ratings", SEASONS);
-    13 CAPRADIUS => PropDef::double("Capradius")
+    13 CAPRADIUS => PropDef::double("CapRadius")
         .flags(PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
 }
 

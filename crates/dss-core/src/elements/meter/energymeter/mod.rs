@@ -30,8 +30,10 @@ use crate::elements::meter::meter_element::MeterElementData;
 use crate::elements::traits::ElemRef;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::solution::meters::demand_interval::MeterStream;
 
 mod accessors;
+mod dump;
 mod sample;
 mod zone;
 
@@ -120,10 +122,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         // Pascal `DSSObjectReferenceProperty` with `PropertyOffset2 = 0`: any
         // circuit element by full name (defaults to the first circuit element).
-        PropDef::object_ref_any("element"),
-        PropDef::integer("terminal"),
-        PropDef::action("action", enums.energy_meter_action),
-        PropDef::string_list("option"),
+        PropDef::object_ref_any("Element"),
+        PropDef::integer("Terminal"),
+        PropDef::action("Action", enums.energy_meter_action),
+        PropDef::string_list("Option"),
         PropDef::double("kVANormal"),
         PropDef::double("kVAEmerg"),
         // `DoubleVArrayProperty` over `SensorCurrent` (length = nphases).
@@ -135,8 +137,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("LineLosses"),
         PropDef::boolean("XfmrLosses"),
         PropDef::boolean("SeqLosses"),
-        PropDef::boolean("3phaseLosses"),
-        PropDef::boolean("VbaseLosses"),
+        PropDef::boolean("3PhaseLosses"),
+        PropDef::boolean("VBaseLosses"),
         PropDef::boolean("PhaseVoltageReport"),
         PropDef::double("Int_Rate"),
         PropDef::double("Int_Duration"),
@@ -148,11 +150,32 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("CAIDI"),
         PropDef::double("CustInterrupts"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("EnergyMeter", defs, true)
+}
+
+/// Pascal `TFeederSection` record (EnergyMeter.pas l.162): one entry per feeder
+/// section (the span between two over-current-protection devices). All-zero on
+/// allocation (`ReallocMem` + the explicit init loop). Computed by
+/// `CalcReliabilityIndices` (the `RelCalc` sweep) and **persisted on the meter**
+/// (Pascal `FeederSections: pFeederSections`), read back by `Export Sections`.
+#[derive(Debug, Clone, Default)]
+pub struct FeederSection {
+    /// 1=Fuse; 2=Recloser; 3=Relay.
+    pub ocp_device_type: i32,
+    pub n_customers: i32,
+    pub n_branches: i32,
+    pub total_customers: i32,
+    /// 1-based `SequenceList` index of the PD element with the OCP device at
+    /// the section head.
+    pub seq_index: usize,
+    pub average_repair_time: f64,
+    pub sect_fault_rate: f64,
+    pub sum_flt_rates_x_repair_hrs: f64,
+    pub sum_branch_flt_rates: f64,
 }
 
 /// Parse-time snapshot of the metered element (the WP4.7 `RefSnapshot`
@@ -215,6 +238,18 @@ pub struct EnergyMeter {
     caidi: f64,
     cust_interrupts: f64,
 
+    /// Pascal `SectionCount` (EnergyMeter.pas l.420): the number of feeder
+    /// sections the last `CalcReliabilityIndices` forward sweep counted. FPC
+    /// zero-inits it; the sweep re-assigns it each `RelCalc` run — including
+    /// the no-OCP abort, which leaves it 0 (so a subsequent `Export Sections`
+    /// writes no rows) while `FeederSections` keeps the stale prior array,
+    /// exactly like Pascal.
+    section_count: i32,
+    /// Pascal `FeederSections` (EnergyMeter.pas l.422): the per-section data,
+    /// indices `0..=section_count` (slot 0 = the span before the first OCP
+    /// device, never reported). Empty until a `RelCalc` completes.
+    feeder_sections: Vec<FeederSection>,
+
     /// FullName of the metered element (`Class.name`) for the dump.
     element_full_name: String,
     /// Parse-time snapshot of the metered element.
@@ -233,6 +268,25 @@ pub struct EnergyMeter {
     // Voltage-base list (built by the zone walk).
     vbase_list: Vec<f64>,
     vbase_count: usize,
+
+    // --- Demand-interval machinery (WP8.3 step 4) --------------------------
+    /// Pascal `This_Meter_DIFileIsOpen`.
+    di_file_is_open: bool,
+    /// Pascal `VPhaseReportFileIsOpen`.
+    v_phase_report_file_is_open: bool,
+    /// `DI_MHandle` — the per-meter demand-interval stream (DI-verbose mode).
+    di_stream: Option<MeterStream>,
+    /// `PHV_MHandle` — the phase-voltage report stream.
+    phv_stream: Option<MeterStream>,
+    /// `VphaseMax`/`VphaseMin`/`VphaseAccum`/`VphaseAccumCount`
+    /// (EnergyMeter.pas l.349-352): per-(vbase, phase) pu-voltage extremes for
+    /// the phase-voltage report, `jiIndex(j, i) = (i-1)*3 + j` → 0-based
+    /// `(vbase_slot)*3 + phase-1`. Re-zeroed each `TakeSample` (per vbase in
+    /// use); written by `WriteDemandIntervalData`.
+    vphase_max: Vec<f64>,
+    vphase_min: Vec<f64>,
+    vphase_accum: Vec<f64>,
+    vphase_accum_count: Vec<i32>,
 
     // Zone topology (built by `MakeMeterZoneLists`). `None` until the zone is
     // built (Pascal `BranchList = NIL`).
@@ -287,6 +341,16 @@ impl EnergyMeter {
             saidi: 0.0,
             caidi: 0.0,
             cust_interrupts: 0.0,
+            section_count: 0,
+            feeder_sections: Vec::new(),
+            di_file_is_open: false,
+            v_phase_report_file_is_open: false,
+            di_stream: None,
+            phv_stream: None,
+            vphase_max: vec![0.0; 3 * MAX_VBASE_COUNT],
+            vphase_min: vec![0.0; 3 * MAX_VBASE_COUNT],
+            vphase_accum: vec![0.0; 3 * MAX_VBASE_COUNT],
+            vphase_accum_count: vec![0; 3 * MAX_VBASE_COUNT],
             element_full_name: String::new(),
             metered_snap: None,
             register_names: default_register_names(),
@@ -347,6 +411,26 @@ impl EnergyMeter {
     pub(crate) fn set_assume_restoration(&mut self, value: bool) {
         self.assume_restoration = value;
     }
+    /// Pascal `SectionCount`: sections counted by the last `RelCalc` sweep.
+    pub fn section_count(&self) -> i32 {
+        self.section_count
+    }
+    /// Pascal `FeederSections` (indices `0..=section_count`; empty until a
+    /// `RelCalc` completes).
+    pub fn feeder_sections(&self) -> &[FeederSection] {
+        &self.feeder_sections
+    }
+    /// The forward interruption sweep's `SectionCount` write-back — assigned
+    /// even on the no-OCP abort (Pascal mutates the field during the sweep,
+    /// leaving 0 there), while `FeederSections` is only reallocated on success.
+    pub(crate) fn set_section_count(&mut self, count: i32) {
+        self.section_count = count;
+    }
+    /// Pascal `ReallocMem(FeederSections, …)` + the fill loops: replace the
+    /// persisted per-section array (successful `CalcReliabilityIndices` only).
+    pub(crate) fn set_feeder_sections(&mut self, sections: Vec<FeederSection>) {
+        self.feeder_sections = sections;
+    }
     /// Write back the reliability indices computed by `CalcReliabilityIndices`.
     pub(crate) fn set_reliability_results(
         &mut self,
@@ -369,10 +453,94 @@ impl EnergyMeter {
     pub fn has_branch_list(&self) -> bool {
         self.branch_list.is_some()
     }
+    /// Move the branch tree out for a zone walk that needs the element store
+    /// borrowed alongside it (the `solution::meters` free-function pattern —
+    /// e.g. `InterpolateCoordinates`); pair with [`Self::put_branch_list`].
+    /// `None` == Pascal `BranchList = NIL` (`CheckBranchList` fails).
+    pub(crate) fn take_branch_list(&mut self) -> Option<CktTree> {
+        self.branch_list.take()
+    }
+    /// Restore the branch tree taken by [`Self::take_branch_list`].
+    pub(crate) fn put_branch_list(&mut self, tree: CktTree) {
+        self.branch_list = Some(tree);
+    }
+    /// Pascal `BranchList` — the built zone tree (`None` == `BranchList = NIL`).
+    /// Read-only for the zone-tree reports (`Show Loops`/`Show Zone`), which walk
+    /// it via [`Self::sequence_list`] + [`Self::sequence_nodes`].
+    pub fn branch_list(&self) -> Option<&CktTree> {
+        self.branch_list.as_ref()
+    }
+    /// The [`CktTree`] node index for each [`Self::sequence_list`] entry — the
+    /// `BranchList.PresentBranch` node reached at that point in the
+    /// `First`/`GoForward` walk (used to read the branch's loop/parallel flags and
+    /// shunt-object list without re-walking the tree cursor).
+    pub fn sequence_nodes(&self) -> &[usize] {
+        &self.sequence_nodes
+    }
 
     /// Register values (1-based ordinals → 0-based slots). For the test API.
     pub fn registers(&self) -> &[f64] {
         &self.registers
+    }
+
+    /// The per-register derivatives (last integrated values) — the demand-
+    /// interval row payload.
+    pub(crate) fn derivatives(&self) -> &[f64] {
+        &self.derivatives
+    }
+    /// `TotalsMask` — weights for the class `DI_RegisterTotals`/`Totals` sums.
+    pub(crate) fn totals_mask(&self) -> &[f64] {
+        &self.totals_mask
+    }
+    /// `FPhaseVoltageReport` (`PhaseVoltageReport=yes`).
+    pub(crate) fn phase_voltage_report(&self) -> bool {
+        self.f_phase_voltage_report
+    }
+    /// The voltage-base list + its in-use count (for the PHV header/rows).
+    pub(crate) fn vbase_view(&self) -> (Vec<f64>, usize) {
+        (self.vbase_list.clone(), self.vbase_count)
+    }
+    /// The phase-voltage accumulators (max, min, accum, count) in `jiIndex`
+    /// layout.
+    pub(crate) fn v_phase_view(&self) -> (&[f64], &[f64], &[f64], &[i32]) {
+        (
+            &self.vphase_max,
+            &self.vphase_min,
+            &self.vphase_accum,
+            &self.vphase_accum_count,
+        )
+    }
+    // --- Demand-interval stream plumbing (Pascal `DI_MHandle`/`PHV_MHandle` +
+    // --- the open flags), driven by `solution::meters::demand_interval`.
+    pub(crate) fn di_file_is_open(&self) -> bool {
+        self.di_file_is_open
+    }
+    pub(crate) fn di_file_open(&mut self, open: bool) {
+        self.di_file_is_open = open;
+    }
+    pub(crate) fn v_phase_report_open(&self) -> bool {
+        self.v_phase_report_file_is_open
+    }
+    pub(crate) fn set_v_phase_report_open(&mut self, open: bool) {
+        self.v_phase_report_file_is_open = open;
+    }
+    pub(crate) fn set_di_stream(&mut self, s: Option<MeterStream>) {
+        self.di_stream = s;
+    }
+    pub(crate) fn take_di_stream(&mut self) -> Option<MeterStream> {
+        self.di_stream.take()
+    }
+    pub(crate) fn di_stream_mut(&mut self) -> Option<&mut MeterStream> {
+        self.di_stream.as_mut()
+    }
+    pub(crate) fn set_phv_stream(&mut self, s: Option<MeterStream>) {
+        self.phv_stream = s;
+    }
+    pub(crate) fn take_phv_stream(&mut self) -> Option<MeterStream> {
+        self.phv_stream.take()
+    }
+    pub(crate) fn phv_stream_mut(&mut self) -> Option<&mut MeterStream> {
+        self.phv_stream.as_mut()
     }
 
     pub fn has_been_sampled(&self) -> bool {

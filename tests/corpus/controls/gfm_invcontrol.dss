@@ -1,0 +1,35 @@
+! GAPS deck (WPG.13): a grid-forming Storage under an InvControl mode=GFM whose
+! AMPS LIMITER genuinely bites, daily mode. Same islanded topology as gfm_micro
+! (sw1 opened -> {islbus, stobus} fed only by the GFM Storage).
+!
+! The Storage carries AmpLimit=400 (A) + AmpLimitGain=0.8 (VError). The InvControl
+! mode=GFM Sample arm calls CheckAmpsLimit each control iteration: when a phase's
+! apparent power exceeds ILimit*VBase it stores the excess in dynVars.IComp, and
+! the next solve's DoGFM_Mode shrinks BaseV = (2*Vbase*ILimit - IComp)/ILimit *
+! VError -> the GFM internal voltage drops, throttling the delivered current to
+! the limit. Exercises: InvControl mode=GFM (Sample/DoPendingAction GFM arms),
+! CheckAmpsLimit (InvBasedPCE.pas), and DoGFM_Mode's IComp>0 branch.
+!
+! FEATURE-SENSITIVITY (pinned oracle dss-python 0.15.7, 6x 1h daily steps):
+!   WITH   AmpLimit=400 (limiter ACTIVE): the Storage output is throttled to
+!          ~-158 kW (step 0), tracking the limit, not the load.
+!   WITHOUT the limit (AmpLimit default / >=600): the Storage forms the full
+!          island load ~-400 kW (step 0), like gfm_micro.
+!   -158 kW vs -400 kW is a ~2.5x divergence per step, far above tolerance, so
+!   the deck is a live gate for the InvControl GFM amps-limiter arm + the IComp
+!   BaseV-shrink. (Two-process oracle capture is bit-identical; determinism proven.)
+Clear
+New Circuit.gfm_ic basekv=4.16 phases=3 bus1=sourcebus
+New Loadshape.dl npts=6 interval=1 mult=[1.0 0.92 0.85 0.98 1.08 0.9]
+New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 length=1 units=km
+New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes
+New Transformer.tsto phases=3 windings=2 buses=(stobus islbus) conns=(delta wye) kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5
+New Storage.batt phases=3 conn=delta bus1=stobus kV=0.48 kva=800 kWrated=800 kWhrated=6000 %stored=100 %reserve=20 %IdlingkW=1 %R=50 %X=50 State=DISCHARGING kP=0.3 KVDC=0.700 PITol=0.1 ControlMode=GFM AmpLimit=400 AmpLimitGain=0.8
+New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1 daily=dl
+New InvControl.ic DERList=[Storage.batt] mode=GFM eventlog=yes
+New Monitor.mb element=Storage.batt terminal=1 mode=1 ppolar=no
+Set voltagebases=[4.16 0.48]
+Calcvoltagebases
+open line.sw1 terminal=1
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1

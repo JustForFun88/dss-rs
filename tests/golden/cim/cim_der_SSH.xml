@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- un-comment this line to enable validation
+-->
+<rdf:RDF xmlns:cim="http://iec.ch/TC57/CIM100#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<!--
+-->
+<cim:IEC61970CIMVersion rdf:about="urn:uuid:D5D768BC-090B-4C74-A652-F9986FC30A44">
+  <cim:IEC61970CIMVersion.version>IEC61970CIM100</cim:IEC61970CIMVersion.version>
+  <cim:IEC61970CIMVersion.date>2019-04-01</cim:IEC61970CIMVersion.date>
+</cim:IEC61970CIMVersion>
+<cim:SynchronousMachine rdf:about="urn:uuid:383F7080-0656-45E6-BEAF-D48A2FFBAB6A">
+  <cim:RotatingMachine.p>200000</cim:RotatingMachine.p>
+  <cim:RotatingMachine.q>50000</cim:RotatingMachine.q>
+</cim:SynchronousMachine>
+<cim:SynchronousMachine rdf:about="urn:uuid:DEC4E297-E832-497A-8E33-D4DDFE72DAA9">
+  <cim:RotatingMachine.p>30000</cim:RotatingMachine.p>
+  <cim:RotatingMachine.q>10000</cim:RotatingMachine.q>
+</cim:SynchronousMachine>
+<cim:SynchronousMachinePhase rdf:about="urn:uuid:7C563A16-BFEE-49AA-A1CA-55F8F1235D5E">
+  <cim:SynchronousMachinePhase.p>30000</cim:SynchronousMachinePhase.p>
+  <cim:SynchronousMachinePhase.q>10000</cim:SynchronousMachinePhase.q>
+</cim:SynchronousMachinePhase>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:959CB24D-44DC-49F4-811B-B38CFB19EE97">
+  <cim:PowerElectronicsConnection.p>240000</cim:PowerElectronicsConnection.p>
+  <cim:PowerElectronicsConnection.q>-60</cim:PowerElectronicsConnection.q>
+  <cim:PowerElectronicsConnection.controlMode rdf:resource="http://iec.ch/TC57/CIM100#ConverterControlModeKind.dynamic"/>
+</cim:PowerElectronicsConnection>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:B29073EB-5837-470E-B8D1-A64EB90CD2E8">
+  <cim:PowerElectronicsConnection.p>160000</cim:PowerElectronicsConnection.p>
+  <cim:PowerElectronicsConnection.q>-6416.0706</cim:PowerElectronicsConnection.q>
+  <cim:PowerElectronicsConnection.controlMode rdf:resource="http://iec.ch/TC57/CIM100#ConverterControlModeKind.dynamic"/>
+</cim:PowerElectronicsConnection>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:1591D797-F972-4184-923F-441F0905E5CC">
+  <cim:PowerElectronicsConnection.p>4000</cim:PowerElectronicsConnection.p>
+  <cim:PowerElectronicsConnection.q>0</cim:PowerElectronicsConnection.q>
+  <cim:PowerElectronicsConnection.controlMode rdf:resource="http://iec.ch/TC57/CIM100#ConverterControlModeKind.constantPowerFactor"/>
+</cim:PowerElectronicsConnection>
+<cim:PowerElectronicsConnectionPhase rdf:about="urn:uuid:9966177A-5775-40EC-813D-0C62857CE43D">
+  <cim:PowerElectronicsConnectionPhase.p>2000</cim:PowerElectronicsConnectionPhase.p>
+  <cim:PowerElectronicsConnectionPhase.q>0</cim:PowerElectronicsConnectionPhase.q>
+</cim:PowerElectronicsConnectionPhase>
+<cim:PowerElectronicsConnectionPhase rdf:about="urn:uuid:56657B50-EB63-47BC-97BE-350427A90D80">
+  <cim:PowerElectronicsConnectionPhase.p>2000</cim:PowerElectronicsConnectionPhase.p>
+  <cim:PowerElectronicsConnectionPhase.q>0</cim:PowerElectronicsConnectionPhase.q>
+</cim:PowerElectronicsConnectionPhase>
+<cim:BatteryUnit rdf:about="urn:uuid:A9D9C941-A1A3-453B-890F-48DB63A92131">
+  <cim:BatteryUnit.ratedE>200000</cim:BatteryUnit.ratedE>
+  <cim:BatteryUnit.storedE>100000</cim:BatteryUnit.storedE>
+  <cim:BatteryUnit.batteryState rdf:resource="http://iec.ch/TC57/CIM100#BatteryStateKind.discharging"/>
+</cim:BatteryUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:298D6CA9-59CC-44FB-848A-8FBA7EDC1016">
+  <cim:PowerElectronicsConnection.p>100000</cim:PowerElectronicsConnection.p>
+  <cim:PowerElectronicsConnection.q>0</cim:PowerElectronicsConnection.q>
+  <cim:PowerElectronicsConnection.controlMode rdf:resource="http://iec.ch/TC57/CIM100#ConverterControlModeKind.constantPowerFactor"/>
+</cim:PowerElectronicsConnection>
+<cim:BatteryUnit rdf:about="urn:uuid:FCA703F5-0641-4326-90EE-B3A648507E62">
+  <cim:BatteryUnit.ratedE>200000</cim:BatteryUnit.ratedE>
+  <cim:BatteryUnit.storedE>100000</cim:BatteryUnit.storedE>
+  <cim:BatteryUnit.batteryState rdf:resource="http://iec.ch/TC57/CIM100#BatteryStateKind.waiting"/>
+</cim:BatteryUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:B3EC4613-4E68-44CE-919C-F9B80EE384C1">
+  <cim:PowerElectronicsConnection.p>-1000</cim:PowerElectronicsConnection.p>
+  <cim:PowerElectronicsConnection.q>0</cim:PowerElectronicsConnection.q>
+  <cim:PowerElectronicsConnection.controlMode rdf:resource="http://iec.ch/TC57/CIM100#ConverterControlModeKind.constantPowerFactor"/>
+</cim:PowerElectronicsConnection>
+<cim:BatteryUnit rdf:about="urn:uuid:7BAB36EA-973C-4E64-A346-3CAFB83F6A1C">
+  <cim:BatteryUnit.ratedE>13500</cim:BatteryUnit.ratedE>
+  <cim:BatteryUnit.storedE>5000</cim:BatteryUnit.storedE>
+  <cim:BatteryUnit.batteryState rdf:resource="http://iec.ch/TC57/CIM100#BatteryStateKind.charging"/>
+</cim:BatteryUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:0A4FC940-6E63-42E4-BACA-006ED1C9C04E">
+  <cim:PowerElectronicsConnection.p>-5000</cim:PowerElectronicsConnection.p>
+  <cim:PowerElectronicsConnection.q>0</cim:PowerElectronicsConnection.q>
+  <cim:PowerElectronicsConnection.controlMode rdf:resource="http://iec.ch/TC57/CIM100#ConverterControlModeKind.constantPowerFactor"/>
+</cim:PowerElectronicsConnection>
+<cim:PowerElectronicsConnectionPhase rdf:about="urn:uuid:14438E4E-BF81-4471-9814-F64A3C515576">
+  <cim:PowerElectronicsConnectionPhase.p>-2500</cim:PowerElectronicsConnectionPhase.p>
+  <cim:PowerElectronicsConnectionPhase.q>0</cim:PowerElectronicsConnectionPhase.q>
+</cim:PowerElectronicsConnectionPhase>
+<cim:PowerElectronicsConnectionPhase rdf:about="urn:uuid:5E970AEE-F7E0-4AB0-B02D-292FF0C2E6F8">
+  <cim:PowerElectronicsConnectionPhase.p>-2500</cim:PowerElectronicsConnectionPhase.p>
+  <cim:PowerElectronicsConnectionPhase.q>0</cim:PowerElectronicsConnectionPhase.q>
+</cim:PowerElectronicsConnectionPhase>
+<cim:EnergySource rdf:about="urn:uuid:A1322B0F-90B8-499B-AC6C-0D9A1478D803">
+  <cim:EnergySource.voltageMagnitude>12470</cim:EnergySource.voltageMagnitude>
+  <cim:EnergySource.voltageAngle>0</cim:EnergySource.voltageAngle>
+</cim:EnergySource>
+<cim:EnergyConnectionProfile rdf:about="urn:uuid:2DCBBED9-F00C-432C-B92F-AEC4315AAAB4">
+  <cim:IdentifiedObject.mRID>2DCBBED9-F00C-432C-B92F-AEC4315AAAB4</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>Gen:dayshape:::defaultgen</cim:IdentifiedObject.name>
+  <cim:EnergyConnectionProfile.dssDaily>dayshape</cim:EnergyConnectionProfile.dssDaily>
+  <cim:EnergyConnectionProfile.EnergyConnections rdf:resource="urn:uuid:383F7080-0656-45E6-BEAF-D48A2FFBAB6A"/>
+</cim:EnergyConnectionProfile>
+<cim:EnergyConnectionProfile rdf:about="urn:uuid:AF7D6E2E-CC00-4014-86A2-11DF4C5227C5">
+  <cim:IdentifiedObject.mRID>AF7D6E2E-CC00-4014-86A2-11DF4C5227C5</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>PV:dayshape:::tempshape:::</cim:IdentifiedObject.name>
+  <cim:EnergyConnectionProfile.dssDaily>dayshape</cim:EnergyConnectionProfile.dssDaily>
+  <cim:EnergyConnectionProfile.dssPVTDaily>tempshape</cim:EnergyConnectionProfile.dssPVTDaily>
+  <cim:EnergyConnectionProfile.EnergyConnections rdf:resource="urn:uuid:959CB24D-44DC-49F4-811B-B38CFB19EE97"/>
+</cim:EnergyConnectionProfile>
+</rdf:RDF>

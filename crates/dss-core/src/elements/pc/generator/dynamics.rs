@@ -6,8 +6,9 @@
 //!
 //! Scope: the built-in shaft model (`DynamicEqObj = NIL`) and the external
 //! `DynamicExp` integration (`DynamicEqObj <> NIL`, WP7.7 step 3b). The
-//! user-written `UserModel`/`ShaftModel` DLLs and the grid-forming (GFM) inverter
-//! mode are NOT_PORTED (never / WP7.7 GFM step).
+//! user-written `UserModel`/`ShaftModel` DLLs are NOT_PORTED (never). The
+//! synchronous Generator has no grid-forming mode — GFM is an inverter-based
+//! (PVSystem/Storage) feature (`generator.pas` carries no GFM code, WPG.13).
 
 use num_complex::Complex64;
 
@@ -88,8 +89,9 @@ impl Generator {
                 // `integrate_states` would divide by `m_mass = 0` (NaN) — worse than
                 // Pascal's clean abort, but unreachable: the vendored dynamics corpus
                 // is all 1-/3-phase, and `do_dynamic_mode` records the >3-phase error
-                // at inject time. TODO(WP7.7): surface a real abort (init_state_vars
-                // needs an error channel) if a >3-phase dynamics case appears.
+                // at inject time. On-demand (retagged at the WP8.8 sweep): surface a
+                // real abort (init_state_vars needs an error channel) if a >3-phase
+                // dynamics case appears.
                 return;
             }
         }
@@ -241,8 +243,9 @@ impl Generator {
             // (`calc_gen_model_contribution`), but the generator's `inj_currents`
             // drops its local `errors` vec, so the abort is not surfaced. A bare
             // `Model=6` generator in dynamics is unreachable in the vendored corpus
-            // (no UserModel can be configured — the prop is NOT_PORTED). TODO(WP7.7):
-            // surface as a loud abort if a corpus case ever needs it.
+            // (no UserModel can be configured — the prop is NOT_PORTED). On-demand
+            // (retagged at the WP8.8 sweep): surface as a loud abort if a corpus
+            // case ever needs it.
             errors.push(format!(
                 "{}.{} model designated to use user-written dynamics model, but \
                  user-written model is not defined.",

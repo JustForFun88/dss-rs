@@ -6,14 +6,16 @@
 //! Pascal `TProp`: `NumHarm=1`, `Harmonic=2`, `pctMag=3` (modern name `%Mag`),
 //! `Angle=4`, `CSVFile=5`; the base class appends `Like=6`.
 
+mod dump;
 #[cfg(test)]
 mod tests;
 
 use num_complex::Complex64;
 
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, FileLoad};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::complexutil::pdeg_to_complex;
+use dss_parser::{Parser, ParserVars};
 
 // Pascal `TSpectrumProp` ordinals + the property table. `%Mag` is stored
 // per-unit: the parser multiplies by 0.01 and the getter divides by it
@@ -46,9 +48,13 @@ pub struct SpectrumObj {
     angle_array: Option<Vec<f64>>,
     csvfile: String,
     /// `MultArray` — the complex per-harmonic phasors built by `SetMultArray`,
-    /// each shifted so the fundamental sits at zero phase. Consumed only by the
-    /// harmonic solution mode (`get_mult`); nothing in the property dump reads it.
+    /// each shifted so the fundamental sits at zero phase. Consumed by the
+    /// harmonic solution mode (`get_mult`) and the Complete `Dump` tail's
+    /// `Multiplier Array:` block (`dump.rs`).
     mult_array: Option<Vec<Complex64>>,
+    /// Deferred `CSVFile` reads queued for the executive (the WP5.2b
+    /// `FileLoad` pattern — the property hook can't reach the filesystem).
+    pending_file_loads: Vec<FileLoad>,
 }
 
 impl SpectrumObj {
@@ -61,7 +67,65 @@ impl SpectrumObj {
             angle_array: None,
             csvfile: String::new(),
             mult_array: None,
+            pending_file_loads: Vec::new(),
         }
+    }
+
+    /// Pascal `TSpectrumObj.ReadCSVFile` (Spectrum.pas:278): parse up to
+    /// `NumHarm` rows of `harmonic, %mag, angle` (AuxParser formats — comma or
+    /// space separated), `%Mag` scaled to per-unit, then shrink `NumHarm` to
+    /// the count actually read.
+    ///
+    /// The read loop reproduces Pascal's `while ((F.Position + 1) < F.Size) and
+    /// (i < NumHarm)` guard (Spectrum.pas:297) byte-for-byte rather than walking
+    /// `str::lines()`: `FSReadln` consumes a line + its terminator and advances
+    /// `F.Position`, and the pre-read guard requires ≥2 bytes to remain, so a
+    /// final ≤1-byte line with no trailing newline (or a trailing blank line) is
+    /// **not** read. The oracle confirms this: a file `…\n3, 50, 0\n5` reads two
+    /// rows, not three (the naive `lines()` walk read the stray `5`).
+    fn read_csv_file(&mut self, content: &str) {
+        let n = self.num_harm.max(0) as usize;
+        let mut harm = vec![0.0; n];
+        let mut mag = vec![0.0; n];
+        let mut ang = vec![0.0; n];
+
+        let mut parser = Parser::new();
+        parser.set_auto_increment(false);
+        let vars = ParserVars::new();
+
+        let bytes = content.as_bytes();
+        let size = bytes.len();
+        let mut pos = 0usize;
+        let mut i = 0usize;
+        while pos + 1 < size && i < n {
+            // `FSReadln`: read up to (and consume) the next LF; strip a trailing
+            // CR for CRLF files, exactly like `str::lines`.
+            let end = content[pos..].find('\n').map_or(size, |rel| pos + rel);
+            let line_end = if end > pos && bytes[end - 1] == b'\r' {
+                end - 1
+            } else {
+                end
+            };
+            let line = &content[pos..line_end];
+            pos = if end < size { end + 1 } else { end };
+
+            parser.set_cmd_string(line);
+            parser.next_param(&vars);
+            harm[i] = parser.make_double(&vars).unwrap_or(0.0);
+            parser.next_param(&vars);
+            mag[i] = parser.make_double(&vars).unwrap_or(0.0) * 0.01;
+            parser.next_param(&vars);
+            ang[i] = parser.make_double(&vars).unwrap_or(0.0);
+            i += 1;
+        }
+
+        harm.truncate(i);
+        mag.truncate(i);
+        ang.truncate(i);
+        self.harm_array = Some(harm);
+        self.pu_mag_array = Some(mag);
+        self.angle_array = Some(ang);
+        self.num_harm = i as i32; // reset number of points
     }
 
     /// Pascal `HarmArrayHasaZero`: the 1-based index of the first zero harmonic,
@@ -196,11 +260,24 @@ impl DssObject for SpectrumObj {
                 self.angle_array = if n == 0 { None } else { Some(vec![0.0; n]) };
             }
             CSV_FILE => {
-                // TODO(phase2+): DoCSVFile loads Harmonic/%Mag/Angle from a file.
-                // Deferred with the rest of the file-array machinery; the
-                // property value (the filename) is still stored and dumped.
+                // Pascal `DoCSVFile` (Spectrum.pas:210) runs here, but the hook
+                // can't reach the filesystem/current dir: queue the read for
+                // the executive (the WP5.2b deferred-`FileLoad` path).
+                self.pending_file_loads
+                    .push(FileLoad::text(CSV_FILE, self.csvfile.clone()));
             }
             _ => {}
+        }
+    }
+
+    fn take_file_loads(&mut self) -> Vec<FileLoad> {
+        std::mem::take(&mut self.pending_file_loads)
+    }
+
+    /// Apply a resolved `CSVFile` (Pascal `DoCSVFile` → `ReadCSVFile`).
+    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+        if load.prop == CSV_FILE {
+            self.read_csv_file(content);
         }
     }
 

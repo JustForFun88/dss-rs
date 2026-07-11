@@ -1,0 +1,10 @@
+{
+  "report": "profile ll3ph",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "new energymeter.em1 element=Line.650632 terminal=1",
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "EXP_Profile.csv"
+}

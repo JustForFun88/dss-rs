@@ -1,5 +1,15 @@
 # dss-rs — Pascal → Rust port of DSS C-API (OpenDSS engine)
 
+> **Ritual step 0 — source-integrity gate (every session, every plan, before anything
+> else — even before the model-tier check).** The Pascal at `.inputs/dss_capi` (186
+> `.pas` files) is the *spec*; oracle/live work also needs `.inputs/electricdss-tst`. If
+> the folder you port FROM is missing or empty at **any** point — startup or mid-task —
+> **STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
+> "port" a source you cannot read. Tell the user the vendored source is gone and must be
+> re-vendored, then wait. No spec → nothing to port; inventing one from memory is silent,
+> unverifiable fabrication — far worse than stopping. (Canonical placement: `PLAN_SEQUENCE.md`
+> §Model-tier protocol, ahead of the tier/refuse check — binding for every plan.)
+
 1:1 behavioral port of the Free Pascal "DSS C-API" engine (vendored at
 `.inputs/dss_capi`) to pure safe Rust. **Read `PORTING_PLAN.md` first** — it is the
 authoritative roadmap and encodes binding decisions:
@@ -12,6 +22,12 @@ authoritative roadmap and encodes binding decisions:
   (0.15.7, backend = dss_capi 0.14.5 — the exact vendored Pascal source).
   Goldens live in `tests/golden/`; regenerate only manually, with the pinned
   versions, via `tools/golden/*.py`.
+- A second, **opt-in** oracle channel drives official EPRI OpenDSS binaries
+  (r3723 / r4088 / r4133) via the AltDSS Oddie bridge — `tools/opendss/`
+  (separate venv, `PIN_OPENDSS.txt`). It never gates commits: divergence
+  **reports** only (`DSS_LIVE_OPENDSS=<rev>` test, `ab_compare.py` A/B diff),
+  for inventorying upstream changes ahead of porting newer engine behavior.
+  See `tools/opendss/README.md`.
 - Later phases may freely refactor earlier code; passing tests are the only contract.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
@@ -27,6 +43,39 @@ marked `TODO(compat):` with an explanation and the intended clean fix.
   (`rg "TODO\(compat\)"`).
 - They are all wiped out in one dedicated pass after the 1:1 port reaches final
   acceptance (PORTING_PLAN.md §6), regenerating goldens deliberately.
+
+## Known upstream bugs (`investigations/`)
+
+Five proven dss_capi/OpenDSS engine bugs, each with a full report in
+`investigations/`. Check there before chasing a divergence in these areas. Rule:
+a *deterministic, defined* upstream bug is reproduced 1:1 (`TODO(compat)` +
+golden); UB or state-mutating-read bugs are NOT reproduced — document and gate
+around them.
+
+- **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
+  residual (missing `(j-1)*Ncond` offset). Reproduced (`TODO(compat)` in
+  `report/export/seq_currents.rs`).
+- **Multi-meter `Bus_Int_Duration`** — the `CalcReliabilityIndices` duration loop
+  walks ALL circuit buses, indexing foreign section ids into this meter's
+  `FeederSections`. In-range id → deterministic cross-zone overwrite, reproduced
+  (`TODO(compat)` in `solution/meters/reliability.rs`, golden
+  `export_busreliability_multimeter`); out-of-range id → OOB heap read, proven
+  nondeterministic, not reproduced (safe `.get()` skip; nothing to pin).
+- **VSConverter `GetCurrents`** — self-aliased `MVMult` over `ComplexBuffer`:
+  reported currents violate KCL and every read mutates state (can poison the next
+  solve). Not reproduced — the port computes physically-correct currents, gated
+  via oracle source currents + KCL (`exec/tests/vs_converter.rs`).
+- **Harmonics `Powers`-after-`Currents`** — stale `Iterminal` cache makes
+  Thevenin-DER (Generator/PVSystem/Storage) `Powers` order-dependent in harmonics
+  mode. Not reproduced (Rust computes single-pass); golden capture reads `Powers`
+  first (`tools/golden/gen_checkpoints.py::capture_element`).
+- **Newton `Powers`/`Losses` stale `Iterminal`** — after `Set algorithm=Newton`,
+  `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
+  so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
+  current while `Currents` recompute fresh (`S ≠ V·conj(I)`). Deterministic,
+  defined, not state-poisoning → reproduced (`TODO(compat)` in
+  `exec/view.rs::snapshot_elements`); it is the only channel distinguishing
+  Newton from the normal fixed-point on the `newton*` gates.
 
 ## Gate (must be green before any commit)
 
@@ -44,6 +93,39 @@ pinned oracle and compares the full model live. The pinned dss-python oracle
 (`tools/golden/PIN.txt`) must therefore be installed to run `cargo test` — without
 it `corpus_live_solvable_cases_match_oracle` fails rather than skipping. New tests
 read feeders from that vendored corpus, never from `.inputs/` at runtime.
+
+**`TESTING.md`** is the map of the whole test infrastructure — the layers (unit
+/ golden / live oracle / corpus hygiene / opt-in EPRI channel), the env-var
+knobs, and the procedures (regenerate goldens, add a corpus deck, triage an
+EPRI divergence). Read it to find where a given kind of test lives.
+
+## Git worktrees — safe deletion (`.inputs`/`.venv` junction hazard)
+
+Parallel-agent worktrees live under `.claude/worktrees/`. Each one does **not**
+copy the gitignored `.inputs/` (vendored `dss_capi` + `electricdss-tst`) or
+`.venv/` — it holds Windows **directory junctions** pointing at main's real
+copies. `git worktree remove` and *any* recursive delete (`rm -rf`,
+`Remove-Item -Recurse`, `rmdir /s`) follow those junctions and delete the
+**shared target's contents in main**. This has already wiped main's `.inputs`
+once (recovery = a full re-vendor). Batching removals makes it worse: the loop
+empties the shared target on the first worktree, then keeps going.
+
+**Rule — never batch-remove worktrees; neutralize junctions first.** For each
+worktree, drop the junction *reparse points only* (never descend into them),
+then remove the worktree:
+
+1. List reparse points without following them:
+   `Get-ChildItem -LiteralPath <wt> -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
+2. Remove the **link only** — `$_.Delete()` on the `DirectoryInfo`
+   (or `cmd /c rmdir "<path>"` **without** `/s`). Both drop the junction and
+   leave the target untouched. Never use `Remove-Item -Recurse` / `rmdir /s` on
+   a junction — they recurse through it into main.
+3. Only now `git worktree remove --force <wt>`, then `git worktree prune`.
+
+After each removal verify the shared target survived — `(gci .inputs -Force |
+measure).Count` must be unchanged. Delete the merged per-agent branches
+(`worktree-agent-*`, `wf_*`, `wp*`, `wpg*`) separately with `git branch -D`;
+branch deletion never touches `.inputs`.
 
 ## Conventions
 

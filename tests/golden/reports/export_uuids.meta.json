@@ -1,0 +1,20 @@
+{
+  "report": "uuids",
+  "fixture": "uid",
+  "suffix": "EXP_UUIDS.csv",
+  "deck": [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.uid basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new load.ld1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.92",
+    "new monitor.mon1 element=line.l1 terminal=1 mode=0",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "solve",
+    "uuids file=@FIXTURES@/uuids_pre.csv"
+  ]
+}

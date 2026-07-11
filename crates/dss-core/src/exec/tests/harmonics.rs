@@ -250,7 +250,7 @@ fn assert_der_harmonic_injects(der_new: &str, full_name: &str) {
     // distortion voltage: materially non-zero (>0.1 V — a near-zero broken
     // injection fails), but well under 5% of the L-N nominal (~7200 V) since the
     // spectrum injects only a few % at the 5th and the network attenuates it. The
-    // exact magnitude is pinned by `phase7/harmonics_*_h5` (oracle) and the
+    // exact magnitude is pinned by `harmonics/harmonics_*_h5` (oracle) and the
     // offline `harmonic_yprim_*` discriminator unit tests; this just brackets the
     // smoke envelope on the real solve.
     let vmax = (1..=ckt.num_nodes)

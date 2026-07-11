@@ -999,6 +999,92 @@ fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
 }
 
 // ===========================================================================
+// WPG.17 — grid-forming (GFM) inverter dynamics black start.
+// A discharging Storage / a PVSystem in ControlMode=GFM forms the voltage of an
+// ISLANDED section from 0 V (the VDelta droop ramps ISPDelta, FixPhaseAngle locks
+// the phase), delivering the island load. Pinned against dss-python 0.15.7.
+// SafeVoltage=0 is mandatory (the default 100 MinVS blocks the lift-off from 0 V).
+// ===========================================================================
+
+/// PVSystem grid-forming dynamics black start (the PVSystem GFM arms: `it := 0`
+/// init, the `IMaxPPhase`-overwrite ramp/clamp, `FixPhaseAngle`, and the
+/// `DoDynamicMode` internal-voltage-source injection). An islanded PVSystem forms
+/// the grid and supplies a 400 kW / 80 kvar island load; the mode-3 trajectory
+/// matches the oracle. (The Storage counterpart is
+/// `exec::tests::storage::storage_gfm_dynamics_matches_oracle` + the live-gate
+/// deck `tests/corpus/controls/gfm_dynamics.dss`.)
+#[test]
+fn pvsystem_gfm_dynamics_mode3_matches_oracle() {
+    let mut dss = Dss::new();
+    dss.command("New Circuit.pvgfm basekv=4.16 phases=3 bus1=sourcebus");
+    dss.command(
+        "New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 \
+         length=1 units=km",
+    );
+    dss.command("New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes");
+    dss.command(
+        "New Transformer.tpv phases=3 windings=2 buses=(pvbus islbus) \
+         conns=(delta wye) kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5",
+    );
+    dss.command(
+        "New PVSystem.pv phases=3 conn=delta bus1=pvbus kV=0.48 kva=800 pmpp=800 \
+         irradiance=1 %R=50 %X=50 kP=0.3 KVDC=0.700 PITol=0.1 SafeVoltage=0 \
+         ControlMode=GFM",
+    );
+    dss.command("New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1");
+    dss.command("New Monitor.psv element=PVSystem.pv terminal=1 mode=3");
+    dss.command("Set voltagebases=[4.16 0.48]");
+    dss.command("Calcvoltagebases");
+    dss.command("open line.sw1 terminal=1");
+    dss.command("solve"); // islanded GFM snapshot
+    assert!(
+        dss.errors().is_empty(),
+        "pv gfm snapshot: {:?}",
+        dss.errors()
+    );
+    dss.command("Set mode=dynamics stepsize=0.001 number=60 maxiterations=30");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "pv gfm dynamics: {:?}",
+        dss.errors()
+    );
+
+    // Island energised to ~0.977 pu.
+    let ckt = dss.circuit().expect("circuit");
+    assert!(ckt.is_solved);
+    let bidx = ckt.bus_list.find("islbus").expect("islbus");
+    let bus = &ckt.buses[bidx];
+    let vpu = ckt.solution.node_v[bus.get_ref(0)].norm() / (bus.kv_base * 1000.0);
+    assert!(
+        (vpu - 0.97682).abs() < 2e-3,
+        "islbus pu (oracle ~0.977) = {vpu}"
+    );
+
+    // Mode-3 (22 PV vars) last sample vs oracle (dss-python 0.15.7). Monitor is
+    // f32; pinned at the standard monitor `1e-5` rel band (TOLERANCE_NOTES.md; the
+    // black-start ramp end value is well-conditioned).
+    let m = dss.monitor_view("psv").expect("psv monitor");
+    assert_eq!(&m.header[2..], PV_VAR_NAMES, "mode-3 header = 22 PV vars");
+    assert_eq!(m.channels.len(), 22);
+    let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
+    // PanelkW (ch1), it (ch15), Target Amps (ch19), Max Amps (ch21), Grid V (ch13).
+    assert!(rel(last(1), 800.0) < 1e-5, "PV PanelkW = {}", last(1));
+    assert!(rel(last(15), 942.13049) < 1e-5, "PV it = {}", last(15));
+    assert!(
+        rel(last(19), 944.85358) < 1e-5,
+        "PV Target(A) = {}",
+        last(19)
+    );
+    assert!(
+        rel(last(21), 962.25043) < 1e-5,
+        "PV Max.Amps = {}",
+        last(21)
+    );
+    assert!(rel(last(13), 271.30814) < 1e-5, "PV Grid V = {}", last(13));
+}
+
+// ===========================================================================
 // WP7.7 step 3a — IndMach012 (induction machine) dynamics.
 // ===========================================================================
 

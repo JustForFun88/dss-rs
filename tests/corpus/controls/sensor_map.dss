@@ -1,0 +1,33 @@
+// Sensor mapping scenario: sensors with kW/kvar and current specifications on
+// different elements, terminals, and connections (wye line-to-neutral vs
+// delta line-to-line) over an unbalanced feeder. Sensors are passive in a
+// power-flow solve — the compare pins their measurement SPECS and phase/
+// terminal/connection mapping through the property probes, plus the full
+// model of the host circuit.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.sens basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+
+new line.feed bus1=src bus2=m1 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+new line.lat bus1=m1 bus2=m2 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+
+new load.la bus1=m2.1 phases=1 conn=wye model=1 kv=7.2 kw=900 pf=0.9
+new load.lb bus1=m2.2 phases=1 conn=wye model=1 kv=7.2 kw=300 pf=0.95
+new load.lc bus1=m2.3 phases=1 conn=wye model=1 kv=7.2 kw=1300 pf=0.85
+new load.ld bus1=m1 phases=3 conn=delta model=1 kv=12.47 kw=600 pf=0.92
+
+! Wye sensor on the feeder head: per-phase kW/kvar + current specs.
+new sensor.s1 element=line.feed terminal=1 kvbase=7.2 conn=wye
+~ kws=[900 300 1300] kvars=[430 100 800] currents=[130 45 190] %error=1
+
+! Sensor on the lateral's SECOND terminal.
+new sensor.s2 element=line.lat terminal=2 kvbase=7.2 conn=wye
+~ currents=[125 42 180]
+
+! Delta-connected sensor on the delta load (line-to-line base).
+new sensor.s3 element=load.ld terminal=1 kvbase=12.47 conn=delta
+~ kws=[200 200 200] kvars=[85 85 85]
+
+set voltagebases=[12.47]
+calcvoltagebases

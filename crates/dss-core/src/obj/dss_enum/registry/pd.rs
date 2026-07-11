@@ -9,6 +9,8 @@ pub(super) struct PdEnums {
     pub(super) line_type: EnumId,
     pub(super) core_type: EnumId,
     pub(super) lead_lag: EnumId,
+    pub(super) autotrans_connection: EnumId,
+    pub(super) gic_transformer_type: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PdEnums {
@@ -72,10 +74,40 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PdEnums {
         &["Lag", "Lead", "ANSI", "Euro"],
         &[0, 1, 0, 1],
     ));
+
+    // Pascal `AutoTransConnectionEnum` (AutoTrans.pas:320): adds `series` (2)
+    // to the wye/delta set. Aliases y/ln → wye, ll → delta, and `s`/`ser…`
+    // matches `series` by prefix. The capitalized display names (`Wye`/`Delta`/
+    // `Series`) are JSON-only in Pascal; OrdinalToString uses the lowercase
+    // first-array names (sequential 0/1/2), so `Conn` renders `series`.
+    let autotrans_connection = push(DssEnum::new(
+        "AutoTrans: Connection",
+        true,
+        1,
+        2,
+        &["wye", "delta", "series", "y", "ln", "ll"],
+        &[0, 1, 2, 0, 0, 1],
+    ));
+
+    // Pascal `TGICTransformer.Create` (GICTransformer.pas:139):
+    // `TDSSEnum.Create('GICTransformer: Type', True, 1, 1, ['GSU','Auto','YY'],
+    // [SPEC_GSU, SPEC_AUTO, SPEC_YY])` with SPEC_GSU=1/SPEC_AUTO=2/SPEC_YY=3
+    // (sequential; a single leading char disambiguates g/a/y).
+    let gic_transformer_type = push(DssEnum::new(
+        "GICTransformer: Type",
+        true,
+        1,
+        1,
+        &["GSU", "Auto", "YY"],
+        &[1, 2, 3],
+    ));
+
     PdEnums {
         earth_model,
         line_type,
         core_type,
         lead_lag,
+        autotrans_connection,
+        gic_transformer_type,
     }
 }

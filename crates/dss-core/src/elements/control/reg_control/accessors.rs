@@ -6,7 +6,9 @@
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::RefSnapshot;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::transformer::Transformer;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
@@ -20,6 +22,12 @@ impl CktElement for RegControl {
         &mut self.ccd.cd
     }
 
+    /// Pascal `TControlElem.FControlledElement` - the element this control
+    /// acts on (`None` when it drives a list rather than a single element).
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
     }
@@ -31,6 +39,46 @@ impl CktElement for RegControl {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TRegControlObj.MakePosSequence` (`Controls/RegControl.pas:1266`):
+    /// adopt the controlled transformer's enabled state, set `Fnphases` to 1
+    /// (regulated-bus mode) or the transformer's phase count, and attach
+    /// terminal 1 to the regulated bus / winding bus, then run the base bus
+    /// rename (`inherited`). Only reads `ControlledElement`, so no
+    /// `monitored_element_ref` override is needed.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(c) = &ctx.controlled {
+            // Enabled := ControlledElement.Enabled — RegControl.Set_Enabled writes
+            // FEnabled only (no BusNameRedefined), so set the raw field directly.
+            self.ccd.cd.enabled = c.enabled;
+            // FNphases := 1 (UsingRegulatedBus) else ControlledElement.NPhases;
+            // Nconds := FNphases
+            let np = if self.using_regulated_bus {
+                1
+            } else {
+                c.nphases
+            };
+            self.ccd.cd.nphases = np;
+            self.ccd.cd.set_nconds(np);
+            // The `transformer=` proxy accepts only Transformer / AutoTrans
+            // (RegControl.pas:264), so `ControlledElement.DSSClassName` is always
+            // one of those two and the Setbus + VBuffer/CBuffer realloc always
+            // run. The buffers have no persistent field here (the sampler sizes
+            // them as locals each `Sample`).
+            let bus = if self.using_regulated_bus {
+                self.regulated_bus.clone() // hopefully this will actually exist
+            } else {
+                let t = self.ccd.element_terminal as usize;
+                t.checked_sub(1)
+                    .and_then(|k| c.bus_names.get(k))
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            self.ccd.cd.set_bus(1, &bus);
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
     }
 }
 
@@ -195,18 +243,30 @@ impl DssObject for RegControl {
                 self.ccd.controlled_element = Some(r);
                 let elem = obj
                     .as_ckt_element()
-                    .expect("Transformer is a circuit element");
-                self.snapshot = Some(RefSnapshot::capture(
-                    format!("Transformer.{}", obj.data().name()),
-                    elem,
-                ));
-                let xf = obj
-                    .as_any()
-                    .downcast_ref::<Transformer>()
-                    .expect("transformer= resolves against the Transformer class");
-                self.tap_snap = (1..=xf.num_windings().max(0) as usize)
-                    .map(|i| xf.winding_tap_data(i))
-                    .collect();
+                    .expect("controlled element is a circuit element");
+                // `transformer=` resolves against either class (Pascal
+                // `Transf_Or_AutoTrans_ProxyClass`).
+                let name = obj.data().name();
+                let (full_name, tap_snap) =
+                    if let Some(xf) = obj.as_any().downcast_ref::<Transformer>() {
+                        (
+                            format!("Transformer.{name}"),
+                            (1..=xf.num_windings().max(0) as usize)
+                                .map(|i| xf.winding_tap_data(i))
+                                .collect(),
+                        )
+                    } else if let Some(at) = obj.as_any().downcast_ref::<AutoTrans>() {
+                        (
+                            format!("AutoTrans.{name}"),
+                            (1..=at.num_windings().max(0) as usize)
+                                .map(|i| at.winding_tap_data(i))
+                                .collect(),
+                        )
+                    } else {
+                        (format!("Transformer.{name}"), Vec::new())
+                    };
+                self.snapshot = Some(RefSnapshot::capture(full_name, elem));
+                self.tap_snap = tap_snap;
             }
             None => {
                 self.ccd.controlled_element = None;

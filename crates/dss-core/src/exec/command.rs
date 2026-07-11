@@ -60,30 +60,61 @@ impl Dss {
             cmd::COMMENT | cmd::HELP | cmd::QUIT | cmd::PANEL | cmd::ABOUT | cmd::COMHELP => {
                 return; // no-ops (comment / GUI-only commands)
             }
-            cmd::SHOW => {
-                // Pascal `DoShowCmd` (ShowResults.pas) is Phase 8
-                // (reporting/exports/Save): it only writes report files and never
-                // alters the electrical solution, so it is stubbed as a no-op here
-                // (like Plot/Panel). The live oracle gate compares the assembled
-                // model, not report text, so this is faithful for the gate and
-                // admits the `Show LineConstants` geometry/cable feeders.
-                return;
-            }
             cmd::CLEAR | cmd::CLEAR_ALL => {
                 self.do_clear_cmd();
                 return;
             }
-            cmd::FILEEDIT
-            | cmd::CLASSES
-            | cmd::USERCLASSES
-            | cmd::ALIGN_FILE
+            // Pre-circuit commands (`ExecCommands.pas:301-335`, dispatched
+            // before the circuit-required gate; the second, post-circuit case
+            // carries only commented-out duplicates of these).
+            cmd::FILEEDIT => {
+                self.do_file_edit_cmd();
+                return;
+            }
+            cmd::CLASSES => {
+                // Pascal `DoClassesCmd`: every intrinsic class name into
+                // GlobalResult, in `DSSClassList` creation order (the Rust
+                // registry groups DSS_OBJECT classes first, so walk the
+                // Pascal-order table the whole-circuit Dump already uses).
+                for name in crate::report::save::dump::commands::PASCAL_CLASS_ORDER {
+                    super::helpers::append_result(&mut self.last_result, name);
+                }
+                return;
+            }
+            cmd::USERCLASSES => {
+                // Pascal `DoUserClassesCmd`.
+                super::helpers::append_result(&mut self.last_result, "No User Classes Defined.");
+                return;
+            }
+            cmd::CD => {
+                self.do_cd_cmd();
+                return;
+            }
+            cmd::DOSCMD => {
+                // Pascal `ExecCommands.pas:327`: `DSS_CAPI_ALLOW_DOSCMD`
+                // defaults off and stays off in this port (arbitrary shell
+                // execution; the enabling API is deliberately not exposed) —
+                // the error #283 arm is the whole surface.
+                self.errors.push(
+                    "DOScmd is disabled. Enable it via API or set the environment variable DSS_CAPI_ALLOW_DOSCMD=1 before starting the process."
+                        .to_string(),
+                );
+                return;
+            }
+            cmd::VAR => {
+                self.do_var_cmd();
+                return;
+            }
+            // `AlignFile`/`CvrtLoadshapes` are live upstream but unexercised
+            // file-rewrite utilities (0 corpus uses) — loud NOT_PORTED,
+            // on-demand owners. The DI-plot family (`DI_plot`/`CompareCases`/
+            // `YearlyCurves`) stays loud: upstream calls the plot callback
+            // with no NIL guard (UB when unregistered — the WPG.17 rule).
+            cmd::ALIGN_FILE
             | cmd::DI_PLOT
             | cmd::COMPARE_CASES
             | cmd::YEARLY_CURVES
-            | cmd::CD
-            | cmd::DOSCMD
-            | cmd::CVRT_LOADSHAPES
-            | cmd::VAR => {
+            | cmd::CVRT_LOADSHAPES => {
                 self.not_ported_command(pointer);
                 return;
             }
@@ -122,6 +153,7 @@ impl Dss {
         match pointer {
             cmd::EDIT => self.do_edit_cmd(),
             cmd::MORE | cmd::M | cmd::TILDE => self.edit_active(),
+            cmd::SELECT => self.do_select_cmd(),
             cmd::OPEN => self.do_open_close_cmd(false),
             cmd::CLOSE => self.do_open_close_cmd(true),
             cmd::SOLVE => self.do_set_cmd(1), // Solve = Set + DoSolveCmd
@@ -131,17 +163,170 @@ impl Dss {
             cmd::BUILD_Y => self.do_build_y(),
             cmd::GET => self.do_get_cmd(),
             cmd::SAMPLE => self.do_sample_cmd(),
+            // Pascal `DoCloseDICmd` (`ExecHelper.pas:4199`): flush + close any
+            // open demand-interval files.
+            cmd::CLOSE_DI => self.do_close_di_cmd(),
             cmd::RESET => self.do_reset_cmd(),
             cmd::ALLOCATE_LOADS => self.do_allocate_loads_cmd(),
+            cmd::DISTRIBUTE => self.do_distribute_cmd(),
+            cmd::UUIDS => self.do_uuids_cmd(),
             cmd::RELCALC => self.do_relcalc_cmd(),
             cmd::REDUCE => self.do_reduce_cmd(),
             cmd::BUSCOORDS => self.do_bus_coords_cmd(false),
+            // Pascal `DoBusCoordsCmd(TRUE)` — the swap-XY (Lat/Lon) variant; the
+            // implementation is shared with BusCoords (WPG.16 wires the dispatch
+            // so the GICExample corpus deck's trailing `LatLongCoords` runs).
+            cmd::LATLONGCOORDS => self.do_bus_coords_cmd(true),
+            cmd::EXPORT => self.do_export_cmd(),
+            cmd::SAVE => self.do_save_cmd(),
+            cmd::DUMP => self.do_dump_cmd(),
+            // Pascal `DoShowCmd` (ShowOptions.pas). Post-circuit dispatch (Pascal
+            // `ProcessCommand`), so `Show` before a circuit falls through to the
+            // generic guard above and records the #301 "create a circuit first"
+            // error exactly like the oracle (audit-code WP8.1: the oracle's
+            // dispatch gate errors #301 before `DoShowCmd` runs). With a circuit,
+            // every `Show` report is a faithful headless no-op (writes a file,
+            // changes no electrical state — PHASE8_PLAN §2.5); WP8.4 lands the
+            // real ShowResults formatters + the 24700/24701/24702/999 errors.
+            cmd::SHOW => self.do_show_cmd(),
+            // Pascal `DoPlotCmd` (`PlotOptions.pas:182`). With no plot callback
+            // registered it exits before ANY guard (the pinned headless oracle),
+            // so `Plot` is a faithful total no-op; with a callback registered
+            // (WPG.17) it parses the options and fires the `plotParams` JSON.
+            // Post-circuit, like the oracle's dispatch (before a circuit the
+            // generic guard above emits #301; oracle-probed).
+            cmd::PLOT => self.do_plot_cmd(),
+            // Pascal `DoAddMarkerCmd` / `TDSSCircuit.ClearBusMarkers`: the
+            // bus-marker list feeding the plot payload's `BusMarkers[]` (WPG.17).
+            cmd::ADD_BUS_MARKER => self.do_add_marker_cmd(),
+            cmd::CLEAR_BUS_MARKER => self.do_clear_bus_markers_cmd(),
+            // `Visualize` differs: `DoVisualizeCmd` runs its guards BEFORE the
+            // callback check, so they are engine-observable and ported.
+            cmd::VISUALIZE => self.do_visualize_cmd(),
+            cmd::BATCH_EDIT => self.do_batch_edit_cmd(),
+            // Pascal `ExecCommands.pas` `ord(Cmd.MakeBusList)`:
+            // `if BusNameRedefined then ReprocessBusDefs` — nothing else.
+            cmd::MAKE_BUS_LIST => self.do_make_bus_list_cmd(),
+            // Pascal `ExecCommands.pas` `ord(Cmd.GISCoords)`: "Do nothing here
+            // on DSS C-API. Just ignore it silently so files saved with EPRI's
+            // version can be loaded more easily." (OpenDSS-GIS is out of the
+            // DSS-Extensions scope.)
+            cmd::GIS_COORDS => {}
+            // Pascal `ExecCommands.pas` `ord(Cmd.Wait)`: `if
+            // PMParent.Parallel_enabled then Wait4Actors(...)` — with the
+            // parallel machinery disabled (the pinned oracle's default and this
+            // port's only mode until MULTITHREADING_PLAN lands actors) it is a
+            // silent no-op, exactly like the oracle (the StoCtrl corpus deck's
+            // `Add_Issues.dss` issues a bare `wait` mid-script).
+            cmd::WAIT => {}
+            cmd::SET_BUS_XY => self.do_set_bus_xy_cmd(),
+            cmd::INTERPOLATE => self.do_interpolate_cmd(),
+            // Pascal `DoRemoveCmd` (ExecHelper.pas:4939) → `DoRemoveBranches`.
+            cmd::REMOVE => self.do_remove_cmd(),
             cmd::INIT => {
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_initialized = false;
                 }
             }
+            // Pascal `DoEnableCmd`/`DoDisableCmd` (ExecHelper.pas:1095/1145).
+            cmd::ENABLE => self.do_enable_disable_cmd(true),
+            cmd::DISABLE => self.do_enable_disable_cmd(false),
+            // Pascal `DoSetkVBase` (ExecHelper.pas:1949).
+            cmd::SET_KV_BASE => self.do_set_kv_base_cmd(),
+            // Pascal `DolossesCmd` (ExecHelper.pas:2168).
+            cmd::LOSSES => self.do_losses_cmd(),
+            // Pascal `DoSummaryCmd` (ExecHelper.pas:3449).
+            cmd::SUMMARY => self.do_summary_cmd(),
+            // Pascal `DoReconductorCmd` (ExecHelper.pas:4245).
+            cmd::RECONDUCTOR => self.do_reconductor_cmd(),
+            // Pascal `DoPstCalc` (ExecHelper.pas:4778).
+            cmd::PSTCALC => self.do_pst_calc_cmd(),
+            // The step-solution commands (`ExecCommands.pas:578-601`): direct
+            // drivers over the solution internals.
+            cmd::INIT_SNAP
+            | cmd::SOLVE_NO_CONTROL
+            | cmd::SAMPLE_CONTROLS
+            | cmd::DO_CONTROL_ACTIONS
+            | cmd::SHOW_CONTROL_QUEUE
+            | cmd::SOLVE_DIRECT
+            | cmd::SOLVE_PFLOW => self.do_step_solution_cmd(pointer),
+            // Incidence matrix commands (WP-AD.1, Pascal `ExecCommands.pas:406-433`).
+            cmd::CALC_INC_MATRIX => self.do_calc_inc_matrix(false),
+            cmd::CALC_INC_MATRIX_O => self.do_calc_inc_matrix(true),
+            cmd::CALC_LAPLACIAN => self.do_calc_laplacian(),
+            // Pascal `TExecHelper.DoMakePosSeq` (ExecHelper.pas:3035): flip the
+            // circuit to positive-sequence and convert every element in creation
+            // order (`exec/make_pos_seq.rs`).
+            cmd::MAKE_POS_SEQ => self.do_make_pos_seq(),
             _ => self.not_ported_command(pointer),
+        }
+    }
+
+    /// Pascal `DoFileEditCmd` (`ExecHelper.pas:1681`): an existing file goes to
+    /// `FireOffEditor` — the GUI editor launch, a headless no-op (the
+    /// established `AllowEditor` convention); a missing file sets
+    /// `GlobalResult` (no error). The path resolves against the engine's
+    /// virtual cwd like every file argument.
+    fn do_file_edit_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars).to_string();
+        if !self.current_dir.join(&param).is_file() {
+            self.last_result = format!("File \"{param}\" does not exist.");
+        }
+    }
+
+    /// Pascal `ord(Cmd.CD)` (`ExecCommands.pas:315`): change the data path to
+    /// an EXISTING directory (`SetDataPath`; unlike `Set DataPath=` it never
+    /// creates one) — error #282 on a miss. Like the shared `Set DataPath=`
+    /// port (`set_cmd.rs::apply_data_path`), the Pascal non-writable-dir →
+    /// scratch `OutputDirectory` fallback (`DSSGlobals.pas:562-568`) is
+    /// NOT_PORTED — an environment-dependent I/O rescue, not oracle-pinnable;
+    /// a later write fails loudly instead (audit WP8.8: consistent recorded
+    /// narrowing, corpus-unreachable).
+    fn do_cd_cmd(&mut self) {
+        self.parser.next_param(&self.vars);
+        let param = self.parser.make_string(&self.vars).to_string();
+        let p = self.current_dir.join(&param);
+        if p.is_dir() {
+            self.current_dir = p.clone();
+            self.output_directory = p;
+        } else {
+            self.errors
+                .push(format!("Directory \"{param}\" not found."));
+        }
+    }
+
+    /// Pascal `DoVarCmd` (`ExecHelper.pas:4889`): the `var` script-variable
+    /// command — bare `var` lists every parser variable (`Variable, Value`
+    /// header + one `<name>. <value|null>` line each), `var @x` echoes the
+    /// substituted value, `var @x=1 @y=2` defines/overwrites variables (a name
+    /// not starting with `@` is error #28725 and stops the scan).
+    fn do_var_cmd(&mut self) {
+        let mut param_name = self.parser.next_param(&self.vars);
+        let mut param = self.parser.make_string(&self.vars).to_string();
+        if param.is_empty() {
+            // Show all vars.
+            let mut s = String::from("Variable, Value\n");
+            for i in 0..self.vars.len() {
+                s.push_str(&self.vars.var_string(i));
+                s.push('\n');
+            }
+            self.last_result = s;
+        } else if param_name.is_empty() {
+            // Show this var's value (the parser already substituted it).
+            self.last_result = param;
+        } else {
+            while !param_name.is_empty() {
+                if !param_name.starts_with('@') {
+                    self.errors.push(format!(
+                        "Illegal Variable Name: {param_name}; Must begin with \"@\""
+                    ));
+                    return;
+                }
+                self.vars.add(&param_name, &param);
+                param_name = self.parser.next_param(&self.vars);
+                param = self.parser.make_string(&self.vars).to_string();
+            }
         }
     }
 
@@ -151,14 +336,52 @@ impl Dss {
             .push(format!("Command \"{name}\" is not ported yet."));
     }
 
+    /// Pascal `ExecCommands.pas` `ord(Cmd.CalcIncMatrix)` / `CalcIncMatrix_O`
+    /// (`Solution.Calc_Inc_Matrix` / `Calc_Inc_Matrix_Org`): build the
+    /// branch-to-node incidence matrix, flat or hierarchically organized (WP-AD.1).
+    fn do_calc_inc_matrix(&mut self, organized: bool) {
+        let Some(ckt) = self.circuit.as_mut() else {
+            return;
+        };
+        if organized {
+            crate::solution::inc_matrix::calc_inc_matrix_org(&mut self.classes, ckt);
+        } else {
+            crate::solution::inc_matrix::calc_inc_matrix(&self.classes, ckt);
+        }
+    }
+
+    /// Pascal `ExecCommands.pas` `ord(Cmd.CalcLaplacian)`: `Laplacian :=
+    /// IncMat.Transpose(); Laplacian := Laplacian.multiply(IncMat)`. The NIL guard
+    /// (error 8877) fires when no incidence matrix has been calculated yet — the
+    /// message text (including the upstream "Indidence" typo) is verbatim.
+    fn do_calc_laplacian(&mut self) {
+        let Some(ckt) = self.circuit.as_mut() else {
+            return;
+        };
+        let st = &mut ckt.solution.inc_matrix;
+        let Some(inc_mat) = st.inc_mat.as_ref() else {
+            self.errors.push(
+                "Indidence matrix is not present. Please run either \"CalcIncMatrix\" or \"CalcIncMatrix_O\" first."
+                    .to_string(),
+            );
+            return;
+        };
+        let laplacian = inc_mat.transpose().multiply(inc_mat);
+        st.laplacian = Some(laplacian);
+    }
+
     /// Pascal `GetObjClassAndName`: read the `class.name` token (optionally
     /// prefixed `object=`) from the main parser.
     fn get_obj_class_and_name(&mut self) -> (String, String) {
         let param_name = self.parser.next_param(&self.vars).to_lowercase();
         let param = self.parser.make_string(&self.vars);
         if !param_name.is_empty() && !crate::util::compare_text_shortest_eq(&param_name, "object") {
-            self.errors
-                .push("object=Class.Name expected as first parameter in command.".to_string());
+            // Pascal error 240: the `%s` argument is `CRLF + Parser.CmdString`
+            // (`sLineBreak`, rendered LF here like every other output line).
+            self.errors.push(format!(
+                "object=Class.Name expected as first parameter in command. \n{}",
+                self.parser.cmd_string()
+            ));
             return (String::new(), String::new());
         }
         parse_object_class_and_name(&mut self.parser, &self.vars, &param)
@@ -242,6 +465,108 @@ impl Dss {
         };
         self.active_class = Some(ci);
         if self.classes[ci].set_active(&obj_name) {
+            self.edit_active();
+        }
+    }
+
+    /// Pascal `DoBatchEditCmd` (`ExecHelper.pas:292`):
+    /// `BatchEdit class.pattern editstring` — replay the trailing edit string
+    /// against every object of the class whose NAME matches the regex pattern
+    /// **case-insensitively and unanchored** (`TRegExpr` `ModifierI` + `Exec`
+    /// = search anywhere in the name). The parser position at the start of the
+    /// edit string is remembered and rewound for each match, exactly like the
+    /// Pascal `Params := Parser.Position` / `Parser.Position := Params` dance.
+    /// The command always returns 0 silently — there is no count message.
+    fn do_batch_edit_cmd(&mut self) {
+        let (obj_class, pattern) = self.get_obj_class_and_name();
+        if obj_class.eq_ignore_ascii_case("circuit") {
+            return; // Do nothing
+        }
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+            // Pascal error 267 (the `%s` is `CRLF + Parser.CmdString`; LF here,
+            // same rendering as error 240 in `get_obj_class_and_name`).
+            self.errors.push(format!(
+                "BatchEdit Command: Object Type \"{obj_class}\" not found. \n{}",
+                self.parser.cmd_string()
+            ));
+            return;
+        };
+        self.active_class = Some(ci); // DSS.LastClassReferenced / ActiveDSSClass
+        // `Params := DSS.Parser.Position` — the edit string starts here.
+        let params_pos = self.parser.position();
+        let re = match regex::RegexBuilder::new(&pattern)
+            .case_insensitive(true) // TRegExpr `ModifierI := TRUE`
+            .build()
+        {
+            Ok(re) => re,
+            Err(e) => {
+                // TRegExpr raises `ERegExpr` on a bad pattern, surfaced as an
+                // engine error by the executive's exception handler; the exact
+                // upstream text is FPC-internal, so record the regex error.
+                self.errors.push(format!("BatchEdit Command: {e}"));
+                return;
+            }
+        };
+        // `First`/`Next`: walk the class list in creation order; every visited
+        // object becomes the active one (matching or not), the edit runs only
+        // on a regex match.
+        for oi in 0..self.classes[ci].objects.len() {
+            self.classes[ci].active = Some(oi);
+            let name = self.classes[ci].objects[oi].data().name().to_string();
+            if re.is_match(&name) {
+                self.parser.set_position(params_pos);
+                self.edit_active();
+            }
+        }
+    }
+
+    /// Pascal `DoEnableCmd`/`DoDisableCmd` (`ExecHelper.pas:1095/1145`):
+    /// `Enable`/`Disable class[.name|.*]`. `circuit` → no-op; an unknown class
+    /// or a non-circuit-element class (the `BASECLASSMASK` guard) → silently
+    /// nothing (no error upstream); `*` → set `Enabled` directly on every
+    /// element of the class (the bare `Set_Enabled` setter — NOT the edit path,
+    /// so `PrpSequence`/`RecalcElementData` are untouched); a name → reload the
+    /// parser with `Enabled=true|false` and run the ordinary edit
+    /// (`EditObject`; a missing name is silently ignored, `SetActive` = false).
+    fn do_enable_disable_cmd(&mut self, enable: bool) {
+        let (obj_type, obj_name) = self.get_obj_class_and_name();
+        if obj_type.is_empty() || obj_type.eq_ignore_ascii_case("circuit") {
+            return; // Pascal: do nothing
+        }
+        let Some(&ci) = self.class_by_name.get(&obj_type.to_lowercase()) else {
+            return; // Pascal: GetDSSClassPtr = NIL → nothing
+        };
+        if self.classes[ci].kind.is_none() {
+            return; // Pascal: (DSSClassType and BASECLASSMASK) = 0 → nothing
+        }
+        if obj_name == "*" {
+            let mut any_changed = false;
+            for obj in &mut self.classes[ci].objects {
+                if let Some(elem) = obj.as_ckt_element_mut() {
+                    let cd = elem.cd_mut();
+                    cd.set_enabled(enable);
+                    if cd.signal_bus_name_redefined {
+                        cd.signal_bus_name_redefined = false;
+                        any_changed = true;
+                    }
+                }
+            }
+            // Pascal `Set_Enabled` writes `BusNameRedefined` on the circuit
+            // immediately; the signal-flag propagation is drained here since
+            // this path bypasses the edit tail.
+            if any_changed && let Some(ckt) = self.circuit.as_mut() {
+                ckt.set_bus_name_redefined(true);
+            }
+        } else {
+            self.active_class = Some(ci); // DSS.LastClassReferenced
+            if !self.classes[ci].set_active(&obj_name) {
+                return; // Pascal EditObject: SetActive false → nothing
+            }
+            self.parser.set_cmd_string(if enable {
+                "Enabled=true"
+            } else {
+                "Enabled=false"
+            });
             self.edit_active();
         }
     }
@@ -345,10 +670,192 @@ impl Dss {
         Some(ci)
     }
 
+    /// Pascal `TExecHelper.DoSelectCmd` (`ExecHelper.pas:670`): make a circuit
+    /// element (or the active object) active — `Select class.name [terminal]`. Sets
+    /// `ActiveCktElement` (read by `Show Yprim`) and the element's active terminal.
+    ///
+    /// A bare `Select` (no class/name) selects the already-active object (a no-op
+    /// here), and `Select circuit` switches the active circuit (single-circuit
+    /// build → no-op). Bus-context (`SetActiveBus`) is not reproduced — no ported
+    /// report consumes an active bus yet (same inert side effect skipped by
+    /// [`Dss::do_open_close_cmd`]).
+    fn do_select_cmd(&mut self) {
+        let (obj_class, obj_name) = self.get_obj_class_and_name();
+        if obj_class.is_empty() && obj_name.is_empty() {
+            return; // "select active obj if any"
+        }
+        if obj_class.eq_ignore_ascii_case("circuit") {
+            return; // SetActiveCircuit — single circuit, nothing to switch
+        }
+        // Pascal `if Length(ObjClass)>0 then SetObjectClass(ObjClass)`: a known
+        // class becomes the active/"last-referenced" class; an UNKNOWN one logs
+        // #903 and leaves the previously-referenced class in place (the select then
+        // falls back to it) — it does NOT abort. An empty class keeps the previous
+        // class unchanged.
+        if !obj_class.is_empty() {
+            match self.class_by_name.get(&obj_class.to_lowercase()).copied() {
+                Some(ci) => self.active_class = Some(ci),
+                None => self
+                    .errors
+                    .push(format!("Error! Object Class \"{obj_class}\" not found. ")),
+            }
+        }
+        // Pascal `ActiveDSSClass := Get(LastClassReferenced)` = our `active_class`;
+        // `NIL` (no class ever referenced) → #246.
+        let Some(ci) = self.active_class else {
+            self.errors
+                .push("Error! Active object type/class is not set.".to_string());
+            return;
+        };
+        if !self.classes[ci].set_active(&obj_name) {
+            // Pascal #245.
+            self.errors
+                .push(format!("Error! Object \"{obj_name}\" not found. "));
+            return;
+        }
+        let idx = self.classes[ci]
+            .active
+            .expect("set_active set the active index");
+        // Only circuit elements become the `ActiveCktElement` (Pascal: a general
+        // `DSS_OBJECT` does nothing here).
+        if self.classes[ci].objects[idx].as_ckt_element().is_some() {
+            self.active_ckt_element = Some((ci, idx));
+            // Active terminal (Pascal `if Length(Param)>0 then ActiveTerminalIdx :=
+            // IntValue else 1`): an **absent** param selects terminal 1; a
+            // **present** one is adopted only when in `1..Nterms`
+            // (`Set_ActiveTerminal`), else the active terminal is left unchanged.
+            self.parser.next_param(&self.vars);
+            let param = self.parser.make_string(&self.vars).to_string();
+            let tval = if param.is_empty() {
+                None
+            } else {
+                Some(self.parser.make_integer(&self.vars).unwrap_or(0))
+            };
+            let cd = self.classes[ci].objects[idx]
+                .as_ckt_element_mut()
+                .expect("just checked it is a circuit element")
+                .cd_mut();
+            match tval {
+                None if cd.nterms >= 1 => cd.active_terminal = 0,
+                None => {}
+                Some(t) if t >= 1 && (t as usize) <= cd.nterms => {
+                    cd.active_terminal = (t - 1) as usize
+                }
+                Some(_) => {}
+            }
+        }
+    }
+
+    /// Pascal `DoVisualizeCmd` (`ExecHelper.pas:4099-4197`). The plot itself
+    /// goes to `DSSPlotCallback` — NIL in the pinned headless oracle — so past
+    /// the guards this is a faithful no-op (PHASE8_PLAN §2.5). The guards run
+    /// BEFORE the callback check and ARE engine-observable, so they are
+    /// ported: #24722 on an unsolved circuit (`Solution.NodeV` unallocated),
+    /// #282 element-not-found. Notes:
+    /// - the no-circuit #24721 arm is unreachable here — the dispatcher's
+    ///   generic pre-circuit guard already emits #301 (oracle-probed, WP8.1);
+    /// - the `"%s" must be a circuit element type!` #282 arm is dead upstream:
+    ///   `GetCktElementIndex` (`Utilities.pas:733`) resolves through
+    ///   `element.Handle`, and a general (non-circuit) `DSSObject`'s Handle is
+    ///   0 → the not-found arm fires instead, so a `loadshape.x` reference
+    ///   lands on "not found" — reproduced by resolving through circuit-element
+    ///   classes only.
+    fn do_visualize_cmd(&mut self) {
+        // `not assigned(Solution.NodeV)` → #24722. `node_v` starts as the
+        // ground-only slot `[0]` and is sized by the first Y build/solve
+        // (`ymatrix::build_y_matrix`, `allocate_vi`).
+        if self
+            .circuit
+            .as_ref()
+            .is_none_or(|c| c.solution.node_v.len() <= 1)
+        {
+            self.errors
+                .push("The circuit must be solved before you can do this.".to_string());
+            return;
+        }
+
+        // Parse `What=`/`Element=` (`CompareTextShortest` prefixes; bare
+        // values fill positions 1, 2, …; unknown names are skipped). `What`
+        // (the plotted quantity) is carried into the callback JSON's `Quantity`;
+        // it has no engine-observable effect otherwise. Default `Current`
+        // (`ExecHelper.pas:4124`).
+        let mut elem_name = String::new();
+        let mut quantity = "Current";
+        let mut pointer = 0usize;
+        loop {
+            let param_name = self.parser.next_param(&self.vars);
+            let param = self.parser.make_string(&self.vars);
+            if param.is_empty() {
+                break;
+            }
+            if param_name.is_empty() {
+                pointer += 1;
+            } else if crate::util::compare_text_shortest_eq(&param_name, "WHAT") {
+                pointer = 1;
+            } else if crate::util::compare_text_shortest_eq(&param_name, "ELEMENT") {
+                pointer = 2;
+            } else {
+                continue; // Unknown named parm — ignored (Pascal `Unknown`).
+            }
+            match pointer {
+                1 => {
+                    // First letter of the value → the plotted quantity
+                    // (`ExecHelper.pas:4148`).
+                    quantity = match param.as_bytes().first().map(u8::to_ascii_lowercase) {
+                        Some(b'c') => "Current",
+                        Some(b'v') => "Voltage",
+                        Some(b'p') => "Power",
+                        _ => quantity,
+                    };
+                }
+                2 => elem_name = param.to_string(),
+                _ => {}
+            }
+        }
+
+        // `GetCktElementIndex` (`Utilities.pas:733`): split `Class.Name` at
+        // the first dot; an unknown/absent class falls back to the
+        // last-referenced class; an empty name or a general-object class
+        // (Handle = 0, see the doc note) → not found.
+        let (cls_str, obj_str) =
+            crate::util::parse_object_class_and_name(&mut self.parser, &self.vars, &elem_name);
+        let ci = match self.class_by_name.get(&cls_str.to_lowercase()) {
+            Some(&ci) => Some(ci),
+            None => self.active_class, // `DSS.LastClassReferenced` fallback
+        };
+        let found = ci.is_some_and(|ci| {
+            self.classes[ci].kind.is_some()
+                && !obj_str.is_empty()
+                && self.classes[ci]
+                    .name_to_idx
+                    .contains_key(&obj_str.to_lowercase())
+        });
+        if !found {
+            self.errors.push(format!(
+                "Requested Circuit Element: \"{elem_name}\" not found."
+            ));
+            return;
+        }
+        // Found: build the Visualize JSON `{PlotType, ElementName, ElementType,
+        // Quantity}` (`ExecHelper.pas:4184`) and fire the callback. `ElementType`
+        // is the element's DSS class name; `ElementName` its Name. With no
+        // callback registered this is a faithful no-op (byte-identical to the
+        // pinned headless oracle, which runs `DSSPlotCallback = NIL`).
+        let ci = ci.expect("found implies ci is Some");
+        let oi = self.classes[ci]
+            .name_to_idx
+            .get(&obj_str.to_lowercase())
+            .copied()
+            .expect("found confirmed the object exists");
+        let element_name = self.classes[ci].objects[oi].data().name().to_string();
+        let element_type = self.classes[ci].props.class_name().to_string();
+        self.fire_visualize_callback(&element_name, &element_type, quantity);
+    }
+
     /// Pascal `AddObject`: create the object (or make the existing one
     /// active for `DSS_OBJECT` classes), register circuit elements with the
     /// circuit, and edit the rest of the line.
-    fn add_object(&mut self, obj_class: &str, name: &str) {
+    pub(super) fn add_object(&mut self, obj_class: &str, name: &str) {
         let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
             self.errors.push(format!(
                 "New Command: Object Type \"{obj_class}\" not found."
@@ -377,6 +884,9 @@ impl Dss {
                 cls.name_to_idx.insert(obj.data().name().to_string(), idx);
                 cls.objects.push(obj);
                 cls.active = Some(idx);
+                // Pascal `DSS.DSSObjs.Add(Obj)` (`ExecHelper.pas:1899`): the
+                // global creation-order list the whole-circuit Dump walks.
+                self.dss_objs.push(ElemRef { cls: ci, idx });
             }
             self.edit_active();
             return;
@@ -422,15 +932,31 @@ impl Dss {
         self.edit_active();
     }
 
-    /// Pascal `DoClearCmd`: drop the circuit and every object.
+    /// Pascal `DoClearCmd`: drop the circuit and every object. The executive
+    /// first flushes any open demand-interval files (`Executive.pas:283`
+    /// `Clear` → `if DIFilesAreOpen then CloseAllDIFiles`) so a yearly run's
+    /// pending `DI_*` data is written, not lost with the circuit.
     fn do_clear_cmd(&mut self) {
+        if self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.em_di.di_files_are_open)
+        {
+            self.do_close_di_cmd();
+        }
         for cls in &mut self.classes {
             cls.objects.clear();
             cls.name_to_idx.clear();
             cls.active = None;
         }
         self.active_class = None;
+        // `ActiveCktElement` is a field of `TDSSCircuit`; `Clear` destroys and
+        // recreates the circuit, so it must reset to `None` too (else a stale
+        // `(cls, idx)` from a pre-`Clear` `Select` indexes the now-emptied class
+        // objects — an OOB panic / foreign-element read in `Show Yprim`).
+        self.active_ckt_element = None;
         self.circuit = None;
+        self.dss_objs.clear();
         self.errors.clear();
         // Pascal `DoClearCmd` → `ClearAll` → recreate the default items.
         self.create_default_dss_items();
@@ -461,12 +987,89 @@ impl Dss {
                 .push(format!("Error! Object \"{obj_name}\" not found."));
             return;
         }
-        let cls = &self.classes[ci];
-        let oi = cls.active.expect("just set active");
-        if let Some(idx) = cls.props.property_index(&prop_name) {
-            self.last_result = cls
-                .props
-                .get_value(cls.objects[oi].as_ref(), idx, &self.enums);
+        let oi = self.classes[ci].active.expect("just set active");
+        if let Some(idx) = self.classes[ci].props.property_index(&prop_name) {
+            self.refresh_vterminal_if_marked(ci, oi, Some(idx));
+            self.last_result = self.classes[ci].props.get_value(
+                self.classes[ci].objects[oi].as_ref(),
+                idx,
+                &self.enums,
+            );
+        }
+    }
+
+    /// Refresh a `&self` getter's live-state dependencies before a `?`/`Dump`
+    /// property render, exactly for the properties that declare the need — the
+    /// Rust choke point for readers that Pascal backs with a live pointer the
+    /// `&self` getter can't reach across the class registry:
+    ///
+    /// 1. `cd.vterminal` from the solution when the property (`Some(idx)`) — or,
+    ///    for the whole-object `Dump`, *any* property (`None`) — is marked
+    ///    [`PropFlags::READS_VTERMINAL`]. Pascal's live-result getter reloads
+    ///    `Vterminal` from `Solution.NodeV` itself
+    ///    (`TTransfObj.GetAllWindingCurrents`, `Transformer.pas` l.1538).
+    /// 2. A RegControl's `tap_snap` from its **live** controlled transformer
+    ///    when reading `TapNum` (or the whole-object dump). Pascal `Get_TapNum`
+    ///    reads `Transformer().PresentTap[TapWinding]` live; the Rust getter
+    ///    reads a cached snapshot that a control action / direct `Taps=` edit
+    ///    leaves stale (WP8.5b).
+    pub(super) fn refresh_vterminal_if_marked(
+        &mut self,
+        ci: usize,
+        oi: usize,
+        prop_idx: Option<usize>,
+    ) {
+        use crate::obj::props::PropFlags;
+        let props = &self.classes[ci].props;
+        let marked = match prop_idx {
+            Some(i) => props.prop(i).flags.contains(PropFlags::READS_VTERMINAL),
+            None => (1..=props.num_properties())
+                .any(|i| props.prop(i).flags.contains(PropFlags::READS_VTERMINAL)),
+        };
+        if marked
+            && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
+            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
+            // Pascal reloads Vterminal INSIDE the getter, after its
+            // `if (not Enabled) or (NodeRef = NIL) or (NodeV = NIL) then Exit`
+            // guard (e.g. `TTransfObj.GetAllWindingCurrents`, Transformer.pas:1530).
+            // A DISABLED element is skipped by the re-solve's bus reprocessing, so
+            // its `node_ref` stays stale (pointing at pre-conversion node numbers);
+            // `MakePosSequence` disabling an off-phase-1 winding
+            // (`makeposseq_xfmr.dss`) is the case that exposes it. The getter itself
+            // already returns zeros for a disabled element, so mirror the guard here
+            // and skip the (unsafe, stale-`node_ref`) refresh.
+            && elem.cd().enabled
+        {
+            elem.cd_mut().compute_vterminal(&node_v);
+        }
+
+        // RegControl `TapNum` live-tap resync (see item 2 above). Gate on the
+        // TapNum property (or the whole-object dump) so a non-RegControl class,
+        // or a RegControl read of an unrelated property, does no registry walk.
+        let touches_tapnum = match prop_idx {
+            Some(i) => i == reg_control::prop::TAPNUM,
+            None => true,
+        };
+        if touches_tapnum
+            && let Some(tref) = self.classes[ci].objects[oi]
+                .as_any()
+                .downcast_ref::<reg_control::RegControl>()
+                .and_then(|rc| rc.controlled_ref())
+        {
+            let rc_ref = ElemRef { cls: ci, idx: oi };
+            let mut store = ClassStore {
+                classes: &mut self.classes,
+            };
+            let (rc_obj, tr_obj) = store.pair_mut(rc_ref, tref);
+            if let (Some(rc), Some(tr)) = (
+                rc_obj
+                    .as_any_mut()
+                    .downcast_mut::<reg_control::RegControl>(),
+                // Either member of the Transformer/AutoTrans proxy.
+                transformer::as_controlled_transformer(&*tr_obj),
+            ) {
+                rc.sync_tap_snap_from_live(tr);
+            }
         }
     }
 
@@ -476,7 +1079,49 @@ impl Dss {
     /// `ActiveCircuit.BusNameRedefined`/`Solution.SystemYChanged` directly
     /// from the property setters; nothing reads them mid-edit, so polling
     /// after the edit is equivalent).
-    fn edit_active(&mut self) {
+    pub(super) fn edit_active(&mut self) {
+        self.edit_active_inner();
+
+        // Pascal `TStorageControllerObj.RecalcElementData` ends every edit
+        // line by building the fleet and pushing the controller's rates onto
+        // it (see `storage_controller_recalc_fleet`); that needs the whole
+        // store, so it runs here, after the split-borrow edit re-assembles
+        // `self`.
+        let Some(ci) = self.active_class else { return };
+        let Some(oi) = self.classes[ci].active else {
+            return;
+        };
+        if !self.classes[ci].objects[oi]
+            .as_any()
+            .is::<crate::elements::control::storage_controller::StorageController>()
+            || self.circuit.is_none()
+        {
+            return;
+        }
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().expect("checked above");
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        crate::solution::controls::storage_controller_recalc_fleet(
+            crate::elements::traits::ElemRef { cls: ci, idx: oi },
+            ckt,
+            &mut env,
+        );
+    }
+
+    fn edit_active_inner(&mut self) {
         let Some(ci) = self.active_class else {
             self.errors
                 .push("There is no active element to edit.".to_string());
@@ -491,6 +1136,9 @@ impl Dss {
             enums,
             errors,
             current_dir,
+            output_directory,
+            last_result,
+            last_result_file,
             ..
         } = self;
         // Split the registry so the active class is borrowed mutably for the
@@ -705,25 +1353,42 @@ impl Dss {
                 .map(|ic| ic.der_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
-                let resolved: Option<&dyn DssObject> = if der_names.is_empty() {
-                    foreign
-                        .first_enabled("PVSystem")
-                        .or_else(|| foreign.first_enabled("Storage"))
-                } else {
-                    // Pascal `MonitoredElement := FDERPointerList.Get(1)` is the
-                    // first *enabled* member (MakeDERList skips disabled), so scan
-                    // the named list for the first entry resolving to an enabled DER.
-                    der_names.iter().find_map(|n| {
-                        let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
-                        foreign.find(class, name).and_then(|(_, o)| {
-                            let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                            enabled.then_some(o)
-                        })
-                    })
-                };
-                resolved
-                    .and_then(|o| o.as_ckt_element())
-                    .map(|e| (e.cd().get_bus(1).to_string(), e.cd().nphases))
+                // Pascal `MonitoredElement := FDERPointerList.Get(1)` is the
+                // first *enabled* member (the bus), but the recalc loop assigns
+                // `FNphases := ControlledElement[i].NPhases` for EVERY member —
+                // the LAST fleet member's phase count wins (InvControl.pas:916;
+                // visible with a mixed 3ph+1ph fleet, midi_invcontrol).
+                let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
+                    if der_names.is_empty() {
+                        // Empty list = every PVSystem then every Storage.
+                        (
+                            foreign
+                                .first_enabled("PVSystem")
+                                .or_else(|| foreign.first_enabled("Storage")),
+                            foreign
+                                .last_enabled("Storage")
+                                .or_else(|| foreign.last_enabled("PVSystem")),
+                        )
+                    } else {
+                        let resolve = |n: &String| {
+                            let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
+                            foreign.find(class, name).and_then(|(_, o)| {
+                                let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
+                                enabled.then_some(o)
+                            })
+                        };
+                        (
+                            der_names.iter().find_map(resolve),
+                            der_names.iter().rev().find_map(resolve),
+                        )
+                    };
+                match (
+                    first.and_then(|o| o.as_ckt_element()),
+                    last.and_then(|o| o.as_ckt_element()),
+                ) {
+                    (Some(f), Some(l)) => Some((f.cd().get_bus(1).to_string(), l.cd().nphases)),
+                    _ => None,
+                }
             };
             if let Some((bus, nphases)) = info
                 && let Some(ic) = objects[oi]
@@ -747,19 +1412,34 @@ impl Dss {
                 .map(|ec| ec.pvsystem_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
-                let resolved: Option<&dyn DssObject> = if pv_names.is_empty() {
-                    foreign.first_enabled("PVSystem")
-                } else {
-                    pv_names.iter().find_map(|n| {
-                        foreign.find("PVSystem", n).and_then(|(_, o)| {
-                            let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                            enabled.then_some(o)
-                        })
+                // Bus from the FIRST enabled member; phase count from the LAST
+                // (the Pascal recalc loop assigns FNphases per member —
+                // ExpControl.pas:408, same last-wins as InvControl).
+                let resolve = |n: &String| {
+                    foreign.find("PVSystem", n).and_then(|(_, o)| {
+                        let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
+                        enabled.then_some(o)
                     })
                 };
-                resolved
-                    .and_then(|o| o.as_ckt_element())
-                    .map(|e| (e.cd().get_bus(1).to_string(), e.cd().nphases))
+                let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
+                    if pv_names.is_empty() {
+                        (
+                            foreign.first_enabled("PVSystem"),
+                            foreign.last_enabled("PVSystem"),
+                        )
+                    } else {
+                        (
+                            pv_names.iter().find_map(resolve),
+                            pv_names.iter().rev().find_map(resolve),
+                        )
+                    };
+                match (
+                    first.and_then(|o| o.as_ckt_element()),
+                    last.and_then(|o| o.as_ckt_element()),
+                ) {
+                    (Some(f), Some(l)) => Some((f.cd().get_bus(1).to_string(), l.cd().nphases)),
+                    _ => None,
+                }
             };
             if let Some((bus, nphases)) = info
                 && let Some(ec) = objects[oi]
@@ -770,40 +1450,226 @@ impl Dss {
             }
         }
 
+        // GICsource splices itself into a Line with the SAME NAME (Pascal
+        // `RecalcElementData` runs `LineClass.Find(Name)` then inserts a
+        // `GIC_<name>` bus and rewrites the Line's Bus2). The constructor/recalc
+        // have no store access, so resolve the Line by the GICsource's own name
+        // through the foreign view here and hand it — with the Line's present
+        // Bus2 — to the source; `end_edit` → `recalc` then decides whether to
+        // splice and queues the Line Bus2 rewrite as a deferred RefAction.
+        if objects[oi].as_any().is::<gic_source::GicSource>() {
+            let name = objects[oi].data().name().to_string();
+            let resolved = foreign.find("Line", &name).and_then(|(r, o)| {
+                o.as_ckt_element()
+                    .map(|e| (r, e.cd().get_bus(2).to_string()))
+            });
+            if let Some(gs) = objects[oi]
+                .as_any_mut()
+                .downcast_mut::<gic_source::GicSource>()
+            {
+                gs.set_resolved_line(resolved);
+            }
+        }
+
         // Deferred file loads (Pascal runs `DoCSVFile` etc. in the property
         // hook, which has the DSS context; our hook cannot reach the filesystem
         // or the current directory, so it queues the request and we resolve it
         // here — before `end_edit`, so derived state like `SetMaxPandQ` sees the
-        // loaded data). Paths resolve relative to `current_dir`, like Redirect.
+        // loaded data). Paths resolve relative to `current_dir`, like Redirect;
+        // the literal `%result%` resolves to `LastResultFile` (Pascal
+        // `InterpretDblArray`, `Utilities.pas:464-465`).
+        let resolve = |filename: &str| -> std::path::PathBuf {
+            let name = if filename.eq_ignore_ascii_case("%result%") {
+                last_result_file.as_str()
+            } else {
+                filename
+            };
+            let p = std::path::Path::new(name);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                current_dir.join(name)
+            }
+        };
         let file_loads = objects[oi].take_file_loads();
         for fl in &file_loads {
-            let path = current_dir.join(&fl.filename);
-            match std::fs::read_to_string(&path) {
-                Ok(content) => objects[oi].apply_file_load(fl, &content, errors),
-                // Pascal error 613.
-                Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+            let path = resolve(&fl.filename);
+            if fl.binary {
+                match std::fs::read(&path) {
+                    Ok(bytes) => objects[oi].apply_binary_file_load(fl, &bytes, errors),
+                    // Pascal error 615/617 (SngFile/DblFile "Error opening file").
+                    Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+                }
+            } else {
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => objects[oi].apply_file_load(fl, &content, errors),
+                    // Pascal error 613/58613 (CSVFile/PQCSVFile "Error opening file").
+                    Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
+                }
             }
+        }
+
+        // WPG.19: generic file-backed numeric-array directives (`%mag=(file=…)`,
+        // `Yarray=(sngfile=…)`) queued by the generic double-array property path
+        // (Pascal `DSSObjectHelper.pas:616-636`). Read the file and apply the
+        // `InterpretDblArray` grammar (short-file shrink + `Round`/scale/non-zero)
+        // through the object's typed accessors.
+        let generic_files = objects[oi].take_generic_dbl_array_files();
+        for gf in &generic_files {
+            let path = resolve(&gf.filename);
+            match std::fs::read(&path) {
+                Ok(bytes) => apply_generic_dbl_array_file(&mut *objects[oi], gf, &bytes, errors),
+                // Pascal error 70401 (`InterpretDblArray`: "CSV file could not be
+                // opened") / 70501 / 70502.
+                Err(_) => errors.push(format!("File \"{}\" could not be opened.", gf.filename)),
+            }
+        }
+
+        // WPG.19: actions the object deferred until its file loads resolved
+        // (LoadShape `action=normalize`/`ln`; Pascal runs it inline right after
+        // the file read). Run before `end_edit` so `SetMaxPandQ` sees normalized
+        // data.
+        objects[oi].run_deferred_actions(errors);
+
+        // Deferred binary shape saves (LoadShape/TShape/PriceShape
+        // `Action=SngSave/DblSave`): the `Action` property hook cannot reach
+        // `OutputDirectory`/`GlobalResult`, so it queued the write (Pascal
+        // `SaveToDblFile`/`SaveToSngFile`). Perform it now, after `output_directory`
+        // is reachable. Writes are pure little-endian IEEE-754 streams into the
+        // output directory, exactly like Pascal `GetOutputStreamEx(FName, fmCreate)`.
+        let shape_saves = objects[oi].take_shape_saves();
+        for ss in &shape_saves {
+            write_shape_save(output_directory, last_result, ss, errors);
         }
 
         objects[oi].end_edit();
 
-        // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
-        // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
-        let deferred = objects[oi].data_mut().take_errors();
-        errors.extend(deferred);
+        // The post-`end_edit` signal tail (deferred errors/abort, circuit
+        // signal-flag propagation, deferred ref-actions). Shared verbatim with
+        // the MakePosSequence applier (`exec/make_pos_seq.rs`), which replays
+        // the identical property mutations through the typed setters. The split
+        // active-class borrows above are dead by here (last used at `end_edit`),
+        // so the full `classes` slice is free for the ref-action targets.
+        apply_edit_signal_tail(classes, circuit, errors, ci, oi);
+    }
+}
 
-        // Deferred cross-element writes (Pascal pokes the target through a
-        // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
-        // PresentTap; nothing reads the target in between, so applying after
-        // the edit is equivalent). Collected before the flag propagation so
-        // the active-class borrows can end before `classes` is re-borrowed.
-        let ref_actions = objects[oi].take_ref_actions();
+/// The tail every property edit runs after `EndEdit` (Pascal: the property
+/// setters write `ActiveCircuit.BusNameRedefined`/`Solution.SystemYChanged`
+/// immediately; here they queue signal flags drained once the edit finishes).
+/// Factored out of [`Dss::edit_active_inner`] so the MakePosSequence applier
+/// (`exec/make_pos_seq.rs`) runs the byte-identical tail after replaying an
+/// element's [`PosSeqPlan`] — no duplicated logic. `ci`/`oi` name the class /
+/// object just edited; `classes` is the full registry (for ref-action targets).
+pub(super) fn apply_edit_signal_tail(
+    classes: &mut [DssClass],
+    circuit: &mut Option<Circuit>,
+    errors: &mut Vec<String>,
+    ci: usize,
+    oi: usize,
+) {
+    // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
+    // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
+    let deferred = classes[ci].objects[oi].data_mut().take_errors();
+    errors.extend(deferred);
 
-        // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
-        // circuit globals immediately; `Set_YprimInvalid` raises
-        // `SystemYChanged` for enabled elements).
+    // A `DoErrorMsg`-class deferred message (e.g. Relay error 384, a
+    // monitored terminal out of range) sets `DSS.SolutionAbort := True` in
+    // Pascal; lift that request into the solution so the next solve halts.
+    // `take_abort` always runs (clears the per-object flag); `DoSimpleMsg`
+    // messages (errors 385/386) never set it.
+    if classes[ci].objects[oi].data_mut().take_abort()
+        && let Some(ckt) = circuit.as_mut()
+    {
+        ckt.solution.solution_abort = true;
+    }
+
+    // Deferred cross-element writes (Pascal pokes the target through a
+    // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
+    // PresentTap; nothing reads the target in between, so applying after
+    // the edit is equivalent).
+    let ref_actions = classes[ci].objects[oi].take_ref_actions();
+
+    // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
+    // circuit globals immediately; `Set_YprimInvalid` raises
+    // `SystemYChanged` for enabled elements).
+    if let Some(ckt) = circuit.as_mut()
+        && let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut()
+    {
+        let cd = elem.cd_mut();
+        if cd.signal_bus_name_redefined {
+            cd.signal_bus_name_redefined = false;
+            ckt.set_bus_name_redefined(true);
+        }
+        if cd.yprim_invalid && cd.enabled {
+            ckt.solution.system_y_changed = true;
+        }
+        if cd.signal_reset_solution_initialized {
+            cd.signal_reset_solution_initialized = false;
+            ckt.solution.solution_initialized = false;
+        }
+    }
+
+    for action in &ref_actions {
+        let target = action.target();
+        let tgt = &mut classes[target.cls].objects[target.idx];
+        // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
+        // CktElement base (any switched element), so they are applied here
+        // rather than through the per-class `apply_ref_action`; the
+        // transformer-tap variant stays class-specific.
+        match action {
+            crate::obj::base::RefAction::SetSwitchClosed {
+                terminal, closed, ..
+            } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    elem.cd_mut().set_terminal_closed(*terminal, *closed);
+                }
+            }
+            crate::obj::base::RefAction::SetConductorsClosed {
+                terminal, closed, ..
+            } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    let cd = elem.cd_mut();
+                    for (i, &c) in closed.iter().enumerate() {
+                        cd.set_conductor_closed(*terminal, i + 1, c);
+                    }
+                }
+            }
+            // GICsource splice: rewrite the spliced Line's Bus2 to the
+            // inserted GIC_<name> bus (Pascal drives it through the Line's
+            // property path; the Bus2 side effect is a plain rename).
+            crate::obj::base::RefAction::SetElementBus { terminal, bus, .. } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    elem.cd_mut().set_bus(*terminal, bus);
+                }
+            }
+            // OCP-device flags for the reliability sweep (Pascal
+            // `Include(ControlledElement.Flags, Flg.HasOCPDevice)` in the
+            // control's RecalcElementData). The first OCP control registered
+            // wins the `GetOCPDeviceType` ordinal, mirroring the Pascal scan
+            // that stops at the first Fuse/Recloser/Relay in the list.
+            crate::obj::base::RefAction::SetOcpDevice {
+                device_type, auto, ..
+            } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    let cd = elem.cd_mut();
+                    cd.flags
+                        .include(crate::elements::ckt::ElemFlags::HAS_OCP_DEVICE);
+                    if *auto {
+                        cd.flags
+                            .include(crate::elements::ckt::ElemFlags::HAS_AUTO_OCP_DEVICE);
+                    }
+                    if cd.ocp_device_type == 0 {
+                        cd.ocp_device_type = *device_type;
+                    }
+                }
+            }
+            _ => tgt.apply_ref_action(action),
+        }
+        // Propagate the target's flags too (a tap change invalidates the
+        // transformer's Yprim exactly like a direct `Tap=` edit).
         if let Some(ckt) = circuit.as_mut()
-            && let Some(elem) = objects[oi].as_ckt_element_mut()
+            && let Some(elem) = tgt.as_ckt_element_mut()
         {
             let cd = elem.cd_mut();
             if cd.signal_bus_name_redefined {
@@ -813,74 +1679,129 @@ impl Dss {
             if cd.yprim_invalid && cd.enabled {
                 ckt.solution.system_y_changed = true;
             }
-            if cd.signal_reset_solution_initialized {
-                cd.signal_reset_solution_initialized = false;
-                ckt.solution.solution_initialized = false;
-            }
-        }
-
-        for action in &ref_actions {
-            let target = action.target();
-            let tgt = &mut classes[target.cls].objects[target.idx];
-            // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
-            // CktElement base (any switched element), so they are applied here
-            // rather than through the per-class `apply_ref_action`; the
-            // transformer-tap variant stays class-specific.
-            match action {
-                crate::obj::base::RefAction::SetSwitchClosed {
-                    terminal, closed, ..
-                } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        elem.cd_mut().set_terminal_closed(*terminal, *closed);
-                    }
-                }
-                crate::obj::base::RefAction::SetConductorsClosed {
-                    terminal, closed, ..
-                } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        let cd = elem.cd_mut();
-                        for (i, &c) in closed.iter().enumerate() {
-                            cd.set_conductor_closed(*terminal, i + 1, c);
-                        }
-                    }
-                }
-                // OCP-device flags for the reliability sweep (Pascal
-                // `Include(ControlledElement.Flags, Flg.HasOCPDevice)` in the
-                // control's RecalcElementData). The first OCP control registered
-                // wins the `GetOCPDeviceType` ordinal, mirroring the Pascal scan
-                // that stops at the first Fuse/Recloser/Relay in the list.
-                crate::obj::base::RefAction::SetOcpDevice {
-                    device_type, auto, ..
-                } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        let cd = elem.cd_mut();
-                        cd.flags
-                            .include(crate::elements::ckt::ElemFlags::HAS_OCP_DEVICE);
-                        if *auto {
-                            cd.flags
-                                .include(crate::elements::ckt::ElemFlags::HAS_AUTO_OCP_DEVICE);
-                        }
-                        if cd.ocp_device_type == 0 {
-                            cd.ocp_device_type = *device_type;
-                        }
-                    }
-                }
-                _ => tgt.apply_ref_action(action),
-            }
-            // Propagate the target's flags too (a tap change invalidates the
-            // transformer's Yprim exactly like a direct `Tap=` edit).
-            if let Some(ckt) = circuit.as_mut()
-                && let Some(elem) = tgt.as_ckt_element_mut()
-            {
-                let cd = elem.cd_mut();
-                if cd.signal_bus_name_redefined {
-                    cd.signal_bus_name_redefined = false;
-                    ckt.set_bus_name_redefined(true);
-                }
-                if cd.yprim_invalid && cd.enabled {
-                    ckt.solution.system_y_changed = true;
-                }
-            }
         }
     }
+}
+
+/// Apply a resolved generic file-backed numeric-array directive (WPG.19, Pascal
+/// `DSSObjectHelper.pas:616-636`): read the file with the `InterpretDblArray`
+/// grammar (short-file shrink), then re-apply `Round`/scale/non-zero exactly like
+/// the inline list path (`parse.rs`), and write the array + shrunk count through
+/// the object's typed accessors. The read is capped at the current count
+/// property so Pascal's in-place shrink of one array is visible to a later one
+/// (e.g. `%mag` shrinking `NumHarm` before `angle` reads).
+fn apply_generic_dbl_array_file(
+    obj: &mut dyn crate::obj::base::DssObject,
+    gf: &crate::obj::base::GenericDblArrayFile,
+    bytes: &[u8],
+    errors: &mut Vec<String>,
+) {
+    use crate::obj::base::MmfKind;
+    let max = obj.get_i32(gf.size_prop).max(0) as usize;
+    let mut vals = match gf.kind {
+        MmfKind::Text => {
+            let content = String::from_utf8_lossy(bytes);
+            let (vals, err_row) =
+                crate::util::read_dbl_array_text(&content, gf.column, gf.header, max);
+            if let Some(row) = err_row {
+                // Pascal `DoSimpleMsg(#705)` then stop-and-shrink
+                // (`Utilities.pas:515-521`); `vals` already holds only `i-1`.
+                errors.push(format!(
+                    "{}: (#705) Error reading {row}-th numeric array value from file.",
+                    obj.data().name()
+                ));
+            }
+            vals
+        }
+        MmfKind::Float32 => crate::util::read_le_f32_array(bytes, max),
+        MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),
+    };
+    if gf.apply_round {
+        // TODO(compat): FPC `Round` ties-to-even (see the inline list path in
+        // `class_props/parse.rs`); array magnitudes are always in Int64 range.
+        for v in &mut vals {
+            *v = v.round_ties_even();
+        }
+    }
+    if gf.non_zero && vals.contains(&0.0) {
+        errors.push(format!(
+            "{}: file-backed array elements cannot be zero.",
+            obj.data().name()
+        ));
+        return;
+    }
+    if gf.scale != 1.0 {
+        for v in &mut vals {
+            *v *= gf.scale;
+        }
+    }
+    let count = vals.len() as i32;
+    obj.set_f64_array(gf.prop, vals);
+    // Pascal `integerPtr^ := InterpretDblArray(...)`: shrink the count property to
+    // the number of values read.
+    obj.set_i32(gf.size_prop, count);
+}
+
+/// Write a queued [`ShapeSave`] to `OutputDirectory` and set `GlobalResult`
+/// (Pascal `TLoadShapeObj.SaveToDblFile`/`SaveToSngFile` and the TShape/
+/// PriceShape equivalents). The P/value file is always written; the Q file only
+/// when the shape carries a Q series (`if Assigned(dQ)`). Filenames follow the
+/// class convention: LoadShape splits `<name>_P`/`<name>_Q`, TShape/PriceShape
+/// use the bare `<name>`. The streams are raw little-endian IEEE-754.
+fn write_shape_save(
+    output_directory: &Path,
+    last_result: &mut String,
+    ss: &crate::obj::base::ShapeSave,
+    errors: &mut Vec<String>,
+) {
+    let ext = if ss.sng { "sng" } else { "dbl" };
+    let ftag = if ss.sng { "sngfile" } else { "dblfile" };
+
+    let p_name = if ss.p_suffix {
+        format!("{}_P.{ext}", ss.name)
+    } else {
+        format!("{}.{ext}", ss.name)
+    };
+    let p_path = output_directory.join(&p_name);
+    if let Err(e) = std::fs::write(&p_path, encode_shape_bytes(&ss.values, ss.sng)) {
+        errors.push(format!(
+            "Error writing file: \"{}\" ({e})",
+            p_path.display()
+        ));
+        return;
+    }
+    // Pascal `DSS.GlobalResult := '<tag>=[<ftag>=' + FName + ']'`.
+    *last_result = format!("{}=[{ftag}={}]", ss.result_tag, p_path.display());
+
+    // Q file (LoadShape only, and only when `dQ` is assigned).
+    if let Some(q) = &ss.q_values {
+        let q_path = output_directory.join(format!("{}_Q.{ext}", ss.name));
+        if let Err(e) = std::fs::write(&q_path, encode_shape_bytes(q, ss.sng)) {
+            errors.push(format!(
+                "Error writing file: \"{}\" ({e})",
+                q_path.display()
+            ));
+            return;
+        }
+        // Pascal `AppendGlobalResult(DSS, ' Qmult=[<ftag>=' + FName + ']')` —
+        // `AppendGlobalResult` (`DSSGlobals.pas:452-459`) joins a non-empty
+        // result with `', '`, and the appended clause itself starts with a
+        // space, so the oracle emits `],  Qmult=[` (comma + TWO spaces; audit
+        // settlement, oracle-probed).
+        last_result.push_str(&format!(",  Qmult=[{ftag}={}]", q_path.display()));
+    }
+}
+
+/// Serialize a shape series to a raw little-endian byte stream: f32 for `sng`,
+/// f64 otherwise (Pascal `F.Write(Single/Double)`).
+fn encode_shape_bytes(values: &[f64], sng: bool) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len() * if sng { 4 } else { 8 });
+    for &v in values {
+        if sng {
+            bytes.extend_from_slice(&(v as f32).to_le_bytes());
+        } else {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    bytes
 }

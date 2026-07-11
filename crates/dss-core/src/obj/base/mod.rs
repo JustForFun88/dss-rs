@@ -26,6 +26,34 @@ pub struct DssObjData {
     /// engine error sink). The executive drains these right after the edit
     /// loop, so the message ordering within a command is preserved.
     deferred_errors: Vec<String>,
+    /// Set alongside a deferred message emitted via [`Self::push_error_abort`]
+    /// (the Pascal `DoErrorMsg` path, which sets `DSS.SolutionAbort := True` —
+    /// `DSSGlobals.pas:265`), as opposed to [`Self::push_error`] (the
+    /// `DoSimpleMsg` path, record-only). The executive lifts it into
+    /// `Solution.SolutionAbort` when it drains the deferred messages.
+    deferred_abort: bool,
+    /// Pascal `Flg.HasBeenSaved`: set by `WriteDSSObject` when the Save
+    /// serializer writes this object out, so a later `WriteClassFile` in the
+    /// same session skips it. Persists across `Save` commands exactly like the
+    /// Pascal flag (probe-proven 2026-07-07: a second `save load` writes 0
+    /// records and deletes the file); only `Circuit.Save` clears them all
+    /// (WP8.5 step 5).
+    has_been_saved: bool,
+    /// `TNamedObject.pUuid` (`NamedObject.pas`): the lazily-created UUID slot —
+    /// `Get_UUID` makes a **random v4** on first read; the `Uuids` command
+    /// preloads it. `MakeLike` does not copy it (Pascal copies fields, not
+    /// `pUuid`), and our class `make_like` impls never touch `DssObjData`.
+    uuid: Option<crate::cim::Uuid>,
+    /// WPG.19 — generic file-backed numeric-array directives (`%mag=(file=…)`,
+    /// `Yarray=(sngfile=…)`, …) queued by the generic `DoubleArray` property
+    /// path for any class (Pascal `DSSObjectHelper.pas:616-636` routes every
+    /// double-array property through `InterpretDblArray`). Drained by the
+    /// default [`DssObject::take_generic_dbl_array_files`] — read through
+    /// `data_mut()`, so it works for every class regardless of whether it
+    /// overrides the LoadShape-style [`DssObject::take_file_loads`]. LoadShape's
+    /// own `Mult`/`Hour`/`QMult` file directives never reach here (they are
+    /// intercepted by `set_f64_array_raw` and queued as [`FileLoad`]s instead).
+    pending_dbl_array_files: Vec<GenericDblArrayFile>,
 }
 
 impl DssObjData {
@@ -34,7 +62,45 @@ impl DssObjData {
             name: name.into(),
             prp_sequence: vec![0; num_props + 1],
             deferred_errors: Vec::new(),
+            deferred_abort: false,
+            has_been_saved: false,
+            uuid: None,
+            pending_dbl_array_files: Vec::new(),
         }
+    }
+
+    /// Queue a generic file-backed numeric-array directive (WPG.19). The
+    /// executive drains it after the edit (it has the filesystem +
+    /// `LastResultFile`) and applies the read via the object's typed accessors.
+    pub fn queue_dbl_array_file(&mut self, f: GenericDblArrayFile) {
+        self.pending_dbl_array_files.push(f);
+    }
+
+    /// Drain the queued generic double-array file directives.
+    pub fn take_dbl_array_files(&mut self) -> Vec<GenericDblArrayFile> {
+        std::mem::take(&mut self.pending_dbl_array_files)
+    }
+
+    /// Pascal `Flg.HasBeenSaved in obj.Flags` (the `WriteClassFile` skip).
+    pub fn has_been_saved(&self) -> bool {
+        self.has_been_saved
+    }
+
+    /// Pascal `Include(obj.Flags, Flg.HasBeenSaved)` / the `Circuit.Save`
+    /// `Exclude` reset (WP8.5 step 5).
+    pub fn set_has_been_saved(&mut self, saved: bool) {
+        self.has_been_saved = saved;
+    }
+
+    /// Pascal `TNamedObject.Get_UUID` (`NamedObject.pas:47-52`): return the
+    /// object's UUID, creating a random v4 on first read.
+    pub fn uuid(&mut self) -> crate::cim::Uuid {
+        crate::cim::get_or_create_uuid(&mut self.uuid)
+    }
+
+    /// Pascal `TNamedObject.Set_UUID` (the `Uuids` command's re-assignment).
+    pub fn set_uuid(&mut self, uuid: crate::cim::Uuid) {
+        self.uuid = Some(uuid);
     }
 
     /// Queue a `DoSimpleMsg`-style message from inside a property hook; the
@@ -43,9 +109,26 @@ impl DssObjData {
         self.deferred_errors.push(msg.into());
     }
 
+    /// Queue a `DoErrorMsg`-style message: record it like [`Self::push_error`]
+    /// **and** request a solution abort (Pascal `DoErrorMsg` sets
+    /// `DSS.SolutionAbort := True`, `DSSGlobals.pas:265`; `DoSimpleMsg` does
+    /// not). The executive lifts the flag via [`Self::take_abort`] when it
+    /// drains the deferred messages after the edit.
+    pub fn push_error_abort(&mut self, msg: impl Into<String>) {
+        self.deferred_errors.push(msg.into());
+        self.deferred_abort = true;
+    }
+
     /// Drain the queued messages (Pascal would have already logged them).
     pub fn take_errors(&mut self) -> Vec<String> {
         std::mem::take(&mut self.deferred_errors)
+    }
+
+    /// Take (and clear) the `DoErrorMsg` solution-abort request queued by
+    /// [`Self::push_error_abort`] — the executive lifts it into
+    /// `Solution.SolutionAbort` right after draining [`Self::take_errors`].
+    pub fn take_abort(&mut self) -> bool {
+        std::mem::take(&mut self.deferred_abort)
     }
 
     pub fn name(&self) -> &str {
@@ -161,6 +244,17 @@ pub enum RefAction {
         device_type: i32,
         auto: bool,
     },
+    /// GICsource `RecalcElementData` (GICsource.pas:350): rewrite the spliced
+    /// Line's `Bus2` to the inserted `GIC_<name>` bus. Pascal pokes the target
+    /// Line through `ParsePropertyValue(TLineProp.Bus2, GICBus)`; the Line's
+    /// `Bus2` side effect is inert (a plain bus rename), so this applies the bus
+    /// name generically through the target's
+    /// [`CktElement`](crate::elements::traits::CktElement) base.
+    SetElementBus {
+        target: crate::elements::traits::ElemRef,
+        terminal: usize,
+        bus: String,
+    },
 }
 
 impl RefAction {
@@ -171,6 +265,7 @@ impl RefAction {
             RefAction::SetSwitchClosed { target, .. } => *target,
             RefAction::SetConductorsClosed { target, .. } => *target,
             RefAction::SetOcpDevice { target, .. } => *target,
+            RefAction::SetElementBus { target, .. } => *target,
         }
     }
 }
@@ -179,10 +274,19 @@ impl RefAction {
 /// (e.g. a LoadShape `CSVFile`). The setter cannot reach the filesystem or the
 /// script's current directory, so it records the request; the executive
 /// resolves the path (relative to `current_dir`, like `Redirect`), reads the
-/// file, and hands the contents back via [`DssObject::apply_file_load`]. The
-/// object then parses the text with its own format rules. Nothing reads the
-/// object's data between the property set and the load, so the deferral is
-/// unobservable (the load still completes before `EndEdit`).
+/// file, and hands the contents back via [`DssObject::apply_file_load`] (text)
+/// or [`DssObject::apply_binary_file_load`] (raw bytes, `binary: true` — the
+/// `SngFile`/`DblFile` little-endian f32/f64 streams, WPG.1). The object then
+/// parses the content with its own format rules. Nothing reads the object's
+/// data between the property set and the load, so the deferral is
+/// unobservable (the load still completes before `EndEdit`) — with one
+/// documented limitation (audit Question, 2026-07-09, accepted): Pascal runs
+/// the file read *inline at its property position*, so a single command that
+/// sets a file prop AND a later array prop touching the same arrays (e.g.
+/// `csvfile=f yarray=(…)`) finishes with the file values overwritten by the
+/// array on Pascal but the array overwritten by the deferred file read here.
+/// No corpus deck combines the two in one command; the common orders (file
+/// prop alone / after `npts`) are identical on both engines.
 #[derive(Debug, Clone)]
 pub struct FileLoad {
     /// The 1-based property index that requested the load, so the object knows
@@ -191,6 +295,181 @@ pub struct FileLoad {
     pub prop: usize,
     /// The filename exactly as written in the script (unresolved).
     pub filename: String,
+    /// `true` for a raw byte read (`SngFile`/`DblFile`, dispatched to
+    /// [`DssObject::apply_binary_file_load`]); `false` for a line-oriented text
+    /// read (`CSVFile`/`PQCSVFile`, dispatched to [`DssObject::apply_file_load`]).
+    pub binary: bool,
+    /// When `Some`, this is a raw memory-mapped array directive from a
+    /// `mult=(sngfile=…)` / `qmult=(file=…)` command (LoadShape `CustomSetRaw`
+    /// under `MemoryMapping=Yes`, `LoadShape.pas:756-800`). The file kind /
+    /// column / P-vs-Q side are not encoded by [`Self::prop`] there, so they
+    /// travel here. Always read as bytes (`binary = true`); text kinds decode
+    /// per line. `None` for the ordinary file-property loads
+    /// (`SngFile`/`DblFile`/`CSVFile`/`PQCSVFile`), whose MMF handling the
+    /// readers key off `prop` + the object's `use_mmf` flag.
+    pub mmf: Option<MmfLoad>,
+    /// When `Some`, this is a non-memory-mapped `InterpretDblArray` directive
+    /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)` WITHOUT
+    /// `MemoryMapping=Yes`, WPG.19) queued by LoadShape `CustomSetRaw`
+    /// (`LoadShape.pas:746-811`). The kind / column / header / P-Q-Hour target
+    /// travel here; the reader runs the `Utilities.pas` file grammar.
+    pub interp: Option<InterpLoad>,
+}
+
+/// The three memory-mapped LoadShape file kinds (Pascal `TLSFileType`,
+/// `LoadShape.pas:126`): plain-text CSV/txt, little-endian `f64`, `f32`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MmfKind {
+    /// `file=` — ANSI text, one record per fixed-width line.
+    Text,
+    /// `dblfile=` — little-endian `f64` stream.
+    Float64,
+    /// `sngfile=` — little-endian `f32` stream (widened to `f64`).
+    Float32,
+}
+
+/// Metadata for a raw MMF array directive (see [`FileLoad::mmf`]).
+#[derive(Debug, Clone)]
+pub struct MmfLoad {
+    /// The record kind parsed from the directive's first token.
+    pub kind: MmfKind,
+    /// 1-based comma-delimited column for [`MmfKind::Text`] (`file=… column=N`).
+    pub column: i32,
+    /// `true` when the directive came from `qmult=` (store into `dQ`), else `dP`.
+    pub qside: bool,
+}
+
+/// Which LoadShape array a non-MM `InterpretDblArray` directive targets
+/// (Pascal `CustomSetRaw`, `LoadShape.pas:749/772/784`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterpTarget {
+    /// `mult`/`Pmult` → `dP`; a short file **shrinks** `NumPoints`
+    /// (`NumPoints := InterpretDblArray(...)`, `:770`).
+    PMult,
+    /// `qmult` → `dQ`; a short file does **not** shrink `NumPoints` (the return
+    /// is ignored, `:806`).
+    QMult,
+    /// `hour` → `dH`; a short file does **not** shrink `NumPoints` (`:781`).
+    Hour,
+}
+
+/// Metadata for a non-memory-mapped `InterpretDblArray` LoadShape array
+/// directive (see [`FileLoad::interp`], WPG.19).
+#[derive(Debug, Clone)]
+pub struct InterpLoad {
+    /// `file=`/`sngfile=`/`dblfile=` record kind.
+    pub kind: MmfKind,
+    /// 1-based comma/space column ([`MmfKind::Text`] only).
+    pub column: i32,
+    /// Skip one header line ([`MmfKind::Text`] `header=yes` only).
+    pub header: bool,
+    /// The destination array.
+    pub target: InterpTarget,
+}
+
+/// A generic file-backed numeric-array directive queued by the generic
+/// `DoubleArray` property path (WPG.19, Pascal `DSSObjectHelper.pas:616-636`).
+/// The executive reads the file and applies it via the object's typed accessors
+/// ([`DssObject::set_f64_array`] + a `set_i32(size_prop, count)` shrink), then
+/// re-applies `Round`/scale/non-zero exactly like the inline list path.
+#[derive(Debug, Clone)]
+pub struct GenericDblArrayFile {
+    /// The array property being written.
+    pub prop: usize,
+    /// The count property (`integerPtr^`) shrunk to the number of values read
+    /// (Pascal `integerPtr^ := InterpretDblArray(...)`).
+    pub size_prop: usize,
+    /// `file=`/`sngfile=`/`dblfile=` record kind.
+    pub kind: MmfKind,
+    /// The filename exactly as written (may be `%result%`).
+    pub filename: String,
+    /// 1-based column ([`MmfKind::Text`] only).
+    pub column: i32,
+    /// Skip one header line ([`MmfKind::Text`] `header=yes` only).
+    pub header: bool,
+    /// Pascal `TPropertyFlag.ApplyRound` — round each value after reading.
+    pub apply_round: bool,
+    /// Pascal per-property scale (`PropertyScale`), applied after reading.
+    pub scale: f64,
+    /// Pascal `TPropertyFlag.NonPositive`-style guard — reject a zero element.
+    pub non_zero: bool,
+}
+
+impl FileLoad {
+    /// A text (line-oriented, e.g. `CSVFile`) deferred load.
+    pub fn text(prop: usize, filename: impl Into<String>) -> Self {
+        Self {
+            prop,
+            filename: filename.into(),
+            binary: false,
+            mmf: None,
+            interp: None,
+        }
+    }
+    /// A binary (raw byte stream, `SngFile`/`DblFile`) deferred load.
+    pub fn binary(prop: usize, filename: impl Into<String>) -> Self {
+        Self {
+            prop,
+            filename: filename.into(),
+            binary: true,
+            mmf: None,
+            interp: None,
+        }
+    }
+    /// A raw memory-mapped array directive (`mult=(sngfile=…)`) load; always
+    /// read as bytes and dispatched to [`DssObject::apply_binary_file_load`].
+    pub fn mmf_raw(prop: usize, filename: impl Into<String>, mmf: MmfLoad) -> Self {
+        Self {
+            prop,
+            filename: filename.into(),
+            binary: true,
+            mmf: Some(mmf),
+            interp: None,
+        }
+    }
+    /// A non-memory-mapped `InterpretDblArray` LoadShape directive
+    /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)`, WPG.19). Text
+    /// kinds read line-oriented ([`DssObject::apply_file_load`]); binary kinds
+    /// read raw bytes ([`DssObject::apply_binary_file_load`]).
+    pub fn interp(prop: usize, filename: impl Into<String>, interp: InterpLoad) -> Self {
+        let binary = interp.kind != MmfKind::Text;
+        Self {
+            prop,
+            filename: filename.into(),
+            binary,
+            mmf: None,
+            interp: Some(interp),
+        }
+    }
+}
+
+/// A queued binary shape-save action — the `SngSave`/`DblSave` `Action` of
+/// LoadShape and its TShape/PriceShape siblings (Pascal `SaveToDblFile` /
+/// `SaveToSngFile`, `LoadShape.pas:1880/1939`, `TempShape.pas:528/548`,
+/// `PriceShape.pas:547/568`). Like [`FileLoad`], the `do_action` property hook
+/// runs inside the parse loop with no reach to `OutputDirectory` or
+/// `GlobalResult`, so it snapshots what to write and defers the write to the
+/// executive ([`DssObject::take_shape_saves`], drained in `edit_active`).
+#[derive(Debug, Clone)]
+pub struct ShapeSave {
+    /// Filename stem — the object's lowercased `Name` (Pascal `Format('%s…',
+    /// [Name])`; DSS lowercases `Name` in the constructor, so both engines agree).
+    pub name: String,
+    /// `true` → single precision, `.sng` (`SaveToSngFile`); `false` → double,
+    /// `.dbl` (`SaveToDblFile`).
+    pub sng: bool,
+    /// The P/value series (already widened to f64 by `UseFloat64`), written
+    /// little-endian in `0..NumPoints` order.
+    pub values: Vec<f64>,
+    /// The Q series — LoadShape only, and only when `qmult`/`dQ` is defined
+    /// (`if Assigned(dQ)`); `None` ⇒ no Q file and no ` Qmult=` result clause.
+    pub q_values: Option<Vec<f64>>,
+    /// LoadShape splits into `<name>_P`/`<name>_Q`; TShape/PriceShape write the
+    /// bare `<name>`. `true` ⇒ the `_P`/`_Q` split.
+    pub p_suffix: bool,
+    /// The `GlobalResult` tag word: `mult` (LoadShape), `Temp` (TShape),
+    /// `Price` (PriceShape).
+    pub result_tag: &'static str,
 }
 
 /// The typed field accessors the property engine calls, keyed by the 1-based
@@ -252,6 +531,27 @@ pub trait DssObject {
     }
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         unreachable!("set_f64_array not implemented for property {idx}")
+    }
+
+    /// Pascal per-class `CustomSetRaw` hook for a `DoubleArray` property: given
+    /// the raw property value *before* numeric parsing, the object may consume
+    /// it directly and return `true` to skip [`Self::set_f64_array`] +
+    /// `ParseAsVector`. Only LoadShape overrides it — to intercept the
+    /// `mult=(sngfile=…)` / `file=…` / `dblfile=…` file directives that the
+    /// numeric parser cannot read (`LoadShape.pas:746-811`). Default: `false`
+    /// (the value flows to the normal numeric path unchanged).
+    fn set_f64_array_raw(&mut self, idx: usize, raw: &str) -> bool {
+        let _ = (idx, raw);
+        false
+    }
+
+    /// Pascal `GetPropertyValue` override for a `DoubleArray` property: when
+    /// the array is backed by a memory-mapped file, the dump is the original
+    /// directive `(<mmFileCmd>)`, not the numeric values (`LoadShape.pas:1846-
+    /// 1867`). `None` renders the normal numeric array. Only LoadShape overrides.
+    fn f64_array_dump_override(&self, idx: usize) -> Option<String> {
+        let _ = idx;
+        None
     }
     /// `IntegerArrayProperty` read (e.g. a capacitor `States`); `None` mirrors a
     /// NIL Pascal array pointer (dumps as an empty string).
@@ -500,10 +800,45 @@ pub trait DssObject {
         Vec::new()
     }
 
+    /// Drain the [`ShapeSave`]s queued by a `SngSave`/`DblSave` action during the
+    /// last edit. The executive writes each to `OutputDirectory` and sets
+    /// `GlobalResult`. Default empty.
+    fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
+        Vec::new()
+    }
+
+    /// Drain the generic file-backed numeric-array directives (WPG.19) queued on
+    /// this object's [`DssObjData`]. Read through `data_mut()`, so the default
+    /// works for every class — even the shape classes that override
+    /// [`Self::take_file_loads`] for their own file properties.
+    fn take_generic_dbl_array_files(&mut self) -> Vec<GenericDblArrayFile> {
+        self.data_mut().take_dbl_array_files()
+    }
+
+    /// Run any actions the object deferred until after its file loads resolved
+    /// (WPG.19: LoadShape `action=normalize`/`ln`, which must see the file data —
+    /// Pascal reads the file *inline* at the `mult=` position, so `Normalize`
+    /// naturally follows; our deferred read makes it run here instead). Called by
+    /// the executive after the file loads and before `end_edit`. Default: no-op.
+    fn run_deferred_actions(&mut self, errors: &mut Vec<String>) {
+        let _ = errors;
+    }
+
     /// Apply a resolved file's full contents to this object (the data side of a
     /// queued [`FileLoad`]). The object parses `content` per its own format.
     /// Default: ignore.
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, errors: &mut Vec<String>) {
+        let _ = (load, content, errors);
+    }
+
+    /// The binary counterpart of [`Self::apply_file_load`] for a `FileLoad`
+    /// with `binary: true` (`SngFile`/`DblFile`). Default: ignore.
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        errors: &mut Vec<String>,
+    ) {
         let _ = (load, content, errors);
     }
 

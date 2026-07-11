@@ -1,0 +1,22 @@
+! GAPS deck: XYcurve CSVFile/SngFile/DblFile file-input props (WPG.17) — the
+! three file readers, each feeding a Reactor RCurve/LCurve. The curves only bite
+! in the harmonic CalcYPrim rebuild, so the gate is a harmonics solve: the two
+! monitors capture per-harmonic voltages/currents through the reactors, proving
+! all three files loaded the intended curve values.
+Clear
+New Circuit.gaps_xyf basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New XYcurve.rc_csv npts=4 csvfile=rc.csv
+New XYcurve.lc_sng npts=4 sngfile=lc.sng
+New XYcurve.rc_dbl npts=4 dblfile=rc2.dbl
+New Spectrum.h5 numharm=3 harmonic=(1 5 7) %mag=(100 8 5) angle=(0 0 0)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Reactor.rx1 bus1=b1 bus2=b2 phases=3 r=0.5 x=6.0 rcurve=rc_csv lcurve=lc_sng
+New Reactor.rx2 bus1=b2 bus2=b3 phases=3 r=0.5 x=6.0 rcurve=rc_dbl
+New Load.ld1 bus1=b3 phases=3 kv=12.47 kw=600 pf=0.92 model=1 spectrum=h5
+New Monitor.m_rx1 element=Reactor.rx1 terminal=1 mode=0
+New Monitor.m_rx2 element=Reactor.rx2 terminal=1 mode=0
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve
+Set mode=harmonics
+Solve

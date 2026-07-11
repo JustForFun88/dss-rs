@@ -1,0 +1,33 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the KeepList guard
+// (`Set KeepList=(...)` -> DoKeeperBusList, ExecHelper.pas:2035 ->
+// Bus.Keep). Same chain as reduce_default but WITHOUT the capacitor:
+// b2 is on the KeepList so the l1+l2 merge is blocked
+// (DoReduceDefault:358 `not Buses[ToBusReference].Keep`); b3 is not
+// kept, so l2+l3 merge and b3 is eliminated.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrk basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km
+new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km
+new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.7 units=km
+
+new load.ld4 bus1=b4 phases=3 conn=wye model=1 kv=12.47 kw=600 pf=0.92
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set keeplist=(b2)
+set reduceoption=default
+reduce
+solve

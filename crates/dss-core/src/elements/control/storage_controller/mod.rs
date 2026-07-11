@@ -22,12 +22,16 @@
 //! `SetFleetToExternal` + `SetAllFleetValues` that Pascal runs in
 //! `RecalcElementData` after the fleet build are deferred to that first build.
 //!
+//! The seasonal dynamic target (`Get_DynamicTarget`, `DSS.SeasonalRating` /
+//! `DSS.SeasonSignal` — `Set SeasonRating=`/`Set SeasonSignal=`, GAPS_PLAN
+//! WPG.11) is ported: [`StorageController::get_dynamic_target`] (`compute.rs`)
+//! + the [`StorageDispatchEnv::season_rating`]/[`StorageDispatchEnv::
+//! season_rating_idx`] call-site guards.
+//!
+//! `MakePosSequence` is ported (WPG.21): the monitored-element phase/conductor/
+//! bus resync (see [`accessors`]).
+//!
 //! **Deliberately NOT_PORTED:**
-//! - the seasonal-rating dynamic target (`Get_DynamicTarget`, `DSS.SeasonalRating`
-//!   / `DSS.SeasonSignal`) — the season-signal XYCurve infrastructure is not in
-//!   the engine; `CtrlTarget` always takes the non-seasonal `FkWTarget` /
-//!   `FkWTargetLow` branch (decks that set `SeasonalRating` error earlier).
-//! - `MakePosSequence` — positive-sequence reduction isn't supported yet.
 //! - the parse-time 37201 ("No unassigned Storage Elements") for a *Storage-less*
 //!   circuit: Pascal emits it in `RecalcElementData`; here the fleet resolves
 //!   lazily at first `Sample`, so a default empty fleet is a silent no-op (same
@@ -169,9 +173,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("LoadShape", "Duty"),
         PropDef::boolean("EventLog"),
         PropDef::integer("InhibitTime").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
-        PropDef::double("Tup").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("TUp").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
         PropDef::double("TFlat").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
-        PropDef::double("Tdn").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
+        PropDef::double("TDn").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
         // Pascal DynamicDefault (recomputed from kWTarget in PropertySideEffects).
         PropDef::double("kWThreshold").flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::double("DispFactor"),
@@ -181,8 +185,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("SeasonTargets", prop::SEASONS),
         PropDef::double_array("SeasonTargetsLow", prop::SEASONS),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("StorageController", defs, true)
@@ -466,4 +470,21 @@ pub(crate) trait StorageDispatchEnv {
     fn dbl_hour(&self) -> f64;
     /// `ActiveCircuit.Solution.Mode`.
     fn solve_mode(&self) -> SolveMode;
+
+    // --- seasonal targets (`Get_DynamicTarget`, StorageController.pas l.1020) ---
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`) — the call-site guard at
+    /// l.1099 (discharge)/l.1411 (charge): only when set does
+    /// `Get_DynamicTarget` run at all.
+    fn season_rating(&self) -> bool;
+    /// `Get_DynamicTarget`'s `RatingIdx` (l.1020-1032). `None` when
+    /// `DSS.SeasonSignal` is empty — `Result` stays `0` in Pascal, i.e. the
+    /// caller must NOT fall back to the non-seasonal target (see
+    /// [`StorageController::get_dynamic_target`]). `Some(trunc(XYcurve.
+    /// GetYValue(Solution.DynaVars.intHour)))` when the signal is set —
+    /// `Some(0)` if the named curve isn't registered (`RSignal = NIL`;
+    /// `RatingIdx` initializes to `0` and Pascal never reassigns it on a
+    /// miss). Mutates the curve's hunt cache (`GetYValue`'s
+    /// `LastValueAccessed` side effect) — a live, uncached lookup every call,
+    /// exactly like the Pascal `DSS.XYCurveClass.Find` here.
+    fn season_rating_idx(&mut self) -> Option<i32>;
 }

@@ -8,8 +8,11 @@
 //! grounded-zero node of Bus1, giving a shunt bank; specifying Bus2 with
 //! matching nodes makes a series capacitor.
 //!
-//! The harmonic-filter recomputation (`Harm`) and `MakePosSequence` are ported
-//! for fidelity; the harmonic *solution* itself is Phase 7.
+//! The harmonic-filter recomputation (`Harm`) is ported for fidelity; the
+//! harmonic *solution* itself is Phase 7. [`MakePosSequence`] (WPG.21) collapses
+//! the bank to its positive-sequence single-phase form in [`solve`].
+//!
+//! [`MakePosSequence`]: crate::elements::traits::CktElement::make_pos_sequence
 //!
 //! Split into submodules mirroring `line/`, `load/`, `transformer/`:
 //! - this `mod.rs` — property ordinals, `class_props`, the `Capacitor` struct, `new`.
@@ -28,6 +31,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::util::sqrt3;
 
 mod accessors;
+mod dump;
 mod solve;
 mod steps;
 
@@ -65,16 +69,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
         // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
-        PropDef::bus("bus1", 1),
-        PropDef::bus("bus2", 2),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus2", 2),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double_array("kvar", NUMSTEPS).flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kv").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
-        PropDef::mapped_string_enum("conn", enums.connection),
-        PropDef::double_sym_matrix("cmatrix", PHASES)
+        PropDef::double("kV").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
+        PropDef::mapped_string_enum("Conn", enums.connection),
+        PropDef::double_sym_matrix("CMatrix", PHASES)
             .scale(1.0e-6)
             .flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double_array("cuf", NUMSTEPS)
+        PropDef::double_array("Cuf", NUMSTEPS)
             .scale(1.0e-6)
             .flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double_array("R", NUMSTEPS),
@@ -82,16 +86,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("Harm", NUMSTEPS),
         PropDef::integer("NumSteps")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::SUPPRESS_JSON),
-        PropDef::int_array("states", NUMSTEPS),
+        PropDef::int_array("States", NUMSTEPS),
         // TPDClass tail:
-        PropDef::double("normamps"),
-        PropDef::double("emergamps"),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Capacitor", defs, true)

@@ -1,0 +1,22 @@
+! GAPS deck: Isource snapshot — the ideal-current-source PC element (Pascal
+! Isource.pas). Exercises: 1-phase trio (per-phase injection, default grounded
+! return Bus2=bus1-".0"), an explicit-Bus2 2-terminal unit, and a 3-phase
+! negative-sequence unit (SequenceType=-1 rotation). Deterministic snapshot.
+Clear
+New Circuit.gaps_isrc basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.95 model=1
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=500 pf=0.92 model=2
+! Per-phase 1-phase trio on b2 (the Microgrid/ISource corpus pattern).
+New Isource.i1 bus1=b2.1 phases=1 amps=30 angle=0
+New Isource.i2 bus1=b2.2 phases=1 amps=22 angle=-120
+New Isource.i3 bus1=b2.3 phases=1 amps=26 angle=120
+! Explicit Bus2: current pushed from b1 into b2 (2-terminal form).
+New Isource.itie bus1=b1 bus2=b2 phases=3 amps=8 angle=15
+! Negative-sequence 3-phase unit.
+New Isource.ineg bus1=b1 phases=3 amps=5 angle=0 sequence=neg
+New Monitor.m_b2 element=Line.l2 terminal=2 mode=0
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve

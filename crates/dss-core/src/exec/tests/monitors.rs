@@ -201,3 +201,92 @@ fn monitor_mode2_tap_and_class_check() {
         bad.errors()
     );
 }
+
+/// WP-PF.2: the full Monitor mode-4 flicker pipeline end-to-end on a live solve
+/// — `TakeSample` records the raw (|V|, angle) buffer each duty step, and
+/// `Export Monitor` runs `post_process` (Pascal `DoFlickerCalculations`), which
+/// rewrites the stream in place with (flicker level, Pst). The bit-exact filter
+/// math is pinned separately by `golden_flicker`; this test proves the wiring:
+/// the raw sample, the export trigger, and the in-place rewrite with the correct
+/// Pst window stepping. (The pinned dss_capi oracle cannot run this — its
+/// `DoFlickerCalculations` segfaults on the Terminals OOB — so it is Rust-only.)
+#[test]
+fn monitor_mode4_flicker_end_to_end() {
+    let mut dss = Dss::new();
+    // Route Export output to a scratch dir (the CSV is a side effect we discard).
+    let scratch = std::env::temp_dir().join(format!("dss_flicker_{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).ok();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command("New circuit.f basekv=12.47 pu=1.0 bus1=src phases=3 mvasc3=20000 mvasc1=21000");
+    // A duty shape that ripples the load (hence the monitored RMS voltage).
+    dss.command(
+        "New LoadShape.flk npts=13 interval=(100 3600 /) \
+         mult=[1.0 1.08 1.08 1.0 0.92 0.92 1.0 1.08 1.08 1.0 0.92 0.92 1.0]",
+    );
+    dss.command("New Line.ln bus1=src bus2=b1 phases=3 r1=0.1 x1=0.3 length=1 units=km");
+    dss.command(
+        "New Load.l bus1=b1 phases=3 kV=12.47 kW=2000 pf=0.95 model=2 duty=flk vminpu=0.85",
+    );
+    dss.command("New Monitor.pst element=Load.l terminal=1 mode=4");
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("Calcvoltagebases");
+    // stepsize=100 s -> a 600 s Pst window spans 6 samples; 13 steps cross two
+    // window boundaries (t=600 at sample 6, t=1200 at sample 12).
+    dss.command("Set mode=duty stepsize=100 number=1");
+    for _ in 0..13 {
+        dss.command("Solve");
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Raw mode-4 buffer BEFORE post-processing: channels are (|V|, angle) pairs.
+    let raw = dss.monitor_view("pst").expect("pst monitor");
+    assert_eq!(raw.sample_count, 13);
+    assert_eq!(raw.header.len(), 8); // hour,t(sec)+ Flk1,Pst1,Flk2,Pst2,Flk3,Pst3
+    let raw_mag1 = raw.channels[0].clone(); // |V1|
+    let raw_ang1 = raw.channels[1].clone(); // angle 1 (pre-process)
+    assert!(
+        raw_mag1.iter().all(|&m| (6000.0..8000.0).contains(&m)),
+        "raw |V1| not ~7.2 kV LN: {raw_mag1:?}"
+    );
+    assert!(
+        raw_ang1.iter().all(|&a| a.abs() < 30.0),
+        "raw phase-1 angle not ~0 deg: {raw_ang1:?}"
+    );
+
+    // `Export Monitor` triggers `post_process` -> `DoFlickerCalculations`.
+    dss.command("Export monitor pst");
+    assert!(dss.errors().is_empty(), "export: {:?}", dss.errors());
+
+    let post = dss.monitor_view("pst").expect("pst monitor");
+    let flk1 = &post.channels[0]; // now the instantaneous flicker level
+    let pst1 = &post.channels[1]; // now the short-term severity
+    // Post-processing rewrote the magnitude channel into flicker levels.
+    assert!(
+        flk1 != &raw_mag1,
+        "flicker channel not rewritten (post_process didn't run)"
+    );
+    // Flicker of a mildly rippling near-nominal voltage is small (|flk| << |V|).
+    assert!(
+        flk1.iter().all(|&f| f.abs() < 1.0),
+        "flicker levels implausibly large: {flk1:?}"
+    );
+    // Pst stepping: 0 until the first 600 s window completes (sample index 5,
+    // t=600), then a single constant severity value across that window.
+    for (i, &p) in pst1.iter().enumerate().take(5) {
+        assert_eq!(p, 0.0, "Pst must be 0 before the first window (sample {i})");
+    }
+    assert!(
+        pst1[5] > 0.0,
+        "Pst must be set once the first window completes"
+    );
+    // Within a window the Pst is held constant (samples 5..=10 are window 1).
+    for i in 6..=10 {
+        assert_eq!(pst1[i], pst1[5], "Pst not held constant within window 1");
+    }
+    // A second export is idempotent (the `is_processed` latch): channels unchanged.
+    dss.command("Export monitor pst");
+    let post2 = dss.monitor_view("pst").expect("pst monitor");
+    assert_eq!(&post2.channels[0], flk1, "re-export must not reprocess");
+    assert_eq!(&post2.channels[1], pst1, "re-export must not reprocess");
+}

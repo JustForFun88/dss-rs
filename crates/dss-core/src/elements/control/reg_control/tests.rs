@@ -15,6 +15,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -134,6 +135,9 @@ impl ControlledTransformer for MockTransformer {
     fn name(&self) -> &str {
         &self.name
     }
+    fn full_name(&self) -> String {
+        format!("Transformer.{}", self.name)
+    }
     fn n_phases(&self) -> usize {
         self.nphases
     }
@@ -235,7 +239,7 @@ fn sample_out_of_band_high_arms_a_downward_tap() {
     rc.ccd.cd.nphases = 1; // regulator senses one phase
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
 
     // boost_needed = (120-125)*1/100 = -0.05; /0.00625 = -8 → -0.05 pu.
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
@@ -253,7 +257,7 @@ fn sample_in_band_disarms_and_clears() {
     rc.control_action_handle = 999;
     let mut tr = MockTransformer::wye_2wdg(120.5); // within ±1.5 of 120
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(!rc.armed);
 }
@@ -265,7 +269,7 @@ fn ctrlstatic_action_applies_at_least_one_tap_and_marks_y() {
     rc.ccd.cd.nphases = 1;
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
 
     // CTRLSTATIC moves 70% of the pending change, at least one tap:
@@ -329,7 +333,64 @@ fn maxtapchange_zero_zeroes_pending_and_exits() {
     rc.set_pending_tap_change(0.5);
     let mut tr = MockTransformer::wye_2wdg(150.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(sc.queue.is_empty());
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TRegControlObj.MakePosSequence` (RegControl.pas:1266): Enabled +
+    /// phases from the controlled transformer, terminal bus at ElementTerminal.
+    #[test]
+    fn resyncs_to_controlled_transformer() {
+        let mut rc = RegControl::new("rc1");
+        rc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        rc.ccd.element_terminal = 2;
+        rc.using_regulated_bus = false;
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                enabled: false,
+                bus_names: vec!["w1".into(), "w2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = rc.make_pos_sequence(&ctx);
+        assert_eq!(rc.ccd.cd.nphases, 1);
+        assert_eq!(rc.ccd.cd.nconds, 1);
+        assert!(!rc.ccd.cd.enabled); // FEnabled := ControlledElement.Enabled
+        assert_eq!(rc.get_bus_name(1), "w2"); // GetBus(ElementTerminal=2)
+        assert!(plan.run_base && plan.actions.is_empty());
+    }
+
+    /// UsingRegulatedBus ⇒ FNphases := 1, Nconds := 1, Setbus to RegulatedBus.
+    #[test]
+    fn regulated_bus_forces_single_phase() {
+        let mut rc = RegControl::new("rc1");
+        rc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        rc.using_regulated_bus = true;
+        rc.regulated_bus = "remotebus".into();
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 3,
+                nconds: 3,
+                enabled: true,
+                bus_names: vec!["w1".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        rc.make_pos_sequence(&ctx);
+        assert_eq!(rc.ccd.cd.nphases, 1);
+        assert_eq!(rc.ccd.cd.nconds, 1);
+        assert_eq!(rc.get_bus_name(1), "remotebus");
+    }
 }

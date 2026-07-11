@@ -7,6 +7,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_geometry::LineGeometryObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
@@ -200,7 +201,9 @@ impl CktElement for Line {
     }
 
     /// Pascal `TLineObj.CalcYPrim` (sym-component, matrix and geometry paths;
-    /// the long-line correction and the <0.51 Hz GIC conversion are Phase 7+).
+    /// the long-line correction is Phase 7+). Below `0.51 Hz` (GIC) the inverted
+    /// series Z collapses to its positive-sequence resistance
+    /// (`ConvertZinvToPosSeqR`) and the shunt capacitance is skipped.
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
@@ -323,6 +326,43 @@ impl CktElement for Line {
             ));
             return;
         }
+
+        // Pascal `TLineObj.ConvertZinvToPosSeqR` (Line.pas:1297/2086): for a GIC
+        // (~dc) solution use only the positive-sequence *resistance* — re-invert
+        // Zinv back to Z (length included), average the diagonal and (upper
+        // triangle) off-diagonal elements, `Z1 = Zs − Zm` with the X part
+        // dropped, then rebuild Zinv as the diagonal-only inverse. Cross-phase
+        // coupling vanishes (matches the oracle's 0.1 Hz Line YPrim; the
+        // pre-port Rust build kept the r0≠r1 coupling — a proven 33 % YPrim
+        // divergence on `autotrans_gic`'s original switch line).
+        if sys.frequency < 0.51 {
+            // Re-invert Zinv back to Z with length included.
+            if zinv.invert().is_err() {
+                self.cd.obj.push_error(format!(
+                    "Matrix Inversion Error for Line \"{}\". \
+                     Invalid impedance specified. Aborting solution.",
+                    self.cd.obj.name()
+                ));
+                return;
+            }
+            let zs = zinv.avg_diagonal();
+            let zm = zinv.avg_off_diagonal();
+            let z1 = Complex64::new((zs - zm).re, 0.0); // ignore X part
+            zinv.clear();
+            for i in 0..zinv.order() {
+                zinv.set(i, i, z1);
+            }
+            // Back to Zinv for inserting in Yprim.
+            if zinv.invert().is_err() {
+                self.cd.obj.push_error(format!(
+                    "Matrix Inversion Error for Line \"{}\". \
+                     Invalid impedance specified. Aborting solution.",
+                    self.cd.obj.name()
+                ));
+                return;
+            }
+        }
+
         for i in 0..nphases {
             for j in 0..nphases {
                 let value = zinv.get(i, j);
@@ -367,5 +407,121 @@ impl CktElement for Line {
         // Account for open conductors.
         self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
+    }
+
+    /// Pascal `TLineObj.MakePosSequence` (Line.pas:1531-1629). Collapse a
+    /// multi-phase line to its positive-sequence single-phase equivalent. Only
+    /// acts when `FnPhases > 1`; a line already single-phase is left alone and
+    /// only the base bus rename runs (`inherited`). The property mutations are
+    /// returned as a [`PosSeqPlan`]; the `PrpSequence` clears (Pascal
+    /// `PrpSequence[..] := 0`, for a cleaner save) are direct self-mutations.
+    ///
+    /// Three source branches:
+    /// - `IsSwitch`: fixed switch constants (R1=1, X1=1, C1=1.1 nF, Phases=1,
+    ///   Length=0.001).
+    /// - `SymComponentsModel`: keep the existing Z1 (R1, X1); C1 → nF.
+    /// - matrix/geometry/spacing: average the diagonal/off-diagonal of the
+    ///   solve-derived `Z`/`Yc` into Z1 and C1, dividing by `FUnitsConvert`
+    ///   (and, for the total-matrix geometry/spacing forms, the embedded
+    ///   length via `LengthMult`).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use prop::*;
+
+        // Pascal snapshots NormAmps/EmergAmps/LengthUnits before editing so it
+        // can restore them after the edit's unexpected resets.
+        let norm_amps0 = self.norm_amps;
+        let emerg_amps0 = self.emerg_amps;
+        let length_units0 = self.length_units.code();
+
+        // If already single phase, let alone — just run `inherited`.
+        if self.cd.nphases <= 1 {
+            return PosSeqPlan::base();
+        }
+
+        let mut actions = vec![PosSeqAction::BeginEdit];
+
+        // Kill certain propertyvalue elements to get a cleaner looking save
+        // (Pascal `PrpSequence[ord(TProp.X)] := 0` — direct self-mutation).
+        for p in [LINECODE, R1, X1, R0, X0, C1, C0, RMATRIX, XMATRIX, CMATRIX] {
+            self.cd.obj.clear_seq(p);
+        }
+
+        // If GeometrySpecified or SpacingSpecified, length is embedded in Z/Yc.
+        let length_mult = if self.geometry_obj.is_some() || self.spacing_specified() {
+            self.len
+        } else {
+            1.0
+        };
+
+        if self.is_switch {
+            actions.push(PosSeqAction::SetF64(R1, 1.0));
+            actions.push(PosSeqAction::SetF64(X1, 1.0));
+            actions.push(PosSeqAction::SetF64(C1, 1.1));
+            actions.push(PosSeqAction::SetI32(PHASES, 1));
+            actions.push(PosSeqAction::SetF64(LENGTH, 0.001));
+        } else {
+            let (z1, c1_new) = if self.sym_components_model {
+                // keep the same Z1 and C1
+                (Complex64::new(self.r1, self.x1), self.c1 * 1.0e9)
+            } else {
+                // matrix was input directly, or built from physical data:
+                // average the diagonal and off-diagonal elements.
+                let z = self.z.as_ref().expect("Z built at RecalcElementData");
+                let yc = self.yc.as_ref().expect("Yc built at RecalcElementData");
+                let np = self.cd.nphases;
+                let npf = np as f64;
+
+                let mut zs = Complex64::new(0.0, 0.0);
+                for i in 0..np {
+                    zs += z.get(i, i);
+                }
+                zs /= npf * length_mult;
+                let mut zm = Complex64::new(0.0, 0.0);
+                for i in 0..np - 1 {
+                    for j in i + 1..np {
+                        zm += z.get(i, j);
+                    }
+                }
+                zm /= length_mult * npf * (npf - 1.0) / 2.0;
+                let mut z1 = zs - zm;
+
+                // Do same for Capacitances.
+                let mut cs = 0.0;
+                for i in 0..np {
+                    cs += yc.get(i, i).im;
+                }
+                let mut cm = 0.0;
+                for i in 0..np - 1 {
+                    for j in i + 1..np {
+                        cm += yc.get(i, j).im;
+                    }
+                }
+                let two_pi = 2.0 * std::f64::consts::PI;
+                let mut c1_new = (cs - cm)
+                    / two_pi
+                    / self.cd.base_frequency
+                    / (length_mult * npf * (npf - 1.0) / 2.0)
+                    * 1.0e9; // nanofarads
+
+                // compensate for length units
+                z1 /= self.units_convert;
+                c1_new /= self.units_convert;
+                (z1, c1_new)
+            };
+            actions.push(PosSeqAction::SetF64(R1, z1.re));
+            actions.push(PosSeqAction::SetF64(X1, z1.im));
+            actions.push(PosSeqAction::SetF64(C1, c1_new));
+            actions.push(PosSeqAction::SetI32(PHASES, 1));
+        }
+
+        // Conductor Current Ratings (PD-element prop pair).
+        actions.push(PosSeqAction::SetF64(NORMAMPS, norm_amps0));
+        actions.push(PosSeqAction::SetF64(EMERGAMPS, emerg_amps0));
+        // Repeat the Length Units to compensate for unexpected reset.
+        actions.push(PosSeqAction::SetI32(UNITS, length_units0));
+        actions.push(PosSeqAction::EndEdit);
+
+        // `inherited MakePosSequence` runs the base bus rename afterwards.
+        PosSeqPlan::with_actions(actions)
     }
 }

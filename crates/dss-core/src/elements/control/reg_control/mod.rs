@@ -25,6 +25,7 @@ mod tests;
 
 mod accessors;
 mod control_loop;
+mod dump;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
 use crate::obj::base::RefAction;
@@ -83,10 +84,10 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
-        // Pascal resolves against a Transformer/AutoTrans proxy; AutoTrans is
-        // not ported (Phase 6+), so the reference is Transformer-only here.
+        // Pascal `Transf_Or_AutoTrans_ProxyClass` (`RegControl.pas:264`):
+        // `transformer=` resolves against Transformer first, then AutoTrans.
         // Pascal also flags `CheckForVar` + `Required` (both inert here).
-        PropDef::object_ref_class("Transformer", "Transformer"),
+        PropDef::object_ref_two_classes("Transformer", "AutoTrans", "Transformer"),
         PropDef::integer("Winding"),
         PropDef::double("VReg"),
         PropDef::double("Band"),
@@ -121,8 +122,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Rev_Z"),
         PropDef::boolean("Cogen"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("RegControl", defs, true)
@@ -293,6 +294,24 @@ impl RegControl {
         self.ccd.controlled_element
     }
 
+    /// Pascal `TrWinding` (`= Get_Winding = TapWinding`): the tapped winding
+    /// index reported by `Export Taps` / `Show Taps`.
+    pub(crate) fn tr_winding(&self) -> i32 {
+        self.tap_winding
+    }
+
+    /// Pascal `InReverseMode` — the *runtime* reverse-power mode flag (set in
+    /// `Sample`, distinct from the `reversible=` property). Read by `Export Taps`.
+    pub(crate) fn in_reverse_mode(&self) -> bool {
+        self.in_reverse_mode
+    }
+
+    /// Pascal `InCogenMode` — the *runtime* cogeneration mode flag (distinct from
+    /// the `cogen=` property `cogen_enabled`). Read by `Export Taps`.
+    pub(crate) fn in_cogen_mode(&self) -> bool {
+        self.in_cogen_mode
+    }
+
     /// Pascal `Get_TapNum` evaluated against the **live** controlled transformer
     /// rather than the parse-time `tap_snap`. A direct `Transformer.X.Taps=`
     /// edit moves the transformer winding tap without going through this control,
@@ -315,6 +334,106 @@ impl RegControl {
         let mid = (tr.max_tap(w as usize) + tr.min_tap(w as usize)) / 2.0;
         // TODO(compat): FPC `Round` ties-to-even (see `get_tap_num`).
         ((tr.present_tap(w as usize) - mid) / inc).round_ties_even() as i32
+    }
+
+    // --- CIM100 export read accessors (WPG.18 Stage E, `ExportCIMXML.pas:4198-
+    // 4270`). Every field maps 1:1 to a `TRegControlObj` property the
+    // `RatioTapChanger`/`TapChangerControl` arm reads; no behavior change. ---
+
+    /// Pascal `Vreg` — CIM `RegulatingControl.targetValue`.
+    pub(crate) fn vreg(&self) -> f64 {
+        self.vreg
+    }
+    /// Pascal `Bandwidth` — CIM `RegulatingControl.targetDeadband`.
+    pub(crate) fn bandwidth(&self) -> f64 {
+        self.bandwidth
+    }
+    /// Pascal `PTRatio` — CIM `TapChanger.ptRatio` / `v1` divisor.
+    pub(crate) fn pt_ratio(&self) -> f64 {
+        self.pt_ratio
+    }
+    /// Pascal `CTRating` — CIM `TapChanger.ctRating` (and `ctRatio = /0.2`).
+    pub(crate) fn ct_rating(&self) -> f64 {
+        self.ct_rating
+    }
+    /// Pascal `R` (line-drop R) — CIM `TapChangerControl.lineDropR`.
+    pub(crate) fn ldc_r(&self) -> f64 {
+        self.r
+    }
+    /// Pascal `X` (line-drop X) — CIM `TapChangerControl.lineDropX`.
+    pub(crate) fn ldc_x(&self) -> f64 {
+        self.x
+    }
+    /// Pascal `LDCActive` — CIM `TapChangerControl.lineDropCompensation`.
+    pub(crate) fn ldc_active(&self) -> bool {
+        self.ldc_active
+    }
+    /// Pascal `TapDelay` — CIM `TapChanger.subsequentDelay`.
+    pub(crate) fn tap_delay(&self) -> f64 {
+        self.tap_delay
+    }
+    /// Pascal `VLimit` — CIM `TapChangerControl.maxLimitVoltage` (when active).
+    /// `VLimitActive` (`RegControl.pas:1307`) is just `vlimit() > 0`, computed at
+    /// the CIM call site (the private `vlimit_active` in `control_loop` is not in
+    /// scope there).
+    pub(crate) fn vlimit(&self) -> f64 {
+        self.vlimit
+    }
+    /// Pascal `IsReversible` (the `reversible=` property).
+    pub(crate) fn is_reversible(&self) -> bool {
+        self.is_reversible
+    }
+    /// Pascal `ReverseNeutral` — CIM `TapChangerControl.reverseToNeutral`.
+    pub(crate) fn reverse_neutral(&self) -> bool {
+        self.reverse_neutral
+    }
+    /// Pascal `revDelay` — CIM `TapChangerControl.reversingDelay`.
+    pub(crate) fn rev_delay(&self) -> f64 {
+        self.rev_delay
+    }
+    /// Pascal `revPowerThreshold` — CIM `TapChangerControl.reversingPowerThreshold`.
+    pub(crate) fn rev_power_threshold(&self) -> f64 {
+        self.rev_power_threshold
+    }
+    /// Pascal `revR` — CIM `TapChangerControl.reverseLineDropR`.
+    pub(crate) fn rev_r(&self) -> f64 {
+        self.rev_r
+    }
+    /// Pascal `revX` — CIM `TapChangerControl.reverseLineDropX`.
+    pub(crate) fn rev_x(&self) -> f64 {
+        self.rev_x
+    }
+    /// Pascal `revVreg` — CIM `RegulatingControl.reverseTargetValue`.
+    pub(crate) fn rev_vreg(&self) -> f64 {
+        self.rev_vreg
+    }
+    /// Pascal `revBandwidth` — CIM `RegulatingControl.reverseTargetDeadband`.
+    pub(crate) fn rev_bandwidth(&self) -> f64 {
+        self.rev_bandwidth
+    }
+
+    /// Resync every winding's `tap_snap` from the **live** controlled
+    /// transformer, so the `&self` `TapNum` getter (and the property dump) render
+    /// Pascal `Get_TapNum`'s live `PresentTap[TapWinding]` reading rather than a
+    /// stale parse-time / control-action snapshot. Pascal's `Get_TapNum` reaches
+    /// the transformer pointer directly; the Rust getter can't cross the class
+    /// registry, so the executive calls this at the property-read choke point
+    /// (`Dss::refresh_vterminal_if_marked`, alongside the Vterminal reload). A
+    /// control action that moved the tap, or a direct `Transformer.X.Taps=` edit,
+    /// otherwise leaves `tap_snap` stale (WP8.5b: `? regcontrol.X.TapNum`
+    /// diverged from the oracle on the IEEE13 geometry decks).
+    pub(crate) fn sync_tap_snap_from_live(
+        &mut self,
+        tr: &dyn crate::elements::pd::transformer::ControlledTransformer,
+    ) {
+        for w in 1..=self.tap_snap.len() {
+            self.tap_snap[w - 1] = (
+                tr.present_tap(w),
+                tr.max_tap(w),
+                tr.min_tap(w),
+                tr.tap_increment(w),
+            );
+        }
     }
 
     /// Pascal `Set_TapNum`: position the controlled winding's tap at
@@ -374,9 +493,10 @@ impl RegControl {
             }
         }
 
-        // The reference resolves against the Transformer class only, so the
-        // Pascal "Controlled Regulator Element is not a transformer" branch
-        // (error 123) is unreachable here.
+        // The reference resolves against the Transformer/AutoTrans proxy only
+        // (exactly the classes Pascal's XFMR/AUTOTRANS check accepts), so the
+        // "Controlled Regulator Element is not a transformer" branch (error
+        // 123) is unreachable here.
         if self.ccd.element_terminal > snap.nterms as i32 {
             self.ccd.cd.obj.push_error(format!(
                 "RegControl: \"{}\": Winding no. \"{}\" does not exist. Respecify Monitored Winding no. (Error 122)",

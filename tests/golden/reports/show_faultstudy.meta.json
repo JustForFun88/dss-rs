@@ -1,0 +1,9 @@
+{
+  "report": "faults",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "solve mode=faultstudy"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "FaultStudy.txt"
+}

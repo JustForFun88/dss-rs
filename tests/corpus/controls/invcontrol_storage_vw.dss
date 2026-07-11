@@ -1,0 +1,25 @@
+! GAPS deck (WPG.10): InvControl mode=VOLTWATT over a discharging Storage.
+! The volt-watt active-power limit GENUINELY BITES here: a weak source
+! (mvasc3=20) + a resistive line (r1=2.0) let the 2 MW battery discharge raise
+! the storage-bus voltage into the curve's limiting region, so the controller
+! throttles the discharge to a settled, limited equilibrium (NOT depletion).
+!
+! Curve `vw`: flat (y=1, no limit) for V/Vrated<=1.0, ramps down to y=0.2 by
+! V/Vrated=1.05 (voltage_curvex_ref=rated). Feature-sensitivity (pinned oracle
+! dss-python 0.15.7, 6x 1h daily steps; battery never depletes, %stored ~77->62):
+!   WITH   InvControl.ic:  P settles ~792.5 kW, V(b1) ~1.0377 pu (curve biting)
+!   WITHOUT InvControl.ic: P = full 2000 kW,    V(b1) ~1.0875 pu (no limit)
+! kW 792.5 vs 2000 and %stored 61.9 vs 35.1 at step 6 diverge far above the
+! micro tolerance -> the deck is a live gate for the ported Storage VW branch.
+! (Two-process oracle capture is bit-identical; determinism proven.)
+Clear
+New Circuit.gaps_icvw basekv=12.47 phases=3 bus1=sourcebus mvasc3=20 mvasc1=21
+New XYcurve.vw npts=4 xarray=(0.5 1.0 1.05 1.5) yarray=(1.0 1.0 0.2 0.2)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=2.0 x1=0.5 c1=0 length=3 units=km
+New Storage.batt bus1=b1 phases=3 kv=12.47 kva=2000 kwrated=2000 kwhrated=30000 %stored=80 state=discharging %discharge=100 dispmode=default
+New InvControl.ic derlist=[storage.batt] mode=voltwatt voltwatt_curve=vw voltage_curvex_ref=rated deltap_factor=0.4 eventlog=yes
+New Monitor.m_b element=Storage.batt terminal=1 mode=1 ppolar=no
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set maxcontroliter=200
+Set mode=daily stepsize=1h number=1

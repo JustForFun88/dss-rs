@@ -28,8 +28,14 @@ use flags::{set_has_meter_flag, set_has_sensor_flag};
 /// every Y-build that reprocessed the bus definitions.
 pub(crate) fn do_reset_meter_zones(ckt: &mut Circuit, store: &mut dyn ElemStore) {
     if !ckt.meter_zones_computed || !ckt.zones_locked {
+        // Pascal `DoResetMeterZones` brackets `ResetMeterZonesAll` with these two
+        // `LogThisEvent` markers (Circuit.pas l.2151-2156), gated on `LogEvents` —
+        // fired even with no meters (the log lives in `DoResetMeterZones`, not
+        // `ResetMeterZonesAll`, which returns early on an empty fleet).
+        ckt.log_this_event("Resetting Meter Zones");
         reset_meter_zones_all(ckt, store);
         ckt.meter_zones_computed = true;
+        ckt.log_this_event("Done Resetting Meter Zones");
     }
     // Pascal `FreeTopology` (the whole-circuit GetTopology tree) — not built in
     // this port until a topology-API consumer needs it.

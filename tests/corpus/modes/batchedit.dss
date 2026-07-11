@@ -1,0 +1,32 @@
+// BatchEdit coverage (PHASE8_PLAN WP8.6): the TRegExpr selection semantics.
+// Pascal DoBatchEditCmd (ExecHelper.pas:292): the name pattern is a regex,
+// matched CASE-INSENSITIVELY (ModifierI) and UNANCHORED (Exec = partial
+// match anywhere in the name); the trailing edit string is replayed against
+// every match in class-list order by rewinding the parser position.
+//   batchedit load.LA kw=180  -> matches la1, la2, xla1 (NOT lb1): pattern
+//                                case-folded, substring match catches xla1.
+//   batchedit load.^lb pf=0.85 -> anchored: lb1 only.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsbe basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.l1 bus1=src bus2=b1 linecode=lc length=0.9 units=km
+new line.l2 bus1=b1 bus2=b2 linecode=lc length=0.7 units=km
+
+new load.la1 bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=100 pf=0.92
+new load.la2 bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=100 pf=0.95
+new load.lb1 bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=100 pf=0.90
+new load.xla1 bus1=b1 phases=3 conn=wye model=2 kv=12.47 kw=100 pf=0.88
+
+batchedit load.LA kw=180
+batchedit load.^lb pf=0.85
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve

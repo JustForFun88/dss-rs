@@ -59,22 +59,29 @@ fn vsconverter_circuit_matches_oracle() {
 
     // The converter's effect on the circuit is determined by the (correctly-
     // reported) source currents — these are the oracle pins. The main 3-phase
-    // source's terminal-1 currents (re, im), dss-python 0.15.7:
+    // source's terminal-1 currents (re, im), dss-python 0.15.7 at full f64
+    // precision (Rust matches these bit-for-bit — agreement is ~1e-10 rel; pinned
+    // at the project's calibrated 1e-6 faer-vs-KLU current floor, TOLERANCE_NOTES).
     let main = get("Vsource.source");
-    let want_src: [(f64, f64); 3] = [(-91.083, 379.51), (374.21, -110.88), (-283.13, -268.64)];
+    let want_src: [(f64, f64); 3] = [
+        (-91.0829860344, 379.5124412447),
+        (374.2089081749, -110.8760409062),
+        (-283.1259222135, -268.6364003169),
+    ];
     for (k, &(re, im)) in want_src.iter().enumerate() {
         let (ar, ai) = (main.currents[2 * k], main.currents[2 * k + 1]);
         let mag = (re * re + im * im).sqrt();
         assert!(
-            (ar - re).hypot(ai - im) < 1e-3 * mag,
-            "main source I[{k}] = ({ar:.4}, {ai:.4}) vs oracle ({re}, {im})"
+            (ar - re).hypot(ai - im) < 1e-6 * mag,
+            "main source I[{k}] = ({ar:.10}, {ai:.10}) vs oracle ({re}, {im})"
         );
     }
-    // The DC source carries the power-balance current Idc (oracle 48.3 A).
+    // The DC source carries the power-balance current Idc (oracle 48.2995954896 A,
+    // full f64; Rust matches to ~2e-12 rel).
     let dc = get("Vsource.dc");
     assert!(
-        (dc.currents[0] - 48.3).hypot(dc.currents[1]) < 1e-3 * 48.3,
-        "DC source I = ({}, {})",
+        (dc.currents[0] - 48.2995954896).hypot(dc.currents[1]) < 1e-6 * 48.2995954896,
+        "DC source I = ({:.10}, {:.10})",
         dc.currents[0],
         dc.currents[1]
     );
@@ -83,23 +90,28 @@ fn vsconverter_circuit_matches_oracle() {
     // terminal-1 currents are the exact negatives of the main-source currents
     // (only the source and the converter share src.1/2/3). This validates the
     // converter's physically-correct current (≈390 A, NOT the oracle's buggy
-    // self-reported ≈1248 A).
+    // self-reported ≈1248 A). The KCL residual is ~2e-8 rel (the solver floor).
     let v = get("VSConverter.v1");
     for k in 0..3 {
         let (vr, vi) = (v.currents[2 * k], v.currents[2 * k + 1]);
         let (sr, si) = (main.currents[2 * k], main.currents[2 * k + 1]);
         let mag = (sr * sr + si * si).sqrt();
         assert!(
-            (vr + sr).hypot(vi + si) < 1e-3 * mag,
+            (vr + sr).hypot(vi + si) < 1e-6 * mag,
             "KCL: VSConverter AC I[{k}] must equal -(source I[{k}])"
         );
     }
-    // The converter's DC terminal current balances the DC source (KCL at src.4).
+    // The converter's DC terminal current is its post-solve *recomputed* Idc
+    // (GetCurrents re-runs GetInjCurrents), which carries the model's one-iteration
+    // lag, so it differs from the *injected* Idc — the DC-source current pinned
+    // above — by the lag (~0.004 A, ~9e-5 rel). The oracle's own DC value is
+    // corrupted by the self-alias bug (it reports 49.998 A), so this is a tight
+    // regression guard against the verified Rust f64, not an oracle pin.
     let (vdr, vdi) = (v.currents[6], v.currents[7]); // term1 cond4 = DC
+    assert_eq!(vdi, 0.0, "VSConverter DC current must be purely real");
     assert!(
-        (vdr.hypot(vdi) - 48.3).abs() < 1e-3 * 48.3,
-        "VSConverter DC current magnitude = {}",
-        vdr.hypot(vdi)
+        (vdr.hypot(vdi) - 48.3039943741).abs() < 1e-6 * 48.3039943741,
+        "VSConverter DC current magnitude = {vdr:.10}"
     );
 
     // Terminal 2 AC conductors are the exact series mirror of terminal 1.

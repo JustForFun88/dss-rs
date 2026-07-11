@@ -11,9 +11,9 @@
 //! auto-clears `Interval` to 0 (a variable-interval curve) while setting a
 //! positive `Interval` drops the hour array.
 //!
-//! `CSVFile` is read via the deferred [`FileLoad`] path; `SngFile`/`DblFile`
-//! (binary input) and `Action=DblSave/SngSave` (binary output) stay
-//! `NOT_PORTED`.
+//! `CSVFile`/`SngFile`/`DblFile` are all read via the deferred [`FileLoad`]
+//! path (WPG.1 for the binary pair); `Action=DblSave/SngSave` (binary output)
+//! stays `NOT_PORTED`.
 
 #[cfg(test)]
 mod tests;
@@ -35,12 +35,10 @@ define_properties! {
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     8  SNGFILE   => PropDef::string("SngFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     9  DBLFILE   => PropDef::string("DblFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     10 SINTERVAL => PropDef::double("SInterval")
         .scale(1.0 / 3600.0)
@@ -72,6 +70,12 @@ impl PriceShapeObj {
     /// Pascal `TPriceShapeObj.GetPrice`.
     pub fn get_price(&mut self, hr: f64) -> f64 {
         self.core.get_value_at_hour(hr)
+    }
+
+    /// Pascal `TPriceShapeObj.Price(i)`: the price at 1-based curve index `i`
+    /// (`SolveLD1`/`SolveLD2`'s `ckt.PriceCurveObj.Price(N)`).
+    pub fn price(&mut self, i: i32) -> f64 {
+        self.core.value_at(i)
     }
 }
 
@@ -159,22 +163,41 @@ impl DssObject for PriceShapeObj {
         }
     }
 
-    /// Pascal `StringEnumActionProperty` for `Action` (DblSave/SngSave only).
-    fn do_action(&mut self, _ordinal: i32, errors: &mut Vec<String>) {
-        errors.push(format!(
-            "PriceShape.{}: Action=DblSave/SngSave (binary file output) is not ported.",
-            self.core.data.name()
-        ));
+    /// Pascal `StringEnumActionProperty` for `Action` (`TPriceShapeAction`:
+    /// DblSave=0, SngSave=1 — `PriceShape.pas:149-150`). Queues the binary write
+    /// (Pascal `SaveToDblFile`/`SaveToSngFile`, `PriceShape.pas:547/568`).
+    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+        let full_name = format!("PriceShape.{}", self.core.data.name());
+        self.core
+            .queue_shape_save(ordinal == 1, "Price", &full_name, "Prices", errors);
     }
 
     fn take_file_loads(&mut self) -> Vec<FileLoad> {
         std::mem::take(&mut self.core.pending_file_loads)
     }
 
+    fn take_shape_saves(&mut self) -> Vec<crate::obj::base::ShapeSave> {
+        self.core.take_shape_saves()
+    }
+
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
         if load.prop == CSVFILE {
             self.core.read_csv_file(content);
+        }
+    }
+
+    /// Apply a resolved `SngFile`/`DblFile` (Pascal `DoSngFile`/`DoDblFile`).
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        _errors: &mut Vec<String>,
+    ) {
+        match load.prop {
+            SNGFILE => self.core.read_sng_file(content),
+            DBLFILE => self.core.read_dbl_file(content),
+            _ => {}
         }
     }
 
@@ -185,10 +208,21 @@ impl DssObject for PriceShapeObj {
             PRICE => self.core.std_dev_calculated = false,
             CSVFILE => {
                 self.core.std_dev_calculated = false;
-                self.core.pending_file_loads.push(FileLoad {
-                    prop: CSVFILE,
-                    filename: self.core.csvfile.clone(),
-                });
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::text(CSVFILE, self.core.csvfile.clone()));
+            }
+            SNGFILE => {
+                self.core.std_dev_calculated = false;
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::binary(SNGFILE, self.core.sngfile.clone()));
+            }
+            DBLFILE => {
+                self.core.std_dev_calculated = false;
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::binary(DBLFILE, self.core.dblfile.clone()));
             }
             // `ord(interval): if Interval > 0.0 then ReallocMem(Hours, 0)`.
             INTERVAL => {

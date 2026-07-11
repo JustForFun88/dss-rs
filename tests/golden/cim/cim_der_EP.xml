@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- un-comment this line to enable validation
+-->
+<rdf:RDF xmlns:cim="http://iec.ch/TC57/CIM100#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<!--
+-->
+<cim:IEC61970CIMVersion rdf:about="urn:uuid:D5D768BC-090B-4C74-A652-F9986FC30A44">
+  <cim:IEC61970CIMVersion.version>IEC61970CIM100</cim:IEC61970CIMVersion.version>
+  <cim:IEC61970CIMVersion.date>2019-04-01</cim:IEC61970CIMVersion.date>
+</cim:IEC61970CIMVersion>
+<cim:SynchronousMachine rdf:about="urn:uuid:383F7080-0656-45E6-BEAF-D48A2FFBAB6A">
+  <cim:RotatingMachine.ratedS>240000</cim:RotatingMachine.ratedS>
+  <cim:RotatingMachine.ratedU>12470</cim:RotatingMachine.ratedU>
+</cim:SynchronousMachine>
+<cim:SynchronousMachine rdf:about="urn:uuid:DEC4E297-E832-497A-8E33-D4DDFE72DAA9">
+  <cim:RotatingMachine.ratedS>36000</cim:RotatingMachine.ratedS>
+  <cim:RotatingMachine.ratedU>7200</cim:RotatingMachine.ratedU>
+</cim:SynchronousMachine>
+<cim:PhotovoltaicUnit rdf:about="urn:uuid:97CC7C8D-4A17-4E1C-93D0-0E44056F23D5">
+  <cim:PowerElectronicsUnit.maxP>300000</cim:PowerElectronicsUnit.maxP>
+  <cim:PowerElectronicsUnit.minP>60000</cim:PowerElectronicsUnit.minP>
+</cim:PhotovoltaicUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:959CB24D-44DC-49F4-811B-B38CFB19EE97">
+  <cim:PowerElectronicsConnection.maxIFault>1.1111111</cim:PowerElectronicsConnection.maxIFault>
+  <cim:PowerElectronicsConnection.ratedS>300000</cim:PowerElectronicsConnection.ratedS>
+  <cim:PowerElectronicsConnection.ratedU>480</cim:PowerElectronicsConnection.ratedU>
+  <cim:PowerElectronicsConnection.maxQ>75000</cim:PowerElectronicsConnection.maxQ>
+  <cim:PowerElectronicsConnection.minQ>-75000</cim:PowerElectronicsConnection.minQ>
+</cim:PowerElectronicsConnection>
+<cim:PhotovoltaicUnit rdf:about="urn:uuid:9CB78F10-AE3E-4A14-80F8-4CF9C9A232AC">
+  <cim:PowerElectronicsUnit.maxP>200000</cim:PowerElectronicsUnit.maxP>
+  <cim:PowerElectronicsUnit.minP>40000</cim:PowerElectronicsUnit.minP>
+</cim:PhotovoltaicUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:B29073EB-5837-470E-B8D1-A64EB90CD2E8">
+  <cim:PowerElectronicsConnection.maxIFault>1.1111111</cim:PowerElectronicsConnection.maxIFault>
+  <cim:PowerElectronicsConnection.ratedS>200000</cim:PowerElectronicsConnection.ratedS>
+  <cim:PowerElectronicsConnection.ratedU>480</cim:PowerElectronicsConnection.ratedU>
+  <cim:PowerElectronicsConnection.maxQ>120000</cim:PowerElectronicsConnection.maxQ>
+  <cim:PowerElectronicsConnection.minQ>-50000</cim:PowerElectronicsConnection.minQ>
+</cim:PowerElectronicsConnection>
+<cim:PhotovoltaicUnit rdf:about="urn:uuid:8CDA3842-9975-4BAF-B8E2-C2CFC9A8C58C">
+  <cim:PowerElectronicsUnit.maxP>5000</cim:PowerElectronicsUnit.maxP>
+  <cim:PowerElectronicsUnit.minP>1000</cim:PowerElectronicsUnit.minP>
+</cim:PhotovoltaicUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:1591D797-F972-4184-923F-441F0905E5CC">
+  <cim:PowerElectronicsConnection.maxIFault>1.1111111</cim:PowerElectronicsConnection.maxIFault>
+  <cim:PowerElectronicsConnection.ratedS>5000</cim:PowerElectronicsConnection.ratedS>
+  <cim:PowerElectronicsConnection.ratedU>208</cim:PowerElectronicsConnection.ratedU>
+  <cim:PowerElectronicsConnection.maxQ>1250</cim:PowerElectronicsConnection.maxQ>
+  <cim:PowerElectronicsConnection.minQ>-1250</cim:PowerElectronicsConnection.minQ>
+</cim:PowerElectronicsConnection>
+<cim:BatteryUnit rdf:about="urn:uuid:A9D9C941-A1A3-453B-890F-48DB63A92131">
+  <cim:PowerElectronicsUnit.maxP>100000</cim:PowerElectronicsUnit.maxP>
+  <cim:PowerElectronicsUnit.minP>-100000</cim:PowerElectronicsUnit.minP>
+</cim:BatteryUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:298D6CA9-59CC-44FB-848A-8FBA7EDC1016">
+  <cim:PowerElectronicsConnection.maxIFault>1.1111111</cim:PowerElectronicsConnection.maxIFault>
+  <cim:PowerElectronicsConnection.ratedS>100000</cim:PowerElectronicsConnection.ratedS>
+  <cim:PowerElectronicsConnection.ratedU>480</cim:PowerElectronicsConnection.ratedU>
+  <cim:PowerElectronicsConnection.maxQ>25000</cim:PowerElectronicsConnection.maxQ>
+  <cim:PowerElectronicsConnection.minQ>-25000</cim:PowerElectronicsConnection.minQ>
+</cim:PowerElectronicsConnection>
+<cim:BatteryUnit rdf:about="urn:uuid:FCA703F5-0641-4326-90EE-B3A648507E62">
+  <cim:PowerElectronicsUnit.maxP>100000</cim:PowerElectronicsUnit.maxP>
+  <cim:PowerElectronicsUnit.minP>-100000</cim:PowerElectronicsUnit.minP>
+</cim:BatteryUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:B3EC4613-4E68-44CE-919C-F9B80EE384C1">
+  <cim:PowerElectronicsConnection.maxIFault>1.1111111</cim:PowerElectronicsConnection.maxIFault>
+  <cim:PowerElectronicsConnection.ratedS>100000</cim:PowerElectronicsConnection.ratedS>
+  <cim:PowerElectronicsConnection.ratedU>480</cim:PowerElectronicsConnection.ratedU>
+  <cim:PowerElectronicsConnection.maxQ>25000</cim:PowerElectronicsConnection.maxQ>
+  <cim:PowerElectronicsConnection.minQ>-25000</cim:PowerElectronicsConnection.minQ>
+</cim:PowerElectronicsConnection>
+<cim:BatteryUnit rdf:about="urn:uuid:7BAB36EA-973C-4E64-A346-3CAFB83F6A1C">
+  <cim:PowerElectronicsUnit.maxP>5000</cim:PowerElectronicsUnit.maxP>
+  <cim:PowerElectronicsUnit.minP>-5000</cim:PowerElectronicsUnit.minP>
+</cim:BatteryUnit>
+<cim:PowerElectronicsConnection rdf:about="urn:uuid:0A4FC940-6E63-42E4-BACA-006ED1C9C04E">
+  <cim:PowerElectronicsConnection.maxIFault>1.1111111</cim:PowerElectronicsConnection.maxIFault>
+  <cim:PowerElectronicsConnection.ratedS>5000</cim:PowerElectronicsConnection.ratedS>
+  <cim:PowerElectronicsConnection.ratedU>208</cim:PowerElectronicsConnection.ratedU>
+  <cim:PowerElectronicsConnection.maxQ>5000</cim:PowerElectronicsConnection.maxQ>
+  <cim:PowerElectronicsConnection.minQ>-5000</cim:PowerElectronicsConnection.minQ>
+</cim:PowerElectronicsConnection>
+<cim:EnergySource rdf:about="urn:uuid:A1322B0F-90B8-499B-AC6C-0D9A1478D803">
+  <cim:EnergySource.nominalVoltage>12470</cim:EnergySource.nominalVoltage>
+  <cim:EnergySource.r>0.018857254</cim:EnergySource.r>
+  <cim:EnergySource.x>0.075429016</cim:EnergySource.x>
+  <cim:EnergySource.r0>0.021117973</cim:EnergySource.r0>
+  <cim:EnergySource.x0>0.063353918</cim:EnergySource.x0>
+</cim:EnergySource>
+<cim:TransformerCoreAdmittance rdf:about="urn:uuid:787F821F-A3EB-4709-B97D-ABAA93A7BB1B">
+  <cim:IdentifiedObject.mRID>787F821F-A3EB-4709-B97D-ABAA93A7BB1B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>xfm1_Yc</cim:IdentifiedObject.name>
+  <cim:TransformerCoreAdmittance.g>0</cim:TransformerCoreAdmittance.g>
+  <cim:TransformerCoreAdmittance.g0>0</cim:TransformerCoreAdmittance.g0>
+  <cim:TransformerCoreAdmittance.b>0</cim:TransformerCoreAdmittance.b>
+  <cim:TransformerCoreAdmittance.b0>0</cim:TransformerCoreAdmittance.b0>
+  <cim:TransformerCoreAdmittance.TransformerEnd rdf:resource="urn:uuid:A500F6CE-3D04-40B1-9A44-B6215C09461E"/>
+</cim:TransformerCoreAdmittance>
+<cim:TransformerMeshImpedance rdf:about="urn:uuid:8ADE6CCA-8E02-4210-847E-71F34F84E448">
+  <cim:IdentifiedObject.mRID>8ADE6CCA-8E02-4210-847E-71F34F84E448</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>xfm1_Zsc_1</cim:IdentifiedObject.name>
+  <cim:TransformerMeshImpedance.r>0.6220036</cim:TransformerMeshImpedance.r>
+  <cim:TransformerMeshImpedance.r0>0.6220036</cim:TransformerMeshImpedance.r0>
+  <cim:TransformerMeshImpedance.x>7.775045</cim:TransformerMeshImpedance.x>
+  <cim:TransformerMeshImpedance.x0>7.775045</cim:TransformerMeshImpedance.x0>
+  <cim:TransformerMeshImpedance.FromTransformerEnd rdf:resource="urn:uuid:A500F6CE-3D04-40B1-9A44-B6215C09461E"/>
+  <cim:TransformerMeshImpedance.ToTransformerEnd rdf:resource="urn:uuid:9158AFAC-859A-46B2-ADFF-F168817D48A9"/>
+</cim:TransformerMeshImpedance>
+<cim:PowerTransformerEnd rdf:about="urn:uuid:A500F6CE-3D04-40B1-9A44-B6215C09461E">
+  <cim:PowerTransformerEnd.ratedS>1000000</cim:PowerTransformerEnd.ratedS>
+  <cim:PowerTransformerEnd.ratedU>12470</cim:PowerTransformerEnd.ratedU>
+  <cim:PowerTransformerEnd.r>0.3110018</cim:PowerTransformerEnd.r>
+  <cim:TransformerEnd.rground>0</cim:TransformerEnd.rground>
+  <cim:TransformerEnd.xground>0</cim:TransformerEnd.xground>
+</cim:PowerTransformerEnd>
+<cim:PowerTransformerEnd rdf:about="urn:uuid:9158AFAC-859A-46B2-ADFF-F168817D48A9">
+  <cim:PowerTransformerEnd.ratedS>1000000</cim:PowerTransformerEnd.ratedS>
+  <cim:PowerTransformerEnd.ratedU>480</cim:PowerTransformerEnd.ratedU>
+  <cim:PowerTransformerEnd.r>0.0004608</cim:PowerTransformerEnd.r>
+  <cim:TransformerEnd.rground>0</cim:TransformerEnd.rground>
+  <cim:TransformerEnd.xground>0</cim:TransformerEnd.xground>
+</cim:PowerTransformerEnd>
+<cim:TransformerTankEnd rdf:about="urn:uuid:FC88F634-BC9C-45F3-BC14-CB0727D0999D">
+  <cim:TransformerEnd.rground>0</cim:TransformerEnd.rground>
+  <cim:TransformerEnd.xground>0</cim:TransformerEnd.xground>
+</cim:TransformerTankEnd>
+<cim:TransformerTankEnd rdf:about="urn:uuid:E5F5FC98-E1DF-4794-B4CC-E19FF7F9A0CD">
+  <cim:TransformerEnd.rground>0</cim:TransformerEnd.rground>
+  <cim:TransformerEnd.xground>0</cim:TransformerEnd.xground>
+</cim:TransformerTankEnd>
+<cim:TransformerTankEnd rdf:about="urn:uuid:33567A52-CF41-4C0C-AC50-5E832774AC56">
+  <cim:TransformerEnd.rground>0</cim:TransformerEnd.rground>
+  <cim:TransformerEnd.xground>0</cim:TransformerEnd.xground>
+</cim:TransformerTankEnd>
+</rdf:RDF>

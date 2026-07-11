@@ -31,6 +31,8 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
 
 mod accessors;
+mod dump;
+mod save;
 mod windings;
 mod yterminal;
 
@@ -150,21 +152,22 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("X13").scale(pct).trap_zero(35.0),
         PropDef::double("X23").scale(pct).trap_zero(30.0),
         PropDef::mapped_string_enum("LeadLag", enums.lead_lag),
-        // Read-only result string (winding currents mag/angle).
-        PropDef::string("WdgCurrents"),
+        // Read-only result string (winding currents mag/angle); the render reads
+        // the live `cd.vterminal`, so the `?`/`Dump` surfaces refresh it first.
+        PropDef::string("WdgCurrents").flags(PropFlags::READS_VTERMINAL),
         PropDef::mapped_string_enum("Core", enums.core_type),
         PropDef::double("RDCOhms"),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("Ratings", SEASONS),
         // TPDClass tail:
-        PropDef::double("normamps").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("emergamps").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Transformer", defs, true)
@@ -324,6 +327,10 @@ impl Transformer {
 /// voltage/current buffers are 0-based, length `nphases`/`yorder`.
 pub trait ControlledTransformer {
     fn name(&self) -> &str;
+    /// Pascal `FullName` (`Class.name`) — RegControl's Series-connection guard
+    /// message reports the controlled element's full name, so it names the
+    /// concrete class (`Transformer.x` or `AutoTrans.x`).
+    fn full_name(&self) -> String;
     fn n_phases(&self) -> usize;
     fn n_conds(&self) -> usize;
     fn y_order(&self) -> usize;
@@ -343,4 +350,23 @@ pub trait ControlledTransformer {
     fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]);
     /// `ControlledElement.GetCurrents(CBuffer)`.
     fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]);
+}
+
+/// View a [`DssObject`](crate::obj::base::DssObject) as a
+/// [`ControlledTransformer`] — the Pascal `TControlledTransformerObj` base,
+/// implemented by both `Transformer` and `AutoTrans` (the two members of
+/// RegControl's `Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`). Used
+/// by every surface that reaches the controlled transformer through a
+/// RegControl reference (`Export`/`Show Taps`, the live `TapNum` reads).
+pub fn as_controlled_transformer(
+    obj: &dyn crate::obj::base::DssObject,
+) -> Option<&dyn ControlledTransformer> {
+    let any = obj.as_any();
+    if let Some(t) = any.downcast_ref::<Transformer>() {
+        return Some(t);
+    }
+    if let Some(t) = any.downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>() {
+        return Some(t);
+    }
+    None
 }

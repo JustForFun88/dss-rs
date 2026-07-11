@@ -1,0 +1,9 @@
+{
+  "report": "linecode.lc2",
+  "fixture": "dumplcm",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumplcm basekv=12.47 bus1=src",
+    "new linecode.lc2 nphases=3 rmatrix=(0.1 | 0.03 0.1 | 0.03 0.03 0.1) xmatrix=(0.2 | 0.05 0.2 | 0.05 0.05 0.2) cmatrix=(3 | -1 3 | -1 -1 3) units=km"
+  ]
+}

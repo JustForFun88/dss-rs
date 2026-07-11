@@ -65,6 +65,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -242,7 +243,7 @@ fn sym_scalar_detaches_geometry() {
 // Each test builds a spacing+conductor line and asserts its total `Z`/`Yc` equal
 // the matrices the *equivalent* `geometry=` line produces — which the step-3a
 // `geometry_tests` and the `line_geometry` unit tests pin entry-by-entry to the
-// dss-python oracle. `probe_line_spacing_phase7.py` confirmed the two paths agree
+// dss-python oracle. `probe_line_spacing.py` confirmed the two paths agree
 // **exactly** (maxdiff 0) in the oracle for all three forms, so this transitively
 // pins the spacing path; the hardcoded `Z[0][0]` anchors pin it directly too.
 
@@ -264,7 +265,7 @@ fn build_wire() -> WireDataObj {
     w
 }
 
-/// The shared CN cable `cn1` (the `probe_line_spacing_phase7.py` / line_constants
+/// The shared CN cable `cn1` (the `probe_line_spacing.py` / line_constants
 /// CN reference).
 fn build_cn() -> CnDataObj {
     let enums = EnumRegistry::new();
@@ -455,7 +456,7 @@ fn spacing_cncables_match_geometry() {
     );
 }
 
-/// The shared TS cable `ts1` (the `probe_line_constants_phase7.py` TS reference).
+/// The shared TS cable `ts1` (the `probe_line_constants.py` TS reference).
 fn build_ts() -> crate::elements::general::conductor_data::TsDataObj {
     use crate::elements::general::conductor_data::{TsDataObj, ts_data};
     let enums = EnumRegistry::new();
@@ -664,4 +665,167 @@ fn cncables_without_spacing_errors() {
         "expected error 402, got {errs:?}"
     );
     assert!(line.line_wire_data.is_empty());
+}
+
+// --- WPG.21 — TLineObj.MakePosSequence (Line.pas:1531-1629) -------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+
+/// The matrix branch: a 3-phase `rmatrix`/`xmatrix`/`cmatrix` line (deck
+/// `makeposseq_line.dss` `l_mat`, units=km). The averaged positive-sequence
+/// values match the oracle-observed `r1=0.21, x1=0.6` (and `c1=4.5` nF) — the
+/// diagonal/off-diagonal averages of the input matrices.
+#[test]
+fn make_pos_sequence_matrix_branch() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut line = Line::new("l_mat");
+    scalar(&lcls, &mut line, "phases", "3");
+    scalar(&lcls, &mut line, "length", "0.4");
+    scalar(&lcls, &mut line, "units", "km");
+    // The parser wraps the value in `[...]`, so pass the matrix rows unbracketed.
+    scalar(
+        &lcls,
+        &mut line,
+        "rmatrix",
+        "0.3 | 0.09 0.3 | 0.09 0.09 0.3",
+    );
+    scalar(&lcls, &mut line, "xmatrix", "1.0 | 0.4 1.0 | 0.4 0.4 1.0");
+    scalar(
+        &lcls,
+        &mut line,
+        "cmatrix",
+        "3.4 | -1.1 3.4 | -1.1 -1.1 3.4",
+    );
+    assert!(!line.sym_components_model, "matrix input → matrix model");
+    // Z/Yc exist post-parse (RecalcElementData ran at edit time).
+    assert!(line.z.is_some() && line.yc.is_some());
+
+    // Pascal `ResetLengthUnits` fires when the matrices are set (Line.pas:677),
+    // so `units=km` is reset to None — the stored Z is the raw per-unit matrix
+    // and `units_convert` is 1.0.
+    assert_eq!(
+        line.length_units,
+        crate::support::line_units::LineUnits::None
+    );
+    assert_eq!(line.units_convert, 1.0);
+
+    let plan = line.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base, "matrix branch ends with `inherited`");
+
+    // Exact Pascal call shape: BeginEdit, R1/X1/C1/Phases, NormAmps/EmergAmps,
+    // Units, EndEdit.
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[0], BeginEdit);
+    match plan.actions[1] {
+        SetF64(idx, v) => {
+            assert_eq!(idx, prop::R1);
+            assert!((v - 0.21).abs() < 1e-12, "r1 got {v}");
+        }
+        ref a => panic!("expected SetF64(R1), got {a:?}"),
+    }
+    match plan.actions[2] {
+        SetF64(idx, v) => {
+            assert_eq!(idx, prop::X1);
+            assert!((v - 0.6).abs() < 1e-12, "x1 got {v}");
+        }
+        ref a => panic!("expected SetF64(X1), got {a:?}"),
+    }
+    match plan.actions[3] {
+        SetF64(idx, v) => {
+            assert_eq!(idx, prop::C1);
+            assert!((v - 4.5).abs() < 1e-9, "c1 got {v}");
+        }
+        ref a => panic!("expected SetF64(C1), got {a:?}"),
+    }
+    assert_eq!(plan.actions[4], SetI32(prop::PHASES, 1));
+    assert_eq!(plan.actions[5], SetF64(prop::NORMAMPS, 400.0));
+    assert_eq!(plan.actions[6], SetF64(prop::EMERGAMPS, 600.0));
+    assert_eq!(plan.actions[7], SetI32(prop::UNITS, 0)); // None (reset by matrix)
+    assert_eq!(plan.actions[8], EndEdit);
+    assert_eq!(plan.actions.len(), 9);
+
+    // PrpSequence marks were cleared (direct self-mutation).
+    for p in [prop::R1, prop::X1, prop::R0, prop::X0, prop::C1, prop::C0] {
+        assert!(!line.cd.obj.prp_specified(p), "prop {p} not cleared");
+    }
+    for p in [prop::RMATRIX, prop::XMATRIX, prop::CMATRIX, prop::LINECODE] {
+        assert!(!line.cd.obj.prp_specified(p), "prop {p} not cleared");
+    }
+}
+
+/// The symmetrical-components branch keeps the existing Z1 (R1, X1) and converts
+/// C1 to nF (× 1e9). No matrix averaging.
+#[test]
+fn make_pos_sequence_symcomponents_branch() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut line = Line::new("l_sym");
+    scalar(&lcls, &mut line, "phases", "3");
+    scalar(&lcls, &mut line, "r1", "0.3");
+    scalar(&lcls, &mut line, "x1", "0.6");
+    scalar(&lcls, &mut line, "c1", "3.4"); // nF → stored 3.4e-9 F
+    assert!(line.sym_components_model);
+
+    let plan = line.make_pos_sequence(&PosSeqCtx::default());
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[0], BeginEdit);
+    assert_eq!(plan.actions[1], SetF64(prop::R1, 0.3));
+    assert_eq!(plan.actions[2], SetF64(prop::X1, 0.6));
+    match plan.actions[3] {
+        SetF64(idx, v) => {
+            assert_eq!(idx, prop::C1);
+            assert!((v - 3.4).abs() < 1e-9, "c1 nF got {v}");
+        }
+        ref a => panic!("expected SetF64(C1), got {a:?}"),
+    }
+    assert_eq!(plan.actions[4], SetI32(prop::PHASES, 1));
+    assert_eq!(plan.actions.len(), 9);
+    assert!(plan.run_base);
+}
+
+/// The `switch=yes` branch: fixed switch constants (R1=1, X1=1, C1=1.1,
+/// Phases=1, Length=0.001).
+#[test]
+fn make_pos_sequence_switch_branch() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut line = Line::new("l_sw");
+    scalar(&lcls, &mut line, "phases", "3");
+    scalar(&lcls, &mut line, "switch", "yes");
+    assert!(line.is_switch);
+
+    let plan = line.make_pos_sequence(&PosSeqCtx::default());
+    use PosSeqAction::*;
+    assert_eq!(
+        plan.actions,
+        vec![
+            BeginEdit,
+            SetF64(prop::R1, 1.0),
+            SetF64(prop::X1, 1.0),
+            SetF64(prop::C1, 1.1),
+            SetI32(prop::PHASES, 1),
+            SetF64(prop::LENGTH, 0.001),
+            SetF64(prop::NORMAMPS, 400.0),
+            SetF64(prop::EMERGAMPS, 600.0),
+            SetI32(prop::UNITS, 0), // default units (None)
+            EndEdit,
+        ]
+    );
+    assert!(plan.run_base);
+}
+
+/// An already single-phase line is left alone — only the base bus rename runs
+/// (`inherited`), no property actions.
+#[test]
+fn make_pos_sequence_single_phase_is_base_only() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut line = Line::new("l1");
+    scalar(&lcls, &mut line, "phases", "1");
+    scalar(&lcls, &mut line, "r1", "0.3");
+
+    let plan = line.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.actions.is_empty());
+    assert!(plan.run_base);
 }

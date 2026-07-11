@@ -1,0 +1,2 @@
+"Hour", "Element", "Normal Amps", "Emerg Amps", "% Normal", "% Emerg", "kVBase", "I1(A)", "I2(A)", "I3(A)"
+1, "Line.lat", 5, 6, 632.633974074605, 527.194978395504, 7.19955785679463, 0, 31.6316987037302, 0 

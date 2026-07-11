@@ -1,0 +1,15 @@
+{
+  "report": "isolated",
+  "fixture": "orph",
+  "suffix": "Isolated.txt",
+  "deck": [
+    "clear",
+    "new circuit.orph basekv=12.47 bus1=src phases=3",
+    "new line.la bus1=src bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0",
+    "new load.ld bus1=b1 phases=3 kv=12.47 kw=500",
+    "new load.orphan bus1=orphanbus phases=3 kv=12.47 kw=50",
+    "new generator.og bus1=genbus phases=3 kv=12.47 kw=50 model=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases"
+  ]
+}

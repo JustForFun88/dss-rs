@@ -12,9 +12,11 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 use super::{
     STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, VARMODE_KVAR, VARMODE_PF,
@@ -47,6 +49,40 @@ impl CktElement for Storage {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
+    }
+
+    /// Pascal `TStorageObj.MakePosSequence` (`Storage.pas:3320`). Single phase,
+    /// line-neutral; a multi-phase unit's `kWrated` is divided by the phase
+    /// count and `PF` is set to the nominal PF.
+    ///
+    /// TODO(compat): the Pascal body has NO `BeginEdit` before its `Set*` calls
+    /// yet a trailing `EndEdit(changes)` (`Storage.pas:3339-3347`). Each `Set*`
+    /// is therefore its own auto-bracketed single edit (own recalc), and the
+    /// dangling `EndEdit` forces one extra recalc. Reproduced by emitting the
+    /// `Set*` actions with no leading `BeginEdit` and one trailing `EndEdit` —
+    /// the recalc count is observable. (PVSystem, by contrast, wraps its sets.)
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        // Make sure voltage is line-neutral.
+        let v = if self.cd.nphases > 1 || self.base.connection as i32 != 0 {
+            self.kv_storage_base / sqrt3()
+        } else {
+            self.kv_storage_base
+        };
+
+        let old_phases = self.cd.nphases;
+        let mut actions = vec![
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+        ];
+        if old_phases > 1 {
+            let new_kw = self.kw_rating / self.cd.nphases as f64;
+            actions.push(PosSeqAction::SetF64(prop::KW_RATED, new_kw));
+            actions.push(PosSeqAction::SetF64(prop::PF, self.base.pf_nominal));
+        }
+        actions.push(PosSeqAction::EndEdit);
+
+        PosSeqPlan::with_actions(actions)
     }
 
     /// Pascal `TStorageObj.CalcYPrim`.
@@ -140,6 +176,11 @@ impl CktElement for Storage {
         self.spectrum_obj = spectrum;
     }
 
+    /// Pascal `(pElem is TInvBasedPCE) and GFM_Mode`.
+    fn is_gfm(&self) -> bool {
+        self.base.gfm_mode
+    }
+
     /// Pascal `TStorageObj.InjCurrents` + `TPCElement.InjCurrents`.
     fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
         if !self.cd.enabled {
@@ -172,6 +213,25 @@ impl CktElement for Storage {
         if self.cd.iterminal_solution_count != sys.solution_count && !self.storage_obj_switch_open {
             let mut errors = Vec::new();
             self.calc_storage_model_contribution(sys, node_v, &mut errors);
+        }
+        if self.base.gfm_mode {
+            // Pascal `TInvBasedPCE.GetCurrents` (GFM override, InvBasedPCE.pas
+            // l.211): read `Vterminal` from `NodeV`, then `Curr = YPrim·Vterminal
+            // − InjCurrent` — the current through the GFM short-circuit impedance
+            // (the model's `Vterminal` above holds the *internal* source phasors).
+            let cd = &mut self.cd;
+            for i in 0..cd.yorder {
+                cd.vterminal[i] = node_v[cd.node_ref[i]];
+            }
+            if let Some(yprim) = &cd.yprim {
+                yprim.mv_mult(curr, &cd.vterminal);
+            }
+            for (i, c) in curr.iter_mut().enumerate() {
+                *c -= cd.inj_current[i];
+            }
+            self.cd.iterminal_updated = true;
+            self.cd.iterminal_solution_count = sys.solution_count;
+            return;
         }
         if self.cd.iterminal_updated {
             curr.copy_from_slice(&self.cd.iterminal[..curr.len()]);

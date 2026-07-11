@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -25,6 +26,13 @@ impl CktElement for Upfc {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TUPFCObj.MakePosSequence` (UPFC.pas:1058-1060): an EMPTY body
+    /// with NO `inherited` — the UPFC is left completely untouched (not even the
+    /// base bus rename runs).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        PosSeqPlan::no_base()
     }
 
     /// Pascal `TUPFCObj.CalcYPrim` — build only the series block: the per-phase
@@ -74,7 +82,9 @@ impl CktElement for Upfc {
         }
     }
 
-    /// Pascal `TUPFCObj.GetCurrents`: `Iterminal = YPrim·Vterminal − InjCurrent`.
+    /// Pascal `TUPFCObj.GetCurrents`: `Iterminal = YPrim·Vterminal` minus a
+    /// freshly recomputed injection (into a local, mirroring Pascal's
+    /// `ComplexBuffer` scratch — the solver's `InjCurrent` stays untouched).
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let yorder = self.cd.yorder;
@@ -88,9 +98,9 @@ impl CktElement for Upfc {
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(curr, &self.cd.vterminal);
         }
-        self.get_inj_currents(node_v); // present value of inj currents
+        let inj = self.compute_inj_currents(node_v); // present value of inj currents
         for i in 0..yorder {
-            curr[i] -= self.cd.inj_current[i];
+            curr[i] -= inj[i];
         }
     }
 

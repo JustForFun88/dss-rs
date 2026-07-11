@@ -46,8 +46,9 @@
 //!   a NIL deref. This port iterates the resolved subset instead (same divergence
 //!   GenDispatcher documents), so it cannot crash; `FListSize`/`TotalWeight` still
 //!   reflect the full list.
-//! - `MakePosSequence` is not ported (positive-sequence reduction is unsupported,
-//!   and the upstream body dereferences the always-NIL `ControlledElement`).
+//! - `MakePosSequence` is ported as a NIL-deref-safe no-op (the upstream body
+//!   dereferences the always-NIL `ControlledElement` — Access violation,
+//!   `docs/wpg21_makeposseq_probes.md`; CLAUDE.md forbids reproducing it).
 //!
 //! The ESPVLControl "fleet" is the ESPVLControl class itself, reached through the
 //! class registry behind [`EspvlDispatchEnv`] (`solution/controls/dispatch.rs`),
@@ -108,8 +109,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string_list("StorageList"),
         PropDef::double_v_array("StorageWeights"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("ESPVLControl", defs, true)

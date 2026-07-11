@@ -14,9 +14,6 @@
 //!   Monitor mode-3 path consumes.
 //! - [`accessors`]: the `CktElement` / `DssObject` trait impls.
 //!
-//! NOT_PORTED: `MakePosSequence` (sets `phases := 1`) — the positive-sequence
-//! model conversion has no trait hook yet and is deferred across all PC elements
-//! (cf. the Generator/PVSystem/IndMach012 deferrals); no corpus VCCS deck uses it.
 //! `Fkv`/`Fki` are recomputed in `RecalcElementData` faithfully but are dead in
 //! the upstream source too (no proc reads them).
 
@@ -64,24 +61,24 @@ pub mod prop {
 /// classes for uniform registration.)
 pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::bus("bus1", 1),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("prated"),
-        PropDef::double("vrated").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("ppct"),
-        PropDef::object_ref_class("XYcurve", "bp1"),
-        PropDef::object_ref_class("XYcurve", "bp2"),
-        PropDef::object_ref_class("XYcurve", "filter"),
-        PropDef::double("fsample").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::boolean("rmsmode"),
-        PropDef::double("imaxpu"),
-        PropDef::double("vrmstau"),
-        PropDef::double("irmstau"),
+        PropDef::bus("Bus1", 1),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("PRated"),
+        PropDef::double("VRated").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Ppct"),
+        PropDef::object_ref_class("XYcurve", "BP1"),
+        PropDef::object_ref_class("XYcurve", "BP2"),
+        PropDef::object_ref_class("XYcurve", "Filter"),
+        PropDef::double("FSample").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::boolean("RMSMode"),
+        PropDef::double("IMaxpu"),
+        PropDef::double("VRMSTau"),
+        PropDef::double("IRMSTau"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("VCCS", defs, true)
@@ -263,19 +260,30 @@ impl Vccs {
         }
     }
 
-    /// Pascal `TVCCSObj.GetInjCurrents` (l.441) — fill `self.cd.inj_current` with
-    /// the current-source injection. Three regimes: snapshot power flow (fixed
-    /// `BaseCurr` at the terminal-voltage angle), waveform dynamics (the filtered
-    /// RMS current `s3`), and RMS/phasor dynamics (`s4`, distributed as a balanced
-    /// positive-sequence set off `sV1`). An open terminal injects nothing.
+    /// Pascal `TVCCSObj.GetInjCurrents` (l.441) — the solve path: fill
+    /// `self.cd.inj_current` via [`Self::compute_inj_currents`].
     pub(super) fn get_inj_currents(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        self.cd.inj_current = self.compute_inj_currents(sys, node_v);
+    }
+
+    /// Pascal `TVCCSObj.GetInjCurrents` (l.441) — compute the current-source
+    /// injection, **returning** the vector; `self.cd.inj_current` is left
+    /// untouched so the reporting path stays side-effect-free (Pascal
+    /// `TVCCSObj.GetCurrents` writes into the scratch `ComplexBuffer`, never
+    /// `InjCurrent`). Three regimes: snapshot power flow (fixed `BaseCurr` at the
+    /// terminal-voltage angle), waveform dynamics (the filtered RMS current `s3`),
+    /// and RMS/phasor dynamics (`s4`, distributed as a balanced positive-sequence
+    /// set off `sV1`). An open terminal injects nothing.
+    pub(super) fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
+        let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         // Pascal `if not Closed[1]` (the active terminal's first conductor).
         if !self.cd.conductor_closed(1, 1) {
-            for i in 0..nphases {
-                self.cd.inj_current[i] = Complex64::ZERO;
-            }
-            return;
+            return inj;
         }
 
         self.cd.compute_vterminal(node_v);
@@ -285,15 +293,15 @@ impl Vccs {
             if self.frms_mode {
                 let i1 = pdeg_to_complex(self.s4 * self.base_curr, cdang(self.s_v1));
                 match nphases {
-                    1 => self.cd.inj_current[0] = i1,
+                    1 => inj[0] = i1,
                     3 => {
-                        self.cd.inj_current[0] = i1;
-                        self.cd.inj_current[1] = i1 * alpha2();
-                        self.cd.inj_current[2] = i1 * alpha1();
+                        inj[0] = i1;
+                        inj[1] = i1 * alpha2();
+                        inj[2] = i1 * alpha1();
                     }
                     _ => {
-                        for i in 0..nphases {
-                            self.cd.inj_current[i] = pdeg_to_complex(
+                        for (i, slot) in inj.iter_mut().enumerate().take(nphases) {
+                            *slot = pdeg_to_complex(
                                 self.s4 * self.base_curr,
                                 cdang(self.cd.vterminal[i]),
                             );
@@ -301,17 +309,16 @@ impl Vccs {
                     }
                 }
             } else {
-                for i in 0..nphases {
-                    self.cd.inj_current[i] =
-                        pdeg_to_complex(self.s3 * self.base_curr, cdang(self.cd.vterminal[i]));
+                for (i, slot) in inj.iter_mut().enumerate().take(nphases) {
+                    *slot = pdeg_to_complex(self.s3 * self.base_curr, cdang(self.cd.vterminal[i]));
                 }
             }
         } else {
-            for i in 0..nphases {
-                self.cd.inj_current[i] =
-                    pdeg_to_complex(self.base_curr, cdang(self.cd.vterminal[i]));
+            for (i, slot) in inj.iter_mut().enumerate().take(nphases) {
+                *slot = pdeg_to_complex(self.base_curr, cdang(self.cd.vterminal[i]));
             }
         }
+        inj
     }
 }
 

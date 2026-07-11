@@ -7,6 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::tcc_curve::TccCurveObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
@@ -46,6 +47,12 @@ impl CktElement for Relay {
         &mut self.ccd.cd
     }
 
+    /// Pascal `TControlElem.FControlledElement` - the element this control
+    /// acts on (`None` when it drives a list rather than a single element).
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
     }
@@ -56,6 +63,48 @@ impl CktElement for Relay {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TRelayObj.MakePosSequence` (`Controls/Relay.pas:915`): like
+    /// Recloser (monitored-element phase/conductor/bus resync, plus a `cvBuffer`
+    /// realloc for the Distance/TD21/DOC types), then — **outside** the NIL
+    /// guard — recompute `Vbase`/`PickupVolts47` from the new `Fnphases`, and run
+    /// the base bus rename (`inherited`). The out-of-guard placement is
+    /// reproduced exactly.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(m) = &ctx.monitored {
+            // FNphases := MonitoredElement.NPhases; Nconds := FNphases
+            self.ccd.cd.nphases = m.nphases;
+            self.ccd.cd.set_nconds(m.nphases);
+            // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
+            let t = self.monitored_element_terminal as usize;
+            let bus = t
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+            // ReAllocMem(cBuffer, ..) [all types] + ReAllocMem(cvBuffer, ..)
+            // [Distance/TD21/DOC] + CondOffset: no persistent field — the sampler
+            // sizes `cbuffer`/`cvbuffer` and computes `cond_offset` as locals each
+            // `Sample` from the live monitored element.
+        }
+        // Vbase / PickupVolts47 recompute sits OUTSIDE the NIL guard
+        // (Relay.pas:931-937), reproduced verbatim.
+        self.vbase = if self.ccd.cd.nphases == 1 {
+            self.kv_base * 1000.0
+        } else {
+            self.kv_base / crate::util::sqrt3() * 1000.0
+        };
+        self.pickup_volts47 = self.vbase * self.pct_pickup47 * 0.01;
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 
@@ -273,11 +322,18 @@ impl DssObject for Relay {
                     let elem = obj
                         .as_ckt_element()
                         .expect("monitoredobj resolves against circuit classes");
+                    // Capture the monitored element's state-variable names for the
+                    // Generic relay's `LookupVariable` (recalc has no live element).
+                    // Non-PC elements expose none (`num_variables() == 0`).
+                    self.monitor_var_names = (1..=elem.num_variables())
+                        .map(|i| elem.variable_name(i))
+                        .collect();
                     self.mon_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
                 None => {
                     self.monitored_full_name = name;
                     self.ccd.monitored_element = None;
+                    self.monitor_var_names = Vec::new();
                     self.mon_snap = None;
                 }
             },
@@ -402,8 +458,12 @@ impl DssObject for Relay {
         self.pickup_volts47 = other.pickup_volts47;
         self.pct_pickup47 = other.pct_pickup47;
 
-        // Generic.
+        // Generic. (Pascal copies `MonitorVariable`; `MonitorVarIndex` is
+        // re-resolved in the new object's `recalc` — carry the name cache + index
+        // so a `like=` clone that does not re-specify `monitoredobj` still resolves.)
         self.monitor_variable = other.monitor_variable.clone();
+        self.monitor_var_index = other.monitor_var_index;
+        self.monitor_var_names = other.monitor_var_names.clone();
         self.over_trip = other.over_trip;
         self.under_trip = other.under_trip;
 

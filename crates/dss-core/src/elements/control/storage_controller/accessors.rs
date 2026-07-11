@@ -6,6 +6,7 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -19,6 +20,12 @@ impl CktElement for StorageController {
         &mut self.ccd.cd
     }
 
+    /// Pascal `TControlElem.FControlledElement` - the element this control
+    /// acts on (`None` when it drives a list rather than a single element).
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
     }
@@ -29,6 +36,38 @@ impl CktElement for StorageController {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TStorageControllerObj.MakePosSequence`
+    /// (`Controls/StorageController.pas:834`): adopt the monitored element's
+    /// phase / conductor counts and attach terminal 1 to its bus, then run the
+    /// base bus rename (`inherited`). Pascal NIL-guards `MonitoredElement`;
+    /// `ctx.monitored` is `None` in the same case. (Probe `S6` confirms this
+    /// class is `makeposseq`-safe.)
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(m) = &ctx.monitored {
+            // FNphases := MonitoredElement.NPhases; Nconds := FNphases
+            self.ccd.cd.nphases = m.nphases;
+            self.ccd.cd.set_nconds(m.nphases);
+            // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
+            let t = self.ccd.element_terminal as usize;
+            let bus = t
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+            // ReAllocMem(cBuffer, ..) + CondOffset: no persistent field — the
+            // sampler reads the monitored terminal through the dispatch env.
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 

@@ -1,0 +1,3 @@
+Load.la.AllocationFactor=0.75
+Load.lb.CFactor=0.9
+Load.ld.AllocationFactor=0.6

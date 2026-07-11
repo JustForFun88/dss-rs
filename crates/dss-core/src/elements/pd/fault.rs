@@ -21,16 +21,21 @@
 //! is `CTRLSTATIC`, so `CheckStatus` is a no-op and the fault (default `ONtime=0`,
 //! `Is_ON=true`) simply stamps its conductance.
 //!
-//! `Randomize` + the `RandomMult` jitter only act in `MONTEFAULT` solve mode,
-//! whose solve loop is deferred to WP7.9; until then `RandomMult` stays `1.0`
-//! (`CalcYPrim` forces it for every non-MonteFault mode) and the field is inert.
+//! `Randomize` + the `RandomMult` jitter only act in `MONTEFAULT` solve mode
+//! (`solve_monte_fault`, WPG.4): `PickAFault` enables one fault and
+//! `Fault.Randomize` re-draws its resistance from the engine RNG. `CalcYPrim`
+//! forces `RandomMult = 1.0` for every non-MonteFault mode, so the field is
+//! inert outside MF; under `Set random=none` `Randomize`'s `else` branch also
+//! sets it `1.0` (the deterministic gated path, GAPS_PLAN.md §2.1).
 
+mod dump;
 #[cfg(test)]
 mod tests;
 
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
@@ -38,6 +43,7 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::event_log::EventLog;
 use crate::solution::solution::{EVENTDRIVEN, MULTIRATE, SolveMode, TIMEDRIVEN};
 use crate::support::cmatrix::CMatrix;
+use crate::support::mathutil::FpcRng;
 
 /// 1-based property ordinals (Pascal `TFaultProp` + the TPDClass/TCktElementClass
 /// tails appended by `inherited DefineProperties`).
@@ -81,14 +87,14 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         PropDef::double("MinAmps"),
         // TPDClass tail (Pascal suppresses normamps/emergamps from JSON — inert
         // here; the text dump still carries them).
-        PropDef::double("normamps"),
-        PropDef::double("emergamps"),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Fault", defs, true)
@@ -232,6 +238,23 @@ impl Fault {
     pub fn reset(&mut self) {
         self.cleared = false;
     }
+
+    /// Pascal `TFaultObj.Randomize` (`Fault.pas:395`): draw a fresh resistance
+    /// jitter `RandomMult` from the engine RNG per the solution random type, then
+    /// force a YPrim rebuild. GAUSSIAN → `Gauss(1.0, StdDev)`, UNIFORM →
+    /// `Random`, LOGNORMAL → `QuasiLognormal(1.0)`; the `else` (incl. `none=0`)
+    /// sets `1.0` (deterministic). Called once per MonteFault case by
+    /// `solve_monte_fault` on the fault `PickAFault` just enabled.
+    pub fn randomize(&mut self, random_type: i32, rng: &mut FpcRng) {
+        use crate::solution::{GAUSSIAN, LOGNORMAL, UNIFORM};
+        self.random_mult = match random_type {
+            GAUSSIAN => crate::support::mathutil::gauss(1.0, self.stddev, || rng.next_f64()),
+            UNIFORM => rng.next_f64(),
+            LOGNORMAL => crate::support::mathutil::quasi_log_normal(1.0, || rng.next_f64()),
+            _ => 1.0,
+        };
+        self.cd.yprim_invalid = true;
+    }
 }
 
 impl CktElement for Fault {
@@ -245,6 +268,17 @@ impl CktElement for Fault {
     /// Pascal `RecalcElementData`: nothing to do (the YPrim is built directly
     /// from `G`/`Gmatrix`).
     fn recalc_element_data(&mut self, _sys: &SysCtx) {}
+
+    /// Pascal `TFaultObj.MakePosSequence` (Fault.pas:604-609): a multi-phase
+    /// fault collapses to `Phases := 1` (a bare single edit), then `inherited`
+    /// (the base bus rename). A 1-phase fault only runs the base rename.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
+    }
 
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     /// Fault's own `FaultRate` defaults to 0, so this is 0 — a fault never

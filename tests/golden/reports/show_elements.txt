@@ -1,0 +1,46 @@
+
+Elements in Active Circuit: ieee13nodeckt
+
+Power Delivery Elements
+
+Element Bus1 Bus2 Bus3 ...
+
+"Transformer.sub" SOURCEBUS 650  
+"Transformer.reg1" 650  RG60 
+"Transformer.reg2" 650  RG60 
+"Transformer.reg3" 650  RG60 
+"Transformer.xfm1" 633  634  
+"Capacitor.cap1" 675  675  
+"Capacitor.cap2" 611  611  
+"Line.650632" RG60 632  
+"Line.632670" 632  670  
+"Line.670671" 670  671  
+"Line.671680" 671  680  
+"Line.632633" 632  633  
+"Line.632645" 632  645  
+"Line.645646" 645  646  
+"Line.692675" 692  675  
+"Line.671684" 671  684  
+"Line.684611" 684  611  
+"Line.684652" 684  652  
+"Line.671692" 671  692  
+
+Power Conversion Elements
+
+Element Bus1 Bus2 Bus3 ...
+
+"Load.671" 671  
+"Load.634a" 634  
+"Load.634b" 634  
+"Load.634c" 634  
+"Load.645" 645  
+"Load.646" 646  
+"Load.692" 692  
+"Load.675a" 675  
+"Load.675b" 675  
+"Load.675c" 675  
+"Load.611" 611  
+"Load.652" 652  
+"Load.670a" 670  
+"Load.670b" 670  
+"Load.670c" 670  

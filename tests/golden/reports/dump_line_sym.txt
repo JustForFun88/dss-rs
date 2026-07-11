@@ -1,0 +1,41 @@
+
+New "Line.l1"
+! ENABLED
+~ Bus1=src
+~ Bus2=b2
+~ LineCode=
+~ Length=2
+~ Phases=3
+~ R1=0.1
+~ X1=0.2
+~ R0=0.3
+~ X0=0.6
+~ C1=3.4
+~ C0=1.6
+~ RMatrix="0.166666667 0.066666667 0.066666667 |0.066666667 0.166666667 0.066666667 |0.066666667 0.066666667 0.166666667 |"
+~ XMatrix="0.333333333 0.133333333 0.133333333 |0.133333333 0.333333333 0.133333333 |0.133333333 0.133333333 0.333333333 |"
+~ CMatrix="2.800 -0.600 -0.600 |-0.600 2.800 -0.600 |-0.600 -0.600 2.800 |"
+~ Switch=No
+~ Rg=0.01805
+~ Xg=0.155081
+~ rho=100
+~ Geometry=
+~ Units=km
+~ Spacing=
+~ Wires=[]
+~ EarthModel=Deri
+~ CNCables=[]
+~ TSCables=[]
+~ B1=1.28176980266464
+~ B0=0.60318578948924
+~ Seasons=1
+~ Ratings=[ 400]
+~ LineType=oh
+~ NormAmps=400
+~ EmergAmps=600
+~ FaultRate=0.1
+~ pctPerm=20
+~ Repair=3
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=

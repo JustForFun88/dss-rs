@@ -1,0 +1,17 @@
+B2N Incidence Matrix Column Names (Buses)
+sourcebus
+650
+rg60
+632
+645
+646
+633
+634
+670
+671
+692
+675
+684
+652
+611
+680

@@ -3,6 +3,44 @@
 
 use super::*;
 
+/// Pascal `SetDataPath` (DSSGlobals.pas:540): create the dir if missing (#907 on
+/// failure → leave dirs unchanged), then point both the working dir and the
+/// report `OutputDirectory` at it. Allowed with or without a circuit (it touches
+/// the DSS context, not the circuit). The non-writable-dir → scratch fallback is
+/// NOT_PORTED — an environment-dependent I/O rescue (`DSSGlobals.pas:561-568`
+/// redirects `OutputDirectory` to the per-user `GetDefaultScratchDirectory`
+/// appdata dir when the target isn't writable), machine-state-dependent and not
+/// oracle-pinnable; the port keeps `OutputDirectory` on the requested dir, so a
+/// later write fails loudly instead of landing in a hidden scratch dir. Empty
+/// `DataPath=` is a no-op here (Pascal clears DataDirectory; unexercised).
+///
+/// Uses single-level `create_dir` (not `create_dir_all`) to match Pascal's RTL
+/// `CreateDir`, which fails — #907, dirs unchanged — when a *parent* is missing.
+///
+/// A relative path resolves against the engine's `current_dir`: Pascal's
+/// `DirectoryExists`/`CreateDir` resolve against the *process* cwd, which
+/// tracks `CurrentDSSDir` (`SetCurrentDSSDir` really chdirs —
+/// `DSS_CAPI_ALLOW_CHANGE_DIR` defaults on), and a `Compile` moves it to the
+/// deck's directory; Rust models that cwd virtually in `current_dir`, so the
+/// join is the faithful equivalent.
+fn apply_data_path(
+    param: &str,
+    current_dir: &mut PathBuf,
+    output_directory: &mut PathBuf,
+    errors: &mut Vec<String>,
+) {
+    if param.is_empty() {
+        return;
+    }
+    let p = current_dir.join(param); // an absolute `param` wins the join verbatim
+    if p.is_dir() || std::fs::create_dir(&p).is_ok() {
+        *current_dir = p.clone();
+        *output_directory = p;
+    } else {
+        errors.push(format!("Cannot create directory: \"{param}\""));
+    }
+}
+
 impl Dss {
     /// Pascal `DoSetCmd(SolveOption)`: parse `option=value` pairs, then run
     /// the solve when called from the `Solve` command.
@@ -24,7 +62,10 @@ impl Dss {
                 default_base_freq,
                 default_earth_model,
                 max_allocation_iterations,
+                auto_show_export,
                 current_dir,
+                output_directory,
+                daisy_size,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -75,7 +116,26 @@ impl Dss {
                     }
                     opt::YEAR => {
                         if let Some(v) = get_int(parser, vars, errors) {
+                            // Pascal `TSolutionObj.Set_Year` (Solution.pas:2266):
+                            // close any open demand-interval files, restart the
+                            // clock, then `EnergyMeterClass.ResetAll` (which
+                            // rebuilds the DI_yr_<year> directory).
+                            let mut store = ClassStore { classes };
+                            if ckt.em_di.di_files_are_open {
+                                crate::solution::meters::close_all_di_files(
+                                    ckt, &mut store, errors,
+                                );
+                            }
                             ckt.solution.year = v;
+                            ckt.solution.int_hour = 0;
+                            ckt.solution.t = 0.0;
+                            ckt.solution.update_dbl_hour();
+                            crate::solution::meters::reset_all_meters(
+                                ckt,
+                                &mut store,
+                                output_directory,
+                                errors,
+                            );
                             ckt.default_growth_factor =
                                 ckt.default_growth_rate.powi(ckt.solution.year - 1);
                         }
@@ -150,7 +210,12 @@ impl Dss {
                                 // columns `Freq`/`Harmonic`; it also clears any
                                 // samples accumulated under the previous mode.
                                 crate::solution::monitors::reset_all_monitors(ckt, &mut env);
-                                crate::solution::meters::reset_all_meters(ckt, env.store);
+                                crate::solution::meters::reset_all_meters(
+                                    ckt,
+                                    env.store,
+                                    output_directory,
+                                    env.errors,
+                                );
                                 crate::solution::faults::reset_faults(ckt, &mut env);
                                 if let Err(e) =
                                     crate::solution::controls::reset_all_controls(ckt, &mut env)
@@ -262,6 +327,10 @@ impl Dss {
                     // Pascal `Set Trapezoidal=`: the meter integration rule
                     // (reset to false by `Set mode=`).
                     opt::TRAPEZOIDAL => ckt.trapezoidal_integration = interpret_yes_no(&param),
+                    // Pascal `ExecOptions.pas:606`: `AutoShowExport` — the
+                    // FireOffEditor auto-open after exports, a GUI no-op
+                    // headless; stored for Set/Get parity only.
+                    opt::SHOW_EXPORT => *auto_show_export = interpret_yes_no(&param),
                     // Pascal `DoAutoAddBusList` (ExecHelper.pas l.1986).
                     opt::AUTO_BUS_LIST => do_auto_add_bus_list(
                         aux_parser,
@@ -271,8 +340,12 @@ impl Dss {
                         &mut ckt.auto_add_bus_list,
                         errors,
                     ),
-                    // Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049). The
-                    // strategy is stored; the reduction itself is NOT_PORTED.
+                    // Pascal `DoKeeperBusList` (ExecHelper.pas l.2035): mark
+                    // KeepList buses (cumulative) so reduction won't eliminate them.
+                    opt::KEEP_LIST => {
+                        do_keeper_bus_list(aux_parser, vars, current_dir, &param, ckt, errors)
+                    }
+                    // Pascal `DoSetReduceStrategy` (ExecHelper.pas l.3049).
                     opt::REDUCE_OPTION => set_reduce_strategy(ckt, &param, errors),
                     opt::KEEP_LOAD => ckt.reduce_laterals_keep_load = interpret_yes_no(&param),
                     opt::ZMAG => {
@@ -280,6 +353,12 @@ impl Dss {
                             ckt.reduction_zmag = v;
                         }
                     }
+                    // Pascal `ExecOptions.pas:696/698` (GAPS_PLAN WPG.11): the
+                    // option is spelled `SeasonRating`, the global it sets is
+                    // `SeasonalRating` (probe-proven: `Set SeasonalRating` is
+                    // error #130, unknown parameter).
+                    opt::SEASON_RATING => ckt.season_rating = interpret_yes_no(&param),
+                    opt::SEASON_SIGNAL => ckt.season_signal = param.clone(),
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];
@@ -312,6 +391,14 @@ impl Dss {
                     opt::DEFAULT_YEARLY => {
                         if let Some(shape) = find_load_shape(classes, &param) {
                             ckt.default_yearly_shape_obj = Some(shape);
+                        }
+                    }
+                    opt::LDCURVE => {
+                        // Pascal assigns `LoadShapeClass.Find`'s result (NIL
+                        // on miss) first (`ExecOptions.pas` ordinal 27).
+                        ckt.load_dur_curve_obj = find_load_shape(classes, &param);
+                        if ckt.load_dur_curve_obj.is_none() {
+                            errors.push("Load-Duration Curve not found.".to_string());
                         }
                     }
                     opt::CKT_MODEL => {
@@ -387,13 +474,65 @@ impl Dss {
                             *max_allocation_iterations = v;
                         }
                     }
+                    // Pascal `Set DemandInterval=` / `DIVerbose=`
+                    // (`ExecOptions.pas:581/588`): both property setters run
+                    // `EnergyMeterClass.ResetAll` (closing + re-creating the DI
+                    // machinery under the new switch).
+                    opt::DEMAND_INTERVAL | opt::DI_VERBOSE => {
+                        let value = interpret_yes_no(&param);
+                        if pointer == opt::DEMAND_INTERVAL {
+                            ckt.em_di.save_demand_interval = value;
+                        } else {
+                            ckt.em_di.di_verbose = value;
+                        }
+                        let mut store = ClassStore { classes };
+                        crate::solution::meters::reset_all_meters(
+                            ckt,
+                            &mut store,
+                            output_directory,
+                            errors,
+                        );
+                    }
+                    opt::OVERLOAD_REPORT => ckt.em_di.do_overload_report = interpret_yes_no(&param),
+                    opt::VOLT_EXCEPTION_REPORT => {
+                        ckt.em_di.do_voltage_exception_report = interpret_yes_no(&param)
+                    }
+                    // Pascal `ExecOptions.pas:686` — force/suppress the meter
+                    // sampling in the time-series solve loops.
+                    opt::SAMPLE_ENERGY_METERS => {
+                        ckt.solution.sample_the_meters = interpret_yes_no(&param)
+                    }
                     opt::CASE_NAME => ckt.case_name = param.clone(),
+                    // GUI plot-marker style state (Circuit.pas fields; headless-
+                    // inert except the `Export Profile` NodeCode/NodeWidth echo).
+                    opt::MARKER_CODE => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            ckt.node_marker_code = v;
+                        }
+                    }
+                    opt::NODE_WIDTH => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            ckt.node_marker_width = v;
+                        }
+                    }
+                    opt::DATA_PATH => {
+                        apply_data_path(&param, current_dir, output_directory, errors)
+                    }
                     opt::LOG => ckt.log_events = interpret_yes_no(&param),
                     opt::DEFAULT_BASE_FREQUENCY => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             *default_base_freq = v;
                             ckt.fundamental = v;
                             ckt.solution.set_frequency(v, ckt.fundamental);
+                        }
+                    }
+                    opt::LOAD_SHAPE_CLASS => {
+                        // Pascal `ExecOptions.pas:628`: `Set LoadShapeClass=` sets
+                        // `Circuit.ActiveLoadShapeClass` — the one shape class the
+                        // GENERALTIME/DYNAMICMODE nominal dispatch consults.
+                        match enums.get(enums.load_shape_class).string_to_ordinal(&param) {
+                            Ok(v) => ckt.active_load_shape_class = v,
+                            Err(e) => errors.push(e.to_string()),
                         }
                     }
                     opt::EARTH_MODEL => {
@@ -404,12 +543,88 @@ impl Dss {
                             Err(e) => errors.push(e.to_string()),
                         }
                     }
+                    // Pascal `ExecOptions.pas:620`: `Set Daisysize=` sets the
+                    // DSS-context `DaisySize` written into the plot payload.
+                    opt::DAISY_SIZE => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            *daisy_size = v;
+                        }
+                    }
+                    // The GUI plot-marker style options (`ExecOptions.pas:615-682`):
+                    // Circuit fields flowing into the plot payload's `Markers`
+                    // object (WPG.17 Plot audit settlement) — headless-inert.
+                    opt::MARK_SWITCHES => ckt.mark_switches = interpret_yes_no(&param),
+                    opt::MARK_TRANSFORMERS => ckt.mark_transformers = interpret_yes_no(&param),
+                    opt::MARK_CAPACITORS => ckt.mark_capacitors = interpret_yes_no(&param),
+                    opt::MARK_REGULATORS => ckt.mark_regulators = interpret_yes_no(&param),
+                    opt::MARK_PVSYSTEMS => ckt.mark_pv_systems = interpret_yes_no(&param),
+                    opt::MARK_STORAGE => ckt.mark_storage = interpret_yes_no(&param),
+                    opt::MARK_FUSES => ckt.mark_fuses = interpret_yes_no(&param),
+                    opt::MARK_RECLOSERS => ckt.mark_reclosers = interpret_yes_no(&param),
+                    opt::MARK_RELAYS => ckt.mark_relays = interpret_yes_no(&param),
+                    opt::SWITCH_MARKER_CODE
+                    | opt::TRANS_MARKER_CODE
+                    | opt::TRANS_MARKER_SIZE
+                    | opt::CAP_MARKER_CODE
+                    | opt::REG_MARKER_CODE
+                    | opt::PV_MARKER_CODE
+                    | opt::STORE_MARKER_CODE
+                    | opt::CAP_MARKER_SIZE
+                    | opt::REG_MARKER_SIZE
+                    | opt::PV_MARKER_SIZE
+                    | opt::STORE_MARKER_SIZE
+                    | opt::FUSE_MARKER_CODE
+                    | opt::FUSE_MARKER_SIZE
+                    | opt::RECLOSER_MARKER_CODE
+                    | opt::RECLOSER_MARKER_SIZE
+                    | opt::RELAY_MARKER_CODE
+                    | opt::RELAY_MARKER_SIZE => {
+                        if let Some(v) = get_int(parser, vars, errors) {
+                            *match pointer {
+                                opt::SWITCH_MARKER_CODE => &mut ckt.switch_marker_code,
+                                opt::TRANS_MARKER_CODE => &mut ckt.trans_marker_code,
+                                opt::TRANS_MARKER_SIZE => &mut ckt.trans_marker_size,
+                                opt::CAP_MARKER_CODE => &mut ckt.cap_marker_code,
+                                opt::REG_MARKER_CODE => &mut ckt.reg_marker_code,
+                                opt::PV_MARKER_CODE => &mut ckt.pv_marker_code,
+                                opt::STORE_MARKER_CODE => &mut ckt.store_marker_code,
+                                opt::CAP_MARKER_SIZE => &mut ckt.cap_marker_size,
+                                opt::REG_MARKER_SIZE => &mut ckt.reg_marker_size,
+                                opt::PV_MARKER_SIZE => &mut ckt.pv_marker_size,
+                                opt::STORE_MARKER_SIZE => &mut ckt.store_marker_size,
+                                opt::FUSE_MARKER_CODE => &mut ckt.fuse_marker_code,
+                                opt::FUSE_MARKER_SIZE => &mut ckt.fuse_marker_size,
+                                opt::RECLOSER_MARKER_CODE => &mut ckt.recloser_marker_code,
+                                opt::RECLOSER_MARKER_SIZE => &mut ckt.recloser_marker_size,
+                                opt::RELAY_MARKER_CODE => &mut ckt.relay_marker_code,
+                                _ => &mut ckt.relay_marker_size,
+                            } = v;
+                        }
+                    }
+                    // Pascal `ExecOptions.pas:683-684`: only `TotalTime` is
+                    // settable. `ProcessTime`/`StepTime` are Get-only — the
+                    // Pascal case falls to `else // Ignore excess parameters`
+                    // (silent no-op), so they must NOT hit the "not ported" arm.
+                    opt::TOTAL_TIME => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.solution.total_time_elapsed = v;
+                        }
+                    }
+                    opt::PROCESS_TIME | opt::STEP_TIME => {
+                        // Get-only: consume the value, no effect (Pascal no-op).
+                        let _ = get_dbl(parser, vars, errors);
+                    }
                     opt::NEGLECT_LOAD_Y => ckt.neglect_load_y = interpret_yes_no(&param),
                     opt::MIN_ITERATIONS => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.min_iterations = v;
                         }
                     }
+                    // (The timing options 106/107/108 are handled above: the MMF
+                    // merge carries the Pascal-faithful arms — `TotalTime` settable
+                    // per ExecOptions.pas:683-684, `ProcessTime`/`StepTime` Get-only
+                    // silent no-ops. The gfm branch's all-no-op arm was dropped at
+                    // merge as unreachable and 107-divergent.)
                     _ => {
                         let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
                         errors.push(format!("Set option \"{name}\" is not ported yet."));
@@ -435,6 +650,8 @@ impl Dss {
             vars,
             errors,
             default_base_freq,
+            current_dir,
+            output_directory,
             ..
         } = self;
         let mut pointer: usize = 0;
@@ -458,6 +675,10 @@ impl Dss {
                         *default_base_freq = v;
                     }
                 }
+                // `Set DataPath=` is legal before a circuit exists (Pascal
+                // operates on the DSS context, not the circuit) — a common
+                // pattern at the top of a script.
+                opt::DATA_PATH => apply_data_path(&param, current_dir, output_directory, errors),
                 _ => {
                     errors.push(
                         "You must create a new circuit object first: \"new circuit.mycktname\" to execute this Set command."

@@ -1,0 +1,40 @@
+! GAPS deck (WPG.13): a discharging Storage in grid-forming inverter mode
+! (ControlMode=GFM) forming the voltage of an ISLANDED section, daily mode.
+!
+! Topology: sourcebus --feeder--> mainbus --sw1(OPEN)--> islbus. Opening the
+! tie switch sw1 islands {islbus, stobus}: the only source left in that island
+! is the GFM Storage (a balanced internal voltage source at BaseV behind its
+! CalcGFMYprim short-circuit impedance), stepped up 0.48->4.16 kV by tsto and
+! feeding Load.isl. The main grid (sourcebus/mainbus) is de-energised downstream
+! of the open switch and carries no load.
+!
+! GFM machinery exercised (Storage.pas / InvDynamics.pas):
+!   CalcGFMYprim (the sequence short-circuit admittance stamped into YPrim on the
+!   discharging+GFM branch), DoGFM_Mode (CalcGFMVoltage internal phasors ->
+!   InjCurrent = YPrim*Vinternal, injected with the SOURCES via GetPCInjCurr(TRUE)),
+!   and the TInvBasedPCE.GetCurrents override for the reported terminal current.
+!
+! FEATURE-SENSITIVITY (pinned oracle dss-python 0.15.7, 6x 1h daily steps):
+!   WITH   ControlMode=GFM: the island is ENERGISED. islbus ~0.998 pu, the
+!          Storage forms the grid and supplies the whole island load
+!          (~400 kW / ~80 kvar at step 1, tracking the daily shape dl).
+!   WITHOUT ControlMode=GFM (plain GFL current source): the islanded storage
+!          CANNOT form voltage -> the island is DEAD (islbus = 0.0 pu, storage
+!          output 0 kW). A dead island vs a 0.998-pu energised one is a total,
+!          unambiguous divergence far above any tolerance, so the deck is a live
+!          gate for the ported Storage GFM voltage-source model.
+!   (Two-process oracle capture is bit-identical; determinism proven.)
+Clear
+New Circuit.gfm_micro basekv=4.16 phases=3 bus1=sourcebus
+New Loadshape.dl npts=6 interval=1 mult=[1.0 0.92 0.85 0.98 1.08 0.9]
+New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 length=1 units=km
+New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes
+New Transformer.tsto phases=3 windings=2 buses=(stobus islbus) conns=(delta wye) kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5
+New Storage.batt phases=3 conn=delta bus1=stobus kV=0.48 kva=800 kWrated=800 kWhrated=6000 %stored=100 %reserve=20 %EffCharge=90 %EffDischarge=90 %IdlingkW=1 %R=50 %X=50 State=DISCHARGING kP=0.3 KVDC=0.700 PITol=0.1 ControlMode=GFM
+New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1 daily=dl
+New Monitor.mb element=Storage.batt terminal=1 mode=1 ppolar=no
+New Monitor.mv element=Storage.batt terminal=1 mode=0
+Set voltagebases=[4.16 0.48]
+Calcvoltagebases
+open line.sw1 terminal=1
+Set mode=daily stepsize=1h number=1

@@ -1,0 +1,14 @@
+
+VARIABLES REPORT
+
+Present values of all variables in PC Elements in the circuit.
+
+ELEMENT: Generator.g1
+No. of variables: 6
+  Frequency = 60
+  Theta (Deg) = 0
+  Vd = 0
+  PShaft = 0
+  dSpeed (Deg/sec) = 0
+  dTheta (Deg) = 0
+

@@ -1,0 +1,24 @@
+{
+  "report": "controlled",
+  "fixture": "ctrldemo",
+  "suffix": "ControlledElements.csv",
+  "deck": [
+    "clear",
+    "new circuit.ctrldemo basekv=12.47 bus1=sourcebus phases=3",
+    "new line.l1 bus1=sourcebus bus2=b1 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 normamps=400 emergamps=600",
+    "new line.l2 bus1=b1 bus2=b2 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 switch=y",
+    "new line.l3 bus1=b2 bus2=b3 phases=3 length=1 units=mi r1=0.1 x1=0.3 c1=0 normamps=200",
+    "new capacitor.cap1 bus1=b2 phases=3 kvar=600 kv=12.47",
+    "new load.ld1 bus1=b2 phases=3 kv=12.47 kw=500",
+    "new load.ld3 bus1=b3 phases=3 kv=12.47 kw=100",
+    "new recloser.rec1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1",
+    "new relay.rel1 monitoredobj=line.l1 monitoredterm=1 switchedobj=line.l1 switchedterm=1 type=current",
+    "new swtcontrol.sw1 switchedobj=line.l2 switchedterm=1 action=close",
+    "new swtcontrol.sw2 switchedobj=line.l2 switchedterm=1 action=close normal=closed",
+    "new capcontrol.cc1 element=line.l2 terminal=1 capacitor=cap1 type=current ONsetting=10 OFFsetting=5",
+    "new fuse.fu1 monitoredobj=line.l3 monitoredterm=1 switchedobj=line.l3 switchedterm=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+  ]
+}

@@ -20,6 +20,8 @@
 //!   `SolveZeroLoadSnapShot`, the generator dQ/dV seed, `CheckControls`,
 //!   `SolveSnap`, `SolveDirect`).
 //! - `time_series` — the `SolutionAlgs.pas` stepping modes.
+//! - `monte_carlo` — the MonteCarlo solve modes (`SolveMonte1/2/3`,
+//!   `SolveMonteFault`/`PickAFault`) over the FPC RNG.
 //! - `harmonics` — the harmonics solve mode (`SolveHarmonic`/`SolveHarmonicT`,
 //!   the frequency sweep, `InitializeForHarmonics`).
 //! - `dynamics` — the dynamics solve mode (`SolveDynamic` predictor/corrector
@@ -30,19 +32,25 @@ mod dispatch;
 mod dynamics;
 mod fault_study;
 mod harmonics;
+mod monte_carlo;
 mod power_flow;
 mod set_mode;
 mod state;
 mod time_series;
 
 pub use dispatch::{set_voltage_bases, solve};
+pub(crate) use power_flow::solve_snap;
 pub use power_flow::solve_zero_load_snapshot;
 pub use set_mode::set_mode;
 pub use state::{
-    ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, MULTIRATE, NEWTONSOLVE, NORMALSOLVE,
-    POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN, sys_ctx,
+    ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, GAUSSIAN, LOGNORMAL, MULTIRATE,
+    NEWTONSOLVE, NORMALSOLVE, POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN,
+    UNIFORM, USEDAILY, USEDUTY, USENONE, USEYEARLY, sys_ctx,
 };
 
 pub(crate) use dynamics::calc_initial_machine_states;
 pub(crate) use harmonics::initialize_for_harmonics;
 pub(crate) use power_flow::solve_circuit;
+// The `_InitSnap`/`_SolveNoControl`/`_SolveDirect`/`_SolvePFlow` step-solution
+// executive commands (`ExecCommands.pas:578-601`) drive these directly.
+pub(crate) use power_flow::{do_pflow_solution, set_generator_disp_ref, solve_direct};

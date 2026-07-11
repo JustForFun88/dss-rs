@@ -148,30 +148,43 @@ fn make_like_copies() {
 }
 
 #[test]
-fn binary_file_props_are_not_ported() {
-    let enums = EnumRegistry::new();
-    let cls = class_props(&enums);
+fn binary_file_props_queue_a_binary_file_load() {
+    // WPG.1: SngFile/DblFile are ported (deferred FileLoad, like CSVFile).
     for name in ["sngfile", "dblfile"] {
-        let mut obj = TShapeObj::new("t");
-        let mut parser = Parser::new();
-        let vars = ParserVars::new();
-        let mut errors = Vec::new();
-        let idx = cls.property_index(name).unwrap();
-        let mut eng = PropEngine {
-            parser: &mut parser,
-            vars: &vars,
-            enums: &enums,
-            errors: &mut errors,
-            foreign: None,
-        };
-        let err = cls
-            .edit_property(&mut obj, idx, "shape.bin", &mut eng)
-            .unwrap_err();
-        assert!(
-            err.to_string().to_lowercase().contains("not ported"),
-            "{name}: {err}"
-        );
+        let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), (name, "t.bin")]);
+        assert!(errs.is_empty(), "{name}: {errs:?}");
+        let loads = obj.take_file_loads();
+        assert_eq!(loads.len(), 1, "{name}");
+        assert_eq!(loads[0].filename, "t.bin", "{name}");
+        assert!(loads[0].binary, "{name}");
     }
+}
+
+#[test]
+fn read_sng_file_fixed_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1")]);
+    let mut bytes = Vec::new();
+    for v in [18.0f32, 19.5, 22.0, 26.5] {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.core.read_sng_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "NPts"), "4");
+    assert_eq!(get(&cls, &obj, "Temp"), "[ 18 19.5 22 26.5]");
+}
+
+#[test]
+fn read_dbl_file_variable_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
+    let mut bytes = Vec::new();
+    for (h, v) in [(0.0f64, 18.0f64), (3.0, 26.5)] {
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.core.read_dbl_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 3]");
+    assert_eq!(get(&cls, &obj, "Temp"), "[ 18 26.5]");
 }
 
 #[test]
@@ -186,15 +199,51 @@ fn csvfile_queues_a_file_load() {
 }
 
 #[test]
-fn action_dblsave_is_not_ported() {
-    let (_cls, _obj, errs) = edited(&[
+fn action_dblsave_queues_bare_name_double_save() {
+    // WPG.17: `Action=DblSave/SngSave` now queues a binary write (Pascal
+    // `TTShapeObj.SaveToDblFile`/`SaveToSngFile`). TShape uses the bare `<name>`
+    // filename (no `_P`/`_Q` split), a single value series, GlobalResult tag `Temp`.
+    let (_cls, mut obj, errs) = edited(&[
         ("npts", "4"),
         ("interval", "1"),
         ("temp", "20 30 50 80"),
         ("action", "dblsave"),
     ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(!s.sng, "dblsave → double precision");
+    assert!(!s.p_suffix, "TShape writes the bare <name>");
+    assert_eq!(s.result_tag, "Temp");
+    assert_eq!(s.values, vec![20.0, 30.0, 50.0, 80.0]);
+    assert!(s.q_values.is_none(), "TShape has no Q series");
+}
+
+#[test]
+fn action_sngsave_queues_single_precision() {
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "3"),
+        ("interval", "1"),
+        ("temp", "10 20 30"),
+        ("action", "sngsave"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    assert!(saves[0].sng, "sngsave → single precision");
+    assert_eq!(saves[0].values, vec![10.0, 20.0, 30.0]);
+}
+
+#[test]
+fn action_save_undefined_series_errors() {
+    // Pascal `if not Assigned(TValues)` → `DoSimpleMsg('%s Temperatures not
+    // defined.', …)` and no queued save.
+    let (_cls, mut obj, errs) = edited(&[("action", "dblsave")]);
     assert!(
-        errs.iter().any(|e| e.to_lowercase().contains("not ported")),
+        errs.iter()
+            .any(|e| e.to_lowercase().contains("temperatures not defined")),
         "{errs:?}"
     );
+    assert!(obj.take_shape_saves().is_empty());
 }

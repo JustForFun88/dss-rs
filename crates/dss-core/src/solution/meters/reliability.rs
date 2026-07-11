@@ -5,30 +5,13 @@
 
 use crate::circuit::Circuit;
 use crate::elements::ckt::ElemFlags;
+use crate::elements::meter::energymeter::FeederSection;
 use crate::elements::pc::load::Load;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 
 use super::downcast_meter;
 
 // ===================== Reliability (WP6.6) ==================================
-
-/// Pascal `TFeederSection` record (EnergyMeter.pas l.162): one entry per feeder
-/// section (the span between two over-current-protection devices). All-zero on
-/// allocation (`ReallocMem` + the explicit init loop).
-#[derive(Debug, Clone, Default)]
-struct FeederSection {
-    /// 1=Fuse; 2=Recloser; 3=Relay.
-    ocp_device_type: i32,
-    n_customers: i32,
-    n_branches: i32,
-    total_customers: i32,
-    /// Index of the PD element with the OCP device at the section head.
-    seq_index: usize,
-    average_repair_time: f64,
-    sect_fault_rate: f64,
-    sum_flt_rates_x_repair_hrs: f64,
-    sum_branch_flt_rates: f64,
-}
 
 /// FROM bus (0-based index into `ckt.buses`) of a PD element's metered terminal.
 fn pd_from_bus(store: &dyn ElemStore, r: ElemRef) -> usize {
@@ -182,6 +165,10 @@ fn calc_reliability_indices(
 
     if section_count == 0 {
         // No OCP devices (Phase 6 always lands here, matching the oracle).
+        // Pascal mutated the meter's `SectionCount` field during the forward
+        // sweep, so the abort leaves 0 there (a later `Export Sections` writes
+        // no rows) while the stale `FeederSections` array is untouched.
+        downcast_meter(store, meter_ref).set_section_count(0);
         return Err(
             "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse) defined. \
              Aborting Reliability calc."
@@ -252,11 +239,31 @@ fn calc_reliability_indices(
         s.average_repair_time = s.sum_flt_rates_x_repair_hrs / s.sum_branch_flt_rates;
     }
 
-    // Bus interruption durations.
+    // Bus interruption durations. Pascal walks **every circuit bus** here
+    // (EnergyMeter.pas:2521), not just this meter's zone — an upstream bug (see
+    // `investigations/reliability_bus_int_duration_oob_bug_report.md`): with
+    // multiple meters a bus whose `BusSectionID` was set by *another* meter's
+    // sweep is read against THIS meter's `FeederSections`. Two regimes:
+    //   (a) TODO(compat): in-range id (`≤ section_count`) — a **deterministic**
+    //       cross-zone overwrite. `sections.get(..) = Some`, so we reproduce it
+    //       exactly (gated by `export_busreliability_multimeter_matches_oracle`).
+    //       Clean fix: walk only this meter's zone buses (or reset
+    //       `bus_section_id` per meter) and regenerate the multimeter golden
+    //       deliberately.
+    //   (b) out-of-range id — Pascal reads `FeederSections[id]` past the
+    //       `section_count + 1` allocation: an OOB heap read, **proven
+    //       nondeterministic** (the report probes it across fresh processes —
+    //       the first slot past the array reads a stable 0 from zeroed slack,
+    //       the next slots read live garbage: 1.5e-311, 3.1e-314, 2.5e-290,
+    //       6.0e-118). Safe Rust cannot and must not reproduce it: `.get()`
+    //       returns `None`, so the bus keeps its own-zone duration. NOT a
+    //       TODO(compat) — there is no defined upstream value to pin, so no gate
+    //       can observe the difference.
     for b in ckt.buses.iter_mut() {
-        if b.bus_section_id > 0 {
-            b.bus_int_duration =
-                source_int_dur + sections[b.bus_section_id as usize].average_repair_time;
+        if b.bus_section_id > 0
+            && let Some(s) = sections.get(b.bus_section_id as usize)
+        {
+            b.bus_int_duration = source_int_dur + s.average_repair_time;
         }
     }
 
@@ -309,12 +316,11 @@ fn calc_reliability_indices(
         saifi_kw /= dbl_kw;
     }
 
-    downcast_meter(store, meter_ref).set_reliability_results(
-        saifi,
-        saifi_kw,
-        saidi,
-        caidi,
-        cust_interrupts,
-    );
+    let em = downcast_meter(store, meter_ref);
+    em.set_reliability_results(saifi, saifi_kw, saidi, caidi, cust_interrupts);
+    // Persist the section data on the meter (Pascal keeps `SectionCount` +
+    // `FeederSections` as fields; `Export Sections` reads them back).
+    em.set_section_count(section_count);
+    em.set_feeder_sections(sections);
     Ok(())
 }

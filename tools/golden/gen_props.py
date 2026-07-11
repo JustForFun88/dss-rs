@@ -295,9 +295,13 @@ SCENARIOS = [
         ],
     },
     # --- LoadShape (WP5.2a, in-memory core) ---
-    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are NOT_PORTED here; the
-    # CSVFile scenario arrives in WP5.2b. Mean/StdDev on the empty default raise
-    # (61107) in the oracle, so they are skipped for that one scenario only.
+    # File props (CSVFile/SngFile/DblFile/PQCSVFile) are all ported (WP5.2b /
+    # WPG.1) but none of these scenarios actually loads a file — every default
+    # here stays the empty string, so no file-fixture scenario is needed on
+    # this round-trip gate (the executive integration tests + the live
+    # shape_binfiles corpus deck cover an actual load). Mean/StdDev on the
+    # empty default raise (61107) in the oracle, so they are skipped for that
+    # one scenario only.
     {
         "name": "loadshape_default",
         "target": "LoadShape.d",
@@ -552,6 +556,63 @@ SCENARIOS = [
             "New Transformer.base phases=3 windings=2 buses=(p, s) "
             "conns=(delta, wye) kvs=(115, 4.16) kvas=(3000, 3000) xhl=7 %r=0.4",
             "New Transformer.t6 like=base buses=(p2, s2)",
+        ],
+    },
+    # --- AutoTrans (WPG.15) ---
+    # The autotransformer: Series (conn=s, code 2)/Common (wye)/Delta-tertiary
+    # windings, the XHX/XHT/XXT reactance set, no XfmrCode, no RNeut/XNeut. The
+    # PropertySideEffects force winding 1 = Series and winding 2 = Wye; the
+    # RDCOhms default derives from the recalc'd series kVSeries VBase (probed
+    # 2026-07-08). No garbage-getter props (no CMatrix family), so no
+    # zero_garbage.
+    {
+        "name": "autotrans_default",
+        "target": "AutoTrans.a1",
+        "commands": ["New AutoTrans.a1"],
+    },
+    {
+        "name": "autotrans_2wdg",
+        "target": "AutoTrans.a2",
+        "commands": [
+            "New AutoTrans.a2 phases=3 windings=2 xhx=8.5 "
+            "buses=(h, x) conns=(s, w) kvs=(115, 69) kvas=(50000, 50000) %r=0.08",
+        ],
+    },
+    {
+        "name": "autotrans_3wdg",
+        "target": "AutoTrans.a3",
+        "commands": [
+            "New AutoTrans.a3 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
+            "%imag=0.0329 %noloadloss=0.02402 buses=(high, low, tert) "
+            "conns=(s, w, d) kvs=(345, 161, 13.8) kvas=(330000, 330000, 72000)",
+        ],
+    },
+    {
+        "name": "autotrans_wdg_seq",
+        "target": "AutoTrans.a4",
+        "commands": [
+            "New AutoTrans.a4 phases=3 windings=2",
+            "~ wdg=1 bus=high conn=s kV=115 kVA=40000 %r=0.10 "
+            "maxtap=1.10 mintap=0.90 numtaps=32",
+            "~ wdg=2 bus=low  conn=w kV=34.5 kVA=40000 %r=0.10 rdcohms=0.5",
+        ],
+    },
+    {
+        "name": "autotrans_xscarray",
+        "target": "AutoTrans.a5",
+        "commands": [
+            "New AutoTrans.a5 phases=3 windings=3 buses=(a, b, c) "
+            "conns=(s, w, d) kvs=(345, 161, 13.8) kvas=(330000, 330000, 72000) "
+            "xscarray=(7.23 24.45 28.45)",
+        ],
+    },
+    {
+        "name": "autotrans_makelike",
+        "target": "AutoTrans.a6",
+        "commands": [
+            "New AutoTrans.base phases=3 windings=2 buses=(h, x) conns=(s, w) "
+            "kvs=(115, 69) kvas=(40000, 40000) xhx=8.5 %r=0.08",
+            "New AutoTrans.a6 like=base buses=(h2, x2)",
         ],
     },
     # --- Capacitor (WP4.5) ---
@@ -2645,6 +2706,205 @@ SCENARIOS = [
             "vregmin=0.93 vregmax=1.07 qmaxlead=0.4 qmaxlag=0.45 deltaq_factor=0.5 "
             "preferq=yes tresponse=8 eventlog=yes",
             "New ExpControl.e1 like=base",
+        ],
+    },
+    # --- Isource (GAPS_PLAN WPG.14) -----------------------------------------
+    # The ideal current source. Defaults: Phases=3, Amps=0, Angle=0,
+    # Frequency=60 (BaseFrequency), ScanType=pos, Sequence=pos, Bus2 defaults
+    # to Bus1 stripped of nodes + one ".0" per phase (grounded-Y), Spectrum=
+    # "default" (TPCElement.DefaultGeneral — NOT "defaultvsource"/"defaultload").
+    {
+        "name": "isource_default",
+        "target": "Isource.i1",
+        "commands": ["New Isource.i1 bus1=b1"],
+    },
+    {
+        # Every own property explicit, on a 3-phase unit; Bus2 set AFTER Bus1
+        # on the same New command so the explicit value sticks (Isource's
+        # PropertySideEffects re-derives the grounded-Y default unconditionally
+        # whenever Bus1 is (re)set — see the port's TODO(compat) note).
+        "name": "isource_full",
+        "target": "Isource.i1",
+        "commands": [
+            "New Loadshape.ys1 npts=3 interval=1 mult=(1 2 3)",
+            "New Loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+            "New Loadshape.du1 npts=4 interval=0.25 mult=(0.1 0.2 0.3 0.4)",
+            "New Spectrum.sp1 numharm=2 harmonic=[1 3] %mag=[100 30] angle=[0 15]",
+            "New Isource.i1 bus1=b1 bus2=b2 phases=3 amps=25 angle=45 "
+            "frequency=55 scantype=zero sequence=neg yearly=ys1 daily=ds1 "
+            "duty=du1 spectrum=sp1",
+        ],
+    },
+    {
+        # 1-phase: FphaseShift=0 internally (not itself a property), and the
+        # default-Bus2 node-stripping keeps only the bus-name part before the
+        # first dot.
+        "name": "isource_1phase",
+        "target": "Isource.i1",
+        "commands": ["New Isource.i1 bus1=c1.1 phases=1 amps=12 angle=5"],
+    },
+    {
+        # Setting Daily (with no prior Yearly) mirrors it into Yearly too
+        # (Pascal: index 9 = Daily -> `if YearlyShapeObj = NIL then
+        # YearlyShapeObj := DailyShapeObj`).
+        "name": "isource_daily_defaults_yearly",
+        "target": "Isource.i1",
+        "commands": [
+            "New Loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+            "New Isource.i1 bus1=b1 daily=ds1",
+        ],
+    },
+    {
+        # MakeLike copies Amps/Angle/Frequency/ScanType/Sequence/the shape
+        # refs/Bus2Defined; the derived object's own Bus1/Bus2 come from its
+        # own New command, not the base.
+        "name": "isource_makelike",
+        "target": "Isource.i1",
+        "commands": [
+            "New Loadshape.ds1 npts=2 interval=1 mult=(0.5 1.5)",
+            "New Isource.base bus1=b1 phases=1 amps=15 angle=10 frequency=55 "
+            "scantype=zero sequence=neg daily=ds1",
+            "New Isource.i1 like=base bus1=c1",
+        ],
+    },
+    {
+        # The CLOBBER direction of the Bus2Defined quirk (WPG.14 audit
+        # follow-up): Isource PropertySideEffects never latches Bus2Defined,
+        # so an explicit Bus2= parsed BEFORE Bus1= is silently re-derived from
+        # Bus1 (grounded-Y default) - the opposite ordering sticks
+        # (isource_full pins that side).
+        "name": "isource_bus2_clobbered_by_bus1",
+        "target": "Isource.i1",
+        "commands": [
+            "New Isource.i1 bus2=b2 bus1=b1 phases=3 amps=10",
+        ],
+    },
+    # --- GICLine (GAPS_PLAN WPG.16) ------------------------------------------
+    # The 2-terminal induced-EMF source. Defaults: Phases=3, R=1, X=0, C=0,
+    # Frequency=0.1, ScanType/Sequence=0 (zero seq, internal), Bus2 defaults to
+    # Bus1 node-stripped, Volts computed by Compute_VLine (default geodesy).
+    {
+        "name": "gicline_default",
+        "target": "GICLine.l1",
+        "commands": ["New GICLine.l1 bus1=b1 bus2=b2"],
+    },
+    {
+        # Volts explicitly specified (VoltsSpecified=TRUE): Compute_VLine is NOT
+        # invoked, so Volts stays 120 (not the geodesy value).
+        "name": "gicline_volts",
+        "target": "GICLine.l1",
+        "commands": [
+            "New GICLine.l1 bus1=b1 bus2=b2 phases=3 R=3.5 X=0.2 Volts=120 Angle=15",
+        ],
+    },
+    {
+        # Geodesy spec (EN/EE + endpoints): Volts = Compute_VLine, VE/VN from the
+        # lat/lon deltas (DeltaLat=Lat2-Lat1, DeltaLon=Lon2-Lon1).
+        "name": "gicline_geodesy",
+        "target": "GICLine.l1",
+        "commands": [
+            "New GICLine.l1 bus1=b1 bus2=b2 R=2.8 EN=1.0 EE=1.0 "
+            "Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+        ],
+    },
+    {
+        # Blocking capacitor C>0 (the series Xc branch in CalcYPrim; C is a
+        # stored property, no effect on the property dump itself).
+        "name": "gicline_cap",
+        "target": "GICLine.l1",
+        "commands": ["New GICLine.l1 bus1=b1 bus2=b2 R=3.1 C=32.0 Volts=80 Angle=0"],
+    },
+    {
+        # 1-phase, node-stripped default Bus2 (keeps the bus-name part only).
+        "name": "gicline_1phase",
+        "target": "GICLine.l1",
+        "commands": ["New GICLine.l1 bus1=c1.1 phases=1 R=1.5 Volts=50"],
+    },
+    {
+        # MakeLike copies Z/R/X/C/Volts/Angle/SrcFrequency/Scan/Sequence but NOT
+        # the geodesy or VoltsSpecified; the derived object's EndEdit recomputes
+        # Volts from the default geodesy (so EN/EE/Lat/Lon show defaults and
+        # Volts is the default 113.32, not the base's custom value).
+        "name": "gicline_makelike",
+        "target": "GICLine.l1",
+        "commands": [
+            "New GICLine.base bus1=b1 bus2=b2 phases=3 R=2.5 X=0.3 C=5 "
+            "EN=2.0 EE=1.5 Lat1=40 Lon1=-80 Lat2=41 Lon2=-79 Angle=15",
+            "New GICLine.l1 like=base bus1=c1",
+        ],
+    },
+    # --- GICTransformer (GAPS_PLAN WPG.16) -----------------------------------
+    # The resistance-only GIC winding model. Defaults: Phases=3, Type=GSU,
+    # kVLL1=500, kVLL2=138, MVA=100, %R1=%R2=0.2, K=2.2, R1/R2 derived from %R
+    # (R1=5, R2=0.38088 via the FZbase and the FpctR1-for-both quirk).
+    {
+        "name": "gictransformer_default",
+        "target": "GICTransformer.t1",
+        "commands": ["New GICTransformer.t1 busH=b1"],
+    },
+    {
+        # GSU: single winding, R1 spec (InverseValue -> G1), neutral node 4.
+        # FpctRSpecified=FALSE so %R1 is derived from G1 (0.0048), %R2 from the
+        # default G2 (0.2).
+        "name": "gictransformer_gsu",
+        "target": "GICTransformer.tg1",
+        "commands": ["New GICTransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU"],
+    },
+    {
+        # YY: H+X windings, both neutrals on node 4; R1/R2 ohm spec. BusX
+        # promotes Nterms 2->4 (SetBusX write function).
+        "name": "gictransformer_yy",
+        "target": "GICTransformer.tg2",
+        "commands": [
+            "New GICTransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 "
+            "R1=0.2 R2=0.1 type=YY",
+        ],
+    },
+    {
+        # Auto: %R spec on the kV/MVA base + VarCurve; Type=Auto ties Bus2 to
+        # Bus3 (BusNH shows b3x). R1/R2 derived from %R with the FpctR1 quirk
+        # (R2 uses %R1, not %R2).
+        "name": "gictransformer_auto",
+        "target": "GICTransformer.tg3",
+        "commands": [
+            "New XYcurve.vgic npts=3 xarray=(0 1 2) yarray=(0 0.6 1.0)",
+            "New GICTransformer.tg3 busH=b3 busX=b3x busNX=b3.4.4.4 %R1=0.2 %R2=0.15 "
+            "kvll1=345 kvll2=138 mva=300 varcurve=vgic type=Auto",
+        ],
+    },
+    {
+        # MakeLike copies the conductances/spec/kV/MVA/%R/K and the rating tail.
+        "name": "gictransformer_makelike",
+        "target": "GICTransformer.t1",
+        "commands": [
+            "New GICTransformer.base busH=b1 busNH=b1.4.4.4 busX=b1x busNX=b1.4.4.4 "
+            "R1=0.15 R2=0.08 kvll1=345 kvll2=138 mva=250 type=YY",
+            "New GICTransformer.t1 like=base busH=b2",
+        ],
+    },
+    # --- GICsource (GAPS_PLAN WPG.16) ----------------------------------------
+    # The Line-spliced injector: the source's name must match an existing Line.
+    # Defaults: Phases=3, Angle=0, Frequency=0.1, EN/EE=1, default geodesy,
+    # Spectrum forbidden (empty). Volts=Compute_VLine (sign-flipped) unless spec.
+    {
+        "name": "gicsource_volts",
+        "target": "GICsource.seg1",
+        "commands": [
+            "New Line.seg1 bus1=b1 bus2=b2 phases=3 r1=3.2 x1=0.1 r0=3.2 x0=0.1 "
+            "c1=0 c0=0 length=1",
+            "New GICsource.seg1 Volts=110 Angle=0 Frequency=0.1",
+        ],
+    },
+    {
+        # Geodesy spec (VoltsSpecified=FALSE): Volts = Compute_VLine with the
+        # sign-flipped deltas (DeltaLat=Lat1-Lat2).
+        "name": "gicsource_geodesy",
+        "target": "GICsource.seg2",
+        "commands": [
+            "New Line.seg2 bus1=b2 bus2=b3 phases=3 r1=2.7 x1=0.1 r0=2.7 x0=0.1 "
+            "c1=0 c0=0 length=1",
+            "New GICsource.seg2 EN=1.0 EE=1.0 Frequency=0.1 "
+            "Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
         ],
     },
 ]

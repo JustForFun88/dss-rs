@@ -6,6 +6,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::meter::meter_element::MeteredSnapshot;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -50,6 +51,42 @@ impl CktElement for Sensor {
     /// `TSensorObj.GetCurrents` returns zeros.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TSensorObj.MakePosSequence` (`Meters/Sensor.pas:478`): resync the
+    /// sensor to the metered element's bus / phase / conductor counts, then
+    /// `ClearSensor` / `ValidSensor := TRUE` / `AllocateSensorObjArrays` /
+    /// `ZeroSensorArrays` / `RecalcVbase`, and run the base bus rename
+    /// (`inherited`). Pascal NIL-guards `MeteredElement`; `ctx.monitored` is
+    /// `None` in the same case.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(m) = &ctx.monitored {
+            // Setbus(1, MeteredElement.GetBus(MeteredTerminal))
+            let mt = self.med.metered_terminal as usize;
+            let bus = mt
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.med.cd.set_bus(1, &bus);
+            // FNphases := MeteredElement.NPhases; Nconds := MeteredElement.Nconds
+            self.med.cd.nphases = m.nphases;
+            self.med.cd.set_nconds(m.nconds);
+            self.clear_sensor();
+            self.valid_sensor = true;
+            // AllocateSensorObjArrays + ZeroSensorArrays (calc buffers sized to
+            // the metered element's Yorder).
+            self.allocate_and_zero_arrays(m.yorder);
+            self.recalc_vbase();
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.med.metered_element
     }
 }
 

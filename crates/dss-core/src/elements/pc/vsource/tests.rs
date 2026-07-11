@@ -68,3 +68,32 @@ fn duty_mode_falls_back_to_daily_shape() {
     vs.get_vterminal_for_source(&mode_ctx(SolveMode::DutyCycle, 1.0));
     assert!((vs.vmag - 0.5 * vmag_snap).abs() < 1e-6);
 }
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// VSource → 1 phase, basekv ÷ √3, R1/X1 preserved.
+#[test]
+fn makeposseq_vsource() {
+    let mut vs = VSource::new("v");
+    vs.kv_base = 12.47;
+    vs.r1 = 1.0;
+    vs.x1 = 3.0;
+
+    let plan = vs.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let kv_new = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetF64(prop::BASEKV, kv_new),
+            PosSeqAction::SetF64(prop::R1, 1.0),
+            PosSeqAction::SetF64(prop::X1, 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}

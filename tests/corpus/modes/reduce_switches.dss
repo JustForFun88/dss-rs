@@ -1,0 +1,31 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the SWITCHES strategy
+// (DoReduceSwitches, ReduceAlgs.pas:297): an in-line switch (IsSwitch)
+// with one child, no shunts at its to-bus and the bus not kept is merged
+// into the downstream non-switch line (sw1 -> merged into l2, b2
+// eliminated); a dangling switch with no shunts is disabled (sw2).
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrw basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.sw1 bus1=b1 bus2=b2 switch=yes
+new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.8 units=km
+new line.sw2 bus1=b3 bus2=d1 switch=yes
+
+new load.ld3 bus1=b3 phases=3 conn=wye model=1 kv=12.47 kw=450 pf=0.92
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set reduceoption=switches
+reduce
+solve

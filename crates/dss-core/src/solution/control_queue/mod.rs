@@ -164,6 +164,25 @@ impl ControlQueue {
         self.action_list.len()
     }
 
+    /// The queued actions for the `Show controlqueue` report (Pascal
+    /// `TControlQueue.WriteQueue`, which walks `ActionList` in list order): each
+    /// record's `(handle, hour, sec, action_code, proxy_handle, control ref)`.
+    pub fn queue_rows(&self) -> Vec<(i32, i32, f64, i32, i32, ElemRef)> {
+        self.action_list
+            .iter()
+            .map(|a| {
+                (
+                    a.action_handle,
+                    a.action_time.hour,
+                    a.action_time.sec,
+                    a.action_code,
+                    a.proxy_handle,
+                    a.control,
+                )
+            })
+            .collect()
+    }
+
     /// Pascal `Delete(Hdl)`: remove the record with the given handle (the
     /// `DeleteFromQueue(i, popped := FALSE)` "by control device" path).
     pub fn delete(&mut self, handle: i32) {

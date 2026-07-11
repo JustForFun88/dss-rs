@@ -8,6 +8,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::generator::{Connection, default_recalc_ctx};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::mathutil::power_factor;
@@ -24,6 +25,13 @@ impl CktElement for IndMach012 {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
+    }
+
+    /// Pascal `TIndMach012Obj.MakePosSequence` (IndMach012.pas:1424-1426): an
+    /// EMPTY body with NO `inherited` — the machine is left completely untouched
+    /// (not even the base bus rename runs).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        PosSeqPlan::no_base()
     }
 
     /// Pascal `TIndMach012Obj.CalcYPrim`.
@@ -145,10 +153,11 @@ impl DssObject for IndMach012 {
         match idx {
             KV => self.kv_generator_base,
             KW => self.kw_base,
-            // Pascal `pf` ReadByFunction → PowerFactor(Power[1]). The text dump is
-            // intercepted by SILENT_READ_ONLY (→ ""), so this arm is unreachable in
-            // practice; the `&self` getter has no solution access to compute the live
-            // Power[1] anyway. The live power factor is exposed as state variable #21
+            // Pascal `pf` ReadByFunction → PowerFactor(Power[1]). The text render is
+            // intercepted by SILENT_READ_ONLY (→ "" always — upstream leaves
+            // PropertyOffset at -1, so the GetObjPropertyValue guard never calls the
+            // read function, solved or not; probe-proven), so this arm is unreachable
+            // in practice. The live power factor is exposed as state variable #21
             // (`get_all_variables_impl`, where the solution exists). Return the
             // unsolved value (PowerFactor(0) = 1) as a placeholder.
             PF => power_factor(Complex64::ZERO),

@@ -311,14 +311,21 @@ impl Transformer {
     }
 
     /// Pascal `TTransfObj.GetAllWindingCurrents`: `Iterm = Y_Term · Vterm`
-    /// phase-by-phase, length `2·nphases·NumWindings`. Returns zeros when the
-    /// element is not yet wired into the solution (Pascal `NodeRef = NIL`).
+    /// phase-by-phase, length `2·nphases·NumWindings`. Returns zeros for a
+    /// disabled element or one not yet wired into the solution (Pascal
+    /// `Transformer.pas:1530`: `if (not Enabled) or (NodeRef = NIL) or
+    /// (Solution.NodeV = NIL) then Exit`). Reads the caller-populated
+    /// `cd.vterminal` (Pascal reloads it from `Solution.NodeV` internally; the
+    /// `&self` getter can't reach the solution, so the `WdgCurrents` prop def
+    /// carries `PropFlags::READS_VTERMINAL` and the `?`/`Dump` surfaces refresh
+    /// via `Dss::refresh_vterminal_if_marked`; the solve path for
+    /// `Powers`/`Currents` refreshes as before).
     fn get_all_winding_currents(&self) -> Vec<Complex64> {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;
         let nconds = self.cd.nconds;
         let mut curr = vec![Complex64::ZERO; 2 * np * nw];
-        if self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
             return curr;
         }
         let vterminal = &self.cd.vterminal;
@@ -373,10 +380,12 @@ impl Transformer {
                 } else {
                     c.arg().to_degrees()
                 };
-                // Pascal: Format('%.7g, (%.5g), ', [Cabs, Cdang]).
-                out.push_str(&crate::util::fmt_g(mag, 7));
+                // Pascal: Format('%.7g, (%.5g), ', [Cabs, Cdang]) — FPC `%g`
+                // renders the exponent uppercase (`E-12`), so route through
+                // `report::format::g` (not the lowercase-`e` `fmt_g`).
+                out.push_str(&crate::report::format::g(mag, 7));
                 out.push_str(", (");
-                out.push_str(&crate::util::fmt_g(ang, 5));
+                out.push_str(&crate::report::format::g(ang, 5));
                 out.push_str("), ");
                 k += 1; // skip the other end of the winding
             }

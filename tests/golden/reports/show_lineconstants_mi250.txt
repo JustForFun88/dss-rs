@@ -1,0 +1,71 @@
+LINE CONSTANTS
+Frequency = 60 Hz, Earth resistivity = 250 ohm-m
+Earth Model = Deri
+
+
+--------------------------------------------------
+Geometry Code = g3
+
+R MATRIX, ohms per mi
+0.401302, 
+0.0943018, 0.401302, 
+0.0943018, 0.0943018, 0.401302, 
+
+jX MATRIX, ohms per mi
+1.47926, 
+1.00162, 1.47926, 
+0.917515, 1.00162, 1.47926, 
+
+Susceptance (jB) MATRIX, S per mi
+6.29926E-6, 
+-2.50608E-6, 7.01286E-6, 
+-1.33614E-6, -2.50608E-6, 6.29926E-6, 
+
+L MATRIX, mH per mi
+3.92386, 
+2.65689, 3.92386, 
+2.43378, 2.65689, 3.92386, 
+
+C MATRIX, nF per mi
+16.7093, 
+-6.64757, 18.6022, 
+-3.54421, -6.64757, 16.7093, 
+
+-------------------------------------------------------------------
+-------------------Equiv Symmetrical Component --------------------
+-------------------------------------------------------------------
+
+
+Z1, ohms per mi = 0.307 + j 0.505675 (L1 = 1.34134 mH) 
+Z0, ohms per mi = 0.589905 + j 3.42644 (L0 = 9.0889 mH) 
+
+C1, nF per mi = 22.9534
+C0, nF per mi = 6.11402
+
+Surge Impedance:
+  Positive sequence = 241.739 ohms
+  Zero sequence     = 1219.25 ohms
+  Common Mode       = 406.275 ohms
+
+Propagation Velocity (Percent of speed of light):
+  Positive sequence = 96.7464 
+  Zero sequence     = 72.0127 
+
+
+--------------------------------------------------
+Geometry Code = g1
+
+R MATRIX, ohms per mi
+0.401302, 
+
+jX MATRIX, ohms per mi
+1.47926, 
+
+Susceptance (jB) MATRIX, S per mi
+4.48203E-6, 
+
+L MATRIX, mH per mi
+3.92386, 
+
+C MATRIX, nF per mi
+11.8889, 

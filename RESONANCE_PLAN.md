@@ -1,11 +1,32 @@
 # Plan: near-singular `Y_bus` / harmonic-resonance accuracy (post-1:1)
 
+## Source-integrity gate — ritual step 0 (before the model-tier check)
+
+The Pascal we port FROM — `.inputs/dss_capi` (186 `.pas` files), plus
+`.inputs/electricdss-tst` for oracle/live work — is the **specification**. Before doing
+anything, and re-checked continuously (not only at kickoff), confirm that folder exists
+and is non-empty. If it has vanished — missing or empty — at **any** point in the work,
+**STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
+"port" a source you cannot read. Tell the user the vendored source is gone and must be
+re-vendored, then wait. Reply exactly:
+**«Исходник порта (`.inputs/dss_capi`) отсутствует или пуст — работа остановлена. Восстанови
+vendored-исходник (re-vendor) и повтори команду.»**
+No spec → nothing to port; fabricating one from memory is a silent, unverifiable
+divergence — far worse than stopping. This gate runs **ahead of the tier/refuse check**
+(`PLAN_SEQUENCE.md` §Model-tier protocol).
+
 > **Status: DEFERRED — post-1:1.** This is *not* current porting work. During the
 > 1:1 port near-resonance behaviour is a **documented conditioning exception**, not a
 > fix (see §3). The improvements in §4 are a deliberate, post-acceptance divergence
 > from OpenDSS, in the spirit of `PORTING_PLAN.md` §6 (final acceptance) and the
 > post-port cleanup pass. It is **not** a `TODO(compat)` (we are not reproducing an
 > upstream bug — we are hitting a numerical-conditioning limit).
+>
+> **Sequencing (see `PLAN_SEQUENCE.md`):** this plan runs **after `DE_PASCALIZE_PLAN.md`
+> Stage F** (the `oracle-parity` feature split) and **before `MULTITHREADING_PLAN.md`**.
+> Stage F is what lets WP-R1 land cleanly: refinement is **on in the default build** and
+> `#[cfg(feature = "oracle-parity")]`-**off in the parity build**, so every 1:1 oracle
+> gate stays untouched while the product gets the accuracy win.
 
 ## 1. Context
 
@@ -85,6 +106,42 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   falls below a set bound. (The residual test checks backward stability; only the
   `Z`-convergence checks the forward accuracy that needs the compensated residual.)
 
+  **Second acceptance case — the floating-delta zero-sequence class (measured
+  2026-07-10, `Run_IEEE123Bus_GFMSnap.DSS` investigation).** This is a *power-flow*
+  (not harmonics) beneficiary, proving WP-R1's "any ill-conditioned system" scope on a
+  vendored deck. A bus fed by a delta xfmr winding with a delta DER (StoBus/PVBus)
+  has no zero-sequence path to ground; its common mode is pinned only by the
+  transformer anti-float adder (−j1.4468e-6 S = 2·Y_PPM) against a ~452 S diagonal —
+  a κ≈3.1e8 subspace inside an otherwise well-conditioned solve. Measured on
+  bit-identical `(Y, I)` (exact hex-bit transport — decimal JSON round-trip through
+  serde_json *without* the `float_roundtrip` feature perturbs the last ulp and, ×3e8,
+  poisons such measurements):
+    - zero-seq residual per solve: KLU 7.3e-12 A / scipy 8.7e-12 A / **faer 8.7e-11 A**
+      (~12× worse) → common-mode slack |r₀|/|y₀| ≈ 6e-5 V — the entire above-band
+      live-gate failure of that deck (band 2.96e-5 V);
+    - **one** refinement step: faer residual → 2.1e-11 A, faer-vs-KLU common-mode gap
+      6.6e-5 → **9.4e-6 V** (3× under the band); a second step adds nothing — the
+      remaining ~1e-5 V is the irreducible cross-solver spread (scipy-vs-KLU measures
+      1.2e-5 V on the same bits).
+  **Acceptance:** with refinement on, the one-shot faer-vs-KLU common-mode gap on the
+  captured GFMSnap `(Y, I)` stays under the live band, and the deck's full live compare
+  goes green (migrate it from `skipped_needs_investigation` to `solvable_now` in the
+  default lane). Full measurement record: the deck's note in
+  `tests/corpus/manifests/skipped_needs_investigation.json` + STATUS.md 2026-07-09/10.
+
+  **Gate nuance (from the same investigation):** the *global* `rcond` of such a matrix
+  looks healthy — the junk lives in one tiny subspace, invisible to a whole-matrix
+  condition estimate. The refinement trigger must therefore be the **residual norm**
+  (cheap: one mat-vec on the unscaled `A`), not `rcond` alone.
+
+  **Divergence guard (measured 2026-07-10, AutoTrans family / `u·κ ≳ 1` in action):**
+  on `Test/AutoTrans/Auto1bus.dss` (assembled-Y κ≈1e12: mvasc3=2e6 source + 1e-6 Ω
+  switches + floating delta tertiary) ONE refinement step made the tertiary-subspace
+  answer **worse by 6 orders** (1.3e-3 V → 1492 V vs KLU) while helping the LOW bus.
+  The refinement loop must therefore verify the residual norm actually DECREASED after
+  each step and roll the step back (keep the pre-step `x`) otherwise — "apply refinement
+  when the residual is large" alone is not safe near a genuinely singular subspace.
+
   **Confirmed by the standard numerical-LA literature (this is a named, textbook
   technique, not a homegrown trick).** Both texts describe exactly the three-step
   process `r = b − A·x; solve A·d = r; x += d`:
@@ -135,8 +192,11 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
      accumulate `b − A·x` with a compensated (Kahan/two-product) complex dot — pure
      Rust, no new dependency, honours `#![forbid(unsafe_code)]`.
   5. **Gate on `rcond` / residual norm** (both already exposed): well-conditioned corpus
-     solves skip refinement entirely → bit-identical to today → oracle-match gate
-     untouched. Off by default during the port; this *is* the post-1:1 divergence.
+     solves skip refinement entirely → bit-identical to today. During the port: off
+     entirely. Post-acceptance: the on/off switch lives in the Stage-F `compat` module —
+     **on in the default build, off under `oracle-parity`** (the parity lane's oracle
+     gates never see it; the default lane pins the improvement with its own
+     analytical-value tests from the Acceptance bullet above).
   **Limit (= §2.3):** rescue needs `u·κ(Y) ≲ 1`, not merely nonsingularity. A truly
   singular `Y` (lossless pole) is hopeless, but so is a *nonsingular* `Y` once it is
   "*badly conditioned w.r.t. the machine precision*" (GVL: "*no improvement may result*"
@@ -170,13 +230,45 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
 
 ## 5. Sequencing & contract
 
-- Land **after** 1:1 acceptance (`PORTING_PLAN.md` §6). Each WP regenerates any goldens
-  it intentionally changes, one at a time, and records the divergence-from-OpenDSS as a
-  deliberate improvement (mirrors the §4.1 `TODO(compat)` cleanup discipline, though this
-  is not itself a `TODO(compat)`).
+- Land **after** 1:1 acceptance (`PORTING_PLAN.md` §6) **and after `DE_PASCALIZE_PLAN.md`
+  Stage F** (position 4 in `PLAN_SEQUENCE.md`, before `MULTITHREADING_PLAN.md`). With the
+  `oracle-parity` split, WPs no longer regenerate parity goldens at all: the divergence
+  lives in the **default lane only** (its self-goldens + the analytical-value acceptance
+  tests), while the parity lane remains byte-stable.
 - WP-R1 is solver-internal and broadly beneficial (any ill-conditioned system, not only
   harmonics); WP-R2 is opt-in tooling (a resonance/frequency-scan command). WP-R3 is a
   diagnostic. They are independent and can land separately.
+- **Extra reference engines (2026-07-07):** the opt-in official-EPRI-binary oracle
+  (`tools/opendss/`, Oddie bridge) makes r3723/r4088/r4133 available for cross-engine
+  probes — useful in WP-R2/R3 validation to check whether newer upstream OpenDSS changed
+  near-resonance behavior (`ab_compare.py` on the harmonics decks). Reference-only; the
+  acceptance spec stays the analytical values (§4), not any engine.
+- **Testing note:** WP-R1's `rcond` gate means well-conditioned solves are bit-identical
+  with refinement on — so the parity↔default differential gate (`DE_PASCALIZE_PLAN` Part
+  IV.2) is unaffected on the corpus except at documented ill-conditioned cases, where the
+  default lane's analytical-value acceptance tests take over. Iteration counts on refined
+  solves are naturally unpinned (default-lane policy).
+- **Per-WP ritual — same as `PHASE8_PLAN`/`DE_PASCALIZE_PLAN`:** (0) tier check against
+  the tiers below — below tier → do NOT execute, reply exactly «Этот шаг требует <exec
+  tier>. Переключи сессию (/model + reasoning effort) и повтори команду.» and stop
+  (`PLAN_SEQUENCE.md` §Model-tier protocol); (1) gate green in both lanes + differential
+  job; (2) STATUS.md update + commit; (3) `/audit-code` + `/audit-tests` as fresh parallel
+  agents **spawned with an explicit model/effort override matching the WP's audit tier**,
+  findings settled empirically and recorded; (4) STATUS full review; (5) stop and report
+  in Russian.
+- **Tiers:** WP-R1 — exec `opus-high+`, audit `opus-high+`; **WP-R2 — exec+audit
+  `opus-xhigh`**; WP-R3 — exec `opus-medium+`, audit `opus-high+`.
+- **Executor guidance.** WP-R1 is **recipe-grade** — follow integration steps 1–5 in §4
+  literally; definition of done: (a) the refinement wrapper in `dss-sparse` behind the
+  Stage-F `compat` knob, (b) the damped-resonance convergence test + residual-bound test
+  from the Acceptance bullet, (c) corpus untouched (differential gate unchanged on
+  well-conditioned decks — the `rcond` gate is mandatory, refinement must never run
+  unconditionally), (d) parity lane provably refinement-free (a test asserts the knob).
+  WP-R3 is trivial (diagnostic on existing `rcond`/`singular_col`). **WP-R2 is the one
+  design-heavy WP** (eigen-analysis command: new user surface, faer dense eig) — treat the
+  paper's Case Study 1 numbers (§4 Acceptance) as the binding spec. Forbidden moves: never
+  enable refinement in the parity lane; never weaken the `u·κ(Y) ≲ 1` limit note into
+  "refinement fixes singular systems".
 
 ## 6. References
 

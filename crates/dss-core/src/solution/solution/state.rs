@@ -74,6 +74,21 @@ impl SolveMode {
 pub const POWERFLOW: i32 = 1;
 pub const ADMITTANCE: i32 = 2;
 
+/// Random distribution codes (`DSSGlobals.pas`): `Solution.RandomType` (`Set
+/// random=`, `RandomModeEnum` ordinals `none=0`/`Gaussian=1`/`Uniform=2`/
+/// `LogNormal=3`). Consumed by the MonteCarlo `Randomize` paths.
+pub const GAUSSIAN: i32 = 1;
+pub const UNIFORM: i32 = 2;
+pub const LOGNORMAL: i32 = 3;
+
+/// Load-shape class codes (`DSSGlobals.pas`): the class the GENERALTIME /
+/// DYNAMICMODE dispatch picks (`Circuit.ActiveLoadShapeClass`, `Set
+/// LoadShapeClass=`). `USENONE` (-1) = not set → `ShapeFactor = 1+j1`.
+pub const USEDAILY: i32 = 0;
+pub const USEYEARLY: i32 = 1;
+pub const USEDUTY: i32 = 2;
+pub const USENONE: i32 = -1;
+
 /// Algorithm codes.
 pub const NORMALSOLVE: i32 = 0;
 pub const NEWTONSOLVE: i32 = 1;
@@ -145,6 +160,19 @@ pub struct Solution {
     pub t: f64,
     pub h: f64,
     pub dbl_hour: f64,
+    /// Solve timers in microseconds (Pascal `Solve_Time_Elapsed` /
+    /// `Total_Time_Elapsed` / `Step_Time_Elapsed`, `Solution.pas:211-214`),
+    /// surfaced by `Get`/`Set processtime|totaltime|steptime`. Upstream fills
+    /// these from `QueryPerformanceCounter` — inherently non-deterministic
+    /// wall-clock, which this port does **not** reproduce (same convention as
+    /// the monitor time channels 11/12 hardcoded to 0, `monitor/mod.rs:136`):
+    /// they stay `0.0`, and only `total_time_elapsed` is user-settable
+    /// (`set totaltime=…`). The gate-able surface is the round-trip
+    /// (fresh/after-reset → 0; after `set totaltime=v` → v); any post-solve
+    /// timing value is non-deterministic and never gated.
+    pub solve_time_elapsed: f64,
+    pub total_time_elapsed: f64,
+    pub step_time_elapsed: f64,
     /// `DynaVars.IterationFlag`: predictor (`NewTimeStep`) vs corrector
     /// (`SameTimeStep`) within a dynamics time step (`SolveDynamic`).
     pub iteration_flag: IterationFlag,
@@ -183,6 +211,10 @@ pub struct Solution {
     pub control_queue: ControlQueue,
     /// `DSS.EventStrings`, surfaced as `Solution.EventLog` to dss-python.
     pub event_log: EventLog,
+    /// Branch-to-node incidence matrix + Laplacian (Pascal `IncMat`/`Laplacian`/
+    /// `Inc_Mat_Rows`/`Inc_Mat_Cols`/`Inc_Mat_levels`), built by the
+    /// `CalcIncMatrix`/`CalcIncMatrix_O`/`CalcLaplacian` commands (WP-AD.1).
+    pub inc_matrix: crate::solution::inc_matrix::IncMatrixState,
 }
 
 impl Solution {
@@ -224,6 +256,9 @@ impl Solution {
             t: 0.0,
             h: 0.001, // default for dynasolve
             dbl_hour: 0.0,
+            solve_time_elapsed: 0.0,
+            total_time_elapsed: 0.0,
+            step_time_elapsed: 0.0,
             iteration_flag: IterationFlag::NewTimeStep,
             interval_hrs: 1.0,
             number_of_times: 100,
@@ -244,6 +279,7 @@ impl Solution {
             do_all_harmonics: true,
             control_queue: ControlQueue::new(),
             event_log: EventLog::new(),
+            inc_matrix: crate::solution::inc_matrix::IncMatrixState::default(),
         }
     }
 
@@ -292,7 +328,7 @@ impl Solution {
 
     /// Pascal `SnapShotInit` (SetGeneratorDispRef is a no-op without
     /// generators in Phase 3).
-    pub(super) fn snap_shot_init(&mut self) {
+    pub(crate) fn snap_shot_init(&mut self) {
         self.control_iteration = 0;
         self.control_actions_done = false;
         self.most_iterations_done = 0;
@@ -308,23 +344,44 @@ impl Solution {
         s.ok_or_else(|| "System Y matrix not built yet".to_string())
     }
 
-    /// Pascal `SolveSystem`: factor/solve `hY · NodeV[1..] = Currents[1..]`.
-    pub fn solve_system(&mut self) -> SolveResult {
-        let n = self.node_v.len() - 1;
+    /// Pascal `SolveSystem(V)`: factor/solve `hY · x[1..] = Currents[1..]` into
+    /// the caller buffer `out` (length `NumNodes`, 0-based; `out[k]` is global
+    /// node `k+1`). `DoNormalSolution` passes `NodeV`; `DoNewtonSolution` passes
+    /// the delta-V work array `dV`.
+    fn solve_system_into(&mut self, out: &mut [Complex64]) -> SolveResult {
         let b: Vec<Complex64> = self.currents[1..].to_vec();
-        let mut x = vec![Complex64::ZERO; n];
         let sparse = self.active_sparse()?;
         sparse.factor().map_err(|e| {
             format!(
                 "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
             )
         })?;
-        sparse.solve(&b, &mut x).map_err(|e| {
+        sparse.solve(&b, out).map_err(|e| {
             format!(
                 "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
             )
         })?;
+        Ok(())
+    }
+
+    /// Pascal `SolveSystem(NodeV)`: solve directly into the node-voltage array.
+    pub fn solve_system(&mut self) -> SolveResult {
+        let n = self.node_v.len() - 1;
+        let mut x = vec![Complex64::ZERO; n];
+        self.solve_system_into(&mut x)?;
         self.node_v[1..].copy_from_slice(&x);
+        Ok(())
+    }
+
+    /// Pascal `DoNewtonSolution`'s `SolveSystem(dV); NodeV[i] -= dV[i]`: solve
+    /// for the voltage delta into a scratch `dV` and subtract it from `NodeV`.
+    pub(super) fn solve_system_newton_step(&mut self) -> SolveResult {
+        let num_nodes = self.node_v.len() - 1;
+        let mut dv = vec![Complex64::ZERO; num_nodes];
+        self.solve_system_into(&mut dv)?;
+        for i in 1..=num_nodes {
+            self.node_v[i] -= dv[i - 1];
+        }
         Ok(())
     }
 
@@ -372,6 +429,7 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         is_dynamic_model: s.is_dynamic_model,
         load_model: s.load_model,
         mode: s.mode,
+        active_load_shape_class: ckt.active_load_shape_class,
         load_multiplier: ckt.load_multiplier,
         gen_multiplier: ckt.gen_multiplier,
         generator_dispatch_reference: ckt.generator_dispatch_reference,

@@ -1,11 +1,80 @@
 use super::*;
 
+use crate::elements::general::load_shape::{self, LoadShapeObj};
 use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::obj::dss_enum::EnumRegistry;
+use crate::obj::props::PropEngine;
+use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
+use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
 fn snap_ctx() -> SysCtx {
     default_recalc_ctx()
+}
+
+/// Build a populated `LoadShapeObj` through its real property engine.
+fn build_shape(mult: &str) -> LoadShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = load_shape::class_props(&enums);
+    let mut obj = LoadShapeObj::new("s");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
+}
+
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..default_recalc_ctx()
+    }
+}
+
+/// Pascal `SetNominalGeneration` GENERALTIME arm (Generator.pas:1129): the
+/// `ActiveLoadShapeClass` (`Set LoadShapeClass=`) picks WHICH of the three
+/// distinct curves drives `ShapeFactor` (at hr 2: daily→0.6, yearly→0.7,
+/// duty→0.5); default `USENONE` leaves it 1+j1. Gates a copy-paste arm swap.
+#[test]
+fn time_loadshapeclass_selects_matching_curve() {
+    let mut g = Generator::new("g1");
+    g.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    g.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    g.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+
+    g.set_nominal_generation(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (g.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly: {}",
+        g.shape_factor.re
+    );
+    g.set_nominal_generation(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (g.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty: {}",
+        g.shape_factor.re
+    );
+    g.set_nominal_generation(&time_class_ctx(USENONE, 2.0));
+    assert!(
+        (g.shape_factor.re - 1.0).abs() < 1e-9,
+        "none: {}",
+        g.shape_factor.re
+    );
 }
 
 /// A default generator's nominal quantities (oracle dss-python 0.15.7):
@@ -29,7 +98,7 @@ fn default_nominal_generation() {
 /// discriminator, asserts it is far from the power-flow path: a regression that
 /// forgot to overwrite `Yeq` in `init_harmonics_impl` (reusing the power-flow
 /// `Yeq`) fails here. Oracle-independent — the offline backstop the
-/// `phase7/harmonics_generator_h5` golden complements (mirrors the step-1 Load
+/// `harmonics/harmonics_generator_h5` golden complements (mirrors the step-1 Load
 /// `harmonic_yprim_uses_series_rl_split_not_naive_yeq` discriminator).
 #[test]
 fn harmonic_yprim_is_subtransient_admittance_not_powerflow() {
@@ -145,4 +214,123 @@ fn take_sample_accumulates_energy() {
     assert!((g.registers[REG_KVARH] - 60.0).abs() < 1e-6);
     assert!((g.registers[REG_MAXKW] - 1000.0).abs() < 1e-6);
     assert!((g.registers[REG_HOURS] - 1.0).abs() < 1e-9);
+}
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// 3-phase, kw=200 pf=0.95 kva=250, maxkvar=120 minkvar=-60; no props marked.
+fn gen_3ph() -> Generator {
+    let mut g = Generator::new("g");
+    g.connection = Connection::Wye;
+    g.cd.nphases = 3;
+    g.kv_generator_base = 12.47;
+    g.kw_base = 200.0;
+    g.pf_nominal = 0.95;
+    g.kva_rating = 250.0;
+    g.kvar_max = 120.0;
+    g.kvar_min = -60.0;
+    g
+}
+
+fn common_head(v: f64) -> Vec<PosSeqAction> {
+    vec![
+        PosSeqAction::BeginEdit,
+        PosSeqAction::SetI32(prop::PHASES, 1),
+        PosSeqAction::SetI32(prop::CONN, 0),
+        PosSeqAction::SetF64(prop::KV, v),
+        PosSeqAction::SetF64(prop::KW, 200.0 / 3.0),
+        PosSeqAction::SetF64(prop::PF, 0.95),
+    ]
+}
+
+/// Plain (kW+pf only, nothing else marked): kW/pf ÷ phases, no kvar/kVA/MVA.
+#[test]
+fn makeposseq_generator_plain() {
+    let mut g = gen_3ph();
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect);
+}
+
+/// `kVA=` set (PrpSequence slot 23). The upstream `had_kVA` guard reads slot 26
+/// (`Xdp`), so this does NOT trigger a kVA divide — kVA stays as-is (oracle:
+/// `g_kva` keeps kVA=250). Pins the `generator.pas:2744` wrong-index quirk.
+#[test]
+fn makeposseq_generator_kva_set_is_ignored_wrong_index() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::KVA); // slot 23
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect, "kVA= must not divide (reads slot 26)");
+    assert!(!plan.actions.iter().any(|a| matches!(
+        a,
+        PosSeqAction::SetF64(i, _) if *i == prop::KVA
+    )));
+}
+
+/// `MVA=` set (slot 24). `had_MVA` reads slot 27 (`Xdpp`) → no MVA action.
+#[test]
+fn makeposseq_generator_mva_set_is_ignored_wrong_index() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::MVA); // slot 24
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect);
+}
+
+/// `maxkvar=`/`minkvar=` set (slots 19/20 — the CORRECT indices): `had_kvars`
+/// fires, emitting minkvar then maxkvar ÷ phases (120→40, -60→-20).
+#[test]
+fn makeposseq_generator_kvars_divided() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::MAXKVAR); // slot 19
+    g.cd.obj.set_as_next_seq(prop::MINKVAR); // slot 20
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    let mut expect = common_head(v);
+    expect.push(PosSeqAction::SetF64(prop::MINKVAR, -60.0 / 3.0)); // -20
+    expect.push(PosSeqAction::SetF64(prop::MAXKVAR, 120.0 / 3.0)); // 40
+    expect.push(PosSeqAction::EndEdit);
+    assert_eq!(plan.actions, expect);
+}
+
+/// Setting `Xdp=` (slot 26) is what actually trips `had_kVA` — the wrong-index
+/// quirk in reverse: kVA IS divided even though the user never touched kVA.
+#[test]
+fn makeposseq_generator_xdp_trips_kva_divide() {
+    let mut g = gen_3ph();
+    g.cd.obj.set_as_next_seq(prop::XDP); // slot 26 == the buggy had_kVA index
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.actions.iter().any(|a| matches!(
+        a,
+        PosSeqAction::SetF64(i, val) if *i == prop::KVA && (*val - 250.0 / 3.0).abs() < 1e-9
+    )));
+}
+
+/// 1-phase generator: V stays base kV, and NO power split (oldPhases==1).
+#[test]
+fn makeposseq_generator_single_phase() {
+    let mut g = gen_3ph();
+    g.cd.nphases = 1;
+    let plan = g.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 12.47), // NOT /√3
+            PosSeqAction::EndEdit,
+        ]
+    );
 }

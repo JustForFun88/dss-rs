@@ -40,6 +40,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -166,4 +167,109 @@ fn set_present_tap_clamps_to_winding_limits() {
     assert!((t.present_tap(2) - 1.025).abs() < 1e-12);
     // Out-of-range winding index is a no-op.
     t.set_present_tap(9, 1.0);
+}
+
+// --- WPG.21 — TTransfObj.MakePosSequence (Transformer.pas:1685-1752) ----------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::util::sqrt3;
+
+fn unwrap_f64s(a: &PosSeqAction) -> (usize, Vec<f64>) {
+    match a {
+        PosSeqAction::SetStructF64s(idx, v) => (*idx, v.iter().map(|o| o.expect("Some")).collect()),
+        other => panic!("expected SetStructF64s, got {other:?}"),
+    }
+}
+
+/// A 3-phase 2-winding substation transformer (deck `sub`: delta/wye 115/12.47).
+/// All windings wye, kV = kVLL/√3 (deck-probed kvs = [66.395, 7.1996]), kVA and
+/// NormHkVA/EmergHkVA per phase.
+#[test]
+fn make_pos_sequence_3ph_two_winding() {
+    let mut t = edited(&[
+        ("phases", "3"),
+        ("windings", "2"),
+        ("xhl", "8"),
+        ("buses", "src, b1"),
+        ("conns", "delta, wye"),
+        ("kvs", "115, 12.47"),
+        ("kvas", "20000, 20000"),
+    ]);
+    let norm = t.norm_max_hkva;
+    let emerg = t.emerg_max_hkva;
+
+    let plan = t.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[0], BeginEdit);
+    assert_eq!(plan.actions[1], SetI32(prop::PHASES, 1));
+    assert_eq!(plan.actions[2], SetStructI32s(prop::CONNS, vec![0, 0]));
+    assert_eq!(
+        plan.actions[3],
+        SetStructBuses(vec!["src".to_string(), "b1".to_string()])
+    );
+    let (kvi, kvs) = unwrap_f64s(&plan.actions[4]);
+    assert_eq!(kvi, prop::KVS);
+    assert!((kvs[0] - 115.0 / sqrt3()).abs() < 1e-9);
+    assert!((kvs[0] - 66.395_28).abs() < 1e-4, "kv0 {}", kvs[0]);
+    assert!((kvs[1] - 12.47 / sqrt3()).abs() < 1e-9);
+    assert!((kvs[1] - 7.199_558).abs() < 1e-5, "kv1 {}", kvs[1]);
+    let (kvai, kvas) = unwrap_f64s(&plan.actions[5]);
+    assert_eq!(kvai, prop::KVAS);
+    assert!((kvas[0] - 20000.0 / 3.0).abs() < 1e-9);
+    assert!((kvas[1] - 20000.0 / 3.0).abs() < 1e-9);
+    assert_eq!(plan.actions[6], SetF64(prop::NORMHKVA, norm / 3.0));
+    assert_eq!(plan.actions[7], SetF64(prop::EMERGHKVA, emerg / 3.0));
+    assert_eq!(plan.actions[8], EndEdit);
+    assert_eq!(plan.actions.len(), 9);
+}
+
+/// A 1-phase transformer with every winding on phase 1 (`bus.1`) survives the
+/// conversion — single-phase wye keeps the line-line kV (no /√3).
+#[test]
+fn make_pos_sequence_1ph_on_phase1_survives() {
+    let mut t = edited(&[
+        ("phases", "1"),
+        ("windings", "2"),
+        ("xhl", "2"),
+        ("buses", "b1.1, b5.1"),
+        ("conns", "wye, wye"),
+        ("kvs", "7.2, 0.24"),
+        ("kvas", "100, 100"),
+    ]);
+    // The applier fills terminal_nodes from each GetBus's parsed node list.
+    let ctx = PosSeqCtx {
+        terminal_nodes: vec![vec![1], vec![1]],
+        ..Default::default()
+    };
+    let plan = t.make_pos_sequence(&ctx);
+    assert!(plan.run_base, "on-phase-1 → converts + inherited");
+    use PosSeqAction::*;
+    assert_eq!(plan.actions[1], SetI32(prop::PHASES, 1));
+    // single-phase wye → kV kept line-line (no /√3).
+    let (_, kvs) = unwrap_f64s(&plan.actions[4]);
+    assert!((kvs[0] - 7.2).abs() < 1e-12, "kv0 {}", kvs[0]);
+    assert!((kvs[1] - 0.24).abs() < 1e-12, "kv1 {}", kvs[1]);
+}
+
+/// A 1-phase transformer with a winding NOT on phase 1 (`bus.2`) is disabled and
+/// left untouched — the disable path returns without `inherited` (buses kept).
+#[test]
+fn make_pos_sequence_1ph_off_phase1_disables() {
+    let mut t = edited(&[
+        ("phases", "1"),
+        ("windings", "2"),
+        ("xhl", "2"),
+        ("buses", "b1.2, b6.2"),
+        ("conns", "wye, wye"),
+        ("kvs", "7.2, 0.24"),
+        ("kvas", "100, 100"),
+    ]);
+    let ctx = PosSeqCtx {
+        terminal_nodes: vec![vec![2], vec![2]],
+        ..Default::default()
+    };
+    let plan = t.make_pos_sequence(&ctx);
+    assert_eq!(plan.actions, vec![PosSeqAction::Disable]);
+    assert!(!plan.run_base, "disable path skips `inherited`");
 }

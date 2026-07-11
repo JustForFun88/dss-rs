@@ -2,16 +2,17 @@
 //! (the `CalcVoltageBases` command).
 
 use crate::circuit::Circuit;
-use crate::elements::pc::pvsystem::PVSystem;
-use crate::elements::pc::storage::Storage;
 use crate::solution::ymatrix::initialize_node_vbase;
 use crate::util::sqrt3;
 
 use super::dynamics::solve_dynamic;
 use super::fault_study::solve_fault_study;
 use super::harmonics::{solve_harmonic, solve_harmonic_t};
+use super::monte_carlo::{solve_monte_fault, solve_monte1, solve_monte2, solve_monte3};
 use super::power_flow::{solve_direct, solve_snap, solve_zero_load_snapshot};
-use super::time_series::{solve_daily, solve_duty, solve_peak_day, solve_yearly};
+use super::time_series::{
+    solve_daily, solve_duty, solve_general_time, solve_ld1, solve_ld2, solve_peak_day, solve_yearly,
+};
 use super::{SolveEnv, SolveMode, SolveResult};
 
 /// Pascal `TSolutionObj.Solve`: the mode dispatcher (Phase 3: Snapshot and
@@ -32,48 +33,15 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         return Ok(());
     }
 
-    // Grid-forming inverter mode (PVSystem `ControlMode=GFM`) is WP7.7
-    // (dynamics): `DoGFM_Mode`/`CalcGFMYprim` are not ported. Refuse the solve
-    // with an explicit error rather than silently running the regular PQ model,
-    // which would give plausible-but-wrong numbers (the deferral-is-never-a-
-    // silent-fallback convention). No gated case sets GFM.
-    for r in ckt.pv_systems.clone() {
-        let gfm_name = env
-            .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<PVSystem>()
-            .and_then(|pv| {
-                (pv.cd.enabled && pv.base.gfm_mode).then(|| pv.cd.obj.name().to_string())
-            });
-        if let Some(name) = gfm_name {
-            env.errors.push(format!(
-                "PVSystem.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7)."
-            ));
-            ckt.solution.solution_abort = true;
-            return Ok(());
-        }
-    }
-    // Same guard for Storage `ControlMode=GFM` (DoGFM_Mode/CalcGFMYprim: WP7.7).
-    for r in ckt.storages.clone() {
-        let gfm_name = env
-            .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Storage>()
-            .and_then(|st| {
-                (st.cd.enabled && st.base.gfm_mode).then(|| st.cd.obj.name().to_string())
-            });
-        if let Some(name) = gfm_name {
-            env.errors.push(format!(
-                "Storage.{name}: grid-forming inverter mode (ControlMode=GFM) is not \
-                 ported yet (Phase 7 WP7.7)."
-            ));
-            ckt.solution.solution_abort = true;
-            return Ok(());
-        }
-    }
+    // Grid-forming inverter mode is fully ported: power-flow / time-series /
+    // direct / harmonic (WPG.13) plus the dynamic-model GFM branch
+    // (`DoDynamicMode`/`IntegrateStates` GFM, WPG.17). `is_dynamic_model` is TRUE
+    // for Dynamic AND FaultStudy AND MonteFault (Pascal `Set_Mode`, Solution.pas
+    // l.2088-2094); all three now drive the real GFM injection, so there is no
+    // refusal. (MonteFault with an *empty* Faults list is an upstream NIL-deref
+    // Access Violation — `PickAFault`/`Randomize`, SolutionAlgs.pas l.701/725 —
+    // independent of GFM; the port does not reproduce that UB: `pick_a_fault`
+    // safely returns `None` and the direct solve proceeds fault-free.)
 
     ckt.default_growth_factor = if ckt.solution.year == 0 {
         1.0
@@ -92,14 +60,20 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         SolveMode::FaultStudy => solve_fault_study(ckt, env),
         SolveMode::Harmonic => solve_harmonic(ckt, env),
         SolveMode::HarmonicT => solve_harmonic_t(ckt, env),
-        _ => {
-            // The remaining modes — AutoAdd, MonteCarlo (Monte1/2/3), MonteFault,
-            // LoadDuration (LD1/LD2) and GeneralTime — have **no corpus deck** that
-            // exercises them (WP7.9 probe), so each keeps the Pascal "Unknown
-            // solution mode." error (`TSolutionObj.Solve` else, #481) rather than a
-            // partial port. Port on demand if a future gate needs one.
-            env.errors
-                .push("Unknown solution mode. (mode not ported — no corpus case)".to_string());
+        SolveMode::LD1 => solve_ld1(ckt, env),
+        SolveMode::LD2 => solve_ld2(ckt, env),
+        SolveMode::Time => solve_general_time(ckt, env),
+        SolveMode::Monte1 => solve_monte1(ckt, env),
+        SolveMode::Monte2 => solve_monte2(ckt, env),
+        SolveMode::Monte3 => solve_monte3(ckt, env),
+        SolveMode::MonteFault => solve_monte_fault(ckt, env),
+        // AutoAdd is intercepted at the executive layer (exec/auto_add.rs),
+        // before this dispatcher runs, because its winner instantiation
+        // re-enters the executive command path — it never reaches here. Every
+        // other mode is ported, so this arm is defensive-only; it keeps the
+        // Pascal-exact `TSolutionObj.Solve` else-branch error (#481).
+        SolveMode::AutoAdd => {
+            env.errors.push("Unknown solution mode.".to_string());
             Ok(())
         }
     };

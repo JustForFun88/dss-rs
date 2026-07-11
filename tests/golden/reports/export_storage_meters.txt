@@ -1,0 +1,2 @@
+Year, LDCurve, Hour, Storage, "kWh", "kvarh", "Max kW", "Max kVA", "Hours", "Price($)"
+0, , 3, "ST1"         ,         50,          0,         50,         50,          1,          1

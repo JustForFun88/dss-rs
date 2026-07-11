@@ -6,9 +6,11 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 use super::{ControlledTransformer, Transformer, prop, xsc_size};
 
@@ -104,11 +106,90 @@ impl CktElement for Transformer {
         self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
     }
+
+    /// Pascal `TTransfObj.MakePosSequence` (Transformer.pas:1685-1752). Convert
+    /// the default 3-phase transformer into an equivalent positive-sequence
+    /// single-phase transformer: all windings wye, buses stripped, per-winding
+    /// kV = kVLL/√3 (unless the winding is already single-phase *and* wye), and
+    /// the kVA / NormHkVA / EmergHkVA divided by `FNphases`.
+    ///
+    /// For a 1- or 2-phase transformer it first checks every winding sits on
+    /// phase 1 (`OnPhase1`, via the parsed terminal node numbers): if any
+    /// winding is off phase 1 the transformer is disabled and left untouched
+    /// (no `inherited`, dotted bus names preserved).
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        use prop::*;
+
+        let nw = self.num_windings.max(0) as usize;
+        let nphases = self.cd.nphases;
+
+        // First, determine if we can convert this one. For 1- or 2-phase, any
+        // winding not connected to phase one → disable and bail (no inherited).
+        if nphases == 1 || nphases == 2 {
+            for iw in 1..=nw {
+                let nodes = ctx.terminal_nodes.get(iw - 1);
+                let on_phase1 = match nodes {
+                    None => true, // no parsed nodes (N = 0) → treated as phase 1
+                    Some(list) if list.is_empty() => true,
+                    Some(list) => list.contains(&1),
+                };
+                if !on_phase1 {
+                    // We won't use this one.
+                    return PosSeqPlan {
+                        actions: vec![PosSeqAction::Disable],
+                        run_base: false,
+                    };
+                }
+            }
+        }
+
+        // Construct the positive-sequence definition: all wye, buses as-is,
+        // kV = kVLL/√3 unless the winding is single-phase wye, kVA/NormHkVA/
+        // EmergHkVA per phase.
+        let new_conns: Vec<i32> = vec![0; nw];
+        let new_buses: Vec<String> = (1..=nw).map(|i| self.cd.get_bus(i).to_string()).collect();
+        let new_kvs: Vec<Option<f64>> = self
+            .windings
+            .iter()
+            .take(nw)
+            .map(|w| {
+                if nphases > 1 || w.connection != 0 {
+                    Some(w.kvll / sqrt3())
+                } else {
+                    Some(w.kvll)
+                }
+            })
+            .collect();
+        let new_kvas: Vec<Option<f64>> = self
+            .windings
+            .iter()
+            .take(nw)
+            .map(|w| Some(w.kva / nphases as f64))
+            .collect();
+        let new_norm = self.norm_max_hkva / nphases as f64;
+        let new_emerg = self.emerg_max_hkva / nphases as f64;
+
+        let actions = vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(PHASES, 1),
+            PosSeqAction::SetStructI32s(CONNS, new_conns),
+            PosSeqAction::SetStructBuses(new_buses),
+            PosSeqAction::SetStructF64s(KVS, new_kvs),
+            PosSeqAction::SetStructF64s(KVAS, new_kvas),
+            PosSeqAction::SetF64(NORMHKVA, new_norm),
+            PosSeqAction::SetF64(EMERGHKVA, new_emerg),
+            PosSeqAction::EndEdit,
+        ];
+        PosSeqPlan::with_actions(actions)
+    }
 }
 
 impl ControlledTransformer for Transformer {
     fn name(&self) -> &str {
         self.cd.obj.name()
+    }
+    fn full_name(&self) -> String {
+        format!("Transformer.{}", self.cd.obj.name())
     }
     fn n_phases(&self) -> usize {
         self.cd.nphases
@@ -587,12 +668,13 @@ impl DssObject for Transformer {
             crate::obj::base::RefAction::SetTransformerTap { winding, tap, .. } => {
                 self.set_present_tap(*winding, *tap);
             }
-            // `SetSwitchClosed`/`SetConductorsClosed`/`SetOcpDevice` are applied
-            // generically by the executive (they act on the CktElement base),
-            // never routed here.
+            // `SetSwitchClosed`/`SetConductorsClosed`/`SetOcpDevice`/
+            // `SetElementBus` are applied generically by the executive (they act
+            // on the CktElement base), never routed here.
             crate::obj::base::RefAction::SetSwitchClosed { .. }
             | crate::obj::base::RefAction::SetConductorsClosed { .. }
-            | crate::obj::base::RefAction::SetOcpDevice { .. } => {}
+            | crate::obj::base::RefAction::SetOcpDevice { .. }
+            | crate::obj::base::RefAction::SetElementBus { .. } => {}
         }
     }
 

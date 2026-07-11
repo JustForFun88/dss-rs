@@ -6,9 +6,9 @@
 //! the class-specific `PropertySideEffects` (TempShape has no `hour→interval`
 //! coupling — variable interval requires an explicit `interval=0`).
 //!
-//! `CSVFile` is read via the deferred [`FileLoad`] path (like LoadShape);
-//! `SngFile`/`DblFile` (binary input) and `Action=DblSave/SngSave` (binary
-//! output) stay `NOT_PORTED`.
+//! `CSVFile`/`SngFile`/`DblFile` are all read via the deferred [`FileLoad`]
+//! path (like LoadShape; WPG.1 for the binary pair); `Action=DblSave/SngSave`
+//! (binary output) stays `NOT_PORTED`.
 
 #[cfg(test)]
 mod tests;
@@ -31,12 +31,10 @@ define_properties! {
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     8  SNGFILE   => PropDef::string("SngFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     9  DBLFILE   => PropDef::string("DblFile").flags(
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME
-            | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     10 SINTERVAL => PropDef::double("SInterval")
         .scale(1.0 / 3600.0)
@@ -155,22 +153,41 @@ impl DssObject for TShapeObj {
         }
     }
 
-    /// Pascal `StringEnumActionProperty` for `Action` (DblSave/SngSave only).
-    fn do_action(&mut self, _ordinal: i32, errors: &mut Vec<String>) {
-        errors.push(format!(
-            "TShape.{}: Action=DblSave/SngSave (binary file output) is not ported.",
-            self.core.data.name()
-        ));
+    /// Pascal `StringEnumActionProperty` for `Action` (`TTShapeAction`:
+    /// DblSave=0, SngSave=1 — `TempShape.pas:152-154`). Queues the binary write
+    /// (Pascal `SaveToDblFile`/`SaveToSngFile`, `TempShape.pas:528/548`).
+    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+        let full_name = format!("TShape.{}", self.core.data.name());
+        self.core
+            .queue_shape_save(ordinal == 1, "Temp", &full_name, "Temperatures", errors);
     }
 
     fn take_file_loads(&mut self) -> Vec<FileLoad> {
         std::mem::take(&mut self.core.pending_file_loads)
     }
 
+    fn take_shape_saves(&mut self) -> Vec<crate::obj::base::ShapeSave> {
+        self.core.take_shape_saves()
+    }
+
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).
     fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
         if load.prop == CSVFILE {
             self.core.read_csv_file(content);
+        }
+    }
+
+    /// Apply a resolved `SngFile`/`DblFile` (Pascal `DoSngFile`/`DoDblFile`).
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        _errors: &mut Vec<String>,
+    ) {
+        match load.prop {
+            SNGFILE => self.core.read_sng_file(content),
+            DBLFILE => self.core.read_dbl_file(content),
+            _ => {}
         }
     }
 
@@ -183,10 +200,21 @@ impl DssObject for TShapeObj {
             TEMP => self.core.std_dev_calculated = false,
             CSVFILE => {
                 self.core.std_dev_calculated = false;
-                self.core.pending_file_loads.push(FileLoad {
-                    prop: CSVFILE,
-                    filename: self.core.csvfile.clone(),
-                });
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::text(CSVFILE, self.core.csvfile.clone()));
+            }
+            SNGFILE => {
+                self.core.std_dev_calculated = false;
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::binary(SNGFILE, self.core.sngfile.clone()));
+            }
+            DBLFILE => {
+                self.core.std_dev_calculated = false;
+                self.core
+                    .pending_file_loads
+                    .push(FileLoad::binary(DBLFILE, self.core.dblfile.clone()));
             }
             _ => {}
         }

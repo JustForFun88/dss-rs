@@ -19,6 +19,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -47,6 +48,8 @@ struct MockElem {
     iph: Vec<Complex64>,
     vph: Vec<Complex64>,
     power: Complex64,
+    /// State variables (name, value) exposed as a PC element (Generic relay).
+    vars: Vec<(String, f64)>,
 }
 impl MockElem {
     fn new(nphases: usize) -> Self {
@@ -60,6 +63,7 @@ impl MockElem {
             iph: vec![Complex64::ZERO; nphases],
             vph: vec![Complex64::ZERO; nphases],
             power: Complex64::ZERO,
+            vars: Vec::new(),
         }
     }
     /// Equal real current on every phase (residual sum = nphases·mag).
@@ -67,6 +71,11 @@ impl MockElem {
         for c in self.iph.iter_mut() {
             *c = Complex64::new(mag, 0.0);
         }
+        self
+    }
+    /// Add a named state variable (for the Generic relay).
+    fn with_var(mut self, name: &str, value: f64) -> Self {
+        self.vars.push((name.to_string(), value));
         self
     }
 }
@@ -92,6 +101,20 @@ impl CktElement for MockElem {
     }
     fn terminal_power(&mut self, _sys: &SysCtx, _node_v: &[Complex64], _idx: usize) -> Complex64 {
         self.power
+    }
+    fn num_variables(&self) -> usize {
+        self.vars.len()
+    }
+    fn variable_name(&self, i: usize) -> String {
+        self.vars
+            .get(i.wrapping_sub(1))
+            .map(|(n, _)| n.clone())
+            .unwrap_or_default()
+    }
+    fn get_all_variables(&mut self, _sys: &SysCtx, _node_v: &[Complex64], states: &mut [f64]) {
+        for (s, (_, v)) in states.iter_mut().zip(self.vars.iter()) {
+            *s = *v;
+        }
     }
 }
 
@@ -776,24 +799,286 @@ fn distance_reverse_negates_current() {
     );
 }
 
-// --- Deferred sub-types record NOT_PORTED -----------------------------------
+// --- Generic (PC state-variable relay) --------------------------------------
+
+/// Pascal `LookupVariable`: case-insensitive *prefix* match, 1-based, −1 if none.
+#[test]
+fn lookup_variable_prefix_match() {
+    let names = vec!["Frequency".to_string(), "Vd".to_string()];
+    assert_eq!(Relay::lookup_variable(&names, "frequency"), 1); // full, case-insensitive
+    assert_eq!(Relay::lookup_variable(&names, "freq"), 1); // prefix
+    assert_eq!(Relay::lookup_variable(&names, "VD"), 2);
+    assert_eq!(Relay::lookup_variable(&names, "theta"), -1); // absent
+    assert_eq!(Relay::lookup_variable(&names, "frequencyX"), -1); // longer than name
+}
+
+/// A Generic relay reading state variable 1, band `[0.8, 1.2]`.
+fn generic_relay() -> Relay {
+    let mut r = Relay::new("g1");
+    r.control_type = ctype::GENERIC;
+    r.monitor_var_index = 1;
+    r.over_trip = 1.2;
+    r.under_trip = 0.8;
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r
+}
 
 #[test]
-fn generic_and_td21_sample_record_not_ported() {
-    for ty in [ctype::GENERIC, ctype::TD21] {
-        let mut r = armed_relay();
-        r.control_type = ty;
-        let mut ctrl = MockElem::new(3);
-        let mut mon = MockElem::new(3).with_current(10.0);
-        let mut sc = Scratch::new();
+fn generic_trips_above_overtrip_and_locks_out() {
+    let mut r = generic_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3).with_var("Frequency", 1.5); // > 1.2
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open);
+    assert_eq!(r.relay_target, "Frequency"); // VariableName(MonitorVarIndex)
+    assert_eq!(r.operation_count, r.num_reclose + 1); // one-shot lockout
+    assert_eq!(sc.queue.queue_size(), 1); // OPEN only (no reclose)
+}
+
+#[test]
+fn generic_trips_below_undertrip() {
+    let mut r = generic_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3).with_var("Frequency", 0.5); // < 0.8
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open);
+}
+
+#[test]
+fn generic_no_trip_within_band() {
+    let mut r = generic_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3).with_var("Frequency", 1.0); // in [0.8, 1.2]
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(!r.armed_for_open);
+    assert_eq!(sc.queue.queue_size(), 0);
+}
+
+/// `recalc` resolves `MonitorVarIndex` from the captured variable names, erroring
+/// 386 when the named variable is absent.
+#[test]
+fn generic_recalc_resolves_and_errors_on_missing_var() {
+    // Present: resolves to index 1.
+    let mut r = Relay::new("g1");
+    r.control_type = ctype::GENERIC;
+    r.monitor_variable = "vd".to_string();
+    r.monitor_var_names = vec!["Frequency".into(), "Vd".into()];
+    r.mon_snap = Some(RefSnapshot {
+        full_name: "Generator.g".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["b".into()],
+    });
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.recalc();
+    assert_eq!(r.monitor_var_index, 2);
+
+    // Absent: index < 1 and an error 386 is recorded.
+    let mut r2 = Relay::new("g2");
+    r2.control_type = ctype::GENERIC;
+    r2.monitor_variable = "nosuch".to_string();
+    r2.monitor_var_names = vec!["Frequency".into()];
+    r2.mon_snap = Some(RefSnapshot {
+        full_name: "Generator.g".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["b".into()],
+    });
+    r2.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r2.recalc();
+    assert_eq!(r2.monitor_var_index, -1);
+    let errs = r2.ccd.cd.obj.take_errors();
+    assert!(
+        errs.iter().any(|e| e.contains("386")),
+        "expected error 386, got {errs:?}"
+    );
+    // Error 386 uses `DoSimpleMsg` → record-only, NOT a solution abort.
+    assert!(
+        !r2.ccd.cd.obj.take_abort(),
+        "error 386 (DoSimpleMsg) must not request a solution abort"
+    );
+}
+
+/// `recalc` with a monitored terminal out of range records error 384 AND
+/// requests a solution abort: Pascal `DoErrorMsg` (`Relay.pas:813`) sets
+/// `SolutionAbort := True` (`DSSGlobals.pas:265`), unlike the `DoSimpleMsg`
+/// errors 385/386 (record-only). The executive lifts the queued flag into
+/// `Solution.SolutionAbort`.
+#[test]
+fn recalc_out_of_range_terminal_errors_384_and_requests_abort() {
+    let mut r = Relay::new("r384");
+    r.monitored_element_terminal = 5; // the monitored element has only 1 terminal
+    r.mon_snap = Some(RefSnapshot {
+        full_name: "Line.l1".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["b".into()],
+    });
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.recalc();
+    assert!(
+        r.ccd.cd.obj.take_abort(),
+        "error 384 (DoErrorMsg) must request a solution abort"
+    );
+    let errs = r.ccd.cd.obj.take_errors();
+    assert!(
+        errs.iter().any(|e| e.contains("384")),
+        "expected error 384, got {errs:?}"
+    );
+}
+
+/// `recalc` with no controlled (switched) element records error 387 AND
+/// requests a solution abort: Pascal `DoErrorMsg` (`Relay.pas:889`) sets
+/// `SolutionAbort := True` (`DSSGlobals.pas:265`) — same class as 384/388,
+/// unlike the `DoSimpleMsg` errors 385/386 (record-only).
+#[test]
+fn recalc_missing_switched_element_errors_387_and_requests_abort() {
+    // No monitored snapshot and no controlled element resolved: recalc skips
+    // the mon block and hits the "SwitchedObj not set" branch.
+    let mut r = Relay::new("r387");
+    r.recalc();
+    assert!(
+        r.ccd.cd.obj.take_abort(),
+        "error 387 (DoErrorMsg) must request a solution abort"
+    );
+    let errs = r.ccd.cd.obj.take_errors();
+    assert!(
+        errs.iter().any(|e| e.contains("387")),
+        "expected error 387, got {errs:?}"
+    );
+}
+
+// --- TD21 (differential time-distance, 21) ----------------------------------
+
+/// A TD21 relay with a resistive reach (`Z1=1∠0`, `K0=0`, `M=1`), `PhaseTrip=1`.
+fn td21_relay() -> Relay {
+    let mut r = Relay::new("t1");
+    r.control_type = ctype::TD21;
+    r.dist_z1 = Complex64::new(1.0, 0.0);
+    r.dist_k0 = Complex64::ZERO;
+    r.mground = 1.0;
+    r.mphase = 1.0;
+    r.phase_trip = 1.0;
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r
+}
+
+/// The first dynamics `Sample` sizes the ring buffer: `round(1/60/0.001 + 0.5) =
+/// 17` samples, stride `2·Nphases = 6`, quiet `pt + 1 = 18`.
+#[test]
+fn td21_allocates_ring_buffer_on_first_sample() {
+    let mut r = td21_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3];
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.001; // dynamics step (Frequency 60)
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert_eq!(r.td21_pt, 17);
+    assert_eq!(r.td21_stride, 6);
+    assert_eq!(r.td21_h.len(), 17 * 6);
+    assert_eq!(r.td21_quiet, 17); // 18, decremented once on this new-time-step
+}
+
+/// A TD21 relay sampled on a time step LARGER than one 60 Hz cycle (error 388)
+/// requests a solution abort: Pascal `DoErrorMsg` (`Relay.pas:1460`) sets
+/// `SolutionAbort := True` (`DSSGlobals.pas:265`). `Sample` returns the request;
+/// the dispatch layer lifts it into `Solution.SolutionAbort` so the run halts
+/// where the oracle halts (instead of solving on).
+#[test]
+fn td21_coarse_step_requests_solution_abort() {
+    let mut r = td21_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3];
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.02; // > 1/60 (one cycle ≈ 0.0167 s) → error 388
+    let abort = r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(abort, "coarse-step TD21 must request a solution abort");
+    assert!(
+        sc.errors.iter().any(|e| e.contains("388")),
+        "expected error 388, got {:?}",
+        sc.errors
+    );
+}
+
+/// The same relay on a fine step (`dt <= 1/60`) records no error and does NOT
+/// request an abort — the guard is a strict `>` (Pascal `dt > 1/Frequency`).
+#[test]
+fn td21_fine_step_does_not_request_abort() {
+    let mut r = td21_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3];
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.001; // << one cycle → no error 388
+    let abort = r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(!abort, "fine-step TD21 must not request an abort");
+    assert!(sc.errors.is_empty(), "unexpected errors: {:?}", sc.errors);
+}
+
+/// After a full pre-fault cycle (drains `td21_quiet`) the ring holds the
+/// pre-fault reference; a forward differential fault then picks up and arms a
+/// definite-time trip. Increments chosen so `Zdir=1+j0.5` (forward) and
+/// `|Uhsd|²/|Uref|²≈1.48 > 1`.
+#[test]
+fn td21_trips_on_forward_differential_fault() {
+    let mut r = td21_relay();
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3]; // pre-fault steady state
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3]; // below PhaseTrip ⇒ no fault
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.001;
+
+    // 18 pre-fault samples: fill the ring and drain quiet (18 → 0).
+    for _ in 0..18 {
         r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-        assert!(
-            sc.errors.iter().any(|e| e.contains("NOT_PORTED")),
-            "errors = {:?}",
-            sc.errors
-        );
-        assert!(!r.armed_for_open);
     }
+    assert!(!r.armed_for_open, "no trip on the pre-fault steady state");
+    assert_eq!(r.td21_quiet, 0);
+
+    // Fault sample: V collapses+rotates, I rises above PhaseTrip.
+    mon.vph = vec![Complex64::new(4.1, -2.95); 3];
+    mon.iph = vec![Complex64::new(6.0, 0.0); 3];
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open, "forward differential fault must arm");
+    assert!(
+        r.relay_target.starts_with("TD21 "),
+        "target = {}",
+        r.relay_target
+    );
+    assert!(r.relay_target.contains("G1"), "target = {}", r.relay_target);
+}
+
+/// `Dist_Reverse` negates the monitored currents, so the same forward fault is
+/// seen as reverse (`Zdir.re < 0`) and does not pick up.
+#[test]
+fn td21_reverse_does_not_trip_forward_fault() {
+    let mut r = td21_relay();
+    r.dist_reverse = true;
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3);
+    mon.vph = vec![Complex64::new(10.0, 0.0); 3];
+    mon.iph = vec![Complex64::new(0.1, 0.0); 3];
+    let mut sc = Scratch::new();
+    sc.sys.dyna_h = 0.001;
+    for _ in 0..18 {
+        r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    }
+    mon.vph = vec![Complex64::new(4.1, -2.95); 3];
+    mon.iph = vec![Complex64::new(6.0, 0.0); 3];
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(
+        !r.armed_for_open,
+        "reverse relay must not trip a forward fault"
+    );
 }
 
 // --- MakeLike ---------------------------------------------------------------
@@ -955,4 +1240,55 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
         m = m.max((re * re + im * im).sqrt());
     }
     m
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TRelayObj.MakePosSequence` (Relay.pas:915): monitored resync
+    /// (incl. the Distance/TD21/DOC cvBuffer path) then the Vbase/PickupVolts47
+    /// recompute. 1-phase → Vbase = kVBase·1000.
+    #[test]
+    fn resyncs_monitored_and_recomputes_vbase() {
+        let mut r = Relay::new("r1");
+        r.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        r.monitored_element_terminal = 1;
+        r.kv_base = 12.47;
+        r.pct_pickup47 = 2.0;
+        r.control_type = ctype::DISTANCE; // exercises the cvBuffer branch
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                bus_names: vec!["b1".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = r.make_pos_sequence(&ctx);
+        assert_eq!(r.ccd.cd.nphases, 1);
+        assert_eq!(r.get_bus_name(1), "b1");
+        assert!((r.vbase - 12_470.0).abs() < 1e-9); // 1-phase: kVBase·1000
+        assert!((r.pickup_volts47 - 249.4).abs() < 1e-9);
+        assert!(plan.run_base);
+        assert_eq!(r.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+
+    /// The Vbase/PickupVolts47 recompute sits OUTSIDE the NIL guard: with no
+    /// monitored element the default 3-phase Vbase = kVBase/√3·1000 is written.
+    #[test]
+    fn vbase_recomputed_outside_nil_guard() {
+        let mut r = Relay::new("r1"); // default nphases = 3
+        r.kv_base = 12.47;
+        r.pct_pickup47 = 2.0;
+        r.make_pos_sequence(&PosSeqCtx::default());
+        let expected = 12.47 / crate::util::sqrt3() * 1000.0;
+        assert!((r.vbase - expected).abs() < 1e-9);
+        assert!((r.pickup_volts47 - expected * 2.0 * 0.01).abs() < 1e-9);
+    }
 }

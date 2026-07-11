@@ -6,14 +6,23 @@
 //!
 //! Growth multipliers are entered relative to the previous year's load (a 2.5%
 //! growth is `1.025`); only the years where the rate changes need to be listed.
-//! The file-input props (`CSVFile`/`SngFile`/`DblFile`) are `NOT_PORTED` — the
-//! gate feeders never use them (PHASE4_PLAN §5).
+//!
+//! The file-input props (WPG.1) — `CSVFile`/`SngFile`/`DblFile` — are read via
+//! the deferred [`FileLoad`] path, dispatching to Pascal `Common/Utilities.pas`
+//! `DoCSVFile`/`DoSngFile`/`DoDblFile` (`OnlyLoadB = False`: every row is
+//! always a `(year, mult)` pair, unlike LoadShape/TShape/PriceShape's
+//! fixed-interval bare-value branch — GrowthShape has no `Interval` concept)
+//! with `RoundA = True` — a **dead argument** in `DoCSVFile` (the rounding
+//! loop exists only in `DoSngFile`/`DoDblFile`), so a CSV keeps fractional
+//! years verbatim while the binary readers round them on read (the direct
+//! `Year=` array property rounds via [`PropFlags::APPLY_ROUND`]).
 
 #[cfg(test)]
 mod tests;
 
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, FileLoad};
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use dss_parser::{Parser, ParserVars};
 
 /// 1-based property ordinals (Pascal `TGrowthShapeProp`).
 pub mod prop {
@@ -30,7 +39,7 @@ pub mod prop {
 pub fn class_props() -> ClassProps {
     use prop::*;
     let file_flags =
-        PropFlags::NOT_PORTED | PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET;
+        PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT;
     let defs = vec![
         PropDef::integer("NPts").flags(PropFlags::SUPPRESS_JSON),
         // Years are stored as (rounded) doubles; `ApplyRound` matches the Pascal
@@ -63,6 +72,9 @@ pub struct GrowthShapeObj {
     csvfile: String,
     sngfile: String,
     dblfile: String,
+    /// Deferred file reads queued by `CSVFile`/`SngFile`/`DblFile` (drained by
+    /// the executive).
+    pending_file_loads: Vec<FileLoad>,
 }
 
 const DEFAULT_NYEARS: i32 = 30;
@@ -80,6 +92,7 @@ impl GrowthShapeObj {
             csvfile: String::new(),
             sngfile: String::new(),
             dblfile: String::new(),
+            pending_file_loads: Vec::new(),
         }
     }
 
@@ -139,6 +152,88 @@ impl GrowthShapeObj {
             *slot = cur;
         }
         self.year_mult = out;
+    }
+
+    /// TODO(compat): FPC `Round` is ties-to-even; years are always in i32
+    /// range so `round_ties_even` reproduces it (see `get_mult`).
+    fn round_year(y: f64) -> f64 {
+        y.round_ties_even()
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoCSVFile` (`:2258-2312`) as called from
+    /// `TGrowthShapeObj.PropertySideEffects` (`OnlyLoadB = False`): every row
+    /// is `year, mult`. Reads at most `Npts` rows and shrinks `Npts` to the
+    /// count actually read. The `RoundA = True` argument is **dead** in
+    /// `DoCSVFile` — only `DoSngFile`/`DoDblFile` implement the rounding loop
+    /// — so fractional years from a CSV are kept verbatim (oracle-proven:
+    /// `2000.6, 2005.4, 2010.7` stays fractional via CSV, rounds via SngFile).
+    pub(super) fn read_csv_file(&mut self, content: &str) {
+        let npts = self.npts.max(0) as usize;
+        let mut year = vec![0.0; npts];
+        let mut mult = vec![0.0; npts];
+
+        let mut parser = Parser::new();
+        parser.set_auto_increment(false);
+        let vars = ParserVars::new();
+
+        let mut i = 0usize;
+        for line in content.lines() {
+            if i >= npts {
+                break;
+            }
+            parser.set_cmd_string(line);
+            parser.next_param(&vars);
+            year[i] = parser.make_double(&vars).unwrap_or(0.0);
+            parser.next_param(&vars);
+            mult[i] = parser.make_double(&vars).unwrap_or(0.0);
+            i += 1;
+        }
+
+        year.truncate(i);
+        mult.truncate(i);
+        self.npts = i as i32;
+        self.year = Some(year);
+        self.multiplier = Some(mult);
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoSngFile` (little-endian `f32` stream),
+    /// same `(year, mult)` row layout as [`Self::read_csv_file`] — but unlike
+    /// the CSV reader this one DOES round the year column (`RoundA` is live in
+    /// `DoSngFile`/`DoDblFile`, dead in `DoCSVFile`).
+    pub(super) fn read_sng_file(&mut self, content: &[u8]) {
+        let npts = self.npts.max(0) as usize;
+        let mut year = Vec::with_capacity(npts);
+        let mut mult = Vec::with_capacity(npts);
+        let mut off = 0usize;
+        while year.len() < npts && off + 8 <= content.len() {
+            let y = f32::from_le_bytes(content[off..off + 4].try_into().unwrap());
+            let m = f32::from_le_bytes(content[off + 4..off + 8].try_into().unwrap());
+            year.push(Self::round_year(y as f64));
+            mult.push(m as f64);
+            off += 8;
+        }
+        self.npts = year.len() as i32;
+        self.year = Some(year);
+        self.multiplier = Some(mult);
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoDblFile` (little-endian `f64` stream);
+    /// same layout as [`Self::read_sng_file`] but double precision.
+    pub(super) fn read_dbl_file(&mut self, content: &[u8]) {
+        let npts = self.npts.max(0) as usize;
+        let mut year = Vec::with_capacity(npts);
+        let mut mult = Vec::with_capacity(npts);
+        let mut off = 0usize;
+        while year.len() < npts && off + 16 <= content.len() {
+            let y = f64::from_le_bytes(content[off..off + 8].try_into().unwrap());
+            let m = f64::from_le_bytes(content[off + 8..off + 16].try_into().unwrap());
+            year.push(Self::round_year(y));
+            mult.push(m);
+            off += 16;
+        }
+        self.npts = year.len() as i32;
+        self.year = Some(year);
+        self.multiplier = Some(mult);
     }
 }
 
@@ -201,14 +296,51 @@ impl DssObject for GrowthShapeObj {
         }
     }
 
+    fn take_file_loads(&mut self) -> Vec<FileLoad> {
+        std::mem::take(&mut self.pending_file_loads)
+    }
+
+    /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).
+    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+        if load.prop == prop::CSVFILE {
+            self.read_csv_file(content);
+        }
+    }
+
+    /// Apply a resolved `SngFile`/`DblFile` (Pascal `DoSngFile`/`DoDblFile`).
+    fn apply_binary_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &[u8],
+        _errors: &mut Vec<String>,
+    ) {
+        match load.prop {
+            prop::SNGFILE => self.read_sng_file(content),
+            prop::DBLFILE => self.read_dbl_file(content),
+            _ => {}
+        }
+    }
+
     /// Pascal `TGrowthShapeObj.PropertySideEffects`. `Npts` reallocates the
-    /// `Year`/`Multiplier` arrays; the file props are `NOT_PORTED` (the parse
-    /// errors before reaching here).
+    /// `Year`/`Multiplier` arrays; `CSVFile`/`SngFile`/`DblFile` queue a
+    /// deferred read for the executive (Pascal `GrowthShape.pas:215-220`).
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
-        if idx == prop::NPTS {
-            let n = self.npts.max(0) as usize;
-            realloc(&mut self.year, n);
-            realloc(&mut self.multiplier, n);
+        match idx {
+            prop::NPTS => {
+                let n = self.npts.max(0) as usize;
+                realloc(&mut self.year, n);
+                realloc(&mut self.multiplier, n);
+            }
+            prop::CSVFILE => self
+                .pending_file_loads
+                .push(FileLoad::text(prop::CSVFILE, self.csvfile.clone())),
+            prop::SNGFILE => self
+                .pending_file_loads
+                .push(FileLoad::binary(prop::SNGFILE, self.sngfile.clone())),
+            prop::DBLFILE => self
+                .pending_file_loads
+                .push(FileLoad::binary(prop::DBLFILE, self.dblfile.clone())),
+            _ => {}
         }
     }
 

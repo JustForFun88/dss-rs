@@ -51,17 +51,12 @@ impl Sensor {
     }
 
     /// Pascal `AllocateSensorObjArrays` + `ZeroSensorArrays`: size the per-phase
-    /// arrays to `Fnphases` and zero all four measured vectors.
-    fn allocate_and_zero_arrays(&mut self) {
+    /// arrays to `Fnphases` and zero all four measured vectors. `yorder` is the
+    /// metered element's `Yorder` (the calc-buffer size).
+    pub(super) fn allocate_and_zero_arrays(&mut self, yorder: usize) {
         let nph = self.med.cd.nphases;
         // AllocateSensorArrays sizes med.sensor_current/sensor_voltage; the
         // metered calc buffers follow the metered element's Yorder.
-        let yorder = self
-            .med
-            .metered_snap
-            .as_ref()
-            .map(|s| s.yorder)
-            .unwrap_or(0);
         self.med.allocate_sensor_arrays(yorder);
         self.sensor_kw = vec![0.0; nph];
         self.sensor_kvar = vec![0.0; nph];
@@ -123,7 +118,7 @@ impl Sensor {
         self.med.cd.set_bus(1, &bus);
         self.clear_sensor();
         self.valid_sensor = true;
-        self.allocate_and_zero_arrays();
+        self.allocate_and_zero_arrays(snap.yorder);
         self.recalc_vbase();
     }
 

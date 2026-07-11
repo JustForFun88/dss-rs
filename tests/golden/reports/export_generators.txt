@@ -1,0 +1,3 @@
+Year, LDCurve, Hour, Generator, "kWh", "kvarh", "Max kW", "Max kVA", "Hours", "$"
+0, , 3, "G1"          ,        300,        145,        100,        111,          3,          8
+0, , 3, "G2"          ,        300,        145,        100,        111,          3,          8

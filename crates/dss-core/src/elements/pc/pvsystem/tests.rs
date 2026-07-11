@@ -1,24 +1,150 @@
 //! Spec-pinned unit tests for the PVSystem element (`TPVsystemObj`). The
-//! numeric oracle pinning lives in the integration goldens (`phase7/pvsystem*`)
+//! numeric oracle pinning lives in the integration goldens (`der_controls/pvsystem*`)
 //! and the live corpus gate; these pin the ported Pascal bodies that the oracle
 //! does not expose directly (Create defaults, the inverter clamp branches,
 //! `ComputePanelPower`, the YEQ derivation).
 
+use crate::elements::general::load_shape::{self, LoadShapeObj};
+use crate::elements::general::temp_shape::{self, TShapeObj};
 use crate::elements::pc::generator::default_recalc_ctx;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce};
 use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::obj::dss_enum::EnumRegistry;
+use crate::obj::props::PropEngine;
+use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
+use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
 use super::*;
+
+/// Build a `LoadShapeObj` (mult curve) through its real property engine.
+fn build_shape(mult: &str) -> LoadShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = load_shape::class_props(&enums);
+    let mut obj = LoadShapeObj::new("s");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
+}
+
+/// Build a `TShapeObj` (temperature curve) through its real property engine.
+fn build_tshape(temp: &str) -> TShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = temp_shape::class_props(&enums);
+    let mut obj = TShapeObj::new("t");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("temp", temp)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    obj
+}
+
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..default_recalc_ctx()
+    }
+}
+
+/// Pascal `SetNominalPVSystem` GENERALTIME arm (PVsystem.pas:1174): under
+/// `ActiveLoadShapeClass` (`Set LoadShapeClass=`) the class picks BOTH the mult
+/// curve (`ShapeFactor`) AND the temperature curve (`TShapeValue`) — the two
+/// travel together, so a swap that mixed them (e.g. yearly mult + daily temp)
+/// is caught. Three distinct mult curves (hr 2: daily→0.6, yearly→0.7,
+/// duty→0.5) and three distinct temp curves (yearly = daily+1, duty = daily+2);
+/// default `USENONE` leaves ShapeFactor 1+j1 and the temperature at the fixed
+/// `f_temperature` (25).
+#[test]
+fn time_loadshapeclass_selects_matching_mult_and_temperature() {
+    let mut pv = PVSystem::new("pv1");
+    pv.base.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    pv.base.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    pv.base.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+    pv.daily_t_shape_obj = Some(build_tshape("10 20 30 40"));
+    pv.yearly_t_shape_obj = Some(build_tshape("11 21 31 41"));
+    pv.duty_t_shape_obj = Some(build_tshape("12 22 32 42"));
+
+    // The daily temp at hr 2 (whatever the wrap index): the yearly/duty curves
+    // are that +1 / +2, so we assert relative to it to stay index-agnostic.
+    pv.set_nominal_der_output(&time_class_ctx(crate::solution::USEDAILY, 2.0));
+    let daily_temp = pv.t_shape_value;
+    assert!((pv.base.shape_factor.re - 0.6).abs() < 1e-9);
+
+    pv.set_nominal_der_output(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (pv.base.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - (daily_temp + 1.0)).abs() < 1e-9,
+        "yearly temp {} != daily+1 {}",
+        pv.t_shape_value,
+        daily_temp + 1.0
+    );
+
+    pv.set_nominal_der_output(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (pv.base.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - (daily_temp + 2.0)).abs() < 1e-9,
+        "duty temp {} != daily+2 {}",
+        pv.t_shape_value,
+        daily_temp + 2.0
+    );
+
+    pv.set_nominal_der_output(&time_class_ctx(USENONE, 2.0));
+    assert!(
+        (pv.base.shape_factor.re - 1.0).abs() < 1e-9,
+        "none mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - pv.f_temperature).abs() < 1e-9,
+        "none temp {} != f_temperature {}",
+        pv.t_shape_value,
+        pv.f_temperature
+    );
+}
 
 /// The harmonic-mode YPrim is the Thevenin admittance behind `%R`/`%X`
 /// (`Yeq := 1/(Rthev + j·Xthev)`, then `Y.im /= h`) that `InitHarmonics` sets —
 /// NOT the (negated) power-flow admittance. Pins the harmonic `CalcYPrimMatrix`
 /// branch entry-by-entry and, as a discriminator, asserts it is far from the
 /// power-flow stamping. Oracle-independent backstop for the
-/// `phase7/harmonics_pvsystem_h5` golden.
+/// `harmonics/harmonics_pvsystem_h5` golden.
 #[test]
 fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
     let mut pv = PVSystem::new("pv1");
@@ -138,7 +264,7 @@ fn inverter_cuts_out_below_threshold() {
 /// 640 > 500 forces the no-priority back-off `kW_out := sqrt(kVA²−kvar²)` → kW =
 /// sqrt(500²−400²) = **300**, kvar **stays 400**. (Pinned exactly — not just an
 /// upper bound — so a regression that zeroed the output or backed off the wrong
-/// leg can't pass; the oracle pins the same state in golden `phase7/pvsystem_clamps`
+/// leg can't pass; the oracle pins the same state in golden `der_controls/pvsystem_clamps`
 /// element `pva`.)
 #[test]
 fn kva_clamp_backs_off_kw() {
@@ -164,7 +290,7 @@ fn kva_clamp_backs_off_kw() {
 /// `kvarMaxAbs`=300 clamps to kvar_out=−300 (absorption limit), then the kVA
 /// back-off sets kW = sqrt(500²−300²) = **400**. Pins the absorption direction
 /// (the `kvarNEG` corpus sibling that would cover it is deferred at ~4e-6;
-/// the oracle pins this state in golden `phase7/pvsystem_clamps` element `pvc`).
+/// the oracle pins this state in golden `der_controls/pvsystem_clamps` element `pvc`).
 #[test]
 fn kvar_absorption_clamp_then_backoff() {
     let mut pv = PVSystem::new("pv1");
@@ -183,5 +309,59 @@ fn kvar_absorption_clamp_then_backoff() {
         (pv.base.kw_out - 400.0).abs() < 1e-9,
         "kw_out = {}",
         pv.base.kw_out
+    );
+}
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// 3-phase PVSystem: V line-neutral, kVA ÷ phases, PF set to nominal.
+#[test]
+fn makeposseq_pv_three_phase() {
+    let mut pv = PVSystem::new("pv");
+    pv.base.connection = Connection::Wye;
+    pv.cd.nphases = 3;
+    pv.kv_pvsystem_base = 12.47;
+    pv.f_kva_rating = 150.0;
+    pv.base.pf_nominal = 1.0;
+
+    let plan = pv.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KVA, 150.0 / 3.0),
+            PosSeqAction::SetF64(prop::PF, 1.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}
+
+/// 1-phase PVSystem: base kV kept, no kVA/PF split.
+#[test]
+fn makeposseq_pv_single_phase() {
+    let mut pv = PVSystem::new("pv");
+    pv.base.connection = Connection::Wye;
+    pv.cd.nphases = 1;
+    pv.kv_pvsystem_base = 7.2;
+    pv.f_kva_rating = 150.0;
+
+    let plan = pv.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 7.2),
+            PosSeqAction::EndEdit,
+        ]
     );
 }

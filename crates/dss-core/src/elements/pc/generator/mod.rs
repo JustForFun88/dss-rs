@@ -115,28 +115,28 @@ pub mod prop {
 /// `TGenerator.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("bus1", 1),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kW"),
         PropDef::double("PF"),
         PropDef::double("kvar"),
-        PropDef::mapped_int_enum("model", enums.gen_model),
-        PropDef::double("Vminpu"),
-        PropDef::double("Vmaxpu"),
-        PropDef::object_ref_class("LoadShape", "yearly"),
-        PropDef::object_ref_class("LoadShape", "daily"),
-        PropDef::object_ref_class("LoadShape", "duty"),
-        PropDef::mapped_string_enum("dispmode", enums.gen_disp_mode),
-        PropDef::double("dispvalue"),
-        PropDef::mapped_string_enum("conn", enums.connection),
-        PropDef::mapped_string_enum("status", enums.gen_status),
-        PropDef::integer("class"),
+        PropDef::mapped_int_enum("Model", enums.gen_model),
+        PropDef::double("VMinpu"),
+        PropDef::double("VMaxpu"),
+        PropDef::object_ref_class("LoadShape", "Yearly"),
+        PropDef::object_ref_class("LoadShape", "Daily"),
+        PropDef::object_ref_class("LoadShape", "Duty"),
+        PropDef::mapped_string_enum("DispMode", enums.gen_disp_mode),
+        PropDef::double("DispValue"),
+        PropDef::mapped_string_enum("Conn", enums.connection),
+        PropDef::mapped_string_enum("Status", enums.gen_status),
+        PropDef::integer("Class"),
         PropDef::double("Vpu"),
-        PropDef::double("maxkvar"),
-        PropDef::double("minkvar"),
-        PropDef::double("pvfactor"),
-        PropDef::boolean("forceon"),
+        PropDef::double("Maxkvar"),
+        PropDef::double("Minkvar"),
+        PropDef::double("PVFactor"),
+        PropDef::boolean("ForceOn"),
         PropDef::double("kVA"),
         PropDef::double("MVA")
             .scale(1000.0)
@@ -153,7 +153,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string("ShaftModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("ShaftData").flags(PropFlags::NOT_PORTED),
         PropDef::double("DutyStart"),
-        PropDef::boolean("debugtrace"),
+        PropDef::boolean("DebugTrace"),
         PropDef::boolean("Balanced"),
         PropDef::double("XRdp"),
         PropDef::boolean("UseFuel"),
@@ -168,10 +168,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("DynamicExp", "DynamicEq"),
         PropDef::string_list("DynOut"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("Generator", defs, true)
@@ -330,6 +330,12 @@ impl Generator {
         cd.nconds = 4; // defaults to wye
         cd.set_nterms(1);
 
+        // Pascal `TGeneratorObj.Create` sets `GenVars.w0 := TwoPi·Basefrequency`
+        // (Generator.pas:986) at construction, so the classic `Frequency` state
+        // variable reads the base frequency even in a snapshot solve (before any
+        // dynamics `InitStateVars`). `base_frequency` defaults to 60 here.
+        let base_frequency = cd.base_frequency;
+
         let kw_base = 1000.0;
         let kvar_base = 60.0;
         let kv_generator_base = 12.47;
@@ -407,7 +413,7 @@ impl Generator {
             dtheta: 0.0,
             speed: 0.0,
             dspeed: 0.0,
-            w0: 0.0,
+            w0: 2.0 * std::f64::consts::PI * base_frequency,
             m_mass: 0.0,
             d_damping: 0.0,
             p_shaft: 0.0,
@@ -463,6 +469,7 @@ pub fn default_recalc_ctx() -> SysCtx {
         is_dynamic_model: false,
         load_model: crate::solution::POWERFLOW,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
