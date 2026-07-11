@@ -43,9 +43,11 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
  8. DIAKOPTICS_PSTCALC_PLAN.md **Part II** (WP-AD.2–AD.6: A-Diakoptics tearing,
                               solve engine, the corpus-wide AD↔normal sweep,
                               AggregateProfiles, optional threaded children) — last.
-                              **No oracle exists for it** (the pinned capi build has
-                              `DSS_CAPI_ADIAKOPTICS` compiled out — errors #130), so
-                              it gates rust-vs-rust (AD solve ≡ normal solve) and is
+                              **The pinned oracle can't run it** (`DSS_CAPI_ADIAKOPTICS`
+                              compiled out — errors #130), so it gates rust-vs-rust
+                              (AD solve ≡ normal solve) + the official-EPRI r3723
+                              reference channel (Oddie; A-Diakoptics probe-proven
+                              working there 2026-07-11 — plan §0.2/D9), and is
                               deliberately outside final acceptance. Early-start:
                               may begin as soon as MULTITHREADING **M2** lands
                               (M3/M4 are not prerequisites).
