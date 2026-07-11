@@ -8,7 +8,7 @@ use crate::support::mathutil::{
 use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
-use crate::obj::base::MmfKind;
+use crate::obj::base::{InterpLoad, InterpTarget, MmfKind};
 
 use super::{INTERP_EDGE, LoadShapeObj, store_array};
 
@@ -960,5 +960,40 @@ impl LoadShapeObj {
             }
         };
         self.finish_mmf(values, qside);
+    }
+
+    /// Apply a non-memory-mapped `InterpretDblArray` LoadShape directive
+    /// (`mult=(file=…)` / `qmult=(sngfile=…)` / `hour=(dblfile=…)`, Pascal
+    /// `CustomSetRaw`, `LoadShape.pas:749-810`, WPG.19). Runs `UseFloat64` first
+    /// (Pascal `:767/779/804`), reads with the `Utilities.pas` file grammar
+    /// capped at the current `NumPoints`, then stores per the Pascal shrink rule:
+    /// `mult`/`Pmult` shrink `NumPoints := result` (`:770`); `qmult`/`hour` leave
+    /// it unchanged (the return is ignored, `:781/806`). A short `qmult`/`hour`
+    /// file leaves an uninitialized tail upstream (`ReAllocmem` UB, not
+    /// reproduced per CLAUDE.md): we store only the prefix read.
+    pub(super) fn apply_interp_file(&mut self, il: &InterpLoad, bytes: &[u8]) {
+        self.use_float64();
+        let max = self.n();
+        let values = match il.kind {
+            MmfKind::Text => {
+                let content = String::from_utf8_lossy(bytes);
+                crate::util::read_dbl_array_text(&content, il.column, il.header, max)
+            }
+            MmfKind::Float32 => crate::util::read_le_f32_array(bytes, max),
+            MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),
+        };
+        let count = values.len();
+        match il.target {
+            InterpTarget::PMult => {
+                self.p_mult = store_array(values);
+                self.num_points = count as i32;
+            }
+            InterpTarget::QMult => {
+                self.q_mult = store_array(values);
+            }
+            InterpTarget::Hour => {
+                self.hour = store_array(values);
+            }
+        }
     }
 }

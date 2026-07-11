@@ -7,7 +7,54 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-10.
+Last updated: 2026-07-11.
+
+**WPG.19 port — non-MemoryMapped file-backed numeric arrays (2026-07-11),
+gate-green (modes + load_shape + props_roundtrip).** The Pascal `InterpretDblArray`
+`file=`/`sngfile=`/`dblfile=` grammar (`Common/Utilities.pas:461-566`) for array
+properties WITHOUT `MemoryMapping=Yes` — the proven sole blocker of the whole
+ckt24 `MemoryMappingLoadShapes` family. **Two sites:** (1) LoadShape
+`Mult`/`PMult`/`QMult`/`Hour` via `set_f64_array_raw` (`load_shape/accessors.rs`)
+— now handles the non-MM directive (Hour too; Pascal `CustomSetRaw` has no MMF
+branch for Hour), deferred as a `FileLoad::interp` and applied by
+`apply_interp_file` (`compute.rs`) with the Pascal shrink rule: **mult/pmult
+shrink `NumPoints`** (`:770`), **qmult/hour do NOT** (`:781/806`; their short-file
+UB tail is not reproduced). (2) the generic double-array property path
+(`class_props/parse.rs` + `DSSObjectHelper.pas:616-636`) — a file directive on
+ANY class (`Spectrum %mag`, `XYcurve Xarray/Yarray`, …) is queued on
+`DssObjData` (`GenericDblArrayFile`), read in the executive drain
+(`exec/command.rs::apply_generic_dbl_array_file`) and applied via the typed
+accessors with the generic `integerPtr^ := InterpretDblArray(...)` size-prop
+shrink (probe-proven: `Spectrum NumHarm 8→4` on a 4-row `%mag` file). **Ordering
+fix:** `action=normalize`/`ln` runs AFTER the (now-deferred) file read — probe-
+proven the oracle normalizes the *read* peak — so `do_action` defers Normalize to
+`run_deferred_actions` (drained after the file loads) when a file directive is
+pending; a numeric `mult` still normalizes inline (no regression). `%result%`
+resolves to `LastResultFile` in the drain (ported; not gate-committed to avoid
+`Export`-content coupling — proven only in the oracle probe). New live-gate deck
+`tests/corpus/modes/shape_filearr/` (fixtures via
+`tools/decks/gen_shape_filearr_fixtures.py`): covers file/column=2/header=yes/
+sngfile/dblfile/short-shrink/normalize + the two SITE-2 generics; oracle-validated
+(compiles+solves+converges, 2 iters; full fingerprint bit-identical across two
+oracle processes `6225f27521de809e`; feature-sensitive — stripping the directives
+empties the shapes and the daily solve access-violates on the oracle). All 33
+modes decks match the oracle (property-parity ON). **Corpus re-classify (honest,
+NOT forced):** `Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss`
+(yearly, 100 steps, 7522 nodes) now compiles + converges (2 iters, hour=100) and
+its full complex node V matches the oracle to **5.6e-8 rel max** (median 2.8e-8,
+faer-vs-KLU floor) after the entire 100-step trajectory — so WPG.19 reads/drives
+the load shapes identically and its former blocker is gone. But the full live gate
+(`kind="large"`) exposed a **new, deeper true blocker unrelated to WPG.19**: the
+regulator-controlled substation transformer `Transformer.SubXFMR`
+(`Regcontrol.SubXFMR_Regulator` winding=2 vreg=123 band=3 R=7 LDC delay=45)
+diverges at the per-element **current** level — |diff| 7.2e-4 A (~4.7e-5 rel) at
+step 0, exceeding the large-tier current tolerance while V stays regulated to
+floor: the known RegControl/LDC tap-trajectory divergence family (MEMORY:
+AutoTrans/RegControl stale tap). So it was **reclassified
+`skipped_unsupported → skipped_needs_investigation`** (live-mismatch bucket, not
+`solvable_now`); `solvable_now` stays 226 (67.5%). The 7 sibling ckt24 masters
+(base + `-mm-*`/`-nomm`/`Run_Ckt24`) share the same former WPG.19 blocker (now
+gone) and stay tagged pending individual triage.
 
 **WP8.8 Phase-8 exit COMPLETE (2026-07-10), gate-green — PHASE 8 IS COMPLETE.**
 All five exit steps ran; per the port-don't-defer rule the sweep also closed the
