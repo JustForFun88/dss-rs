@@ -343,3 +343,23 @@ pub(crate) fn rscale_strided(n: usize, alpha: Real, x: &mut [Real], off: usize, 
 pub(crate) fn isum(x: &[Idx]) -> Idx {
     x.iter().copied().sum()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `nparts == 1` early return (`kmetis.c:70,74`): `iset(nvtxs, 0, part)` and
+    /// `objval = 0` — every vertex lands in part 0 with a zero objective, and the
+    /// multilevel pipeline is never entered. Not reachable via the golden gate (the
+    /// gpmetis driver rejects `nparts < 2`), so it is pinned directly here.
+    #[test]
+    fn nparts_one_returns_all_zeros_zero_cut() {
+        // A 4-cycle: xadj/adjncy for vertices 0-1-2-3-0, unit edge weights.
+        let xadj = [0, 2, 4, 6, 8];
+        let adjncy = [1, 3, 0, 2, 1, 3, 2, 0];
+        let adjwgt = [1, 1, 1, 1, 1, 1, 1, 1];
+        let (part, edgecut) = part_graph_kway(&xadj, &adjncy, None, Some(&adjwgt), 1);
+        assert_eq!(part, vec![0, 0, 0, 0]);
+        assert_eq!(edgecut, 0);
+    }
+}

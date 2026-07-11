@@ -16,7 +16,19 @@ fn golden_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden")
 }
 
-const FIXTURES: &[&str] = &["radial12", "radial40", "radial200", "mesh120", "ckt24norm"];
+// `mesh120u` is the fmt=0 (unweighted) variant of `mesh120`: with all edge
+// weights equal, `CoarsenGraph`'s `eqewgts` is true at level 0, so the port takes
+// the **Match_RM** (random) matching branch there instead of SHEM. All the other
+// fixtures are fmt=1 with varying weights (SHEM only), so this one pins the RM
+// path in the committed gate. Provenance: `tools/golden/gen_metis_reference.md`.
+const FIXTURES: &[&str] = &[
+    "radial12",
+    "radial40",
+    "radial200",
+    "mesh120",
+    "mesh120u",
+    "ckt24norm",
+];
 const KS: &[Idx] = &[2, 3, 4, 8];
 
 fn load_graph(stem: &str) -> Graph {
@@ -55,6 +67,7 @@ const C_EDGECUTS: &[(&str, [Idx; 4])] = &[
     ("radial40", [2, 3, 6, 12]),
     ("radial200", [3, 5, 6, 19]),
     ("mesh120", [12, 33, 42, 78]),
+    ("mesh120u", [12, 20, 22, 42]),
     ("ckt24norm", [14, 26, 34, 76]),
 ];
 

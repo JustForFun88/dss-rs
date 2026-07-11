@@ -262,3 +262,58 @@ impl Rpq {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Isolating oracle test for the `rpq` heap (the golden replay only covers it
+    /// indirectly through `Greedy_KWayCutOptimize`). The full extraction order for
+    /// this insert/update/delete sequence — including the exact tie ordering among
+    /// equal keys, which the max-heap resolves by structure, not FIFO — was
+    /// harvested from the real `GK_MKPQUEUE(rpq, …, key_gt)` macro
+    /// (`GKlib/include/gk_mkpqueue.h`) compiled with gcc 13.2.0
+    /// (`scratchpad/metis-build/pqprobe.c`). A regression in any of insert /
+    /// update / delete / get_top filter branches perturbs this order.
+    #[test]
+    fn matches_c_rpq_extraction_order() {
+        let mut q = Rpq::create(16);
+        q.insert(0, 3.0);
+        q.insert(1, 1.0);
+        q.insert(2, 3.0);
+        q.insert(3, 2.0);
+        q.insert(4, 3.0);
+        q.insert(5, 0.5);
+        q.insert(6, 2.0);
+        q.update(1, 5.0); // raise node 1 to the top (filter-up)
+        q.delete(4); // remove one of the key==3 tie (filter-down of the mover)
+
+        let mut order = Vec::new();
+        loop {
+            let v = q.get_top();
+            if v == -1 {
+                break;
+            }
+            order.push(v);
+        }
+        // C GK_MKPQUEUE order: node 1 (key 5), then the key-3 tie {0,2}, the key-2
+        // tie {6,3}, then node 5 (key 0.5).
+        assert_eq!(order, vec![1, 0, 2, 6, 3, 5]);
+    }
+
+    /// `update` is a no-op when the key is unchanged (the `!KEY_LT && !KEY_LT`
+    /// early return, `gk_mkpqueue.h:199`) and `see_top_key` reports `REAL_MAX` on
+    /// an empty queue.
+    #[test]
+    fn update_noop_and_empty_top_key() {
+        let mut q = Rpq::create(4);
+        q.insert(0, 2.0);
+        q.insert(1, 1.0);
+        q.update(0, 2.0); // unchanged key => no reordering
+        assert_eq!(q.see_top_key(), 2.0);
+        assert_eq!(q.get_top(), 0);
+        assert_eq!(q.get_top(), 1);
+        assert_eq!(q.get_top(), -1);
+        assert_eq!(q.see_top_key(), Real::MAX);
+    }
+}
