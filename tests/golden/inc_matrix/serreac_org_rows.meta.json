@@ -1,0 +1,20 @@
+{
+  "master": null,
+  "deck": [
+    "new circuit.serreacckt basekv=12.47 bus1=sourcebus",
+    "new line.l1 phases=3 bus1=sourcebus bus2=a length=1",
+    "new reactor.r1 phases=3 bus1=a bus2=b R=1 X=5",
+    "new line.l2 phases=3 bus1=b bus2=c length=1",
+    "new load.ld1 phases=3 bus1=c kv=12.47 kw=500 pf=0.95",
+    "new reactor.rsh phases=3 bus1=c kvar=300 kv=12.47",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+  ],
+  "post": [],
+  "calc": [
+    "CalcIncMatrix_O"
+  ],
+  "report": "IncMatrixRows",
+  "fixture": "serreacckt"
+}
