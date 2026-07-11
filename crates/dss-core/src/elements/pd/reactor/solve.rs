@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::Reactor;
 use crate::elements::ckt::CktElementData;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::support::mathutil::etk_invert;
@@ -368,5 +369,73 @@ impl CktElement for Reactor {
 
         self.cd.apply_yprim_open_conductor_calcs();
         self.cd.yprim_invalid = false;
+    }
+
+    /// Pascal `TReactorObj.MakePosSequence` (Reactor.pas:1052-1115). Collapse a
+    /// reactor to its positive-sequence single-phase form. Always wraps the
+    /// edit in `BeginEdit`/`EndEdit`; what happens inside depends on `SpecType`:
+    /// - 2 (R+jX) / 4 (Z1): just `Phases := 1`.
+    /// - 1 (kvar): kvar/3 per phase, kV per the connection/phase rule.
+    /// - 3 (matrices, only when multi-phase): average the self/mutual of
+    ///   `RMatrix`/`XMatrix` into `R1`/`X1` (the Pascal mutual loop includes the
+    ///   2..N diagonal terms — reproduced verbatim).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use super::prop::*;
+
+        let nphases = self.cd.nphases;
+        let mut actions = vec![PosSeqAction::BeginEdit];
+
+        match self.spec_type {
+            2 | 4 => {
+                // R + jX  /  symmetrical components (Z1 specified)
+                actions.push(PosSeqAction::SetI32(PHASES, 1));
+            }
+            1 => {
+                // kvar: divide among 3 phases.
+                let kvar_per_phase = self.kvarrating / 3.0;
+                let phase_kv = if nphases > 1 || self.connection != 0 {
+                    self.kvrating / sqrt3()
+                } else {
+                    self.kvrating
+                };
+                actions.push(PosSeqAction::SetI32(PHASES, 1));
+                actions.push(PosSeqAction::SetF64(KV, phase_kv));
+                actions.push(PosSeqAction::SetF64(KVAR, kvar_per_phase));
+                // Leave R as specified.
+            }
+            3 => {
+                if nphases > 1 {
+                    // Average the self/mutual of RMatrix and XMatrix. `avg`
+                    // mirrors the Pascal loops exactly (`i := 2..N`, `j := i..N`
+                    // — the mutual sum picks up the (2,2)..(N,N) diagonals).
+                    let avg = |m: &[f64]| -> f64 {
+                        let np = nphases;
+                        let npf = np as f64;
+                        let mut rs = 0.0; // Avg Self
+                        for i in 0..np {
+                            rs += m[i * np + i];
+                        }
+                        rs /= npf;
+                        let mut rm = 0.0; // Avg mutual
+                        for i0 in 1..np {
+                            for j0 in i0..np {
+                                rm += m[i0 * np + j0];
+                            }
+                        }
+                        rm /= npf * (npf - 1.0) / 2.0;
+                        rs - rm
+                    };
+                    let r = avg(self.rmatrix.as_deref().expect("SpecType 3 RMatrix"));
+                    let x = avg(self.xmatrix.as_deref().expect("SpecType 3 XMatrix"));
+                    actions.push(PosSeqAction::SetI32(PHASES, 1));
+                    actions.push(PosSeqAction::SetF64(R, r));
+                    actions.push(PosSeqAction::SetF64(X, x));
+                }
+            }
+            _ => {}
+        }
+
+        actions.push(PosSeqAction::EndEdit);
+        PosSeqPlan::with_actions(actions)
     }
 }

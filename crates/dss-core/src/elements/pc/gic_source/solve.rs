@@ -7,6 +7,7 @@ use num_complex::Complex64;
 use super::GicSource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::obj::base::RefAction;
 use crate::support::cmatrix::CMatrix;
@@ -113,6 +114,17 @@ impl CktElement for GicSource {
         self.recalc();
     }
 
+    /// Pascal `TGICSourceObj.MakePosSequence` (GICsource.pas:471-476): a
+    /// multi-phase GICsource collapses to `Phases := 1` (a bare single edit),
+    /// then `inherited` (the base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(super::prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
+    }
+
     /// Pascal `TGICSourceObj.CalcYPrim` (GICsource.pas:361): a fixed 10000-mho
     /// (0.0001 Ω) series conductance block — the source's own tiny impedance.
     fn calc_yprim(&mut self, _sys: &SysCtx) {
@@ -179,5 +191,33 @@ impl CktElement for GicSource {
         for i in 0..yorder {
             curr[i] -= inj[i];
         }
+    }
+}
+
+#[cfg(test)]
+mod pos_seq_tests {
+    use super::*;
+    use crate::elements::pc::gic_source::prop;
+    use crate::elements::pos_seq::PosSeqCtx;
+
+    /// GICsource, multi-phase (default 3) → bare `Phases := 1` edit + run_base
+    /// (Pascal `TGICSourceObj.MakePosSequence`, GICsource.pas:471-476).
+    #[test]
+    fn makeposseq_gicsource_multiphase_sets_phases_1() {
+        let mut g = GicSource::new("g");
+        assert!(g.cd.nphases > 1);
+        let plan = g.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert_eq!(plan.actions, vec![PosSeqAction::SetI32(prop::PHASES, 1)]);
+    }
+
+    /// GICsource, already single phase → base-only (no actions), still run_base.
+    #[test]
+    fn makeposseq_gicsource_single_phase_is_base_only() {
+        let mut g = GicSource::new("g");
+        g.cd.nphases = 1;
+        let plan = g.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert!(plan.actions.is_empty());
     }
 }

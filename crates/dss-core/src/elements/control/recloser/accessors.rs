@@ -7,6 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::tcc_curve::TccCurveObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
@@ -61,6 +62,37 @@ impl CktElement for Recloser {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TRecloserObj.MakePosSequence` (`Controls/Recloser.pas:460`):
+    /// adopt the monitored element's phase / conductor counts and attach
+    /// terminal 1 to its bus, then run the base bus rename (`inherited`). Pascal
+    /// NIL-guards `MonitoredElement`; `ctx.monitored` is `None` in the same case.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(m) = &ctx.monitored {
+            // FNphases := MonitoredElement.NPhases; Nconds := FNphases
+            self.ccd.cd.nphases = m.nphases;
+            self.ccd.cd.set_nconds(m.nphases);
+            // Setbus(1, MonitoredElement.GetBus(ElementTerminal))
+            let t = self.monitored_element_terminal as usize;
+            let bus = t
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+            // ReAllocMem(cBuffer, ..) + CondOffset: no persistent field — the
+            // sampler sizes `cbuffer` and computes `cond_offset` as locals each
+            // `Sample` from the live monitored element.
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 

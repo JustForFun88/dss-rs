@@ -9,6 +9,7 @@ use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -61,6 +62,40 @@ impl CktElement for EnergyMeter {
     /// `TEnergyMeterObj.GetCurrents` returns zeros.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TEnergyMeterObj.MakePosSequence` (`Meters/EnergyMeter.pas:1185`):
+    /// when the metered element is set, resync the meter to its bus / phase /
+    /// conductor counts, reallocate the sensor arrays, and drop the (now stale)
+    /// zone branch tree, then run the base bus rename (`inherited`). Pascal
+    /// NIL-guards `MeteredElement`; `ctx.monitored` is `None` in the same case.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(m) = &ctx.monitored {
+            // Setbus(1, MeteredElement.GetBus(MeteredTerminal))
+            let mt = self.med.metered_terminal as usize;
+            let bus = mt
+                .checked_sub(1)
+                .and_then(|k| m.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.med.cd.set_bus(1, &bus);
+            // FNphases := MeteredElement.NPhases; Nconds := MeteredElement.Nconds
+            self.med.cd.nphases = m.nphases;
+            self.med.cd.set_nconds(m.nconds);
+            // AllocateSensorArrays (calc buffers sized to the metered Yorder,
+            // sensor arrays to the new Fnphases).
+            self.med.allocate_sensor_arrays(m.yorder);
+            // if BranchList <> NIL then BranchList.Free; BranchList := NIL
+            self.branch_list = None;
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.med.metered_element
     }
 }
 
@@ -341,5 +376,61 @@ impl DssObject for EnergyMeter {
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::*;
+    use crate::circuit::ckt_tree::CktTree;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+
+    /// Pascal `TEnergyMeterObj.MakePosSequence` (EnergyMeter.pas:1185): resync
+    /// to the metered element (bus at `MeteredTerminal`, phases, conds), realloc
+    /// the sensor arrays, and drop the zone branch tree; `inherited` runs the
+    /// base rename. Cross-check: `makeposseq_ctrl.dss` metered line is 1-phase.
+    #[test]
+    fn resyncs_to_metered_element_and_drops_branch_list() {
+        let mut em = EnergyMeter::new("m1");
+        em.med.metered_element = Some(ElemRef { cls: 1, idx: 2 });
+        em.med.metered_terminal = 2; // GetBus(2)
+        em.put_branch_list(CktTree::new());
+        assert!(em.has_branch_list());
+
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                bus_names: vec!["b1.1.2.3".into(), "b2.1".into()],
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = em.make_pos_sequence(&ctx);
+
+        assert_eq!(em.get_bus_name(1), "b2.1"); // Setbus(1, GetBus(2))
+        assert_eq!(em.cd().nphases, 1);
+        assert_eq!(em.cd().nconds, 1);
+        // AllocateSensorArrays: calc buffers = metered Yorder (2); per-phase
+        // arrays = the new Fnphases (1).
+        assert_eq!(em.med.calculated_current.len(), 2);
+        assert_eq!(em.med.calculated_voltage.len(), 2);
+        assert_eq!(em.med.sensor_current.len(), 1);
+        assert!(!em.has_branch_list()); // BranchList := NIL
+        assert!(plan.run_base && plan.actions.is_empty()); // inherited only
+        // monitored_element_ref resolves the metered element for the applier.
+        assert_eq!(em.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 2 }));
+    }
+
+    /// Pascal NIL guard: no metered element ⇒ the body is skipped, only the base
+    /// rename (`inherited`) runs.
+    #[test]
+    fn nil_metered_element_is_noop_but_runs_base() {
+        let mut em = EnergyMeter::new("m1");
+        let (np, nc) = (em.cd().nphases, em.cd().nconds);
+        let plan = em.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!((em.cd().nphases, em.cd().nconds), (np, nc));
+        assert!(plan.run_base);
     }
 }

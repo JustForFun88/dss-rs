@@ -386,3 +386,94 @@ fn randomize_none_sets_one_and_draws_nothing() {
         "random=none must not consume a draw"
     );
 }
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// Wye 3-phase load: V line-neutral (kV/√3), kW/kvar ÷ 3, no xfkVA (0).
+#[test]
+fn makeposseq_wye_three_phase() {
+    let mut ld = Load::new("l");
+    ld.connection = Connection::Wye;
+    ld.cd.nphases = 3;
+    ld.kv_load_base = 12.47;
+    ld.kw_base = 400.0;
+    ld.kvar_base = 131.55;
+    ld.connected_kva = 0.0;
+
+    let plan = ld.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW, 400.0 / 3.0),
+            PosSeqAction::SetF64(prop::KVAR, 131.55 / 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+    // Oracle cross-check: ld_wye kW 400 → 133.33 (and 44.44 after a 2nd pass).
+    assert!((400.0_f64 / 3.0 - 133.3333).abs() < 1e-3);
+}
+
+/// Delta load with xfkVA>0: V line-neutral (Δ ⇒ conn≠Wye), and the xfkVA
+/// (ConnectedKVA) ÷ 3 emitted as a 7th action.
+#[test]
+fn makeposseq_delta_with_xfkva() {
+    let mut ld = Load::new("l");
+    ld.connection = Connection::Delta;
+    ld.cd.nphases = 3;
+    ld.kv_load_base = 12.47;
+    ld.kw_base = 300.0;
+    ld.kvar_base = 100.0;
+    ld.connected_kva = 500.0;
+
+    let plan = ld.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW, 300.0 / 3.0),
+            PosSeqAction::SetF64(prop::KVAR, 100.0 / 3.0),
+            PosSeqAction::SetF64(prop::XFKVA, 500.0 / 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}
+
+/// 1-phase wye load: V stays line-line base (nphases==1 AND conn==Wye), and
+/// the ÷3 (not ÷nphases) power split still applies.
+#[test]
+fn makeposseq_single_phase_wye_keeps_base_kv() {
+    let mut ld = Load::new("l");
+    ld.connection = Connection::Wye;
+    ld.cd.nphases = 1;
+    ld.kv_load_base = 7.2;
+    ld.kw_base = 80.0;
+    ld.kvar_base = 26.3;
+    ld.connected_kva = 0.0;
+
+    let plan = ld.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 7.2), // NOT /√3
+            PosSeqAction::SetF64(prop::KW, 80.0 / 3.0),
+            PosSeqAction::SetF64(prop::KVAR, 26.3 / 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}

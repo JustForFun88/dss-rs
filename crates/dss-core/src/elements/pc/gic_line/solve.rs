@@ -7,6 +7,7 @@ use num_complex::Complex64;
 use super::GicLine;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
@@ -50,6 +51,22 @@ impl CktElement for GicLine {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TGICLineObj.MakePosSequence` (`GICLine.pas:660`). Single phase,
+    /// keeping the `Volts`/`Angle`/`R`/`X` unchanged.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use super::prop;
+
+        PosSeqPlan::with_actions(vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetF64(prop::VOLTS, self.volts),
+            PosSeqAction::SetF64(prop::ANGLE, self.angle),
+            PosSeqAction::SetF64(prop::R, self.r),
+            PosSeqAction::SetF64(prop::X, self.x),
+            PosSeqAction::EndEdit,
+        ])
     }
 
     /// Pascal `TGICLineObj.CalcYPrim` (GICLine.pas:445): build only YPrim_Series
@@ -153,5 +170,37 @@ impl CktElement for GicLine {
         for i in 0..yorder {
             curr[i] -= inj[i];
         }
+    }
+}
+
+#[cfg(test)]
+mod pos_seq_tests {
+    use super::*;
+    use crate::elements::pc::gic_line::prop;
+    use crate::elements::pos_seq::PosSeqCtx;
+
+    /// GICLine → 1 phase, keeping Volts/Angle/R/X unchanged (WPG.21).
+    #[test]
+    fn makeposseq_gicline_keeps_all() {
+        let mut g = GicLine::new("g");
+        g.volts = 100.0;
+        g.angle = 30.0;
+        g.r = 2.5;
+        g.x = 0.4;
+
+        let plan = g.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert_eq!(
+            plan.actions,
+            vec![
+                PosSeqAction::BeginEdit,
+                PosSeqAction::SetI32(prop::PHASES, 1),
+                PosSeqAction::SetF64(prop::VOLTS, 100.0),
+                PosSeqAction::SetF64(prop::ANGLE, 30.0),
+                PosSeqAction::SetF64(prop::R, 2.5),
+                PosSeqAction::SetF64(prop::X, 0.4),
+                PosSeqAction::EndEdit,
+            ]
+        );
     }
 }

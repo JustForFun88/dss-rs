@@ -477,3 +477,69 @@ fn reset_with_partial_open_bank_still_forces_rebuild() {
     // The reset really flipped phase 0 closed→open — the change the old gate missed.
     assert!(!cap.conductors[0]);
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TCapControlObj.MakePosSequence` (CapControl.pas:643): Enabled /
+    /// phases / conds from the controlled cap; effElement = monitored (when set)
+    /// supplies the terminal bus. Cross-check `makeposseq_ctrl.dss`: phases=1.
+    #[test]
+    fn resyncs_controlled_and_monitored_bus() {
+        let mut cc = CapControl::new("cc1");
+        cc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 1 });
+        cc.ccd.monitored_element = Some(ElemRef { cls: 2, idx: 2 });
+        cc.ccd.element_terminal = 2;
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                enabled: false,
+                bus_names: vec!["cbus".into()],
+                ..Default::default()
+            }),
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                enabled: true,
+                bus_names: vec!["mb1".into(), "mb2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = cc.make_pos_sequence(&ctx);
+        assert_eq!(cc.ccd.cd.nphases, 1);
+        assert_eq!(cc.ccd.cd.nconds, 1);
+        assert!(!cc.ccd.cd.enabled); // Enabled := ControlledElement.Enabled
+        assert_eq!(cc.get_bus_name(1), "mb2"); // effElement=monitored, GetBus(2)
+        assert_eq!(cc.ccd.element_terminal, 2); // unchanged (monitored present)
+        assert!(plan.run_base && plan.actions.is_empty());
+        assert_eq!(cc.monitored_element_ref(), Some(ElemRef { cls: 2, idx: 2 }));
+    }
+
+    /// No monitored element ⇒ effElement = controlled, ElementTerminal forced 1.
+    #[test]
+    fn no_monitored_forces_terminal_one() {
+        let mut cc = CapControl::new("cc1");
+        cc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 1 });
+        cc.ccd.monitored_element = None;
+        cc.ccd.element_terminal = 3;
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                enabled: true,
+                bus_names: vec!["cbus".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        cc.make_pos_sequence(&ctx);
+        assert_eq!(cc.ccd.element_terminal, 1); // forced to 1
+        assert_eq!(cc.get_bus_name(1), "cbus"); // controlled GetBus(1)
+    }
+}

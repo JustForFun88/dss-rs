@@ -254,6 +254,10 @@ impl Dss {
             cmd::CALC_INC_MATRIX => self.do_calc_inc_matrix(false),
             cmd::CALC_INC_MATRIX_O => self.do_calc_inc_matrix(true),
             cmd::CALC_LAPLACIAN => self.do_calc_laplacian(),
+            // Pascal `TExecHelper.DoMakePosSeq` (ExecHelper.pas:3035): flip the
+            // circuit to positive-sequence and convert every element in creation
+            // order (`exec/make_pos_seq.rs`).
+            cmd::MAKE_POS_SEQ => self.do_make_pos_seq(),
             _ => self.not_ported_command(pointer),
         }
     }
@@ -1025,6 +1029,16 @@ impl Dss {
         if marked
             && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
             && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
+            // Pascal reloads Vterminal INSIDE the getter, after its
+            // `if (not Enabled) or (NodeRef = NIL) or (NodeV = NIL) then Exit`
+            // guard (e.g. `TTransfObj.GetAllWindingCurrents`, Transformer.pas:1530).
+            // A DISABLED element is skipped by the re-solve's bus reprocessing, so
+            // its `node_ref` stays stale (pointing at pre-conversion node numbers);
+            // `MakePosSequence` disabling an off-phase-1 winding
+            // (`makeposseq_xfmr.dss`) is the case that exposes it. The getter itself
+            // already returns zeros for a disabled element, so mirror the guard here
+            // and skip the (unsafe, stale-`node_ref`) refresh.
+            && elem.cd().enabled
         {
             elem.cd_mut().compute_vterminal(&node_v);
         }
@@ -1530,34 +1544,132 @@ impl Dss {
 
         objects[oi].end_edit();
 
-        // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
-        // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
-        let deferred = objects[oi].data_mut().take_errors();
-        errors.extend(deferred);
+        // The post-`end_edit` signal tail (deferred errors/abort, circuit
+        // signal-flag propagation, deferred ref-actions). Shared verbatim with
+        // the MakePosSequence applier (`exec/make_pos_seq.rs`), which replays
+        // the identical property mutations through the typed setters. The split
+        // active-class borrows above are dead by here (last used at `end_edit`),
+        // so the full `classes` slice is free for the ref-action targets.
+        apply_edit_signal_tail(classes, circuit, errors, ci, oi);
+    }
+}
 
-        // A `DoErrorMsg`-class deferred message (e.g. Relay error 384, a
-        // monitored terminal out of range) sets `DSS.SolutionAbort := True` in
-        // Pascal; lift that request into the solution so the next solve halts.
-        // `take_abort` always runs (clears the per-object flag); `DoSimpleMsg`
-        // messages (errors 385/386) never set it.
-        if objects[oi].data_mut().take_abort()
-            && let Some(ckt) = circuit.as_mut()
-        {
-            ckt.solution.solution_abort = true;
+/// The tail every property edit runs after `EndEdit` (Pascal: the property
+/// setters write `ActiveCircuit.BusNameRedefined`/`Solution.SystemYChanged`
+/// immediately; here they queue signal flags drained once the edit finishes).
+/// Factored out of [`Dss::edit_active_inner`] so the MakePosSequence applier
+/// (`exec/make_pos_seq.rs`) runs the byte-identical tail after replaying an
+/// element's [`PosSeqPlan`] — no duplicated logic. `ci`/`oi` name the class /
+/// object just edited; `classes` is the full registry (for ref-action targets).
+pub(super) fn apply_edit_signal_tail(
+    classes: &mut [DssClass],
+    circuit: &mut Option<Circuit>,
+    errors: &mut Vec<String>,
+    ci: usize,
+    oi: usize,
+) {
+    // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
+    // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
+    let deferred = classes[ci].objects[oi].data_mut().take_errors();
+    errors.extend(deferred);
+
+    // A `DoErrorMsg`-class deferred message (e.g. Relay error 384, a
+    // monitored terminal out of range) sets `DSS.SolutionAbort := True` in
+    // Pascal; lift that request into the solution so the next solve halts.
+    // `take_abort` always runs (clears the per-object flag); `DoSimpleMsg`
+    // messages (errors 385/386) never set it.
+    if classes[ci].objects[oi].data_mut().take_abort()
+        && let Some(ckt) = circuit.as_mut()
+    {
+        ckt.solution.solution_abort = true;
+    }
+
+    // Deferred cross-element writes (Pascal pokes the target through a
+    // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
+    // PresentTap; nothing reads the target in between, so applying after
+    // the edit is equivalent).
+    let ref_actions = classes[ci].objects[oi].take_ref_actions();
+
+    // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
+    // circuit globals immediately; `Set_YprimInvalid` raises
+    // `SystemYChanged` for enabled elements).
+    if let Some(ckt) = circuit.as_mut()
+        && let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut()
+    {
+        let cd = elem.cd_mut();
+        if cd.signal_bus_name_redefined {
+            cd.signal_bus_name_redefined = false;
+            ckt.set_bus_name_redefined(true);
         }
+        if cd.yprim_invalid && cd.enabled {
+            ckt.solution.system_y_changed = true;
+        }
+        if cd.signal_reset_solution_initialized {
+            cd.signal_reset_solution_initialized = false;
+            ckt.solution.solution_initialized = false;
+        }
+    }
 
-        // Deferred cross-element writes (Pascal pokes the target through a
-        // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
-        // PresentTap; nothing reads the target in between, so applying after
-        // the edit is equivalent). Collected before the flag propagation so
-        // the active-class borrows can end before `classes` is re-borrowed.
-        let ref_actions = objects[oi].take_ref_actions();
-
-        // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
-        // circuit globals immediately; `Set_YprimInvalid` raises
-        // `SystemYChanged` for enabled elements).
+    for action in &ref_actions {
+        let target = action.target();
+        let tgt = &mut classes[target.cls].objects[target.idx];
+        // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
+        // CktElement base (any switched element), so they are applied here
+        // rather than through the per-class `apply_ref_action`; the
+        // transformer-tap variant stays class-specific.
+        match action {
+            crate::obj::base::RefAction::SetSwitchClosed {
+                terminal, closed, ..
+            } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    elem.cd_mut().set_terminal_closed(*terminal, *closed);
+                }
+            }
+            crate::obj::base::RefAction::SetConductorsClosed {
+                terminal, closed, ..
+            } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    let cd = elem.cd_mut();
+                    for (i, &c) in closed.iter().enumerate() {
+                        cd.set_conductor_closed(*terminal, i + 1, c);
+                    }
+                }
+            }
+            // GICsource splice: rewrite the spliced Line's Bus2 to the
+            // inserted GIC_<name> bus (Pascal drives it through the Line's
+            // property path; the Bus2 side effect is a plain rename).
+            crate::obj::base::RefAction::SetElementBus { terminal, bus, .. } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    elem.cd_mut().set_bus(*terminal, bus);
+                }
+            }
+            // OCP-device flags for the reliability sweep (Pascal
+            // `Include(ControlledElement.Flags, Flg.HasOCPDevice)` in the
+            // control's RecalcElementData). The first OCP control registered
+            // wins the `GetOCPDeviceType` ordinal, mirroring the Pascal scan
+            // that stops at the first Fuse/Recloser/Relay in the list.
+            crate::obj::base::RefAction::SetOcpDevice {
+                device_type, auto, ..
+            } => {
+                if let Some(elem) = tgt.as_ckt_element_mut() {
+                    let cd = elem.cd_mut();
+                    cd.flags
+                        .include(crate::elements::ckt::ElemFlags::HAS_OCP_DEVICE);
+                    if *auto {
+                        cd.flags
+                            .include(crate::elements::ckt::ElemFlags::HAS_AUTO_OCP_DEVICE);
+                    }
+                    if cd.ocp_device_type == 0 {
+                        cd.ocp_device_type = *device_type;
+                    }
+                }
+            }
+            _ => tgt.apply_ref_action(action),
+        }
+        // Propagate the target's flags too (a tap change invalidates the
+        // transformer's Yprim exactly like a direct `Tap=` edit).
         if let Some(ckt) = circuit.as_mut()
-            && let Some(elem) = objects[oi].as_ckt_element_mut()
+            && let Some(elem) = tgt.as_ckt_element_mut()
         {
             let cd = elem.cd_mut();
             if cd.signal_bus_name_redefined {
@@ -1566,82 +1678,6 @@ impl Dss {
             }
             if cd.yprim_invalid && cd.enabled {
                 ckt.solution.system_y_changed = true;
-            }
-            if cd.signal_reset_solution_initialized {
-                cd.signal_reset_solution_initialized = false;
-                ckt.solution.solution_initialized = false;
-            }
-        }
-
-        for action in &ref_actions {
-            let target = action.target();
-            let tgt = &mut classes[target.cls].objects[target.idx];
-            // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
-            // CktElement base (any switched element), so they are applied here
-            // rather than through the per-class `apply_ref_action`; the
-            // transformer-tap variant stays class-specific.
-            match action {
-                crate::obj::base::RefAction::SetSwitchClosed {
-                    terminal, closed, ..
-                } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        elem.cd_mut().set_terminal_closed(*terminal, *closed);
-                    }
-                }
-                crate::obj::base::RefAction::SetConductorsClosed {
-                    terminal, closed, ..
-                } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        let cd = elem.cd_mut();
-                        for (i, &c) in closed.iter().enumerate() {
-                            cd.set_conductor_closed(*terminal, i + 1, c);
-                        }
-                    }
-                }
-                // GICsource splice: rewrite the spliced Line's Bus2 to the
-                // inserted GIC_<name> bus (Pascal drives it through the Line's
-                // property path; the Bus2 side effect is a plain rename).
-                crate::obj::base::RefAction::SetElementBus { terminal, bus, .. } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        elem.cd_mut().set_bus(*terminal, bus);
-                    }
-                }
-                // OCP-device flags for the reliability sweep (Pascal
-                // `Include(ControlledElement.Flags, Flg.HasOCPDevice)` in the
-                // control's RecalcElementData). The first OCP control registered
-                // wins the `GetOCPDeviceType` ordinal, mirroring the Pascal scan
-                // that stops at the first Fuse/Recloser/Relay in the list.
-                crate::obj::base::RefAction::SetOcpDevice {
-                    device_type, auto, ..
-                } => {
-                    if let Some(elem) = tgt.as_ckt_element_mut() {
-                        let cd = elem.cd_mut();
-                        cd.flags
-                            .include(crate::elements::ckt::ElemFlags::HAS_OCP_DEVICE);
-                        if *auto {
-                            cd.flags
-                                .include(crate::elements::ckt::ElemFlags::HAS_AUTO_OCP_DEVICE);
-                        }
-                        if cd.ocp_device_type == 0 {
-                            cd.ocp_device_type = *device_type;
-                        }
-                    }
-                }
-                _ => tgt.apply_ref_action(action),
-            }
-            // Propagate the target's flags too (a tap change invalidates the
-            // transformer's Yprim exactly like a direct `Tap=` edit).
-            if let Some(ckt) = circuit.as_mut()
-                && let Some(elem) = tgt.as_ckt_element_mut()
-            {
-                let cd = elem.cd_mut();
-                if cd.signal_bus_name_redefined {
-                    cd.signal_bus_name_redefined = false;
-                    ckt.set_bus_name_redefined(true);
-                }
-                if cd.yprim_invalid && cd.enabled {
-                    ckt.solution.system_y_changed = true;
-                }
             }
         }
     }

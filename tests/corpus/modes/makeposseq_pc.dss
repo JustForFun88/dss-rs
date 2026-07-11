@@ -1,0 +1,50 @@
+! makeposseq_pc.dss — PC-element MakePosSequence coverage (WPG.21).
+! Load (wye / delta+xfkVA / 1-phase), Generator x4 (the PrpSequence-read
+! permutations: plain kW+pf, kVA=, MVA=, min/maxkvar=), PVSystem, Storage,
+! a second VSource, and a (1-phase) Isource. build -> solve ->
+! makeposseq -> solve, then a SECOND makeposseq + solve (pins the ÷3-again
+! kvar/kVA quirk and overall idempotency of the conversion).
+! Note: no VSConverter here — it is excluded from live decks because of the
+! known upstream GetCurrents state-mutating bug (see CLAUDE.md known-bugs list).
+! Its MakePosSequence override (Phases:=2, Ndc:=1) is covered instead by the
+! `pos_seq_tests` unit test in `pc/vs_converter/accessors.rs`.
+clear
+set defaultbasefrequency=60
+new circuit.psq_pc basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.3 x1=1.2 r0=0.9 x0=3.6
+
+new line.feed bus1=src bus2=b1 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km
+new line.l2 bus1=b1 bus2=b2 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km
+new line.l3 bus1=b2 bus2=b3 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km
+
+! Loads: wye, delta with xfkVA>0, 1-phase
+new load.ld_wye bus1=b1 phases=3 conn=wye kv=12.47 kw=400 pf=0.95 model=1
+new load.ld_delta bus1=b1 phases=3 conn=delta kv=12.47 kw=300 pf=0.92 model=1 xfkva=500
+new load.ld_1ph bus1=b2.1 phases=1 kv=7.2 kw=80 pf=0.95 model=1
+
+! Generators: the four PrpSequence-read permutations
+new generator.g_plain bus1=b1 phases=3 kv=12.47 kw=200 pf=1.0 model=1
+new generator.g_kva bus1=b2 phases=3 kv=12.47 kw=200 pf=0.95 kva=250 model=1
+new generator.g_mva bus1=b2 phases=3 kv=12.47 kw=200 pf=0.95 mva=0.30 model=1
+new generator.g_kvar bus1=b3 phases=3 kv=12.47 kw=200 pf=0.95 maxkvar=120 minkvar=-60 model=1
+
+! PVSystem + Storage
+new pvsystem.pv1 bus1=b2 phases=3 kv=12.47 kva=150 pmpp=150 irradiance=1
+new storage.st1 bus1=b3 phases=3 kv=12.47 kwrated=100 kwhrated=200 %stored=50
+
+! second VSource
+new vsource.v2 bus1=b3 basekv=12.47 pu=1.0 phases=3 r1=1 x1=3
+
+! Isource
+new isource.is1 bus1=b2.1 amps=5 angle=30 phases=1
+
+new load.ld3 bus1=b3 phases=3 kv=12.47 kw=200 pf=0.95 model=1
+
+set voltagebases=[12.47, 7.2]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve
+makeposseq
+solve

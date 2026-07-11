@@ -469,3 +469,51 @@ mod dispatch {
         approx(env.pvs[1].requested_kvar, 184.5);
     }
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+
+    /// Pascal `TExpControlObj.MakePosSequence` (ExpControl.pas:422): empty
+    /// PVSystem-list config is a NIL-deref hazard (Access violation #303, probe
+    /// `2`). The defined `FNphases := 3; Nconds := 3` applies; the NIL-deref
+    /// `Setbus` is safe-skipped.
+    #[test]
+    fn empty_pvsystem_list_applies_3phase_and_safe_skips_setbus() {
+        let mut ec = ExpControl::new("ec1");
+        // Force a non-3 phase/cond count so the `FNphases := 3; Nconds := 3`
+        // assignment is load-bearing (not just the constructor default).
+        ec.ccd.cd.nphases = 1;
+        ec.ccd.cd.nconds = 1;
+        let bus = ec.ccd.cd.get_bus(1).to_string();
+        let plan = ec.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(ec.ccd.cd.nphases, 3);
+        assert_eq!(ec.ccd.cd.nconds, 3);
+        assert_eq!(ec.ccd.cd.get_bus(1), bus);
+        assert!(plan.run_base);
+    }
+
+    /// Populated path: monitored resolved to the 1st PVSystem ⇒ adopt its
+    /// Firstbus / phase count.
+    #[test]
+    fn populated_pvsystem_adopts_first_bus_and_phases() {
+        let mut ec = ExpControl::new("ec1");
+        ec.ccd.monitored_element = Some(ElemRef { cls: 4, idx: 2 });
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["pvbus".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        ec.make_pos_sequence(&ctx);
+        assert_eq!(ec.ccd.cd.nphases, 1);
+        assert_eq!(ec.ccd.cd.nconds, 1);
+        assert_eq!(ec.ccd.cd.get_bus(1), "pvbus");
+        assert_eq!(ec.monitored_element_ref(), Some(ElemRef { cls: 4, idx: 2 }));
+    }
+}

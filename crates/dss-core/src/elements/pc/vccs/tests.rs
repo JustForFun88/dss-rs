@@ -53,3 +53,32 @@ fn recalc_sets_rated_quantities() {
     assert!((v.base_volt - 360.0 / sqrt3).abs() < 1e-9);
     assert!((v.base_curr - 0.5 * irated).abs() < 1e-9);
 }
+
+#[cfg(test)]
+mod pos_seq_tests {
+    use super::*;
+    use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+    use crate::elements::traits::CktElement;
+
+    /// VCCS, multi-phase → bare `Phases := 1` edit + run_base
+    /// (Pascal `TVCCSObj.MakePosSequence`, vccs.pas:495-500).
+    #[test]
+    fn makeposseq_vccs_multiphase_sets_phases_1() {
+        let mut v = Vccs::new("v1");
+        v.cd.nphases = 3;
+        v.cd.set_nconds(3);
+        let plan = v.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert_eq!(plan.actions, vec![PosSeqAction::SetI32(prop::PHASES, 1)]);
+    }
+
+    /// VCCS, already single phase (default) → base-only, still run_base.
+    #[test]
+    fn makeposseq_vccs_single_phase_is_base_only() {
+        let mut v = Vccs::new("v1");
+        assert_eq!(v.cd.nphases, 1);
+        let plan = v.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert!(plan.actions.is_empty());
+    }
+}

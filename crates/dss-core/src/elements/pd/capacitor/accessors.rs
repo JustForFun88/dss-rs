@@ -109,6 +109,27 @@ impl DssObject for Capacitor {
         }
     }
 
+    /// `TCapacitorObj.MakePosSequence` drives `SetDoubles(ord(TProp.kvar), …)`
+    /// (`Capacitor.pas:793`); `kvar` is a plain `DoubleArrayProperty`, but the
+    /// exec applier reaches it through the shared `SetStructF64s` action → this
+    /// hook (as the Transformer's struct-array `kVs`/`kVAs` do). Each `Some` is
+    /// the already-scaled entry, `None` keeps the prior value (Pascal semantics);
+    /// the array is (re)sized to the supplied count, matching `SetObjDoubles`.
+    fn set_struct_f64_array(&mut self, idx: usize, values: &[Option<f64>]) {
+        use super::prop::*;
+        match idx {
+            KVAR => {
+                let old = std::mem::take(&mut self.fkvarrating);
+                self.fkvarrating = values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| v.unwrap_or_else(|| old.get(i).copied().unwrap_or(0.0)))
+                    .collect();
+            }
+            _ => unreachable!("Capacitor has no struct-double-array property {idx}"),
+        }
+    }
+
     fn get_i32_array(&self, idx: usize) -> Option<&[i32]> {
         match idx {
             super::prop::STATES => Some(&self.fstates),
