@@ -2902,6 +2902,140 @@ fn export8500_reports_match_oracle() {
     ]);
 }
 
+// --- PORTING_PLAN §6: export-diff on IEEE 34/37/123 --------------------------
+// §6's literal acceptance requires the export-diff suite green on IEEE
+// 13/34/37/123/8500. IEEE13 is pinned by the full export family above and 8500 by
+// `export8500_reports_match_oracle`; these three complete the letter with the
+// core solution exports — Voltages / Currents / Powers — mirroring the IEEE13
+// policies exactly (`export_voltages`/`export_currents`/`export_powers`). Each
+// feeder shares one compile+solve via `run_shared_exports`. The V/I/P physics is
+// already pinned to 1e-8 by the always-on `corpus_live.rs` model compare on these
+// same feeders; here we gate the report layout (header, column set, element
+// order, scaling) at the printing floor on each canonical feeder.
+
+/// The near-cancellation current floor for the `Currents` export, mirroring the
+/// always-on `corpus_live.rs` **"feeder"-tier** terminal-current tolerance
+/// (`tol_for("feeder")`: `i_rel = 1e-7`, `i_abs = 1e-5` A). A lightly-loaded /
+/// unloaded phase carries only a tiny mutual-coupling current (e.g. IEEE123
+/// `Line.L49` phase 2 = 3.45 mA while phases 1/3 carry 9–18 A; `Line.SW6`
+/// phase 3 ≈ 14 µA): that current is the near-cancellation of large mutual terms,
+/// so the faer-vs-KLU ~1e-8-rel node-voltage roundoff surfaces as a much larger
+/// *relative* current error (observed ≤3e-2 rel / ≤4.4e-7 A abs across 34/37/123)
+/// — exactly the floor `corpus_live` absorbs with `i_abs` (see the
+/// `assert_power_close` / `tol_for` "feeder" doc). The physics itself is pinned to
+/// 1e-8 by that live gate; this export gate reuses its proven current floor rather
+/// than a tighter one that would false-fail on the print of these residuals. The
+/// loaded phases (amps) stay byte-identical (`rel = 1e-7` is slack there).
+const CURRENTS_REL: f64 = 1e-7;
+const CURRENTS_ABS: f64 = 1e-5;
+
+/// The current magnitude below which a `Currents` **angle** cell is unverifiable
+/// at the report's `%.2f` (0.01°) resolution — decomposition-derived, not swept.
+/// The current phasor is pinned only to the `corpus_live` feeder floor
+/// [`CURRENTS_ABS`] (1e-5 A abs), so a magnitude-`|I|` current's angle is
+/// determined only to `±arcsin(CURRENTS_ABS / |I|)`. That uncertainty exceeds a
+/// half-ULP of the print (0.005°) once `|I| ≤ CURRENTS_ABS / sin(0.005°) ≈
+/// 0.115 A`, so below that the last printed angle digit can legitimately differ
+/// between faer and KLU. (Empirically the straddles are far smaller — realized
+/// `δI ≈ 1e-6` A, largest observed straddle at |I| = 1.84 mA — so `0.12 A` clears
+/// the worst observed by ~65× while staying the conservative, proven bound.)
+/// Above it, the angle is pinned **exactly**.
+const CURRENTS_ANGLE_GATE_A: f64 = 0.12;
+
+/// Per-angle-column noise gate for the `Currents` export (cols 2,4,6,… — the
+/// `Ang*_*` columns of the truncated-header magnitude/angle layout `Element,
+/// I1_1, Ang1_1, …`). Each angle column `c` is gated on its own magnitude column
+/// `c-1` via `MinCols(c-1, c-1, CURRENTS_ANGLE_GATE_A)`: the angle is skipped
+/// whenever the (oracle) magnitude is below the pinnable-angle threshold — a
+/// residual / open-terminal / lightly-loaded-phase current whose printed angle is
+/// not determined to `%.2f` by the proven current floor (see
+/// [`CURRENTS_ANGLE_GATE_A`]). Unlike the IEEE13 `ang_tol` (`PrevCol`, which skips
+/// only a *strictly nonzero* sub-threshold magnitude), `MinCols`'s `< thresh`
+/// also covers the **exactly-zero** oracle magnitude — a terminal where KLU
+/// produces a structural 0 A while faer leaves a ~1e-12 A residual with a defined
+/// (noise) angle (e.g. IEEE37 `Transformer.XFM1` I2_3). Every loaded (≥0.12 A)
+/// conductor keeps its angle pinned exactly (`rel = 0`, `abs = 0`).
+fn currents_angle_gates() -> Vec<ColTol> {
+    // 2 terminals × (up to 4 conductors + 1 residual) = 20 value columns; the
+    // angle columns are the even indices 2..=20. Extra even indices past a
+    // narrower element's width simply never match a shorter row / no-op the gate.
+    (1..=20)
+        .filter(|c| c % 2 == 0)
+        .map(|c| ColTol {
+            sel: ColSel::Index(c),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::MinCols(c - 1, c - 1, CURRENTS_ANGLE_GATE_A)),
+        })
+        .collect()
+}
+
+/// The three core solution-export policies, mirroring the IEEE13 gates:
+/// Voltages/Powers are byte-identical (exact equality); Currents pins the
+/// magnitude columns to the `corpus_live` feeder current floor
+/// ([`CURRENTS_REL`]/[`CURRENTS_ABS`]) and gates each near-zero angle
+/// ([`currents_angle_gates`]).
+fn core_export_policies() -> (ExportPolicy, ExportPolicy, ExportPolicy) {
+    let voltages = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    let currents = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: CURRENTS_REL,
+        abs: CURRENTS_ABS,
+        col_tol: currents_angle_gates(),
+    };
+    let powers = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    (voltages, currents, powers)
+}
+
+/// Voltages/Currents/Powers on the solved IEEE 34-bus feeder (`ieee34Mod1.dss`).
+#[test]
+fn export_ieee34_reports_match_oracle() {
+    let (v, i, p) = core_export_policies();
+    run_shared_exports(&[
+        ("export_ieee34_voltages", v),
+        ("export_ieee34_currents", i),
+        ("export_ieee34_powers", p),
+    ]);
+}
+
+/// Voltages/Currents/Powers on the solved IEEE 37-bus feeder (`ieee37.dss`).
+#[test]
+fn export_ieee37_reports_match_oracle() {
+    let (v, i, p) = core_export_policies();
+    run_shared_exports(&[
+        ("export_ieee37_voltages", v),
+        ("export_ieee37_currents", i),
+        ("export_ieee37_powers", p),
+    ]);
+}
+
+/// Voltages/Currents/Powers on the solved IEEE 123-bus feeder (`IEEE123Master.dss`).
+#[test]
+fn export_ieee123_reports_match_oracle() {
+    let (v, i, p) = core_export_policies();
+    run_shared_exports(&[
+        ("export_ieee123_voltages", v),
+        ("export_ieee123_currents", i),
+        ("export_ieee123_powers", p),
+    ]);
+}
+
 // --- WP8.3 step 1: Export Monitors (Monitor.TranslateToCSV) -------------------
 // `Export Monitors <name>` writes each monitor's in-memory f32 sample buffer to
 // its own CSV (`<case>_Mon_<name>_1.csv`; the `_1` is the PM-build primary-context
