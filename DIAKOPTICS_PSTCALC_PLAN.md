@@ -262,10 +262,13 @@ is ported 1:1 and needs no partitioner at all; D2 covers only the *automatic* pa
 port `Create_MeTIS_graph` and the `.part.<N>` **file formats and parsing 1:1**, and
 replace the external partitioner with a deterministic pure-Rust one behind the same
 file interface:
-`crates/dss-core/src/support/partition.rs` — greedy BFS k-way partitioning of the
-`.graph` adjacency (same vertex order as `Inc_Mat_Cols`, edge weights as written to the
-file), growing zones level-contiguously from the feeder head to `⌈NVertices/k⌉`,
-deterministic tie-break = ascending vertex index. It writes `<graph>.part.<N>`
+`crates/dss-core/src/support/partition.rs` — **greedy graph-growing partitioning
+(GGP)** of the `.graph` adjacency (same vertex order as `Inc_Mat_Cols`, edge weights as
+written to the file), growing zones BFS-level-contiguously from the feeder head to
+`⌈NVertices/k⌉`, deterministic tie-break = ascending vertex index. GGP is the classic
+initial-partitioning baseline from the METIS literature (see §3 "Theory & references"
+for the citations and for why kmetis-identity is deliberately not a goal — the
+partition is not part of the behavioral contract). It writes `<graph>.part.<N>`
 (one zone id per line, same format kmetis emits) and `Create_MeTIS_Zones` consumes it
 unchanged. Consequences: partitions are *valid but not kmetis-identical* (nothing can
 gate kmetis-identity — no oracle); the edge count we write is exact, so the upstream
@@ -362,6 +365,10 @@ the designated AD reference. Four uses, in increasing strength:
   harvests, from r3723, per-fixture-deck: the init summary, `LinkBranches`,
   `.graph`/`.part.N`, `ZCC/Y4/ZLL/Contours` CSVs and post-AD node voltages; outputs are
   committed (checksummed, regenerated only manually — the same discipline as goldens).
+  EPRI's own first-party worked answers exist too and are used directly: the official
+  trunk's `Examples/ADiakoptics/IEEE_13_Bus/References/SolveDirect/` (exported
+  `ieee13nodeckt_{ZCC,ZLL,Y4}.csv` + per-zone voltages/currents) and
+  `IEEE_123_Bus-G/References/` — see §3 "Theory & references".
   Caveat recorded per fixture: the vendored 0.14.5 AD source is a refactor of official
   V8 — before pinning any value byte-level, diff the two `Diakoptics.pas` at the site
   in question and record the delta (probe already proved the Y4/ZCC quirks identical).
@@ -517,6 +524,42 @@ AD-gated upstream → stays refused until WP-AD.5.)
 
 ## §3 Part II — A-Diakoptics (post-acceptance; start any time after MULTITHREADING M2)
 
+### Theory & references (what the formulas rest on)
+
+Nothing in Part II is derived by us — every formula is a transcription, and every
+transcription has a published/vendored basis:
+
+- **The method**: diakoptics (piecewise network solution via tearing + boundary
+  compensation) — G. Kron, *Diakoptics: The Piecewise Solution of Large-Scale Systems*
+  (MacDonald, 1963); H. H. Happ, *Diakoptics and Networks* (Academic Press, 1971).
+  The OpenDSS "A-Diakoptics" (actor-based diakoptics for distribution feeders) is
+  Davis Montenegro's work (the OpenDSS-PM author; his IEEE publications with
+  G. Ramos / S. Bacha / R. Dugan describe exactly the `ZCC = CᵀZC + ZLL`,
+  `Y4 = ZCC⁻¹`, `Ic = C·Y4·ΔVc` construction implemented in `Diakoptics.pas`).
+- **In-repo, verifiable**: the official r3723 trunk vendors its own documentation and
+  worked references —
+  `Version8/Doc/User_Instructions_for_Parallel_Processing.docx` (the PM/actor +
+  A-Diakoptics user instructions) and, decisively,
+  `Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/References/SolveDirect/`
+  with **EPRI's own exported `ieee13nodeckt_{ZCC,ZLL,Y4}.csv`**, per-zone
+  `YVoltages`/`YCurrents` CSVs and `Direct_Comparissons.xlsx`, plus
+  `IEEE_123_Bus-G/References/SolveDirect/SolvingADiakoptics.xlsx` (2/3-actor ×
+  Direct/Snap±Ctrl worked comparisons). These are first-party worked answers for the
+  exact matrices our fixtures pin (WP-AD.3 uses them directly).
+- **The executable spec** is `Diakoptics.pas` itself (D10) — cited per procedure in
+  §0.1; the port transcribes its loops, it does not re-derive them.
+- **The auto-tear partitioner** (the one place upstream used an external tool):
+  METIS's multilevel k-way algorithm is published — G. Karypis & V. Kumar, *A Fast and
+  High Quality Multilevel Scheme for Partitioning Irregular Graphs*, SIAM J. Sci.
+  Comput. 20(1), 1998 (METIS 5.x source is Apache-2.0) — so a faithful pure-Rust port
+  is *possible* but deliberately out of scope: the partition is not part of the
+  behavioral contract (any valid partition yields the same fixpoint — probe-proven
+  §0.2, and reference comparisons align partitions via manual `LinkBranches`, D9c).
+  The D2 substitute is the classic **greedy graph-growing partitioning (GGP)** over
+  BFS level structures — the standard baseline described in the same Karypis–Kumar
+  paper (initial-partitioning phase), level structures per Cuthill–McKee (1969) — not
+  an invented heuristic.
+
 ### The algorithm in one page (orientation for every WP below)
 
 *Initialization* (`set ADiakoptics=yes` → `ADiakopticsInit`, states 0–9; requires a
@@ -618,7 +661,11 @@ reduction is superseded); `Export ZLL/ZCC/Contours/Y4` (register 58–61, format
 - Fixture goldens for `Contours`/`ZLL`/`ZCC`/`Y4` on the midi feeder (2 zones), with
   the D1 invariants recomputed in-test (ZCCᵀ reconstruction, `‖Y4·ZCC − I‖` bound
   modulo the D5 drop quirks — assert the dropped-entry pattern explicitly).
-- **Official-reference comparison (D9 b+c):** harvest r3723's
+- **Official-reference comparison (D9 b+c):** two layers. (1) The **EPRI first-party
+  IEEE-13 reference**: replay the official trunk's `IEEE_13_Bus` AD example (2 zones,
+  hand-checkable) on the Rust engine and compare `ZCC/ZLL/Y4` + per-zone voltages
+  against EPRI's own exported CSVs (`References/SolveDirect/ADiakoptics_matrixes/`),
+  vendored as committed fixtures at generation time. (2) Harvest r3723's
   `LinkBranches`/matrices/voltages for the IEEE_123_Bus-G demo via
   `gen_ad_reference.py` (with `wait` after every solve — §0.2); replay with the same
   explicit `set LinkBranches=[…] UseMyLinkBranches=True` on the Rust side (identical
