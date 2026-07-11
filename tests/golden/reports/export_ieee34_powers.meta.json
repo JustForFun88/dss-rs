@@ -1,0 +1,9 @@
+{
+  "report": "powers",
+  "master": "Version8/Distrib/IEEETestCases/34Bus/ieee34Mod1.dss",
+  "post": [
+    "solve"
+  ],
+  "fixture": "ieee34-1",
+  "suffix": "EXP_POWERS.csv"
+}
