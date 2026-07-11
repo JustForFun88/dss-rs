@@ -167,18 +167,76 @@ floors — its worst pseudo-switch current diff is 1.03e-5 A — and stays kind
 EPRI ckt24 family — `EPRITestCircuits/ckt24/Run_Ckt24` + `master_ckt24`, and the
 seven `MemoryMappingLoadShapes/ckt24/master_ckt24{,-mm-csv-pq,-mm-dbl-p,-mm-sng-p,
 -mm-txt-p,-mm-txt-pq,-nomm}` file-array variants — carries the **same**
-`Line.Other_Feeders` (`r1=1e-8 x1=1e-9 Ω → Y≈1e10 S`) that stitches the
-substation transformer low side (`SubXfmr_LSB`) to `Feeders`. It was long
-mislabeled a "RegControl/LDC SubXFMR tap-current divergence" (STATUS open
-follow-up). CF-D root-cause proved that wrong: the node V is at the faer-vs-KLU
-floor (rel 1.8e-8 – 4.7e-8), the regulator lands the **identical** tap, and the
-"SubXFMR current" gate (|diff| 7.2e-4 A, ~4.7e-5 rel) is exactly the ultra-switch
-`Y·(V1−V2)` near-cancellation image through `Line.Other_Feeders` — the same
-class as the torn ckt24 already banded here (1.8 ulp × 1e10 S ≈ the measured
-7.2e-4 A, < the `i_abs` 2e-3 band). The regulator and the delta-wye substation
-transformer are exonerated. So the family migrates to `large_ultra_switch` with
-the existing band (V + Y stay tight; only the pseudo-switch current image is
-absorbed).
+`Line.Other_Feeders` (`r1=1e-8 x1=1e-9 Ω` at the default `length=1` → `|Z|≈1e-8 Ω`
+→ **Y≈1e8 S**) that stitches the substation transformer low side (`SubXfmr_LSB`)
+to `Feeders`. It was long mislabeled a "RegControl/LDC SubXFMR tap-current
+divergence" (STATUS open follow-up). CF-D root-cause proved that wrong: the node V
+is at the faer-vs-KLU floor (rel 1.8e-8 – 4.7e-8), the regulator lands the
+**identical** tap, and the "SubXFMR current" gate (|diff| 7.2e-4 A, ~4.7e-5 rel)
+is exactly the ultra-switch `Y·(V1−V2)` near-cancellation image through
+`Line.Other_Feeders` — the same class as the torn ckt24 already banded here:
+`1.8 ulp × 1e8 S = 6.5e-4 A` on the ~2e4 V nodes (the identical arithmetic the
+`large_ultra_switch` band note carries in `harness/mod.rs`), of which the measured
+7.2e-4 A SubXFMR terminal diff is one instance, all < the `i_abs` 2e-3 band. The
+regulator and the delta-wye substation transformer are exonerated. So the family
+migrates to `large_ultra_switch` with the existing band (V + Y stay tight; only
+the pseudo-switch current image is absorbed).
+
+*Per-element current decomposition* (CF-D settle, `DSS_DUMP_IDIFF` live probe over
+the whole family — not by analogy): the two dominant per-element terminal-current
+diffs on every member are `Line.other_feeders` (the ultra-switch, **7.1e-4 –
+7.7e-4 A**) and `Transformer.subxfmr` (**5.1e-4 – 7.2e-4 A** — the substation
+transformer whose LSB terminal feeds that switch, i.e. the *same* `Y·(V1−V2)`
+image; this is the "SubXFMR current" the label pointed at). Both are 2.6–4× under
+the `i_abs` 2e-3 band. The third tier drops an order of magnitude to ≤7.4e-5 A (a
+downstream transformer/load, ~27× under the band); nothing else is close. So the
+dominant current diff *is* the pseudo-switch image on the switch and its
+transformer, shown sub-band; `v_rel` 1e-7 / `y_rel` 1e-8 stay tight, so a real
+transformer/YPrim regression would still trip the gate.
+**(NB: `Y≈1e8 S`, not the `1e10 S`
+the CF-D commit 6200fe0 message and the first draft of this note stated — a 100×
+typo cross-contaminated from SecondaryTest's genuine 1e10 busbar below; the band
+value, gate, and floor verdict are unaffected — the arithmetic closes only at 1e8,
+`1.8·ulp(2e4 V)≈6.5e-12 V × 1e8 S = 6.5e-4 A`, corrected CF-D settle 2026-07-12.)**
+
+**TC-3 near-floor family — per-element current decomposition (CF-D settle,
+2026-07-12).** The five decks migrated to plain `large` (GFM_IEEE8500
+Snap/Daily/DailySmallerPV, Storage `Run_Demo1`, CIM `IEEE13_CDPSM`) tripped only
+the `large`-tier *absolute* voltage band at their first-failing node (V rel
+1.5e-8 – 7.7e-8, i.e. the faer-vs-KLU floor made an abs V diff at 7–20 kV nodes).
+Node-V floor alone does NOT clear a case (CLAUDE.md) — the deciding diagnostic is
+the per-element current/power decomposition, which the T-C triage flagged as not
+yet done. Run here via the `DSS_DUMP_IDIFF` live probe (worst per-element terminal
+`|dI|` vs the pinned oracle); all are comfortably inside the `large` floors
+(`i_rel` 1e-6, `i_abs` 1e-4):
+
+| deck | worst per-element `|dI|` | element | vs `large` `i_abs` 1e-4 |
+|---|---|---|---|
+| GFM Snap | 2.46e-7 A (rel 5.3e-10) | `Line.hvmv_sub_connector` | ~400× under |
+| GFM DailySmallerPV | 2.39e-7 A (rel 7.3e-10) | `Line.hvmv_sub_connector` | ~400× under |
+| GFM Daily | 4.00e-7 A (rel 1.3e-9) | `Line.hvmv_sub_connector` | ~250× under |
+| Storage `Run_Demo1` | 9.11e-5 A (rel 2.0e-6) | `Line.mdv201_c_1_266_abc8079` | 0.91× (tightest) |
+| CIM `IEEE13_CDPSM` | 4.26e-6 A (rel 1.1e-7) | `Line.fuse1` | ~23× under |
+
+The GFM result is the tell: the islanded-GFM node-V offset is common-mode-like —
+the *absolute* node V shifts at the faer-vs-KLU floor (rel ~2e-8) but every
+element current (driven by V *differences* across it) stays sub-microamp (≤4e-7 A,
+≥250× under the current floor), the same shape as `large_near_ideal_source`.
+`Run_Demo1` is the only tight one (9.1e-5 A = 91 % of the 1e-4 floor, still a
+genuine faer-vs-KLU current-floor instance, no element above it). No element on
+any of the five exceeds its floor → all decompose to the floor, migration honest;
+`i_rel`/`i_abs` were NOT touched. (CIM `IEEE13_CDPSM`'s largest *raw* `|dI|` is a
+1.38e-5 A near-zero winding current on `Transformer.sub3` — a small abs on a
+~0-magnitude terminal, absorbed by `i_abs`; the largest *meaningful*-magnitude
+diff is the `Line.fuse1` row above.)
+
+(`DSS_DUMP_IDIFF` was a throwaway settle-time probe — a per-element `|dI|` dump in
+`harness::compare_element`, reverted after capture; it is not in the tree. The
+figures above are the recorded artifact. What is *permanent* is stronger than the
+probe: the live gate's `compare_element` asserts every element's currents/powers
+against these `large`/`large_ultra_switch` floors on every run, so a future
+transformer/YPrim/switch regression that pushed any of these above the floor would
+fail the gate — the decomposition is continuously enforced, not a one-time claim.)
 
 ### conditioning_floor (documented, NOT banded): SecondaryTestCircuit_modified
 
@@ -190,10 +248,12 @@ large for any existing band, so it stays documented in
 `skipped_needs_investigation.json` (the `floating_zeroseq_bus` precedent: a
 root-caused floor that cannot yet be banded honestly).
 
-- **Structure.** Two `Linecode.BUSBAR` lines (`r1=x1=r0=x0=1e-4 Ω/km`, `c=0`) at
-  `length=0.001 m` = ~1e-10 Ω → **Y ≈ 1e10 S** sit in series with the 46 kV
-  `Vsource` (`Line.MDV_SUB_1_HSB` source→SubXfmr-HV, `Line.SSswitch`
-  feederhead→BusPrim1). Assembled-Y condition number **9.79e11**.
+- **Structure.** Two `Linecode.BUSBAR` lines (`r1=x1=r0=x0=1e-4 Ω/km`, `c=0`,
+  `units=km`) in series with the 46 kV `Vsource`: `Line.MDV_SUB_1_HSB`
+  (source→SubXfmr-HV) at `length=0.001 units=m` = 1e-6 km → ~1e-10 Ω → **Y ≈ 1e10
+  S**, and `Line.SSswitch` (feederhead→BusPrim1) at `length=1 units=m` = 1e-3 km →
+  ~1e-7 Ω → Y ≈ 1e7 S. The κ dominance comes from `MDV_SUB_1_HSB`; assembled-Y
+  condition number **9.79e11**.
 - **Symptom.** Step-0 entry-0 node V at BUSSOURCE/MDV_SUB_1_HSB |diff| = **0.553 V**
   (rel 2.08e-5), with a uniform ~8e-4° angle offset; the regulated 12.47 kV bus
   matches ~1e-6.
