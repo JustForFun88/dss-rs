@@ -54,7 +54,7 @@
 | `.inputs/electricdss-code-r3723-trunk` | the Delphi baseline (cross-checks only) |
 | `.inputs/electricdss-code-r4088-trunk` | Rung 1's Delphi cross-check + Rung 2's diff base |
 | `.inputs/electricdss-code-r4133-trunk` | **Rung 2's spec** (Delphi, `Version8/Source`) + the target binary |
-| `tools/opendss/bin/{r3723,r4088,r4133}` | vendored official `OpenDSSDirect.dll` binaries (Oddie bridge) |
+| `tools/opendss/bin/{r3723,r4088,r4133}` | vendored official `OpenDSSDirect.dll` binaries (Oddie bridge) + `kmetis.exe`/`pmetis.exe` (A-Diakoptics tearing, since 2026-07-11) |
 
 **Explicitly NOT in scope** (each stays `NOT_PORTED` with a loud error, or is
 skipped as non-engine):
@@ -65,7 +65,23 @@ skipped as non-engine):
   `InjCurrent`/`ITerminal`/`Yprim`/`StateVar` options) ARE in scope (WP-U1.9).
 - **Generic5OrderMach + FMonitor** — disabled upstream in 0.15.x (constructing
   one errors); nothing reachable to port.
-- **A-Diakoptics** — behind a build ifdef upstream, commands not exposed.
+- **A-Diakoptics** — behind a build ifdef in the dss_capi lineage (commands not
+  exposed by either capi oracle), so it is not an *upgrade* item on any rung. It
+  is ported separately per **`DIAKOPTICS_PSTCALC_PLAN.md` Part II**, and that work
+  is **upgrade-neutral by evidence** (verified 2026-07-11): the official
+  `Version8/Source/Common/Diakoptics.pas` is **byte-identical across
+  r3723/r4088/r4133** (sha256-equal in all three vendored trunks), and the
+  dss_capi `0.14.5 → 0.15.x` delta for the unit is mechanical API renames only
+  (`SendCmd2Actors→SendADCommandToActors`, getter/setter forms, the flag moving
+  from `Solution` to the DSS context — zero numeric change). Rung 1/2 owe it
+  nothing; if a later official rev ever touches the file, the sha check in that
+  plan's D10 flags it.
+- **Pstcalc** — same verdict, opposite side of the fence: it IS compiled into
+  every oracle, lands pre-acceptance as `DIAKOPTICS_PSTCALC_PLAN.md` Part I
+  (WP-PF.1/2), and is upgrade-neutral by the same evidence (official
+  `Shared/Pstcalc.pas` byte-identical r3723=r4088=r4133; capi `0.14.5 → 0.15.x`
+  delta = a `uses` swap + `()` cosmetics). The Rung 1/2 gates just keep its
+  Part-I goldens green — no WP-U work item exists for it.
 - All C-API / COM / AltDSS / Oddie **API-layer** growth (buckets F/G of the
   inventories) — dss-rs has no C API by design (PORTING_PLAN).
 - GUI/progress-bar/editor plumbing (the established no-op class).

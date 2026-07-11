@@ -1,6 +1,7 @@
 # Vendored official EPRI OpenDSS binaries (Oddie oracle bridge)
 
-Official EPRI OpenDSS `OpenDSSDirect.dll` builds (+ `KLUSolve.dll`, `License.txt`),
+Official EPRI OpenDSS `OpenDSSDirect.dll` builds (+ `KLUSolve.dll`,
+`kmetis.exe`/`pmetis.exe` for A-Diakoptics tearing, `License.txt`),
 one directory per OpenDSS SVN revision, loaded by absolute path through the
 AltDSS Oddie bridge (`dss.Oddie.IOddieDSS`) — see `tools/opendss/README.md`.
 
@@ -18,20 +19,26 @@ Not vendored: `DSSProgress.exe` (progress popups stay impossible) and
 
 | field | value |
 |---|---|
-| vendored (UTC) | 2026-07-06 20:38:50 |
-| files | 9 |
-| total size | 34.2 MiB |
+| vendored (UTC) | 2026-07-11 04:58:21 |
+| files | 15 |
+| total size | 34.9 MiB |
 
 | file | bytes | build date (UTC) |
 |---|---|---|
 | `r3723/OpenDSSDirect.dll` | 11,549,696 | 2024-01-31 |
 | `r3723/KLUSolve.dll` | 219,648 | 2023-09-12 |
+| `r3723/kmetis.exe` | 156,160 | 2019-11-19 |
+| `r3723/pmetis.exe` | 109,568 | 2019-11-19 |
 | `r3723/License.txt` | 1,760 | 2024-01-31 |
 | `r4088/OpenDSSDirect.dll` | 11,783,168 | 2025-10-20 |
 | `r4088/KLUSolve.dll` | 233,472 | 2024-09-30 |
+| `r4088/kmetis.exe` | 156,160 | 2019-11-19 |
+| `r4088/pmetis.exe` | 109,568 | 2019-11-19 |
 | `r4088/License.txt` | 1,760 | 2024-01-31 |
 | `r4133/OpenDSSDirect.dll` | 11,823,616 | 2026-01-30 |
 | `r4133/KLUSolve.dll` | 233,472 | 2024-09-30 |
+| `r4133/kmetis.exe` | 156,160 | 2019-11-19 |
+| `r4133/pmetis.exe` | 109,568 | 2019-11-19 |
 | `r4133/License.txt` | 1,760 | 2026-01-30 |
 
 These binaries are © EPRI, distributed under the BSD-style license in each

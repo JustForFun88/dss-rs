@@ -8,6 +8,10 @@ path):
   - `KLUSolve.dll`      — its only non-system import (resolved from the same
                           directory because Oddie loads with
                           `LOAD_WITH_ALTERED_SEARCH_PATH`);
+  - `kmetis.exe`        — the METIS k-way partitioner the engine spawns from
+  - `pmetis.exe`          `DSSDirectory` (= the DLL's own directory) when
+                          A-Diakoptics tears a circuit (`set ADiakoptics=True`,
+                          `Tear_Circuit`) — see DIAKOPTICS_PSTCALC_PLAN.md D9;
   - `License.txt`       — EPRI license shipped alongside the binaries.
 
 Deliberately NOT copied:
@@ -50,7 +54,7 @@ REVISIONS: dict[str, tuple[Path, str]] = {
     ),
 }
 
-FILES = ["OpenDSSDirect.dll", "KLUSolve.dll", "License.txt"]
+FILES = ["OpenDSSDirect.dll", "KLUSolve.dll", "kmetis.exe", "pmetis.exe", "License.txt"]
 
 
 def main() -> None:
@@ -91,7 +95,8 @@ def main() -> None:
     table = "\n".join(["| file | bytes | build date (UTC) |", "|---|---|---|", *rows])
     readme = f"""# Vendored official EPRI OpenDSS binaries (Oddie oracle bridge)
 
-Official EPRI OpenDSS `OpenDSSDirect.dll` builds (+ `KLUSolve.dll`, `License.txt`),
+Official EPRI OpenDSS `OpenDSSDirect.dll` builds (+ `KLUSolve.dll`,
+`kmetis.exe`/`pmetis.exe` for A-Diakoptics tearing, `License.txt`),
 one directory per OpenDSS SVN revision, loaded by absolute path through the
 AltDSS Oddie bridge (`dss.Oddie.IOddieDSS`) — see `tools/opendss/README.md`.
 
