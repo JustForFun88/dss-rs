@@ -92,6 +92,20 @@ the meter-wide convention (EnergyMeter identical); doc corrected. Follow-up cand
 document the oracle mode-4 crash in `investigations/` (deterministic upstream crash,
 not reproduced — the Rust port post-processes correctly).
 
+**WP-AD.3 — A-Diakoptics engine (in progress, staged; branch `wp-ad3`).**
+Stage list: (1) matrices ✅ · (2) init machine + solve paths · (3) exports 58–61 ·
+(4) D7 calibration + EPRI/r3723 refs. **Stage 1 landed (gate-green):** the four
+matrix builders in `exec/diakoptics/matrices.rs` — 1:1 port of official
+`Diakoptics.pas` (D10): `Calc_C_Matrix` (contours, substring node lookup D5),
+`Calc_ZLL` (inverted 3×3 link-Yprim self-block on the block diagonal),
+`Calc_ZCC` (per-column `Y_torn·z=c` via the cached `dss-sparse` factorization →
+ZCT, then `ZCC = Contoursᵀ·ZCT + ZLL`, `re≠0 AND im≠0` drop D5), `Calc_Y4`
+(`ZCC⁻¹` via `CMatrix::invert`, the double-`.re` drop D5) + the `AdMsg` enum +
+`ad_find_element` (SetElementActive). 4 unit tests recompute the D1 invariants on
+a tiny inline link feeder (Contours one +1/−1 per column; ZLL = inverted self-block;
+Y4·ZCC ≈ I dense; the Y4 re≠0 drop pattern asserted). `NOTE(upstream-quirk)` at each
+D5 site. Matrix builders `#[allow(dead_code)]` until Stage 2's init machine wires them.
+
 **WP-AD.1 — incidence matrix + Sparse_Math + exports 53–57 (2026-07-11), gate-green.**
 `support/sparse_math.rs` (SparseInt/SparseComplex 1:1 COO: insert
 accumulate-else-append, insertion-order storage, multiply/add drop quirks
