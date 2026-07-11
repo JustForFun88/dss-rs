@@ -56,7 +56,10 @@ impl Monitor {
         }
 
         // Npst = 1 + Trunc(t_N / 600); Vbase = 1000·kVBase (narrowed to Single).
-        let npst = 1 + (times[n - 1] / 600.0).trunc() as usize;
+        // Pascal `Trunc(data[0][N] / 600.0)`: `data[0][N]` is `Single`, `600.0` a
+        // `Double` literal, so the division is `Double` (Delphi Win64) — matches
+        // `flicker::flicker_meter`'s Single-storage/Double-arithmetic model.
+        let npst = 1 + (times[n - 1] as f64 / 600.0).trunc() as usize;
         let vbase = ((1000.0 * kv_base) as f32) as f64;
         let f_base = self.med.cd.base_frequency;
 
@@ -73,7 +76,10 @@ impl Monitor {
         let mut t_pst = 0.0_f32;
         let mut ipst = 0usize;
         for i in 0..n {
-            if (times[i] - t_pst) >= 600.0 {
+            // Pascal `(data[0][i] - tpst) >= 600.0`: `Single` operands promoted to
+            // `Double` for the subtraction/compare (Delphi Win64); `t_pst` stays
+            // f32-stored, as Pascal `tpst: Single`.
+            if (times[i] as f64 - t_pst as f64) >= 600.0 {
                 ipst += 1;
                 t_pst = times[i];
             }

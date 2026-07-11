@@ -212,7 +212,11 @@ pub fn flicker_meter(f_base: f64, v_base: f64, p_t: &[f32], p_rms: &mut [f32], p
     // `hst` is the `SetLength(hst, trunc(600/ts)+1)` histogram, zero-filled once
     // and reused across windows (the tail beyond the current window persists —
     // see `percentile`'s NOTE).
-    let hst_len = (600.0_f32 / ts).trunc() as usize + 1;
+    // Pascal `trunc(600.0 / Ts)`: `600.0` is a `Double` literal, `Ts` a `Single`
+    // promoted to `Double` — the division is evaluated in `Double` (Delphi Win64,
+    // `Extended` ≡ `Double`), per this module's Single-storage/Double-arithmetic
+    // model. f32-exact on integer steps; only differs on non-f32-exact `ts`.
+    let hst_len = (600.0_f64 / ts as f64).trunc() as usize + 1;
     let mut hst = vec![0.0_f32; hst_len];
     let mut ihst = 0usize; // Low(hst)
     let mut ipst = 0usize; // Pascal ipst=1 (1-based); 0-based write cursor here
@@ -221,7 +225,10 @@ pub fn flicker_meter(f_base: f64, v_base: f64, p_t: &[f32], p_rms: &mut [f32], p
     for i in 0..n {
         let t = p_t[i];
         hst[ihst] = p_rms[i];
-        if (t - t_pst) >= 600.0 {
+        // Pascal `(t - tPst) >= 600.0`: `t`/`tPst` are `Single`, promoted to
+        // `Double` for the subtraction and comparison (Delphi Win64). `t_pst` is
+        // still *stored* f32 below, matching Pascal `tPst: Single`.
+        if (t as f64 - t_pst as f64) >= 600.0 {
             // Sort the filled window [0..=ihst] ascending; the tail persists.
             hst[..=ihst].sort_by(f32::total_cmp);
 
