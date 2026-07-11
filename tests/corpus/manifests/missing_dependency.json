@@ -4,52 +4,47 @@
   {
    "path": "Test/IndMachTest.DSS",
    "tag": "missing_data_file=WPWind2400.csv",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/IndMachTest.DSS failed: Some(\"DSSException: (#613) Error opening file: \\\"WPWind2400.csv\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Test\\\\IndMachTest.DSS\\\", line: 35]\")"
+   "note": "CF-B (T-B D2, item 5). Genuinely absent dependency at the needed path: needs `WPWind2400.csv` relative to Test/, but the file exists only under Examples/InductionMachine/wpwind2400.csv, not in Test/. Both engines fail identically (#613 Error opening file). Corpus-integrity gap (file absent at the required path)."
   },
   {
    "path": "Test/Run_SimpleStorageTest-1ph.DSS",
    "tag": "missing_data_file=SimpleStorageTest-1ph.DSS",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/Run_SimpleStorageTest-1ph.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Test\\\\SimpleStorageTest-1ph.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
+   "note": "CF-B (T-B D1, item 5). `Run_`-wrapper deck that hardcodes an unreachable ABSOLUTE path `C:\\Users\\prdu001\\OpenDSS\\Test\\SimpleStorageTest-1ph.DSS` (upstream author's machine). The file IS co-located in the corpus (Test/SimpleStorageTest-1ph.dss) but the wrapper's absolute redirect cannot reach it. Both engines fail identically (#243 Redirect file not found) -- a deck bug, not a Rust bug or corpus-integrity omission."
   },
   {
    "path": "Test/Run_SimpleStorageTest.DSS",
    "tag": "missing_data_file=SimpleStorageTest.DSS",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Test/Run_SimpleStorageTest.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Users\\\\prdu001\\\\OpenDSS\\\\Test\\\\SimpleStorageTest.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss"
+   "note": "CF-B (T-B D1, item 5). `Run_`-wrapper deck hardcoding an unreachable absolute path `C:\\Users\\prdu001\\OpenDSS\\Test\\SimpleStorageTest.DSS`; the target IS co-located (Test/SimpleStorageTest.dss) but unreachable via the absolute redirect. Both engines fail identically (#243). Deck bug."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/RunVplot_ckt5.dss",
    "tag": "missing_data_file=Master.dss",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/RunVplot_ckt5.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Master.dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8\\\\Dist"
+   "note": "CF-B (T-B D4, item 5). Wrong filename: `Compile (Master.dss)` but the folder only has `Master_ckt5.dss` (no bare Master.dss). Both engines fail identically (#243 Redirect file not found: Master.dss). Deck bug."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss",
    "tag": "missing_data_file=Master_ckt5.dss",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc-V2.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\Program Files\\\\OpenDSS\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\"
+   "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-B D1). Hardcodes an unreachable absolute path (`C:\\Program Files\\OpenDSS\\...\\Master_ckt5.dss`; the target IS co-located as ckt5/Master_ckt5.dss) AND uses the actor family (`SolveAll`, line 33). Both engines fail on the path (#243); even with the path fixed it needs M2 (actor). No live compare possible."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss",
    "tag": "missing_data_file=IEEELineCodes.DSS",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/IEEE13Nodeckt.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"../../IEEETestCases/IEEELineCodes.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\c"
+   "note": "CF-B (T-B D3, item 5). Broken relative path in a VENDORED stub: `redirect IEEELineCodes.DSS` resolves to `../../IEEETestCases/IEEELineCodes.DSS`, off by one dir -- the real file is at `../../../IEEETestCases/IEEELineCodes.DSS` (Version8/Distrib/IEEETestCases/IEEELineCodes.DSS). Both engines fail identically (#243). Vendored-stub path bug (fixing it is a corpus edit, out of scope)."
   },
   {
    "path": "Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS",
    "tag": "missing_data_file=Loadshape5a.DSS",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Loadshape5a.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
-  },
-  {
-   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss",
-   "tag": "missing_data_file=@loadshape_script_dss",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss failed: Some(\"DSSException: (#242) Redirect file not found: \\\"@loadshape_script_dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
+   "note": "CF-B (T-B D2, item 5). Genuinely absent dependency: `Redirect Loadshape5a.DSS` -- the directory has Loadshape1..5 + 5_Actual only, no 5a. Both engines fail identically (#243 Redirect file not found). Corpus-integrity gap."
   },
   {
    "path": "Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss",
    "tag": "missing_data_file=Master_ckt5.dss",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"..\\\\..\\\\Distrib\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\\\RustPr"
+   "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-B D6). Wrong redirect path (`..\\..\\Distrib\\EPRITestCircuits\\ckt5\\Master_ckt5.dss`, double-Distrib) AND uses `Clone`/`set parallel`/`SolveAll` (actor-PM). Both engines fail on the path (#243); even fixed it needs M2. No live compare possible."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS",
    "tag": "missing_data_file=IEEE123Master.dss",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/SolarRamp-Mack.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"C:\\\\opendss\\\\IEEETestCases\\\\123Bus\\\\IEEE123Master.dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tes"
+   "note": "CF-B (T-B D1, item 5). Hardcodes an unreachable absolute path `C:\\opendss\\IEEETestCases\\123Bus\\IEEE123Master.dss`; the target IS co-located (123Bus/IEEE123Master.dss) but unreachable via the absolute redirect. Both engines fail identically (#243). Deck bug."
   }
  ]
 }
