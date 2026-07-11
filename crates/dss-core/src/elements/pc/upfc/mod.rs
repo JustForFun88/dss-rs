@@ -15,7 +15,6 @@
 //! 14 `NumVariables` for Monitor mode 3.
 //!
 //! NOT_PORTED:
-//! - `MakePosSequence` (empty body upstream — a no-op; nothing to port).
 //! - The `TUPFCObj.Create` block that, on creating a *second* UPFC, casts the
 //!   first UPFC object to a `TUPFCControlObj` and clears `.UPFCList`/`.ListSize`
 //!   (UPFC.pas l.396). That cast reaches the wrong class (a `TUPFCObj` has no

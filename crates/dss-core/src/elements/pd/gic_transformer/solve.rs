@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::{GicTransformer, SPEC_AUTO, SPEC_GSU, SPEC_YY};
 use crate::elements::ckt::CktElementData;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 
@@ -53,6 +54,17 @@ impl CktElement for GicTransformer {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TGICTransformerObj.MakePosSequence` (GICTransformer.pas:586-591):
+    /// a multi-phase GICTransformer collapses to `Phases := 1` (a bare single
+    /// edit), then `inherited` (the base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(super::prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
     }
 
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.

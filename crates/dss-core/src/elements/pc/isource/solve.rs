@@ -7,6 +7,7 @@ use num_complex::Complex64;
 use super::Isource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::solution::SolveMode;
 use crate::support::cmatrix::CMatrix;
@@ -148,6 +149,17 @@ impl CktElement for Isource {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TIsourceObj.MakePosSequence` (Isource.pas:500-505): a multi-phase
+    /// Isource collapses to `Phases := 1` (a bare single edit), then `inherited`
+    /// (the base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(super::prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
     }
 
     /// Pascal `TIsourceObj.CalcYPrim`: build only YPrim_Series, left all-zero

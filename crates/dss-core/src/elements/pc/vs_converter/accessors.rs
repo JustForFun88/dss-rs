@@ -5,6 +5,7 @@ use num_complex::Complex64;
 use super::{VsConverter, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -19,6 +20,21 @@ impl CktElement for VsConverter {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TVSConverterObj.MakePosSequence` (VSConverter.pas:485-494): unless
+    /// already a 2-phase (AC + DC) converter, force `Phases := 2` and `Ndc := 1`
+    /// — TWO separate bare single edits (the upstream `//TODO: why two edits?`),
+    /// each its own `RecalcElementData` — then `inherited` (the base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases != 2 {
+            PosSeqPlan::with_actions(vec![
+                PosSeqAction::SetI32(prop::PHASES, 2),
+                PosSeqAction::SetI32(prop::NDC, 1),
+            ])
+        } else {
+            PosSeqPlan::base()
+        }
     }
 
     /// Pascal `TVSConverterObj.CalcYPrim` — build `YPrim_series` only: the AC
