@@ -9,6 +9,42 @@
 
 Last updated: 2026-07-11.
 
+**WPG.21 port — MakePosSequence + 6 synthesized decks (2026-07-11), gate-green
+(fmt/clippy/`cargo test --workspace` incl. `modes_cases_match_oracle`).** The last
+GAPS_PLAN §1b "on-demand" deferral closed as an ultracode round (5 opus worktree
+executors A1/B/C/D/A2 + settle, opus-xhigh code audit + opus-high tests audit;
+coordinator merged via `wpg21-integration` → `b9349e0`, main was mid-DIAKOPTICS so
+integration branched off `947d439`; 2 trivial both-added conflicts hand-resolved
+in `exec/command.rs` + `modes/manifest.json`). What landed: `cmd::MAKE_POS_SEQ = 60`
+dispatch (`ExecCommands.pas:81` — NOT 74, the plan brief's error, caught by the
+executor) + `exec/make_pos_seq.rs` (`DoMakePosSeq` ExecHelper.pas:3035: creation-order
+walk, per-element `PosSeqCtx`, applier VM reproducing `DSSObjectHelper.pas:3060`
+typed-setter bracketing — bare Set* = single edit + own recalc); base bus rename
+(`CktElement.pas:1101` StripExtension + the IsGroundBus `.1/.2/.3`-substring quirk,
+direct write, no redefine signal); typed prop setters (`class_props/typed.rs`, no
+f64→string round-trip, seq-mark+side-effects on success only); all **33 Pascal
+overrides** (7 PD + 12 PC + 3 meters + 11 controls; UPFC/IndMach012 = empty
+`no_base()`). Upstream quirks reproduced with `TODO(compat)`: Generator
+`PrpSequence[26]/[27]` guard reads Xdp/Xdpp (not kVA/MVA — they never divide);
+Storage's missing BeginEdit + dangling EndEdit (one extra recalc); Capacitor
+SpecType-3 `SetDouble(Cuf)` on a DoubleArray = silently-discarded write; Load ÷3
+regardless of phases (÷3-again on second run, deck-pinned). NOT reproduced (UB, per
+CLAUDE.md): the probe-proven oracle Access-violation configs
+(GenDispatcher/ESPVL/UPFCControl with `element=`; InvControl/ExpControl NIL/empty-DER
+— `docs/wpg21_makeposseq_probes.md`) → safe-skips + unit tests, never decks. Gates:
+6 oracle-validated decks in `modes/` (`makeposseq_{line,xfmr,shunt,pc,ctrl,report}`,
+§3 protocol: two-process bit-identical + feature-sensitive, live full-model compare
+green), ~80 unit tests asserting exact `PosSeqAction` sequences, 4 exec tests
+(creation-order adoption, off-phase-1 transformer disable with dotted buses kept,
+idempotency, ground-`.0`). Audits: code = faithful, 1 Minor (missing `TODO(compat)`
+tag) fixed; tests = 2 Major (6 untested trivial overrides; VSConverter mislabeled
+"no-op" in deck note — it sets Phases=2/Ndc=1, excluded from decks for its known
+GetCurrents bug) + 3 Minor — all 6 findings settled (`223611f`, 12 new tests).
+Integration-surfaced fixes (audit-verified): Capacitor `set_struct_f64_array(kvar)`;
+`set_obj_double` scalar-only guard (string path unaffected — parse.rs routes arrays
+separately); `transformer_taps`/`refresh_vterminal_if_marked` skip disabled elements
+(Pascal enabled-walk; prevents stale-node_ref OOB on the disable path).
+
 **DIAKOPTICS_PSTCALC Part I COMPLETE (2026-07-11), gate-green.** WP-PF.1 + WP-PF.2 +
 WP-AD.1 executed as an ultracode round (3 opus executors + 6 opus auditors + settle
 agents in isolated worktrees; coordinator merged `wp-pf2-flicker-settled` (ff),

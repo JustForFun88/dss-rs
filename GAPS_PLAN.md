@@ -188,8 +188,12 @@ corpus usage is a 0.1 Hz quasi-DC snapshot).
 **Explicitly NOT in this plan** (deferred elsewhere, with a real owner):
 - `Feeder` objects — **proven dead upstream by an oracle probe** (Phase 8
   record); not test-blocked.
-- `MakePosSequence` — Phase 8's on-demand stance stands (ported when a
-  consuming path reaches it).
+- ~~`MakePosSequence` — Phase 8's on-demand stance stands (ported when a
+  consuming path reaches it).~~ **Closed 2026-07-11 as WPG.21** (see §4): full
+  port (dispatch ord 60 + base rename + all 33 overrides + typed setters) with
+  6 oracle-validated `modes/makeposseq_*` decks; upstream NIL-deref crash
+  configs safe-skipped per the CLAUDE.md UB rule
+  (`docs/wpg21_makeposseq_probes.md`); STATUS §WPG.21 has the record.
 - Binary shape **outputs** (`Action=SngSave/DblSave`) — already Phase 8 scope
   (PHASE8_PLAN §"On demand", synthesized fixture there).
 - LoadShape `MemoryMapping=yes` — an I/O strategy, not observable numerics;
@@ -1092,6 +1096,19 @@ independent audit-code/audit-tests pair, merged and settled per the ritual.
   → **Ported**: oracle-probed `Assigned(dQ)` (Case A/B), guard removed; the eager MMF
   read already populates `q_mult`, so the non-MMF snapshot body emits byte-exact bytes;
   new byte-exact golden `binsave_mmf_matches_oracle`. Full record in STATUS.md.
+- **WPG.21 ✅ (DONE 2026-07-11, merged `b9349e0`): MakePosSequence** — the §1b
+  "Explicitly NOT in this plan" on-demand deferral, closed by user request as an
+  ultracode round (A1 scaffolding+decks / B heavy-PD / C PC / D meters+controls /
+  A2 dispatch+applier, opus worktrees; opus-xhigh/high audits, findings settled).
+  `cmd::MAKE_POS_SEQ = 60` + `exec/make_pos_seq.rs` applier VM (typed-setter
+  bracketing per `DSSObjectHelper.pas:3060`), `class_props/typed.rs` typed
+  setters, base rename with the IsGroundBus substring quirk, all 33 overrides.
+  Quirks reproduced (`TODO(compat)`): Generator PrpSequence[26]/[27]=Xdp/Xdpp
+  guard, Storage dangling EndEdit, Capacitor Cuf array-write discard, Load ÷3
+  always. Oracle crash configs (5 control classes, probe log
+  `docs/wpg21_makeposseq_probes.md`) safe-skipped per the UB rule. Gate: 6
+  `modes/makeposseq_*` decks (§3-validated, live full-model compare) + ~80 unit
+  + 4 exec tests. Full record in STATUS.md.
 - **JSON output** (`Obj_ToJSON`/`Batch_ToJSON`/`Obj_Circuit_ToJSON_` +
   `joptions`; `FromJSON` import and `CAPI_Schema` behind it) — user-deferred
   2026-07-09; the implementation-ready plan is **`JSON_EXPORT_PLAN.md`**
