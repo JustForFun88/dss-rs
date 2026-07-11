@@ -360,49 +360,92 @@ pub(crate) fn try_get_ad_option(ckt: &Circuit, param_name: &str, result: &mut St
 impl Dss {
     /// Pascal command `Tear_Circuit` (ExecCommand[111]) → `ADiakoptics_Tearing(
     /// AddISrc=False)` (Diakoptics.pas:506): tear the circuit into sub-circuits
-    /// without A-Diakoptics ISources. Sets `GlobalResult` to `"Sub-Circuits
-    /// Created: N"` on success (Diakoptics.pas:526), the error string otherwise.
+    /// without A-Diakoptics ISources, then emit the on-disk `Torn_Circuit/`
+    /// project tree. Sets `GlobalResult` to `"Sub-Circuits Created: N"` on
+    /// success (Diakoptics.pas:526), the error string otherwise.
     ///
-    /// NOTE: this WP-AD.2 Stage-B increment computes the partition, the zone
-    /// `Locations`/`BusZones`, and the `Link_Branches`, and writes the
-    /// `.graph`/`.part.N` artifacts. The per-zone `EnergyMeter` placement +
-    /// `PConn_Voltages` capture (Circuit.pas:1954–2032) and `Save_SubCircuits`
-    /// file emission (Format_SubCircuits) land in the follow-up (they need the
-    /// prior-solve `NodeV` + `save circuit` integration); see STATUS §WP-AD.2.
+    /// The full official orchestration (`ADiakoptics_Tearing`,
+    /// Diakoptics.pas:511–534): `Tear_Circuit` (partition + zone `EnergyMeter`
+    /// placement + `PConn` capture), then `SolutionMode := 0`/`set
+    /// controlmode=off`/`BuildYMatrix`, then — when the solution did not abort —
+    /// `Save_SubCircuits(AddISrc=False)` (the file emission). The `SolutionMode`
+    /// toggle is restored immediately (net no-op here); we issue `set
+    /// controlmode=off` and rebuild the meter zones (the `BuildYMatrix`
+    /// `ReprocessBusDefs` tail — needed so `SaveFeeders` sees the new zones).
     pub(super) fn do_tear_circuit_cmd(&mut self) {
-        match self.tear_circuit() {
-            Ok(n) => {
-                if let Some(ckt) = self.circuit.as_mut() {
-                    ckt.ad.num_sub_ckts = n;
-                }
-                self.last_result = format!("Sub-Circuits Created: {n}");
-            }
+        let n = match self.tear_circuit() {
+            Ok(n) => n,
             Err(_) => {
                 self.errors
                     .push("MeTIS cannot process the graph file (tearing failed).".to_string());
                 self.last_result = "There was an error when tearing the circuit ".to_string();
+                return;
             }
+        };
+
+        // Diakoptics.pas:517–519 — snapshot mode + controls off + rebuild Y.
+        // The mode toggle (`Prev_mode` → 0 → `Prev_mode`) is a net no-op for the
+        // file emission, so we only issue the `set controlmode=off` and force the
+        // meter-zone rebuild that `BuildYMatrix` performs, so the zones just
+        // created by `place_zone_meters` are current before `SaveFeeders`.
+        self.command("set controlmode=off");
+        self.reset_meter_zones_for_tear();
+
+        // Diakoptics.pas:521–527 — `if not SolutionAbort then Save_SubCircuits`.
+        let aborted = self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.solution.solution_abort);
+        if aborted {
+            self.last_result = "There was an error when tearing the circuit ".to_string();
+            return;
         }
+        self.save_sub_circuits(false);
+
+        if let Some(ckt) = self.circuit.as_mut() {
+            ckt.ad.num_sub_ckts = n;
+        }
+        self.last_result = format!("Sub-Circuits Created: {n}");
+    }
+
+    /// Force the meter-zone rebuild that `BuildYMatrix`'s `ReprocessBusDefs` tail
+    /// runs (Ymatrix.pas → Circuit.pas:2246). Adding the `Zone_i` meters does not
+    /// redefine buses, so the automatic `bus_name_redefined` path in
+    /// `build_y_matrix` would not fire; we call `do_reset_meter_zones` directly
+    /// (as `exec/reduce.rs` does) so `SaveFeeders` sees each new meter's zone.
+    fn reset_meter_zones_for_tear(&mut self) {
+        let Dss {
+            classes, circuit, ..
+        } = self;
+        let Some(ckt) = circuit.as_mut() else {
+            return;
+        };
+        let mut store = crate::exec::registry::ClassStore { classes };
+        crate::solution::meters::do_reset_meter_zones(ckt, &mut store);
     }
 
     /// The tearing dispatch (`Tear_Circuit`, Circuit.pas:1880): the manual
     /// link-branch branch when `UseMyLinkBranches` is set with a non-empty list,
-    /// else the automatic `dss-metis` partition branch.
+    /// else the automatic `dss-metis` partition branch. Both branches compute
+    /// `Locations`, then the shared [`Self::place_zone_meters`] runs the meter
+    /// placement + `PConn` capture loop (Circuit.pas:1941–2032) and returns the
+    /// sub-circuit count.
     fn tear_circuit(&mut self) -> Result<i32, TearError> {
         let use_user = self
             .circuit
             .as_ref()
             .is_some_and(|c| c.ad.use_user_links && !c.ad.link_branches.is_empty());
         if use_user {
-            self.tear_circuit_manual()
+            self.tear_circuit_manual()?;
         } else {
-            self.tear_circuit_auto()
+            self.tear_circuit_auto()?;
         }
+        self.place_zone_meters()
     }
 
-    /// Automatic branch: `Create_MeTIS_graph` + `Create_MeTIS_Zones`, then
-    /// `Link_Branches[i] := Inc_Mat_Rows[get_IncMatrix_Row(Locations[i])]`
-    /// (Circuit.pas:1932–1933, 1962–1963).
+    /// Automatic branch: `Create_MeTIS_graph` + `Create_MeTIS_Zones`, filling
+    /// `Locations`/`BusZones` (Circuit.pas:1932–1934). `Link_Branches` is derived
+    /// in the shared meter loop.
     fn tear_circuit_auto(&mut self) -> Result<i32, TearError> {
         // Calc_Inc_Matrix_Org (disjoint field borrows of self).
         crate::solution::inc_matrix::calc_inc_matrix_org(
@@ -425,34 +468,15 @@ impl Dss {
         };
         let _ = graph.write_opendss_graph(&graph_path);
 
-        {
-            let ckt = self.circuit.as_mut().ok_or(TearError::NoGraph)?;
-            create_metis_zones(&graph, num_pieces, &graph_path, &mut ckt.ad)?;
-        }
-
-        // Link_Branches from Locations. Locations were `+1`-adjusted in
-        // Create_MeTIS_Zones, and `get_IncMatrix_Row` is applied to that adjusted
-        // value 1:1 (the upstream quirk-compensating offset).
         let ckt = self.circuit.as_mut().ok_or(TearError::NoGraph)?;
-        let locations = ckt.ad.locations.clone();
-        let mut link_branches = vec![String::new(); locations.len()];
-        if let Some(inc) = ckt.solution.inc_matrix.inc_mat.as_ref() {
-            let rows = &ckt.solution.inc_matrix.rows;
-            for (i, &loc) in locations.iter().enumerate().skip(1) {
-                let row = get_inc_matrix_row(inc, loc);
-                // Safe guard (not reproducing an OOB): skip an unresolved row.
-                if let Some(name) = usize::try_from(row).ok().and_then(|r| rows.get(r)) {
-                    link_branches[i] = name.clone();
-                }
-            }
-        }
-        ckt.ad.link_branches = link_branches;
-        Ok(locations.len() as i32)
+        create_metis_zones(&graph, num_pieces, &graph_path, &mut ckt.ad)?;
+        Ok(0)
     }
 
     /// Manual branch (official Circuit.pas:1922–1928): `Locations[0] := 0`;
     /// `Locations[i] := get_PDE_Bus1_Location(Link_Branches[i])`. The
-    /// user-supplied `Link_Branches` are kept as the cut.
+    /// user-supplied `Link_Branches` are kept (the shared meter loop overwrites
+    /// each entry with the incidence-derived PDE name, 1:1 with Pascal).
     fn tear_circuit_manual(&mut self) -> Result<i32, TearError> {
         crate::solution::inc_matrix::calc_inc_matrix_org(
             &mut self.classes,
@@ -471,7 +495,190 @@ impl Dss {
         let ckt = self.circuit.as_mut().ok_or(TearError::NoGraph)?;
         ckt.ad.locations = locations;
         ckt.ad.use_user_links = false;
-        Ok(link_branches.len() as i32)
+        Ok(0)
+    }
+
+    /// Pascal `Tear_Circuit`'s meter-placement + `PConn` capture loop
+    /// (Circuit.pas:1941–2032), shared by both tear branches. Requires a prior
+    /// successful solve (the loop reads `Solution.NodeV` at each point of
+    /// connection — the ckt24 header + spec both require a base solve before
+    /// tearing); errors honestly when `SolutionCount = 0` (never solved).
+    ///
+    /// Per location: derive the link PDE from `Inc_Mat_Rows[get_IncMatrix_Row]`,
+    /// the point-of-connection bus (`get_line_bus(link, 2)` — bus 2 of the link
+    /// line, dot-stripped), the three-phase `PConn_Voltages`
+    /// (`ctopolardeg(NodeV)` → mag/1000, angle°), then `New EnergyMeter.Zone_<i+1>
+    /// element=<PDE> terminal=1 option=R action=C`. All pre-existing meters are
+    /// disabled first (Circuit.pas:1941–1946). Returns the sub-circuit count
+    /// `length(Locations)` (Result starts at 1 and `inc`s per i>0).
+    ///
+    /// NOTE(upstream-quirk): r3723 also computes `Term_volts[0] - Term_volts[1]`
+    /// (a |V| difference across the branch, Circuit.pas:1967–1984) but never
+    /// reads the result — the meter terminal is hard-coded to 1 and the PConn bus
+    /// is always the link line's bus 2. The vestigial |V| read is a defined,
+    /// side-effect-free dead computation, so it is not reproduced (plan D5:
+    /// allocated-but-never-read scaffolding stays absent).
+    fn place_zone_meters(&mut self) -> Result<i32, TearError> {
+        // Prior-solve gate: the loop reads `Solution.NodeV` at each point of
+        // connection (Circuit.pas reads it blindly), but a torn circuit whose
+        // power flow never converged carries only the seeded source voltages, not
+        // a real operating point — error honestly rather than emit meaningless
+        // zone sources. `converged_flag` (not `solution_count`, which `compile`'s
+        // `calcv` already bumps to 1) is the "a power flow converged" indicator.
+        let solved = self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.solution.converged_flag);
+        if !solved {
+            self.errors.push(
+                "Tear_Circuit requires a prior successful solve (the zone \
+                 point-of-connection voltages are read from the solved NodeV)."
+                    .to_string(),
+            );
+            return Err(TearError::NoGraph);
+        }
+
+        let locations = self
+            .circuit
+            .as_ref()
+            .map(|c| c.ad.locations.clone())
+            .ok_or(TearError::NoGraph)?;
+        let n = locations.len();
+
+        // Allocate the PConn/Link storage (Circuit.pas:1949–1951).
+        let mut link_branches = vec![String::new(); n];
+        let mut pconn_names = vec![String::new(); n];
+        let mut pconn_voltages: Vec<f64> = Vec::with_capacity(n * 6);
+
+        // Meter commands to issue after releasing the circuit borrow.
+        let mut meter_cmds: Vec<String> = Vec::new();
+        // Deferred `get_Line_Bus` "Line not found" errors (Circuit.pas:1198,
+        // 5008) — collected here and flushed after the loop so the honest error
+        // surfaces for a non-Line link without a mid-loop `&mut self` borrow.
+        let mut line_errors: Vec<String> = Vec::new();
+
+        for (i, &loc) in locations.iter().enumerate() {
+            if i == 0 {
+                // Reference bus (Actor 1): `Inc_Mat_Cols[0]` (Circuit.pas:2014).
+                let bus_name = self
+                    .circuit
+                    .as_ref()
+                    .and_then(|c| c.solution.inc_matrix.cols.first().cloned())
+                    .unwrap_or_default();
+                pconn_names[0] = bus_name.clone();
+                self.push_pconn_phases(&bus_name, &mut pconn_voltages);
+                continue;
+            }
+
+            // Link PDE = `Inc_Mat_Rows[get_IncMatrix_Row(Locations[i])]`
+            // (Circuit.pas:1962–1963).
+            let pde = {
+                let ckt = self.circuit.as_ref().ok_or(TearError::NoGraph)?;
+                match ckt.solution.inc_matrix.inc_mat.as_ref() {
+                    Some(inc) => {
+                        let row = get_inc_matrix_row(inc, loc);
+                        usize::try_from(row)
+                            .ok()
+                            .and_then(|r| ckt.solution.inc_matrix.rows.get(r))
+                            .cloned()
+                            .unwrap_or_default()
+                    }
+                    None => String::new(),
+                }
+            };
+            link_branches[i] = pde.clone();
+
+            // Point of connection = bus 2 of the link **line**, dot-stripped
+            // (Circuit.pas:1985–1989: `BusName := get_line_bus(link.Substring(dot),
+            // 2)` then strip the dot). `get_Line_Bus` searches ONLY the Lines list
+            // (Circuit.pas:1167–1208): a non-Line link (e.g. a Transformer) is not
+            // found → error 5008 and no point-of-connection bus. Reproduced: the
+            // honest "Line not found" surfaces here (the ZLL 3-phase-Line cut
+            // constraint is otherwise enforced downstream at AD init, D5).
+            let bare = pde.split_once('.').map(|(_, n)| n).unwrap_or(pde.as_str());
+            let raw_bus = match line_bus(&self.classes, bare, 2) {
+                Some(b) => b,
+                None => {
+                    line_errors.push(format!("Line \"{bare}\" Not Found in Active Circuit."));
+                    String::new()
+                }
+            };
+            let bus_name = raw_bus.split('.').next().unwrap_or(&raw_bus).to_string();
+            pconn_names[i] = bus_name.clone();
+            self.push_pconn_phases(&bus_name, &mut pconn_voltages);
+
+            // `New EnergyMeter.Zone_<i+1> element=<PDE> terminal=1 option=R
+            // action=C` (Circuit.pas:2009).
+            meter_cmds.push(format!(
+                "New EnergyMeter.Zone_{} element={} terminal=1 option=R action=C",
+                i + 1,
+                pde
+            ));
+        }
+
+        // Write the captured arrays back (Circuit.pas fills them in place).
+        if let Some(ckt) = self.circuit.as_mut() {
+            ckt.ad.link_branches = link_branches;
+            ckt.ad.pconn_names = pconn_names;
+            ckt.ad.pconn_voltages = pconn_voltages;
+            ckt.solution.solution_abort = false; // Circuit.pas:1952
+        }
+
+        // Flush the deferred `get_Line_Bus` errors (non-Line links).
+        self.errors.extend(line_errors);
+
+        // Disable every pre-existing EnergyMeter (Circuit.pas:1941–1946), then
+        // create the zone meters through the executive edit path.
+        self.disable_all_energy_meters();
+        for cmd in &meter_cmds {
+            self.command(cmd);
+        }
+
+        Ok(n as i32)
+    }
+
+    /// Read a bus's three-phase point-of-connection voltages and append them to
+    /// `out` as `(|V|/1000, angle°)` pairs (Circuit.pas:1996–2005/2019–2028:
+    /// `for jj := 1 to 3: ctopolardeg(NodeV[GetRef(FindIdx(jj))])`). A missing
+    /// phase node falls back to `NodeV[0]` (ground = 0), matching Pascal's
+    /// `GetRef(0)` on a `FindIdx` miss.
+    fn push_pconn_phases(&self, bus_name: &str, out: &mut Vec<f64>) {
+        use crate::support::complexutil::c_to_polar_deg;
+        let Some(ckt) = self.circuit.as_ref() else {
+            for _ in 0..6 {
+                out.push(0.0);
+            }
+            return;
+        };
+        let bus = ckt.bus_list.find(bus_name).map(|idx| &ckt.buses[idx]);
+        for phase in 1..=3 {
+            let noderef = bus
+                .and_then(|b| b.find_idx(phase).map(|ni| b.get_ref(ni)))
+                .unwrap_or(0);
+            let v = ckt
+                .solution
+                .node_v
+                .get(noderef)
+                .copied()
+                .unwrap_or_default();
+            let polar = c_to_polar_deg(v);
+            out.push(polar.mag / 1000.0);
+            out.push(polar.ang);
+        }
+    }
+
+    /// Disable every EnergyMeter (Circuit.pas:1941–1946: `EMeter.Enabled :=
+    /// False`). Direct field mutation (no bus redefinition), like the Pascal.
+    fn disable_all_energy_meters(&mut self) {
+        let meters = match self.circuit.as_ref() {
+            Some(c) => c.energy_meters.clone(),
+            None => return,
+        };
+        for r in meters {
+            if let Some(ce) = self.classes[r.cls].objects[r.idx].as_ckt_element_mut() {
+                ce.cd_mut().set_enabled(false);
+            }
+        }
     }
 
     /// Pascal `get_PDE_Bus1_Location` (Solution.pas:1707): the incidence column
@@ -520,6 +727,29 @@ fn pde_bus2_name(classes: &[DssClass], full_name: &str) -> Option<String> {
             let bus = class.objects[oi].as_ckt_element()?.cd().get_bus(2);
             let stripped = bus.split('.').next().unwrap_or(bus).to_string();
             return Some(stripped);
+        }
+    }
+    None
+}
+
+/// Pascal `TDSSCircuit.get_Line_Bus(LName, NBus)` (Circuit.pas:1167): the bus
+/// name at terminal `nbus` (1-based) of the **Line** named `lname`. Searches only
+/// the `Line` class (like the Pascal `WITH ActiveCircuit.Lines DO` loop); returns
+/// `None` when no Line by that name exists — the caller then surfaces the
+/// error-5008 "Line not found" honestly. The returned bus keeps its node dots
+/// (the caller strips them, Circuit.pas:1987–1989).
+fn line_bus(classes: &[DssClass], lname: &str, nbus: usize) -> Option<String> {
+    let key = lname.to_lowercase();
+    for class in classes {
+        if class.kind.is_none() {
+            continue;
+        }
+        if !class.props.class_name().eq_ignore_ascii_case("line") {
+            continue;
+        }
+        if let Some(&oi) = class.name_to_idx.get(&key) {
+            let bus = class.objects[oi].as_ckt_element()?.cd().get_bus(nbus);
+            return Some(bus.to_string());
         }
     }
     None
