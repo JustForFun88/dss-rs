@@ -2480,6 +2480,43 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+**FA fix 1 (Relay/CDPSM panic + manifest re-sweep) — 2026-07-11, branch `fa-fix1`.**
+FINAL ACCEPTANCE referee items.
+
+- **The bug:** exporting CIM100 for any deck with a **Relay**-controlled switch
+  (e.g. `Examples/CIM/IEEE13_CDPSM.dss`) panicked
+  `unreachable!("Relay has no double property 6")`. Root cause is caller-side, not
+  a Relay accessor gap: `cim/export.rs::parse_switch_class` refactored Pascal's
+  per-class `ParseSwitchClass` (`ExportCIMXML.pas:451`) into one closure that read
+  `get_f64(6)` for **every** matched control class. Fuse prop 6 is `RatedCurrent`
+  (a double — correct), but Relay prop 6 is `PhaseCurve` (a curve reference), so the
+  read hit the accessor's `unreachable!`. Pascal reads `RatedCurrent` **only** inside
+  the Fuse branch; Relay→`Breaker`/Recloser→`Recloser` are pure class-match checks.
+  Fixed 1:1 (the closure now returns the matched `ElemRef`; only the Fuse branch reads
+  prop 6). Regression: `cim::tests::parse_switch_class_relay_does_not_read_relay_double`
+  drives `export cim100` on a minimal Relay-guarded switch.
+- **Why WP8.5b's property-parity sweep missed it:** that sweep checks each class's
+  accessor covers its *own* property list — the Relay table is correct (Relay genuinely
+  has no double at prop 6). The panic is a **cross-class** caller reading a Fuse property
+  index on a Relay object, which a per-class parity sweep cannot catch.
+- **Manifest re-sweep:** ran the `DSS_LIVE_CLASSIFY=1` classifier over the 33 stale-tagged
+  `skipped_unsupported` candidates (excluded the 14 `deferred=ieee123-gfm-trajectory-scope`
+  scope-deferrals + the actor `SolveAll` deck; hands-off decks untouched). **15 converge
+  clean + full-model compare green → `solvable_now`** (Dynamic_KundurDynExp ×2, ExpControl,
+  InductionMachine ×2, InverterTechNote kWRated, Matlab/pst, StoCtrl_SeasonTarget ×2,
+  UPFC_test_3, civinlar regulator, 123Bus SolarRamp ×3, 8500 P174_360kW_PV). **16 above-band
+  / real-divergence → `skipped_needs_investigation`** with honest notes (ckt24 + 5
+  memory-mapping = the known RegControl/LDC SubXFMR family; IEEE13_Assets + IEEE13_CDPSM =
+  RegControl/LDC; GFM_IEEE8500 ×4; Storage-Quasi Demo1; LVTestCase Master = Rust entry-0
+  unenergized, a real gap; SecondaryTestCircuit_modified). **2 stay `skipped_unsupported`**
+  with refreshed tags (CapControlFollow = `CapControl.ControlSignal` unported;
+  Source012Test = UTF-8 BOM not stripped, a parser gap, flagged for follow-up).
+  - **IEEE13_CDPSM did NOT go to `solvable_now`**: the task-1 fix removes the panic and the
+    deck now compiles/solves/exports CIM100, but the live compare is above-band (step 0
+    entry 6 node V |diff|=4.60e-6 > allowed 1.599e-6). Per the no-fudging rule it is a
+    divergence-to-investigate, not a green case.
+  - `solvable_now` 226→**241 (71.9% of entry points)**; `COVERAGE.md` regenerated.
+
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
 IEEE1547; scaffolding/EnergySource/DER/loads/ECP; caps/CapControl/reactors/lines/

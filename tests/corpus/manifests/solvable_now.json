@@ -346,6 +346,21 @@
    "compare_eventlog": true
   },
   {
+   "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -362,6 +377,16 @@
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -821,7 +846,17 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Matlab/pst.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -889,6 +924,16 @@
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
    "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+   "kind": "feeder",
    "n_steps": 1
   },
   {
@@ -962,6 +1007,11 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -1002,6 +1052,11 @@
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1121,6 +1176,11 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_VoltageProfile.DSS",
    "kind": "feeder",
    "n_steps": 1
@@ -1132,6 +1192,16 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_IEEE123Bus.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1258,6 +1328,11 @@
    "selected_elements": [
     "line.ln5815900-1"
    ]
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
+   "kind": "feeder",
+   "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_Voltage_Profile.DSS",

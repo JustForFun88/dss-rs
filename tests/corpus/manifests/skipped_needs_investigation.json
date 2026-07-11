@@ -2,29 +2,14 @@
  "comment": "Entry points excluded from the live gate pending (or after) investigation. Fields: path, tag, note. Tags: root-caused floors that cannot yet be banded honestly (floating_zeroseq_bus) stay here with their proof notes; oracle-side blocks (oracle_*) have nothing to fix port-side; the rest are open triage items. Root-caused floors WITH an honest calibrated band migrate to solvable_now under a dedicated kind (near-ideal-source AutoTrans family -> large_near_ideal_source, 2026-07-10). Full procedures: TESTING.md; floor proofs: tests/TOLERANCE_NOTES.md.",
  "cases": [
   {
-   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
    "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/1_1.dss step 0: entry 12 differs: actual (8086.050132907597, -211.28443558793424) vs expected (8086.048226635273, -211.28447305469203); |diff| = 1.90664048298998e-3 > allowed 8.188808135444025e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 3 node V |diff|=3.766e-4 > allowed 2.079e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
   },
   {
-   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
    "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/1_2.dss step 0: entry 12 differs: actual (7891.9593782778775, -68.77869419712079) vs expected (7891.957379769732, -68.77860096852731); |diff| = 2.0006814782987594e-3 > allowed 7.992257077671325e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
-   "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/2_1.dss step 0: entry 12 differs: actual (8151.541492337963, -252.91984527066143) vs expected (8151.53969321896, -252.91976100835075); |diff| = 1.8010911485611234e-3 > allowed 8.25546245013934e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
-   "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/2_2.dss step 0: entry 12 differs: actual (7946.310011446733, -439.5168396381332) vs expected (7946.307214262288, -439.51629464316306); |diff| = 2.8497825075489186e-3 > allowed 8.058452922314346e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
-   "tag": "oracle_nonconvergence",
-   "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify; unblocked by the SetkVBase port): the pinned oracle itself does not converge on this deck (persists across in-process retries) -- oracle-blocked, nothing to compare against; joins the documented oracle_nonconvergence class."
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 3 node V |diff|=3.766e-4 > allowed 2.079e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
@@ -47,9 +32,99 @@
    "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
+   "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 6 node V |diff|=1.008e-3 > allowed 2.515e-5. RegControl/LDC family (IEEE13 with 3 single-phase regulators + LDC R/X)."
+  },
+  {
+   "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1): the Relay CIM-export panic (unreachable! \"Relay has no double property 6\") is FIXED (cim/export.rs parse_switch_class no longer reads a Relay double; unit regression cim::tests::parse_switch_class_relay_does_not_read_relay_double). Deck now compiles/solves/exports CIM100, but the live full-model compare is above-band: step 0 entry 6 node V |diff|=4.60e-6 > allowed 1.599e-6 (rel ~7.7e-8). RegControl/LDC family (Reg1/2/3 with R=3 X=9); a small above-band divergence -- a BUG until decomposition proves a floor, so NOT migrated to solvable_now."
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "tag": "live_mismatch",
+   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/1_1.dss step 0: entry 12 differs: actual (8086.050132907597, -211.28443558793424) vs expected (8086.048226635273, -211.28447305469203); |diff| = 1.90664048298998e-3 > allowed 8.188808135444025e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "tag": "live_mismatch",
+   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/1_2.dss step 0: entry 12 differs: actual (7891.9593782778775, -68.77869419712079) vs expected (7891.957379769732, -68.77860096852731); |diff| = 2.0006814782987594e-3 > allowed 7.992257077671325e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
+   "tag": "live_mismatch",
+   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/2_1.dss step 0: entry 12 differs: actual (8151.541492337963, -252.91984527066143) vs expected (8151.53969321896, -252.91976100835075); |diff| = 1.8010911485611234e-3 > allowed 8.25546245013934e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
+   "tag": "live_mismatch",
+   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/2_2.dss step 0: entry 12 differs: actual (7946.310011446733, -439.5168396381332) vs expected (7946.307214262288, -439.51629464316306); |diff| = 2.8497825075489186e-3 > allowed 8.058452922314346e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 4 node V |diff|=9.618e-4 > allowed 2.068e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 4 node V |diff|=9.618e-4 > allowed 2.068e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 4 node V |diff|=9.624e-4 > allowed 2.068e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 4 node V |diff|=9.618e-4 > allowed 2.068e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 4 node V |diff|=9.618e-4 > allowed 2.068e-4. Same class as the known ckt24 RegControl/LDC SubXFMR tap-current divergence (STATUS open follow-up): a BUG until the CLAUDE.md decomposition protocol proves a floor."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "tag": "live_mismatch_regcontrol_ldc_tap",
+   "note": "Re-classified WPG.19/20 audit-settlement (2026-07-11): the prior tag (unsupported_feature=file-backed-arrays, note asserting 'not supported yet (WPG.19)') is now FALSE -- WPG.19 ported non-MM file-backed numeric arrays and this deck (redirect main_template.dss with LS_PhaseA-nomm.dss, mult=(file=...) read from txt) now COMPILES + CONVERGES via the CLI (7522 nodes, 2 iterations, max err 7.8e-5), zero errors. It drives the same ckt24 circuit (set mode=yearly number=100) with the same substation regulator as the -mm sibling master_ckt24.dss, so it inherits the same real blocker: the RegControl/LDC tap-trajectory current divergence on Transformer.SubXFMR / Regcontrol.SubXFMR_Regulator (see the sibling entry above). Not a file-array feature gap. Not forced into solvable_now."
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+   "tag": "live_mismatch_regcontrol_ldc_tap",
+   "note": "WPG.19 (2026-07-11) removed the former blocker (non-MM file-backed arrays LS_PhaseB/C/ThreePhase/Other_Bus_Load, mult=(file=...) action=normalize): the deck now COMPILES + CONVERGES (yearly, number=100; hour=100, 2 iters, 7522 nodes) and its full complex node V matches the pinned oracle to 5.6e-8 rel max / 2.8e-8 median (faer-vs-KLU floor) after the entire 100-step trajectory -- so the load shapes are read/driven identically. NEW true blocker (live mismatch, NOT WPG.19): the regulator-controlled substation transformer diverges at the per-element current level -- Transformer.SubXFMR (Regcontrol.SubXFMR_Regulator winding=2 vreg=123 band=3 R=7 LDC, delay=45) currents differ |diff|=7.2e-4 A (~4.7e-5 rel) at step 0 after the yearly trajectory, exceeding the large-tier current tolerance while V stays regulated to floor. This is the known RegControl/LDC tap-trajectory divergence family (MEMORY: AutoTrans/RegControl stale tap, needs_investigation), unrelated to the file arrays. Not forced into solvable_now. Also note the regcontrol has debugtrace=yes (writes REG_subxfmr_regulator.csv each run)."
+  },
+  {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
    "tag": "oracle_nonconvergence",
    "note": "live probe: Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
+   "tag": "oracle_nonconvergence",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): file-backed arrays now ported; deck compiles, but the ORACLE did not converge on this snapshot (persisted across the oracle's in-process retries) -- no live comparison possible. Oracle-side non-convergence on full IEEE8500 GFM snapshot."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 8534 node V |diff|=2.732e-4 > allowed 7.541e-5. Full-feeder IEEE8500 GFM daily divergence."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 8534 node V |diff|=1.971e-4 > allowed 7.562e-5. Full-feeder IEEE8500 GFM daily divergence."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 8534 node V |diff|=1.381e-4 > allowed 7.336e-5. Full-feeder IEEE8500 GFM snapshot divergence."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 3 node V |diff|=1.114e-4 > allowed 7.532e-5. Storage quasi-static (small above-band)."
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
@@ -77,19 +152,24 @@
    "note": "live probe: Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
+   "tag": "oracle_nonconvergence",
+   "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify; unblocked by the SetkVBase port): the pinned oracle itself does not converge on this deck (persists across in-process retries) -- oracle-blocked, nothing to compare against; joins the documented oracle_nonconvergence class."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): file-backed arrays now ported; deck compiles, but the live compare shows a REAL divergence, not a near-floor: step 0 entry 0 Rust node V = (0,0) vs oracle (6664.39, -5.95) -- the Rust engine leaves entry 0 unenergized. Genuine bug/gap on the LV European test feeder; needs investigation."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/SecondaryTestCircuit_modified/Master.DSS",
+   "tag": "live_mismatch",
+   "note": "Re-triaged 2026-07-11 (FA fix 1 classify re-sweep): the prior feature blocker is ported; deck now compiles/solves, but the live full-model compare is ABOVE-BAND -- step 0 entry 0 node V |diff|=5.531e-1 > allowed 2.663e-4 (large). Secondary test circuit -- real above-band divergence."
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
    "tag": "deck_unsolvable_all_engines",
    "note": "ROOT-CAUSED 2026-07-10 (user-directed deck audit): the deck data itself is pathological, no engine solves it as vendored. The 480 V DER microgrid island (m2001der480-2 delta secondary of a 750 kVA xfmr) is operated at the edge of voltage collapse, and Storage.battery1 (state=charging) / battery2 (idling) tip the snapshot power flow over the fixed-point stability boundary: |V| at M2001-ESS1 grows geometrically (~x2000/iteration; 6.97e4 -> 6.35e6 -> 1.26e10 V...) until NaN. Bisected: both batteries disabled -> converges (121 iterations -- still extremely marginal vs the usual 5-15); battery1=discharging -> converges (130); charging or idling -> geometric divergence. Engine-lineage-consistent: pinned oracle, official EPRI r3723/r4088/r4133, and the Rust port all diverge identically on the vendored deck, and on the healed variant (storages disabled) Rust converges in EXACTLY the oracle's 121 iterations. Deck/scenario bug (DERs likely meant to be coordinated/disabled by a separate scenario file), nothing to fix port-side. The earlier 'no JSON response' was a secondary serialization glitch of the NaN state."
-  },
-  {
-   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
-   "tag": "live_mismatch_regcontrol_ldc_tap",
-   "note": "WPG.19 (2026-07-11) removed the former blocker (non-MM file-backed arrays LS_PhaseB/C/ThreePhase/Other_Bus_Load, mult=(file=...) action=normalize): the deck now COMPILES + CONVERGES (yearly, number=100; hour=100, 2 iters, 7522 nodes) and its full complex node V matches the pinned oracle to 5.6e-8 rel max / 2.8e-8 median (faer-vs-KLU floor) after the entire 100-step trajectory -- so the load shapes are read/driven identically. NEW true blocker (live mismatch, NOT WPG.19): the regulator-controlled substation transformer diverges at the per-element current level -- Transformer.SubXFMR (Regcontrol.SubXFMR_Regulator winding=2 vreg=123 band=3 R=7 LDC, delay=45) currents differ |diff|=7.2e-4 A (~4.7e-5 rel) at step 0 after the yearly trajectory, exceeding the large-tier current tolerance while V stays regulated to floor. This is the known RegControl/LDC tap-trajectory divergence family (MEMORY: AutoTrans/RegControl stale tap, needs_investigation), unrelated to the file arrays. Not forced into solvable_now. Also note the regcontrol has debugtrace=yes (writes REG_subxfmr_regulator.csv each run)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
-   "tag": "live_mismatch_regcontrol_ldc_tap",
-   "note": "Re-classified WPG.19/20 audit-settlement (2026-07-11): the prior tag (unsupported_feature=file-backed-arrays, note asserting 'not supported yet (WPG.19)') is now FALSE -- WPG.19 ported non-MM file-backed numeric arrays and this deck (redirect main_template.dss with LS_PhaseA-nomm.dss, mult=(file=...) read from txt) now COMPILES + CONVERGES via the CLI (7522 nodes, 2 iterations, max err 7.8e-5), zero errors. It drives the same ckt24 circuit (set mode=yearly number=100) with the same substation regulator as the -mm sibling master_ckt24.dss, so it inherits the same real blocker: the RegControl/LDC tap-trajectory current divergence on Transformer.SubXFMR / Regcontrol.SubXFMR_Regulator (see the sibling entry above). Not a file-array feature gap. Not forced into solvable_now."
   }
  ]
 }
