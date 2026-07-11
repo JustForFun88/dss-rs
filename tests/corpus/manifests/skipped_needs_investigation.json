@@ -2,26 +2,6 @@
  "comment": "Entry points excluded from the live gate pending (or after) investigation. Fields: path, tag, note. Tags: root-caused floors that cannot yet be banded honestly (floating_zeroseq_bus) stay here with their proof notes; oracle-side blocks (oracle_*) have nothing to fix port-side; the rest are open triage items. Root-caused floors WITH an honest calibrated band migrate to solvable_now under a dedicated kind (near-ideal-source AutoTrans family -> large_near_ideal_source, 2026-07-10). Full procedures: TESTING.md; floor proofs: tests/TOLERANCE_NOTES.md.",
  "cases": [
   {
-   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
-   "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/1_1.dss step 0: entry 12 differs: actual (8086.050132907597, -211.28443558793424) vs expected (8086.048226635273, -211.28447305469203); |diff| = 1.90664048298998e-3 > allowed 8.188808135444025e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
-   "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/1_2.dss step 0: entry 12 differs: actual (7891.9593782778775, -68.77869419712079) vs expected (7891.957379769732, -68.77860096852731); |diff| = 2.0006814782987594e-3 > allowed 7.992257077671325e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
-   "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/2_1.dss step 0: entry 12 differs: actual (8151.541492337963, -252.91984527066143) vs expected (8151.53969321896, -252.91976100835075); |diff| = 1.8010911485611234e-3 > allowed 8.25546245013934e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
-   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
-   "tag": "live_mismatch",
-   "note": "NEW FINDING (WP8.8 final classify, 2026-07-10; unblocked by the var-command port): runs on both engines but exceeds the feeder live band -- Version8/Distrib/Examples/DOCTechNote/2_2.dss step 0: entry 12 differs: actual (7946.310011446733, -439.5168396381332) vs expected (7946.307214262288, -439.51629464316306); |diff| = 2.8497825075489186e-3 > allowed 8.058452922314346e-5 (~2.4e-7 rel node V, same order as the proven floating-zeroseq/delta floors). Root-cause per the no-rationalizing rule before any migration."
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
    "tag": "oracle_nonconvergence",
    "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify; unblocked by the SetkVBase port): the pinned oracle itself does not converge on this deck (persists across in-process retries) -- oracle-blocked, nothing to compare against; joins the documented oracle_nonconvergence class."
