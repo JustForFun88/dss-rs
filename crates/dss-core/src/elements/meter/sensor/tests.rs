@@ -58,3 +58,59 @@ fn wls_current_error_from_pq() {
     // (4 − 1) + (0 − 0) = 3, ·weight 1.
     assert!((err - 3.0).abs() < 1e-12);
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::CktElement;
+
+    /// Pascal `TSensorObj.MakePosSequence` (Sensor.pas:478): resync to the
+    /// metered element, ClearSensor, ValidSensor := TRUE, then
+    /// AllocateSensorObjArrays / ZeroSensorArrays / RecalcVbase; `inherited` runs
+    /// the base rename. For a 1-phase wye sensor, RecalcVbase → kVBase·1000 (no √3).
+    #[test]
+    fn resyncs_and_recomputes_vbase() {
+        let mut s = Sensor::new("s1");
+        s.med.metered_element = Some(ElemRef { cls: 1, idx: 3 });
+        s.med.metered_terminal = 1;
+        // seed a measured value + a stale spec flag to prove ClearSensor/Zero.
+        s.v_specified = true;
+        s.med.sensor_voltage = vec![7.0, 7.0, 7.0];
+
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                bus_names: vec!["b1".into(), "b2".into()],
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = s.make_pos_sequence(&ctx);
+
+        assert_eq!(s.med.cd.nphases, 1);
+        assert_eq!(s.med.cd.nconds, 1);
+        assert_eq!(s.med.cd.get_bus(1), "b1");
+        assert!(s.valid_sensor); // ValidSensor := TRUE
+        assert!(!s.v_specified); // ClearSensor
+        // AllocateSensorObjArrays + ZeroSensorArrays: per-phase arrays = 1, zero.
+        assert_eq!(s.med.sensor_voltage, vec![0.0]);
+        assert_eq!(s.med.calculated_current.len(), 2); // metered Yorder
+        // RecalcVbase: wye 1-phase → kVBase·1000 (default 12.47 kV).
+        assert!((s.vbase - 12_470.0).abs() < 1e-9);
+        assert!(plan.run_base && plan.actions.is_empty());
+        assert_eq!(s.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 3 }));
+    }
+
+    /// Pascal NIL guard: no metered element ⇒ only the base rename runs.
+    #[test]
+    fn nil_metered_element_runs_base_only() {
+        let mut s = Sensor::new("s1");
+        let np = s.med.cd.nphases;
+        let plan = s.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(s.med.cd.nphases, np);
+        assert!(plan.run_base);
+    }
+}
