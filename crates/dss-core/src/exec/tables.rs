@@ -207,6 +207,7 @@ pub(crate) mod cmd {
     pub const REMOVE: usize = 107;
     pub const SET_BUS_XY: usize = 91;
     pub const BATCH_EDIT: usize = 95;
+    pub const PSTCALC: usize = 96;
     pub const RELCALC: usize = 100;
     pub const VAR: usize = 101;
     pub const ADD_BUS_MARKER: usize = 85;
